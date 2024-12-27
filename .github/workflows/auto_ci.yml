@@ -8,13 +8,16 @@ on:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     env:
       BLPAPI_ROOT: /home/bbg
     strategy:
       matrix:
-        python-version: ["3.6", "3.7", "3.8"]
+        python-version: ["3.6.15", "3.7.17", "3.8.18"]
+        os: [ubuntu-latest, ubuntu-20.04]
+        exclude:
+          - python-version: "3.6.15"
+            os: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
