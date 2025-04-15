@@ -49,7 +49,7 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Sessio
         elif auth_method == 'app':
             auth = blpapi.AuthOptions.createWithApp(appName=kwargs['app_name'])
         elif auth_method == 'userapp':
-            user = blpapi.createWithLogonName()
+            user = blpapi.AuthUser.createWithLogonName()
             auth = blpapi.AuthOptions.createWithUserAndApp(user=user, appName=kwargs['app_name'])
         elif auth_method == 'dir':
             user = blpapi.AuthUser.createWithActiveDirectoryProperty(propertyName=kwargs['dir_property'])
