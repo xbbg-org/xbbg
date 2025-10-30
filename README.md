@@ -30,7 +30,7 @@ Below are main features. Jupyter notebook examples can be found [here](https://c
 - Bloomberg official Python API:
 
 ```cmd
-pip install blpapi --index-url=https://bcms.bloomberg.com/pip/simple/
+pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
 - `numpy`, `pandas`, `ruamel.yaml` and `pyarrow`
@@ -39,6 +39,29 @@ pip install blpapi --index-url=https://bcms.bloomberg.com/pip/simple/
 
 ```cmd
 pip install xbbg
+```
+
+## Development
+
+- Create venv and install deps from lock:
+
+```cmd
+uv venv .venv
+.\.venv\Scripts\Activate.ps1
+uv sync --locked
+```
+
+- Add a dependency:
+
+```cmd
+uv add <package>
+```
+
+- Run tasks:
+
+```cmd
+uv run flake8 xbbg
+uv run pytest --doctest-modules --cov -v xbbg
 ```
 
 ## What's New
@@ -335,7 +358,6 @@ Noted that local data usage must be compliant with Bloomberg Datafeed Addendum
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Docs           | [![Documentation Status](https://readthedocs.org/projects/xbbg/badge/?version=latest)](https://xbbg.readthedocs.io/)                                                             |
 | Build          | [![Actions Status](https://github.com/alpha-xone/xbbg/workflows/Auto%20CI/badge.svg)](https://github.com/alpha-xone/xbbg/actions)                                                |
-|                | [![Azure](https://dev.azure.com/alpha-xone/xbbg/_apis/build/status/alpha-xone.xbbg?branchName=main)](https://dev.azure.com/alpha-xone/xbbg/_build)                                               |
 | Coverage       | [![codecov](https://codecov.io/gh/alpha-xone/xbbg/branch/main/graph/badge.svg)](https://codecov.io/gh/alpha-xone/xbbg)                                                           |
 | Quality        | [![Codacy Badge](https://app.codacy.com/project/badge/Grade/daec9f52ba344e3ea116c15f1fc6d541)](https://www.codacy.com/gh/alpha-xone/xbbg/)                                       |
 |                | [![CodeFactor](https://www.codefactor.io/repository/github/alpha-xone/xbbg/badge)](https://www.codefactor.io/repository/github/alpha-xone/xbbg)                                  |

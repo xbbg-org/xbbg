@@ -13,11 +13,8 @@ jobs:
       BLPAPI_ROOT: /home/bbg
     strategy:
       matrix:
-        python-version: ["3.6.15", "3.7.17", "3.8.18"]
-        os: [ubuntu-latest, ubuntu-20.04]
-        exclude:
-          - python-version: "3.6.15"
-            os: ubuntu-latest
+        python-version: ["3.7", "3.9", "3.11", "3.13", "3.14"]
+        os: [ubuntu-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v3
@@ -25,18 +22,25 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+    - name: Install uv (Linux)
+      if: runner.os == 'Linux'
       run: |
-        python -m pip install --upgrade pip
-        pip install flake8 pytest pytest-cov codecov
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    - name: Install uv (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        irm https://astral.sh/uv/install.ps1 | iex
+    - name: Sync dependencies with uv
+      run: |
+        uv --version
+        uv sync --locked --group dev --group test
     - name: Lint with flake8
       run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 --extend-ignore=E701,E501 xbbg
+        uv run flake8 --extend-ignore=E701,E501 xbbg
     - name: Test with pytest
       run: |
-        pytest --doctest-modules --cov -v xbbg
+        uv run pytest --doctest-modules --cov -v xbbg
     - name: Coverage report
       run: |
-        codecov --token=ff17768d-30bd-4917-98f2-a011606597ea
+        uv run codecov --token=ff17768d-30bd-4917-98f2-a011606597ea
