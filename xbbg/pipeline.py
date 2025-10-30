@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as np
+import numpy as np  # noqa: F401
 
 from typing import Union
 
