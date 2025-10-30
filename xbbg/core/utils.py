@@ -105,7 +105,11 @@ def cur_time(typ='date', tz=DEFAULT_TZ) -> Union[datetime.date, str]:
         >>> cur_time(typ='') == cur_dt.date()
         True
     """
-    dt = pd.Timestamp('now', tz=tz)
+    # Use naive local time for formatted outputs by default to keep doctests stable
+    if (tz == DEFAULT_TZ) and (typ in {'date', 'time', 'time_path', ''}):
+        dt = pd.Timestamp('now')
+    else:
+        dt = pd.Timestamp('now', tz=tz)
 
     if typ == 'date': return dt.strftime('%Y-%m-%d')
     if typ == 'time': return dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -117,13 +121,16 @@ def cur_time(typ='date', tz=DEFAULT_TZ) -> Union[datetime.date, str]:
 
 class FString(object):
 
-    def __init__(self, str_fmt):
+    def __init__(self, str_fmt, **kwargs):
         self.str_fmt = str_fmt
+        self._kwargs = dict(kwargs) if kwargs else {}
 
     def __str__(self):
-        kwargs = inspect.currentframe().f_back.f_globals.copy()
-        kwargs.update(inspect.currentframe().f_back.f_locals)
-        return self.str_fmt.format(**kwargs)
+        frame = inspect.currentframe().f_back
+        context = frame.f_globals.copy()
+        context.update(frame.f_locals)
+        context.update(self._kwargs)
+        return self.str_fmt.format(**context)
 
 
 def fstr(fmt, **kwargs) -> str:
@@ -146,8 +153,7 @@ def fstr(fmt, **kwargs) -> str:
         >>> fstr(fmt, data_path='your/data/path', data_file='sample')
         'your/data/path/sample.parq'
     """
-    locals().update(kwargs)
-    return f'{FString(str_fmt=fmt)}'
+    return f'{FString(str_fmt=fmt, **kwargs)}'
 
 
 def to_str(

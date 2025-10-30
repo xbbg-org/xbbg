@@ -34,7 +34,7 @@ jobs:
     - name: Sync dependencies with uv
       run: |
         uv --version
-        uv sync --locked --group dev --group test
+        uv sync --locked --extra dev --extra test
     - name: Lint with flake8
       run: |
         uv run flake8 --extend-ignore=E701,E501 xbbg

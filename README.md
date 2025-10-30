@@ -48,7 +48,7 @@ pip install xbbg
 ```cmd
 uv venv .venv
 .\.venv\Scripts\Activate.ps1
-uv sync --locked
+uv sync --locked --extra dev --extra test
 ```
 
 - Add a dependency:

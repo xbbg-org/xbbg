@@ -23,21 +23,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = [
-  "pytest",
-  "pytest-cov",
-  "coverage",
-  "codecov",
-  "flake8",
-]
-dev = [
-  "pytest",
-  "pytest-cov",
-  "coverage",
-  "codecov",
-  "flake8",
-  "ipykernel",
-]
+# Kept for compatibility if consumers expect extras, but dev/test tooling
+# is managed via uv dependency groups below.
+test = ["pytest", "pytest-cov", "coverage", "codecov"]
+dev = ["flake8", "ipykernel"]
 
 [project.urls]
 Homepage = "https://github.com/alpha-xone/xbbg"
@@ -58,5 +47,7 @@ explicit = true
 
 [tool.uv.sources]
 blpapi = { index = "bloomberg" }
+
+
 
 

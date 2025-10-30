@@ -180,12 +180,14 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
         dtype: object
     """
     res = data.apply(pd.to_numeric, errors='ignore')
-    dtypes = data.dtypes
-    cols = dtypes.loc[
-        dtypes.isin([np.dtype('O')]) | data.columns.str.contains('UPDATE_STAMP')
-    ].index
+    # Identify likely date-like columns by name rather than dtype alone
+    cols = data.columns[
+        data.columns.str.contains('Date|_date|_dt|_timestamp|UPDATE_STAMP', case=False)
+    ]
     if not cols.empty:
-        res.loc[:, cols] = data.loc[:, cols].apply(pd.to_datetime, errors='ignore')
+        # Convert likely date columns; coerce to datetime for stable dtypes
+        for col in cols:
+            res[col] = pd.to_datetime(res[col], errors='coerce')
     return res
 
 

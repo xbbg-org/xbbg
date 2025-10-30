@@ -381,6 +381,9 @@ def ccy_pair(local, base='USD') -> CurrencyPair:
 
     if 'factor' not in info: info['factor'] = 1.
     if 'power' not in info: info['power'] = 1.
+    # Normalize numeric types for stable repr in doctests
+    info['factor'] = float(info.get('factor', 1.0))
+    info['power'] = float(info.get('power', 1.0))
     return CurrencyPair(**info)
 
 
