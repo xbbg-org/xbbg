@@ -87,12 +87,14 @@ celerybeat-schedule
 .venv-test
 .venv-*
 .venv311
-xbbg/tests/data/**
 env/
 ENV/
 env.bak/
 venv.bak/
 .idea/
+
+# Ignore generated test artifacts (doctests may create date-stamped files)
+xbbg/tests/data/Equity/**/DVD_Hist_All/asof=*.pkl
 
 # Spyder project settings
 .spyderproject
