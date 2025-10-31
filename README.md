@@ -41,6 +41,8 @@ pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/
 pip install xbbg
 ```
 
+Supported Python versions: 3.7 – 3.14 (universal wheel).
+
 ## Development
 
 - Create venv and install deps from lock:
@@ -63,6 +65,14 @@ uv add <package>
 uv run flake8 xbbg
 uv run pytest --doctest-modules --cov -v xbbg
 ```
+
+- Build (for maintainers):
+
+```cmd
+uv run python -m build
+```
+
+Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
 
 ## What's New
 
