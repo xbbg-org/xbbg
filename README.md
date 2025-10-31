@@ -101,20 +101,22 @@ uv run pytest --doctest-modules -q
 
 ## Links
 
-- PyPI: https://pypi.org/project/xbbg/
-- Documentation: https://xbbg.readthedocs.io/
-- Source: https://github.com/alpha-xone/xbbg
-- Security policy: see SECURITY.md
+- [PyPI](https://pypi.org/project/xbbg/)
+- [Documentation](https://xbbg.readthedocs.io/)
+- [Source](https://github.com/alpha-xone/xbbg)
+- Security policy: see `SECURITY.md`
 
 ## What's New
 
 Unreleased
 
-- Improved date parsing and stability in `pipeline.format_raw` (datetime coercion by name)
+- Improved date parsing and stability in `pipeline.format_raw`
+  (datetime coercion by name)
 - Normalized numeric types in `const.ccy_pair` for stable representation
 - Fixed `core.utils.fstr`/`to_str` formatting with explicit kwargs
 - CI: docs build check added; modernized test matrix; PyPI Trusted Publishing
-- Docs: refreshed README and Sphinx landing page; updated Bloomberg blpapi index URL
+- Docs: refreshed README and Sphinx landing page; updated Bloomberg blpapi
+  index URL
 
 _0.7.7a2_ - Custom `config` and etc. for reference exchange (author `hceh`)
 
