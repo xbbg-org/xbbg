@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np  # noqa: F401
 
 from typing import Union
 
@@ -259,6 +258,7 @@ def perf(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]
     Performance rebased to 100
 
     Examples:
+        >>> import numpy as np
         >>> (
         ...     pd.DataFrame({
         ...         's1': [1., np.nan, 1.01, 1.03, .99],
