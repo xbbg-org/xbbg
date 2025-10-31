@@ -107,63 +107,6 @@ wheels = [
 ]
 
 [[package]]
-name = "blpapi"
-version = "3.16.5"
-source = { registry = "https://blpapi.bloomberg.com/repository/releases/python/simple/" }
-resolution-markers = [
-    "python_full_version >= '3.7.1' and python_full_version < '3.8' and platform_machine != 'aarch64' and platform_machine != 'arm64'",
-    "python_full_version >= '3.7.1' and python_full_version < '3.8' and platform_machine == 'aarch64'",
-    "python_full_version >= '3.7.1' and python_full_version < '3.8' and platform_machine == 'arm64'",
-    "python_full_version >= '3.7' and python_full_version < '3.7.1'",
-    "python_full_version >= '3.6.8' and python_full_version < '3.7'",
-    "python_full_version >= '3.6.2' and python_full_version < '3.6.8'",
-    "python_full_version < '3.6.2'",
-]
-sdist = { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5.tar.gz", hash = "sha256:7868b5d1df3295f0a5e6db828c5e29d690eaf31a66fa7084e18e60f1b871c44e" }
-wheels = [
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:fc668b727a740824e78948f39f0d5db038c8bf62b5f23ac9f524752d40981c66" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp36-cp36m-manylinux2010_i686.whl", hash = "sha256:e2b6f9b1b31828c41171a0ba5859874daf81997abe0b4e41c195bb016b42c927" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp36-cp36m-manylinux2010_x86_64.whl", hash = "sha256:fa2dcd505a0b74dd6ea6072be10e70efefa2f6d75a6c1bad2d9e778eab4f240c" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp36-cp36m-win32.whl", hash = "sha256:c3b419d2773414d9b1f74f5bdbd213416a626be7a5d0f8a50d974c658e15a8e1" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp36-cp36m-win_amd64.whl", hash = "sha256:97045062693a55640d2cb1520923c2539328bf701f13ecb55f5987e9978dd124" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:a3c51135fcebb9f39f4ede2a811104268f77380cda982eee06e217c4ea2186c5" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp37-cp37m-manylinux2010_i686.whl", hash = "sha256:f1a89366d5e55b68b331e356a27ed7bcfcde44328c540112ff967f257774d7d2" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp37-cp37m-manylinux2010_x86_64.whl", hash = "sha256:34114d44c4c6d9db18ce7b1b10fedae7e9a6affb9c2780368ca843c4297e2a06" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp37-cp37m-win32.whl", hash = "sha256:739abc8754f3a4539d56ce59dad3bd15ba5f47d501ee93d0333daab8a3cce6f3" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp37-cp37m-win_amd64.whl", hash = "sha256:01965e5202e08d90d5a20456ce42315fbceb521bd57cd8753106dc79f624065e" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:7bb15fee077b0567d3ff34affa4383396796b97096484c268fc2056c2ff9de0c" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp38-cp38-manylinux2010_i686.whl", hash = "sha256:8f096db73bc2a8409e4db08f731a4bbdadf3a576ea4fe8042e3d8d5a7da5dc3b" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp38-cp38-manylinux2010_x86_64.whl", hash = "sha256:7426628a46b7fb880b116a9b49c1b91b641b9909471d22dd54266601e239d611" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp38-cp38-win32.whl", hash = "sha256:45648e86329d0c43e02726e366a0da4113e4dbc63fb26fe2ea4bcdc1a3b5d600" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp38-cp38-win_amd64.whl", hash = "sha256:c42594d676f6a702e8c14966395319d0ede14536dd8f2af114647bc1afb60670" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:1ee31c8ada30a496d520aca79d98b894c33a1fe25d84ca26ad4986a0cbd3c93d" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp39-cp39-manylinux2010_i686.whl", hash = "sha256:894208fcd2c4389dd8d1ead2a8aa8392d741d6f5e16b08942c2d3b7a2a0e7364" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp39-cp39-manylinux2010_x86_64.whl", hash = "sha256:ac7bf8ae8595a10db798fea93b1f0a9b93b868cc9a60c00944961664b0fb4965" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp39-cp39-win32.whl", hash = "sha256:d45747baf52748d878aa8a35e1b378088f05ff9b0450438705dd896c86f90c68" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.16.5-cp39-cp39-win_amd64.whl", hash = "sha256:b1ca2c725de1c9404b31a26c648f8e3f3b0e1406a6b01c103877d87b41f33774" },
-]
-
-[[package]]
-name = "blpapi"
-version = "3.25.9.1"
-source = { registry = "https://blpapi.bloomberg.com/repository/releases/python/simple/" }
-resolution-markers = [
-    "python_full_version >= '3.12'",
-    "python_full_version == '3.11.*'",
-    "python_full_version == '3.10.*'",
-    "python_full_version == '3.9.*'",
-    "python_full_version >= '3.8.1' and python_full_version < '3.9'",
-    "python_full_version >= '3.8' and python_full_version < '3.8.1'",
-]
-sdist = { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.25.9.1.tar.gz", hash = "sha256:cf6cd0ce0187e5560eea3b157a5da064b5780ecd0e5866ebaa8d2fdcb8f2e3ce" }
-wheels = [
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.25.9.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:d86db75b65c35a6fdd1202fa49adf03152578a62c75694d4303ae9bbc66f8560" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.25.9.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:85a8fdfbae7ddfbfa46720809f68f5facb3c92de04146ab81cdec21168fb528f" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.25.9.1-py3-none-win32.whl", hash = "sha256:f49b698e19918e3a89b687f930411612f8865f5510cb5ad948f193c0982d68e4" },
-    { url = "https://blpapi.bloomberg.com/repository/releases/python/blpapi-3.25.9.1-py3-none-win_amd64.whl", hash = "sha256:d777a592e639d2be5b12db442721f2974a13eeee79730edc844becf5acab0211" },
-]
-
-[[package]]
 name = "build"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5763,8 +5706,6 @@ wheels = [
 name = "xbbg"
 source = { editable = "." }
 dependencies = [
-    { name = "blpapi", version = "3.16.5", source = { registry = "https://blpapi.bloomberg.com/repository/releases/python/simple/" }, marker = "python_full_version < '3.8'" },
-    { name = "blpapi", version = "3.25.9.1", source = { registry = "https://blpapi.bloomberg.com/repository/releases/python/simple/" }, marker = "python_full_version >= '3.8'" },
     { name = "numpy", version = "1.19.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.7'" },
     { name = "numpy", version = "1.21.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.7.*'" },
     { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
@@ -5825,7 +5766,6 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "blpapi", index = "https://blpapi.bloomberg.com/repository/releases/python/simple/" },
     { name = "build", marker = "extra == 'dev'" },
     { name = "codecov", marker = "extra == 'test'" },
     { name = "coverage", marker = "extra == 'test'" },

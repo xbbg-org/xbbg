@@ -31,7 +31,6 @@ dependencies = [
   "pyarrow>=1.0.1",
   "pytz>=2020.4",
   "ruamel.yaml>=0.15.0",
-  "blpapi",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +41,9 @@ dev = ["flake8", "ipykernel", "build", "twine"]
 
 [project.urls]
 Homepage = "https://github.com/alpha-xone/xbbg"
+Documentation = "https://xbbg.readthedocs.io/"
+Source = "https://github.com/alpha-xone/xbbg"
+Issues = "https://github.com/alpha-xone/xbbg/issues"
 
 [tool.setuptools.dynamic]
 version = { attr = "xbbg.__version__" }
@@ -51,6 +53,9 @@ include = ["xbbg*"]
 
 [tool.setuptools.package-data]
 xbbg = ["markets/*.yml"]
+
+[tool.setuptools]
+license-files = ["LICENSE"]
 
 [[tool.uv.index]]
 name = "bloomberg"
