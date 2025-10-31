@@ -1,3 +1,5 @@
 * text=auto
+*.parq binary
+*.pkl binary
 
 

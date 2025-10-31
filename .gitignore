@@ -87,6 +87,7 @@ celerybeat-schedule
 .venv-test
 .venv-*
 .venv311
+xbbg/tests/data/**
 env/
 ENV/
 env.bak/
