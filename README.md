@@ -108,6 +108,14 @@ uv run pytest --doctest-modules -q
 
 ## What's New
 
+Unreleased
+
+- Improved date parsing and stability in `pipeline.format_raw` (datetime coercion by name)
+- Normalized numeric types in `const.ccy_pair` for stable representation
+- Fixed `core.utils.fstr`/`to_str` formatting with explicit kwargs
+- CI: docs build check added; modernized test matrix; PyPI Trusted Publishing
+- Docs: refreshed README and Sphinx landing page; updated Bloomberg blpapi index URL
+
 _0.7.7a2_ - Custom `config` and etc. for reference exchange (author `hceh`)
 
 _0.7.6a2_ - Use `blp.connect` for alternative Bloomberg connection (author `anxl2008`)

@@ -31,7 +31,7 @@ Requirements
 
 .. code-block:: console
 
-   pip install blpapi --index-url=https://bcms.bloomberg.com/pip/simple/
+   pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 
 - numpy, pandas, ruamel.yaml and pyarrow
 
@@ -45,9 +45,18 @@ Installation
 
    pip install xbbg
 
+Supported Python versions: 3.7 – 3.14 (universal wheel)
+
 What's New
 ==========
 
+*Unreleased*
+
+- Improve date parsing and stability in ``pipeline.format_raw`` (coerce datetime columns by name)
+- Normalize numeric types in ``const.ccy_pair`` to ensure stable representations
+- Fix ``core.utils.fstr``/``to_str`` formatting with explicit kwargs
+- Add docs build to CI and modernize CI matrix (Windows/Linux)
+- Switch to PyPI Trusted Publishing (OIDC)
 *0.7.7a2* - Custom `config` and etc. for reference exchange (author `hceh`)
 
 *0.7.6a2* - Use `blp.connect` for alternative Bloomberg connection (author `anxl2008`)
@@ -304,15 +313,12 @@ License        |license|
 ============== ======================
 
 .. |pypi| image:: https://img.shields.io/pypi/v/xbbg.svg
-    :target: https://badge.fury.io/py/xbbg
+    :target: https://pypi.org/project/xbbg/
 .. |version| image:: https://img.shields.io/pypi/pyversions/xbbg.svg
-    :target: https://badge.fury.io/py/xbbg
+    :target: https://pypi.org/project/xbbg/
 .. |actions| image:: https://github.com/alpha-xone/xbbg/workflows/Auto%20CI/badge.svg
     :target: https://github.com/alpha-xone/xbbg/actions
     :alt: Travis CI
-.. |azure| image:: https://dev.azure.com/alpha-xone/xbbg/_apis/build/status/alpha-xone.xbbg?branchName=main
-    :target: https://dev.azure.com/alpha-xone/xbbg/_build
-    :alt: Azure Pipeline
 .. |codecov| image:: https://codecov.io/gh/alpha-xone/xbbg/branch/main/graph/badge.svg
     :target: https://codecov.io/gh/alpha-xone/xbbg
     :alt: Codecov
