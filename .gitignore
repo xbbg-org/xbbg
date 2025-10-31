@@ -94,7 +94,8 @@ venv.bak/
 .idea/
 
 # Ignore generated test artifacts (doctests may create date-stamped files)
-xbbg/tests/data/Equity/**/DVD_Hist_All/asof=*.pkl
+xbbg/tests/data/**/asof=*.pkl
+xbbg/tests/data/**/TRADE/*.parq
 
 # Spyder project settings
 .spyderproject
