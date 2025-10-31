@@ -2,10 +2,10 @@
 
 # xbbg
 
-An intuitive Bloomberg API
+An intuitive Bloomberg API for Python
 
-[![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://badge.fury.io/py/xbbg)
-[![PyPI version](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://badge.fury.io/py/xbbg)
+[![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
+[![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/xbbg)](https://pypistats.org/packages/xbbg)
 [![Gitter](https://badges.gitter.im/xbbg/community.svg)](https://gitter.im/xbbg/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
@@ -43,6 +43,20 @@ pip install xbbg
 
 Supported Python versions: 3.7 – 3.14 (universal wheel).
 
+## Quickstart
+
+```python
+from xbbg import blp
+
+# Reference data (BDP)
+ref = blp.bdp(tickers='AAPL US Equity', flds=['Security_Name', 'GICS_Sector_Name'])
+print(ref)
+
+# Historical data (BDH)
+hist = blp.bdh('SPX Index', ['high', 'low', 'last_price'], '2021-01-01', '2021-01-05')
+print(hist.tail())
+```
+
 ## Development
 
 - Create venv and install deps from lock:
@@ -73,6 +87,24 @@ uv run python -m build
 ```
 
 Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
+
+## Contributing
+
+- Issues and feature requests: please open an issue on the repository.
+- Pull requests welcome. Run lint and tests locally:
+
+```cmd
+uv sync --locked --extra dev --extra test
+uv run flake8 xbbg
+uv run pytest --doctest-modules -q
+```
+
+## Links
+
+- PyPI: https://pypi.org/project/xbbg/
+- Documentation: https://xbbg.readthedocs.io/
+- Source: https://github.com/alpha-xone/xbbg
+- Security policy: see SECURITY.md
 
 ## What's New
 
