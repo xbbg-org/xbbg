@@ -295,8 +295,9 @@ Above example works because 1) `AU` in equity ticker is mapped to `EquityAustral
 To add new mappings, define `BBG_ROOT` in sys path and add `assets.yml` and
 `exch.yml` under `BBG_ROOT/markets`.
 
-_New in 0.6.6_ - if exchange is defined in `/xbbg/markets/exch.yml`, can use `ref` to look for
-relevant exchange market hours. Both `ref='ES1 Index'` and `ref='CME'` work for this example:
+_New in 0.6.6_ - if exchange is defined in `/xbbg/markets/exch.yml`, can use
+`ref` to look for relevant exchange market hours. Both `ref='ES1 Index'` and
+`ref='CME'` work for this example:
 
 ```python
 In [10]: blp.bdib(ticker='ESM0 Index', dt='2020-03-20', ref='ES1 Index').tail()
