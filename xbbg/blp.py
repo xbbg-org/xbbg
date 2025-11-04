@@ -1,13 +1,13 @@
-import pandas as pd
-
+from contextlib import contextmanager
 from functools import partial
 from itertools import product
-from contextlib import contextmanager
+
+import pandas as pd
 
 from xbbg import __version__, const, pipeline
-from xbbg.io import logs, files, storage
-from xbbg.core import utils, conn, process
+from xbbg.core import conn, process, utils
 from xbbg.core.conn import connect
+from xbbg.io import files, logs, storage
 
 __all__ = [
     '__version__',
@@ -65,7 +65,7 @@ def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
         .rename_axis(index=None, columns=[None, None])
         .droplevel(axis=1, level=0)
         .loc[:, res.field.unique()]
-        .pipe(pipeline.standard_cols, col_maps=kwargs.get('col_maps', None))
+        .pipe(pipeline.standard_cols, col_maps=kwargs.get('col_maps'))
     )
 
 
@@ -124,7 +124,7 @@ def _bds_(
         .set_index(['ticker', 'field'])
         .droplevel(axis=0, level=1)
         .rename_axis(index=None)
-        .pipe(pipeline.standard_cols, col_maps=kwargs.get('col_maps', None))
+        .pipe(pipeline.standard_cols, col_maps=kwargs.get('col_maps'))
     )
     if data_file:
         logger.debug(f'Saving Bloomberg data to: {data_file}')
@@ -242,7 +242,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
                 return pd.DataFrame()
 
     info_log = f'{q_tckr} / {cur_dt} / {typ}'
-    trial_kw = dict(ticker=ticker, dt=dt, typ=typ, func='bdib')
+    trial_kw = {'ticker': ticker, 'dt': dt, 'typ': typ, 'func': 'bdib'}
     num_trials = trials.num_trials(**trial_kw)
     if num_trials >= 2:
         if kwargs.get('batch', False): return pd.DataFrame()
@@ -391,7 +391,7 @@ def earning(ticker, by='Geo', typ='Revenue', ccy=None, level=None, **kwargs) -> 
     """
     kwargs.pop('raw', None)
     ovrd = 'G' if by[0].upper() == 'G' else 'P'
-    new_kw = dict(Product_Geo_Override=ovrd)
+    new_kw = {'Product_Geo_Override': ovrd}
 
     year = kwargs.pop('year', None)
     periods = kwargs.pop('periods', None)

@@ -1,6 +1,6 @@
-![xbbg](https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png)
-
 # xbbg
+
+![xbbg](https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png)
 
 An intuitive Bloomberg API for Python
 
@@ -13,7 +13,7 @@ An intuitive Bloomberg API for Python
 
 ## Features
 
-Below are main features. Jupyter notebook examples can be found [here](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR).
+Below are main features. See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR).
 
 - Excel compatible inputs
 - Straightforward intraday bar requests
@@ -23,9 +23,9 @@ Below are main features. Jupyter notebook examples can be found [here](https://c
 
 - Bloomberg C++ SDK version 3.12.1 or higher:
 
-    - Visit [Bloomberg API Library](https://www.bloomberg.com/professional/support/api-library/) and download C++ Supported Release
+  - Visit [Bloomberg API Library](https://www.bloomberg.com/professional/support/api-library/) and download C++ Supported Release
 
-    - In the `bin` folder of downloaded zip file, copy `blpapi3_32.dll` and `blpapi3_64.dll` to Bloomberg `BLPAPI_ROOT` folder (usually `blp/DAPI`)
+  - In the `bin` folder of downloaded zip file, copy `blpapi3_32.dll` and `blpapi3_64.dll` to Bloomberg `BLPAPI_ROOT` folder (usually `blp/DAPI`)
 
 - Bloomberg official Python API:
 
@@ -41,7 +41,7 @@ pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/
 pip install xbbg
 ```
 
-Supported Python versions: 3.7 – 3.14 (universal wheel).
+Supported Python versions: 3.10 – 3.14 (universal wheel).
 
 ## Quickstart
 
@@ -76,7 +76,7 @@ uv add <package>
 - Run tasks:
 
 ```cmd
-uv run flake8 xbbg
+uv run ruff check xbbg
 uv run pytest --doctest-modules --cov -v xbbg
 ```
 
@@ -88,6 +88,13 @@ uv run python -m build
 
 Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
 
+## Docs (optional)
+
+```cmd
+uv sync --locked --extra docs
+uv run sphinx-build -b html docs docs/_build/html
+```
+
 ## Contributing
 
 - Issues and feature requests: please open an issue on the repository.
@@ -95,7 +102,7 @@ Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
 
 ```cmd
 uv sync --locked --extra dev --extra test
-uv run flake8 xbbg
+uv run ruff check xbbg
 uv run pytest --doctest-modules -q
 ```
 
@@ -288,7 +295,7 @@ Above example works because 1) `AU` in equity ticker is mapped to `EquityAustral
 To add new mappings, define `BBG_ROOT` in sys path and add `assets.yml` and
 `exch.yml` under `BBG_ROOT/markets`.
 
-*New in 0.6.6* - if exchange is defined in `/xbbg/markets/exch.yml`, can use `ref` to look for
+_New in 0.6.6_ - if exchange is defined in `/xbbg/markets/exch.yml`, can use `ref` to look for
 relevant exchange market hours. Both `ref='ES1 Index'` and `ref='CME'` work for this example:
 
 ```python
@@ -357,7 +364,7 @@ MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.25  Quarter  
 
 -----
 
-*New in 0.1.17* - Dividend adjustment can be simplified to one parameter `adjust`:
+_New in 0.1.17_ - Dividend adjustment can be simplified to one parameter `adjust`:
 
 - ``BDH`` without adjustment for dividends and splits:
 

@@ -1,13 +1,14 @@
+from collections import namedtuple
+
 import pandas as pd
 
-from collections import namedtuple
 from xbbg.core import timezone
 from xbbg.io import files, logs, param
 
-Futures = dict(
-    Jan='F', Feb='G', Mar='H', Apr='J', May='K', Jun='M',
-    Jul='N', Aug='Q', Sep='U', Oct='V', Nov='X', Dec='Z',
-)
+Futures = {
+    'Jan': 'F', 'Feb': 'G', 'Mar': 'H', 'Apr': 'J', 'May': 'K', 'Jun': 'M',
+    'Jul': 'N', 'Aug': 'Q', 'Sep': 'U', 'Oct': 'V', 'Nov': 'X', 'Dec': 'Z',
+}
 CurrencyPair = namedtuple('CurrencyPair', ['ticker', 'factor', 'power'])
 ValidSessions = ['allday', 'day', 'am', 'pm', 'night', 'pre', 'post']
 
@@ -367,7 +368,7 @@ def ccy_pair(local, base='USD') -> CurrencyPair:
         info['power'] = -info.get('power', 1.)
 
     elif base.lower() == local.lower():
-        info = dict(ticker='')
+        info = {'ticker': ''}
         info['factor'] = 1.
         if base[-1].lower() == base[-1]:
             info['factor'] /= 100.

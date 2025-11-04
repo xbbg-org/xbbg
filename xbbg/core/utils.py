@@ -1,13 +1,11 @@
-import pandas as pd
-
-import time
-import pytz
-import inspect
-import sys
 import datetime
-
-from typing import Union
+import inspect
 from pathlib import Path
+import sys
+import time
+
+import pandas as pd
+import pytz
 
 DEFAULT_TZ = pytz.FixedOffset(-time.timezone / 60)
 
@@ -40,7 +38,7 @@ def flatten(iterable, maps=None, unique=False) -> list:
         ['ab', '0x', 'zz']
     """
     if iterable is None: return []
-    if maps is None: maps = dict()
+    if maps is None: maps = {}
 
     if isinstance(iterable, (str, int, float)):
         return [maps.get(iterable, iterable)]
@@ -81,7 +79,7 @@ def fmt_dt(dt, fmt='%Y-%m-%d') -> str:
     return pd.Timestamp(dt).strftime(fmt)
 
 
-def cur_time(typ='date', tz=DEFAULT_TZ) -> Union[datetime.date, str]:
+def cur_time(typ='date', tz=DEFAULT_TZ) -> datetime.date | str:
     """
     Current time
 
@@ -119,7 +117,7 @@ def cur_time(typ='date', tz=DEFAULT_TZ) -> Union[datetime.date, str]:
     return dt.date()
 
 
-class FString(object):
+class FString:
 
     def __init__(self, str_fmt, **kwargs):
         self.str_fmt = str_fmt
@@ -180,8 +178,7 @@ def to_str(
         >>> to_str(test_dict, public_only=False)
         '{b=1, a=0, c=2, _d=3}'
     """
-    if public_only: keys = list(filter(lambda vv: vv[0] != '_', data.keys()))
-    else: keys = list(data.keys())
+    keys = list(filter(lambda vv: vv[0] != '_', data.keys())) if public_only else list(data.keys())
     return '{' + sep.join([
         to_str(data=v, fmt=fmt, sep=sep)
         if isinstance(v, dict) else fstr(fmt=fmt, key=k, value=v)

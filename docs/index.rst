@@ -57,6 +57,7 @@ What's New
 - Fix ``core.utils.fstr``/``to_str`` formatting with explicit kwargs
 - Add docs build to CI and modernize CI matrix (Windows/Linux)
 - Switch to PyPI Trusted Publishing (OIDC)
+
 *0.7.7a2* - Custom `config` and etc. for reference exchange (author `hceh`)
 
 *0.7.6a2* - Use `blp.connect` for alternative Bloomberg connection (author `anxl2008`)

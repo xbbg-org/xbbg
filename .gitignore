@@ -113,3 +113,6 @@ xbbg/tests/data/**/TRADE/*.parq
 # VS Code
 .idea/*
 .vscode/*
+
+#Ruff
+.ruff_cache/

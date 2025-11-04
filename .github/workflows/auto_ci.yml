@@ -13,37 +13,39 @@ jobs:
       BLPAPI_ROOT: /home/bbg
     strategy:
       matrix:
-        python-version: ["3.7", "3.9", "3.11", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         os: [ubuntu-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install uv (Linux)
-      if: runner.os == 'Linux'
+    - name: Install uv (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
     - name: Install uv (Windows)
       if: runner.os == 'Windows'
-      shell: pwsh
+      shell: powershell
       run: |
-        irm https://astral.sh/uv/install.ps1 | iex
+        iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex
+        "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     - name: Sync dependencies with uv
       run: |
         uv --version
-        uv sync --locked --extra dev --extra test
-    - name: Lint with flake8
+        uv sync --locked --extra dev --extra test --extra docs
+    - name: Lint with Ruff
       run: |
-        uv run flake8 --extend-ignore=E701,E501 xbbg
+        uv run ruff check --output-format=github xbbg
     - name: Test with pytest
       run: |
         uv run pytest --doctest-modules --cov -v xbbg
     - name: Build Sphinx docs
       run: |
-        uv pip install sphinx
         uv run sphinx-build -b html docs docs/_build/html
     - name: Coverage report
       run: |

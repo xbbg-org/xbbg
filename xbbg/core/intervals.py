@@ -1,7 +1,7 @@
-import pandas as pd
-import numpy as np
-
 from collections import namedtuple
+
+import numpy as np
+import pandas as pd
 
 from xbbg import const
 from xbbg.io import logs, param
@@ -72,7 +72,7 @@ def shift_time(start_time, mins) -> str:
     return e_time.strftime('%H:%M')
 
 
-class Intervals(object):
+class Intervals:
 
     def __init__(self, ticker, **kwargs):
         """

@@ -1,16 +1,18 @@
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 import pytest
-try: import blpapi
-except ImportError: blpapi = pytest.importorskip('blpapi')
 
-from itertools import starmap
+try:
+    import blpapi
+except ImportError:
+    blpapi = pytest.importorskip('blpapi')
+
 from collections import OrderedDict
+from itertools import starmap
 
 from xbbg import const
+from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
-from xbbg.core import intervals, overrides, conn
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -151,8 +153,7 @@ def rec_events(func, **kwargs):
         ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
         if ev.eventType() in responses:
             for msg in ev:
-                for r in func(msg=msg, **kwargs):
-                    yield r
+                yield from func(msg=msg, **kwargs)
             if ev.eventType() == blpapi.Event.RESPONSE:
                 break
         elif ev.eventType() == blpapi.Event.TIMEOUT:
@@ -236,10 +237,7 @@ def process_bar(msg: blpapi.message.Message, typ='bar', **kwargs) -> OrderedDict
     """
     kwargs.pop('(#_#)', None)
     check_error(msg=msg)
-    if typ[0].lower() == 't':
-        lvls = [TICK_DATA, TICK_DATA]
-    else:
-        lvls = [BAR_DATA, BAR_TICK]
+    lvls = [TICK_DATA, TICK_DATA] if typ[0].lower() == 't' else [BAR_DATA, BAR_TICK]
 
     if msg.hasElement(lvls[0]):
         for bar in msg.getElement(lvls[0]).getElement(lvls[1]).values():

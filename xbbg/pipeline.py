@@ -1,9 +1,8 @@
+
 import pandas as pd
 
-from typing import Union
 
-
-def get_series(data: Union[pd.Series, pd.DataFrame], col='close') -> pd.DataFrame:
+def get_series(data: pd.Series | pd.DataFrame, col='close') -> pd.DataFrame:
     """
     Get close column from intraday data
 
@@ -51,7 +50,7 @@ def standard_cols(data: pd.DataFrame, col_maps: dict = None) -> pd.DataFrame:
         MC FP Equity  2018-07-24  2018-12-04  2018-12-05   2018-12-06
         MC FP Equity  2018-01-25  2018-04-17  2018-04-18   2018-04-19
     """
-    if col_maps is None: col_maps = dict()
+    if col_maps is None: col_maps = {}
     return data.rename(
         columns=lambda vv: col_maps.get(
             vv, vv.lower().replace(' ', '_').replace('-', '_')
@@ -60,8 +59,8 @@ def standard_cols(data: pd.DataFrame, col_maps: dict = None) -> pd.DataFrame:
 
 
 def apply_fx(
-        data: Union[pd.Series, pd.DataFrame],
-        fx: Union[int, float, pd.Series, pd.DataFrame],
+        data: pd.Series | pd.DataFrame,
+        fx: int | float | pd.Series | pd.DataFrame,
         power=-1.,
 ) -> pd.DataFrame:
     """
@@ -118,7 +117,7 @@ def apply_fx(
     return data.mul(add_fx.iloc[:, -1].pow(power), axis=0).dropna(how='all')
 
 
-def daily_stats(data: Union[pd.Series, pd.DataFrame], **kwargs) -> pd.DataFrame:
+def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
     """
     Daily stats for given data
 
@@ -142,9 +141,9 @@ def daily_stats(data: Union[pd.Series, pd.DataFrame], **kwargs) -> pd.DataFrame:
 
 
 def dropna(
-        data: Union[pd.Series, pd.DataFrame],
-        cols: Union[int, list] = 0,
-) -> Union[pd.Series, pd.DataFrame]:
+        data: pd.Series | pd.DataFrame,
+        cols: int | list = 0,
+) -> pd.Series | pd.DataFrame:
     """
     Drop NAs by columns
     """
@@ -253,7 +252,7 @@ def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
     )]
 
 
-def perf(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
+def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     """
     Performance rebased to 100
 

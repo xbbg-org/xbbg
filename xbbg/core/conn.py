@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 try:
     ver = sys.version_info
@@ -32,14 +32,14 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Sessio
     referecing to blpapi example for full lists of available authentication methods:
         https://github.com/msitt/blpapi-python/blob/master/examples/ConnectionAndAuthExample.py
     """
-    if isinstance(kwargs.get('sess', None), blpapi.session.Session):
+    if isinstance(kwargs.get('sess'), blpapi.session.Session):
         return bbg_session(sess=kwargs['sess'])
 
     sess_opts = blpapi.SessionOptions()
     sess_opts.setNumStartAttempts(numStartAttempts=max_attempt)
     sess_opts.setAutoRestartOnDisconnection(autoRestart=auto_restart)
 
-    if isinstance(kwargs.get('auth_method', None), str):
+    if isinstance(kwargs.get('auth_method'), str):
         auth_method = kwargs['auth_method']
         auth = None
 
@@ -65,13 +65,13 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Sessio
 
         sess_opts.setSessionIdentityOptions(authOptions=auth)
 
-    if isinstance(kwargs.get('server_host', None), str):
+    if isinstance(kwargs.get('server_host'), str):
         sess_opts.setServerHost(serverHost=kwargs['server_host'])
 
-    if isinstance(kwargs.get('server_port', None), int):
+    if isinstance(kwargs.get('server_port'), int):
         sess_opts.setServerPort(serverPort=kwargs['server_port'])
 
-    if isinstance(kwargs.get('tls_options', None), blpapi.sessionoptions.TlsOptions):
+    if isinstance(kwargs.get('tls_options'), blpapi.sessionoptions.TlsOptions):
         sess_opts.setTlsOptions(tlsOptions=kwargs['tls_options'])
 
     return bbg_session(sess=blpapi.Session(sess_opts))
@@ -83,7 +83,7 @@ def connect_bbg(**kwargs) -> blpapi.session.Session:
     """
     logger = logs.get_logger(connect_bbg, **kwargs)
 
-    if isinstance(kwargs.get('sess', None), blpapi.session.Session):
+    if isinstance(kwargs.get('sess'), blpapi.session.Session):
         session = kwargs['sess']
         logger.debug(f'Using Bloomberg session {session} ...')
     else:
@@ -94,7 +94,7 @@ def connect_bbg(**kwargs) -> blpapi.session.Session:
 
     logger.debug('Connecting to Bloomberg ...')
     if session.start(): return session
-    else: raise ConnectionError('Cannot connect to Bloomberg')
+    raise ConnectionError('Cannot connect to Bloomberg')
 
 
 def bbg_session(**kwargs) -> blpapi.session.Session:
@@ -112,9 +112,8 @@ def bbg_session(**kwargs) -> blpapi.session.Session:
     port = kwargs.get('port', _PORT_)
     con_sym = f'{_CON_SYM_}//{port}'
 
-    if con_sym in globals():
-        if getattr(globals()[con_sym], '_Session__handle', None) is None:
-            del globals()[con_sym]
+    if (con_sym in globals()) and (getattr(globals()[con_sym], '_Session__handle', None) is None):
+        del globals()[con_sym]
 
     if con_sym not in globals():
         globals()[con_sym] = connect_bbg(**kwargs)
@@ -140,10 +139,9 @@ def bbg_service(service: str, **kwargs) -> blpapi.service.Service:
     serv_sym = f'{_CON_SYM_}/{port}{service}'
 
     log_info = f'Initiating service {service} ...'
-    if serv_sym in globals():
-        if getattr(globals()[serv_sym], '_Service__handle', None) is None:
-            log_info = f'Restarting service {service} ...'
-            del globals()[serv_sym]
+    if (serv_sym in globals()) and (getattr(globals()[serv_sym], '_Service__handle', None) is None):
+        log_info = f'Restarting service {service} ...'
+        del globals()[serv_sym]
 
     if serv_sym not in globals():
         logger.debug(log_info)
