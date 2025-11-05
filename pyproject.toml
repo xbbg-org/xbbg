@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "wheel", "pip"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -22,11 +22,12 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-  "numpy>=2.0",
-  "pandas>=2.0.0",
-  "pyarrow>=1.0.1",
-  "pytz>=2020.4",
-  "ruamel.yaml>=0.15.0",
+  "numpy>=2.2.6",
+  "pandas>=2.3.3",
+  "pyarrow>=22.0.0",
+  "pytest>=8.4.2",
+  "pytz>=2025.2",
+  "ruamel.yaml>=0.18.16",
 ]
 
 [project.optional-dependencies]

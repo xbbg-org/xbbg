@@ -7,15 +7,15 @@ try:
         dll_path = os.environ.get('BBG_DLL', 'C:/blp/DAPI')
         if os.path.exists(dll_path):
             with os.add_dll_directory(dll_path):
-                import blpapi
+                import blpapi  # type: ignore[reportMissingImports]
         else:
             raise ImportError(
                 'Please add BBG_DLL to your PATH variable'
             )
     else:
-        import blpapi
+        import blpapi  # type: ignore[reportMissingImports]
 except (ImportError, AttributeError):
-    import pytest
+    import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
 from xbbg.io import logs
@@ -24,7 +24,7 @@ _CON_SYM_ = '_xcon_'
 _PORT_ = 8194
 
 
-def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Session:
+def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
     """
     Use alternative method to connect to blpapi. If a session object is passed, arguments
     max_attempt and auto_restart will be ignored.
@@ -32,7 +32,7 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Sessio
     referecing to blpapi example for full lists of available authentication methods:
         https://github.com/msitt/blpapi-python/blob/master/examples/ConnectionAndAuthExample.py
     """
-    if isinstance(kwargs.get('sess'), blpapi.session.Session):
+    if isinstance(kwargs.get('sess'), blpapi.Session):
         return bbg_session(sess=kwargs['sess'])
 
     sess_opts = blpapi.SessionOptions()
@@ -71,19 +71,19 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Sessio
     if isinstance(kwargs.get('server_port'), int):
         sess_opts.setServerPort(serverPort=kwargs['server_port'])
 
-    if isinstance(kwargs.get('tls_options'), blpapi.sessionoptions.TlsOptions):
+    if isinstance(kwargs.get('tls_options'), blpapi.TlsOptions):
         sess_opts.setTlsOptions(tlsOptions=kwargs['tls_options'])
 
     return bbg_session(sess=blpapi.Session(sess_opts))
 
 
-def connect_bbg(**kwargs) -> blpapi.session.Session:
+def connect_bbg(**kwargs) -> blpapi.Session:
     """
     Create Bloomberg session and make connection
     """
     logger = logs.get_logger(connect_bbg, **kwargs)
 
-    if isinstance(kwargs.get('sess'), blpapi.session.Session):
+    if isinstance(kwargs.get('sess'), blpapi.Session):
         session = kwargs['sess']
         logger.debug(f'Using Bloomberg session {session} ...')
     else:
@@ -97,7 +97,7 @@ def connect_bbg(**kwargs) -> blpapi.session.Session:
     raise ConnectionError('Cannot connect to Bloomberg')
 
 
-def bbg_session(**kwargs) -> blpapi.session.Session:
+def bbg_session(**kwargs) -> blpapi.Session:
     """
     Bloomberg session - initiate if not given
 
@@ -121,7 +121,7 @@ def bbg_session(**kwargs) -> blpapi.session.Session:
     return globals()[con_sym]
 
 
-def bbg_service(service: str, **kwargs) -> blpapi.service.Service:
+def bbg_service(service: str, **kwargs) -> blpapi.Service:
     """
     Initiate service
 
@@ -161,7 +161,7 @@ def event_types() -> dict:
     }
 
 
-def send_request(request: blpapi.request.Request, **kwargs):
+def send_request(request: blpapi.Request, **kwargs):
     """
     Send request to Bloomberg session
 

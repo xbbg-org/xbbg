@@ -485,7 +485,7 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
             ('screenType', 'GLOBAL' if typ[0].upper() in ['G', 'B'] else 'PRIVATE'),
             ('Group', group),
         ],
-        ovrds=[('PiTDate', utils.fmt_dt(asof, '%Y%m%d'))] if asof else None,
+        ovrds=[('PiTDate', utils.fmt_dt(asof, '%Y%m%d'))] if asof else [],
         **kwargs,
     )
 

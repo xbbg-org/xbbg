@@ -7,6 +7,9 @@ from xbbg.io import files
 
 PKG_PATH = files.abspath(__file__, 1)
 
+_yaml = YAML(typ='safe')
+_yaml.allow_duplicate_keys = False
+
 
 def config_files(cat: str) -> list:
     """
@@ -75,7 +78,7 @@ def load_yaml(yaml_file: str) -> pd.Series:
         return pd.read_pickle(cache_file)
 
     with open(yaml_file) as fp:
-        data = pd.Series(YAML().load(fp))
+        data = pd.Series(_yaml.load(fp))
         files.create_folder(cache_file, is_file=True)
         data.to_pickle(cache_file)
         return data
