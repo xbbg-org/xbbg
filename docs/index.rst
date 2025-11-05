@@ -9,6 +9,10 @@ An intuitive Bloomberg API
 
 |coffee|
 
+.. xbbg:latest-release-start
+Latest release: xbbg==0.0.0 (release: `notes <https://example.com>`_)
+.. xbbg:latest-release-end
+
 Features
 ========
 
@@ -51,6 +55,9 @@ What's New
 ==========
 
 *Unreleased*
+
+.. xbbg:changelog-start
+.. xbbg:changelog-end
 
 - Improve date parsing and stability in ``pipeline.format_raw`` (coerce datetime columns by name)
 - Normalize numeric types in ``const.ccy_pair`` to ensure stable representations
