@@ -12,7 +12,7 @@ An intuitive Bloomberg API for Python
 [![Coffee](https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png)](https://www.buymeacoffee.com/Lntx29Oof)
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.0.0
+Latest release: xbbg==0.7.10 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.7.10))
 <!-- xbbg:latest-release-end -->
 
 ## Features
@@ -122,6 +122,12 @@ uv run pytest --doctest-modules -q
 Unreleased
 
 <!-- xbbg:changelog-start -->
+_0.7.10_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.7.10)
+
+Fixes
+
+- Item 1
+- Item 2
 <!-- xbbg:changelog-end -->
 
 - Improved date parsing and stability in `pipeline.format_raw`
