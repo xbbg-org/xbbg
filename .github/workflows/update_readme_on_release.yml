@@ -41,7 +41,8 @@ jobs:
         DATE="${PUBLISHED_AT%%T}"
         # Prepare changelog entry (avoid bare URL)
         printf "_%s_ - see release: [notes](%s)\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .changelog_entry.md
-        # Ensure blank line before any list items
+        # Normalize list bullets to dash and ensure a blank line before list items
+        sed -E 's/^\* /- /' .changelog_entry.md > .changelog_entry.bullets && mv .changelog_entry.bullets .changelog_entry.md
         awk 'BEGIN{prev_empty=1} {
           if ($0 ~ /^-/ && prev_empty==0) { print "" }
           print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0
