@@ -1,6 +1,6 @@
-import pandas as pd
-
 import time
+
+import pandas as pd
 import pytz
 
 from xbbg.io import logs

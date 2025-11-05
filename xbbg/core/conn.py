@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 try:
     ver = sys.version_info
@@ -7,15 +7,15 @@ try:
         dll_path = os.environ.get('BBG_DLL', 'C:/blp/DAPI')
         if os.path.exists(dll_path):
             with os.add_dll_directory(dll_path):
-                import blpapi
+                import blpapi  # type: ignore[reportMissingImports]
         else:
             raise ImportError(
                 'Please add BBG_DLL to your PATH variable'
             )
     else:
-        import blpapi
+        import blpapi  # type: ignore[reportMissingImports]
 except (ImportError, AttributeError):
-    import pytest
+    import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
 from xbbg.io import logs
@@ -24,7 +24,7 @@ _CON_SYM_ = '_xcon_'
 _PORT_ = 8194
 
 
-def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Session:
+def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
     """
     Use alternative method to connect to blpapi. If a session object is passed, arguments
     max_attempt and auto_restart will be ignored.
@@ -32,14 +32,14 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Sessio
     referecing to blpapi example for full lists of available authentication methods:
         https://github.com/msitt/blpapi-python/blob/master/examples/ConnectionAndAuthExample.py
     """
-    if isinstance(kwargs.get('sess', None), blpapi.session.Session):
+    if isinstance(kwargs.get('sess'), blpapi.Session):
         return bbg_session(sess=kwargs['sess'])
 
     sess_opts = blpapi.SessionOptions()
     sess_opts.setNumStartAttempts(numStartAttempts=max_attempt)
     sess_opts.setAutoRestartOnDisconnection(autoRestart=auto_restart)
 
-    if isinstance(kwargs.get('auth_method', None), str):
+    if isinstance(kwargs.get('auth_method'), str):
         auth_method = kwargs['auth_method']
         auth = None
 
@@ -65,25 +65,25 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.session.Sessio
 
         sess_opts.setSessionIdentityOptions(authOptions=auth)
 
-    if isinstance(kwargs.get('server_host', None), str):
+    if isinstance(kwargs.get('server_host'), str):
         sess_opts.setServerHost(serverHost=kwargs['server_host'])
 
-    if isinstance(kwargs.get('server_port', None), int):
+    if isinstance(kwargs.get('server_port'), int):
         sess_opts.setServerPort(serverPort=kwargs['server_port'])
 
-    if isinstance(kwargs.get('tls_options', None), blpapi.sessionoptions.TlsOptions):
+    if isinstance(kwargs.get('tls_options'), blpapi.TlsOptions):
         sess_opts.setTlsOptions(tlsOptions=kwargs['tls_options'])
 
     return bbg_session(sess=blpapi.Session(sess_opts))
 
 
-def connect_bbg(**kwargs) -> blpapi.session.Session:
+def connect_bbg(**kwargs) -> blpapi.Session:
     """
     Create Bloomberg session and make connection
     """
     logger = logs.get_logger(connect_bbg, **kwargs)
 
-    if isinstance(kwargs.get('sess', None), blpapi.session.Session):
+    if isinstance(kwargs.get('sess'), blpapi.Session):
         session = kwargs['sess']
         logger.debug(f'Using Bloomberg session {session} ...')
     else:
@@ -94,10 +94,10 @@ def connect_bbg(**kwargs) -> blpapi.session.Session:
 
     logger.debug('Connecting to Bloomberg ...')
     if session.start(): return session
-    else: raise ConnectionError('Cannot connect to Bloomberg')
+    raise ConnectionError('Cannot connect to Bloomberg')
 
 
-def bbg_session(**kwargs) -> blpapi.session.Session:
+def bbg_session(**kwargs) -> blpapi.Session:
     """
     Bloomberg session - initiate if not given
 
@@ -112,9 +112,8 @@ def bbg_session(**kwargs) -> blpapi.session.Session:
     port = kwargs.get('port', _PORT_)
     con_sym = f'{_CON_SYM_}//{port}'
 
-    if con_sym in globals():
-        if getattr(globals()[con_sym], '_Session__handle', None) is None:
-            del globals()[con_sym]
+    if (con_sym in globals()) and (getattr(globals()[con_sym], '_Session__handle', None) is None):
+        del globals()[con_sym]
 
     if con_sym not in globals():
         globals()[con_sym] = connect_bbg(**kwargs)
@@ -122,7 +121,7 @@ def bbg_session(**kwargs) -> blpapi.session.Session:
     return globals()[con_sym]
 
 
-def bbg_service(service: str, **kwargs) -> blpapi.service.Service:
+def bbg_service(service: str, **kwargs) -> blpapi.Service:
     """
     Initiate service
 
@@ -140,10 +139,9 @@ def bbg_service(service: str, **kwargs) -> blpapi.service.Service:
     serv_sym = f'{_CON_SYM_}/{port}{service}'
 
     log_info = f'Initiating service {service} ...'
-    if serv_sym in globals():
-        if getattr(globals()[serv_sym], '_Service__handle', None) is None:
-            log_info = f'Restarting service {service} ...'
-            del globals()[serv_sym]
+    if (serv_sym in globals()) and (getattr(globals()[serv_sym], '_Service__handle', None) is None):
+        log_info = f'Restarting service {service} ...'
+        del globals()[serv_sym]
 
     if serv_sym not in globals():
         logger.debug(log_info)
@@ -163,7 +161,7 @@ def event_types() -> dict:
     }
 
 
-def send_request(request: blpapi.request.Request, **kwargs):
+def send_request(request: blpapi.Request, **kwargs):
     """
     Send request to Bloomberg session
 
@@ -171,8 +169,14 @@ def send_request(request: blpapi.request.Request, **kwargs):
         request: Bloomberg request
     """
     logger = logs.get_logger(send_request, **kwargs)
+
+    # Always use per-request EventQueue and CorrelationId by default
+    event_queue = kwargs.get('event_queue') or blpapi.EventQueue()
+    correlation_id = kwargs.get('correlation_id') or blpapi.CorrelationId()
+
+    sess = bbg_session(**kwargs)
     try:
-        bbg_session(**kwargs).sendRequest(request=request)
+        sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
     except blpapi.InvalidStateException as e:
         logger.exception(e)
 
@@ -181,5 +185,7 @@ def send_request(request: blpapi.request.Request, **kwargs):
         con_sym = f'{_CON_SYM_}//{port}'
         if con_sym in globals(): del globals()[con_sym]
 
-        # No error handler for 2nd trial
-        bbg_session(**kwargs).sendRequest(request=request)
+        sess = bbg_session(**kwargs)
+        sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
+
+    return {"event_queue": event_queue, "correlation_id": correlation_id}

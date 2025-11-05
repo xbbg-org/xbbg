@@ -127,7 +127,7 @@ Index:
     ]
     exch: EquityChina
   - tickers: [
-      SPX, INDU, CCMP, RTY, RAY, SOX,
+      SPX, INDU, CCMP, RAY, SOX,
       S5FINL, S5INSU, S5TRAN, S5UTIL, S5ENRS, VIX,
       S5IOIL, S5STEL, S5ITEL, S5SECO, S5INFT, SOX,
       EWAIV, EWJIV, EWYIV, EWTIV, EWHIV, FXIIV, INDAIV,
@@ -144,7 +144,7 @@ Index:
     is_fut: True
   - tickers: [NIFTY]
     exch: IndexFuturesIndia
-  - tickers: [ES, DM, NQ]
+  - tickers: [ES, RTY, DM, NQ]
     exch: CME
     freq: Q
     is_fut: True

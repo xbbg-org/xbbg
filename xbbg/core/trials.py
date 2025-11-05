@@ -1,9 +1,8 @@
 import os
 
-from xbbg.io import files, db
 from xbbg.core import utils
 from xbbg.core.overrides import BBG_ROOT
-
+from xbbg.io import db, files
 
 TRIALS_TABLE = """
     CREATE TABLE IF NOT EXISTS trials (
@@ -51,13 +50,13 @@ def all_trials() -> dict:
                 for sub3 in files.all_folders(sub2):
                     cnt = len(files.all_files(sub3, ext='log'))
                     if cnt:
-                        yield dict(
-                            func='bdib',
-                            ticker=sub1.split('/')[-1],
-                            dt=sub2.split('/')[-1],
-                            typ=sub3.split('/')[-1],
-                            cnt=cnt,
-                        )
+                        yield {
+                            'func': 'bdib',
+                            'ticker': sub1.split('/')[-1],
+                            'dt': sub2.split('/')[-1],
+                            'typ': sub3.split('/')[-1],
+                            'cnt': cnt,
+                        }
 
 
 def trail_info(**kwargs) -> dict:

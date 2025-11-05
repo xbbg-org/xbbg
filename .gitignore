@@ -84,11 +84,18 @@ celerybeat-schedule
 # Environments
 .env
 .venv
+.venv-test
+.venv-*
+.venv311
 env/
 ENV/
 env.bak/
 venv.bak/
 .idea/
+
+# Ignore generated test artifacts (doctests may create date-stamped files)
+xbbg/tests/data/**/asof=*.pkl
+xbbg/tests/data/**/TRADE/*.parq
 
 # Spyder project settings
 .spyderproject
@@ -106,3 +113,6 @@ venv.bak/
 # VS Code
 .idea/*
 .vscode/*
+
+#Ruff
+.ruff_cache/

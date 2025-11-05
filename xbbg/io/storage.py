@@ -1,10 +1,10 @@
-import pandas as pd
-
 import os
 
+import pandas as pd
+
 from xbbg import const
+from xbbg.core import overrides, utils
 from xbbg.io import files, logs
-from xbbg.core import utils, overrides
 
 PKG_PATH = files.abspath(__file__, 1)
 
@@ -115,8 +115,7 @@ def ref_file(
     root = f'{data_path}/{ticker.split()[-1]}/{proper_ticker}/{fld}'
 
     ref_kw = {k: v for k, v in kwargs.items() if k not in overrides.PRSV_COLS}
-    if len(ref_kw) > 0: info = utils.to_str(ref_kw)[1:-1].replace('|', '_')
-    else: info = 'ovrd=None'
+    info = utils.to_str(ref_kw)[1:-1].replace('|', '_') if len(ref_kw) > 0 else 'ovrd=None'
 
     # Check date info
     if has_date:
@@ -126,7 +125,7 @@ def ref_file(
         for dt in pd.date_range(start=start_dt, end=cur_dt, normalize=True)[1:][::-1]:
             cur_file = cache_file.replace('[cur_date]', dt.strftime("%Y-%m-%d"))
             if files.exists(cur_file): return cur_file
-        return cache_file.replace('[cur_date]', cur_dt)
+        return cache_file.replace('[cur_date]', str(cur_dt))
 
     return f'{root}/{info}.{ext}'
 
@@ -169,10 +168,10 @@ def save_intraday(data: pd.DataFrame, ticker: str, dt, typ='TRADE', **kwargs):
     end_time = pd.Timestamp(
         const.market_timing(ticker=ticker, dt=dt, timing='FINISHED', **kwargs)
     ).tz_localize(exch.tz)
-    now = pd.Timestamp('now', tz=exch.tz) - pd.Timedelta('1H')
+    now = pd.Timestamp('now', tz=exch.tz) - pd.Timedelta('1h')
 
     if end_time > now:
-        logger.debug(f'skip saving cause market close ({end_time}) < now - 1H ({now}) ...')
+        logger.debug(f'skip saving cause market close ({end_time}) < now - 1h ({now}) ...')
         return
 
     logger.info(f'saving data to {data_file} ...')

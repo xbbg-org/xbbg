@@ -16,43 +16,43 @@ ELEMENTS = [
     'adjustmentFollowDPDF', 'calendarCodeOverride',
 ]
 
-ELEM_KEYS = dict(
-    PeriodAdj='periodicityAdjustment', PerAdj='periodicityAdjustment',
-    Period='periodicitySelection', Per='periodicitySelection',
-    Currency='currency', Curr='currency', FX='currency',
-    Days='nonTradingDayFillOption', Fill='nonTradingDayFillMethod', Points='maxDataPoints',
+ELEM_KEYS = {
+    'PeriodAdj': 'periodicityAdjustment', 'PerAdj': 'periodicityAdjustment',
+    'Period': 'periodicitySelection', 'Per': 'periodicitySelection',
+    'Currency': 'currency', 'Curr': 'currency', 'FX': 'currency',
+    'Days': 'nonTradingDayFillOption', 'Fill': 'nonTradingDayFillMethod', 'Points': 'maxDataPoints',
     # 'returnEIDs', 'returnRelativeDate',
-    Quote='overrideOption', QuoteType='pricingOption', QtTyp='pricingOption',
-    CshAdjNormal='adjustmentNormal', CshAdjAbnormal='adjustmentAbnormal',
-    CapChg='adjustmentSplit', UseDPDF='adjustmentFollowDPDF',
-    Calendar='calendarCodeOverride',
-)
+    'Quote': 'overrideOption', 'QuoteType': 'pricingOption', 'QtTyp': 'pricingOption',
+    'CshAdjNormal': 'adjustmentNormal', 'CshAdjAbnormal': 'adjustmentAbnormal',
+    'CapChg': 'adjustmentSplit', 'UseDPDF': 'adjustmentFollowDPDF',
+    'Calendar': 'calendarCodeOverride',
+}
 
-ELEM_VALS = dict(
-    periodicityAdjustment=dict(
-        A='ACTUAL', C='CALENDAR', F='FISCAL',
-    ),
-    periodicitySelection=dict(
-        D='DAILY', W='WEEKLY', M='MONTHLY', Q='QUARTERLY', S='SEMI_ANNUALLY', Y='YEARLY'
-    ),
-    nonTradingDayFillOption=dict(
-        N='NON_TRADING_WEEKDAYS', W='NON_TRADING_WEEKDAYS', Weekdays='NON_TRADING_WEEKDAYS',
-        C='ALL_CALENDAR_DAYS', A='ALL_CALENDAR_DAYS', All='ALL_CALENDAR_DAYS',
-        T='ACTIVE_DAYS_ONLY', Trading='ACTIVE_DAYS_ONLY',
-    ),
-    nonTradingDayFillMethod=dict(
-        C='PREVIOUS_VALUE', P='PREVIOUS_VALUE', Previous='PREVIOUS_VALUE',
-        B='NIL_VALUE', Blank='NIL_VALUE', NA='NIL_VALUE',
-    ),
-    overrideOption=dict(
-        A='OVERRIDE_OPTION_GPA', G='OVERRIDE_OPTION_GPA', Average='OVERRIDE_OPTION_GPA',
-        C='OVERRIDE_OPTION_CLOSE', Close='OVERRIDE_OPTION_CLOSE',
-    ),
-    pricingOption=dict(
-        P='PRICING_OPTION_PRICE', Price='PRICING_OPTION_PRICE',
-        Y='PRICING_OPTION_YIELD', Yield='PRICING_OPTION_YIELD',
-    ),
-)
+ELEM_VALS = {
+    'periodicityAdjustment': {
+        'A': 'ACTUAL', 'C': 'CALENDAR', 'F': 'FISCAL',
+    },
+    'periodicitySelection': {
+        'D': 'DAILY', 'W': 'WEEKLY', 'M': 'MONTHLY', 'Q': 'QUARTERLY', 'S': 'SEMI_ANNUALLY', 'Y': 'YEARLY'
+    },
+    'nonTradingDayFillOption': {
+        'N': 'NON_TRADING_WEEKDAYS', 'W': 'NON_TRADING_WEEKDAYS', 'Weekdays': 'NON_TRADING_WEEKDAYS',
+        'C': 'ALL_CALENDAR_DAYS', 'A': 'ALL_CALENDAR_DAYS', 'All': 'ALL_CALENDAR_DAYS',
+        'T': 'ACTIVE_DAYS_ONLY', 'Trading': 'ACTIVE_DAYS_ONLY',
+    },
+    'nonTradingDayFillMethod': {
+        'C': 'PREVIOUS_VALUE', 'P': 'PREVIOUS_VALUE', 'Previous': 'PREVIOUS_VALUE',
+        'B': 'NIL_VALUE', 'Blank': 'NIL_VALUE', 'NA': 'NIL_VALUE',
+    },
+    'overrideOption': {
+        'A': 'OVERRIDE_OPTION_GPA', 'G': 'OVERRIDE_OPTION_GPA', 'Average': 'OVERRIDE_OPTION_GPA',
+        'C': 'OVERRIDE_OPTION_CLOSE', 'Close': 'OVERRIDE_OPTION_CLOSE',
+    },
+    'pricingOption': {
+        'P': 'PRICING_OPTION_PRICE', 'Price': 'PRICING_OPTION_PRICE',
+        'Y': 'PRICING_OPTION_YIELD', 'Yield': 'PRICING_OPTION_YIELD',
+    },
+}
 
 
 def proc_ovrds(**kwargs):
@@ -105,7 +105,7 @@ def proc_elms(**kwargs) -> list:
     for k, v in kwargs.items():
         if (k in included) and (k not in PRSV_COLS):
             yield ELEM_KEYS.get(k, k), \
-                ELEM_VALS.get(ELEM_KEYS.get(k, k), dict()).get(v, v)
+                ELEM_VALS.get(ELEM_KEYS.get(k, k), {}).get(v, v)
 
 
 def info_qry(tickers, flds) -> str:

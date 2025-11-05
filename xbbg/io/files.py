@@ -1,11 +1,9 @@
-import pandas as pd
-
 import os
+from pathlib import Path
 import re
 import time
 
-from typing import List
-from pathlib import Path
+import pandas as pd
 
 DATE_FMT = r'\d{4}-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])'
 
@@ -53,7 +51,7 @@ def create_folder(path_name: str, is_file=False):
 def all_files(
         path_name, keyword='', ext='', full_path=True,
         has_date=False, date_fmt=DATE_FMT
-) -> List[str]:
+) -> list[str]:
     """
     Search all files with criteria
     Returned list will be sorted by last modified
@@ -84,7 +82,7 @@ def all_files(
 
 def all_folders(
         path_name, keyword='', has_date=False, date_fmt=DATE_FMT
-) -> List[str]:
+) -> list[str]:
     """
     Search all folders with criteria
     Returned list will be sorted by last modified

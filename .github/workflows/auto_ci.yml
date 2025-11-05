@@ -13,30 +13,40 @@ jobs:
       BLPAPI_ROOT: /home/bbg
     strategy:
       matrix:
-        python-version: ["3.6.15", "3.7.17", "3.8.18"]
-        os: [ubuntu-latest, ubuntu-20.04]
-        exclude:
-          - python-version: "3.6.15"
-            os: ubuntu-latest
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+    - name: Install uv (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
-        python -m pip install --upgrade pip
-        pip install flake8 pytest pytest-cov codecov
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - name: Lint with flake8
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+    - name: Install uv (Windows)
+      if: runner.os == 'Windows'
+      shell: powershell
       run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 --extend-ignore=E701,E501 xbbg
+        iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex
+        "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    - name: Sync dependencies with uv
+      run: |
+        uv --version
+        uv sync --locked --extra dev --extra test --extra docs
+    - name: Lint with Ruff
+      run: |
+        uv run ruff check --output-format=github xbbg
     - name: Test with pytest
       run: |
-        pytest --doctest-modules --cov -v xbbg
+        uv run pytest --doctest-modules --cov -v xbbg
+    - name: Build Sphinx docs
+      run: |
+        uv run sphinx-build -b html docs docs/_build/html
     - name: Coverage report
       run: |
-        codecov --token=ff17768d-30bd-4917-98f2-a011606597ea
+        uv run codecov --token=ff17768d-30bd-4917-98f2-a011606597ea

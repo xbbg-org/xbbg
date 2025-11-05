@@ -1,11 +1,11 @@
-![xbbg](https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png)
-
 # xbbg
 
-An intuitive Bloomberg API
+![xbbg](https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png)
 
-[![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://badge.fury.io/py/xbbg)
-[![PyPI version](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://badge.fury.io/py/xbbg)
+An intuitive Bloomberg API for Python
+
+[![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
+[![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/xbbg)](https://pypistats.org/packages/xbbg)
 [![Gitter](https://badges.gitter.im/xbbg/community.svg)](https://gitter.im/xbbg/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
@@ -13,7 +13,7 @@ An intuitive Bloomberg API
 
 ## Features
 
-Below are main features. Jupyter notebook examples can be found [here](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR).
+Below are main features. See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR).
 
 - Excel compatible inputs
 - Straightforward intraday bar requests
@@ -23,14 +23,14 @@ Below are main features. Jupyter notebook examples can be found [here](https://c
 
 - Bloomberg C++ SDK version 3.12.1 or higher:
 
-    - Visit [Bloomberg API Library](https://www.bloomberg.com/professional/support/api-library/) and download C++ Supported Release
+  - Visit [Bloomberg API Library](https://www.bloomberg.com/professional/support/api-library/) and download C++ Supported Release
 
-    - In the `bin` folder of downloaded zip file, copy `blpapi3_32.dll` and `blpapi3_64.dll` to Bloomberg `BLPAPI_ROOT` folder (usually `blp/DAPI`)
+  - In the `bin` folder of downloaded zip file, copy `blpapi3_32.dll` and `blpapi3_64.dll` to Bloomberg `BLPAPI_ROOT` folder (usually `blp/DAPI`)
 
 - Bloomberg official Python API:
 
 ```cmd
-pip install blpapi --index-url=https://bcms.bloomberg.com/pip/simple/
+pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
 - `numpy`, `pandas`, `ruamel.yaml` and `pyarrow`
@@ -41,7 +41,89 @@ pip install blpapi --index-url=https://bcms.bloomberg.com/pip/simple/
 pip install xbbg
 ```
 
+Supported Python versions: 3.10 – 3.14 (universal wheel).
+
+## Quickstart
+
+```python
+from xbbg import blp
+
+# Reference data (BDP)
+ref = blp.bdp(tickers='AAPL US Equity', flds=['Security_Name', 'GICS_Sector_Name'])
+print(ref)
+
+# Historical data (BDH)
+hist = blp.bdh('SPX Index', ['high', 'low', 'last_price'], '2021-01-01', '2021-01-05')
+print(hist.tail())
+```
+
+## Development
+
+- Create venv and install deps from lock:
+
+```cmd
+uv venv .venv
+.\.venv\Scripts\Activate.ps1
+uv sync --locked --extra dev --extra test
+```
+
+- Add a dependency:
+
+```cmd
+uv add <package>
+```
+
+- Run tasks:
+
+```cmd
+uv run ruff check xbbg
+uv run pytest --doctest-modules --cov -v xbbg
+```
+
+- Build (for maintainers):
+
+```cmd
+uv run python -m build
+```
+
+Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
+
+## Docs (optional)
+
+```cmd
+uv sync --locked --extra docs
+uv run sphinx-build -b html docs docs/_build/html
+```
+
+## Contributing
+
+- Issues and feature requests: please open an issue on the repository.
+- Pull requests welcome. Run lint and tests locally:
+
+```cmd
+uv sync --locked --extra dev --extra test
+uv run ruff check xbbg
+uv run pytest --doctest-modules -q
+```
+
+## Links
+
+- [PyPI](https://pypi.org/project/xbbg/)
+- [Documentation](https://xbbg.readthedocs.io/)
+- [Source](https://github.com/alpha-xone/xbbg)
+- Security policy: see `SECURITY.md`
+
 ## What's New
+
+Unreleased
+
+- Improved date parsing and stability in `pipeline.format_raw`
+  (datetime coercion by name)
+- Normalized numeric types in `const.ccy_pair` for stable representation
+- Fixed `core.utils.fstr`/`to_str` formatting with explicit kwargs
+- CI: docs build check added; modernized test matrix; PyPI Trusted Publishing
+- Docs: refreshed README and Sphinx landing page; updated Bloomberg blpapi
+  index URL
 
 _0.7.7a2_ - Custom `config` and etc. for reference exchange (author `hceh`)
 
@@ -213,8 +295,9 @@ Above example works because 1) `AU` in equity ticker is mapped to `EquityAustral
 To add new mappings, define `BBG_ROOT` in sys path and add `assets.yml` and
 `exch.yml` under `BBG_ROOT/markets`.
 
-*New in 0.6.6* - if exchange is defined in `/xbbg/markets/exch.yml`, can use `ref` to look for
-relevant exchange market hours. Both `ref='ES1 Index'` and `ref='CME'` work for this example:
+_New in 0.6.6_ - if exchange is defined in `/xbbg/markets/exch.yml`, can use
+`ref` to look for relevant exchange market hours. Both `ref='ES1 Index'` and
+`ref='CME'` work for this example:
 
 ```python
 In [10]: blp.bdib(ticker='ESM0 Index', dt='2020-03-20', ref='ES1 Index').tail()
@@ -282,7 +365,7 @@ MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.25  Quarter  
 
 -----
 
-*New in 0.1.17* - Dividend adjustment can be simplified to one parameter `adjust`:
+_New in 0.1.17_ - Dividend adjustment can be simplified to one parameter `adjust`:
 
 - ``BDH`` without adjustment for dividends and splits:
 
@@ -335,7 +418,6 @@ Noted that local data usage must be compliant with Bloomberg Datafeed Addendum
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Docs           | [![Documentation Status](https://readthedocs.org/projects/xbbg/badge/?version=latest)](https://xbbg.readthedocs.io/)                                                             |
 | Build          | [![Actions Status](https://github.com/alpha-xone/xbbg/workflows/Auto%20CI/badge.svg)](https://github.com/alpha-xone/xbbg/actions)                                                |
-|                | [![Azure](https://dev.azure.com/alpha-xone/xbbg/_apis/build/status/alpha-xone.xbbg?branchName=main)](https://dev.azure.com/alpha-xone/xbbg/_build)                                               |
 | Coverage       | [![codecov](https://codecov.io/gh/alpha-xone/xbbg/branch/main/graph/badge.svg)](https://codecov.io/gh/alpha-xone/xbbg)                                                           |
 | Quality        | [![Codacy Badge](https://app.codacy.com/project/badge/Grade/daec9f52ba344e3ea116c15f1fc6d541)](https://www.codacy.com/gh/alpha-xone/xbbg/)                                       |
 |                | [![CodeFactor](https://www.codefactor.io/repository/github/alpha-xone/xbbg/badge)](https://www.codefactor.io/repository/github/alpha-xone/xbbg)                                  |

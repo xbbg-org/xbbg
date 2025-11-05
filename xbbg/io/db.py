@@ -1,7 +1,7 @@
-import pandas as pd
-
-import sqlite3
 import json
+import sqlite3
+
+import pandas as pd
 
 WAL_MODE = 'PRAGMA journal_mode=WAL'
 ALL_TABLES = 'SELECT name FROM sqlite_master WHERE type="table"'
@@ -14,13 +14,13 @@ class Singleton(type):
     def __call__(cls, *args, **kwargs):
         # Default values for class init
         default_keys = ['db_file', 'keep_live']
-        kw = {**dict(zip(default_keys, args)), **kwargs}
+        kw = {**dict(zip(default_keys, args, strict=False)), **kwargs}
         kw['keep_live'] = kw.get('keep_live', False)
 
         # Singleton instance
         key = json.dumps(kw)
         if key not in cls._instances_:
-            cls._instances_[key] = super(Singleton, cls).__call__(**kw)
+            cls._instances_[key] = super().__call__(**kw)
         return cls._instances_[key]
 
 
@@ -132,7 +132,7 @@ class SQLite(metaclass=Singleton):
         """
         if isinstance(data, pd.DataFrame):
             keep_live = self.is_live
-            cols = ', '.join(map(lambda v: f'`{v}`', data.columns))
+            cols = ', '.join(f'`{v}`' for v in data.columns)
             vals = ', '.join(['?'] * data.shape[1])
             # noinspection PyTypeChecker
             self.con.executemany(

@@ -1,12 +1,14 @@
-import pandas as pd
-
 import os
 
-from typing import Union
+import pandas as pd
 from ruamel.yaml import YAML
+
 from xbbg.io import files
 
 PKG_PATH = files.abspath(__file__, 1)
+
+_yaml = YAML(typ='safe')
+_yaml.allow_duplicate_keys = False
 
 
 def config_files(cat: str) -> list:
@@ -75,14 +77,14 @@ def load_yaml(yaml_file: str) -> pd.Series:
     if files.exists(cache_file) and files.modified_time(cache_file) > cur_mod:
         return pd.read_pickle(cache_file)
 
-    with open(yaml_file, 'r') as fp:
-        data = pd.Series(YAML().load(fp))
+    with open(yaml_file) as fp:
+        data = pd.Series(_yaml.load(fp))
         files.create_folder(cache_file, is_file=True)
         data.to_pickle(cache_file)
         return data
 
 
-def to_hours(num_ts: Union[str, list, int, float]) -> Union[str, list]:
+def to_hours(num_ts: str | list | int | float) -> str | list:
     """
     Convert YAML input to hours
 

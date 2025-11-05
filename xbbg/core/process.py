@@ -1,16 +1,19 @@
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 import pytest
-try: import blpapi
-except ImportError: blpapi = pytest.importorskip('blpapi')
 
-from itertools import starmap
+try:
+    import blpapi
+except ImportError:
+    blpapi = pytest.importorskip('blpapi')
+
 from collections import OrderedDict
+from collections.abc import Iterator
+from itertools import starmap
 
 from xbbg import const
+from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
-from xbbg.core import intervals, overrides, conn
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -24,11 +27,11 @@ TICK_DATA = blpapi.Name('tickData')
 def create_request(
         service: str,
         request: str,
-        settings: list = None,
-        ovrds: list = None,
-        append: dict = None,
+        settings: list | None = None,
+        ovrds: list | None = None,
+        append: dict | None = None,
         **kwargs,
-) -> blpapi.request.Request:
+) -> blpapi.Request:
     """
     Create request for query
 
@@ -48,20 +51,20 @@ def create_request(
 
     list(starmap(req.set, settings if settings else []))
     if ovrds:
-        ovrd = req.getElement('overrides')
+        ovrd = req.getElement(blpapi.Name('overrides'))
         for fld, val in ovrds:
             item = ovrd.appendElement()
-            item.setElement('fieldId', fld)
-            item.setElement('value', val)
+            item.setElement(blpapi.Name('fieldId'), fld)
+            item.setElement(blpapi.Name('value'), val)
     if append:
         for key, val in append.items():
             vals = [val] if isinstance(val, str) else val
-            for v in vals: req.append(key, v)
+            for v in vals: req.append(blpapi.Name(key), v)
 
     return req
 
 
-def init_request(request: blpapi.request.Request, tickers, flds, **kwargs):
+def init_request(request: blpapi.Request, tickers, flds, **kwargs):
     """
     Initiate Bloomberg request instance
 
@@ -74,10 +77,10 @@ def init_request(request: blpapi.request.Request, tickers, flds, **kwargs):
     while conn.bbg_session(**kwargs).tryNextEvent(): pass
 
     if isinstance(tickers, str): tickers = [tickers]
-    for ticker in tickers: request.append('securities', ticker)
+    for ticker in tickers: request.append(blpapi.Name('securities'), ticker)
 
     if isinstance(flds, str): flds = [flds]
-    for fld in flds: request.append('fields', fld)
+    for fld in flds: request.append(blpapi.Name('fields'), fld)
 
     adjust = kwargs.pop('adjust', None)
     if isinstance(adjust, str) and adjust:
@@ -90,17 +93,17 @@ def init_request(request: blpapi.request.Request, tickers, flds, **kwargs):
             kwargs['CshAdjAbnormal'] = 'abn' in adjust or 'dvd' in adjust
             kwargs['CapChg'] = 'split' in adjust
 
-    if 'start_date' in kwargs: request.set('startDate', kwargs.pop('start_date'))
-    if 'end_date' in kwargs: request.set('endDate', kwargs.pop('end_date'))
+    if 'start_date' in kwargs: request.set(blpapi.Name('startDate'), kwargs.pop('start_date'))
+    if 'end_date' in kwargs: request.set(blpapi.Name('endDate'), kwargs.pop('end_date'))
 
     for elem_name, elem_val in overrides.proc_elms(**kwargs):
         request.set(elem_name, elem_val)
 
-    ovrds = request.getElement('overrides')
+    ovrds = request.getElement(blpapi.Name('overrides'))
     for ovrd_fld, ovrd_val in overrides.proc_ovrds(**kwargs):
         ovrd = ovrds.appendElement()
-        ovrd.setElement('fieldId', ovrd_fld)
-        ovrd.setElement('value', ovrd_val)
+        ovrd.setElement(blpapi.Name('fieldId'), ovrd_fld)
+        ovrd.setElement(blpapi.Name('value'), ovrd_val)
 
 
 def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Session:
@@ -133,7 +136,7 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
 
 
-def rec_events(func, **kwargs):
+def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     """
     Receive events received from Bloomberg
 
@@ -148,11 +151,13 @@ def rec_events(func, **kwargs):
     responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
     timeout = kwargs.pop('timeout', 500)
     while True:
-        ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+        if event_queue is not None:
+            ev = event_queue.nextEvent(timeout=timeout)
+        else:
+            ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
         if ev.eventType() in responses:
             for msg in ev:
-                for r in func(msg=msg, **kwargs):
-                    yield r
+                yield from func(msg=msg, **kwargs)
             if ev.eventType() == blpapi.Event.RESPONSE:
                 break
         elif ev.eventType() == blpapi.Event.TIMEOUT:
@@ -165,7 +170,7 @@ def rec_events(func, **kwargs):
                     == SESSION_TERMINATED: break
 
 
-def process_ref(msg: blpapi.message.Message, **kwargs) -> dict:
+def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """
     Process reference messages from Bloomberg
 
@@ -177,11 +182,11 @@ def process_ref(msg: blpapi.message.Message, **kwargs) -> dict:
     """
     kwargs.pop('(@_<)', None)
     data = None
-    if msg.hasElement('securityData'):
-        data = msg.getElement('securityData')
-    elif msg.hasElement('data') and \
-            msg.getElement('data').hasElement('securityData'):
-        data = msg.getElement('data').getElement('securityData')
+    if msg.hasElement(blpapi.Name('securityData')):
+        data = msg.getElement(blpapi.Name('securityData'))
+    elif msg.hasElement(blpapi.Name('data')) and \
+            msg.getElement(blpapi.Name('data')).hasElement(blpapi.Name('securityData')):
+        data = msg.getElement(blpapi.Name('data')).getElement(blpapi.Name('securityData'))
     if not data: return iter([])
 
     for sec in data.values():
@@ -203,7 +208,7 @@ def process_ref(msg: blpapi.message.Message, **kwargs) -> dict:
                 ])
 
 
-def process_hist(msg: blpapi.message.Message, **kwargs) -> dict:
+def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """
     Process historical data messages from Bloomberg
 
@@ -214,16 +219,16 @@ def process_hist(msg: blpapi.message.Message, **kwargs) -> dict:
         dict
     """
     kwargs.pop('(>_<)', None)
-    if not msg.hasElement('securityData'): return {}
-    ticker = msg.getElement('securityData').getElement('security').getValue()
-    for val in msg.getElement('securityData').getElement('fieldData').values():
-        if val.hasElement('date'):
+    if not msg.hasElement(blpapi.Name('securityData')): return {}
+    ticker = msg.getElement(blpapi.Name('securityData')).getElement(blpapi.Name('security')).getValue()
+    for val in msg.getElement(blpapi.Name('securityData')).getElement(blpapi.Name('fieldData')).values():
+        if val.hasElement(blpapi.Name('date')):
             yield OrderedDict([('ticker', ticker)] + [
                 (str(elem.name()), elem.getValue()) for elem in val.elements()
             ])
 
 
-def process_bar(msg: blpapi.message.Message, typ='bar', **kwargs) -> OrderedDict:
+def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDict]:
     """
     Process Bloomberg intraday bar messages
 
@@ -236,10 +241,7 @@ def process_bar(msg: blpapi.message.Message, typ='bar', **kwargs) -> OrderedDict
     """
     kwargs.pop('(#_#)', None)
     check_error(msg=msg)
-    if typ[0].lower() == 't':
-        lvls = [TICK_DATA, TICK_DATA]
-    else:
-        lvls = [BAR_DATA, BAR_TICK]
+    lvls = [TICK_DATA, TICK_DATA] if typ[0].lower() == 't' else [BAR_DATA, BAR_TICK]
 
     if msg.hasElement(lvls[0]):
         for bar in msg.getElement(lvls[0]).getElement(lvls[1]).values():
@@ -262,7 +264,7 @@ def check_error(msg):
         )
 
 
-def elem_value(element: conn.blpapi.Element):
+def elem_value(element: blpapi.Element):
     """
     Get value from element
 
@@ -276,7 +278,7 @@ def elem_value(element: conn.blpapi.Element):
     try: value = element.getValue()
     except ValueError: return None
     if isinstance(value, np.bool_): return bool(value)
-    if isinstance(value, conn.blpapi.name.Name): return str(value)
+    if isinstance(value, blpapi.Name): return str(value)
     return value
 
 

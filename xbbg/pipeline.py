@@ -1,10 +1,8 @@
+
 import pandas as pd
-import numpy as np
-
-from typing import Union
 
 
-def get_series(data: Union[pd.Series, pd.DataFrame], col='close') -> pd.DataFrame:
+def get_series(data: pd.Series | pd.DataFrame, col='close') -> pd.DataFrame:
     """
     Get close column from intraday data
 
@@ -20,7 +18,7 @@ def get_series(data: Union[pd.Series, pd.DataFrame], col='close') -> pd.DataFram
     return data.xs(col, axis=1, level=1)
 
 
-def standard_cols(data: pd.DataFrame, col_maps: dict = None) -> pd.DataFrame:
+def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) -> pd.DataFrame:
     """
     Rename data columns to snake case
 
@@ -52,7 +50,7 @@ def standard_cols(data: pd.DataFrame, col_maps: dict = None) -> pd.DataFrame:
         MC FP Equity  2018-07-24  2018-12-04  2018-12-05   2018-12-06
         MC FP Equity  2018-01-25  2018-04-17  2018-04-18   2018-04-19
     """
-    if col_maps is None: col_maps = dict()
+    if col_maps is None: col_maps = {}
     return data.rename(
         columns=lambda vv: col_maps.get(
             vv, vv.lower().replace(' ', '_').replace('-', '_')
@@ -61,8 +59,8 @@ def standard_cols(data: pd.DataFrame, col_maps: dict = None) -> pd.DataFrame:
 
 
 def apply_fx(
-        data: Union[pd.Series, pd.DataFrame],
-        fx: Union[int, float, pd.Series, pd.DataFrame],
+        data: pd.Series | pd.DataFrame,
+        fx: int | float | pd.Series | pd.DataFrame,
         power=-1.,
 ) -> pd.DataFrame:
     """
@@ -82,7 +80,7 @@ def apply_fx(
         >>> rms = (
         ...     pd.read_pickle('xbbg/tests/data/sample_rms_ib1.pkl')
         ...     .pipe(get_series, col='close')
-        ...     .apply(pd.to_numeric, errors='ignore')
+        ...     .apply(pd.to_numeric)
         ...     .rename_axis(columns=None)
         ...     .pipe(dropna)
         ... ).tail()
@@ -115,11 +113,11 @@ def apply_fx(
         return data.dropna(how='all').mul(fx ** power)
 
     add_fx = pd.concat([data, fx.pipe(get_series).iloc[:, -1]], axis=1)
-    add_fx.iloc[:, -1] = add_fx.iloc[:, -1].fillna(method='pad')
+    add_fx.iloc[:, -1] = add_fx.iloc[:, -1].ffill()
     return data.mul(add_fx.iloc[:, -1].pow(power), axis=0).dropna(how='all')
 
 
-def daily_stats(data: Union[pd.Series, pd.DataFrame], **kwargs) -> pd.DataFrame:
+def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
     """
     Daily stats for given data
 
@@ -139,13 +137,13 @@ def daily_stats(data: Union[pd.Series, pd.DataFrame], **kwargs) -> pd.DataFrame:
     """
     if data.empty: return pd.DataFrame()
     if 'percentiles' not in kwargs: kwargs['percentiles'] = [.1, .25, .5, .75, .9]
-    return data.groupby(data.index.floor('d')).describe(**kwargs)
+    return data.groupby(pd.Grouper(freq='D')).describe(**kwargs)
 
 
 def dropna(
-        data: Union[pd.Series, pd.DataFrame],
-        cols: Union[int, list] = 0,
-) -> Union[pd.Series, pd.DataFrame]:
+        data: pd.Series | pd.DataFrame,
+        cols: int | list = 0,
+) -> pd.Series | pd.DataFrame:
     """
     Drop NAs by columns
     """
@@ -179,13 +177,26 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
         Dividend Type                 object
         dtype: object
     """
-    res = data.apply(pd.to_numeric, errors='ignore')
+    def _to_numeric_if_possible(col: pd.Series) -> pd.Series:
+        try:
+            return pd.to_numeric(col)
+        except Exception:
+            return col
+
+    res = data.apply(_to_numeric_if_possible)
+    # Preserve original semantics: consider object dtype or UPDATE_STAMP columns,
+    # and only convert if the entire column parses to datetime
     dtypes = data.dtypes
-    cols = dtypes.loc[
-        dtypes.isin([np.dtype('O')]) | data.columns.str.contains('UPDATE_STAMP')
-    ].index
-    if not cols.empty:
-        res.loc[:, cols] = data.loc[:, cols].apply(pd.to_datetime, errors='ignore')
+    mask = (dtypes == 'object') | (data.columns.str.contains('UPDATE_STAMP'))
+    cols = dtypes.index[mask]
+    if len(cols) > 0:
+        for col in cols:
+            parsed = pd.to_datetime(data[col], errors='coerce')
+            # Ensure parsed is a Series (pd.to_datetime on scalars can return Timestamp)
+            if not isinstance(parsed, pd.Series):
+                parsed = pd.Series(parsed, index=data.index)
+            if parsed.notna().all():
+                res[col] = parsed
     return res
 
 
@@ -252,11 +263,12 @@ def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
     )]
 
 
-def perf(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
+def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     """
     Performance rebased to 100
 
     Examples:
+        >>> import numpy as np
         >>> (
         ...     pd.DataFrame({
         ...         's1': [1., np.nan, 1.01, 1.03, .99],

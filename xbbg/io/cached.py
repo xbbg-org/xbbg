@@ -1,7 +1,7 @@
-import pandas as pd
-
-from itertools import product
 from collections import namedtuple
+from itertools import product
+
+import pandas as pd
 
 from xbbg.core import utils
 from xbbg.io import files, logs, storage
