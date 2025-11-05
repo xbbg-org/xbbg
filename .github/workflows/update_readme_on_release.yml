@@ -25,6 +25,36 @@ jobs:
           /<!-- xbbg:latest-release-end -->/{start=0}
           {if(start && !skip) next; print; skip=0}
         ' README.md > README.md.tmp && mv README.md.tmp README.md
+    - name: Update changelog section in README
+      env:
+        TAG_NAME: ${{ github.event.release.tag_name }}
+        RELEASE_URL: ${{ github.event.release.html_url }}
+        RELEASE_BODY: ${{ github.event.release.body }}
+        PUBLISHED_AT: ${{ github.event.release.published_at }}
+      run: |
+        set -euo pipefail
+        VERSION="${TAG_NAME#v}"
+        # Use the ISO date part
+        DATE="${PUBLISHED_AT%%T}"
+        # Prepare changelog entry
+        printf "_%s_ - see release: %s\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .changelog_entry.md
+        # Replace the block between markers with the new entry
+        sed -n '1,/<!-- xbbg:changelog-start -->/p' README.md > README.md.tmp
+        cat .changelog_entry.md >> README.md.tmp
+        sed -n '/<!-- xbbg:changelog-end -->/,$p' README.md >> README.md.tmp
+        mv README.md.tmp README.md
+    - name: Commit README changelog update
+      run: |
+        set -euo pipefail
+        if git diff --quiet; then
+          echo "No README changes to commit"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "docs(README): update changelog for ${{ github.event.release.tag_name }}"
+        git push
     - name: Commit changes
       run: |
         set -euo pipefail

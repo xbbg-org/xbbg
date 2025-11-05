@@ -121,6 +121,9 @@ uv run pytest --doctest-modules -q
 
 Unreleased
 
+<!-- xbbg:changelog-start -->
+<!-- xbbg:changelog-end -->
+
 - Improved date parsing and stability in `pipeline.format_raw`
   (datetime coercion by name)
 - Normalized numeric types in `const.ccy_pair` for stable representation
