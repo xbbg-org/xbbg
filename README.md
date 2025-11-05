@@ -11,6 +11,10 @@ An intuitive Bloomberg API for Python
 
 [![Coffee](https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png)](https://www.buymeacoffee.com/Lntx29Oof)
 
+<!-- xbbg:latest-release-start -->
+Latest release: xbbg==0.0.0
+<!-- xbbg:latest-release-end -->
+
 ## Features
 
 Below are main features. See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR).

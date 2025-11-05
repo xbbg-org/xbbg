@@ -1,0 +1,40 @@
+name: Update README on Release
+
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v5
+    - name: Update latest release line in README
+      env:
+        TAG_NAME: ${{ github.event.release.tag_name }}
+        RELEASE_URL: ${{ github.event.release.html_url }}
+      run: |
+        set -euo pipefail
+        VERSION="${TAG_NAME#v}"
+        NEW_LINE="Latest release: xbbg==${VERSION} (release: ${RELEASE_URL})"
+        awk -v repl="$NEW_LINE" '
+          BEGIN{start=0}
+          /<!-- xbbg:latest-release-start -->/{print; print repl; start=1; skip=1; next}
+          /<!-- xbbg:latest-release-end -->/{start=0}
+          {if(start && !skip) next; print; skip=0}
+        ' README.md > README.md.tmp && mv README.md.tmp README.md
+    - name: Commit changes
+      run: |
+        set -euo pipefail
+        if git diff --quiet; then
+          echo "No README changes to commit"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "docs(README): update latest release to ${{ env.TAG_NAME }}"
+        git push
+
