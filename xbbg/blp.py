@@ -8,6 +8,7 @@ from xbbg import __version__, const, pipeline
 from xbbg.core import conn, process, utils
 from xbbg.core.conn import connect
 from xbbg.io import files, logs, storage
+from xbbg.markets import resolvers as _res
 
 __all__ = [
     '__version__',
@@ -24,7 +25,16 @@ __all__ = [
     'subscribe',
     'adjust_ccy',
     'turnover',
+    'active_futures',
+    'fut_ticker',
+    'cdx_ticker',
+    'active_cdx',
 ]
+
+active_futures = _res.active_futures
+fut_ticker = _res.fut_ticker
+cdx_ticker = _res.cdx_ticker
+active_cdx = _res.active_cdx
 
 
 def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
@@ -51,9 +61,9 @@ def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
     )
     process.init_request(request=request, tickers=tickers, flds=flds, **kwargs)
     logger.debug(f'Sending request to Bloomberg ...\n{request}')
-    conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, **kwargs)
 
-    res = pd.DataFrame(process.rec_events(func=process.process_ref, **kwargs))
+    res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
     if res.empty or any(fld not in res for fld in ['ticker', 'field']):
         return pd.DataFrame()
@@ -112,9 +122,9 @@ def _bds_(
     )
     process.init_request(request=request, tickers=ticker, flds=fld, **kwargs)
     logger.debug(f'Sending request to Bloomberg ...\n{request}')
-    conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, **kwargs)
 
-    res = pd.DataFrame(process.rec_events(func=process.process_ref, **kwargs))
+    res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
     if res.empty or any(fld not in res for fld in ['ticker', 'field']):
         return pd.DataFrame()
@@ -174,9 +184,9 @@ def bdh(
         start_date=s_dt, end_date=e_dt, adjust=adjust, **kwargs
     )
     logger.debug(f'Sending request to Bloomberg ...\n{request}')
-    conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, **kwargs)
 
-    res = pd.DataFrame(process.rec_events(process.process_hist, **kwargs))
+    res = pd.DataFrame(process.rec_events(process.process_hist, event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
     if res.empty or any(fld not in res for fld in ['ticker', 'date']):
         return pd.DataFrame()
@@ -249,7 +259,6 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         logger.info(f'{num_trials} trials with no data {info_log}')
         return pd.DataFrame()
 
-    while conn.bbg_session(**kwargs).tryNextEvent(): pass
     time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', **kwargs)
     request = process.create_request(
         service='//blp/refdata',
@@ -264,9 +273,9 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         **kwargs,
     )
     logger.debug(f'Sending request to Bloomberg ...\n{request}')
-    conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, **kwargs)
 
-    res = pd.DataFrame(process.rec_events(func=process.process_bar, **kwargs))
+    res = pd.DataFrame(process.rec_events(func=process.process_bar, event_queue=handle["event_queue"], **kwargs))
     if res.empty or ('time' not in res):
         logger.warning(f'No data for {info_log} ...')
         trials.update_trials(cnt=num_trials + 1, **trial_kw)
@@ -325,7 +334,6 @@ def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) 
     else:
         time_rng = process.time_range(dt=dt, ticker=ticker, session=session, **kwargs)
 
-    while conn.bbg_session(**kwargs).tryNextEvent(): pass
     request = process.create_request(
         service='//blp/refdata',
         request='IntradayTickRequest',
@@ -347,9 +355,9 @@ def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) 
     )
 
     logger.debug(f'Sending request to Bloomberg ...\n{request}')
-    conn.send_request(request=request)
+    handle = conn.send_request(request=request)
 
-    res = pd.DataFrame(process.rec_events(func=process.process_bar, typ='t', **kwargs))
+    res = pd.DataFrame(process.rec_events(func=process.process_bar, typ='t', event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
     if res.empty or ('time' not in res): return pd.DataFrame()
 
@@ -490,8 +498,8 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
     )
 
     logger.debug(f'Sending request to Bloomberg ...\n{request}')
-    conn.send_request(request=request, **kwargs)
-    res = pd.DataFrame(process.rec_events(func=process.process_ref, **kwargs))
+    handle = conn.send_request(request=request, **kwargs)
+    res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
     if res.empty:
         if kwargs.get('trial', 0): return pd.DataFrame()
         return beqs(screen=screen, asof=asof, typ=typ, group=group, trial=1, **kwargs)
@@ -569,20 +577,30 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
     if isinstance(info, Iterable): info = [key.upper() for key in info]
     if info is None: info = const.LIVE_INFO
 
-    sess = conn.bbg_session(**kwargs)
-    while sess.tryNextEvent(): pass
-    with subscribe(tickers=tickers, flds=s_flds, options=options, **kwargs):
-        cnt = 0
-        while True and cnt <= max_cnt:
-            try:
-                ev = sess.tryNextEvent()
-                if ev is None: continue
-                if evt_typs[ev.eventType()] != 'SUBSCRIPTION_DATA': continue
+    import asyncio
+    from queue import Queue
 
-                for msg, fld in product(ev, s_flds):
-                    if not msg.hasElement(fld): continue
-                    if msg.getElement(fld).isNull(): continue
-                    yield {
+    # Session options (allow host/port override via kwargs)
+    sess_opts = conn.blpapi.SessionOptions()
+    if isinstance(kwargs.get('server_host'), str):
+        sess_opts.setServerHost(kwargs['server_host'])
+    else:
+        sess_opts.setServerHost('localhost')
+    sess_opts.setServerPort(int(kwargs.get('server_port') or kwargs.get('port') or 8194))
+
+    dispatcher = conn.blpapi.EventDispatcher(2)
+    outq: Queue = Queue()
+
+    def _handler(event, session):  # signature: (Event, Session)
+        try:
+            if evt_typs[event.eventType()] != 'SUBSCRIPTION_DATA':
+                return
+            for msg, fld in product(event, s_flds):
+                if not msg.hasElement(fld):
+                    continue
+                if msg.getElement(fld).isNull():
+                    continue
+                outq.put({
                         **{
                             'TICKER': msg.correlationIds()[0].value(),
                             'FIELD': fld,
@@ -592,106 +610,36 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
                             for elem in msg.asElement().elements()
                             if (True if not info else str(elem.name()) in info)
                         },
-                    }
-                    if max_cnt: cnt += 1
+                })
+        except Exception as e:  # noqa: BLE001
+            logger.debug(e)
 
-            except ValueError as e: logger.debug(e)
-            except KeyboardInterrupt: break
+    sess = conn.blpapi.Session(sess_opts, _handler, dispatcher)
+    if not sess.start():
+        raise ConnectionError('Failed to start Bloomberg session with dispatcher')
 
+    sub_list = conn.blpapi.SubscriptionList()
+    for ticker in (tickers if isinstance(tickers, list) else [tickers]):
+        topic = f'//blp/mktdata/{ticker}'
+        cid = conn.blpapi.CorrelationId(ticker)
+        logger.debug(f'Subscribing {cid} => {topic}')
+        sub_list.add(topic, s_flds, correlationId=cid, options=options)
 
-def active_futures(ticker: str, dt, **kwargs) -> str:
-    """
-    Active futures contract
-
-    Args:
-        ticker: futures ticker, i.e., ESA Index, Z A Index, CLA Comdty, etc.
-        dt: date
-
-    Returns:
-        str: ticker name
-    """
-    t_info = ticker.split()
-    prefix, asset = ' '.join(t_info[:-1]), t_info[-1]
-    info = const.market_info(f'{prefix[:-1]}1 {asset}')
-
-    f1, f2 = f'{prefix[:-1]}1 {asset}', f'{prefix[:-1]}2 {asset}'
-    fut_2 = fut_ticker(gen_ticker=f2, dt=dt, freq=info.get('freq', 'M'), **kwargs)
-    fut_1 = fut_ticker(gen_ticker=f1, dt=dt, freq=info.get('freq', 'M'), **kwargs)
-
-    fut_tk = bdp(tickers=[fut_1, fut_2], flds='Last_Tradeable_Dt')
-
-    if pd.Timestamp(dt).month < pd.Timestamp(fut_tk.last_tradeable_dt[0]).month: return fut_1
-
-    dts = pd.bdate_range(end=dt, periods=10)
-    volume = bdh(fut_tk.index, flds='volume', start_date=dts[0], end_date=dts[-1])
-    if volume.empty: return fut_1
-    return volume.iloc[-1].idxmax()[0]
-
-
-def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
-    """
-    Get proper ticker from generic ticker
-
-    Args:
-        gen_ticker: generic ticker
-        dt: date
-        freq: futures contract frequency
-
-    Returns:
-        str: exact futures ticker
-    """
-    logger = logs.get_logger(fut_ticker, **kwargs)
-    dt = pd.Timestamp(dt)
-    t_info = gen_ticker.split()
-    pre_dt = pd.bdate_range(end='today', periods=1)[-1]
-    same_month = (pre_dt.month == dt.month) and (pre_dt.year == dt.year)
-
-    asset = t_info[-1]
-    if asset in ['Index', 'Curncy', 'Comdty']:
-        ticker = ' '.join(t_info[:-1])
-        prefix, idx, postfix = ticker[:-1], int(ticker[-1]) - 1, asset
-
-    elif asset == 'Equity':
-        ticker = t_info[0]
-        prefix, idx, postfix = ticker[:-1], int(ticker[-1]) - 1, ' '.join(t_info[1:])
-
-    else:
-        logger.error(f'unkonwn asset type for ticker: {gen_ticker}')
-        return ''
-
-    month_ext = 4 if asset == 'Comdty' else 2
-    months = pd.date_range(start=dt, periods=max(idx + month_ext, 3), freq=freq)
-    logger.debug(f'pulling expiry dates for months: {months}')
-
-    def to_fut(month):
-        return prefix + const.Futures[month.strftime('%b')] + \
-            month.strftime('%y')[-1 if same_month else -2:] + ' ' + postfix
-
-    fut = [to_fut(m) for m in months]
-    logger.debug(f'trying futures: {fut}')
-    # noinspection PyBroadException
     try:
-        fut_matu = bdp(tickers=fut, flds='last_tradeable_dt')
-    except Exception as e1:
-        logger.error(f'error downloading futures contracts (1st trial) {e1}:\n{fut}')
-        # noinspection PyBroadException
+        sess.subscribe(sub_list)
+        cnt = 0
+        while True and (max_cnt == 0 or cnt <= max_cnt):
+            item = await asyncio.to_thread(outq.get)
+            yield item
+            if max_cnt:
+                cnt += 1
+    except KeyboardInterrupt:
+        pass
+    finally:
         try:
-            fut = fut[:-1]
-            logger.debug(f'trying futures (2nd trial): {fut}')
-            fut_matu = bdp(tickers=fut, flds='last_tradeable_dt')
-        except Exception as e2:
-            logger.error(f'error downloading futures contracts (2nd trial) {e2}:\n{fut}')
-            return ''
-
-    if 'last_tradeable_dt' not in fut_matu:
-        logger.warning(f'no futures found for {fut}')
-        return ''
-
-    fut_matu.sort_values(by='last_tradeable_dt', ascending=True, inplace=True)
-    sub_fut = fut_matu[pd.DatetimeIndex(fut_matu.last_tradeable_dt) > dt]
-    logger.debug(f'futures full chain:\n{fut_matu.to_string()}')
-    logger.debug(f'getting index {idx} from:\n{sub_fut.to_string()}')
-    return sub_fut.index.values[idx]
+            sess.unsubscribe(sub_list)
+        finally:
+            sess.stop()
 
 
 def adjust_ccy(data: pd.DataFrame, ccy: str = 'USD') -> pd.DataFrame:

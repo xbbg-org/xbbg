@@ -136,7 +136,7 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
 
 
-def rec_events(func, **kwargs):
+def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     """
     Receive events received from Bloomberg
 
@@ -151,7 +151,10 @@ def rec_events(func, **kwargs):
     responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
     timeout = kwargs.pop('timeout', 500)
     while True:
-        ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+        if event_queue is not None:
+            ev = event_queue.nextEvent(timeout=timeout)
+        else:
+            ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
         if ev.eventType() in responses:
             for msg in ev:
                 yield from func(msg=msg, **kwargs)

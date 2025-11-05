@@ -169,8 +169,14 @@ def send_request(request: blpapi.Request, **kwargs):
         request: Bloomberg request
     """
     logger = logs.get_logger(send_request, **kwargs)
+
+    # Always use per-request EventQueue and CorrelationId by default
+    event_queue = kwargs.get('event_queue') or blpapi.EventQueue()
+    correlation_id = kwargs.get('correlation_id') or blpapi.CorrelationId()
+
+    sess = bbg_session(**kwargs)
     try:
-        bbg_session(**kwargs).sendRequest(request=request)
+        sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
     except blpapi.InvalidStateException as e:
         logger.exception(e)
 
@@ -179,5 +185,7 @@ def send_request(request: blpapi.Request, **kwargs):
         con_sym = f'{_CON_SYM_}//{port}'
         if con_sym in globals(): del globals()[con_sym]
 
-        # No error handler for 2nd trial
-        bbg_session(**kwargs).sendRequest(request=request)
+        sess = bbg_session(**kwargs)
+        sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
+
+    return {"event_queue": event_queue, "correlation_id": correlation_id}
