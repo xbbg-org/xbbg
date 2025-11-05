@@ -51,6 +51,7 @@ fallback_version = "0+unknown"
 
 [tool.setuptools.packages.find]
 include = ["xbbg*"]
+exclude = ["xbbg/tests*"]
 
 [tool.setuptools.package-data]
 xbbg = ["markets/*.yml"]
