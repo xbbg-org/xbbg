@@ -31,15 +31,19 @@ jobs:
       run: |
         uv run sphinx-build -b linkcheck docs docs/_build/linkcheck
     - name: Trigger Read the Docs build (main only)
-      if: github.ref == 'refs/heads/main' && secrets.READTHEDOCS_TOKEN != '' && secrets.READTHEDOCS_PROJECT != ''
+      if: github.ref == 'refs/heads/main'
       env:
         READTHEDOCS_TOKEN: ${{ secrets.READTHEDOCS_TOKEN }}
         READTHEDOCS_PROJECT: ${{ secrets.READTHEDOCS_PROJECT }}
       run: |
-        curl -sSf -X POST \
-          -H "Authorization: Token ${READTHEDOCS_TOKEN}" \
-          -H "Content-Type: application/json" \
-          -d '{"version": "latest"}' \
-          https://readthedocs.org/api/v3/projects/${READTHEDOCS_PROJECT}/versions/latest/builds/
+        if [ -n "${READTHEDOCS_TOKEN}" ] && [ -n "${READTHEDOCS_PROJECT}" ]; then
+          curl -sSf -X POST \
+            -H "Authorization: Token ${READTHEDOCS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"version": "latest"}' \
+            https://readthedocs.org/api/v3/projects/${READTHEDOCS_PROJECT}/versions/latest/builds/
+        else
+          echo "READTHEDOCS_* secrets not set; skipping RTD trigger"
+        fi
 
 
