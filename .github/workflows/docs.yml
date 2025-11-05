@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - name: Set up Python 3.12
-    - uses: actions/setup-python@v6
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
     - name: Install uv
@@ -31,7 +31,7 @@ jobs:
       run: |
         uv run sphinx-build -b linkcheck docs docs/_build/linkcheck
     - name: Trigger Read the Docs build (main only)
-      if: github.ref == 'refs/heads/main' && env.READTHEDOCS_TOKEN != '' && env.READTHEDOCS_PROJECT != ''
+      if: github.ref == 'refs/heads/main' && secrets.READTHEDOCS_TOKEN != '' && secrets.READTHEDOCS_PROJECT != ''
       env:
         READTHEDOCS_TOKEN: ${{ secrets.READTHEDOCS_TOKEN }}
         READTHEDOCS_PROJECT: ${{ secrets.READTHEDOCS_PROJECT }}
