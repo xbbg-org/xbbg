@@ -1,16 +1,14 @@
-name: Upload Python Package
+name: Attach Release Artifacts
 
 on:
   release:
-    types: [ created ]
+    types: [ published ]
 
 jobs:
-  deploy:
-
+  build-and-attach:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
+      contents: write
 
     steps:
     - uses: actions/checkout@v3
@@ -19,17 +17,10 @@ jobs:
       with:
         python-version: '3.11'
     - name: Install uv (Linux/macOS)
-      if: runner.os != 'Windows'
       shell: bash
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-    - name: Install uv (Windows)
-      if: runner.os == 'Windows'
-      shell: powershell
-      run: |
-        iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex
-        "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     - name: Set version from tag
       if: startsWith(github.ref, 'refs/tags/')
       run: |
@@ -39,8 +30,9 @@ jobs:
     - name: Build distributions with uv
       run: |
         uv build
-    - name: Publish to PyPI via OIDC
-      uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Upload artifacts to GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
-        packages-dir: dist/
-        skip-existing: true
+        files: dist/*
+
+
