@@ -17,7 +17,9 @@ jobs:
         RELEASE_URL: ${{ github.event.release.html_url }}
       run: |
         set -euo pipefail
-        VERSION="${TAG_NAME#v}"
+        VERSION="$TAG_NAME"
+        VERSION="${VERSION#v}"
+        VERSION="${VERSION#xbbg==}"
         NEW_LINE="Latest release: xbbg==${VERSION} (release: [notes](${RELEASE_URL}))"
         awk -v repl="$NEW_LINE" '
           /<!-- xbbg:latest-release-start -->/ { print; print repl; drop=1; next }
@@ -32,7 +34,9 @@ jobs:
         PUBLISHED_AT: ${{ github.event.release.published_at }}
       run: |
         set -euo pipefail
-        VERSION="${TAG_NAME#v}"
+        VERSION="$TAG_NAME"
+        VERSION="${VERSION#v}"
+        VERSION="${VERSION#xbbg==}"
         # Use the ISO date part
         DATE="${PUBLISHED_AT%%T}"
         # Prepare changelog entry (avoid bare URL)
