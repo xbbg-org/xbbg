@@ -44,9 +44,6 @@ jobs:
     - name: Test with pytest
       run: |
         uv run pytest --doctest-modules --cov -v xbbg
-    - name: Build Sphinx docs
-      run: |
-        uv run sphinx-build -b html docs docs/_build/html
     - name: Coverage report
       run: |
         uv run codecov --token=ff17768d-30bd-4917-98f2-a011606597ea
