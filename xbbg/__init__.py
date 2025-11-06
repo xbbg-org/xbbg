@@ -1,3 +1,8 @@
 """An intuitive Bloomberg API"""
 
-__version__ = '0.7.8a2'
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("xbbg")
+except PackageNotFoundError:
+    __version__ = "0+unknown"

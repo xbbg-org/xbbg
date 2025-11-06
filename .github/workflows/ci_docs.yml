@@ -1,0 +1,49 @@
+name: Docs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+    - name: Sync docs dependencies
+      run: |
+        uv --version
+        uv sync --locked --extra docs
+    - name: Build Sphinx HTML
+      run: |
+        uv run sphinx-build -W -b html docs docs/_build/html
+    - name: Link check (non-blocking)
+      continue-on-error: true
+      run: |
+        uv run sphinx-build -b linkcheck docs docs/_build/linkcheck
+    - name: Trigger Read the Docs build (main only)
+      if: github.ref == 'refs/heads/main'
+      env:
+        READTHEDOCS_TOKEN: ${{ secrets.READTHEDOCS_TOKEN }}
+        READTHEDOCS_PROJECT: ${{ secrets.READTHEDOCS_PROJECT }}
+      run: |
+        if [ -n "${READTHEDOCS_TOKEN}" ] && [ -n "${READTHEDOCS_PROJECT}" ]; then
+          curl -sSf -X POST \
+            -H "Authorization: Token ${READTHEDOCS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"version": "latest"}' \
+            https://readthedocs.org/api/v3/projects/${READTHEDOCS_PROJECT}/versions/latest/builds/
+        else
+          echo "READTHEDOCS_* secrets not set; skipping RTD trigger"
+        fi
+
+

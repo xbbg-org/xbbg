@@ -1,0 +1,3 @@
+recursive-include xbbg/markets *.yml
+prune xbbg/tests
+

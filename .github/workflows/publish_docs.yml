@@ -1,0 +1,25 @@
+name: Publish Docs (Read the Docs)
+
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v5
+    - name: Trigger Read the Docs build for latest
+      if: env.READTHEDOCS_TOKEN != '' && env.READTHEDOCS_PROJECT != ''
+      env:
+        READTHEDOCS_TOKEN: ${{ secrets.READTHEDOCS_TOKEN }}
+        READTHEDOCS_PROJECT: ${{ secrets.READTHEDOCS_PROJECT }}
+      run: |
+        curl -sSf -X POST \
+          -H "Authorization: Token ${READTHEDOCS_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d '{"version": "latest"}' \
+          https://readthedocs.org/api/v3/projects/${READTHEDOCS_PROJECT}/versions/latest/builds/
+

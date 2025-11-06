@@ -11,6 +11,10 @@ An intuitive Bloomberg API for Python
 
 [![Coffee](https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png)](https://www.buymeacoffee.com/Lntx29Oof)
 
+<!-- xbbg:latest-release-start -->
+Latest release: xbbg==0.7.10 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/xbbg%3D%3D0.7.10))
+<!-- xbbg:latest-release-end -->
+
 ## Features
 
 Below are main features. See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR).
@@ -115,15 +119,19 @@ uv run pytest --doctest-modules -q
 
 ## What's New
 
-Unreleased
+<!-- xbbg:changelog-start -->
+_0.7.10_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/xbbg%3D%3D0.7.10)
 
-- Improved date parsing and stability in `pipeline.format_raw`
-  (datetime coercion by name)
-- Normalized numeric types in `const.ccy_pair` for stable representation
-- Fixed `core.utils.fstr`/`to_str` formatting with explicit kwargs
-- CI: docs build check added; modernized test matrix; PyPI Trusted Publishing
-- Docs: refreshed README and Sphinx landing page; updated Bloomberg blpapi
-  index URL
+What's Changed
+
+- Migrate to uv + PEP 621; modernize CI and blpapi index by @contributor in #124
+
+New Contributors
+
+- @contributor made their first contribution in #124
+
+Full Changelog: v0.7.9...xbbg==0.7.10
+<!-- xbbg:changelog-end -->
 
 _0.7.7a2_ - Custom `config` and etc. for reference exchange (author `hceh`)
 

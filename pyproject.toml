@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,7 @@ description = "Intuitive Bloomberg data API"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10,<3.15"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
   { name = "Alpha x1", email = "alpha.xone@outlook.com" },
 ]
@@ -43,17 +44,18 @@ Documentation = "https://xbbg.readthedocs.io/"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
 
-[tool.setuptools.dynamic]
-version = { attr = "xbbg.__version__" }
+[tool.setuptools_scm]
+# Accept tags like v0.7.10 and translate to 0.7.10
+tag_regex = '^(?:v|xbbg==)?(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc|alpha|beta)\d+)?)$'
+fallback_version = "0+unknown"
 
 [tool.setuptools.packages.find]
 include = ["xbbg*"]
+exclude = ["xbbg.tests*"]
 
 [tool.setuptools.package-data]
 xbbg = ["markets/*.yml"]
 
-[tool.setuptools]
-license-files = ["LICENSE"]
 
 [[tool.uv.index]]
 name = "bloomberg"

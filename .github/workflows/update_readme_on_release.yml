@@ -1,0 +1,81 @@
+name: Update README on Release
+
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v5
+    - name: Update latest release line in README
+      env:
+        TAG_NAME: ${{ github.event.release.tag_name }}
+        RELEASE_URL: ${{ github.event.release.html_url }}
+      run: |
+        set -euo pipefail
+        VERSION="$TAG_NAME"
+        VERSION="${VERSION#v}"
+        VERSION="${VERSION#xbbg==}"
+        NEW_LINE="Latest release: xbbg==${VERSION} (release: [notes](${RELEASE_URL}))"
+        awk -v repl="$NEW_LINE" '
+          /<!-- xbbg:latest-release-start -->/ { print; print repl; drop=1; next }
+          /<!-- xbbg:latest-release-end -->/   { drop=0; print; next }
+          drop != 1 { print }
+        ' README.md > README.md.tmp && mv README.md.tmp README.md
+    - name: Update changelog section in README
+      env:
+        TAG_NAME: ${{ github.event.release.tag_name }}
+        RELEASE_URL: ${{ github.event.release.html_url }}
+        RELEASE_BODY: ${{ github.event.release.body }}
+        PUBLISHED_AT: ${{ github.event.release.published_at }}
+      run: |
+        set -euo pipefail
+        VERSION="$TAG_NAME"
+        VERSION="${VERSION#v}"
+        VERSION="${VERSION#xbbg==}"
+        # Use the ISO date part
+        DATE="${PUBLISHED_AT%%T}"
+        # Prepare changelog entry (avoid bare URL)
+        printf "_%s_ - see release: [notes](%s)\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .changelog_entry.md
+        # Normalize list bullets to dash and ensure a blank line before list items
+        sed -E 's/^\* /- /' .changelog_entry.md > .changelog_entry.bullets && mv .changelog_entry.bullets .changelog_entry.md
+        awk 'BEGIN{prev_empty=1} {
+          if ($0 ~ /^-/ && prev_empty==0) { print "" }
+          print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0
+        }' .changelog_entry.md > .changelog_entry.fix && mv .changelog_entry.fix .changelog_entry.md
+        # Replace the block between markers with the new entry
+        sed -n '1,/<!-- xbbg:changelog-start -->/p' README.md > README.md.tmp
+        cat .changelog_entry.md >> README.md.tmp
+        sed -n '/<!-- xbbg:changelog-end -->/,$p' README.md >> README.md.tmp
+        mv README.md.tmp README.md
+    - name: Commit README changelog update
+      if: ${{ env.ACT != 'true' }}
+      run: |
+        set -euo pipefail
+        if git diff --quiet; then
+          echo "No README changes to commit"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "docs(README): update changelog for ${{ github.event.release.tag_name }}"
+        git push
+    - name: Commit changes
+      if: ${{ env.ACT != 'true' }}
+      run: |
+        set -euo pipefail
+        if git diff --quiet; then
+          echo "No README changes to commit"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "docs(README): update latest release to ${{ github.event.release.tag_name }}"
+        git push
+
