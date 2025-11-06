@@ -1,10 +1,16 @@
+"""Processing utilities for Bloomberg event messages and requests.
+
+Includes helpers to create requests, initialize overrides, iterate
+Bloomberg event streams, and parse reference, historical, and intraday data.
+"""
+
 import numpy as np
 import pandas as pd
-import pytest
 
 try:
-    import blpapi
-except ImportError:
+    import blpapi  # type: ignore[reportMissingImports]
+except (ImportError, AttributeError):
+    import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
 from collections import OrderedDict
@@ -32,8 +38,7 @@ def create_request(
         append: dict | None = None,
         **kwargs,
 ) -> blpapi.Request:
-    """
-    Create request for query
+    """Create a Bloomberg request for a given service and request type.
 
     Args:
         service: service name
@@ -41,10 +46,10 @@ def create_request(
         settings: list of settings
         ovrds: list of overrides
         append: info to be appended to request directly
-        kwargs: other overrides
+        **kwargs: Additional options forwarded to session/service helpers.
 
     Returns:
-        Bloomberg request
+        Bloomberg request.
     """
     srv = conn.bbg_service(service=service, **kwargs)
     req = srv.createRequest(request)
@@ -65,14 +70,14 @@ def create_request(
 
 
 def init_request(request: blpapi.Request, tickers, flds, **kwargs):
-    """
-    Initiate Bloomberg request instance
+    """Initiate a Bloomberg request instance.
 
     Args:
-        request: Bloomberg request to initiate and append
-        tickers: tickers
-        flds: fields
-        **kwargs: overrides and
+        request: Bloomberg request to initiate and append.
+        tickers: Single ticker or list of tickers.
+        flds: Single field or list of fields.
+        **kwargs: Overrides and element options; supports shorthand keys
+            parsed by ``overrides.proc_elms`` and ``overrides.proc_ovrds``.
     """
     while conn.bbg_session(**kwargs).tryNextEvent(): pass
 
@@ -107,17 +112,17 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
 
 
 def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Session:
-    """
-    Time range in UTC (for intraday bar) or other timezone
+    """Time range in UTC (for intraday bar) or other timezone.
 
     Args:
-        dt: date
-        ticker: ticker
-        session: market session defined in xbbg/markets/exch.yml
-        tz: timezone
+        dt: Date-like input to compute the range for.
+        ticker: Ticker.
+        session: Market session defined in ``markets/exch.yml``.
+        tz: Target timezone name or tz-resolvable input.
+        **kwargs: Passed to exchange/session resolvers.
 
     Returns:
-        intervals.Session
+        intervals.Session.
     """
     ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
     ex_info = const.exch_info(ticker=ticker, **kwargs)
@@ -137,15 +142,15 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
 
 
 def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
-    """
-    Receive events received from Bloomberg
+    """Receive and iterate events from Bloomberg.
 
     Args:
-        func: must be generator function
-        **kwargs: arguments for input function
+        func: Generator function yielding parsed messages.
+        event_queue: Optional queue to read events from; defaults to session queue.
+        **kwargs: Arguments forwarded to ``func`` and session access.
 
     Yields:
-        Elements of Bloomberg responses
+        Elements of Bloomberg responses.
     """
     timeout_counts = 0
     responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
@@ -171,14 +176,14 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
 
 
 def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
-    """
-    Process reference messages from Bloomberg
+    """Process reference messages from Bloomberg.
 
     Args:
-        msg: Bloomberg reference data messages from events
+        msg: Bloomberg reference data messages from events.
+        **kwargs: Additional options (unused).
 
     Returns:
-        dict
+        dict.
     """
     kwargs.pop('(@_<)', None)
     data = None
@@ -209,14 +214,14 @@ def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
 
 
 def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
-    """
-    Process historical data messages from Bloomberg
+    """Process historical data messages from Bloomberg.
 
     Args:
-        msg: Bloomberg historical data messages from events
+        msg: Bloomberg historical data messages from events.
+        **kwargs: Additional options (unused).
 
     Returns:
-        dict
+        dict.
     """
     kwargs.pop('(>_<)', None)
     if not msg.hasElement(blpapi.Name('securityData')): return {}
@@ -229,15 +234,15 @@ def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
 
 
 def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDict]:
-    """
-    Process Bloomberg intraday bar messages
+    """Process Bloomberg intraday bar messages.
 
     Args:
-        msg: Bloomberg intraday bar messages from events
-        typ: `bar` or `tick`
+        msg: Bloomberg intraday bar messages from events.
+        typ: ``bar`` or ``tick``.
+        **kwargs: Additional options (unused).
 
     Yields:
-        OrderedDict
+        OrderedDict.
     """
     kwargs.pop('(#_#)', None)
     check_error(msg=msg)
@@ -252,9 +257,7 @@ def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDic
 
 
 def check_error(msg):
-    """
-    Check error in message
-    """
+    """Check error in message."""
     if msg.hasElement(RESPONSE_ERROR):
         error = msg.getElement(RESPONSE_ERROR)
         raise ValueError(
@@ -265,14 +268,13 @@ def check_error(msg):
 
 
 def elem_value(element: blpapi.Element):
-    """
-    Get value from element
+    """Get value from element.
 
     Args:
-        element: Bloomberg element
+        element: Bloomberg element.
 
     Returns:
-        value
+        Value.
     """
     if element.isNull(): return None
     try: value = element.getValue()
@@ -283,9 +285,7 @@ def elem_value(element: blpapi.Element):
 
 
 def earning_pct(data: pd.DataFrame, yr):
-    """
-    Calculate % of earnings by year
-    """
+    """Calculate % of earnings by year."""
     pct = f'{yr}_pct'
     data.loc[:, pct] = np.nan
 
@@ -306,9 +306,7 @@ def earning_pct(data: pd.DataFrame, yr):
 
 
 def check_current(dt, logger, **kwargs) -> bool:
-    """
-    Check current time against T-1
-    """
+    """Check current time against T-1."""
     t_1 = pd.Timestamp('today').date() - pd.Timedelta('1D')
     whole_day = pd.Timestamp(dt).date() < t_1
     if (not whole_day) and kwargs.get('batch', False):
