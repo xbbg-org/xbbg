@@ -1,3 +1,9 @@
+"""Cache helpers for BDP/BDS queries.
+
+Provides utilities to identify which ticker/field pairs are already cached
+on disk and which remain to be queried.
+"""
+
 from collections import namedtuple
 from itertools import product
 
@@ -11,17 +17,16 @@ EXC_COLS = ['tickers', 'flds', 'raw', 'log', 'col_maps']
 
 
 def bdp_bds_cache(func, tickers, flds, **kwargs) -> ToQuery:
-    """
-    Find cached `BDP` / `BDS` queries
+    """Find cached ``BDP``/``BDS`` queries.
 
     Args:
-        func: function name - bdp or bds
-        tickers: tickers
-        flds: fields
-        **kwargs: other kwargs
+        func: Function name, either ``bdp`` or ``bds``.
+        tickers: One or more tickers.
+        flds: One or more fields.
+        **kwargs: Additional options forwarded to storage helpers.
 
     Returns:
-        ToQuery(ticker, flds, kwargs)
+        ToQuery: Tickers and fields still to query, and any cached data.
     """
     cache_data = []
     logger = logs.get_logger(bdp_bds_cache, **kwargs)
