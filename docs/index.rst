@@ -81,6 +81,14 @@ in ``/xbbg/markets/exch.yml``). See example of ``bdib`` below for more details.
 
 *0.1.17* - Add ``adjust`` argument in ``bdh`` for easier dividend / split adjustments
 
+Contents
+========
+
+.. toctree::
+   :maxdepth: 1
+
+   docstring_style
+
 Tutorial
 ========
 
