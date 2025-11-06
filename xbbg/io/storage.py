@@ -1,3 +1,5 @@
+"""Storage path helpers for cached Bloomberg data files."""
+
 import os
 
 import pandas as pd
@@ -10,8 +12,7 @@ PKG_PATH = files.abspath(__file__, 1)
 
 
 def bar_file(ticker: str, dt, typ='TRADE') -> str:
-    """
-    Data file location for Bloomberg historical data
+    """Data file location for Bloomberg historical data.
 
     Args:
         ticker: ticker name
@@ -19,7 +20,7 @@ def bar_file(ticker: str, dt, typ='TRADE') -> str:
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
 
     Returns:
-        file location
+        str: File location.
 
     Examples:
         >>> os.environ['BBG_ROOT'] = ''
@@ -40,8 +41,7 @@ def bar_file(ticker: str, dt, typ='TRADE') -> str:
 def ref_file(
         ticker: str, fld: str, has_date=False, cache=False, ext='parq', **kwargs
 ) -> str:
-    """
-    Data file location for Bloomberg reference data
+    """Data file location for Bloomberg reference data.
 
     Args:
         ticker: ticker name
@@ -52,7 +52,7 @@ def ref_file(
         **kwargs: other overrides passed to ref function
 
     Returns:
-        str: file location
+        str: File location.
 
     Examples:
         >>> import shutil
@@ -131,14 +131,14 @@ def ref_file(
 
 
 def save_intraday(data: pd.DataFrame, ticker: str, dt, typ='TRADE', **kwargs):
-    """
-    Check whether data is done for the day and save
+    """Check whether data is done for the day and save.
 
     Args:
         data: data
         ticker: ticker
         dt: date
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
+        **kwargs: Additional options forwarded to timing/logging helpers.
 
     Examples:
         >>> os.environ['BBG_ROOT'] = f'{PKG_PATH}/tests/data'
