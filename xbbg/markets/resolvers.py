@@ -1,3 +1,5 @@
+"""Resolvers for market-specific ticker transformations and helpers."""
+
 import pandas as pd
 
 from xbbg import const
@@ -5,12 +7,12 @@ from xbbg.io import logs
 
 
 def active_futures(ticker: str, dt, **kwargs) -> str:
-    """
-    Active futures contract
+    """Active futures contract.
 
     Args:
         ticker: futures ticker, i.e., ESA Index, Z A Index, CLA Comdty, etc.
         dt: date
+        **kwargs: Passed through to downstream resolvers (e.g., logging).
 
     Returns:
         str: ticker name
@@ -47,13 +49,13 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
 
 
 def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
-    """
-    Get proper ticker from generic ticker
+    """Get proper ticker from generic ticker.
 
     Args:
         gen_ticker: generic ticker
         dt: date
         freq: futures contract frequency
+        **kwargs: Passed through to Bloomberg fetch and logging.
 
     Returns:
         str: exact futures ticker
@@ -120,8 +122,7 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
 
 
 def cdx_ticker(gen_ticker: str, dt, **kwargs) -> str:
-    """
-    Resolve generic CDX 5Y ticker (e.g., 'CDX IG CDSI GEN 5Y Corp') to concrete series
+    """Resolve generic CDX 5Y ticker (e.g., 'CDX IG CDSI GEN 5Y Corp') to concrete series.
 
     Uses Bloomberg fields:
       - rolling_series: returns current on-the-run series number
@@ -174,8 +175,7 @@ def cdx_ticker(gen_ticker: str, dt, **kwargs) -> str:
 
 
 def active_cdx(gen_ticker: str, dt, lookback_days: int = 10, **kwargs) -> str:
-    """
-    Choose active CDX series for a date, preferring on-the-run unless it's not started yet.
+    """Choose active CDX series for a date, preferring on-the-run unless it's not started yet.
 
     If ambiguous, prefer the series with recent non-empty PX_LAST over the lookback window.
     """
