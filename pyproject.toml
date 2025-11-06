@@ -70,7 +70,10 @@ target-version = "py310"
 line-length = 120
 exclude = [
   "xbbg/feeds/*",
+  "feeds/**",
   "docs/_build",
+  "docs/conf.py",
+  "Examples.ipynb",
   "dist",
   "venv",
   ".venv",
