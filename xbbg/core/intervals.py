@@ -5,6 +5,7 @@ for an instrument's predefined sessions based on exchange metadata.
 """
 
 from collections import namedtuple
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -171,5 +172,8 @@ class Intervals:
             e_time = param.to_hours(int(end_time))
             if same_day: e_time = min(e_time, ss[-1])
 
-        if same_day and (pd.Timestamp(s_time) > pd.Timestamp(e_time)): return SessNA
+        if same_day and (
+            pd.Timestamp(cast(str, s_time)) > pd.Timestamp(cast(str, e_time))
+        ):
+            return SessNA
         return Session(start_time=s_time, end_time=e_time)
