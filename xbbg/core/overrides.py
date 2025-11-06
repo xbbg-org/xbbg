@@ -1,3 +1,11 @@
+"""Helpers to prepare Bloomberg overrides and element options.
+
+These utilities normalize override keys/values and format logging strings.
+"""
+
+from collections.abc import Iterable
+from typing import Any
+
 # Set os.environ['BBG_ROOT'] = '/your/bbg/data/path'
 #     to enable xbbg saving data locally
 BBG_ROOT = 'BBG_ROOT'
@@ -55,15 +63,14 @@ ELEM_VALS = {
 }
 
 
-def proc_ovrds(**kwargs):
-    """
-    Bloomberg overrides
+def proc_ovrds(**kwargs) -> Iterable[tuple[str, Any]]:
+    """Bloomberg overrides.
 
     Args:
-        **kwargs: overrides
+        **kwargs: Overrides to include.
 
     Returns:
-        list of tuples
+        Iterable of (key, value) tuples.
 
     Examples:
         >>> list(proc_ovrds(DVD_Start_Dt='20180101'))
@@ -77,15 +84,14 @@ def proc_ovrds(**kwargs):
             yield k, v
 
 
-def proc_elms(**kwargs) -> list:
-    """
-    Bloomberg overrides for elements
+def proc_elms(**kwargs) -> Iterable[tuple[str, Any]]:
+    """Bloomberg overrides for elements.
 
     Args:
-        **kwargs: overrides
+        **kwargs: Element overrides (either canonical keys or aliases).
 
     Returns:
-        list of tuples
+        Iterable of (key, value) tuples.
 
     Examples:
         >>> list(proc_elms(PerAdj='A', Per='W'))
@@ -109,8 +115,7 @@ def proc_elms(**kwargs) -> list:
 
 
 def info_qry(tickers, flds) -> str:
-    """
-    Logging info for given tickers and fields
+    """Logging info for given tickers and fields.
 
     Args:
         tickers: tickers
