@@ -39,10 +39,14 @@ jobs:
       - name: Verify artifacts exist
         run: |
           ls -lah dist
-
-      - name: Metadata check (twine)
+      - name: Prepare uv virtual environment
+        run: |
+          uv venv
+      - name: Install twine
         run: |
           uv pip install twine
+      - name: Metadata check (twine)
+        run: |
           uv run twine check dist/*
 
 
