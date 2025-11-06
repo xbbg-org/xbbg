@@ -1,8 +1,6 @@
 Docstring Standardization
 =========================
 
-This branch tracks the effort to improve and standardize docstrings across the ``xbbg`` package.
-
 Style
 -----
 
@@ -16,15 +14,5 @@ Guidelines
 - Provide sections as needed: ``Args``, ``Returns``, ``Yields``, ``Raises``, ``Notes``, ``Examples``.
 - Use explicit types and shapes when helpful; prefer concrete meanings over abbreviations.
 - Keep examples runnable when possible.
-
-Scope
------
-
-- Start with public APIs in ``xbbg.blp`` and ``xbbg.core``; expand to other modules.
-
-Tracking
---------
-
-Progress will be maintained in this branch and summarized in the pull request.
 
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Configuration file for the Sphinx documentation builder.
 #
@@ -24,7 +23,7 @@ sys.path.append(ROOT_PATH)
 def parse_version(package):
 
     init_file = '%s/%s/__init__.py' % (ROOT_PATH, package)
-    with open(init_file, 'r', encoding='utf-8') as f:
+    with open(init_file, encoding='utf-8') as f:
         for line in f.readlines():
             if '__version__' in line:
                 return line.split('=')[1].strip()[1:-1]

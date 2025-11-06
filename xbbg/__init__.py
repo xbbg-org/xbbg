@@ -1,4 +1,4 @@
-"""An intuitive Bloomberg API"""
+"""An intuitive Bloomberg API."""
 
 from importlib.metadata import PackageNotFoundError, version
 

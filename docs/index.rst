@@ -55,17 +55,9 @@ Supported Python versions: 3.7 – 3.14 (universal wheel)
 What's New
 ==========
 
-*Unreleased*
-
 .. xbbg:changelog-start
 
 .. xbbg:changelog-end
-
-- Improve date parsing and stability in ``pipeline.format_raw`` (coerce datetime columns by name)
-- Normalize numeric types in ``const.ccy_pair`` to ensure stable representations
-- Fix ``core.utils.fstr``/``to_str`` formatting with explicit kwargs
-- Add docs build to CI and modernize CI matrix (Windows/Linux)
-- Switch to PyPI Trusted Publishing (OIDC)
 
 *0.7.7a2* - Custom `config` and etc. for reference exchange (author `hceh`)
 
