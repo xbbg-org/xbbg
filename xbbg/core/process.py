@@ -20,6 +20,7 @@ from itertools import starmap
 from xbbg import const
 from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
+from typing import Any
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -28,6 +29,13 @@ MESSAGE = blpapi.Name("message")
 BAR_DATA = blpapi.Name('barData')
 BAR_TICK = blpapi.Name('barTickData')
 TICK_DATA = blpapi.Name('tickData')
+RESULTS = blpapi.Name('results')
+TABLE = blpapi.Name('table')
+COLUMNS = blpapi.Name('columns')
+ROWS = blpapi.Name('rows')
+VALUES = blpapi.Name('values')
+NAME = blpapi.Name('name')
+FIELD = blpapi.Name('field')
 
 
 def create_request(
@@ -282,6 +290,62 @@ def elem_value(element: blpapi.Element):
     if isinstance(value, np.bool_): return bool(value)
     if isinstance(value, blpapi.Name): return str(value)
     return value
+
+
+def _flatten_element(element: blpapi.Element) -> dict[str, Any]:
+    """Recursively flatten a generic Bloomberg element to a dict."""
+    out: dict[str, Any] = {}
+    for elem in element.elements():
+        key = str(elem.name())
+        if elem.isArray():
+            out[key] = [elem_value(v) if not v.isComplexType() else _flatten_element(v) for v in elem.values()]
+        elif elem.isComplexType():
+            out[key] = _flatten_element(elem)
+        else:
+            out[key] = elem_value(elem)
+    return out
+
+
+def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
+    """Process BQL response messages into row dictionaries.
+
+    Attempts to parse tabular BQL results; falls back to flattened dicts.
+
+    Args:
+        msg: Bloomberg BQL message.
+        **kwargs: Unused.
+
+    Yields:
+        OrderedDict: Row-like mappings parsed from BQL results.
+    """
+    kwargs.pop('(^_^)', None)
+    if not msg.hasElement(RESULTS):
+        return iter([])
+
+    for res in msg.getElement(RESULTS).values():
+        if res.hasElement(TABLE):
+            table = res.getElement(TABLE)
+            if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
+                yield OrderedDict(_flatten_element(res))
+                continue
+
+            cols: list[str] = []
+            for col in table.getElement(COLUMNS).values():
+                if col.hasElement(NAME):
+                    cols.append(col.getElement(NAME).getValue())
+                elif col.hasElement(FIELD):
+                    cols.append(str(col.getElement(FIELD).getValue()))
+                else:
+                    cols.append(str(col.name()))
+
+            for row in table.getElement(ROWS).values():
+                values: list[Any] = []
+                if row.hasElement(VALUES):
+                    for v in row.getElement(VALUES).values():
+                        values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
+                yield OrderedDict(zip(cols, values))
+        else:
+            yield OrderedDict(_flatten_element(res))
 
 
 def earning_pct(data: pd.DataFrame, yr):

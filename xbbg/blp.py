@@ -27,6 +27,7 @@ __all__ = [
     'subscribe',
     'adjust_ccy',
     'turnover',
+    'bql',
     'active_futures',
     'fut_ticker',
     'cdx_ticker',
@@ -740,3 +741,40 @@ def turnover(
 
     if data.empty and use_volume.empty: return pd.DataFrame()
     return pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
+
+
+def bql(query: str, params: dict | None = None, **kwargs) -> pd.DataFrame:
+    """Execute a BQL (Bloomberg Query Language) request.
+
+    Args:
+        query: BQL query string.
+        params: Optional parameter mapping for the BQL request.
+        **kwargs: Session and logging options.
+
+    Returns:
+        pd.DataFrame: Parsed tabular results when available; otherwise a flattened view.
+    """
+    logger = logs.get_logger(bql, **kwargs)
+
+    request = process.create_request(
+        service='//blp/bql',
+        request='QueryRequest',
+        settings=[('query', query)],
+        **kwargs,
+    )
+
+    if params:
+        try:
+            params_elem = request.getElement(conn.blpapi.Name('parameters'))
+            for name, value in params.items():
+                p = params_elem.appendElement()
+                p.setElement(conn.blpapi.Name('name'), str(name))
+                p.setElement(conn.blpapi.Name('value'), value)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f'Unable to set BQL parameters: {exc}')
+
+    logger.debug(f'Sending BQL request ...\n{request}')
+    handle = conn.send_request(request=request, **kwargs)
+
+    rows = list(process.rec_events(func=process.process_bql, event_queue=handle["event_queue"], **kwargs))
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
