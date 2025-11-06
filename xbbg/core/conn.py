@@ -1,3 +1,9 @@
+"""Connection helpers for Bloomberg blpapi sessions and services.
+
+Provides utilities to create and reuse `blpapi.Session` objects, open
+services, and send requests with sensible defaults.
+"""
+
 import os
 import sys
 
@@ -25,12 +31,27 @@ _PORT_ = 8194
 
 
 def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
-    """
-    Use alternative method to connect to blpapi. If a session object is passed, arguments
-    max_attempt and auto_restart will be ignored.
+    """Connect to Bloomberg using alternative auth options.
 
-    referecing to blpapi example for full lists of available authentication methods:
-        https://github.com/msitt/blpapi-python/blob/master/examples/ConnectionAndAuthExample.py
+    If a session object is passed via ``sess``, ``max_attempt`` and
+    ``auto_restart`` are ignored.
+
+    Args:
+        max_attempt: Number of start attempts for the session.
+        auto_restart: Whether to auto-restart on disconnection.
+        **kwargs: Optional connection and authentication settings:
+            - sess: Existing ``blpapi.Session`` to reuse.
+            - auth_method: One of {'user', 'app', 'userapp', 'dir', 'manual'}.
+            - app_name: Application name for app/userapp/manual auth.
+            - dir_property: Active Directory property for ``dir`` auth.
+            - user_id: User ID for ``manual`` auth.
+            - ip_address: IP address for ``manual`` auth.
+            - server_host: Server hostname.
+            - server_port: Server port.
+            - tls_options: ``blpapi.TlsOptions`` instance for TLS.
+
+    Returns:
+        blpapi.Session: A started Bloomberg session.
     """
     if isinstance(kwargs.get('sess'), blpapi.Session):
         return bbg_session(sess=kwargs['sess'])
@@ -78,9 +99,7 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
 
 
 def connect_bbg(**kwargs) -> blpapi.Session:
-    """
-    Create Bloomberg session and make connection
-    """
+    """Create and connect a Bloomberg session."""
     logger = logs.get_logger(connect_bbg, **kwargs)
 
     if isinstance(kwargs.get('sess'), blpapi.Session):
@@ -98,8 +117,7 @@ def connect_bbg(**kwargs) -> blpapi.Session:
 
 
 def bbg_session(**kwargs) -> blpapi.Session:
-    """
-    Bloomberg session - initiate if not given
+    """Bloomberg session - initiate if not given.
 
     Args:
         **kwargs:
@@ -122,8 +140,7 @@ def bbg_session(**kwargs) -> blpapi.Session:
 
 
 def bbg_service(service: str, **kwargs) -> blpapi.Service:
-    """
-    Initiate service
+    """Initiate service.
 
     Args:
         service: service name
@@ -152,9 +169,7 @@ def bbg_service(service: str, **kwargs) -> blpapi.Service:
 
 
 def event_types() -> dict:
-    """
-    Bloomberg event types
-    """
+    """Bloomberg event types."""
     return {
         getattr(blpapi.Event, ev_typ): ev_typ
         for ev_typ in dir(blpapi.Event) if ev_typ.isupper()
@@ -162,11 +177,16 @@ def event_types() -> dict:
 
 
 def send_request(request: blpapi.Request, **kwargs):
-    """
-    Send request to Bloomberg session
+    """Send a request via the Bloomberg session.
 
     Args:
-        request: Bloomberg request
+        request: Bloomberg request to send.
+        event_queue: Optional ``blpapi.EventQueue`` to receive events. Created if not provided.
+        correlation_id: Optional ``blpapi.CorrelationId`` for the request. Created if not provided.
+        **kwargs: Additional options forwarded to session retrieval (for example, ``port``).
+
+    Returns:
+        dict: A mapping with ``event_queue`` and ``correlation_id``.
     """
     logger = logs.get_logger(send_request, **kwargs)
 
