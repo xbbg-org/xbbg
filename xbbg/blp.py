@@ -1,3 +1,5 @@
+"""High-level Bloomberg data API: reference, historical, intraday, and live."""
+
 from contextlib import contextmanager
 from functools import partial
 from itertools import product
@@ -38,8 +40,7 @@ active_cdx = _res.active_cdx
 
 
 def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
-    """
-    Bloomberg reference data
+    """Bloomberg reference data.
 
     Args:
         tickers: tickers
@@ -80,8 +81,7 @@ def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
 
 
 def bds(tickers, flds, use_port=False, **kwargs) -> pd.DataFrame:
-    """
-    Bloomberg block data
+    """Bloomberg block data.
 
     Args:
         tickers: ticker(s)
@@ -106,9 +106,7 @@ def _bds_(
         use_port: bool = False,
         **kwargs,
 ) -> pd.DataFrame:
-    """
-    Get data of BDS of single ticker
-    """
+    """Get BDS data for a single ticker."""
     if 'has_date' not in kwargs: kwargs['has_date'] = True
     data_file = storage.ref_file(ticker=ticker, fld=fld, ext='pkl', **kwargs)
     if files.exists(data_file):
@@ -147,8 +145,7 @@ def _bds_(
 def bdh(
         tickers, flds=None, start_date=None, end_date='today', adjust=None, **kwargs
 ) -> pd.DataFrame:
-    """
-    Bloomberg historical data
+    """Bloomberg historical data.
 
     Args:
         tickers: ticker(s)
@@ -203,8 +200,7 @@ def bdh(
 
 
 def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFrame:
-    """
-    Bloomberg intraday bar data
+    """Bloomberg intraday bar data.
 
     Args:
         ticker: ticker name
@@ -297,8 +293,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
 
 
 def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) -> pd.DataFrame:
-    """
-    Bloomberg tick data
+    """Bloomberg tick data.
 
     Args:
         ticker: ticker name
@@ -310,9 +305,10 @@ def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) 
             TRADE, AT_TRADE, BID, ASK, MID_PRICE,
             BID_BEST, ASK_BEST, BEST_BID, BEST_ASK,
         ]
+        **kwargs: Additional options forwarded to helpers (e.g., logging).
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame.
     """
     logger = logs.get_logger(bdtick, **kwargs)
 
@@ -379,8 +375,7 @@ def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) 
 
 
 def earning(ticker, by='Geo', typ='Revenue', ccy=None, level=None, **kwargs) -> pd.DataFrame:
-    """
-    Earning exposures by Geo or Products
+    """Earning exposures by Geo or Products.
 
     Args:
         ticker: ticker name
@@ -393,9 +388,10 @@ def earning(ticker, by='Geo', typ='Revenue', ccy=None, level=None, **kwargs) -> 
             `Capital_Expenditures` - Capital expenditures of the company
         ccy: currency of earnings
         level: hierarchy level of earnings
+        **kwargs: Additional overrides such as fiscal year and periods.
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame.
     """
     kwargs.pop('raw', None)
     ovrd = 'G' if by[0].upper() == 'G' else 'P'
@@ -430,8 +426,7 @@ def earning(ticker, by='Geo', typ='Revenue', ccy=None, level=None, **kwargs) -> 
 
 
 def dividend(tickers, typ='all', start_date=None, end_date=None, **kwargs) -> pd.DataFrame:
-    """
-    Bloomberg dividend / split history
+    """Bloomberg dividend / split history.
 
     Args:
         tickers: list of tickers
@@ -471,17 +466,17 @@ def dividend(tickers, typ='all', start_date=None, end_date=None, **kwargs) -> pd
 
 
 def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.DataFrame:
-    """
-    Bloomberg equity screening
+    """Bloomberg equity screening.
 
     Args:
         screen: screen name
         asof: as of date
         typ: GLOBAL/B (Bloomberg) or PRIVATE/C (Custom, default)
         group: group name if screen is organized into groups
+        **kwargs: Additional request overrides for BeqsRequest.
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame.
     """
     logger = logs.get_logger(beqs, **kwargs)
 
@@ -519,13 +514,14 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
 
 @contextmanager
 def subscribe(tickers, flds=None, identity=None, options=None, **kwargs):
-    """
-    Subscribe Bloomberg realtime data
+    """Subscribe Bloomberg realtime data.
 
     Args:
         tickers: list of tickers
         flds: fields to subscribe, default: Last_Price, Bid, Ask
-        identity: Bloomberg identity
+        identity: Bloomberg identity.
+        options: Subscription options (e.g., fields for event routing).
+        **kwargs: Additional options forwarded to session and logging.
     """
     logger = logs.get_logger(subscribe, **kwargs)
     if isinstance(tickers, str): tickers = [tickers]
@@ -547,17 +543,18 @@ def subscribe(tickers, flds=None, identity=None, options=None, **kwargs):
 
 
 async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs):
-    """
-    Subscribe and getting data feeds from
+    """Subscribe and get data feeds.
 
     Args:
         tickers: list of tickers
         flds: fields to subscribe
         info: list of keys of interests (ticker will be included)
         max_cnt: max number of data points to receive
+        options: Subscription options for the feed.
+        **kwargs: Additional options forwarded to session and logging.
 
     Yields:
-        dict: Bloomberg market data
+        dict: Bloomberg market data.
 
     Examples:
         >>> # async for _ in live('SPY US Equity', info=const.LIVE_INFO): pass
@@ -643,8 +640,7 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
 
 
 def adjust_ccy(data: pd.DataFrame, ccy: str = 'USD') -> pd.DataFrame:
-    """
-    Adjust
+    """Adjust series to a target currency.
 
     Args:
         data: daily price / turnover / etc. to adjust
@@ -706,19 +702,18 @@ def turnover(
         ccy: str = 'USD',
         factor: float = 1e6,
 ) -> pd.DataFrame:
-    """
-    Currency adjusted turnover (in million)
+    """Currency adjusted turnover (in million).
 
     Args:
-        tickers: ticker or list of tickers
-        flds: override `flds`,
-        start_date: start date, default 1 month prior to `end_date`
-        end_date: end date, default T - 1
-        ccy: currency - 'USD' (default), any currency, or 'local' (no adjustment)
-        factor: adjustment factor, default 1e6 - return values in millions
+        tickers: ticker or list of tickers.
+        flds: override ``flds``.
+        start_date: start date, default 1 month prior to ``end_date``.
+        end_date: end date, default T - 1.
+        ccy: currency - 'USD' (default), any currency, or 'local' (no adjustment).
+        factor: adjustment factor, default 1e6 - return values in millions.
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame.
     """
     if end_date is None:
         end_date = pd.bdate_range(end='today', periods=2)[0]

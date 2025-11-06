@@ -1,8 +1,8 @@
+from functools import partial
+
+import fire
 import pynng
 import trio
-import fire
-
-from functools import partial
 
 ADDRESS = 'ipc:///xbbg/stream'
 

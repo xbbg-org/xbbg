@@ -1,10 +1,9 @@
-
+"""Data processing pipeline helpers for series, stats, and formatting."""
 import pandas as pd
 
 
 def get_series(data: pd.Series | pd.DataFrame, col='close') -> pd.DataFrame:
-    """
-    Get close column from intraday data
+    """Get close column from intraday data.
 
     Args:
         data: intraday data
@@ -19,8 +18,7 @@ def get_series(data: pd.Series | pd.DataFrame, col='close') -> pd.DataFrame:
 
 
 def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) -> pd.DataFrame:
-    """
-    Rename data columns to snake case
+    """Rename data columns to snake case.
 
     Args:
         data: input data
@@ -63,8 +61,7 @@ def apply_fx(
         fx: int | float | pd.Series | pd.DataFrame,
         power=-1.,
 ) -> pd.DataFrame:
-    """
-    Apply FX to data
+    """Apply FX to data.
 
     Args:
         data: price data
@@ -72,8 +69,8 @@ def apply_fx(
         power: apply for FX price
 
     Returns:
-        Price * FX ** Power
-        where FX uses latest available price
+        Price * FX ** Power.
+        Where FX uses latest available price.
 
     Examples:
         >>> pd.options.display.precision = 2
@@ -118,8 +115,7 @@ def apply_fx(
 
 
 def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
-    """
-    Daily stats for given data
+    """Daily stats for given data.
 
     Examples:
         >>> pd.options.display.precision = 2
@@ -144,17 +140,14 @@ def dropna(
         data: pd.Series | pd.DataFrame,
         cols: int | list = 0,
 ) -> pd.Series | pd.DataFrame:
-    """
-    Drop NAs by columns
-    """
+    """Drop NAs by columns."""
     if isinstance(data, pd.Series): return data.dropna()
     if isinstance(cols, int): cols = [cols]
     return data.dropna(how='all', subset=data.columns[cols])
 
 
 def format_raw(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convert data to datetime if possible
+    """Convert data to datetime if possible.
 
     Examples:
         >>> dvd = pd.read_pickle('xbbg/tests/data/sample_dvd_mc_raw.pkl')
@@ -201,8 +194,7 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_ticker(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
-    """
-    Add ticker as first layer of multi-index
+    """Add ticker as first layer of multi-index.
 
     Args:
         data: raw data
@@ -231,8 +223,8 @@ def add_ticker(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
 
 def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
-    """
-    Remove columns prior to give year.
+    """Remove columns prior to given year.
+
     To make this work, column names must contain the year explicitly.
 
     Args:
@@ -264,8 +256,7 @@ def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
 
 
 def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
-    """
-    Performance rebased to 100
+    """Performance rebased to 100.
 
     Examples:
         >>> import numpy as np

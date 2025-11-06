@@ -1,10 +1,11 @@
-import pynng
-import trio
+from functools import partial
+
 import fire
 import orjson
+import pynng
+import trio
 
 from xbbg import blp
-from functools import partial
 
 DEFAULT_FDLS = [
     'MKTDATA_EVENT_TYPE', 'EVT_TRADE_DATE_RT', 'TIME',
@@ -16,8 +17,7 @@ ADDRESS = 'ipc:///xbbg/stream'
 
 
 async def live(channel: str, tickers, **kwargs):
-    """
-    Broadcasts live data feeds
+    """Broadcasts live data feeds
 
     Args:
         channel: channel name

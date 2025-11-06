@@ -1,4 +1,11 @@
+"""Trading session interval utilities.
+
+Defines helpers to derive time windows (open, close, normal, exact)
+for an instrument's predefined sessions based on exchange metadata.
+"""
+
 from collections import namedtuple
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -11,15 +18,15 @@ SessNA = Session(None, None)
 
 
 def get_interval(ticker, session, **kwargs) -> Session:
-    """
-    Get interval from defined session
+    """Get interval from a defined session.
 
     Args:
         ticker: ticker
         session: session
+        **kwargs: Additional arguments forwarded to exchange resolvers.
 
     Returns:
-        Session of start_time and end_time
+        Session of start_time and end_time.
 
     Examples:
         >>> get_interval('005490 KS Equity', 'day_open_30')
@@ -57,15 +64,14 @@ def get_interval(ticker, session, **kwargs) -> Session:
 
 
 def shift_time(start_time, mins) -> str:
-    """
-    Shift start time by mins
+    """Shift start time by mins.
 
     Args:
         start_time: start time in terms of HH:MM string
         mins: number of minutes (+ / -)
 
     Returns:
-        end time in terms of HH:MM string
+        End time in terms of HH:MM string.
     """
     s_time = pd.Timestamp(start_time)
     e_time = s_time + np.sign(mins) * pd.Timedelta(f'00:{abs(mins)}:00')
@@ -73,56 +79,56 @@ def shift_time(start_time, mins) -> str:
 
 
 class Intervals:
+    """Resolver for session-based time intervals."""
 
     def __init__(self, ticker, **kwargs):
-        """
+        """Initialize interval resolver.
+
         Args:
-            ticker: ticker
+            ticker: Ticker symbol.
+            **kwargs: Passed to ``const.exch_info`` to resolve exchange data.
         """
         self.ticker = ticker
         self.exch = const.exch_info(ticker=ticker, **kwargs)
 
     def market_open(self, session, mins) -> Session:
-        """
-        Time intervals for market open
+        """Time intervals for market open.
 
         Args:
             session: [allday, day, am, pm, night]
-            mins: mintues after open
+            mins: minutes after open.
 
         Returns:
-            Session of start_time and end_time
+            Session of start_time and end_time.
         """
         if session not in self.exch: return SessNA
         start_time = self.exch[session][0]
         return Session(start_time, shift_time(start_time, int(mins)))
 
     def market_close(self, session, mins) -> Session:
-        """
-        Time intervals for market close
+        """Time intervals for market close.
 
         Args:
             session: [allday, day, am, pm, night]
-            mins: mintues before close
+            mins: minutes before close.
 
         Returns:
-            Session of start_time and end_time
+            Session of start_time and end_time.
         """
         if session not in self.exch: return SessNA
         end_time = self.exch[session][-1]
         return Session(shift_time(end_time, -int(mins) + 1), end_time)
 
     def market_normal(self, session, after_open, before_close) -> Session:
-        """
-        Time intervals between market
+        """Time intervals between market.
 
         Args:
             session: [allday, day, am, pm, night]
-            after_open: mins after open
-            before_close: mins before close
+            after_open: minutes after open.
+            before_close: minutes before close.
 
         Returns:
-            Session of start_time and end_time
+            Session of start_time and end_time.
         """
         logger = logs.get_logger(self.market_normal)
 
@@ -141,16 +147,15 @@ class Intervals:
         return Session(s_time, e_time)
 
     def market_exact(self, session, start_time: str, end_time: str) -> Session:
-        """
-        Explicitly specify start time and end time
+        """Explicitly specify start time and end time.
 
         Args:
             session: predefined session
-            start_time: start time in terms of HHMM string
-            end_time: end time in terms of HHMM string
+            start_time: start time in terms of HHMM string.
+            end_time: end time in terms of HHMM string.
 
         Returns:
-            Session of start_time and end_time
+            Session of start_time and end_time.
         """
         if session not in self.exch: return SessNA
         ss = self.exch[session]
@@ -167,5 +172,8 @@ class Intervals:
             e_time = param.to_hours(int(end_time))
             if same_day: e_time = min(e_time, ss[-1])
 
-        if same_day and (s_time > e_time): return SessNA
+        if same_day and (
+            pd.Timestamp(cast(str, s_time)) > pd.Timestamp(cast(str, e_time))
+        ):
+            return SessNA
         return Session(start_time=s_time, end_time=e_time)

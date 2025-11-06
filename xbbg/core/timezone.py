@@ -1,3 +1,9 @@
+"""Timezone utilities for converting and resolving exchange timezones.
+
+Provides helpers to map tickers/shorthands to tz names and convert
+datetime-like values between timezones.
+"""
+
 import time
 
 import pandas as pd
@@ -9,14 +15,13 @@ DEFAULT_TZ = pytz.FixedOffset(-time.timezone / 60)
 
 
 def get_tz(tz) -> str:
-    """
-    Convert tz from ticker / shorthands to timezone
+    """Convert tz from ticker/shorthands to a timezone string.
 
     Args:
         tz: ticker or timezone shorthands
 
     Returns:
-        str: Python timzone
+        str: Python timezone.
 
     Examples:
         >>> get_tz('NY')
@@ -43,8 +48,7 @@ def get_tz(tz) -> str:
 
 
 def tz_convert(dt, to_tz, from_tz=None) -> str:
-    """
-    Convert to tz
+    """Convert datetime-like value to a target timezone.
 
     Args:
         dt: date time
@@ -74,9 +78,7 @@ def tz_convert(dt, to_tz, from_tz=None) -> str:
 
 
 class TimeZone(dict):
-    """
-    Python timezones
-    """
+    """Python timezones."""
     __getattr__ = dict.__getitem__
 
     NY = 'America/New_York'

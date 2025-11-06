@@ -35,7 +35,7 @@ dependencies = [
 # Kept for compatibility if consumers expect extras, but dev/test tooling
 # is managed via uv dependency groups below.
 test = ["pytest", "pytest-cov", "coverage", "codecov"]
-dev = ["ruff", "ipykernel", "build", "twine"]
+dev = ["ruff", "ipykernel", "build", "twine", "pre-commit"]
 docs = ["sphinx>=5.3.0", "sphinx-rtd-theme>=2.0.0", "sphinx-llms-txt>=0.7.0"]
 
 [project.urls]
@@ -70,7 +70,10 @@ target-version = "py310"
 line-length = 120
 exclude = [
   "xbbg/feeds/*",
+  "feeds/**",
   "docs/_build",
+  "docs/conf.py",
+  "Examples.ipynb",
   "dist",
   "venv",
   ".venv",
@@ -82,6 +85,7 @@ select = [
   "W",   # pycodestyle warnings
   "F",   # pyflakes
   "I",   # isort
+  "D",   # pydocstyle
   "UP",  # pyupgrade
   "B",   # flake8-bugbear
   "C4",  # flake8-comprehensions
@@ -92,11 +96,14 @@ select = [
 ignore = [
   "E701", # multiple statements on one line (colon)
   "E501", # line too long
+  "D104", # Missing docstring in public package
+  "D107", # Missing docstring in __init__
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "xbbg/__init__.py" = ["F401"]
 "xbbg/**/__init__.py" = ["F401"]
+"xbbg/tests/**" = ["D"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]
@@ -105,6 +112,9 @@ force-sort-within-sections = true
 
 [tool.ruff.lint.mccabe]
 max-complexity = 12
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 
 

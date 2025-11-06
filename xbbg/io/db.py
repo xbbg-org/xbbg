@@ -1,3 +1,9 @@
+"""SQLite helpers for lightweight persistence and queries.
+
+Utilities include a keyed Singleton-enabled connection wrapper
+(``SQLite``), query string builders, and small convenience helpers.
+"""
+
 import json
 import sqlite3
 
@@ -8,10 +14,15 @@ ALL_TABLES = 'SELECT name FROM sqlite_master WHERE type="table"'
 
 
 class Singleton(type):
+    """Metaclass implementing a keyed singleton.
 
+    Instances are cached by the constructor keyword arguments so that
+    multiple calls with the same arguments return the same object.
+    """
     _instances_ = {}
 
     def __call__(cls, *args, **kwargs):
+        """Return a cached instance for the given constructor args."""
         # Default values for class init
         default_keys = ['db_file', 'keep_live']
         kw = {**dict(zip(default_keys, args, strict=False)), **kwargs}
@@ -25,51 +36,48 @@ class Singleton(type):
 
 
 class SQLite(metaclass=Singleton):
-    """
+    """Thin wrapper around ``sqlite3`` with convenience APIs.
+
     Examples:
-        >>> from xbbg.io import files
-        >>>
-        >>> db_file_ = f'{files.abspath(__file__, 1)}/tests/xone.db'
-        >>> with SQLite(db_file_) as con_:
-        ...     _ = con_.execute('DROP TABLE IF EXISTS xone')
-        ...     _ = con_.execute('CREATE TABLE xone (rowid int)')
-        >>> db_ = SQLite(db_file_)
-        >>> db_.tables()
-        ['xone']
-        >>> db_.replace_into(table='xone', rowid=1)
-        >>> db_.select(table='xone')
-           rowid
-        0      1
-        >>> db_.replace_into(
-        ...     table='xone',
-        ...     data=pd.DataFrame([{'rowid': 2}, {'rowid': 3}])
-        ... )
-        >>> db_.select(table='xone')
-           rowid
-        0      1
-        1      2
-        2      3
+    >>> from xbbg.io import files
+    >>>
+    >>> db_file_ = f'{files.abspath(__file__, 1)}/tests/xone.db'
+    >>> with SQLite(db_file_) as con_:
+    ...     _ = con_.execute('DROP TABLE IF EXISTS xone')
+    ...     _ = con_.execute('CREATE TABLE xone (rowid int)')
+    >>> db_ = SQLite(db_file_)
+    >>> db_.tables()
+    ['xone']
+    >>> db_.replace_into(table='xone', rowid=1)
+    >>> db_.select(table='xone')
+       rowid
+    0      1
+    >>> db_.replace_into(
+    ...     table='xone',
+    ...     data=pd.DataFrame([{'rowid': 2}, {'rowid': 3}])
+    ... )
+    >>> db_.select(table='xone')
+       rowid
+    0      1
+    1      2
+    2      3
     """
 
     def __init__(self, db_file, keep_live=False):
-
+        """Initialize the database wrapper."""
         self.db_file = db_file
         self.keep_live = keep_live
         self._con_ = None
 
     def tables(self) -> list:
-        """
-        All tables within database
-        """
+        """All tables within database."""
         keep_live = self.is_live
         res = self.con.execute(ALL_TABLES).fetchall()
         if not keep_live: self.close()
         return [r[0] for r in res]
 
     def select(self, table: str, cond='', **kwargs) -> pd.DataFrame:
-        """
-        SELECT query
-        """
+        """Run a SELECT query and return a DataFrame."""
         keep_live = self.is_live
         q_str = select(table=table, cond=cond, **kwargs)
         data = self.con.execute(q_str).fetchall()
@@ -84,8 +92,7 @@ class SQLite(metaclass=Singleton):
             cond='',
             **kwargs
     ) -> pd.DataFrame:
-        """
-        Select recent
+        """Select recent rows by a relative date period.
 
         Args:
             table: table name
@@ -95,7 +102,7 @@ class SQLite(metaclass=Singleton):
             **kwargs: other select criteria
 
         Returns:
-            pd.DataFrame
+            pd.DataFrame.
         """
         cols = self.columns(table=table)
         if date_col not in cols: return pd.DataFrame()
@@ -112,22 +119,19 @@ class SQLite(metaclass=Singleton):
         )
 
     def columns(self, table: str):
-        """
-        Table columns
-        """
+        """Table columns."""
         return [
             info[1] for info in (
                 self.con.execute(f'PRAGMA table_info (`{table}`)').fetchall()
             )
         ]
 
-    def replace_into(self, table: str, data: pd.DataFrame = None, **kwargs):
-        """
-        Replace records into table
+    def replace_into(self, table: str, data: pd.DataFrame | None = None, **kwargs):
+        """Replace records into table.
 
         Args:
             table: table name
-            data: DataFrame - if given, **kwargs will be ignored
+            data: DataFrame - if given, ``**kwargs`` will be ignored.
             **kwargs: record values
         """
         if isinstance(data, pd.DataFrame):
@@ -148,6 +152,7 @@ class SQLite(metaclass=Singleton):
 
     @property
     def is_live(self) -> bool:
+        """Whether the underlying connection is live."""
         if not isinstance(self._con_, sqlite3.Connection):
             return False
         try:
@@ -158,44 +163,50 @@ class SQLite(metaclass=Singleton):
 
     @property
     def con(self) -> sqlite3.Connection:
+        """Get or open a live connection."""
         if not self.is_live:
             self._con_ = sqlite3.connect(self.db_file)
             self._con_.execute(WAL_MODE)
         return self._con_
 
     def close(self, keep_live=False):
+        """Commit and optionally close the connection."""
         try:
-            self._con_.commit()
-            if not keep_live: self._con_.close()
+            if isinstance(self._con_, sqlite3.Connection):
+                self._con_.commit()
+                if not keep_live:
+                    self._con_.close()
         except sqlite3.ProgrammingError:
             pass
         except sqlite3.Error as e:
             print(e)
 
     def __enter__(self):
+        """Enter context manager and return a cursor."""
         return self.con.cursor()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager, closing per ``keep_live`` policy."""
         self.close(keep_live=self.keep_live)
 
 
 def db_value(val) -> str:
-    """
-    Database value as in query string
-    """
+    """Database value as in query string."""
     if isinstance(val, str):
         return json.dumps(val.replace('\"', '').strip())
     return json.dumps(val, default=str)
 
 
 def select(table: str, cond='', **kwargs) -> str:
-    """
-    Query string of SELECT statement
+    """Query string of SELECT statement.
 
     Args:
         table: table name
         cond: conditions
         **kwargs: data as kwargs
+
+    Returns:
+        str: Query string.
 
     Examples:
         >>> q1 = select('daily', ticker='ES1 Index', price=3000)
@@ -226,12 +237,14 @@ def select(table: str, cond='', **kwargs) -> str:
 
 
 def replace_into(table: str, **kwargs) -> str:
-    """
-    Query string of REPLACE INTO statement
+    """Query string of REPLACE INTO statement.
 
     Args:
         table: table name
         **kwargs: data as kwargs
+
+    Returns:
+        str: Query string.
 
     Examples:
         >>> query = replace_into('daily', ticker='ES1 Index', price=3000)

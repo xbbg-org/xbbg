@@ -1,3 +1,5 @@
+"""Logging helpers for consistent application loggers."""
+
 import logging
 
 from xbbg.core import utils
@@ -7,16 +9,19 @@ LOG_FMT = '%(asctime)s:%(name)s:%(levelname)s:%(message)s'
 
 
 def get_logger(name_or_func, level=LOG_LEVEL, types='stream', **kwargs):
-    """
-    Generate logger
+    """Generate a configured logger.
 
     Args:
-        name_or_func: logger name or current running function
-        level: level of logs - debug, info, error
-        types: file or stream, or both
+        name_or_func: Logger name or callable to derive a scoped name.
+        level: Log level (e.g., ``debug``, ``info``, ``error``).
+        types: Output types: ``file``, ``stream``, or ``file|stream``.
+        **kwargs: Additional options, e.g.,
+            - log: Overrides ``level`` (string or numeric).
+            - log_file: Path to log file (required if ``file`` in ``types``).
+            - fmt: Logging format string.
 
     Returns:
-        logger
+        logging.Logger
 
     Examples:
         >>> get_logger(name_or_func='download_data', level='debug', types='stream')

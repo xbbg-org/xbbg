@@ -1,3 +1,5 @@
+"""Constants, configuration mappings, and market utilities for xbbg."""
+
 from collections import namedtuple
 
 import pandas as pd
@@ -97,8 +99,7 @@ LIVE_RATIO = {
 
 
 def exch_info(ticker: str, **kwargs) -> pd.Series:
-    """
-    Exchange info for given ticker
+    """Exchange info for given ticker.
 
     Args:
         ticker: ticker or exchange
@@ -201,8 +202,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
 
 
 def market_info(ticker: str) -> pd.Series:
-    """
-    Get info for given ticker
+    """Get info for given ticker.
 
     Args:
         ticker: Bloomberg full ticker
@@ -265,8 +265,7 @@ def market_info(ticker: str) -> pd.Series:
 
 
 def take_first(data: pd.DataFrame, query: str) -> pd.Series:
-    """
-    Query and take the 1st row of result
+    """Query and take the 1st row of result.
 
     Args:
         data: pd.DataFrame
@@ -282,8 +281,7 @@ def take_first(data: pd.DataFrame, query: str) -> pd.Series:
 
 
 def asset_config(asset: str) -> pd.DataFrame:
-    """
-    Load info for given asset
+    """Load info for given asset.
 
     Args:
         asset: asset name
@@ -314,8 +312,7 @@ def asset_config(asset: str) -> pd.DataFrame:
 
 
 def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
-    """
-    Explode data by columns
+    """Explode data by columns.
 
     Args:
         data: pd.DataFrame
@@ -334,8 +331,7 @@ def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
 
 
 def ccy_pair(local, base='USD') -> CurrencyPair:
-    """
-    Currency pair info
+    """Currency pair info.
 
     Args:
         local: local currency
@@ -389,17 +385,17 @@ def ccy_pair(local, base='USD') -> CurrencyPair:
 
 
 def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
-    """
-    Market close time for ticker
+    """Market close time for ticker.
 
     Args:
         ticker: ticker name
         dt: date
         timing: [EOD (default), BOD]
         tz: conversion to timezone
+        **kwargs: Passed through to exchange lookup and timezone helpers.
 
     Returns:
-        str: date & time
+        str: date & time.
 
     Examples:
         >>> market_timing('7267 JT Equity', dt='2018-09-10')

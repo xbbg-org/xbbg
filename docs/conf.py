@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Configuration file for the Sphinx documentation builder.
 #
@@ -24,7 +23,7 @@ sys.path.append(ROOT_PATH)
 def parse_version(package):
 
     init_file = '%s/%s/__init__.py' % (ROOT_PATH, package)
-    with open(init_file, 'r', encoding='utf-8') as f:
+    with open(init_file, encoding='utf-8') as f:
         for line in f.readlines():
             if '__version__' in line:
                 return line.split('=')[1].strip()[1:-1]
@@ -53,12 +52,14 @@ release = parse_version(project)
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'sphinx.ext.napoleon',
     'sphinx_llms_txt',
     # 'IPython.sphinxext.ipython_console_highlighting',
     # 'IPython.sphinxext.ipython_directive',
@@ -192,3 +193,19 @@ epub_title = project
 epub_exclude_files = ['search.html']
 
 # -- Extension configuration -------------------------------------------------
+
+# Configure napoleon to parse Google-style docstrings
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_include_init_with_doc = False
+napoleon_preprocess_types = True
+
+# Autodoc / autosummary configuration
+autosummary_generate = True
+autodoc_typehints = 'description'
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': False,
+    'inherited-members': True,
+    'show-inheritance': True,
+}

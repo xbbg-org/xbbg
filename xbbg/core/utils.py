@@ -1,3 +1,8 @@
+"""Utility helpers for dates, formatting, dynamic import, and strings.
+
+Follows Google-style docstrings as per docs/docstring_style.rst.
+"""
+
 import datetime
 import inspect
 from pathlib import Path
@@ -11,8 +16,7 @@ DEFAULT_TZ = pytz.FixedOffset(-time.timezone / 60)
 
 
 def flatten(iterable, maps=None, unique=False) -> list:
-    """
-    Flatten any array of items to list
+    """Flatten any array of items to list.
 
     Args:
         iterable: any array or value
@@ -48,9 +52,7 @@ def flatten(iterable, maps=None, unique=False) -> list:
 
 
 def _to_gen_(iterable):
-    """
-    Recursively iterate lists and tuples
-    """
+    """Recursively iterate lists and tuples."""
     from collections.abc import Iterable
 
     for elm in iterable:
@@ -60,15 +62,14 @@ def _to_gen_(iterable):
 
 
 def fmt_dt(dt, fmt='%Y-%m-%d') -> str:
-    """
-    Format date string
+    """Format date string.
 
     Args:
         dt: any date format
         fmt: output date format
 
     Returns:
-        str: date format
+        str: Date in the requested format.
 
     Examples:
         >>> fmt_dt(dt='2018-12')
@@ -80,15 +81,14 @@ def fmt_dt(dt, fmt='%Y-%m-%d') -> str:
 
 
 def cur_time(typ='date', tz=DEFAULT_TZ) -> datetime.date | str:
-    """
-    Current time
+    """Current time.
 
     Args:
         typ: one of ['date', 'time', 'time_path', 'raw', '']
         tz: timezone
 
     Returns:
-        relevant current time or date
+        Relevant current time or date.
 
     Examples:
         >>> cur_dt = pd.Timestamp('now')
@@ -118,29 +118,35 @@ def cur_time(typ='date', tz=DEFAULT_TZ) -> datetime.date | str:
 
 
 class FString:
+    """Deferred f-string evaluation using caller context."""
 
     def __init__(self, str_fmt, **kwargs):
+        """Initialize with a format string and optional variables."""
         self.str_fmt = str_fmt
         self._kwargs = dict(kwargs) if kwargs else {}
 
     def __str__(self):
-        frame = inspect.currentframe().f_back
-        context = frame.f_globals.copy()
-        context.update(frame.f_locals)
+        """Render the f-string with the caller's locals/globals."""
+        frame = inspect.currentframe()
+        caller = frame.f_back if (frame is not None) else None
+        context = {}
+        if caller is not None:
+            # Safely build context from caller frame
+            context = caller.f_globals.copy()
+            context.update(getattr(caller, 'f_locals', {}))
         context.update(self._kwargs)
         return self.str_fmt.format(**context)
 
 
 def fstr(fmt, **kwargs) -> str:
-    """
-    Delayed evaluation of f-strings
+    """Delayed evaluation of f-strings.
 
     Args:
         fmt: f-string but in terms of normal string, i.e., '{path}/{file}.parq'
         **kwargs: variables for f-strings, i.e., path, file = '/data', 'daily'
 
     Returns:
-        FString object
+        str: Rendered string after late evaluation.
 
     References:
         https://stackoverflow.com/a/42497694/1332656
@@ -157,8 +163,7 @@ def fstr(fmt, **kwargs) -> str:
 def to_str(
         data: dict, fmt='{key}={value}', sep=', ', public_only=True
 ) -> str:
-    """
-    Convert dict to string
+    """Convert dict to string.
 
     Args:
         data: dict
@@ -167,7 +172,7 @@ def to_str(
         public_only: if display public members only
 
     Returns:
-        str: string representation of dict
+        str: String representation of dict.
 
     Examples:
         >>> test_dict = dict(b=1, a=0, c=2, _d=3)
@@ -187,14 +192,13 @@ def to_str(
 
 
 def func_scope(func) -> str:
-    """
-    Function scope name
+    """Function scope name.
 
     Args:
         func: python function
 
     Returns:
-        str: module_name.func_name
+        str: ``module_name.func_name``.
 
     Examples:
         >>> func_scope(flatten)
@@ -207,17 +211,19 @@ def func_scope(func) -> str:
 
 
 def load_module(full_path):
-    """
-    Load module from full path
+    """Load a Python module from a filesystem path.
+
     Args:
-        full_path: module full path name
+        full_path: Module full path name.
+
     Returns:
-        python module
+        ModuleType: The loaded Python module.
+
     References:
         https://stackoverflow.com/a/67692/1332656
+
     Examples:
         >>> from pathlib import Path
-        >>>
         >>> cur_path = Path(__file__).parent
         >>> load_module(cur_path / 'timezone.py').__name__
         'timezone'
@@ -232,8 +238,11 @@ def load_module(full_path):
         raise ImportError(f'not a python file: {file_name}')
     module_name = file_name[:-3]
 
-    spec = util.spec_from_file_location(name=module_name, location=full_path)
-    module = util.module_from_spec(spec=spec)
-    spec.loader.exec_module(module=module)
+    spec = util.spec_from_file_location(name=module_name, location=str(full_path))
+    if spec is None or spec.loader is None:
+        raise ImportError(f'cannot load module spec for: {file_name}')
+    module = util.module_from_spec(spec)
+    # Loader is guaranteed non-None by the guard above
+    spec.loader.exec_module(module)  # type: ignore[assignment]
 
     return module

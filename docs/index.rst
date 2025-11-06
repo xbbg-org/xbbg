@@ -55,17 +55,9 @@ Supported Python versions: 3.7 – 3.14 (universal wheel)
 What's New
 ==========
 
-*Unreleased*
-
 .. xbbg:changelog-start
 
 .. xbbg:changelog-end
-
-- Improve date parsing and stability in ``pipeline.format_raw`` (coerce datetime columns by name)
-- Normalize numeric types in ``const.ccy_pair`` to ensure stable representations
-- Fix ``core.utils.fstr``/``to_str`` formatting with explicit kwargs
-- Add docs build to CI and modernize CI matrix (Windows/Linux)
-- Switch to PyPI Trusted Publishing (OIDC)
 
 *0.7.7a2* - Custom `config` and etc. for reference exchange (author `hceh`)
 
@@ -88,6 +80,14 @@ in ``/xbbg/markets/exch.yml``). See example of ``bdib`` below for more details.
 *0.1.22* - Remove PyYAML dependency due to security vulnerability
 
 *0.1.17* - Add ``adjust`` argument in ``bdh`` for easier dividend / split adjustments
+
+Contents
+========
+
+.. toctree::
+   :maxdepth: 1
+
+   docstring_style
 
 Tutorial
 ========

@@ -1,3 +1,10 @@
+"""Helpers to track and persist retries (trials) for missing data.
+
+Utilities include reading existing logs, normalizing trial metadata,
+counting and updating attempt counters, and writing per-query log files.
+"""
+
+from collections.abc import Iterator
 import os
 
 from xbbg.core import utils
@@ -17,16 +24,12 @@ TRIALS_TABLE = """
 
 
 def root_path() -> str:
-    """
-    Root data path of Bloomberg
-    """
+    """Root data path of Bloomberg."""
     return os.environ.get(BBG_ROOT, '').replace('\\', '/')
 
 
 def convert_exisiting():
-    """
-    Update existing missing logs to database
-    """
+    """Update existing missing logs to database."""
     data_path = root_path()
     if not data_path: return
 
@@ -36,12 +39,11 @@ def convert_exisiting():
             con.execute(db.replace_into(table='trials', **item))
 
 
-def all_trials() -> dict:
-    """
-    All missing logs
+def all_trials() -> Iterator[dict]:
+    """Yield all missing logs.
 
     Yields:
-        dict
+        dict: Trial metadata records for backfilling the database.
     """
     data_path = root_path()
     if data_path:
@@ -60,11 +62,10 @@ def all_trials() -> dict:
 
 
 def trail_info(**kwargs) -> dict:
-    """
-    Convert info to proper format for databse
+    """Convert trial info to a normalized format for the database.
 
     Returns:
-        dict
+        dict: Normalized key/value pairs for storage.
     """
     kwargs['func'] = kwargs.pop('func', 'unknown')
     if 'ticker' in kwargs:
@@ -76,9 +77,7 @@ def trail_info(**kwargs) -> dict:
 
 
 def missing_info(**kwargs) -> str:
-    """
-    Full infomation for missing query
-    """
+    """Full information path fragment for a missing query."""
     func = kwargs.pop('func', 'unknown')
     if 'ticker' in kwargs: kwargs['ticker'] = kwargs['ticker'].replace('/', '_')
     for dt in ['dt', 'start_dt', 'end_dt', 'start_date', 'end_date']:
@@ -89,11 +88,10 @@ def missing_info(**kwargs) -> str:
 
 
 def num_trials(**kwargs) -> int:
-    """
-    Check number of trials for missing values
+    """Check number of trials for missing values.
 
     Returns:
-        int: number of trials already tried
+        int: Number of trials already tried.
     """
     data_path = root_path()
     if not data_path: return 0
@@ -111,9 +109,7 @@ def num_trials(**kwargs) -> int:
 
 
 def update_trials(**kwargs):
-    """
-    Update number of trials for missing values
-    """
+    """Update number of trials for missing values."""
     data_path = root_path()
     if not data_path: return
 
@@ -131,11 +127,10 @@ def update_trials(**kwargs):
 
 
 def current_missing(**kwargs) -> int:
-    """
-    Check number of trials for missing values
+    """Check number of trials for missing values.
 
     Returns:
-        int: number of trials already tried
+        int: Number of trials already tried.
     """
     data_path = root_path()
     if not data_path: return 0
@@ -143,9 +138,7 @@ def current_missing(**kwargs) -> int:
 
 
 def update_missing(**kwargs):
-    """
-    Update number of trials for missing values
-    """
+    """Update number of trials for missing values."""
     data_path = root_path()
     if not data_path: return
     if len(kwargs) == 0: return

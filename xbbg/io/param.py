@@ -1,3 +1,9 @@
+"""Parameter/config file helpers for xbbg.
+
+Utilities to locate config YAMLs, load them with caching, and convert
+numeric time formats into ``HH:MM`` strings.
+"""
+
 import os
 
 import pandas as pd
@@ -12,14 +18,13 @@ _yaml.allow_duplicate_keys = False
 
 
 def config_files(cat: str) -> list:
-    """
-    Category files
+    """Category files.
 
     Args:
         cat: category
 
     Returns:
-        list of files that exist
+        list: Files that exist for the given category.
     """
     return [
         f'{r}/markets/{cat}.yml'
@@ -32,14 +37,13 @@ def config_files(cat: str) -> list:
 
 
 def load_config(cat: str) -> pd.DataFrame:
-    """
-    Load market info that can apply pd.Series directly
+    """Load market info that can apply ``pd.Series`` directly.
 
     Args:
         cat: category name
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame: Concatenated configuration.
     """
     cfg_files = config_files(cat=cat)
     cache_cfg = f'{PKG_PATH}/markets/cached/{cat}_cfg.pkl'
@@ -59,14 +63,13 @@ def load_config(cat: str) -> pd.DataFrame:
 
 
 def load_yaml(yaml_file: str) -> pd.Series:
-    """
-    Load yaml from cache
+    """Load YAML from cache.
 
     Args:
         yaml_file: YAML file name
 
     Returns:
-        pd.Series
+        pd.Series: Parsed YAML content.
     """
     cache_file = (
         yaml_file
@@ -85,14 +88,13 @@ def load_yaml(yaml_file: str) -> pd.Series:
 
 
 def to_hours(num_ts: str | list | int | float) -> str | list:
-    """
-    Convert YAML input to hours
+    """Convert YAML input to hours.
 
     Args:
         num_ts: list of number in YMAL file, e.g., 900, 1700, etc.
 
     Returns:
-        str
+        str | list: Time formatted as ``HH:MM`` or list of times.
 
     Examples:
         >>> to_hours([900, 1700])
