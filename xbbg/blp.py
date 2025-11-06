@@ -744,7 +744,7 @@ def turnover(
 
 
 def bql(query: str, params: dict | None = None, **kwargs) -> pd.DataFrame:
-    """Execute a BQL (Bloomberg Query Language) request.
+    r"""Execute a BQL (Bloomberg Query Language) request.
 
     Args:
         query: BQL query string.
@@ -753,6 +753,14 @@ def bql(query: str, params: dict | None = None, **kwargs) -> pd.DataFrame:
 
     Returns:
         pd.DataFrame: Parsed tabular results when available; otherwise a flattened view.
+
+    Examples:
+        Basic usage (requires Bloomberg session; skipped in doctest):
+
+        >>> from xbbg import blp  # doctest: +SKIP
+        >>> df = blp.bql("get(px_last for('AAPL US Equity'))")  # doctest: +SKIP
+        >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
+        True
     """
     logger = logs.get_logger(bql, **kwargs)
 
