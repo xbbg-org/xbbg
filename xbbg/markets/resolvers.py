@@ -84,7 +84,10 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
     if not eff_freq:
         logger.error(f"Missing/invalid freq for '{gen_ticker}'. Please provide explicit 'freq' in assets.yml.")
         return ''
-    if eff_freq == 'Q':
+    # Normalize deprecated pandas offsets
+    if eff_freq == 'M':
+        eff_freq = 'ME'
+    elif eff_freq == 'Q':
         eff_freq = 'QE-DEC'
     months = pd.date_range(start=dt, periods=max(idx + month_ext, 3), freq=eff_freq)
     logger.debug(f'pulling expiry dates for months: {months}')
