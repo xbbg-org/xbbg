@@ -6,6 +6,7 @@ import pandas as pd
 
 from xbbg.core import timezone
 from xbbg.io import files, logs, param
+from xbbg.markets import calendars as pmc
 
 Futures = {
     'Jan': 'F', 'Feb': 'G', 'Mar': 'H', 'Apr': 'J', 'May': 'K', 'Jun': 'M',
@@ -389,7 +390,7 @@ def ccy_pair(local, base='USD') -> CurrencyPair:
     return CurrencyPair(**info)
 
 
-def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
+def market_timing(ticker, dt, timing='EOD', tz='local', use_pmc=False, **kwargs) -> str:
     """Market close time for ticker.
 
     Args:
@@ -397,6 +398,7 @@ def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
         dt: date
         timing: [EOD (default), BOD]
         tz: conversion to timezone
+        use_pmc: if True, derive open/close from pandas-market-calendars using BBG exch_code
         **kwargs: Passed through to exchange lookup and timezone helpers.
 
     Returns:
@@ -419,6 +421,26 @@ def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
         ''
     """
     logger = logs.get_logger(market_timing, level='debug')
+
+    cur_dt = pd.Timestamp(str(dt)).strftime('%Y-%m-%d')
+
+    if use_pmc:
+        # Try pandas-market-calendars first
+        exch_series = exch_info(ticker=ticker, **kwargs)
+        exch_name = (
+            str(exch_series.name)
+            if isinstance(exch_series, pd.Series) and (exch_series.name is not None)
+            else None
+        )
+        cal_key = pmc.resolve_calendar_key(ticker=ticker, exch_name=exch_name, **kwargs)
+        tz_name, open_time, close_time = pmc.get_schedule_for_date(cal_key, cur_dt)
+        if tz_name and open_time and close_time:
+            mkt_time = {'BOD': open_time, 'FINISHED': close_time}.get(timing, close_time)
+            if tz == 'local':
+                return f'{cur_dt} {mkt_time}'
+            return timezone.tz_convert(f'{cur_dt} {mkt_time}', to_tz=tz, from_tz=tz_name)
+        # Fallback to legacy if PMC fails
+
     exch = pd.Series(exch_info(ticker=ticker, **kwargs))
     if any(req not in exch.index for req in ['tz', 'allday', 'day']):
         logger.error(f'required exchange info cannot be found in {ticker} ...')
@@ -428,7 +450,6 @@ def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
         'BOD': exch.day[0], 'FINISHED': exch.allday[-1]
     }.get(timing, exch.day[-1])
 
-    cur_dt = pd.Timestamp(str(dt)).strftime('%Y-%m-%d')
     if tz == 'local': return f'{cur_dt} {mkt_time}'
 
     return timezone.tz_convert(f'{cur_dt} {mkt_time}', to_tz=tz, from_tz=exch.tz)
