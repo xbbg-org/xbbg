@@ -4,6 +4,11 @@ Includes helpers to create requests, initialize overrides, iterate
 Bloomberg event streams, and parse reference, historical, and intraday data.
 """
 
+from collections import OrderedDict
+from collections.abc import Iterator
+from itertools import starmap
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -13,14 +18,9 @@ except (ImportError, AttributeError):
     import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
-from collections import OrderedDict
-from collections.abc import Iterator
-from itertools import starmap
-
 from xbbg import const
 from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
-from typing import Any
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -343,7 +343,7 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
                 if row.hasElement(VALUES):
                     for v in row.getElement(VALUES).values():
                         values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
-                yield OrderedDict(zip(cols, values))
+                yield OrderedDict(zip(cols, values, strict=False))
         else:
             yield OrderedDict(_flatten_element(res))
 

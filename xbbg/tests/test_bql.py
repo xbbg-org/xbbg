@@ -2,12 +2,44 @@ import pandas as pd
 import pytest
 
 from xbbg import blp
-from xbbg.core import process, conn
+from xbbg.core import conn, process
 
 
 @pytest.fixture
 def fake_handle():
     return {"event_queue": object(), "correlation_id": object()}
+
+
+@pytest.fixture(autouse=True)
+def stub_bbg_service(monkeypatch):
+    class _FakeParamElem:
+        def appendElement(self):
+            return self
+
+        def setElement(self, *args, **kwargs):
+            return None
+
+    class _FakeRequest:
+        def __init__(self):
+            self._params = _FakeParamElem()
+
+        def set(self, *args, **kwargs):
+            return None
+
+        def append(self, *args, **kwargs):
+            return None
+
+        def getElement(self, *args, **kwargs):
+            return self._params
+
+        def __str__(self):
+            return "<FakeRequest>"
+
+    class _FakeService:
+        def createRequest(self, *args, **kwargs):
+            return _FakeRequest()
+
+    monkeypatch.setattr(conn, "bbg_service", lambda service, **kwargs: _FakeService())
 
 
 def test_bql_returns_dataframe_from_rows(monkeypatch, fake_handle):
