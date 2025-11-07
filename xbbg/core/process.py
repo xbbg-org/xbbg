@@ -21,6 +21,7 @@ except (ImportError, AttributeError):
 from xbbg import const
 from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
+from xbbg.io import logs
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -132,21 +133,72 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     Returns:
         intervals.Session.
     """
-    ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
-    ex_info = const.exch_info(ticker=ticker, **kwargs)
-    cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-    time_fmt = '%Y-%m-%dT%H:%M:%S'
-    time_idx = (
-        pd.DatetimeIndex([
-            f'{cur_dt} {ss.start_time}',
-            f'{cur_dt} {ss.end_time}'],
+    pmc_extended = bool(kwargs.pop('pmc_extended', False))
+
+    logger = logs.get_logger(time_range, level='debug')
+
+    # First try legacy exch.yml-based sessions
+    try:
+        ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
+        ex_info = const.exch_info(ticker=ticker, **kwargs)
+        has_session = (ss.start_time is not None) and (ss.end_time is not None)
+        has_tz = ('tz' in ex_info.index) if hasattr(ex_info, 'index') else False
+        if has_session and has_tz:
+            cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+            time_fmt = '%Y-%m-%dT%H:%M:%S'
+            # Normalize destination timezone aliases (e.g., 'NY' -> full tz)
+            try:
+                from xbbg.core import timezone as _tz
+                dest_tz = _tz.get_tz(tz)
+            except Exception:
+                dest_tz = tz
+            time_idx = (
+                pd.DatetimeIndex([
+                    f'{cur_dt} {ss.start_time}',
+                    f'{cur_dt} {ss.end_time}'],
+                )
+                .tz_localize(ex_info.tz)
+                .tz_convert(DEFAULT_TZ)
+                .tz_convert(dest_tz)
+            )
+            if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+            return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+    except Exception:
+        # fall through to PMC
+        pass
+
+    # Fallback: try pandas-market-calendars via exch_code mapping
+    try:
+        from xbbg.markets.pmc import pmc_session_for_date
+        pmc_ss = pmc_session_for_date(
+            ticker=ticker, dt=dt, session=session, include_extended=pmc_extended, **kwargs
         )
-        .tz_localize(ex_info.tz)
-        .tz_convert(DEFAULT_TZ)
-        .tz_convert(tz)
-    )
-    if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
-    return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+    except Exception:
+        pmc_ss = None
+    if pmc_ss is not None:
+        logger.warning(f'Falling back to pandas-market-calendars for {ticker} (session={session}).')
+        cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+        time_fmt = '%Y-%m-%dT%H:%M:%S'
+        try:
+            from xbbg.core import timezone as _tz
+            dest_tz = _tz.get_tz(tz)
+        except Exception:
+            dest_tz = tz
+        time_idx = (
+            pd.DatetimeIndex([
+                f'{cur_dt} {pmc_ss.start}',
+                f'{cur_dt} {pmc_ss.end}'],
+            )
+            .tz_localize(pmc_ss.tz)
+            .tz_convert(DEFAULT_TZ)
+            .tz_convert(dest_tz)
+        )
+        if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+        return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+
+    # If all fails, return an empty session in UTC day bounds (conservative)
+    logger.error(f'Unable to resolve trading session for {ticker} on {dt}.')
+    return intervals.SessNA
 
 
 def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
