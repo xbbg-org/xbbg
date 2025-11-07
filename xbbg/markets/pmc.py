@@ -16,14 +16,13 @@ User config locations (first existing wins):
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import os
-from dataclasses import dataclass
 
 import pandas as pd
 
 from xbbg.io import files, logs
-
 
 PKG_PATH = files.abspath(__file__, 1)
 _CACHE_FILE = f"{PKG_PATH}/markets/cached/pmc_cache.pkl"
