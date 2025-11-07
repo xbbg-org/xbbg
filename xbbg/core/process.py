@@ -21,6 +21,7 @@ except (ImportError, AttributeError):
 from xbbg import const
 from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
+from xbbg.markets import calendars
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -132,8 +133,24 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     Returns:
         intervals.Session.
     """
-    ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
-    ex_info = const.exch_info(ticker=ticker, **kwargs)
+    # Optional: use pandas_market_calendars for base sessions (allday/day/pre/post)
+    use_pmc = bool(kwargs.get('use_pmc') or (kwargs.get('calendar') == 'pmc'))
+    base_session = session.split('_')[0]
+
+    if use_pmc and base_session in {'allday', 'day', 'pre', 'post'}:
+        exch_name = const.market_info(ticker=ticker).get('exch', '')
+        pmc = calendars.session_times_from_pmc(exch_name=exch_name, dt=dt, session=base_session)
+        if pmc is not None:
+            tz_name, s_base, e_base = pmc
+            # Build a Session using the exact base window
+            ss = intervals.Session(s_base, e_base)
+            ex_tz = tz_name
+        else:
+            ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
+            ex_tz = const.exch_info(ticker=ticker, **kwargs).get('tz', DEFAULT_TZ)
+    else:
+        ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
+        ex_tz = const.exch_info(ticker=ticker, **kwargs).get('tz', DEFAULT_TZ)
     cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
     time_fmt = '%Y-%m-%dT%H:%M:%S'
     time_idx = (
@@ -141,7 +158,7 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
             f'{cur_dt} {ss.start_time}',
             f'{cur_dt} {ss.end_time}'],
         )
-        .tz_localize(ex_info.tz)
+        .tz_localize(ex_tz)
         .tz_convert(DEFAULT_TZ)
         .tz_convert(tz)
     )
