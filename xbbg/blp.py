@@ -743,12 +743,13 @@ def turnover(
     return pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
 
 
-def bql(query: str, params: dict | None = None, **kwargs) -> pd.DataFrame:
+def bql(query: str, params: dict | None = None, overrides: list[tuple[str, object]] | None = None, **kwargs) -> pd.DataFrame:
     r"""Execute a BQL (Bloomberg Query Language) request.
 
     Args:
         query: BQL query string.
-        params: Optional parameter mapping for the BQL request.
+        params: Optional request options for BQL (mapped directly to elements).
+        overrides: Optional list of (field, value) overrides for the BQL request.
         **kwargs: Session and logging options.
 
     Returns:
@@ -764,22 +765,18 @@ def bql(query: str, params: dict | None = None, **kwargs) -> pd.DataFrame:
     """
     logger = logs.get_logger(bql, **kwargs)
 
+    # Use BQL sendQuery with 'expression', mirroring common BQL request shape.
+    settings = [('expression', query)]
+    if params:
+        settings.extend([(str(k), v) for k, v in params.items()])
+
     request = process.create_request(
         service='//blp/bql',
-        request='QueryRequest',
-        settings=[('query', query)],
+        request='sendQuery',
+        settings=settings,
+        ovrds=overrides or [],
         **kwargs,
     )
-
-    if params:
-        try:
-            params_elem = request.getElement(conn.blpapi.Name('parameters'))
-            for name, value in params.items():
-                p = params_elem.appendElement()
-                p.setElement(conn.blpapi.Name('name'), str(name))
-                p.setElement(conn.blpapi.Name('value'), value)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug(f'Unable to set BQL parameters: {exc}')
 
     logger.debug(f'Sending BQL request ...\n{request}')
     handle = conn.send_request(request=request, **kwargs)
