@@ -1,0 +1,457 @@
+"""Optional exchange-time resolution via pandas-market-calendars.
+
+This module lets users infer exchange sessions from Bloomberg `exch_code`
+using a user-editable JSON mapping to pandas-market-calendars calendar ids.
+
+Design:
+- Only reads Bloomberg field 'exch_code'.
+- Looks up calendar id in a JSON map: { "EXCH_CODE": "PMC_CALENDAR" }.
+- Uses pandas_market_calendars to compute open/close for a given date.
+- Caches ticker->exch_code and exch_code->calendar name locally to reduce hits.
+
+User config locations (first existing wins):
+- ${BBG_ROOT}/markets/pmc_map.json
+- package fallback: xbbg/markets/pmc_map.json (optional)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import os
+
+import pandas as pd
+
+from xbbg.io import files, logs
+
+PKG_PATH = files.abspath(__file__, 1)
+_CACHE_FILE = f"{PKG_PATH}/markets/cached/pmc_cache.pkl"
+_MAP_PATHS = [
+    os.path.join(os.environ.get('BBG_ROOT', '').replace('\\', '/'), 'markets/pmc_map.json'),
+    f"{PKG_PATH}/markets/pmc_map.json",
+]
+
+
+@dataclass(frozen=True)
+class PmcSession:
+    """Represents a computed trading session window from PMC for a date."""
+    tz: str
+    start: str  # 'HH:MM'
+    end: str    # 'HH:MM'
+
+
+def _load_pmc_map(logger=None) -> dict:
+    """Load exch_code -> PMC calendar mapping from JSON.
+
+    Returns an empty dict if none is found.
+    """
+    logger = logger or logs.get_logger(_load_pmc_map)
+    for path in _MAP_PATHS:
+        if path and files.exists(path):
+            try:
+                with open(path, encoding='utf-8') as fp:
+                    data = json.load(fp)
+                if not isinstance(data, dict):
+                    logger.warning(f'pmc_map.json at {path} is not a JSON object, ignoring.')
+                    continue
+                return {str(k).upper(): str(v) for k, v in data.items()}
+            except Exception as e:
+                logger.error(f'failed reading pmc_map from {path}: {e}')
+    logger.warning('pmc_map.json not found; pandas-market-calendars lookup disabled.')
+    return {}
+
+
+def _save_cache(cache: dict):
+    files.create_folder(_CACHE_FILE, is_file=True)
+    pd.to_pickle(cache, _CACHE_FILE)
+
+
+def _load_cache() -> dict:
+    if files.exists(_CACHE_FILE):
+        try:
+            return pd.read_pickle(_CACHE_FILE) or {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _user_map_path() -> str:
+    root = os.environ.get('BBG_ROOT', '').replace('\\', '/')
+    return os.path.join(root, 'markets/pmc_map.json') if root else ''
+
+
+def _load_map_at(path: str) -> dict:
+    try:
+        if not path or not files.exists(path):
+            return {}
+        with open(path, encoding='utf-8') as fp:
+            data = json.load(fp)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_map_at(path: str, data: dict) -> None:
+    files.create_folder(path, is_file=True)
+    with open(path, 'w', encoding='utf-8') as fp:
+        json.dump(data, fp, indent=2, ensure_ascii=False)
+
+
+def _normalize_exch_code(exch_code: str) -> str:
+    code = (exch_code or '').upper().strip()
+    code = ' '.join(code.split())  # collapse whitespace
+    code = code.replace(' / ', '/').replace('  ', ' ')
+    if code in {'NASDAQ NGS', 'NGS NASDAQ'}:
+        code = 'NASDAQ/NGS'
+    return code
+
+
+def _validate_calendar_id(calendar: str) -> bool:
+    try:
+        import pandas_market_calendars as mcal  # type: ignore
+        _ = mcal.get_calendar(calendar)
+        return True
+    except Exception:
+        return False
+
+
+def pmc_list_mappings(scope: str = 'effective') -> dict:
+    """List mappings.
+
+    scope: 'effective' (merged view), 'user' (BBG_ROOT), or 'package' (fallback).
+    """
+    user_path = _user_map_path()
+    pkg_path = _MAP_PATHS[-1]
+    if scope == 'user':
+        return _load_map_at(user_path)
+    if scope == 'package':
+        return _load_map_at(pkg_path)
+    # effective: merge user over package
+    eff = _load_map_at(pkg_path)
+    eff.update({k.upper(): v for k, v in _load_map_at(user_path).items()})
+    return eff
+
+
+def pmc_add_mapping(exch_code: str, calendar: str, scope: str = 'user') -> None:
+    """Add or update a mapping (exch_code -> PMC calendar).
+
+    - scope: 'user' writes to %BBG_ROOT%/markets/pmc_map.json; 'package' writes to package fallback.
+    - Uppercases/normalizes exch_code key; preserves existing entries otherwise.
+    - Validates calendar id; refuses to save invalid ids.
+    - Clears local pmc cache so changes take effect immediately.
+    """
+    logger = logs.get_logger(pmc_add_mapping)
+    if not exch_code or not calendar:
+        logger.error('exch_code and calendar are required')
+        return
+    exch_code = _normalize_exch_code(exch_code)
+    if not _validate_calendar_id(calendar):
+        logger.error(f'Invalid PMC calendar id: {calendar}')
+        return
+    path = _user_map_path() if scope == 'user' else _MAP_PATHS[-1]
+    if not path:
+        logger.error('BBG_ROOT is not set; cannot write user mapping')
+        return
+    data = _load_map_at(path)
+    data[exch_code] = str(calendar)
+    _save_map_at(path, data)
+    # clear caches
+    _save_cache({})
+    logger.info(f'pmc mapping saved: {exch_code.upper()} -> {calendar} ({scope})')
+
+
+def pmc_remove_mapping(exch_code: str, scope: str = 'user') -> None:
+    """Remove a mapping by exch_code from selected scope."""
+    logger = logs.get_logger(pmc_remove_mapping)
+    path = _user_map_path() if scope == 'user' else _MAP_PATHS[-1]
+    data = _load_map_at(path)
+    key = _normalize_exch_code(exch_code)
+    if key in data:
+        data.pop(key)
+        _save_map_at(path, data)
+        _save_cache({})
+        logger.info(f'removed pmc mapping: {key} from {scope}')
+    else:
+        logger.warning(f'pmc mapping not found: {key} in {scope}')
+
+
+def _get_exch_code(ticker: str, **kwargs) -> str:
+    """Fetch Bloomberg exch_code for ticker (cached)."""
+    logger = logs.get_logger(_get_exch_code, **kwargs)
+    cache = _load_cache()
+    tkey = f"exch_code::{ticker}"
+    if tkey in cache:
+        return cache[tkey]
+
+    try:
+        from xbbg.blp import bdp  # lazy import
+        df = bdp(tickers=ticker, flds=['exch_code'], **kwargs)
+    except Exception as e:
+        logger.error(f'error fetching exch_code from Bloomberg for {ticker}: {e}')
+        return ''
+
+    code = ''
+    try:
+        val = df.iloc[0, 0] if not df.empty else ''
+        code = str(val).upper() if isinstance(val, str) or pd.notna(val) else ''
+    except Exception:
+        code = ''
+
+    if code:
+        cache[tkey] = code
+        _save_cache(cache)
+    return code
+
+
+def _get_calendar_name_from_exch_code(exch_code: str) -> str:
+    mapping = _load_pmc_map()
+    return mapping.get(exch_code.upper(), '') if exch_code else ''
+
+
+def resolve_calendar_name(ticker: str, **kwargs) -> str:
+    """Resolve pandas-market-calendars id for ticker via Bloomberg exch_code.
+
+    Looks up exch_code in user JSON mapping.
+    """
+    logger = logs.get_logger(resolve_calendar_name, **kwargs)
+    cache = _load_cache()
+    tkey = f"calendar::{ticker}"
+    if tkey in cache:
+        return cache[tkey]
+
+    exch_code = _get_exch_code(ticker, **kwargs)
+    cal = _get_calendar_name_from_exch_code(exch_code)
+    if not cal:
+        logger.warning(f'No PMC calendar mapping for exch_code={exch_code} (ticker={ticker}).')
+        return ''
+    cache[tkey] = cal
+    _save_cache(cache)
+    return cal
+
+
+def _to_hhmm(ts: pd.Timestamp) -> str:
+    return ts.strftime('%H:%M')
+
+
+def pmc_session_for_date(ticker: str, dt, session: str = 'day', include_extended: bool = False, **kwargs) -> PmcSession | None:
+    """Compute session open/close using pandas-market-calendars.
+
+    - session='day': market_open to market_close
+    - session='allday': pre to post if available, else falls back to market times
+    """
+    logger = logs.get_logger(pmc_session_for_date, **kwargs)
+
+    cal_name = resolve_calendar_name(ticker, **kwargs)
+    if not cal_name:
+        return None
+
+    try:
+        import pandas_market_calendars as mcal  # type: ignore
+    except Exception as e:
+        logger.error(f'pandas_market_calendars not available: {e}')
+        return None
+
+    cal = mcal.get_calendar(cal_name)
+    # Build schedule for the single date; include extended columns if requested
+    s_date = pd.Timestamp(dt).date()
+    if include_extended or session == 'allday':
+        sched = cal.schedule(start_date=s_date, end_date=s_date, start='pre', end='post')
+        # Extended columns may be absent for some calendars; handle gracefully
+        pre_col = 'pre' if 'pre' in sched.columns else 'market_open'
+        post_col = 'post' if 'post' in sched.columns else 'market_close'
+        tz_name = cal.tz.zone if hasattr(cal.tz, 'zone') else str(cal.tz)
+        if sched.empty:
+            return None
+        return PmcSession(
+            tz=tz_name,
+            start=_to_hhmm(sched.iloc[0][pre_col].tz_convert(tz_name)),
+            end=_to_hhmm(sched.iloc[0][post_col].tz_convert(tz_name)),
+        )
+
+    # Regular market times
+    sched = cal.schedule(start_date=s_date, end_date=s_date)
+    if sched.empty:
+        return None
+    tz_name = cal.tz.zone if hasattr(cal.tz, 'zone') else str(cal.tz)
+    return PmcSession(
+        tz=tz_name,
+        start=_to_hhmm(sched.iloc[0]['market_open'].tz_convert(tz_name)),
+        end=_to_hhmm(sched.iloc[0]['market_close'].tz_convert(tz_name)),
+    )
+
+
+
+def pmc_wizard(ticker: str, scope: str = 'user', **kwargs) -> None:
+    """Interactive wizard to add/update PMC mapping for a security's exch_code.
+
+    Steps:
+    1) Fetch Bloomberg exch_code for the given ticker.
+    2) Display current effective mapping (if any) and available PMC calendars.
+    3) Prompt for a calendar id and save to the chosen scope (default: user).
+    """
+    logger = logs.get_logger(pmc_wizard, **kwargs)
+
+    exch_code = _get_exch_code(ticker, **kwargs)
+    if not exch_code:
+        print(f"Could not resolve exch_code from Bloomberg for: {ticker}")
+        hint = ' (hint: TRACE for US credit/OTC)' if ticker.endswith(' Corp') else ''
+        typed = input(f"Enter exch_code manually{hint}: ").strip()
+        if not typed:
+            logger.error(f'No exch_code provided; aborting wizard for {ticker}.')
+            return
+        exch_code = _normalize_exch_code(typed)
+
+    current = pmc_list_mappings(scope='effective').get(exch_code.upper(), '')
+
+    try:
+        import pandas_market_calendars as mcal  # type: ignore
+        avail = sorted(set(getattr(mcal, 'get_calendar_names', lambda: [])()))
+    except Exception:
+        avail = []
+
+    print(f"Ticker: {ticker}")
+    print(f"Resolved exch_code: {exch_code}")
+    print(f"Current mapping (effective): {current or '<none>'}")
+    calendar = current
+    if avail:
+        suggestions = _suggest_calendars(exch_code, avail, current)
+        print(f"Select PMC calendar for exch_code={exch_code}")
+        for i, c in enumerate(suggestions, 1):
+            mark = "*" if current and c == current else ""
+            print(f"  [{i}] {c} {mark}")
+        print("  [0] Other (search)")
+        raw = input("Enter number (default 1): ").strip()
+        sel_idx = 1 if not raw else (int(raw) if raw.isdigit() else -1)
+        if sel_idx == 0:
+            # Simple search
+            key = input("Enter keyword to search calendars: ").strip().lower()
+            if key:
+                matches = [c for c in avail if key in c.lower()]
+                if not matches:
+                    print("No matches found.")
+                else:
+                    for j, m in enumerate(matches[:30], 1):
+                        print(f"  [{j}] {m}")
+                    pick = input("Enter number (or exact id): ").strip()
+                    if pick.isdigit():
+                        j = int(pick)
+                        if 1 <= j <= min(30, len(matches)):
+                            calendar = matches[j - 1]
+                    elif pick in avail:
+                        calendar = pick
+        elif 1 <= sel_idx <= len(suggestions):
+            calendar = suggestions[sel_idx - 1]
+        else:
+            # fallback to default suggestion
+            calendar = suggestions[0] if suggestions else current
+    else:
+        prompt = f"Enter PMC calendar id for exch_code={exch_code}"
+        if current:
+            prompt += f" [default: {current}]"
+        prompt += ": "
+        user_val = input(prompt).strip()
+        calendar = user_val or current
+    if not calendar:
+        logger.error('No calendar provided; aborting.')
+        return
+
+    # Strictly validate calendar id before saving
+    if not _validate_calendar_id(calendar):
+        logger.error(f'Invalid PMC calendar id: {calendar}. Aborting save.')
+        return
+
+    pmc_add_mapping(exch_code=exch_code, calendar=calendar, scope=scope)
+    print(f"Saved mapping: {exch_code.upper()} -> {calendar} ({scope}).")
+
+def _suggest_calendars(exch_code: str, avail: list[str], current: str | None) -> list[str]:
+    code = (exch_code or '').upper()
+    prefs: list[str] = []
+    def add(*cals: str):
+        for c in cals:
+            if c in avail and c not in prefs:
+                prefs.append(c)
+    if any(tok in code for tok in ['NASDAQ']):
+        add('NASDAQ')
+    if any(tok in code for tok in ['NEW YORK', 'NYSE', 'OTC US', 'US']):
+        add('NYSE')
+    if 'CME' in code:
+        add('CME_Equity', 'CME_Agriculture')
+    if 'CFE' in code:
+        add('CBOE_Futures')
+    if code in ['LN', 'LSE']:
+        add('LSE')
+    if code in ['HK', 'HKG', 'HKEX']:
+        add('HKEX')
+    if code in ['JT', 'JP', 'JPX']:
+        add('JPX_TSE')
+    if code in ['AU', 'ASX']:
+        add('ASX')
+    if 'TRACE' in code:
+        add('SIFMA_US')
+    # Ensure current first if present
+    if current and current in avail and current not in prefs:
+        prefs.insert(0, current)
+    # Backfill with popular calendars
+    popular = ['NYSE', 'NASDAQ', 'CME_Equity', 'CBOE_Futures', 'LSE', 'HKEX', 'JPX_TSE', 'ASX']
+    for c in popular:
+        add(c)
+    # Finally append first few others
+    for c in avail:
+        add(c)
+    return prefs[:10]
+
+
+def pmc_bulk_add(pairs: list[tuple[str, str]] | None = None, text: str | None = None, scope: str = 'user') -> dict:
+    """Bulk add exch_code->calendar mappings.
+
+    Provide either:
+      - pairs: list of (exch_code, calendar)
+      - text: newline-separated lines like "US NYSE" or "NASDAQ: NASDAQ"
+
+    Returns a summary dict with counts.
+    """
+    logger = logs.get_logger(pmc_bulk_add)
+    if (pairs is None) and (text is None):
+        return {'saved': 0, 'skipped': 0}
+    items: list[tuple[str, str]] = []
+    if text:
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            sep = ':' if ':' in line else None
+            parts = [p.strip() for p in (line.split(sep) if sep else line.split())]
+            if len(parts) >= 2:
+                items.append((parts[0], parts[1]))
+    if pairs:
+        items.extend(pairs)
+
+    saved = skipped = 0
+    for code, cal in items:
+        code_n = _normalize_exch_code(code)
+        if not _validate_calendar_id(cal):
+            logger.error(f'Skipping invalid calendar id: {cal} for exch_code={code_n}')
+            skipped += 1
+            continue
+        pmc_add_mapping(exch_code=code_n, calendar=cal, scope=scope)
+        saved += 1
+    return {'saved': saved, 'skipped': skipped}
+
+
+def pmc_bulk_from_tickers(tickers: list[str], scope: str = 'user', **kwargs) -> dict:
+    """Bulk wizard flow for a list of tickers; prompts per ticker.
+
+    For each ticker:
+      - resolve exch_code (or prompt)
+      - suggest calendars and validate selection
+      - save mapping
+    """
+    saved = skipped = 0
+    for t in tickers:
+        try:
+            pmc_wizard(t, scope=scope, **kwargs)
+            saved += 1
+        except Exception:
+            skipped += 1
+    return {'saved': saved, 'skipped': skipped}
+

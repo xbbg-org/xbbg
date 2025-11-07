@@ -230,7 +230,12 @@ def market_info(ticker: str) -> pd.Series:
     """
     t_info = ticker.split()
     exch_only = len(ticker) == 2
+    # Allow only supported asset types; special-case certain Corp tickers
     if (not exch_only) and (t_info[-1] not in ['Equity', 'Comdty', 'Curncy', 'Index']):
+        # Minimal default for CDX generic CDS tickers (Corp asset)
+        # Example: 'CDX IG CDSI GEN 5Y Corp' → use IndexUS session as default hours
+        if t_info[-1] == 'Corp' and len(t_info) >= 2 and t_info[0] == 'CDX':
+            return pd.Series({'exch': 'IndexUS'})
         return pd.Series(dtype=object)
 
     a_info = asset_config(asset='Equity' if exch_only else t_info[-1])
@@ -256,11 +261,11 @@ def market_info(ticker: str) -> pd.Series:
     elif t_info[0][-1].isdigit():
         end_idx = 2 if t_info[-2].isdigit() else 1
         symbol = t_info[0][:-end_idx].strip()
-        # Special contracts
-        if (symbol[:2] == 'UX') and (t_info[-1] == 'Index'):
-            symbol = 'UX'
     else:
         symbol = t_info[0].split('+')[0]
+    # Special contracts: map any UX* Index form (e.g., UXA, UX1, UXF1UXG1) to UX root
+    if (t_info[-1] == 'Index') and symbol.startswith('UX'):
+        symbol = 'UX'
     return take_first(data=a_info, query=f'tickers == "{symbol}"')
 
 

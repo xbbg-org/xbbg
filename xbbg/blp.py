@@ -27,6 +27,7 @@ __all__ = [
     'subscribe',
     'adjust_ccy',
     'turnover',
+    'bql',
     'active_futures',
     'fut_ticker',
     'cdx_ticker',
@@ -740,3 +741,45 @@ def turnover(
 
     if data.empty and use_volume.empty: return pd.DataFrame()
     return pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
+
+
+def bql(query: str, params: dict | None = None, overrides: list[tuple[str, object]] | None = None, **kwargs) -> pd.DataFrame:
+    r"""Execute a BQL (Bloomberg Query Language) request.
+
+    Args:
+        query: BQL query string.
+        params: Optional request options for BQL (mapped directly to elements).
+        overrides: Optional list of (field, value) overrides for the BQL request.
+        **kwargs: Session and logging options.
+
+    Returns:
+        pd.DataFrame: Parsed tabular results when available; otherwise a flattened view.
+
+    Examples:
+        Basic usage (requires Bloomberg session; skipped in doctest):
+
+        >>> from xbbg import blp  # doctest: +SKIP
+        >>> df = blp.bql("get(px_last for('AAPL US Equity'))")  # doctest: +SKIP
+        >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
+        True
+    """
+    logger = logs.get_logger(bql, **kwargs)
+
+    # Use BQL sendQuery with 'expression', mirroring common BQL request shape.
+    settings = [('expression', query)]
+    if params:
+        settings.extend([(str(k), v) for k, v in params.items()])
+
+    request = process.create_request(
+        service='//blp/bql',
+        request='sendQuery',
+        settings=settings,
+        ovrds=overrides or [],
+        **kwargs,
+    )
+
+    logger.debug(f'Sending BQL request ...\n{request}')
+    handle = conn.send_request(request=request, **kwargs)
+
+    rows = list(process.rec_events(func=process.process_bql, event_queue=handle["event_queue"], **kwargs))
+    return pd.DataFrame(rows) if rows else pd.DataFrame()

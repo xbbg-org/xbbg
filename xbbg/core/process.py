@@ -4,6 +4,11 @@ Includes helpers to create requests, initialize overrides, iterate
 Bloomberg event streams, and parse reference, historical, and intraday data.
 """
 
+from collections import OrderedDict
+from collections.abc import Iterator
+from itertools import starmap
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -13,13 +18,10 @@ except (ImportError, AttributeError):
     import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
-from collections import OrderedDict
-from collections.abc import Iterator
-from itertools import starmap
-
 from xbbg import const
 from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
+from xbbg.io import logs
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -28,6 +30,13 @@ MESSAGE = blpapi.Name("message")
 BAR_DATA = blpapi.Name('barData')
 BAR_TICK = blpapi.Name('barTickData')
 TICK_DATA = blpapi.Name('tickData')
+RESULTS = blpapi.Name('results')
+TABLE = blpapi.Name('table')
+COLUMNS = blpapi.Name('columns')
+ROWS = blpapi.Name('rows')
+VALUES = blpapi.Name('values')
+NAME = blpapi.Name('name')
+FIELD = blpapi.Name('field')
 
 
 def create_request(
@@ -124,21 +133,72 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     Returns:
         intervals.Session.
     """
-    ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
-    ex_info = const.exch_info(ticker=ticker, **kwargs)
-    cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-    time_fmt = '%Y-%m-%dT%H:%M:%S'
-    time_idx = (
-        pd.DatetimeIndex([
-            f'{cur_dt} {ss.start_time}',
-            f'{cur_dt} {ss.end_time}'],
+    pmc_extended = bool(kwargs.pop('pmc_extended', False))
+
+    logger = logs.get_logger(time_range, level='debug')
+
+    # First try legacy exch.yml-based sessions
+    try:
+        ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
+        ex_info = const.exch_info(ticker=ticker, **kwargs)
+        has_session = (ss.start_time is not None) and (ss.end_time is not None)
+        has_tz = ('tz' in ex_info.index) if hasattr(ex_info, 'index') else False
+        if has_session and has_tz:
+            cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+            time_fmt = '%Y-%m-%dT%H:%M:%S'
+            # Normalize destination timezone aliases (e.g., 'NY' -> full tz)
+            try:
+                from xbbg.core import timezone as _tz
+                dest_tz = _tz.get_tz(tz)
+            except Exception:
+                dest_tz = tz
+            time_idx = (
+                pd.DatetimeIndex([
+                    f'{cur_dt} {ss.start_time}',
+                    f'{cur_dt} {ss.end_time}'],
+                )
+                .tz_localize(ex_info.tz)
+                .tz_convert(DEFAULT_TZ)
+                .tz_convert(dest_tz)
+            )
+            if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+            return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+    except Exception:
+        # fall through to PMC
+        pass
+
+    # Fallback: try pandas-market-calendars via exch_code mapping
+    try:
+        from xbbg.markets.pmc import pmc_session_for_date
+        pmc_ss = pmc_session_for_date(
+            ticker=ticker, dt=dt, session=session, include_extended=pmc_extended, **kwargs
         )
-        .tz_localize(ex_info.tz)
-        .tz_convert(DEFAULT_TZ)
-        .tz_convert(tz)
-    )
-    if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
-    return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+    except Exception:
+        pmc_ss = None
+    if pmc_ss is not None:
+        logger.warning(f'Falling back to pandas-market-calendars for {ticker} (session={session}).')
+        cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+        time_fmt = '%Y-%m-%dT%H:%M:%S'
+        try:
+            from xbbg.core import timezone as _tz
+            dest_tz = _tz.get_tz(tz)
+        except Exception:
+            dest_tz = tz
+        time_idx = (
+            pd.DatetimeIndex([
+                f'{cur_dt} {pmc_ss.start}',
+                f'{cur_dt} {pmc_ss.end}'],
+            )
+            .tz_localize(pmc_ss.tz)
+            .tz_convert(DEFAULT_TZ)
+            .tz_convert(dest_tz)
+        )
+        if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+        return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+
+    # If all fails, return an empty session in UTC day bounds (conservative)
+    logger.error(f'Unable to resolve trading session for {ticker} on {dt}.')
+    return intervals.SessNA
 
 
 def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
@@ -282,6 +342,62 @@ def elem_value(element: blpapi.Element):
     if isinstance(value, np.bool_): return bool(value)
     if isinstance(value, blpapi.Name): return str(value)
     return value
+
+
+def _flatten_element(element: blpapi.Element) -> dict[str, Any]:
+    """Recursively flatten a generic Bloomberg element to a dict."""
+    out: dict[str, Any] = {}
+    for elem in element.elements():
+        key = str(elem.name())
+        if elem.isArray():
+            out[key] = [elem_value(v) if not v.isComplexType() else _flatten_element(v) for v in elem.values()]
+        elif elem.isComplexType():
+            out[key] = _flatten_element(elem)
+        else:
+            out[key] = elem_value(elem)
+    return out
+
+
+def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
+    """Process BQL response messages into row dictionaries.
+
+    Attempts to parse tabular BQL results; falls back to flattened dicts.
+
+    Args:
+        msg: Bloomberg BQL message.
+        **kwargs: Unused.
+
+    Yields:
+        OrderedDict: Row-like mappings parsed from BQL results.
+    """
+    kwargs.pop('(^_^)', None)
+    if not msg.hasElement(RESULTS):
+        return iter([])
+
+    for res in msg.getElement(RESULTS).values():
+        if res.hasElement(TABLE):
+            table = res.getElement(TABLE)
+            if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
+                yield OrderedDict(_flatten_element(res))
+                continue
+
+            cols: list[str] = []
+            for col in table.getElement(COLUMNS).values():
+                if col.hasElement(NAME):
+                    cols.append(col.getElement(NAME).getValue())
+                elif col.hasElement(FIELD):
+                    cols.append(str(col.getElement(FIELD).getValue()))
+                else:
+                    cols.append(str(col.name()))
+
+            for row in table.getElement(ROWS).values():
+                values: list[Any] = []
+                if row.hasElement(VALUES):
+                    for v in row.getElement(VALUES).values():
+                        values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
+                yield OrderedDict(zip(cols, values, strict=False))
+        else:
+            yield OrderedDict(_flatten_element(res))
 
 
 def earning_pct(data: pd.DataFrame, yr):
