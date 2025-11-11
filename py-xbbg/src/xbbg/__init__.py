@@ -5,6 +5,5 @@ def __getattr__(name: str):
         return mod
     raise AttributeError(name)
 
+
 __all__ = ["_core"]
-
-

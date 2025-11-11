@@ -35,7 +35,7 @@ repos:
         entry: cargo fmt --all -- --check
         language: system
         types_or: [rust]
-        files: ^(src|tests|benches|examples)/
+        files: ^(crates/|src|tests|benches|examples)/
         pass_filenames: false
 
       - id: cargo-clippy
@@ -43,7 +43,7 @@ repos:
         entry: cargo clippy -- -D warnings
         language: system
         types_or: [rust]
-        files: ^(src|tests|benches|examples)/
+        files: ^(crates/|src|tests|benches|examples)/
         pass_filenames: false
 
 

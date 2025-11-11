@@ -8,9 +8,7 @@ repository = "https://github.com/alpha-xone/xbbg"
 
 [lib]
 name = "xbbg_core"
-crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 
 

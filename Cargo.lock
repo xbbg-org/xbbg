@@ -129,6 +129,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyo3-xbbg"
+version = "0.0.0"
+dependencies = [
+ "pyo3",
+ "xbbg_core",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -175,6 +183,3 @@ checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
 [[package]]
 name = "xbbg_core"
 version = "0.0.0"
-dependencies = [
- "pyo3",
-]

@@ -63,7 +63,7 @@ xbbg = ["markets/*.yml"]
 bindings = "pyo3"
 python-source = "py-xbbg/src"
 module-name = "xbbg._core"
-manifest-path = "crates/xbbg-core/Cargo.toml"
+manifest-path = "crates/pyo3-xbbg/Cargo.toml"
 
 [[tool.uv.index]]
 name = "bloomberg"
