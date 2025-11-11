@@ -1,0 +1,17 @@
+{
+  "US": "NYSE",
+  "LN": "LSE",
+  "CME": "CME_Equity",
+  "CFE": "CBOE_Futures",
+  "JT": "JPX_TSE",
+  "HK": "HKEX",
+  "AU": "ASX",
+  "TRACE": "SIFMA_US",
+  "NASDAQ/NGS": "NASDAQ",
+  "NASDAQ": "NASDAQ",
+  "NGS": "NASDAQ",
+  "NEW YORK": "NYSE",
+  "OTC US": "NYSE"
+}
+
+

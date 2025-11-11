@@ -1,0 +1,391 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>xbbg &mdash; xbbg ersion(&#34;xbbg&#34; documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=0eb32740"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Docstring Standardization" href="docstring_style.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            xbbg
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="docstring_style.html">Docstring Standardization</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">xbbg</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">xbbg</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <p><img alt="xbbg" src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png" /></p>
+<section id="xbbg">
+<h1>xbbg<a class="headerlink" href="#xbbg" title="Link to this heading"></a></h1>
+<p>An intuitive Bloomberg API</p>
+<p><a class="reference external" href="https://pypi.org/project/xbbg/"><img alt="pypi" src="https://img.shields.io/pypi/v/xbbg.svg" /></a> <a class="reference external" href="https://pypi.org/project/xbbg/"><img alt="version" src="https://img.shields.io/pypi/pyversions/xbbg.svg" /></a> <a class="reference external" href="https://pypistats.org/packages/xbbg"><img alt="download" src="https://img.shields.io/pypi/dm/xbbg" /></a> <a class="reference external" href="https://gitter.im/xbbg/community"><img alt="chat" src="https://badges.gitter.im/xbbg/community.svg" /></a></p>
+<p><a class="reference external" href="https://www.buymeacoffee.com/Lntx29Oof"><img alt="coffee" src="https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png" /></a></p>
+<p>Latest release: xbbg==0.0.0 (release: <a class="reference external" href="https://example.com">notes</a>)
+.. xbbg:latest-release-end</p>
+</section>
+<section id="features">
+<h1>Features<a class="headerlink" href="#features" title="Link to this heading"></a></h1>
+<p>Below are main features. Jupyter notebook examples can be found <a class="reference external" href="https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR">here</a>.</p>
+<ul class="simple">
+<li><p>Excel compatible inputs</p></li>
+<li><p>Straightforward intraday bar requests</p></li>
+<li><p>Subscriptions</p></li>
+</ul>
+</section>
+<section id="requirements">
+<h1>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h1>
+<ul>
+<li><p>Bloomberg C++ SDK version 3.12.1 or higher</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Visit <a class="reference external" href="https://www.bloomberg.com/professional/support/api-library/">Bloomberg API Library</a> and download C++ Supported Release</p></li>
+<li><p>In the <code class="docutils literal notranslate"><span class="pre">bin</span></code> folder of downloaded zip file, copy <code class="docutils literal notranslate"><span class="pre">blpapi3_32.dll</span></code> and <code class="docutils literal notranslate"><span class="pre">blpapi3_64.dll</span></code> to Bloomberg <code class="docutils literal notranslate"><span class="pre">BLPAPI_ROOT</span></code> folder (usually <code class="docutils literal notranslate"><span class="pre">blp/DAPI</span></code>)</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>Bloomberg offical Python API:</p></li>
+</ul>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p>numpy, pandas, ruamel.yaml and pyarrow</p></li>
+</ul>
+</section>
+<section id="installation">
+<h1>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h1>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">pip install xbbg</span>
+</pre></div>
+</div>
+<p>Supported Python versions: 3.7 – 3.14 (universal wheel)</p>
+</section>
+<section id="what-s-new">
+<h1>What’s New<a class="headerlink" href="#what-s-new" title="Link to this heading"></a></h1>
+<p><em>0.7.7a2</em> - Custom <cite>config</cite> and etc. for reference exchange (author <cite>hceh</cite>)</p>
+<p><em>0.7.6a2</em> - Use <cite>blp.connect</cite> for alternative Bloomberg connection (author <cite>anxl2008</cite>)</p>
+<p><em>0.7.2</em> - Use <cite>async</cite> for live data feeds</p>
+<p><em>0.7.0</em> - <code class="docutils literal notranslate"><span class="pre">bdh</span></code> preserves columns orders (both tickers and flds).
+<code class="docutils literal notranslate"><span class="pre">timeout</span></code> argument is available for all queries - <code class="docutils literal notranslate"><span class="pre">bdtick</span></code> usually takes longer to respond -
+can use <code class="docutils literal notranslate"><span class="pre">timeout=1000</span></code> for example if keep getting empty DataFrame.</p>
+<p><em>0.6.6</em> - Add flexibility to use reference exchange as market hour definition
+(so that it’s not necessary to add <code class="docutils literal notranslate"><span class="pre">.yml</span></code> for new tickers, provided that the exchange was defined
+in <code class="docutils literal notranslate"><span class="pre">/xbbg/markets/exch.yml</span></code>). See example of <code class="docutils literal notranslate"><span class="pre">bdib</span></code> below for more details.</p>
+<p><em>0.6.0</em> - Speed improvements and tick data availablity</p>
+<p><em>0.5.0</em> - Rewritten library to add subscription, BEQS, simplify interface and remove dependency of <cite>pdblp</cite></p>
+<p><em>0.1.22</em> - Remove PyYAML dependency due to security vulnerability</p>
+<p><em>0.1.17</em> - Add <code class="docutils literal notranslate"><span class="pre">adjust</span></code> argument in <code class="docutils literal notranslate"><span class="pre">bdh</span></code> for easier dividend / split adjustments</p>
+</section>
+<section id="contents">
+<h1>Contents<a class="headerlink" href="#contents" title="Link to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="docstring_style.html">Docstring Standardization</a></li>
+</ul>
+</div>
+</section>
+<section id="tutorial">
+<h1>Tutorial<a class="headerlink" href="#tutorial" title="Link to this heading"></a></h1>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">1</span><span class="p">]:</span> <span class="kn">from</span><span class="w"> </span><span class="nn">xbbg</span><span class="w"> </span><span class="kn">import</span> <span class="n">blp</span>
+</pre></div>
+</div>
+<section id="basics">
+<h2>Basics<a class="headerlink" href="#basics" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">BDP</span></code> example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">2</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdp</span><span class="p">(</span><span class="n">tickers</span><span class="o">=</span><span class="s1">&#39;NVDA US Equity&#39;</span><span class="p">,</span> <span class="n">flds</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;Security_Name&#39;</span><span class="p">,</span> <span class="s1">&#39;GICS_Sector_Name&#39;</span><span class="p">])</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">2</span><span class="p">]:</span>
+               <span class="n">security_name</span>        <span class="n">gics_sector_name</span>
+<span class="n">NVDA</span> <span class="n">US</span> <span class="n">Equity</span>   <span class="n">NVIDIA</span> <span class="n">Corp</span>  <span class="n">Information</span> <span class="n">Technology</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BDP</span></code> with overrides:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">3</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdp</span><span class="p">(</span><span class="s1">&#39;AAPL US Equity&#39;</span><span class="p">,</span> <span class="s1">&#39;Eqy_Weighted_Avg_Px&#39;</span><span class="p">,</span> <span class="n">VWAP_Dt</span><span class="o">=</span><span class="s1">&#39;20181224&#39;</span><span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">3</span><span class="p">]:</span>
+                <span class="n">eqy_weighted_avg_px</span>
+<span class="n">AAPL</span> <span class="n">US</span> <span class="n">Equity</span>               <span class="mf">148.75</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BDH</span></code> example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">4</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdh</span><span class="p">(</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="n">tickers</span><span class="o">=</span><span class="s1">&#39;SPX Index&#39;</span><span class="p">,</span> <span class="n">flds</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;High&#39;</span><span class="p">,</span> <span class="s1">&#39;Low&#39;</span><span class="p">,</span> <span class="s1">&#39;Last_Price&#39;</span><span class="p">],</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="n">start_date</span><span class="o">=</span><span class="s1">&#39;2018-10-10&#39;</span><span class="p">,</span> <span class="n">end_date</span><span class="o">=</span><span class="s1">&#39;2018-10-20&#39;</span><span class="p">,</span>
+   <span class="o">...</span><span class="p">:</span> <span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">4</span><span class="p">]:</span>
+           <span class="n">SPX</span> <span class="n">Index</span>
+                <span class="n">High</span>      <span class="n">Low</span> <span class="n">Last_Price</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">10</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">874.02</span> <span class="mi">2</span><span class="p">,</span><span class="mf">784.86</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">785.68</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">11</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">795.14</span> <span class="mi">2</span><span class="p">,</span><span class="mf">710.51</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">728.37</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">12</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">775.77</span> <span class="mi">2</span><span class="p">,</span><span class="mf">729.44</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">767.13</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">15</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">775.99</span> <span class="mi">2</span><span class="p">,</span><span class="mf">749.03</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">750.79</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">16</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">813.46</span> <span class="mi">2</span><span class="p">,</span><span class="mf">766.91</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">809.92</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">816.94</span> <span class="mi">2</span><span class="p">,</span><span class="mf">781.81</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">809.21</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">18</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">806.04</span> <span class="mi">2</span><span class="p">,</span><span class="mf">755.18</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">768.78</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">19</span>  <span class="mi">2</span><span class="p">,</span><span class="mf">797.77</span> <span class="mi">2</span><span class="p">,</span><span class="mf">760.27</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">767.78</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BDH</span></code> example with Excel compatible inputs:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">5</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdh</span><span class="p">(</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="n">tickers</span><span class="o">=</span><span class="s1">&#39;SHCOMP Index&#39;</span><span class="p">,</span> <span class="n">flds</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;High&#39;</span><span class="p">,</span> <span class="s1">&#39;Low&#39;</span><span class="p">,</span> <span class="s1">&#39;Last_Price&#39;</span><span class="p">],</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="n">start_date</span><span class="o">=</span><span class="s1">&#39;2018-09-26&#39;</span><span class="p">,</span> <span class="n">end_date</span><span class="o">=</span><span class="s1">&#39;2018-10-20&#39;</span><span class="p">,</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="n">Per</span><span class="o">=</span><span class="s1">&#39;W&#39;</span><span class="p">,</span> <span class="n">Fill</span><span class="o">=</span><span class="s1">&#39;P&#39;</span><span class="p">,</span> <span class="n">Days</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">,</span>
+   <span class="o">...</span><span class="p">:</span> <span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">5</span><span class="p">]:</span>
+           <span class="n">SHCOMP</span> <span class="n">Index</span>
+                   <span class="n">High</span>      <span class="n">Low</span> <span class="n">Last_Price</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">09</span><span class="o">-</span><span class="mi">28</span>     <span class="mi">2</span><span class="p">,</span><span class="mf">827.34</span> <span class="mi">2</span><span class="p">,</span><span class="mf">771.16</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">821.35</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">05</span>     <span class="mi">2</span><span class="p">,</span><span class="mf">827.34</span> <span class="mi">2</span><span class="p">,</span><span class="mf">771.16</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">821.35</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">12</span>     <span class="mi">2</span><span class="p">,</span><span class="mf">771.94</span> <span class="mi">2</span><span class="p">,</span><span class="mf">536.66</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">606.91</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">19</span>     <span class="mi">2</span><span class="p">,</span><span class="mf">611.97</span> <span class="mi">2</span><span class="p">,</span><span class="mf">449.20</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">550.47</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BDH</span></code> without adjustment for dividends and splits:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">6</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdh</span><span class="p">(</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="s1">&#39;AAPL US Equity&#39;</span><span class="p">,</span> <span class="s1">&#39;Px_Last&#39;</span><span class="p">,</span> <span class="s1">&#39;20140605&#39;</span><span class="p">,</span> <span class="s1">&#39;20140610&#39;</span><span class="p">,</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="n">CshAdjNormal</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">CshAdjAbnormal</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">CapChg</span><span class="o">=</span><span class="kc">False</span>
+   <span class="o">...</span><span class="p">:</span> <span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">6</span><span class="p">]:</span>
+           <span class="n">AAPL</span> <span class="n">US</span> <span class="n">Equity</span>
+                  <span class="n">Px_Last</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">05</span>         <span class="mf">647.35</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">06</span>         <span class="mf">645.57</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">09</span>          <span class="mf">93.70</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">10</span>          <span class="mf">94.25</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BDH</span></code> adjusted for dividends and splits:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">7</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdh</span><span class="p">(</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="s1">&#39;AAPL US Equity&#39;</span><span class="p">,</span> <span class="s1">&#39;Px_Last&#39;</span><span class="p">,</span> <span class="s1">&#39;20140605&#39;</span><span class="p">,</span> <span class="s1">&#39;20140610&#39;</span><span class="p">,</span>
+   <span class="o">...</span><span class="p">:</span>     <span class="n">CshAdjNormal</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">CshAdjAbnormal</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">CapChg</span><span class="o">=</span><span class="kc">True</span>
+   <span class="o">...</span><span class="p">:</span> <span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">7</span><span class="p">]:</span>
+           <span class="n">AAPL</span> <span class="n">US</span> <span class="n">Equity</span>
+                  <span class="n">Px_Last</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">05</span>          <span class="mf">85.45</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">06</span>          <span class="mf">85.22</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">09</span>          <span class="mf">86.58</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">10</span>          <span class="mf">87.09</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BDS</span></code> example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">8</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bds</span><span class="p">(</span><span class="s1">&#39;AAPL US Equity&#39;</span><span class="p">,</span> <span class="s1">&#39;DVD_Hist_All&#39;</span><span class="p">,</span> <span class="n">DVD_Start_Dt</span><span class="o">=</span><span class="s1">&#39;20180101&#39;</span><span class="p">,</span> <span class="n">DVD_End_Dt</span><span class="o">=</span><span class="s1">&#39;20180531&#39;</span><span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">8</span><span class="p">]:</span>
+               <span class="n">declared_date</span>     <span class="n">ex_date</span> <span class="n">record_date</span> <span class="n">payable_date</span>  <span class="n">dividend_amount</span> <span class="n">dividend_frequency</span> <span class="n">dividend_type</span>
+<span class="n">AAPL</span> <span class="n">US</span> <span class="n">Equity</span>    <span class="mi">2018</span><span class="o">-</span><span class="mi">05</span><span class="o">-</span><span class="mi">01</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">05</span><span class="o">-</span><span class="mi">11</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">05</span><span class="o">-</span><span class="mi">14</span>   <span class="mi">2018</span><span class="o">-</span><span class="mi">05</span><span class="o">-</span><span class="mi">17</span>             <span class="mf">0.73</span>            <span class="n">Quarter</span>  <span class="n">Regular</span> <span class="n">Cash</span>
+<span class="n">AAPL</span> <span class="n">US</span> <span class="n">Equity</span>    <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">01</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">09</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">12</span>   <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">15</span>             <span class="mf">0.63</span>            <span class="n">Quarter</span>  <span class="n">Regular</span> <span class="n">Cash</span>
+</pre></div>
+</div>
+<p>Intraday bars <code class="docutils literal notranslate"><span class="pre">BDIB</span></code> example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">9</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdib</span><span class="p">(</span><span class="n">ticker</span><span class="o">=</span><span class="s1">&#39;BHP AU Equity&#39;</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="s1">&#39;2018-10-17&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">tail</span><span class="p">()</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">9</span><span class="p">]:</span>
+                          <span class="n">BHP</span> <span class="n">AU</span> <span class="n">Equity</span>
+                                   <span class="nb">open</span>  <span class="n">high</span>   <span class="n">low</span> <span class="n">close</span>   <span class="n">volume</span> <span class="n">num_trds</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">15</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">11</span><span class="p">:</span><span class="mi">00</span>         <span class="mf">33.62</span> <span class="mf">33.65</span> <span class="mf">33.62</span> <span class="mf">33.64</span>    <span class="mi">16660</span>      <span class="mi">126</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">15</span><span class="p">:</span><span class="mi">57</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">11</span><span class="p">:</span><span class="mi">00</span>         <span class="mf">33.65</span> <span class="mf">33.65</span> <span class="mf">33.63</span> <span class="mf">33.64</span>    <span class="mi">13875</span>      <span class="mi">156</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">15</span><span class="p">:</span><span class="mi">58</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">11</span><span class="p">:</span><span class="mi">00</span>         <span class="mf">33.64</span> <span class="mf">33.65</span> <span class="mf">33.62</span> <span class="mf">33.63</span>    <span class="mi">16244</span>      <span class="mi">159</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">15</span><span class="p">:</span><span class="mi">59</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">11</span><span class="p">:</span><span class="mi">00</span>         <span class="mf">33.63</span> <span class="mf">33.63</span> <span class="mf">33.61</span> <span class="mf">33.62</span>    <span class="mi">16507</span>      <span class="mi">167</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">16</span><span class="p">:</span><span class="mi">10</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">11</span><span class="p">:</span><span class="mi">00</span>         <span class="mf">33.66</span> <span class="mf">33.66</span> <span class="mf">33.66</span> <span class="mf">33.66</span>  <span class="mi">1115523</span>      <span class="mi">216</span>
+</pre></div>
+</div>
+<p>Above example works because 1) <code class="docutils literal notranslate"><span class="pre">AU</span></code> in equity ticker is mapped to <code class="docutils literal notranslate"><span class="pre">EquityAustralia</span></code> in
+<code class="docutils literal notranslate"><span class="pre">markets/assets.yml</span></code>, and 2) <code class="docutils literal notranslate"><span class="pre">EquityAustralia</span></code> is defined in <code class="docutils literal notranslate"><span class="pre">markets/exch.yml</span></code>.
+To add new mappings, define <code class="docutils literal notranslate"><span class="pre">BBG_ROOT</span></code> in sys path and add <code class="docutils literal notranslate"><span class="pre">assets.yml</span></code> and
+<code class="docutils literal notranslate"><span class="pre">exch.yml</span></code> under <code class="docutils literal notranslate"><span class="pre">BBG_ROOT/markets</span></code>.</p>
+<p><em>New in 0.6.6</em> - if exchange is defined in <code class="docutils literal notranslate"><span class="pre">/xbbg/markets/exch.yml</span></code>, can use <code class="docutils literal notranslate"><span class="pre">ref</span></code> to look for
+relevant exchange market hours. Both <code class="docutils literal notranslate"><span class="pre">ref='ES1</span> <span class="pre">Index'</span></code> and <code class="docutils literal notranslate"><span class="pre">ref='CME'</span></code> work for this example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">10</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdib</span><span class="p">(</span><span class="n">ticker</span><span class="o">=</span><span class="s1">&#39;ESM0 Index&#39;</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="s1">&#39;2020-03-20&#39;</span><span class="p">,</span> <span class="n">ref</span><span class="o">=</span><span class="s1">&#39;ES1 Index&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">tail</span><span class="p">()</span>
+<span class="n">out</span><span class="p">[</span><span class="mi">10</span><span class="p">]:</span>
+                          <span class="n">ESM0</span> <span class="n">Index</span>
+                                <span class="nb">open</span>     <span class="n">high</span>      <span class="n">low</span>    <span class="n">close</span> <span class="n">volume</span> <span class="n">num_trds</span>        <span class="n">value</span>
+<span class="mi">2020</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">20</span> <span class="mi">16</span><span class="p">:</span><span class="mi">55</span><span class="p">:</span><span class="mi">00</span><span class="o">-</span><span class="mi">04</span><span class="p">:</span><span class="mi">00</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">260.75</span> <span class="mi">2</span><span class="p">,</span><span class="mf">262.25</span> <span class="mi">2</span><span class="p">,</span><span class="mf">260.50</span> <span class="mi">2</span><span class="p">,</span><span class="mf">262.00</span>    <span class="mi">412</span>      <span class="mi">157</span>   <span class="mi">931</span><span class="p">,</span><span class="mf">767.00</span>
+<span class="mi">2020</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">20</span> <span class="mi">16</span><span class="p">:</span><span class="mi">56</span><span class="p">:</span><span class="mi">00</span><span class="o">-</span><span class="mi">04</span><span class="p">:</span><span class="mi">00</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">262.25</span> <span class="mi">2</span><span class="p">,</span><span class="mf">267.00</span> <span class="mi">2</span><span class="p">,</span><span class="mf">261.50</span> <span class="mi">2</span><span class="p">,</span><span class="mf">266.75</span>    <span class="mi">812</span>      <span class="mi">209</span> <span class="mi">1</span><span class="p">,</span><span class="mi">838</span><span class="p">,</span><span class="mf">823.50</span>
+<span class="mi">2020</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">20</span> <span class="mi">16</span><span class="p">:</span><span class="mi">57</span><span class="p">:</span><span class="mi">00</span><span class="o">-</span><span class="mi">04</span><span class="p">:</span><span class="mi">00</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">266.75</span> <span class="mi">2</span><span class="p">,</span><span class="mf">270.00</span> <span class="mi">2</span><span class="p">,</span><span class="mf">264.50</span> <span class="mi">2</span><span class="p">,</span><span class="mf">269.00</span>   <span class="mi">1136</span>      <span class="mi">340</span> <span class="mi">2</span><span class="p">,</span><span class="mi">576</span><span class="p">,</span><span class="mf">590.25</span>
+<span class="mi">2020</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">20</span> <span class="mi">16</span><span class="p">:</span><span class="mi">58</span><span class="p">:</span><span class="mi">00</span><span class="o">-</span><span class="mi">04</span><span class="p">:</span><span class="mi">00</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">269.25</span> <span class="mi">2</span><span class="p">,</span><span class="mf">269.50</span> <span class="mi">2</span><span class="p">,</span><span class="mf">261.25</span> <span class="mi">2</span><span class="p">,</span><span class="mf">265.75</span>   <span class="mi">1077</span>      <span class="mi">408</span> <span class="mi">2</span><span class="p">,</span><span class="mi">439</span><span class="p">,</span><span class="mf">276.00</span>
+<span class="mi">2020</span><span class="o">-</span><span class="mi">03</span><span class="o">-</span><span class="mi">20</span> <span class="mi">16</span><span class="p">:</span><span class="mi">59</span><span class="p">:</span><span class="mi">00</span><span class="o">-</span><span class="mi">04</span><span class="p">:</span><span class="mi">00</span>   <span class="mi">2</span><span class="p">,</span><span class="mf">265.25</span> <span class="mi">2</span><span class="p">,</span><span class="mf">272.00</span> <span class="mi">2</span><span class="p">,</span><span class="mf">265.00</span> <span class="mi">2</span><span class="p">,</span><span class="mf">266.50</span>   <span class="mi">1271</span>      <span class="mi">378</span> <span class="mi">2</span><span class="p">,</span><span class="mi">882</span><span class="p">,</span><span class="mf">978.25</span>
+</pre></div>
+</div>
+<p>Intraday bars within market session:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">11</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdib</span><span class="p">(</span><span class="n">ticker</span><span class="o">=</span><span class="s1">&#39;7974 JT Equity&#39;</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="s1">&#39;2018-10-17&#39;</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="s1">&#39;am_open_30&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">tail</span><span class="p">()</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">11</span><span class="p">]:</span>
+                          <span class="mi">7974</span> <span class="n">JT</span> <span class="n">Equity</span>
+                                    <span class="nb">open</span>      <span class="n">high</span>       <span class="n">low</span>     <span class="n">close</span> <span class="n">volume</span> <span class="n">num_trds</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">09</span><span class="p">:</span><span class="mi">27</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">09</span><span class="p">:</span><span class="mi">00</span>      <span class="mi">39</span><span class="p">,</span><span class="mf">970.00</span> <span class="mi">40</span><span class="p">,</span><span class="mf">020.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">970.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">990.00</span>  <span class="mi">10800</span>       <span class="mi">44</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">09</span><span class="p">:</span><span class="mi">28</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">09</span><span class="p">:</span><span class="mi">00</span>      <span class="mi">39</span><span class="p">,</span><span class="mf">990.00</span> <span class="mi">40</span><span class="p">,</span><span class="mf">020.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">980.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">980.00</span>   <span class="mi">6300</span>       <span class="mi">33</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">09</span><span class="p">:</span><span class="mi">29</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">09</span><span class="p">:</span><span class="mi">00</span>      <span class="mi">39</span><span class="p">,</span><span class="mf">970.00</span> <span class="mi">40</span><span class="p">,</span><span class="mf">000.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">960.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">970.00</span>   <span class="mi">3300</span>       <span class="mi">21</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">09</span><span class="p">:</span><span class="mi">30</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">09</span><span class="p">:</span><span class="mi">00</span>      <span class="mi">39</span><span class="p">,</span><span class="mf">960.00</span> <span class="mi">40</span><span class="p">,</span><span class="mf">010.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">950.00</span> <span class="mi">40</span><span class="p">,</span><span class="mf">000.00</span>   <span class="mi">3100</span>       <span class="mi">19</span>
+<span class="mi">2018</span><span class="o">-</span><span class="mi">10</span><span class="o">-</span><span class="mi">17</span> <span class="mi">09</span><span class="p">:</span><span class="mi">31</span><span class="p">:</span><span class="mi">00</span><span class="o">+</span><span class="mi">09</span><span class="p">:</span><span class="mi">00</span>      <span class="mi">39</span><span class="p">,</span><span class="mf">990.00</span> <span class="mi">40</span><span class="p">,</span><span class="mf">000.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">980.00</span> <span class="mi">39</span><span class="p">,</span><span class="mf">990.00</span>   <span class="mi">2000</span>       <span class="mi">15</span>
+</pre></div>
+</div>
+<p>Corporate earnings:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">12</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">earning</span><span class="p">(</span><span class="s1">&#39;AMD US Equity&#39;</span><span class="p">,</span> <span class="n">by</span><span class="o">=</span><span class="s1">&#39;Geo&#39;</span><span class="p">,</span> <span class="n">Eqy_Fund_Year</span><span class="o">=</span><span class="mi">2017</span><span class="p">,</span> <span class="n">Number_Of_Periods</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">12</span><span class="p">]:</span>
+                 <span class="n">level</span>    <span class="n">fy2017</span>  <span class="n">fy2017_pct</span>
+<span class="n">Asia</span><span class="o">-</span><span class="n">Pacific</span>      <span class="mf">1.00</span>  <span class="mi">3</span><span class="p">,</span><span class="mf">540.00</span>       <span class="mf">66.43</span>
+    <span class="n">China</span>         <span class="mf">2.00</span>  <span class="mi">1</span><span class="p">,</span><span class="mf">747.00</span>       <span class="mf">49.35</span>
+    <span class="n">Japan</span>         <span class="mf">2.00</span>  <span class="mi">1</span><span class="p">,</span><span class="mf">242.00</span>       <span class="mf">35.08</span>
+    <span class="n">Singapore</span>     <span class="mf">2.00</span>    <span class="mf">551.00</span>       <span class="mf">15.56</span>
+<span class="n">United</span> <span class="n">States</span>     <span class="mf">1.00</span>  <span class="mi">1</span><span class="p">,</span><span class="mf">364.00</span>       <span class="mf">25.60</span>
+<span class="n">Europe</span>            <span class="mf">1.00</span>    <span class="mf">263.00</span>        <span class="mf">4.94</span>
+<span class="n">Other</span> <span class="n">Countries</span>   <span class="mf">1.00</span>    <span class="mf">162.00</span>        <span class="mf">3.04</span>
+</pre></div>
+</div>
+<p>Dividends:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">13</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">dividend</span><span class="p">([</span><span class="s1">&#39;C US Equity&#39;</span><span class="p">,</span> <span class="s1">&#39;MS US Equity&#39;</span><span class="p">],</span> <span class="n">start_date</span><span class="o">=</span><span class="s1">&#39;2018-01-01&#39;</span><span class="p">,</span> <span class="n">end_date</span><span class="o">=</span><span class="s1">&#39;2018-05-01&#39;</span><span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">13</span><span class="p">]:</span>
+                <span class="n">dec_date</span>     <span class="n">ex_date</span>    <span class="n">rec_date</span>    <span class="n">pay_date</span>  <span class="n">dvd_amt</span> <span class="n">dvd_freq</span>      <span class="n">dvd_type</span>
+<span class="n">C</span> <span class="n">US</span> <span class="n">Equity</span>   <span class="mi">2018</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">18</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">02</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">05</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">23</span>     <span class="mf">0.32</span>  <span class="n">Quarter</span>  <span class="n">Regular</span> <span class="n">Cash</span>
+<span class="n">MS</span> <span class="n">US</span> <span class="n">Equity</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">18</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">27</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">04</span><span class="o">-</span><span class="mi">30</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">05</span><span class="o">-</span><span class="mi">15</span>     <span class="mf">0.25</span>  <span class="n">Quarter</span>  <span class="n">Regular</span> <span class="n">Cash</span>
+<span class="n">MS</span> <span class="n">US</span> <span class="n">Equity</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">18</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">30</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">31</span>  <span class="mi">2018</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">15</span>     <span class="mf">0.25</span>  <span class="n">Quarter</span>  <span class="n">Regular</span> <span class="n">Cash</span>
+</pre></div>
+</div>
+<hr class="docutils" />
+<p><em>New in 0.1.17</em> - Dividend adjustment can be simplified to one parameter <code class="docutils literal notranslate"><span class="pre">adjust</span></code>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">BDH</span></code> without adjustment for dividends and splits:</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">14</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdh</span><span class="p">(</span><span class="s1">&#39;AAPL US Equity&#39;</span><span class="p">,</span> <span class="s1">&#39;Px_Last&#39;</span><span class="p">,</span> <span class="s1">&#39;20140606&#39;</span><span class="p">,</span> <span class="s1">&#39;20140609&#39;</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="s1">&#39;-&#39;</span><span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">14</span><span class="p">]:</span>
+           <span class="n">AAPL</span> <span class="n">US</span> <span class="n">Equity</span>
+                  <span class="n">Px_Last</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">06</span>         <span class="mf">645.57</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">09</span>          <span class="mf">93.70</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">BDH</span></code> adjusted for dividends and splits:</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">In</span> <span class="p">[</span><span class="mi">15</span><span class="p">]:</span> <span class="n">blp</span><span class="o">.</span><span class="n">bdh</span><span class="p">(</span><span class="s1">&#39;AAPL US Equity&#39;</span><span class="p">,</span> <span class="s1">&#39;Px_Last&#39;</span><span class="p">,</span> <span class="s1">&#39;20140606&#39;</span><span class="p">,</span> <span class="s1">&#39;20140609&#39;</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="s1">&#39;all&#39;</span><span class="p">)</span>
+<span class="n">Out</span><span class="p">[</span><span class="mi">15</span><span class="p">]:</span>
+           <span class="n">AAPL</span> <span class="n">US</span> <span class="n">Equity</span>
+                  <span class="n">Px_Last</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">06</span>          <span class="mf">85.22</span>
+<span class="mi">2014</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">09</span>          <span class="mf">86.58</span>
+</pre></div>
+</div>
+</section>
+<section id="data-storage">
+<h2>Data Storage<a class="headerlink" href="#data-storage" title="Link to this heading"></a></h2>
+<p>If <code class="docutils literal notranslate"><span class="pre">BBG_ROOT</span></code> is provided in <code class="docutils literal notranslate"><span class="pre">os.environ</span></code>, data can be saved locally.
+By default, local storage is preferred than Bloomberg for all queries.</p>
+<p>Noted that local data usage must be compliant with Bloomberg Datafeed Addendum
+(full description in <code class="docutils literal notranslate"><span class="pre">DAPI&lt;GO&gt;</span></code>):</p>
+<blockquote>
+<div><p>To access Bloomberg data via the API (and use that data in Microsoft Excel),
+your company must sign the ‘Datafeed Addendum’ to the Bloomberg Agreement.
+This legally binding contract describes the terms and conditions of your use
+of the data and information available via the API (the “Data”).
+The most fundamental requirement regarding your use of Data is that it cannot
+leave the local PC you use to access the BLOOMBERG PROFESSIONAL service.</p>
+</div></blockquote>
+<table class="docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p>Docs</p></td>
+<td><p><a class="reference external" href="https://xbbg.readthedocs.io/"><img alt="docs" src="https://readthedocs.org/projects/xbbg/badge/?version=latest" /></a></p></td>
+</tr>
+<tr class="row-even"><td><p>Build</p></td>
+<td><p><a class="reference external" href="https://github.com/alpha-xone/xbbg/actions"><img alt="Travis CI" src="https://github.com/alpha-xone/xbbg/workflows/Auto%20CI/badge.svg" /></a></p></td>
+</tr>
+<tr class="row-odd"><td><p>Coverage</p></td>
+<td><p><a class="reference external" href="https://codecov.io/gh/alpha-xone/xbbg"><img alt="Codecov" src="https://codecov.io/gh/alpha-xone/xbbg/branch/main/graph/badge.svg" /></a></p></td>
+</tr>
+<tr class="row-even"><td><p>Quality</p></td>
+<td><p><a class="reference external" href="https://www.codacy.com/gh/alpha-xone/xbbg"><img alt="codacy" src="https://app.codacy.com/project/badge/Grade/daec9f52ba344e3ea116c15f1fc6d541" /></a></p></td>
+</tr>
+<tr class="row-odd"><td><p></p></td>
+<td><p><a class="reference external" href="https://www.codefactor.io/repository/github/alpha-xone/xbbg"><img alt="CodeFactor" src="https://www.codefactor.io/repository/github/alpha-xone/xbbg/badge" /></a></p></td>
+</tr>
+<tr class="row-even"><td><p></p></td>
+<td><p><a class="reference external" href="https://codebeat.co/projects/github-com-alpha-xone-xbbg-main"><img alt="codebeat" src="https://codebeat.co/badges/eef1f14d-72eb-445a-af53-12d3565385ec" /></a></p></td>
+</tr>
+<tr class="row-odd"><td><p>License</p></td>
+<td><p><a class="reference external" href="https://github.com/alpha-xone/xbbg/blob/main/LICENSE"><img alt="GitHub license" src="https://img.shields.io/github/license/alpha-xone/xbbg.svg" /></a></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="docstring_style.html" class="btn btn-neutral float-right" title="Docstring Standardization" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018, Alpha x1.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

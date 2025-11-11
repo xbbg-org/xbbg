@@ -1,0 +1,8 @@
+# xbbg
+
+> xbbg
+
+## Docs
+
+- [xbbg](/_sources/index.rst.txt)
+- [Docstring Standardization](/_sources/docstring_style.rst.txt)
