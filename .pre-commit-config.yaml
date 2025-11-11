@@ -4,30 +4,30 @@ repos:
     rev: v4.6.0
     hooks:
       - id: end-of-file-fixer
-        files: ^(python/|tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
+        files: ^(py-xbbg/src/|py-xbbg/tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
       - id: trailing-whitespace
-        files: ^(python/|tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
+        files: ^(py-xbbg/src/|py-xbbg/tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
       - id: mixed-line-ending
         args: [--fix=lf]
-        files: ^(python/|tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
+        files: ^(py-xbbg/src/|py-xbbg/tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
 
   # Use local hooks to run tools via uv/cargo from the project env
   - repo: local
     hooks:
       - id: ruff
         name: ruff
-        entry: uv run ruff check python tests
+        entry: uv run ruff check py-xbbg/src py-xbbg/tests
         language: system
         types_or: [python]
-        files: ^(python/|tests/)
+        files: ^(py-xbbg/src/|py-xbbg/tests/)
         pass_filenames: false
 
       - id: ruff-format
         name: ruff-format
-        entry: uv run ruff format python tests
+        entry: uv run ruff format py-xbbg/src py-xbbg/tests
         language: system
         types_or: [python]
-        files: ^(python/|tests/)
+        files: ^(py-xbbg/src/|py-xbbg/tests/)
         pass_filenames: false
 
       - id: cargo-fmt
