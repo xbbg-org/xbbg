@@ -1,0 +1,9 @@
+[target.'cfg(windows)'.env]
+# Point PyO3 to the project-local Python used by uv on Windows
+PYO3_PYTHON = { value = ".venv/Scripts/python.exe", relative = true }
+
+[target.'cfg(unix)'.env]
+# Point PyO3 to the project-local Python used by uv on Unix/macOS
+PYO3_PYTHON = { value = ".venv/bin/python", relative = true }
+
+
