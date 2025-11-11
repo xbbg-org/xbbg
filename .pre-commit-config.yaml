@@ -1,0 +1,49 @@
+repos:
+  # Basic hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+        files: ^(python/|tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
+      - id: trailing-whitespace
+        files: ^(python/|tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        files: ^(python/|tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
+
+  # Use local hooks to run tools via uv/cargo from the project env
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: uv run ruff check python tests
+        language: system
+        types_or: [python]
+        files: ^(python/|tests/)
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run ruff format python tests
+        language: system
+        types_or: [python]
+        files: ^(python/|tests/)
+        pass_filenames: false
+
+      - id: cargo-fmt
+        name: cargo-fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        types_or: [rust]
+        files: ^(src|tests|benches|examples)/
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo-clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        types_or: [rust]
+        files: ^(src|tests|benches|examples)/
+        pass_filenames: false
+
+

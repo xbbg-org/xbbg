@@ -111,6 +111,7 @@ ignore = [
 "xbbg/__init__.py" = ["F401"]
 "xbbg/**/__init__.py" = ["F401"]
 "xbbg/tests/**" = ["D"]
+"tests/**" = ["D"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]
