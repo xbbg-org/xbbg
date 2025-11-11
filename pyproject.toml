@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=77", "wheel", "setuptools_scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.7"]
+build-backend = "maturin"
 
 [project]
 name = "xbbg"
@@ -58,6 +58,11 @@ exclude = ["xbbg.tests*"]
 [tool.setuptools.package-data]
 xbbg = ["markets/*.yml"]
 
+
+[tool.maturin]
+bindings = "pyo3"
+python-source = "python"
+module-name = "xbbg._core"
 
 [[tool.uv.index]]
 name = "bloomberg"
@@ -129,4 +134,11 @@ filterwarnings = [
   "error::DeprecationWarning",
   "error::PendingDeprecationWarning",
   "error::FutureWarning",
+]
+
+[dependency-groups]
+dev = [
+    "maturin>=1.10.0",
+    "pytest>=8.4.2",
+    "ruff>=0.14.3",
 ]
