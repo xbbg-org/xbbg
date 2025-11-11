@@ -119,3 +119,8 @@ xbbg/tests/data/**/TRADE/*.parq
 
 #Ruff
 .ruff_cache/
+
+# Bloomberg BLPAPI SDK (local development only; do not commit)
+# Keep a tracked README for instructions, ignore all other contents.
+vendor/blpapi/**
+!vendor/blpapi/README.md
