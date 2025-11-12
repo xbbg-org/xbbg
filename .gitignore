@@ -1,3 +1,9 @@
+# Local environment files
+.env
+.env.local
+env.local
+.cargo/config.toml
+
 # Ignore local PMC mapping and cache files
 xbbg/markets/pmc_map.json
 xbbg/markets/cached/pmc_cache.pkl
