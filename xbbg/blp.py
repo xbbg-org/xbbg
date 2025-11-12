@@ -151,8 +151,9 @@ def bdh(
     Args:
         tickers: ticker(s)
         flds: field(s)
-        start_date: start date
-        end_date: end date - default today
+        start_date: start date. If a datetime string (e.g., 'YYYY-MM-DD HH:MM:SS'),
+            intraday ranges are enabled when paired with Bloomberg overrides.
+        end_date: end date - default today. Accepts date or datetime string.
         adjust: `all`, `dvd`, `normal`, `abn` (=abnormal), `split`, `-` or None
                 exact match of above words will adjust for corresponding events
                 Case 0: `-` no adjustment for dividend or split
@@ -160,17 +161,73 @@ def bdh(
                 Case 2: `adjust` will adjust for splits and ignore all dividends
                 Case 3: `all` == `dvd|split` == adjust for all
                 Case 4: None == Bloomberg default OR use kwargs
-        **kwargs: overrides
+        **kwargs: overrides (forwarded unchanged). Common intraday overrides:
+            BarType=True, BarSize=10, RecurDaily=False.
 
     Returns:
         pd.DataFrame
+
+    Notes:
+        - Date-only inputs imply daily mode and are formatted as ``YYYYMMDD``.
+        - Datetime inputs (either ``start_date`` or ``end_date`` contains time) are
+          passed as ``YYYY-MM-DD HH:MM:SS`` to enable intraday ranges. If only one
+          side contains a time, the other is expanded to a day boundary
+          (start: 00:00:00; end: 23:59:59).
+
+    Examples:
+        Intraday historical using datetime range and overrides (requires Bloomberg):
+
+        >>> # from xbbg import blp  # doctest: +SKIP
+        >>> # blp.bdh(                 # doctest: +SKIP
+        ... #     tickers='ES1 Index',
+        ... #     flds='PX_LAST',
+        ... #     start_date='2020-03-20 09:30:00',
+        ... #     end_date='2020-03-20 16:00:00',
+        ... #     BarType=True, BarSize=5, RecurDaily=False,
+        ... # )                         # doctest: +SKIP
     """
     logger = logs.get_logger(bdh, **kwargs)
 
     if flds is None: flds = ['Last_Price']
-    e_dt = utils.fmt_dt(end_date, fmt='%Y%m%d')
-    if start_date is None: start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
-    s_dt = utils.fmt_dt(start_date, fmt='%Y%m%d')
+
+    def has_time_component(val) -> bool:
+        if val is None:
+            return False
+        # Strings with a time component (e.g., contains ':' or 'T')
+        if isinstance(val, str):
+            return (':' in val) or ('T' in val and val.count('-') == 2)
+        # Timestamps that are not normalized to midnight
+        try:
+            ts = pd.Timestamp(val)
+            return ts != ts.normalize()
+        except Exception:
+            return False
+
+    # Determine whether to treat inputs as datetime (intraday-capable)
+    is_dt_range = has_time_component(start_date) or has_time_component(end_date)
+
+    if is_dt_range:
+        # Format both as full datetime strings; expand date-only counterpart to boundary
+        end_ts = pd.Timestamp(end_date)
+        end_has_time = has_time_component(end_date)
+        if not end_has_time:
+            end_ts = pd.Timestamp(utils.fmt_dt(end_date, fmt='%Y-%m-%d') + ' 23:59:59')
+        e_dt = end_ts.strftime('%Y-%m-%d %H:%M:%S')
+
+        if start_date is None:
+            # Default: 8 weeks prior, preserve time-of-day
+            s_ts = end_ts - pd.Timedelta(weeks=8)
+        else:
+            s_ts = pd.Timestamp(start_date)
+            if not has_time_component(start_date):
+                s_ts = pd.Timestamp(utils.fmt_dt(start_date, fmt='%Y-%m-%d') + ' 00:00:00')
+        s_dt = s_ts.strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        # Daily behavior unchanged
+        e_dt = utils.fmt_dt(end_date, fmt='%Y%m%d')
+        if start_date is None:
+            start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
+        s_dt = utils.fmt_dt(start_date, fmt='%Y%m%d')
 
     request = process.create_request(
         service='//blp/refdata',
