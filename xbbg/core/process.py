@@ -215,6 +215,7 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     timeout_counts = 0
     responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
     timeout = kwargs.pop('timeout', 500)
+    max_timeouts = kwargs.pop('max_timeouts', 20)  # Allow configurable max timeouts
     while True:
         if event_queue is not None:
             ev = event_queue.nextEvent(timeout=timeout)
@@ -227,7 +228,7 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
                 break
         elif ev.eventType() == blpapi.Event.TIMEOUT:
             timeout_counts += 1
-            if timeout_counts > 20:
+            if timeout_counts > max_timeouts:
                 break
         else:
             for _ in ev:
