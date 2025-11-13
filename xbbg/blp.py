@@ -541,27 +541,54 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
 
 
 @contextmanager
-def subscribe(tickers, flds=None, identity=None, options=None, **kwargs):
+def subscribe(tickers, flds=None, identity=None, options=None, interval=None, **kwargs):
     """Subscribe Bloomberg realtime data.
 
     Args:
         tickers: list of tickers
         flds: fields to subscribe, default: Last_Price, Bid, Ask
         identity: Bloomberg identity.
-        options: Subscription options (e.g., fields for event routing).
+        options: Subscription options string (e.g., 'fields=LAST_PRICE,BID,ASK' for event routing).
+            Can be combined with interval parameter.
+        interval: Subscription interval in seconds. If provided, sets the update frequency
+            for the subscription (e.g., interval=10 for 10-second updates).
         **kwargs: Additional options forwarded to session and logging.
+
+    Examples:
+        >>> # Subscribe with default fields
+        >>> # for _ in blp.subscribe(['AAPL US Equity']): pass  # doctest: +SKIP
+        >>>
+        >>> # Subscribe with custom fields
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], ['LAST_PRICE', 'VOLUME']): pass  # doctest: +SKIP
+        >>>
+        >>> # Subscribe with 10-second interval
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10): pass  # doctest: +SKIP
+        >>>
+        >>> # Subscribe with custom options
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], options='fields=LAST_PRICE,BID,ASK'): pass  # doctest: +SKIP
+        >>>
+        >>> # Subscribe with both interval and custom options
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10, options='fields=LAST_PRICE'): pass  # doctest: +SKIP
     """
     logger = logs.get_logger(subscribe, **kwargs)
     if isinstance(tickers, str): tickers = [tickers]
     if flds is None: flds = ['Last_Price', 'Bid', 'Ask']
     if isinstance(flds, str): flds = [flds]
 
+    # Build options string from interval and options parameters
+    opts_parts = []
+    if interval is not None:
+        opts_parts.append(f'interval={interval}')
+    if options:
+        opts_parts.append(options)
+    final_options = ','.join(opts_parts) if opts_parts else None
+
     sub_list = conn.blpapi.SubscriptionList()
     for ticker in tickers:
         topic = f'//blp/mktdata/{ticker}'
         cid = conn.blpapi.CorrelationId(ticker)
-        logger.debug(f'Subscribing {cid} => {topic}')
-        sub_list.add(topic, flds, correlationId=cid, options=options)
+        logger.debug(f'Subscribing {cid} => {topic} with options: {final_options}')
+        sub_list.add(topic, flds, correlationId=cid, options=final_options)
 
     try:
         conn.bbg_session(**kwargs).subscribe(sub_list, identity)
@@ -570,7 +597,7 @@ def subscribe(tickers, flds=None, identity=None, options=None, **kwargs):
         conn.bbg_session(**kwargs).unsubscribe(sub_list)
 
 
-async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs):
+async def live(tickers, flds=None, info=None, max_cnt=0, options=None, interval=None, **kwargs):
     """Subscribe and get data feeds.
 
     Args:
@@ -578,7 +605,10 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
         flds: fields to subscribe
         info: list of keys of interests (ticker will be included)
         max_cnt: max number of data points to receive
-        options: Subscription options for the feed.
+        options: Subscription options string (e.g., 'fields=LAST_PRICE,BID,ASK' for event routing).
+            Can be combined with interval parameter.
+        interval: Subscription interval in seconds. If provided, sets the update frequency
+            for the subscription (e.g., interval=10 for 10-second updates).
         **kwargs: Additional options forwarded to session and logging.
 
     Yields:
@@ -586,6 +616,9 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
 
     Examples:
         >>> # async for _ in live('SPY US Equity', info=const.LIVE_INFO): pass
+        >>>
+        >>> # Subscribe with 10-second interval
+        >>> # async for _ in live('SPY US Equity', interval=10): pass  # doctest: +SKIP
     """
     from collections.abc import Iterable
 
@@ -643,12 +676,20 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
     if not sess.start():
         raise ConnectionError('Failed to start Bloomberg session with dispatcher')
 
+    # Build options string from interval and options parameters
+    opts_parts = []
+    if interval is not None:
+        opts_parts.append(f'interval={interval}')
+    if options:
+        opts_parts.append(options)
+    final_options = ','.join(opts_parts) if opts_parts else None
+
     sub_list = conn.blpapi.SubscriptionList()
     for ticker in (tickers if isinstance(tickers, list) else [tickers]):
         topic = f'//blp/mktdata/{ticker}'
         cid = conn.blpapi.CorrelationId(ticker)
-        logger.debug(f'Subscribing {cid} => {topic}')
-        sub_list.add(topic, s_flds, correlationId=cid, options=options)
+        logger.debug(f'Subscribing {cid} => {topic} with options: {final_options}')
+        sub_list.add(topic, s_flds, correlationId=cid, options=final_options)
 
     try:
         sess.subscribe(sub_list)
