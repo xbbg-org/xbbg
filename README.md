@@ -34,25 +34,19 @@ See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5Ai
 
 xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrapper for Python. Here's how it compares to alternatives:
 
-| Feature | xbbg | pdblp/blp | Others |
-|---------|------|-----------|--------|
-| 📊 **API Coverage** | | | |
-| Reference, Historical, Bulk Data | ✅ | ✅ | ⚠️ |
-| Intraday Bars | ✅ | ✅ | ⚠️ |
-| Tick Data | ✅ | ❌ | ⚠️ |
-| Real-time Subscriptions | ✅ | ❌ | ⚠️ |
-| Equity Screening (BEQS) | ✅ | ❌ | ❌ |
-| BQL Support | ✅ | ❌ | ❌ |
-| 🎯 **Key Features** | | | |
-| Excel-compatible inputs | ✅ | ❌ | ❌ |
-| Sub-minute intervals | ✅ | ❌ | ❌ |
-| Local Parquet caching | ✅ | ❌ | ❌ |
-| Currency conversion | ✅ | ❌ | ❌ |
-| Futures/CDX resolvers | ✅ | ❌ | ❌ |
-| Async real-time support | ✅ | ❌ | ❌ |
-| 📈 **Maintenance** | | | |
-| Active development | ✅ | ⚠️ | ⚠️ |
-| Modern Python (3.10+) | ✅ | ✅ | ⚠️ |
+| Feature | xbbg | pdblp | blp | tia/tiafork |
+|---------|------|-------|-----|-------------|
+| Tick Data | ✅ | ❌ | ❌ | ✅ |
+| Real-time Subscriptions | ✅ | ❌ | ❌ | ✅ |
+| Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ |
+| BQL Support | ✅ | ❌ | ❌ | ❌ |
+| Excel-compatible inputs | ✅ | ❌ | ❌ | ❌ |
+| Sub-minute intervals | ✅ | ❌ | ❌ | ❌ |
+| Local Parquet caching | ✅ | ❌ | ❌ | ❌ |
+| Currency conversion | ✅ | ❌ | ❌ | ❌ |
+| Futures/CDX resolvers | ✅ | ❌ | ❌ | ❌ |
+| Active development | ✅ | ⚠️ | ⚠️ | ❌ |
+| Modern Python (3.10+) | ✅ | ✅ | ✅ | ❌ |
 
 **Key Advantages:**
 
