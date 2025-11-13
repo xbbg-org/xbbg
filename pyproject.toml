@@ -108,6 +108,7 @@ ignore = [
   "E501", # line too long
   "D104", # Missing docstring in public package
   "D107", # Missing docstring in __init__
+  "UP031", # Use format specifiers instead of percent format (intentionally using % for performance in logging)
 ]
 
 [tool.ruff.lint.per-file-ignores]

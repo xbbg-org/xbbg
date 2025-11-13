@@ -3,14 +3,17 @@
 from contextlib import contextmanager
 from functools import partial
 from itertools import product
+import logging
 
 import pandas as pd
 
 from xbbg import __version__, const, pipeline
 from xbbg.core import conn, process, utils
 from xbbg.core.conn import connect
-from xbbg.io import files, logs, storage
+from xbbg.io import files, storage
 from xbbg.markets import resolvers as _res
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     '__version__',
@@ -51,7 +54,7 @@ def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
     Returns:
         pd.DataFrame
     """
-    logger = logs.get_logger(bdp, **kwargs)
+    # Logger is module-level, no need to recreate
 
     if isinstance(tickers, str): tickers = [tickers]
     if isinstance(flds, str): flds = [flds]
@@ -62,7 +65,9 @@ def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
         **kwargs,
     )
     process.init_request(request=request, tickers=tickers, flds=flds, **kwargs)
-    logger.debug(f'Sending request to Bloomberg ...\n{request}')
+    # Guard len() calls - only compute if DEBUG logging is enabled
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Sending Bloomberg reference data request for %d ticker(s), %d field(s)', len(tickers), len(flds))
     handle = conn.send_request(request=request, **kwargs)
 
     res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
@@ -93,7 +98,7 @@ def bds(tickers, flds, use_port=False, **kwargs) -> pd.DataFrame:
     Returns:
         pd.DataFrame: block data
     """
-    logger = logs.get_logger(bds, **kwargs)
+    # Logger is module-level
 
     part = partial(_bds_, fld=flds, logger=logger, use_port=use_port, **kwargs)
     if isinstance(tickers, str): tickers = [tickers]
@@ -103,7 +108,7 @@ def bds(tickers, flds, use_port=False, **kwargs) -> pd.DataFrame:
 def _bds_(
         ticker: str,
         fld: str,
-        logger: logs.logging.Logger,
+        logger: logging.Logger,
         use_port: bool = False,
         **kwargs,
 ) -> pd.DataFrame:
@@ -111,7 +116,7 @@ def _bds_(
     if 'has_date' not in kwargs: kwargs['has_date'] = True
     data_file = storage.ref_file(ticker=ticker, fld=fld, ext='pkl', **kwargs)
     if files.exists(data_file):
-        logger.debug(f'Loading Bloomberg data from: {data_file}')
+        logger.debug('Loading cached Bloomberg reference data from: %s', data_file)
         return pd.DataFrame(pd.read_pickle(data_file))
 
     request = process.create_request(
@@ -120,7 +125,7 @@ def _bds_(
         **kwargs,
     )
     process.init_request(request=request, tickers=ticker, flds=fld, **kwargs)
-    logger.debug(f'Sending request to Bloomberg ...\n{request}')
+    logger.debug('Sending Bloomberg reference data request for ticker: %s, field: %s', ticker, fld)
     handle = conn.send_request(request=request, **kwargs)
 
     res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
@@ -136,7 +141,7 @@ def _bds_(
         .pipe(pipeline.standard_cols, col_maps=kwargs.get('col_maps'))
     )
     if data_file:
-        logger.debug(f'Saving Bloomberg data to: {data_file}')
+        logger.debug('Saving Bloomberg reference data to cache: %s', data_file)
         files.create_folder(data_file, is_file=True)
         data.to_pickle(data_file)
 
@@ -165,7 +170,7 @@ def bdh(
     Returns:
         pd.DataFrame
     """
-    logger = logs.get_logger(bdh, **kwargs)
+    # Logger is module-level
 
     if flds is None: flds = ['Last_Price']
     e_dt = utils.fmt_dt(end_date, fmt='%Y%m%d')
@@ -181,7 +186,9 @@ def bdh(
         request=request, tickers=tickers, flds=flds,
         start_date=s_dt, end_date=e_dt, adjust=adjust, **kwargs
     )
-    logger.debug(f'Sending request to Bloomberg ...\n{request}')
+    # Guard len() calls - only compute if DEBUG logging is enabled
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Sending Bloomberg reference data request for %d ticker(s), %d field(s)', len(tickers), len(flds))
     handle = conn.send_request(request=request, **kwargs)
 
     res = pd.DataFrame(process.rec_events(process.process_hist, event_queue=handle["event_queue"], **kwargs))
@@ -234,7 +241,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
     """
     from xbbg.core import trials
 
-    logger = logs.get_logger(bdib, **kwargs)
+    # Logger is module-level
 
     ex_info = const.exch_info(ticker=ticker, **kwargs)
     if ex_info.empty: raise KeyError(f'Cannot find exchange info for {ticker}')
@@ -248,7 +255,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
             .loc[ss_rng[0]:ss_rng[1]]
         )
         if not res.empty:
-            logger.debug(f'Loading Bloomberg intraday data from: {data_file}')
+            logger.debug('Loading cached Bloomberg intraday data from: %s', data_file)
             return res
 
     if not process.check_current(dt=dt, logger=logger, **kwargs): return pd.DataFrame()
@@ -260,16 +267,20 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         if not is_sprd:
             q_tckr = fut_ticker(gen_ticker=ticker, dt=dt, freq=ex_info['freq'])
             if q_tckr == '':
-                logger.error(f'cannot find futures ticker for {ticker} ...')
+                logger.error('Unable to resolve futures ticker for generic ticker: %s', ticker)
                 return pd.DataFrame()
 
-    info_log = f'{q_tckr} / {cur_dt} / {typ}'
     trial_kw = {'ticker': ticker, 'dt': dt, 'typ': typ, 'func': 'bdib'}
     num_trials = trials.num_trials(**trial_kw)
     if num_trials >= 2:
         if kwargs.get('batch', False): return pd.DataFrame()
-        logger.info(f'{num_trials} trials with no data {info_log}')
+        # Use parameterized logging (avoid string formatting overhead)
+        if logger.isEnabledFor(logging.INFO):
+            logger.info('No data available after %d attempt(s) for %s / %s / %s', num_trials, q_tckr, cur_dt, typ)
         return pd.DataFrame()
+
+    # Track if we need to build info_log for logging (avoid string formatting overhead)
+    need_info_log = logger.isEnabledFor(logging.DEBUG) or logger.isEnabledFor(logging.WARNING)
 
     time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', **kwargs)
 
@@ -296,12 +307,16 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         settings=settings,
         **kwargs,
     )
-    logger.debug(f'Sending request to Bloomberg ...\n{request}')
+    # Only log if DEBUG enabled (use parameterized logging)
+    if logger.isEnabledFor(logging.DEBUG) and need_info_log:
+        logger.debug('Sending Bloomberg intraday bar data request for %s / %s / %s', q_tckr, cur_dt, typ)
     handle = conn.send_request(request=request, **kwargs)
 
     res = pd.DataFrame(process.rec_events(func=process.process_bar, event_queue=handle["event_queue"], **kwargs))
     if res.empty or ('time' not in res):
-        logger.warning(f'No data for {info_log} ...')
+        # Use parameterized logging (avoid string formatting overhead)
+        if logger.isEnabledFor(logging.WARNING):
+            logger.warning('No intraday bar data returned for %s / %s / %s', q_tckr, cur_dt, typ)
         trials.update_trials(cnt=num_trials + 1, **trial_kw)
         return pd.DataFrame()
 
@@ -338,7 +353,7 @@ def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) 
     Returns:
         pd.DataFrame.
     """
-    logger = logs.get_logger(bdtick, **kwargs)
+    # Logger is module-level
 
     if types is None: types = ['TRADE']
     exch = const.exch_info(ticker=ticker, **kwargs)
@@ -378,7 +393,7 @@ def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) 
         **kwargs,
     )
 
-    logger.debug(f'Sending request to Bloomberg ...\n{request}')
+    logger.debug('Sending Bloomberg tick data request for ticker: %s, event types: %s', ticker, types)
     handle = conn.send_request(request=request)
 
     res = pd.DataFrame(process.rec_events(func=process.process_bar, typ='t', event_queue=handle["event_queue"], **kwargs))
@@ -506,7 +521,7 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
     Returns:
         pd.DataFrame.
     """
-    logger = logs.get_logger(beqs, **kwargs)
+    # Logger is module-level
 
     request = process.create_request(
         service='//blp/refdata',
@@ -520,7 +535,7 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
         **kwargs,
     )
 
-    logger.debug(f'Sending request to Bloomberg ...\n{request}')
+    logger.debug('Sending Bloomberg Equity Screening (BEQS) request for screen: %s, type: %s, group: %s', screen, typ, group)
     handle = conn.send_request(request=request, **kwargs)
     res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
     if res.empty:
@@ -551,7 +566,7 @@ def subscribe(tickers, flds=None, identity=None, options=None, **kwargs):
         options: Subscription options (e.g., fields for event routing).
         **kwargs: Additional options forwarded to session and logging.
     """
-    logger = logs.get_logger(subscribe, **kwargs)
+    # Logger is module-level
     if isinstance(tickers, str): tickers = [tickers]
     if flds is None: flds = ['Last_Price', 'Bid', 'Ask']
     if isinstance(flds, str): flds = [flds]
@@ -560,7 +575,7 @@ def subscribe(tickers, flds=None, identity=None, options=None, **kwargs):
     for ticker in tickers:
         topic = f'//blp/mktdata/{ticker}'
         cid = conn.blpapi.CorrelationId(ticker)
-        logger.debug(f'Subscribing {cid} => {topic}')
+        logger.debug('Subscribing to Bloomberg market data: %s (correlation ID: %s)', topic, cid)
         sub_list.add(topic, flds, correlationId=cid, options=options)
 
     try:
@@ -589,7 +604,7 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
     """
     from collections.abc import Iterable
 
-    logger = logs.get_logger(live, **kwargs)
+    # Logger is module-level
     evt_typs = conn.event_types()
 
     if flds is None:
@@ -618,13 +633,35 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
 
     def _handler(event, session):  # signature: (Event, Session)
         try:
+            # Log event information only if DEBUG is enabled (avoid overhead in hot path)
+            if logger.isEnabledFor(logging.DEBUG):
+                try:
+                    from xbbg.core import blpapi_logging
+                    if blpapi_logging:
+                        blpapi_logging.log_event_info(event, context='live_subscription')
+                except ImportError:
+                    pass
+
             if evt_typs[event.eventType()] != 'SUBSCRIPTION_DATA':
                 return
+
+            msg_count = 0
             for msg, fld in product(event, s_flds):
                 if not msg.hasElement(fld):
                     continue
                 if msg.getElement(fld).isNull():
                     continue
+
+                # Log message information only for first message and only if verbose logging enabled
+                # This avoids per-message overhead in tight subscription loops
+                if msg_count == 0 and logger.isEnabledFor(logging.DEBUG):
+                    try:
+                        from xbbg.core import blpapi_logging
+                        if blpapi_logging:
+                            blpapi_logging.log_message_info(msg, context='live_subscription')
+                    except ImportError:
+                        pass
+
                 outq.put({
                         **{
                             'TICKER': msg.correlationIds()[0].value(),
@@ -636,8 +673,18 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
                             if (True if not info else str(elem.name()) in info)
                         },
                 })
+                msg_count += 1
+
+            # Log summary only if DEBUG enabled (aggregate, not per-message)
+            if msg_count > 0 and logger.isEnabledFor(logging.DEBUG):
+                logger.debug('Processed %d subscription data message(s) in live handler', msg_count)
         except Exception as e:  # noqa: BLE001
-            logger.debug(e)
+            # Only log exceptions if DEBUG enabled (avoid expensive stack traces in production)
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('Exception in live subscription handler: %s', e, exc_info=True)
+            # For errors/warnings, log without stack trace unless needed
+            elif logger.isEnabledFor(logging.WARNING):
+                logger.warning('Exception in live subscription handler: %s', e)
 
     sess = conn.blpapi.Session(sess_opts, _handler, dispatcher)
     if not sess.start():
@@ -647,7 +694,7 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
     for ticker in (tickers if isinstance(tickers, list) else [tickers]):
         topic = f'//blp/mktdata/{ticker}'
         cid = conn.blpapi.CorrelationId(ticker)
-        logger.debug(f'Subscribing {cid} => {topic}')
+        logger.debug('Subscribing to Bloomberg market data: %s (correlation ID: %s)', topic, cid)
         sub_list.add(topic, s_flds, correlationId=cid, options=options)
 
     try:
@@ -790,7 +837,7 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
         True
     """
-    logger = logs.get_logger(bql, **kwargs)
+    # Logger is module-level
 
     # Use BQL sendQuery with 'expression', mirroring common BQL request shape.
     settings = [('expression', query)]
@@ -805,7 +852,7 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         **kwargs,
     )
 
-    logger.debug(f'Sending BQL request ...\n{request}')
+    logger.debug('Sending Bloomberg Query Language (BQL) request')
     handle = conn.send_request(request=request, **kwargs)
 
     rows = list(process.rec_events(func=process.process_bql, event_queue=handle["event_queue"], **kwargs))

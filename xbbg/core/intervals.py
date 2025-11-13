@@ -5,13 +5,16 @@ for an instrument's predefined sessions based on exchange metadata.
 """
 
 from collections import namedtuple
+import logging
 from typing import cast
 
 import numpy as np
 import pandas as pd
 
 from xbbg import const
-from xbbg.io import logs, param
+from xbbg.io import param
+
+logger = logging.getLogger(__name__)
 
 Session = namedtuple('Session', ['start_time', 'end_time'])
 SessNA = Session(None, None)
@@ -130,7 +133,7 @@ class Intervals:
         Returns:
             Session of start_time and end_time.
         """
-        logger = logs.get_logger(self.market_normal)
+        # Logger is module-level
 
         if session not in self.exch: return SessNA
         ss = self.exch[session]
@@ -141,7 +144,7 @@ class Intervals:
         request_cross = pd.Timestamp(s_time) >= pd.Timestamp(e_time)
         session_cross = pd.Timestamp(ss[0]) >= pd.Timestamp(ss[1])
         if request_cross and (not session_cross):
-            logger.warning(f'end time {e_time} is earlier than {s_time} ...')
+            logger.warning('Session end time %s is earlier than start time %s, adjusting to valid range', e_time, s_time)
             return SessNA
 
         return Session(s_time, e_time)

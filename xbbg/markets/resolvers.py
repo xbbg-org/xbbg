@@ -1,9 +1,12 @@
 """Resolvers for market-specific ticker transformations and helpers."""
 
+import logging
+
 import pandas as pd
 
 from xbbg import const
-from xbbg.io import logs
+
+logger = logging.getLogger(__name__)
 
 
 def active_futures(ticker: str, dt, **kwargs) -> str:
@@ -28,8 +31,9 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     if isinstance(raw_freq, str) and raw_freq.strip():
         freq_code = raw_freq.strip()
     else:
-        logs.get_logger(active_futures).error(
-            f"Missing freq in assets.yml for root '{prefix[:-1]}' ({asset}). Please set 'freq' explicitly."
+        logger.error(
+            "Missing 'freq' configuration in assets.yml for futures root '%s' (asset type: %s). Please set 'freq' explicitly.",
+            prefix[:-1], asset
         )
         return ''
 
@@ -60,7 +64,7 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
     Returns:
         str: exact futures ticker
     """
-    logger = logs.get_logger(fut_ticker, **kwargs)
+    # Logger is module-level
     dt = pd.Timestamp(dt)
     t_info = gen_ticker.split()
     pre_dt = pd.bdate_range(end='today', periods=1)[-1]
@@ -76,13 +80,13 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
         prefix, idx, postfix = ticker[:-1], int(ticker[-1]) - 1, ' '.join(t_info[1:])
 
     else:
-        logger.error(f'unkonwn asset type for ticker: {gen_ticker}')
+        logger.error('Unknown asset type for generic ticker: %s (expected Index, Curncy, Comdty, or Equity)', gen_ticker)
         return ''
 
     month_ext = 4 if asset == 'Comdty' else 2
     eff_freq = (freq or '').strip().upper() if isinstance(freq, str) else None
     if not eff_freq:
-        logger.error(f"Missing/invalid freq for '{gen_ticker}'. Please provide explicit 'freq' in assets.yml.")
+        logger.error("Missing or invalid 'freq' parameter for generic ticker '%s'. Please provide explicit 'freq' in assets.yml.", gen_ticker)
         return ''
     # Normalize deprecated pandas offsets
     if eff_freq == 'M':
@@ -90,37 +94,43 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
     elif eff_freq == 'Q':
         eff_freq = 'QE-DEC'
     months = pd.date_range(start=dt, periods=max(idx + month_ext, 3), freq=eff_freq)
-    logger.debug(f'pulling expiry dates for months: {months}')
+    # Guard expensive tolist() conversion - only do if DEBUG logging is enabled
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Computing futures expiry dates for %d months', len(months))
 
     def to_fut(month):
         return prefix + const.Futures[month.strftime('%b')] + \
             month.strftime('%y')[-1 if same_month else -2:] + ' ' + postfix
 
     fut = [to_fut(m) for m in months]
-    logger.debug(f'trying futures: {fut}')
+    # Guard list conversion - only log if DEBUG enabled (avoid string conversion overhead)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Attempting to resolve %d futures contracts', len(fut))
     from xbbg.blp import bdp  # lazy
     # noinspection PyBroadException
     try:
         fut_matu = bdp(tickers=fut, flds='last_tradeable_dt')
     except Exception as e1:
-        logger.error(f'error downloading futures contracts (1st trial) {e1}:\n{fut}')
+        logger.error('Failed to download futures contracts (attempt 1): %s. Tickers: %s', e1, fut)
         # noinspection PyBroadException
         try:
             fut = fut[:-1]
-            logger.debug(f'trying futures (2nd trial): {fut}')
+            logger.debug('Retrying futures contract resolution (attempt 2): %s', fut)
             fut_matu = bdp(tickers=fut, flds='last_tradeable_dt')
         except Exception as e2:
-            logger.error(f'error downloading futures contracts (2nd trial) {e2}:\n{fut}')
+            logger.error('Failed to download futures contracts (attempt 2): %s. Tickers: %s', e2, fut)
             return ''
 
     if 'last_tradeable_dt' not in fut_matu:
-        logger.warning(f'no futures found for {fut}')
+        logger.warning('No valid futures contracts found for: %s', fut)
         return ''
 
     fut_matu.sort_values(by='last_tradeable_dt', ascending=True, inplace=True)
     sub_fut = fut_matu[pd.DatetimeIndex(fut_matu.last_tradeable_dt) > dt]
-    logger.debug(f'futures full chain:\n{fut_matu.to_string()}')
-    logger.debug(f'getting index {idx} from:\n{sub_fut.to_string()}')
+    # Guard len() calls - only compute if DEBUG logging is enabled
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Futures maturity chain: %d contracts', len(fut_matu))
+        logger.debug('Selecting futures contract at index %d from %d available contracts', idx, len(sub_fut))
     return sub_fut.index.values[idx]
 
 
@@ -132,7 +142,7 @@ def cdx_ticker(gen_ticker: str, dt, **kwargs) -> str:
       - on_the_run_current_bd_indicator: 'Y' if on-the-run
       - cds_first_accrual_start_date: start date of current series trading
     """
-    logger = logs.get_logger(cdx_ticker, **kwargs)
+    # Logger is module-level
     dt = pd.Timestamp(dt)
     from xbbg.blp import bdp  # lazy
 
@@ -143,11 +153,11 @@ def cdx_ticker(gen_ticker: str, dt, **kwargs) -> str:
             **kwargs,
         )
     except Exception as e:
-        logger.error(f'error fetching CDX meta for {gen_ticker}: {e}')
+        logger.error('Failed to fetch CDX metadata for generic ticker %s: %s', gen_ticker, e)
         return ''
 
     if info.empty or 'rolling_series' not in info:
-        logger.warning(f'no rolling series for {gen_ticker}')
+        logger.warning('No rolling series configuration found for CDX ticker: %s', gen_ticker)
         return ''
 
     series = info.loc[gen_ticker, 'rolling_series']
@@ -158,7 +168,7 @@ def cdx_ticker(gen_ticker: str, dt, **kwargs) -> str:
 
     tokens = gen_ticker.split()
     if 'GEN' not in tokens:
-        logger.warning(f'expected GEN token in {gen_ticker}')
+        logger.warning('Generic ticker %s does not contain expected GEN token for CDX resolution', gen_ticker)
         return ''
     tokens[tokens.index('GEN')] = f'S{series}'
     resolved = ' '.join(tokens)
