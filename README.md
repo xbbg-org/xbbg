@@ -281,6 +281,51 @@ out[10]:
 2020-03-20 16:59:00-04:00   2,265.25 2,272.00 2,265.00 2,266.50   1271      378 2,882,978.25
 ```
 
+```python
+# Tick-by-tick data with event types and condition codes
+blp.bdtick(ticker='XYZ US Equity', dt='2024-10-15', session='day', types=['TRADE']).head()
+```
+
+```pydocstring
+Out[12]:
+                          XYZ US Equity
+                                   volume    typ   cond exch            trd_time
+2024-10-15 09:30:15-04:00           1500  TRADE     @  NYSE  2024-10-15 09:30:15
+2024-10-15 09:30:23-04:00            800  TRADE     @  NYSE  2024-10-15 09:30:23
+2024-10-15 09:30:31-04:00           2200  TRADE     @  NYSE  2024-10-15 09:30:31
+```
+
+```python
+# Trading volume & turnover (currency-adjusted, in millions)
+blp.turnover(['ABC US Equity', 'DEF US Equity'], start_date='2024-01-01', end_date='2024-01-10', ccy='USD')
+```
+
+```pydocstring
+Out[13]:
+            ABC US Equity  DEF US Equity
+2024-01-02        15,304        8,920
+2024-01-03        18,450       12,340
+2024-01-04        14,890        9,560
+2024-01-05        16,720       11,230
+2024-01-08        10,905        7,890
+```
+
+```python
+# Currency conversion for historical data
+hist = blp.bdh(['GHI US Equity'], ['px_last'], '2024-01-01', '2024-01-10')
+blp.adjust_ccy(hist, ccy='EUR')
+```
+
+```pydocstring
+Out[14]:
+            GHI US Equity
+2024-01-02        169.66
+2024-01-03        171.23
+2024-01-04        170.45
+2024-01-05        172.10
+2024-01-08        169.46
+```
+
 ### 🔍 Screening & Queries
 
 ```python
@@ -301,6 +346,48 @@ out[10]:
 
 # Real-time subscriptions
 # blp.subscribe(['AAPL US Equity'], ['LAST_PRICE'], callback=my_handler)  # doctest: +SKIP
+```
+
+### 🔧 Utilities
+
+```python
+# Futures ticker resolution (generic to specific contract)
+blp.fut_ticker('ES1 Index', '2024-01-15', freq='ME')
+```
+
+```pydocstring
+Out[15]:
+'ESH24 Index'
+```
+
+```python
+# Active futures contract selection (volume-based)
+blp.active_futures('ES Index', '2024-01-15')
+```
+
+```pydocstring
+Out[16]:
+'ESH24 Index'
+```
+
+```python
+# CDX index ticker resolution (series mapping)
+blp.cdx_ticker('CDX IG CDSI GEN 5Y Corp', '2024-01-15')
+```
+
+```pydocstring
+Out[17]:
+'CDX IG CDSI S45 5Y Corp'
+```
+
+```python
+# Active CDX contract selection
+blp.active_cdx('CDX IG CDSI GEN 5Y Corp', '2024-01-15', lookback_days=10)
+```
+
+```pydocstring
+Out[18]:
+'CDX IG CDSI S45 5Y Corp'
 ```
 
 ## Data Storage
