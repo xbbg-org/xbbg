@@ -21,6 +21,47 @@ xbbg provides a Pythonic interface to the Bloomberg API with Excel-compatible in
 
 See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR) for interactive tutorials.
 
+## Why Choose xbbg?
+
+xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrapper for Python. Here's how it compares to alternatives:
+
+| Feature | xbbg | pdblp | blp | polars-bloomberg | tia/tiafork | pybbg |
+|---------|------|-------|-----|------------------|-------------|-------|
+| 📊 **API Coverage** | | | | | | |
+| Reference Data (BDP) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Historical Data (BDH) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Bulk Data (BDS) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Intraday Bars (BDIB) | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| Tick Data (BDTICK) | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Real-time Subscriptions | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| BQL Support | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 🎯 **Ease of Use** | | | | | | |
+| Excel-compatible inputs | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Intuitive API (`bdp`, `bdh`, etc.) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Sub-minute intervals | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 🚀 **Performance & Features** | | | | | | |
+| Local Parquet caching | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| pandas DataFrames | ✅ | ✅ | ✅ | ❌ (Polars) | ✅ | ✅ |
+| Modern Python (3.10+) | ✅ | ✅ | ✅ | ✅ | ❌ (Py2) | ✅ |
+| Async real-time support | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 🔧 **Utilities** | | | | | | |
+| Currency conversion | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Futures/CDX resolvers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Exchange-aware market hours | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 📈 **Maintenance** | | | | | | |
+| Active development | ✅ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
+| Regular updates | ✅ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
+
+**Key Advantages:**
+
+- 🎯 **Most Complete API**: Covers reference, historical, intraday, tick, real-time, screening, and BQL
+- 📊 **Excel Compatibility**: Use familiar Excel date formats and field names
+- ⚡ **Performance**: Built-in Parquet caching reduces API calls and speeds up workflows
+- 🔧 **Rich Utilities**: Currency conversion, futures resolvers, and more out of the box
+- 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
+- 💡 **Intuitive Design**: Simple, consistent API that feels natural to use
+
 ## Supported Functionality
 
 | Function | Description | Key Features |
