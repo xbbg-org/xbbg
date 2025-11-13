@@ -127,10 +127,10 @@ blp.bdp(
 
 ```pydocstring
 Out[3a]:
-               security_name        gics_sector_name  px_last
-AAPL US Equity      Apple Inc  Information Technology   148.75
-MSFT US Equity  Microsoft Corp  Information Technology   112.34
-GOOGL US Equity     Alphabet Inc  Information Technology  105.67
+                  security_name        gics_sector_name px_last
+AAPL US Equity        Company A  Information Technology  150.25
+GOOGL US Equity    Company B  Communication Services  165.30
+MSFT US Equity   Company C  Information Technology  180.45
 ```
 
 ```python
@@ -174,17 +174,19 @@ Out[4]:
 blp.bdh(
     tickers=['AAPL US Equity', 'MSFT US Equity'],
     flds=['px_last', 'volume'],
-    start_date='2018-10-10', end_date='2018-10-20',
+    start_date='2024-01-01', end_date='2024-01-10',
 )
 ```
 
 ```pydocstring
 Out[4a]:
-           AAPL US Equity        MSFT US Equity
-                px_last volume      px_last volume
-2018-10-10        220.65  45234500     112.34  32145600
-2018-10-11        221.23  38912300     113.12  29876500
-2018-10-12        219.87  56789000     112.89  41234500
+           AAPL US Equity             MSFT US Equity            
+                  px_last      volume        px_last      volume
+2024-01-02         150.25  45000000.0         180.45  25000000.0
+2024-01-03         151.30  42000000.0         181.20  23000000.0
+2024-01-04         149.80  48000000.0         179.90  24000000.0
+2024-01-05         150.10  44000000.0         180.15  22000000.0
+2024-01-08         151.50  46000000.0         181.80  26000000.0
 ```
 
 ```python
