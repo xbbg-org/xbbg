@@ -7,7 +7,7 @@
 **xbbg: An intuitive Bloomberg API for Python**
 <!-- markdownlint-enable MD036 -->
 
-<hr>
+<hr style="border: none; border-top: 1px solid #ccc; width: 50%; margin: 10px auto;">
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
