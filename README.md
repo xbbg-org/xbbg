@@ -362,7 +362,7 @@ Out[15]:
 
 ```python
 # Active futures contract selection (volume-based)
-blp.active_futures('ES Index', '2024-01-15')
+blp.active_futures('ESA Index', '2024-01-15')
 ```
 
 ```pydocstring
