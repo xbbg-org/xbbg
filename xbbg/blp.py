@@ -501,6 +501,10 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
         asof: as of date
         typ: GLOBAL/B (Bloomberg) or PRIVATE/C (Custom, default)
         group: group name if screen is organized into groups
+        timeout: Timeout in milliseconds for waiting between events (default: 2000ms).
+            Increase for complex screens that may have longer gaps between events.
+        max_timeouts: Maximum number of timeout events allowed before giving up
+            (default: 50). Increase for screens that take longer to complete.
         **kwargs: Additional request overrides for BeqsRequest.
 
     Returns:
