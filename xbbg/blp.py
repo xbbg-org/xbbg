@@ -603,7 +603,6 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
     if info is None: info = const.LIVE_INFO
 
     import asyncio
-    from queue import Queue
 
     # Session options (allow host/port override via kwargs)
     sess_opts = conn.blpapi.SessionOptions()
@@ -614,7 +613,10 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
     sess_opts.setServerPort(int(kwargs.get('server_port') or kwargs.get('port') or 8194))
 
     dispatcher = conn.blpapi.EventDispatcher(2)
-    outq: Queue = Queue()
+    # Use asyncio.Queue for truly async behavior
+    outq: asyncio.Queue = asyncio.Queue()
+    # Get the running event loop (we're in an async context)
+    loop = asyncio.get_running_loop()
 
     def _handler(event, session):  # signature: (Event, Session)
         try:
@@ -625,17 +627,20 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
                     continue
                 if msg.getElement(fld).isNull():
                     continue
-                outq.put({
-                        **{
-                            'TICKER': msg.correlationIds()[0].value(),
-                            'FIELD': fld,
-                        },
-                        **{
-                            str(elem.name()): process.elem_value(elem)
-                            for elem in msg.asElement().elements()
-                            if (True if not info else str(elem.name()) in info)
-                        },
-                })
+                # Bridge from blpapi thread to asyncio event loop
+                data = {
+                    **{
+                        'TICKER': msg.correlationIds()[0].value(),
+                        'FIELD': fld,
+                    },
+                    **{
+                        str(elem.name()): process.elem_value(elem)
+                        for elem in msg.asElement().elements()
+                        if (True if not info else str(elem.name()) in info)
+                    },
+                }
+                # Use call_soon_threadsafe to safely put items from handler thread
+                loop.call_soon_threadsafe(outq.put_nowait, data)
         except Exception as e:  # noqa: BLE001
             logger.debug(e)
 
@@ -654,7 +659,8 @@ async def live(tickers, flds=None, info=None, max_cnt=0, options=None, **kwargs)
         sess.subscribe(sub_list)
         cnt = 0
         while True and (max_cnt == 0 or cnt <= max_cnt):
-            item = await asyncio.to_thread(outq.get)
+            # Use async queue.get() which is truly non-blocking
+            item = await outq.get()
             yield item
             if max_cnt:
                 cnt += 1
