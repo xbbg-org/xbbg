@@ -1,16 +1,30 @@
-.. image:: https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png
-   :alt: xbbg logo
-   :width: 100px
-   :align: center
+.. raw:: html
+
+   <div align="center">
+   
+   <a href="https://github.com/alpha-xone/xbbg">
+   <img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png" alt="xbbg logo" width="150">
+   </a>
+   
+   <p><b>xbbg: An intuitive Bloomberg API for Python</b></p>
+   
+   <p>
+   <a href="https://pypi.org/project/xbbg/"><img src="https://img.shields.io/pypi/v/xbbg.svg" alt="PyPI version"></a>
+   <a href="https://pypi.org/project/xbbg/"><img src="https://img.shields.io/pypi/pyversions/xbbg.svg" alt="Python versions"></a>
+   <a href="https://pypi.org/project/xbbg/"><img src="https://img.shields.io/pypi/dm/xbbg" alt="PyPI Downloads"></a>
+   <a href="https://gitter.im/xbbg/community"><img src="https://badges.gitter.im/xbbg/community.svg" alt="Gitter"></a>
+   </p>
+   
+   <p>
+   <a href="https://www.buymeacoffee.com/Lntx29Oof"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
+   </p>
+   
+   <p><b>Quick Links:</b> <a href="https://xbbg.readthedocs.io/">Documentation</a> • <a href="#installation">Installation</a> • <a href="#quickstart">Quickstart</a> • <a href="#examples">Examples</a> • <a href="https://github.com/alpha-xone/xbbg">Source</a> • <a href="https://github.com/alpha-xone/xbbg/issues">Issues</a></p>
+   
+   </div>
 
 xbbg
 ====
-
-An intuitive Bloomberg API for Python
-
-|pypi| |version| |download| |chat|
-
-|coffee|
 
 .. xbbg:latest-release-start
 
