@@ -4,10 +4,9 @@ This module provides integration with blpapi's internal logging system
 and adds structured logging for Bloomberg events and messages.
 """
 
-import logging
 from collections.abc import Callable
 from contextlib import suppress
-from typing import Optional
+import logging
 
 try:
     import blpapi  # type: ignore[reportMissingImports]
@@ -31,7 +30,7 @@ _BLPAPI_TO_PYTHON_LOG_LEVEL = {
 def register_blpapi_logging_callback(
     threshold_severity: int | None = None,
     use_python_logger: bool = True,
-) -> Optional[Callable]:
+) -> Callable | None:
     """Register a callback to receive blpapi's internal log messages.
 
     This integrates blpapi's native logging with Python's logging system.
