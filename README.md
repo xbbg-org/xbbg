@@ -1,12 +1,14 @@
-# xbbg
-
-<!-- markdownlint-disable MD033 -->
+<!-- markdownlint-disable MD033 MD041 -->
 <div align="center">
-<!-- markdownlint-enable MD033 -->
 
-[![xbbg logo](https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png)](https://github.com/alpha-xone/xbbg)
+<a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png" alt="xbbg logo" width="120"></a>
 
-## An intuitive Bloomberg API for Python
+</div>
+
+<p align="center">
+  <b>xbbg: An intuitive Bloomberg API for Python</b>
+</p>
+<!-- markdownlint-enable MD033 MD041 -->
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
