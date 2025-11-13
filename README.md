@@ -28,7 +28,7 @@ xbbg is the **most comprehensive and intuitive Bloomberg API wrapper for Python*
 - 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
 - 💡 **Intuitive Design**: Simple, consistent API (`bdp`, `bdh`, `bdib`, etc.) that feels natural to use
 
-See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR) for interactive tutorials.
+See [`xbbg_jupyter_examples.ipynb`](xbbg_jupyter_examples.ipynb) for interactive tutorials and examples.
 
 ## Why Choose xbbg?
 
