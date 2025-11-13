@@ -55,7 +55,9 @@ def register_blpapi_logging_callback(
         return None
 
     if threshold_severity is None:
-        threshold_severity = blpapi.Logger.SEVERITY_INFO
+        # Default to WARNING to keep logging quiet by default
+        # Users can lower this if they want more verbose blpapi logs
+        threshold_severity = blpapi.Logger.SEVERITY_WARN
 
     def blpapi_log_callback(
         thread_id: int,

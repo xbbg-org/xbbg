@@ -12,6 +12,9 @@ except PackageNotFoundError:
 # Applications should configure their own handlers and levels
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+# Ensure logging is disabled by default (inherit WARNING from root, but be explicit)
+# Users must explicitly enable logging if they want to see xbbg logs
+logger.setLevel(logging.WARNING)
 
 # Export blpapi logging utilities if available
 try:
