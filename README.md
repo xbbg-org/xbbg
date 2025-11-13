@@ -601,12 +601,11 @@ _0.1.17_ - Add `adjust` argument in `bdh` for easier dividend / split adjustment
 
 [![Star History Chart](https://api.star-history.com/svg?repos=alpha-xone/xbbg&type=Date)](https://star-history.com/#alpha-xone/xbbg&Date)
 
-|                |                                                                                                                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docs           | [![Documentation Status](https://readthedocs.org/projects/xbbg/badge/?version=latest)](https://xbbg.readthedocs.io/)                                                             |
-| Build          | [![Actions Status](https://github.com/alpha-xone/xbbg/workflows/Auto%20CI/badge.svg)](https://github.com/alpha-xone/xbbg/actions)                                                |
-| Coverage       | [![codecov](https://codecov.io/gh/alpha-xone/xbbg/branch/main/graph/badge.svg)](https://codecov.io/gh/alpha-xone/xbbg)                                                           |
-| Quality        | [![Codacy Badge](https://app.codacy.com/project/badge/Grade/daec9f52ba344e3ea116c15f1fc6d541)](https://www.codacy.com/gh/alpha-xone/xbbg/)                                       |
-|                | [![CodeFactor](https://www.codefactor.io/repository/github/alpha-xone/xbbg/badge)](https://www.codefactor.io/repository/github/alpha-xone/xbbg)                                  |
-|                | [![codebeat badge](https://codebeat.co/badges/eef1f14d-72eb-445a-af53-12d3565385ec)](https://codebeat.co/projects/github-com-alpha-xone-xbbg-main)                               |
-| License        | [![GitHub license](https://img.shields.io/github/license/alpha-xone/xbbg.svg)](https://github.com/alpha-xone/xbbg/blob/main/LICENSE)                                             |
+| Category       | Badge                                                                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Docs           | [![Documentation Status](https://readthedocs.org/projects/xbbg/badge/?version=latest)](https://xbbg.readthedocs.io/)                    |
+| Build          | [![Actions Status](https://github.com/alpha-xone/xbbg/workflows/Auto%20CI/badge.svg)](https://github.com/alpha-xone/xbbg/actions)       |
+| Coverage       | [![codecov](https://codecov.io/gh/alpha-xone/xbbg/branch/main/graph/badge.svg)](https://codecov.io/gh/alpha-xone/xbbg)                  |
+| Quality        | [![Codacy Badge](https://app.codacy.com/project/badge/Grade/daec9f52ba344e3ea116c15f1fc6d541)](https://www.codacy.com/gh/alpha-xone/xbbg/) |
+|                | [![CodeFactor](https://www.codefactor.io/repository/github/alpha-xone/xbbg/badge)](https://www.codefactor.io/repository/github/alpha-xone/xbbg) |
+| License        | [![GitHub license](https://img.shields.io/github/license/alpha-xone/xbbg.svg)](https://github.com/alpha-xone/xbbg/blob/main/LICENSE)   |
