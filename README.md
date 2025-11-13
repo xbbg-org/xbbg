@@ -34,33 +34,25 @@ See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5Ai
 
 xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrapper for Python. Here's how it compares to alternatives:
 
-| Feature | xbbg | pdblp | blp | polars-bloomberg | tia/tiafork | pybbg |
-|---------|------|-------|-----|------------------|-------------|-------|
-| 📊 **API Coverage** | | | | | | |
-| Reference Data (BDP) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Historical Data (BDH) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Bulk Data (BDS) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Intraday Bars (BDIB) | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| Tick Data (BDTICK) | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Real-time Subscriptions | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| BQL Support | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 🎯 **Ease of Use** | | | | | | |
-| Excel-compatible inputs | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Intuitive API (`bdp`, `bdh`, etc.) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Sub-minute intervals | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 🚀 **Performance & Features** | | | | | | |
-| Local Parquet caching | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| pandas DataFrames | ✅ | ✅ | ✅ | ❌ (Polars) | ✅ | ✅ |
-| Modern Python (3.10+) | ✅ | ✅ | ✅ | ✅ | ❌ (Py2) | ✅ |
-| Async real-time support | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 🔧 **Utilities** | | | | | | |
-| Currency conversion | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Futures/CDX resolvers | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Exchange-aware market hours | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 📈 **Maintenance** | | | | | | |
-| Active development | ✅ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
-| Regular updates | ✅ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
+| Feature | xbbg | pdblp/blp | Others |
+|---------|------|-----------|--------|
+| 📊 **API Coverage** | | | |
+| Reference, Historical, Bulk Data | ✅ | ✅ | ⚠️ |
+| Intraday Bars | ✅ | ✅ | ⚠️ |
+| Tick Data | ✅ | ❌ | ⚠️ |
+| Real-time Subscriptions | ✅ | ❌ | ⚠️ |
+| Equity Screening (BEQS) | ✅ | ❌ | ❌ |
+| BQL Support | ✅ | ❌ | ❌ |
+| 🎯 **Key Features** | | | |
+| Excel-compatible inputs | ✅ | ❌ | ❌ |
+| Sub-minute intervals | ✅ | ❌ | ❌ |
+| Local Parquet caching | ✅ | ❌ | ❌ |
+| Currency conversion | ✅ | ❌ | ❌ |
+| Futures/CDX resolvers | ✅ | ❌ | ❌ |
+| Async real-time support | ✅ | ❌ | ❌ |
+| 📈 **Maintenance** | | | |
+| Active development | ✅ | ⚠️ | ⚠️ |
+| Modern Python (3.10+) | ✅ | ✅ | ⚠️ |
 
 **Key Advantages:**
 
