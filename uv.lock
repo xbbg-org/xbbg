@@ -2212,6 +2212,9 @@ requires-dist = [
 ]
 provides-extras = ["test", "dev", "docs"]
 
+[package.metadata.requires-dev]
+dev = []
+
 [[package]]
 name = "zipp"
 version = "3.23.0"

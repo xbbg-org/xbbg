@@ -45,6 +45,7 @@ Homepage = "https://github.com/alpha-xone/xbbg"
 Documentation = "https://xbbg.readthedocs.io/"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
+Logo = "https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png"
 
 [tool.setuptools_scm]
 # Accept tags like v0.7.10 and translate to 0.7.10
@@ -129,3 +130,6 @@ filterwarnings = [
   "error::PendingDeprecationWarning",
   "error::FutureWarning",
 ]
+
+[dependency-groups]
+dev = []

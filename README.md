@@ -1,18 +1,25 @@
 # xbbg
 
-![xbbg](https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png)
+<!-- markdownlint-disable MD033 -->
+<div align="center">
+<!-- markdownlint-enable MD033 -->
 
-An intuitive Bloomberg API for Python
+[![xbbg logo](https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png)](https://github.com/alpha-xone/xbbg)
+
+## An intuitive Bloomberg API for Python
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/xbbg)](https://pypistats.org/packages/xbbg)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/xbbg)](https://pypistats.org/packages/xbbg)
 [![Gitter](https://badges.gitter.im/xbbg/community.svg)](https://gitter.im/xbbg/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png)](https://www.buymeacoffee.com/Lntx29Oof)
 
-[![Coffee](https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png)](https://www.buymeacoffee.com/Lntx29Oof)
+</div>
+
+---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.7.10 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/xbbg%3D%3D0.7.10))
+**Latest release:** xbbg==0.7.10 ([release notes](https://github.com/alpha-xone/xbbg/releases/tag/xbbg%3D%3D0.7.10))
 <!-- xbbg:latest-release-end -->
 
 ## Overview
