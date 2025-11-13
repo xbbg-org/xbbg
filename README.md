@@ -14,6 +14,8 @@
 
 <a href="https://www.buymeacoffee.com/Lntx29Oof"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
 
+**Quick Links:** [Documentation](https://xbbg.readthedocs.io/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Source](https://github.com/alpha-xone/xbbg) • [Issues](https://github.com/alpha-xone/xbbg/issues)
+
 </div>
 <!-- markdownlint-enable MD033 MD041 -->
 
