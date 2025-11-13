@@ -1,9 +1,12 @@
-|xbbg|
+.. image:: https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png
+   :alt: xbbg logo
+   :width: 100px
+   :align: center
 
 xbbg
 ====
 
-An intuitive Bloomberg API
+An intuitive Bloomberg API for Python
 
 |pypi| |version| |download| |chat|
 
@@ -14,14 +17,35 @@ An intuitive Bloomberg API
 Latest release: xbbg==0.0.0 (release: `notes <https://example.com>`_)
 .. xbbg:latest-release-end
 
-Features
+Overview
 ========
 
-Below are main features. Jupyter notebook examples can be found here_.
+xbbg is the **most comprehensive and intuitive Bloomberg API wrapper for Python**, providing a Pythonic interface with Excel-compatible inputs, straightforward intraday bar requests, and real-time subscriptions. All functions return pandas DataFrames for seamless integration with your data workflow.
 
-- Excel compatible inputs
-- Straightforward intraday bar requests
-- Subscriptions
+**Why xbbg?**
+
+- 🎯 **Complete API Coverage**: Reference, historical, intraday bars, tick data, real-time subscriptions, equity screening (BEQS), and BQL support
+- 📊 **Excel-Compatible**: Use familiar Excel date formats and field names - no learning curve
+- ⚡ **Built-in Caching**: Automatic Parquet-based local storage reduces API calls and speeds up workflows
+- 🔧 **Rich Utilities**: Currency conversion, futures/CDX resolvers, exchange-aware market hours, and more
+- 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
+- 💡 **Intuitive Design**: Simple, consistent API (``bdp``, ``bdh``, ``bdib``, etc.) that feels natural to use
+
+See `examples/xbbg_jupyter_examples.ipynb <https://github.com/alpha-xone/xbbg/blob/main/examples/xbbg_jupyter_examples.ipynb>`_ for interactive tutorials and examples.
+
+Why Choose xbbg?
+================
+
+xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrapper for Python. Here's how it compares to alternatives:
+
+**Key Advantages:**
+
+- 🎯 **Most Complete API**: Covers reference, historical, intraday, tick, real-time, screening, and BQL
+- 📊 **Excel Compatibility**: Use familiar Excel date formats and field names
+- ⚡ **Performance**: Built-in Parquet caching reduces API calls and speeds up workflows
+- 🔧 **Rich Utilities**: Currency conversion, futures resolvers, and more out of the box
+- 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
+- 💡 **Intuitive Design**: Simple, consistent API that feels natural to use
 
 Requirements
 ============
@@ -32,16 +56,13 @@ Requirements
 
     - In the ``bin`` folder of downloaded zip file, copy ``blpapi3_32.dll`` and ``blpapi3_64.dll`` to Bloomberg ``BLPAPI_ROOT`` folder (usually ``blp/DAPI``)
 
-- Bloomberg offical Python API:
+- Bloomberg official Python API:
 
 .. code-block:: console
 
    pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 
 - numpy, pandas, ruamel.yaml and pyarrow
-
-.. _download: https://bcms.bloomberg.com/BLPAPI-Generic/blpapi_cpp_3.16.1.1-windows.zip
-.. _here: https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR
 
 Installation
 ============
@@ -50,7 +71,58 @@ Installation
 
    pip install xbbg
 
-Supported Python versions: 3.7 – 3.14 (universal wheel)
+Supported Python versions: 3.10 – 3.14 (universal wheel)
+
+Supported Functionality
+========================
+
+xbbg provides comprehensive Bloomberg API coverage:
+
+**Reference Data:**
+- ``bdp()`` - Single point-in-time reference data
+- ``bds()`` - Bulk/block data (multi-row)
+
+**Historical Data:**
+- ``bdh()`` - End-of-day historical data
+- ``dividend()`` - Dividend & split history
+- ``earning()`` - Corporate earnings breakdowns
+- ``turnover()`` - Trading volume & turnover
+
+**Intraday Data:**
+- ``bdib()`` - Intraday bar data
+- ``bdtick()`` - Tick-by-tick data
+
+**Screening & Queries:**
+- ``beqs()`` - Bloomberg Equity Screening
+- ``bql()`` - Bloomberg Query Language
+
+**Real-time:**
+- ``live()`` - Real-time market data
+- ``subscribe()`` - Real-time subscriptions
+
+**Utilities:**
+- ``adjust_ccy()`` - Currency conversion
+- ``active_futures()`` - Active futures contracts
+- ``fut_ticker()`` - Futures ticker resolution
+- ``cdx_ticker()`` - CDX index ticker resolution
+- ``active_cdx()`` - Active CDX contracts
+
+**Additional Features**: Local caching (Parquet), configurable logging, timezone support, exchange-aware market hours, batch processing, standardized column mapping
+
+Quickstart
+==========
+
+.. code-block:: python
+
+   from xbbg import blp
+
+   # Reference data (BDP)
+   ref = blp.bdp(tickers='AAPL US Equity', flds=['Security_Name', 'GICS_Sector_Name'])
+   print(ref)
+
+   # Historical data (BDH)
+   hist = blp.bdh('SPX Index', ['high', 'low', 'last_price'], '2021-01-01', '2021-01-05')
+   print(hist.tail())
 
 What's New
 ==========
@@ -299,10 +371,10 @@ Dividends:
 Data Storage
 ------------
 
-If ``BBG_ROOT`` is provided in ``os.environ``, data can be saved locally.
-By default, local storage is preferred than Bloomberg for all queries.
+If ``BBG_ROOT`` is provided in ``os.environ``, data can be saved locally in Parquet format.
+By default, local storage is preferred over Bloomberg for all queries.
 
-Noted that local data usage must be compliant with Bloomberg Datafeed Addendum
+**Important**: Local data usage must be compliant with Bloomberg Datafeed Addendum
 (full description in ``DAPI<GO>``):
 
     To access Bloomberg data via the API (and use that data in Microsoft Excel),
@@ -311,6 +383,72 @@ Noted that local data usage must be compliant with Bloomberg Datafeed Addendum
     of the data and information available via the API (the "Data").
     The most fundamental requirement regarding your use of Data is that it cannot
     leave the local PC you use to access the BLOOMBERG PROFESSIONAL service.
+
+Development
+===========
+
+Setup
+-----
+
+Create venv and install dependencies:
+
+.. code-block:: console
+
+   uv venv .venv
+   .\.venv\Scripts\Activate.ps1
+   uv sync --locked --extra dev --extra test
+
+Adding Dependencies
+--------------------
+
+.. code-block:: console
+
+   uv add <package>
+
+Running Tests and Linting
+--------------------------
+
+.. code-block:: console
+
+   uv run ruff check xbbg
+   uv run pytest --doctest-modules --cov -v xbbg
+
+Building
+--------
+
+.. code-block:: console
+
+   uv run python -m build
+
+Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
+
+Documentation
+-------------
+
+.. code-block:: console
+
+   uv sync --locked --extra docs
+   uv run sphinx-build -b html docs docs/_build/html
+
+Contributing
+============
+
+- Issues and feature requests: please open an issue on the repository.
+- Pull requests welcome. Run lint and tests locally:
+
+.. code-block:: console
+
+   uv sync --locked --extra dev --extra test
+   uv run ruff check xbbg
+   uv run pytest --doctest-modules -q
+
+Links
+=====
+
+- `PyPI <https://pypi.org/project/xbbg/>`_
+- `Documentation <https://xbbg.readthedocs.io/>`_
+- `Source <https://github.com/alpha-xone/xbbg>`_
+- Security policy: see ``SECURITY.md``
 
 ============== ======================
 Docs           |docs|
@@ -351,5 +489,3 @@ License        |license|
 .. |coffee| image:: https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png
    :target: https://www.buymeacoffee.com/Lntx29Oof
 .. _Bloomberg API Library: https://www.bloomberg.com/professional/support/api-library/
-.. |xbbg| image:: https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png
-   :alt: xbbg
