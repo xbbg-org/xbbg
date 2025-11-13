@@ -11,6 +11,8 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v5
+      with:
+        ref: main
     - name: Update latest release line in README
       env:
         TAG_NAME: ${{ github.event.release.tag_name }}
@@ -52,10 +54,12 @@ jobs:
         cat .changelog_entry.md >> README.md.tmp
         sed -n '/<!-- xbbg:changelog-end -->/,$p' README.md >> README.md.tmp
         mv README.md.tmp README.md
-    - name: Commit README changelog update
+    - name: Commit README updates
       if: ${{ env.ACT != 'true' }}
       run: |
         set -euo pipefail
+        # Ensure we're on main branch
+        git checkout main || git checkout -B main
         if git diff --quiet; then
           echo "No README changes to commit"
           exit 0
@@ -63,19 +67,6 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs(README): update changelog for ${{ github.event.release.tag_name }}"
-        git push
-    - name: Commit changes
-      if: ${{ env.ACT != 'true' }}
-      run: |
-        set -euo pipefail
-        if git diff --quiet; then
-          echo "No README changes to commit"
-          exit 0
-        fi
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add README.md
-        git commit -m "docs(README): update latest release to ${{ github.event.release.tag_name }}"
-        git push
+        git commit -m "docs(README): update changelog and latest release for ${{ github.event.release.tag_name }}"
+        git push origin main
 
