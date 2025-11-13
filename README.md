@@ -23,6 +23,38 @@ Below are main features. See [Jupyter notebook examples](https://colab.research.
 - Straightforward intraday bar requests
 - Subscriptions
 
+## Supported Functionality
+
+| Function | Bloomberg API | Description | Key Features | Returns |
+|----------|---------------|-------------|--------------|---------|
+| `bdp()` | ReferenceDataRequest | Reference data (single point-in-time) | • Multiple tickers and fields<br>• Excel-compatible date formats<br>• Field overrides support<br>• Standard column mapping | `pd.DataFrame` (tickers × fields) |
+| `bds()` | ReferenceDataRequest | Bulk/block data (multi-row per ticker) | • Portfolio data support<br>• Date range filtering<br>• Custom field mappings<br>• Nested data structures | `pd.DataFrame` (expanded rows) |
+| `bdh()` | HistoricalDataRequest | Historical end-of-day data | • Date range queries<br>• Multiple frequencies (daily, weekly, monthly, etc.)<br>• Dividend/split adjustments<br>• Excel date format support<br>• Non-trading day fill options | `pd.DataFrame` (date × tickers × fields) |
+| `bdib()` | IntradayBarRequest | Intraday bar data | • Minute and second intervals<br>• Sub-minute bars (via `intervalHasSeconds`)<br>• Multiple sessions (day, am, pm, pre, post, allday)<br>• Event types (TRADE, BID, ASK, etc.)<br>• Exchange-aware timezone handling | `pd.DataFrame` (datetime index) |
+| `bdtick()` | IntradayTickRequest | Intraday tick-by-tick data | • Multiple event types<br>• Condition codes<br>• Exchange codes<br>• Broker codes<br>• Trade time stamps | `pd.DataFrame` (tick-level data) |
+| `dividend()` | ReferenceDataRequest (BDS) | Dividend and split history | • Multiple dividend types (all, dvd, split, gross, etc.)<br>• Date range filtering<br>• Adjustment factors<br>• Projected dividends | `pd.DataFrame` (dividend events) |
+| `earning()` | ReferenceDataRequest (BDS) | Corporate earnings breakdowns | • Geographic breakdowns<br>• Product breakdowns<br>• Multiple earnings types (Revenue, Operating Income, Assets, etc.)<br>• Fiscal year and period filtering | `pd.DataFrame` (hierarchical earnings) |
+| `beqs()` | BeqsRequest | Bloomberg Equity Screening | • Custom screening criteria<br>• Private and public screens<br>• Screen groups<br>• As-of-date support | `pd.DataFrame` (screened securities) |
+| `bql()` | BQL sendQuery | Bloomberg Query Language | • SQL-like query syntax<br>• Complex data transformations<br>• Request options and overrides<br>• Tabular and flattened results | `pd.DataFrame` (query results) |
+| `live()` | Subscription | Real-time market data | • Multiple tickers and fields<br>• Async event handling<br>• Field updates streaming<br>• Context manager support | Generator (live updates) |
+| `subscribe()` | Subscription | Real-time subscriptions | • Field-level subscriptions<br>• Event callbacks<br>• Multiple securities<br>• Custom event handlers | Subscription context |
+| `turnover()` | HistoricalDataRequest | Trading volume and turnover | • Currency conversion<br>• Volume aggregation<br>• Multi-currency support<br>• Factor scaling | `pd.DataFrame` (turnover metrics) |
+| `adjust_ccy()` | - | Currency conversion utility | • Multi-currency conversion<br>• Historical FX rates<br>• Cross-currency calculations | `pd.DataFrame` (converted values) |
+| `active_futures()` | ReferenceDataRequest | Active futures contracts | • Exchange-specific logic<br>• Volume-based selection<br>• Date-aware contract resolution | `str` (ticker) |
+| `fut_ticker()` | - | Futures ticker resolution | • Generic to specific contract<br>• Maturity date handling<br>• Exchange mapping | `str` (ticker) |
+| `cdx_ticker()` | - | CDX index ticker resolution | • Index series mapping<br>• Version handling | `str` (ticker) |
+| `active_cdx()` | ReferenceDataRequest | Active CDX contracts | • Series resolution<br>• Volume-based selection | `str` (ticker) |
+
+### Additional Capabilities
+
+- **Data Storage**: Local caching with `BBG_ROOT` environment variable (Parquet format)
+- **Logging**: Configurable logging levels and Bloomberg API event logging
+- **Error Handling**: Comprehensive error messages and retry logic
+- **Timezone Support**: Automatic timezone conversion for intraday data
+- **Market Hours**: Exchange-aware session definitions via YAML configuration
+- **Batch Processing**: Efficient batch requests for multiple securities
+- **Column Mapping**: Standardized column names across functions
+
 ## Requirements
 
 - Bloomberg C++ SDK version 3.12.1 or higher:
