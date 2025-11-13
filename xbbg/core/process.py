@@ -172,8 +172,8 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
             )
             if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
             return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
-    except Exception:
-        # fall through to PMC
+    except Exception:  # noqa: BLE001, S110
+        # Fall through to PMC fallback - exception is expected and handled by fallback logic
         pass
 
     # Fallback: try pandas-market-calendars via exch_code mapping
