@@ -17,7 +17,15 @@ Latest release: xbbg==0.7.10 (release: [notes](https://github.com/alpha-xone/xbb
 
 ## Overview
 
-xbbg provides a Pythonic interface to the Bloomberg API with Excel-compatible inputs, straightforward intraday bar requests, and real-time subscriptions. All functions return pandas DataFrames for seamless integration with your data workflow.
+xbbg is the **most comprehensive and intuitive Bloomberg API wrapper for Python**, providing a Pythonic interface with Excel-compatible inputs, straightforward intraday bar requests, and real-time subscriptions. All functions return pandas DataFrames for seamless integration with your data workflow.
+
+**Why xbbg?**
+- 🎯 **Complete API Coverage**: Reference, historical, intraday bars, tick data, real-time subscriptions, equity screening (BEQS), and BQL support
+- 📊 **Excel-Compatible**: Use familiar Excel date formats and field names - no learning curve
+- ⚡ **Built-in Caching**: Automatic Parquet-based local storage reduces API calls and speeds up workflows
+- 🔧 **Rich Utilities**: Currency conversion, futures/CDX resolvers, exchange-aware market hours, and more
+- 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
+- 💡 **Intuitive Design**: Simple, consistent API (`bdp`, `bdh`, `bdib`, etc.) that feels natural to use
 
 See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5AiJAQGGEECmOFAb7DNQZMOHdXLR) for interactive tutorials.
 
