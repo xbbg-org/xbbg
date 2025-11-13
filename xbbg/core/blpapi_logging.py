@@ -148,9 +148,10 @@ def log_event_info(event, context: str = '') -> None:
         elif event_type == blpapi.Event.SUBSCRIPTION_STATUS:
             logger.debug('Subscription status event received')
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Don't log exceptions here - avoid recursive logging issues
-        pass
+        # Silently ignore exceptions in logging code to prevent recursion
+        pass  # noqa: S110
 
 
 # Separate logger for verbose message-level logging (opt-in)
@@ -171,7 +172,7 @@ def log_message_info(msg, context: str = '') -> None:
         return
 
     # Always check for errors (important, rare, should be logged)
-    try:
+    with suppress(Exception):  # noqa: BLE001
         if msg.hasElement('responseError'):
             error_elem = msg.getElement('responseError')
             if error_elem.hasElement('category'):
@@ -182,8 +183,6 @@ def log_message_info(msg, context: str = '') -> None:
                     category,
                     message,
                 )
-    except Exception:
-        pass
 
     # Per-message details only if verbose logging is enabled (opt-in)
     if not _message_logger.isEnabledFor(logging.DEBUG):
@@ -236,9 +235,10 @@ def log_message_info(msg, context: str = '') -> None:
                 ' [%s]' % context if context else '',
             )
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Don't log exceptions here - avoid recursive logging issues
-        pass
+        # Silently ignore exceptions in logging code to prevent recursion
+        pass  # noqa: S110
 
 
 def _get_event_type_name(event_type: int) -> str:

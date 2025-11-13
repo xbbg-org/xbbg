@@ -18,7 +18,8 @@ logger.setLevel(logging.WARNING)
 
 # Export blpapi logging utilities if available
 try:
-    from xbbg.core import blpapi_logging
+    from xbbg.core import blpapi_logging  # noqa: F401
+
     __all__ = ['__version__', 'blpapi_logging']
 except ImportError:
     __all__ = ['__version__']
