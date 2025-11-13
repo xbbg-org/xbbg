@@ -30,6 +30,8 @@ jobs:
     - name: Upload artifacts to GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        files: dist/*
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
 
 
