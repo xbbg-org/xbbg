@@ -25,24 +25,24 @@ See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5Ai
 
 | Function | Description | Key Features |
 |----------|-------------|--------------|
-| 📊 **Reference Data** |
+| 📊 **Reference Data** | | |
 | `bdp()` | Single point-in-time reference data | Multiple tickers/fields, Excel dates, overrides |
 | `bds()` | Bulk/block data (multi-row) | Portfolio data, date filtering, nested structures |
-| 📈 **Historical Data** |
+| 📈 **Historical Data** | | |
 | `bdh()` | End-of-day historical data | Date ranges, frequencies, dividend/split adjustments |
 | `dividend()` | Dividend & split history | Multiple types, date ranges, projected dividends |
 | `earning()` | Corporate earnings breakdowns | Geographic/product breakdowns, fiscal periods |
 | `turnover()` | Trading volume & turnover | Currency conversion, multi-currency support |
-| ⏱️ **Intraday Data** |
+| ⏱️ **Intraday Data** | | |
 | `bdib()` | Intraday bar data | Minute/second intervals, sub-minute bars, sessions |
 | `bdtick()` | Tick-by-tick data | Event types, condition codes, exchange/broker codes |
-| 🔍 **Screening & Queries** |
+| 🔍 **Screening & Queries** | | |
 | `beqs()` | Bloomberg Equity Screening | Custom criteria, private/public screens |
 | `bql()` | Bloomberg Query Language | SQL-like syntax, complex transformations |
-| 📡 **Real-time** |
+| 📡 **Real-time** | | |
 | `live()` | Real-time market data | Async updates, context manager support |
 | `subscribe()` | Real-time subscriptions | Field-level subscriptions, event callbacks |
-| 🔧 **Utilities** |
+| 🔧 **Utilities** | | |
 | `adjust_ccy()` | Currency conversion | Multi-currency, historical FX rates |
 | `active_futures()` | Active futures contracts | Volume-based selection, date-aware resolution |
 | `fut_ticker()` | Futures ticker resolution | Generic to specific contract mapping |
