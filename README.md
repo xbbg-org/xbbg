@@ -118,6 +118,22 @@ AAPL US Equity               148.75
 ```
 
 ```python
+# Multiple tickers and fields
+blp.bdp(
+    tickers=['AAPL US Equity', 'MSFT US Equity', 'GOOGL US Equity'],
+    flds=['Security_Name', 'GICS_Sector_Name', 'PX_LAST']
+)
+```
+
+```pydocstring
+Out[3a]:
+               security_name        gics_sector_name  px_last
+AAPL US Equity      Apple Inc  Information Technology   148.75
+MSFT US Equity  Microsoft Corp  Information Technology   112.34
+GOOGL US Equity     Alphabet Inc  Information Technology  105.67
+```
+
+```python
 # Bulk/block data (BDS) - multi-row per ticker
 blp.bds('AAPL US Equity', 'DVD_Hist_All', DVD_Start_Dt='20180101', DVD_End_Dt='20180531')
 ```
@@ -151,6 +167,24 @@ Out[4]:
 2018-10-17  2,816.94 2,781.81   2,809.21
 2018-10-18  2,806.04 2,755.18   2,768.78
 2018-10-19  2,797.77 2,760.27   2,767.78
+```
+
+```python
+# Multiple tickers and fields
+blp.bdh(
+    tickers=['AAPL US Equity', 'MSFT US Equity'],
+    flds=['px_last', 'volume'],
+    start_date='2018-10-10', end_date='2018-10-20',
+)
+```
+
+```pydocstring
+Out[4a]:
+           AAPL US Equity        MSFT US Equity
+                px_last volume      px_last volume
+2018-10-10        220.65  45234500     112.34  32145600
+2018-10-11        221.23  38912300     113.12  29876500
+2018-10-12        219.87  56789000     112.89  41234500
 ```
 
 ```python
@@ -296,6 +330,13 @@ Out[12]:
 ```
 
 ```python
+# Tick data with timeout (useful for large requests)
+blp.bdtick(ticker='XYZ US Equity', dt='2024-10-15', session='day', timeout=1000)
+```
+
+Note: `bdtick` requests can take longer to respond. Use `timeout` parameter (in milliseconds) if you encounter empty DataFrames due to timeout.
+
+```python
 # Trading volume & turnover (currency-adjusted, in millions)
 blp.turnover(['ABC US Equity', 'DEF US Equity'], start_date='2024-01-01', end_date='2024-01-10', ccy='USD')
 ```
@@ -393,6 +434,15 @@ Out[18]:
 ## Data Storage
 
 If `BBG_ROOT` is provided in `os.environ`, data can be saved locally in Parquet format. By default, local storage is preferred over Bloomberg for all queries.
+
+**Setup**:
+
+```python
+import os
+os.environ['BBG_ROOT'] = '/path/to/your/data/directory'
+```
+
+Once configured, xbbg will automatically save and retrieve data from local Parquet files, reducing Bloomberg API calls and improving performance.
 
 **Important**: Local data usage must be compliant with Bloomberg Datafeed Addendum (full description in `DAPI<GO>`):
 
