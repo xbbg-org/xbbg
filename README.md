@@ -3,21 +3,19 @@
 
 <a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png" alt="xbbg logo" width="150"></a>
 
-</div>
-
-<p align="center">
-  <b>xbbg: An intuitive Bloomberg API for Python</b>
-</p>
-<!-- markdownlint-enable MD033 MD041 -->
+<!-- markdownlint-disable MD036 -->
+**xbbg: An intuitive Bloomberg API for Python**
+<!-- markdownlint-enable MD036 -->
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/xbbg)](https://pypistats.org/packages/xbbg)
 [![Gitter](https://badges.gitter.im/xbbg/community.svg)](https://gitter.im/xbbg/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white)](https://www.buymeacoffee.com/Lntx29Oof)
+<a href="https://www.buymeacoffee.com/Lntx29Oof"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=for-the-badge&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
 
 </div>
+<!-- markdownlint-enable MD033 MD041 -->
 
 ---
 
