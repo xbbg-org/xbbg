@@ -210,6 +210,76 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     return intervals.SessNA
 
 
+def _process_response_event(ev: blpapi.Event, func, **kwargs):
+    """Process RESPONSE or PARTIAL_RESPONSE event.
+
+    Args:
+        ev: Bloomberg event.
+        func: Generator function yielding parsed messages.
+        **kwargs: Arguments forwarded to func.
+
+    Yields:
+        Elements from func.
+
+    Returns:
+        True if final RESPONSE received (should stop), False otherwise.
+    """
+    msg_count = 0
+    for msg in ev:
+        msg_count += 1
+        if blpapi_logging:
+            blpapi_logging.log_message_info(msg, context='rec_events')
+        yield from func(msg=msg, **kwargs)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        event_type_str = 'RESPONSE' if ev.eventType() == blpapi.Event.RESPONSE else 'PARTIAL_RESPONSE'
+        logger.debug('Processed %d message(s) from %s event', msg_count, event_type_str)
+
+    is_final = ev.eventType() == blpapi.Event.RESPONSE
+    if is_final and logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Received final RESPONSE event, completing event processing')
+    # Return value from generator - will be available via StopIteration.value
+    return is_final
+
+
+def _handle_timeout(timeout_counts: int, max_timeouts: int) -> tuple[int, bool]:
+    """Handle timeout event.
+
+    Args:
+        timeout_counts: Current timeout count.
+        max_timeouts: Maximum allowed timeouts.
+
+    Returns:
+        Tuple of (updated_timeout_counts, should_stop_flag).
+    """
+    timeout_counts += 1
+    should_stop = timeout_counts > max_timeouts
+
+    if timeout_counts % 5 == 0 or should_stop:
+        if should_stop:
+            logger.warning('Maximum timeout count (%d) reached, stopping event processing', max_timeouts)
+        elif logger.isEnabledFor(logging.DEBUG):
+            logger.debug('Event timeout %d/%d', timeout_counts, max_timeouts)
+
+    return timeout_counts, should_stop
+
+
+def _handle_other_event(ev: blpapi.Event) -> bool:
+    """Handle other event types (e.g., SESSION_TERMINATED).
+
+    Args:
+        ev: Bloomberg event.
+
+    Returns:
+        True if should stop processing, False otherwise.
+    """
+    for _ in ev:
+        if getattr(ev, 'messageType', lambda: None)() == SESSION_TERMINATED:
+            logger.warning('Session terminated event received, stopping event processing')
+            return True
+    return False
+
+
 def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     """Receive and iterate events from Bloomberg.
 
@@ -226,7 +296,6 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     timeout = kwargs.pop('timeout', 500)
     max_timeouts = kwargs.pop('max_timeouts', 20)
 
-    # Log event processing start only if DEBUG is enabled (avoid function call overhead)
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Starting Bloomberg event processing (timeout=%dms, max_timeouts=%d)', timeout, max_timeouts)
 
@@ -236,45 +305,27 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
         else:
             ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
 
-        # Log event information only if DEBUG is enabled (guarded to avoid overhead)
         if blpapi_logging and logger.isEnabledFor(logging.DEBUG):
             blpapi_logging.log_event_info(ev, context='rec_events')
 
         if ev.eventType() in responses:
-            msg_count = 0
-            for msg in ev:
-                msg_count += 1
-                # Log message information only if verbose logging is enabled (opt-in)
-                # This avoids per-message overhead in tight loops
-                if blpapi_logging:
-                    blpapi_logging.log_message_info(msg, context='rec_events')
-                yield from func(msg=msg, **kwargs)
-
-            # Log summary after processing all messages (not per-message)
-            if logger.isEnabledFor(logging.DEBUG):
-                event_type_str = 'RESPONSE' if ev.eventType() == blpapi.Event.RESPONSE else 'PARTIAL_RESPONSE'
-                logger.debug('Processed %d message(s) from %s event', msg_count, event_type_str)
-
-            if ev.eventType() == blpapi.Event.RESPONSE:
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug('Received final RESPONSE event, completing event processing')
-                break
+            # Process response event (generator that yields messages)
+            gen = _process_response_event(ev, func, **kwargs)
+            # Yield all values from the generator
+            try:
+                while True:
+                    yield next(gen)
+            except StopIteration as e:
+                # Generator exhausted, check return value
+                if e.value:  # True if final RESPONSE
+                    break
         elif ev.eventType() == blpapi.Event.TIMEOUT:
-            timeout_counts += 1
-            # Only log timeouts occasionally to avoid spam (every 5th timeout or at max)
-            if timeout_counts % 5 == 0 or timeout_counts > max_timeouts:
-                if timeout_counts > max_timeouts:
-                    logger.warning('Maximum timeout count (%d) reached, stopping event processing', max_timeouts)
-                elif logger.isEnabledFor(logging.DEBUG):
-                    logger.debug('Event timeout %d/%d', timeout_counts, max_timeouts)
-            if timeout_counts > max_timeouts:
+            timeout_counts, should_stop = _handle_timeout(timeout_counts, max_timeouts)
+            if should_stop:
                 break
         else:
-            for _ in ev:
-                if getattr(ev, 'messageType', lambda: None)() \
-                    == SESSION_TERMINATED:
-                    logger.warning('Session terminated event received, stopping event processing')
-                    break
+            if _handle_other_event(ev):
+                break
 
 
 def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
