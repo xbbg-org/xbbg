@@ -248,7 +248,7 @@ def _build_bdib_request(ticker: str, dt, typ: str, **kwargs):
     """Build Bloomberg intraday bar request.
 
     Returns:
-        Tuple of (request, time_range, resolved_ticker, date_string).
+        Tuple of (request, date_string).
     """
     time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', **kwargs)
     interval = kwargs.get('interval', 1)
@@ -271,7 +271,7 @@ def _build_bdib_request(ticker: str, dt, typ: str, **kwargs):
         **kwargs,
     )
     cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-    return request, time_rng, ticker, cur_dt
+    return request, cur_dt
 
 
 def _process_bdib_response(res: pd.DataFrame, ticker: str, dt, session: str, typ: str, ex_info, **kwargs) -> pd.DataFrame:
@@ -362,7 +362,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         return pd.DataFrame()
 
     # Build and send request
-    request, time_rng, _, cur_dt = _build_bdib_request(ticker, dt, typ, **kwargs)
+    request, cur_dt = _build_bdib_request(ticker, dt, typ, **kwargs)
     need_info_log = logger.isEnabledFor(logging.DEBUG) or logger.isEnabledFor(logging.WARNING)
     if logger.isEnabledFor(logging.DEBUG) and need_info_log:
         logger.debug('Sending Bloomberg intraday bar data request for %s / %s / %s', q_tckr, cur_dt, typ)

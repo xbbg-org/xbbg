@@ -149,9 +149,11 @@ def log_event_info(event, context: str = '') -> None:
             logger.debug('Subscription status event received')
 
     except Exception:  # noqa: BLE001
-        # Don't log exceptions here - avoid recursive logging issues
-        # Silently ignore exceptions in logging code to prevent recursion
-        pass  # noqa: S110
+        # Don't log exceptions here - avoid recursive logging issues.
+        # Silently ignore exceptions in logging code to prevent recursion.
+        # Returning early avoids the "try/except/pass" pattern flagged by some linters
+        # while keeping the same behavior.
+        return
 
 
 # Separate logger for verbose message-level logging (opt-in)

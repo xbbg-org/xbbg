@@ -172,9 +172,17 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
             )
             if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
             return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
-    except Exception:  # noqa: BLE001, S110
-        # Fall through to PMC fallback - exception is expected and handled by fallback logic
-        pass
+    except Exception:  # noqa: BLE001
+        # Fall through to PMC fallback - exception is expected and handled by fallback logic.
+        # We intentionally do not re-raise here because the PMC-based fallback below
+        # provides a secondary path to resolve the session.
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                'Primary session resolution failed for %s on %s; falling back to PMC',
+                ticker,
+                dt,
+                exc_info=True,
+            )
 
     # Fallback: try pandas-market-calendars via exch_code mapping
     try:
