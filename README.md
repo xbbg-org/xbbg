@@ -91,12 +91,12 @@ print(hist.tail())
 
 ## Examples
 
-### Reference Data
+### 📊 Reference Data
 
 ```python
 from xbbg import blp
 
-# Basic reference data
+# Single point-in-time data (BDP)
 blp.bdp(tickers='NVDA US Equity', flds=['Security_Name', 'GICS_Sector_Name'])
 ```
 
@@ -117,10 +117,22 @@ Out[3]:
 AAPL US Equity               148.75
 ```
 
-### Historical Data
+```python
+# Bulk/block data (BDS) - multi-row per ticker
+blp.bds('AAPL US Equity', 'DVD_Hist_All', DVD_Start_Dt='20180101', DVD_End_Dt='20180531')
+```
+
+```pydocstring
+Out[8]:
+               declared_date     ex_date record_date payable_date  dividend_amount dividend_frequency dividend_type
+AAPL US Equity    2018-05-01  2018-05-11  2018-05-14   2018-05-17             0.73            Quarter  Regular Cash
+AAPL US Equity    2018-02-01  2018-02-09  2018-02-12   2018-02-15             0.63            Quarter  Regular Cash
+```
+
+### 📈 Historical Data
 
 ```python
-# Basic historical query
+# End-of-day historical data (BDH)
 blp.bdh(
     tickers='SPX Index', flds=['high', 'low', 'last_price'],
     start_date='2018-10-10', end_date='2018-10-20',
@@ -142,7 +154,7 @@ Out[4]:
 ```
 
 ```python
-# Excel-compatible inputs with periodicity and fill options
+# Excel-compatible inputs with periodicity
 blp.bdh(
     tickers='SHCOMP Index', flds=['high', 'low', 'last_price'],
     start_date='2018-09-26', end_date='2018-10-20',
@@ -173,7 +185,37 @@ Out[15]:
 2014-06-09          86.58
 ```
 
-### Intraday Data
+```python
+# Dividend history
+blp.dividend(['C US Equity', 'MS US Equity'], start_date='2018-01-01', end_date='2018-05-01')
+```
+
+```pydocstring
+Out[13]:
+                dec_date     ex_date    rec_date    pay_date  dvd_amt dvd_freq      dvd_type
+C US Equity   2018-01-18  2018-02-02  2018-02-05  2018-02-23     0.32  Quarter  Regular Cash
+MS US Equity  2018-04-18  2018-04-27  2018-04-30  2018-05-15     0.25  Quarter  Regular Cash
+MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.25  Quarter  Regular Cash
+```
+
+```python
+# Earnings breakdowns
+blp.earning('AMD US Equity', by='Geo', Eqy_Fund_Year=2017, Number_Of_Periods=1)
+```
+
+```pydocstring
+Out[12]:
+                 level    fy2017  fy2017_pct
+Asia-Pacific      1.00  3,540.00       66.43
+    China         2.00  1,747.00       49.35
+    Japan         2.00  1,242.00       35.08
+    Singapore     2.00    551.00       15.56
+United States     1.00  1,364.00       25.60
+Europe            1.00    263.00        4.94
+Other Countries   1.00    162.00        3.04
+```
+
+### ⏱️ Intraday Data
 
 ```python
 # Intraday bars (1-minute default)
@@ -239,50 +281,26 @@ out[10]:
 2020-03-20 16:59:00-04:00   2,265.25 2,272.00 2,265.00 2,266.50   1271      378 2,882,978.25
 ```
 
-### Corporate Actions
+### 🔍 Screening & Queries
 
 ```python
-# Dividend history
-blp.dividend(['C US Equity', 'MS US Equity'], start_date='2018-01-01', end_date='2018-05-01')
+# Bloomberg Query Language (BQL)
+# blp.bql("get(px_last for('AAPL US Equity'))")  # doctest: +SKIP
+
+# Bloomberg Equity Screening (BEQS)
+# blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP
 ```
 
-```pydocstring
-Out[13]:
-                dec_date     ex_date    rec_date    pay_date  dvd_amt dvd_freq      dvd_type
-C US Equity   2018-01-18  2018-02-02  2018-02-05  2018-02-23     0.32  Quarter  Regular Cash
-MS US Equity  2018-04-18  2018-04-27  2018-04-30  2018-05-15     0.25  Quarter  Regular Cash
-MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.25  Quarter  Regular Cash
-```
+### 📡 Real-time
 
 ```python
-# Earnings breakdowns
-blp.earning('AMD US Equity', by='Geo', Eqy_Fund_Year=2017, Number_Of_Periods=1)
-```
+# Real-time market data streaming
+# with blp.live(['AAPL US Equity'], ['LAST_PRICE']) as stream:  # doctest: +SKIP
+#     for update in stream:  # doctest: +SKIP
+#         print(update)  # doctest: +SKIP
 
-```pydocstring
-Out[12]:
-                 level    fy2017  fy2017_pct
-Asia-Pacific      1.00  3,540.00       66.43
-    China         2.00  1,747.00       49.35
-    Japan         2.00  1,242.00       35.08
-    Singapore     2.00    551.00       15.56
-United States     1.00  1,364.00       25.60
-Europe            1.00    263.00        4.94
-Other Countries   1.00    162.00        3.04
-```
-
-### Bulk Data
-
-```python
-# Block data (BDS)
-blp.bds('AAPL US Equity', 'DVD_Hist_All', DVD_Start_Dt='20180101', DVD_End_Dt='20180531')
-```
-
-```pydocstring
-Out[8]:
-               declared_date     ex_date record_date payable_date  dividend_amount dividend_frequency dividend_type
-AAPL US Equity    2018-05-01  2018-05-11  2018-05-14   2018-05-17             0.73            Quarter  Regular Cash
-AAPL US Equity    2018-02-01  2018-02-09  2018-02-12   2018-02-15             0.63            Quarter  Regular Cash
+# Real-time subscriptions
+# blp.subscribe(['AAPL US Equity'], ['LAST_PRICE'], callback=my_handler)  # doctest: +SKIP
 ```
 
 ## Data Storage
