@@ -209,6 +209,11 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         session: [allday, day, am, pm, pre, post]
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
         **kwargs:
+            interval: bar interval in minutes (default: 1). For sub-minute intervals,
+                set ``intervalHasSeconds=True`` and specify seconds (e.g., interval=10
+                with intervalHasSeconds=True for 10-second bars).
+            intervalHasSeconds: if True, interpret ``interval`` as seconds instead of
+                minutes. Default is False (interval always in minutes).
             ref: reference ticker or exchange
                  used as supplement if exchange info is not defined for `ticker`
             batch: whether is batch process to download data
@@ -216,6 +221,16 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
 
     Returns:
         pd.DataFrame
+
+    Examples:
+        Get 10-second bars (requires Bloomberg):
+
+        >>> # from xbbg import blp  # doctest: +SKIP
+        >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10, intervalHasSeconds=True)  # doctest: +SKIP
+
+        Get 10-minute bars (default behavior):
+
+        >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10)  # doctest: +SKIP
     """
     from xbbg.core import trials
 
@@ -257,16 +272,28 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         return pd.DataFrame()
 
     time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', **kwargs)
+
+    # Determine interval and whether to use seconds
+    interval = kwargs.get('interval', 1)
+    use_seconds = kwargs.get('intervalHasSeconds', False)
+
+    # Build request settings
+    settings = [
+        ('security', ticker),
+        ('eventType', typ),
+        ('interval', interval),
+        ('startDateTime', time_rng[0]),
+        ('endDateTime', time_rng[1]),
+    ]
+
+    # Set intervalHasSeconds if explicitly requested
+    if use_seconds:
+        settings.append(('intervalHasSeconds', True))
+
     request = process.create_request(
         service='//blp/refdata',
         request='IntradayBarRequest',
-        settings=[
-            ('security', ticker),
-            ('eventType', typ),
-            ('interval', kwargs.get('interval', 1)),
-            ('startDateTime', time_rng[0]),
-            ('endDateTime', time_rng[1]),
-        ],
+        settings=settings,
         **kwargs,
     )
     logger.debug(f'Sending request to Bloomberg ...\n{request}')

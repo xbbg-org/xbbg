@@ -298,6 +298,23 @@ Out[9]:
 2018-10-17 16:10:00+11:00         33.66 33.66 33.66 33.66  1115523      216
 ```
 
+- ``BDIB`` with sub-minute intervals (e.g., 10-second bars):
+
+```python
+In [9a]: blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=10, intervalHasSeconds=True).head()
+```
+
+```pydocstring
+Out[9a]:
+                          AAPL US Equity
+                                   open    high     low   close volume num_trds
+2025-11-12 09:31:00-05:00        150.25  150.35  150.20  150.30  25000      150
+2025-11-12 09:31:10-05:00        150.30  150.40  150.25  150.35  18000      120
+2025-11-12 09:31:20-05:00        150.35  150.45  150.30  150.40  22000      135
+```
+
+Note: Set ``intervalHasSeconds=True`` to use seconds-based intervals. By default, ``interval`` is interpreted as minutes.
+
 Above example works because 1) `AU` in equity ticker is mapped to `EquityAustralia` in
 `markets/assets.yml`, and 2) `EquityAustralia` is defined in `markets/exch.yml`.
 To add new mappings, define `BBG_ROOT` in sys path and add `assets.yml` and
