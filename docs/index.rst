@@ -486,6 +486,7 @@ License        |license|
    :target: https://gitter.im/xbbg/community
 .. |download| image:: https://img.shields.io/pypi/dm/xbbg
    :target: https://pypistats.org/packages/xbbg
-.. |coffee| image:: https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png
+.. |coffee| image:: https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white
    :target: https://www.buymeacoffee.com/Lntx29Oof
+   :alt: Buy Me a Coffee
 .. _Bloomberg API Library: https://www.bloomberg.com/professional/support/api-library/
