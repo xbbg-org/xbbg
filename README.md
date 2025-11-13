@@ -34,10 +34,13 @@ See [`examples/xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipyn
 
 xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrapper for Python. Here's how it compares to alternatives:
 
-| Feature | xbbg | pdblp | blp | tia/tiafork |
-|---------|------|-------|-----|-------------|
-| Tick Data | ✅ | ❌ | ❌ | ✅ |
-| Real-time Subscriptions | ✅ | ❌ | ❌ | ✅ |
+| Feature | xbbg | pdblp | blp | polars-bloomberg |
+|---------|------|-------|-----|------------------|
+| Reference Data (BDP/BDS) | ✅ | ✅ | ✅ | ✅ |
+| Historical Data (BDH) | ✅ | ✅ | ✅ | ✅ |
+| Intraday Bars (BDIB) | ✅ | ❌ | ❌ | ❌ |
+| Tick Data | ✅ | ❌ | ❌ | ❌ |
+| Real-time Subscriptions | ✅ | ❌ | ❌ | ❌ |
 | Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ |
 | BQL Support | ✅ | ❌ | ❌ | ❌ |
 | Excel-compatible inputs | ✅ | ❌ | ❌ | ❌ |
@@ -45,8 +48,11 @@ xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrappe
 | Local Parquet caching | ✅ | ❌ | ❌ | ❌ |
 | Currency conversion | ✅ | ❌ | ❌ | ❌ |
 | Futures/CDX resolvers | ✅ | ❌ | ❌ | ❌ |
-| Active development | ✅ | ⚠️ | ⚠️ | ❌ |
-| Modern Python (3.10+) | ✅ | ✅ | ✅ | ❌ |
+| Active development | ✅ | ❌[^1] | ✅ | ✅ |
+| Modern Python (3.10+) | ✅ | ✅ | ✅ | 3.12+ |
+| DataFrame Library | pandas | pandas | pandas | Polars |
+
+[^1]: pdblp has been superseded by blp and is no longer under active development.
 
 **Key Advantages:**
 
