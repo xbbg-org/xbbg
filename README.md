@@ -27,7 +27,7 @@
 
 ## Overview
 
-xbbg is the **most comprehensive and intuitive Bloomberg API wrapper for Python**, providing a Pythonic interface with Excel-compatible inputs, straightforward intraday bar requests, and real-time subscriptions. All functions return pandas DataFrames for seamless integration with your data workflow.
+xbbg is the **most comprehensive and intuitive blpapi wrapper for Python**, providing a Pythonic interface with Excel-compatible inputs, straightforward intraday bar requests, and real-time subscriptions. All functions return pandas DataFrames for seamless integration with your data workflow.
 
 **Why xbbg?**
 
@@ -42,7 +42,7 @@ See [`examples/xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipyn
 
 ## Why Choose xbbg?
 
-xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrapper for Python. Here's how it compares to alternatives:
+xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for Python. Here's how it compares to alternatives:
 
 | Feature | xbbg | pdblp | blp | polars-bloomberg |
 |---------|------|-------|-----|------------------|
