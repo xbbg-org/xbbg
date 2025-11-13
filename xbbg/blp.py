@@ -798,7 +798,7 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         settings.extend([(str(k), v) for k, v in params.items()])
 
     request = process.create_request(
-        service='//blp/bql',
+        service='//blp/bqlsvc',
         request='sendQuery',
         settings=settings,
         ovrds=overrides or [],

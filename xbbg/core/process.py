@@ -362,6 +362,10 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
     """Process BQL response messages into row dictionaries.
 
     Attempts to parse tabular BQL results; falls back to flattened dicts.
+    Handles both structured 'results' element and JSON string 'result' element.
+
+    This function is BQL-specific and should only be called for BQL queries
+    (via blp.bql()). It checks for BQL-specific message formats.
 
     Args:
         msg: Bloomberg BQL message.
@@ -370,34 +374,95 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
     Yields:
         OrderedDict: Row-like mappings parsed from BQL results.
     """
+    import json
+
     kwargs.pop('(^_^)', None)
-    if not msg.hasElement(RESULTS):
+
+    # Gate: Only process messages with BQL-specific message type "result"
+    # This ensures we don't accidentally process non-BQL messages
+    if str(msg.messageType()) != 'result':
         return iter([])
 
-    for res in msg.getElement(RESULTS).values():
-        if res.hasElement(TABLE):
-            table = res.getElement(TABLE)
-            if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
+    # Check if message element itself is a JSON string (BQL format)
+    msg_elem = msg.asElement()
+    if msg_elem.datatype() == blpapi.DataType.STRING:
+        try:
+            result_str = msg_elem.getValue()
+            if not isinstance(result_str, str):
+                return iter([])
+            result_json = json.loads(result_str)
+            if 'results' in result_json:
+                results_data = result_json.get('results')
+                if not results_data or not isinstance(results_data, dict):
+                    return iter([])
+                # Extract data from JSON structure
+                for field_name, field_data in results_data.items():
+                    if isinstance(field_data, dict):
+                        # Check for idColumn and valuesColumn structure
+                        if 'idColumn' in field_data and 'valuesColumn' in field_data:
+                            ids = field_data['idColumn'].get('values', [])
+                            values = field_data['valuesColumn'].get('values', [])
+                            # Also check for secondary columns (like DATE, CURRENCY)
+                            secondary_cols = {}
+                            if 'secondaryColumns' in field_data:
+                                for sec_col in field_data['secondaryColumns']:
+                                    col_name = sec_col.get('name', '')
+                                    col_values = sec_col.get('values', [])
+                                    secondary_cols[col_name] = col_values
+
+                            # Yield rows
+                            for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
+                                row = OrderedDict([
+                                    ('ID', ticker),
+                                    (field_name, value),
+                                ])
+                                # Add secondary columns
+                                for col_name, col_values in secondary_cols.items():
+                                    if i < len(col_values):
+                                        row[col_name] = col_values[i]
+                                yield row
+                        else:
+                            # Fallback: flatten the structure
+                            def _flatten_dict(d: dict, parent_key: str = '', sep: str = '_') -> dict:
+                                items = []
+                                for k, v in d.items():
+                                    new_key = f"{parent_key}{sep}{k}" if parent_key else k
+                                    if isinstance(v, dict):
+                                        items.extend(_flatten_dict(v, new_key, sep=sep).items())
+                                    else:
+                                        items.append((new_key, v))
+                                return dict(items)
+                            yield OrderedDict(_flatten_dict(field_data))
+                return
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass
+
+    # Check for structured 'results' element (plural) - older BQL format
+    if msg.hasElement(RESULTS):
+        for res in msg.getElement(RESULTS).values():
+            if res.hasElement(TABLE):
+                table = res.getElement(TABLE)
+                if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
+                    yield OrderedDict(_flatten_element(res))
+                    continue
+
+                cols: list[str] = []
+                for col in table.getElement(COLUMNS).values():
+                    if col.hasElement(NAME):
+                        cols.append(col.getElement(NAME).getValue())
+                    elif col.hasElement(FIELD):
+                        cols.append(str(col.getElement(FIELD).getValue()))
+                    else:
+                        cols.append(str(col.name()))
+
+                for row in table.getElement(ROWS).values():
+                    values: list[Any] = []
+                    if row.hasElement(VALUES):
+                        for v in row.getElement(VALUES).values():
+                            values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
+                    yield OrderedDict(zip(cols, values, strict=False))
+            else:
                 yield OrderedDict(_flatten_element(res))
-                continue
-
-            cols: list[str] = []
-            for col in table.getElement(COLUMNS).values():
-                if col.hasElement(NAME):
-                    cols.append(col.getElement(NAME).getValue())
-                elif col.hasElement(FIELD):
-                    cols.append(str(col.getElement(FIELD).getValue()))
-                else:
-                    cols.append(str(col.name()))
-
-            for row in table.getElement(ROWS).values():
-                values: list[Any] = []
-                if row.hasElement(VALUES):
-                    for v in row.getElement(VALUES).values():
-                        values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
-                yield OrderedDict(zip(cols, values, strict=False))
-        else:
-            yield OrderedDict(_flatten_element(res))
 
 
 def earning_pct(data: pd.DataFrame, yr):
