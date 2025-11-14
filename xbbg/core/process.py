@@ -491,7 +491,7 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
             if not isinstance(result_str, str):
                 return iter([])
             result_json = json.loads(result_str)
-            
+
             # Check for errors first - raise exception if errors found
             if 'responseExceptions' in result_json and result_json['responseExceptions']:
                 errors = result_json['responseExceptions']
@@ -501,7 +501,7 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
                     error_messages.append(msg_text)
                 error_msg = '; '.join(error_messages)
                 raise ValueError(f"BQL query error: {error_msg}")
-            
+
             if 'results' in result_json:
                 results_data = result_json.get('results')
                 # Handle None results (empty query result)
