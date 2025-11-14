@@ -20,18 +20,11 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: '3.11'
-    - name: Install uv (Linux/macOS)
-      if: runner.os != 'Windows'
+    - name: Install uv
       shell: bash
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-    - name: Install uv (Windows)
-      if: runner.os == 'Windows'
-      shell: powershell
-      run: |
-        iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex
-        "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     - name: Create uv virtual environment
       run: |
         uv venv

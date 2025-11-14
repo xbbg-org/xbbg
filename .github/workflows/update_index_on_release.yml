@@ -20,6 +20,7 @@ jobs:
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
+        # Remove v prefix (backward compatible with xbbg== prefix)
         VERSION="${VERSION#v}"
         VERSION="${VERSION#xbbg==}"
         NEW_LINE="Latest release: xbbg==${VERSION} (release: \`notes <${RELEASE_URL}>\`_)"
@@ -37,6 +38,7 @@ jobs:
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
+        # Remove v prefix (backward compatible with xbbg== prefix)
         VERSION="${VERSION#v}"
         VERSION="${VERSION#xbbg==}"
         # Prepare RST changelog entry from the release body; normalize bullets and ensure blank line

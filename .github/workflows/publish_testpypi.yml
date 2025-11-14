@@ -4,12 +4,10 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*rc*'
-      - 'v*alpha*'
-      - 'v*beta*'
-      - 'xbbg==*rc*'
-      - 'xbbg==*alpha*'
-      - 'xbbg==*beta*'
+      # Match semantic versioning pre-release tags: vX.Y.ZaN, vX.Y.ZbN, vX.Y.ZrcN
+      - 'v*.*.*a*'
+      - 'v*.*.*b*'
+      - 'v*.*.*rc*'
 
 jobs:
   deploy:
