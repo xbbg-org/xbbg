@@ -1,0 +1,34 @@
+# CODEOWNERS file
+# This file defines code ownership for automatic PR review requests
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners - all files default to these owners
+# Note: To use teams, the repository must be owned by an organization
+* @alpha-xone @kj55-dev
+
+# Core library code
+/xbbg/ @alpha-xone @kj55-dev
+/xbbg/core/ @alpha-xone @kj55-dev
+/xbbg/io/ @alpha-xone @kj55-dev
+/xbbg/markets/ @alpha-xone @kj55-dev
+
+# Tests
+/xbbg/tests/ @alpha-xone @kj55-dev
+/tests/ @alpha-xone @kj55-dev
+
+# Documentation
+/docs/ @alpha-xone @kj55-dev
+/README.md @alpha-xone @kj55-dev
+/SECURITY.md @alpha-xone @kj55-dev
+
+# GitHub workflows and configuration
+/.github/ @alpha-xone @kj55-dev
+
+# Build and project configuration
+/pyproject.toml @alpha-xone @kj55-dev
+/MANIFEST.in @alpha-xone @kj55-dev
+/uv.lock @alpha-xone @kj55-dev
+
+# Examples
+/examples/ @alpha-xone @kj55-dev
+

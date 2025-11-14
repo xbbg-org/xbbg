@@ -2,20 +2,38 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+The following versions of xbbg are currently being supported with security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| 0.7.x   | :white_check_mark: |
+| < 0.7   | :x:                |
+
+We support the latest minor version (0.7.x) with security updates. Older versions may receive critical security patches on a case-by-case basis.
 
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+If you discover a security vulnerability in xbbg, please report it responsibly:
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+1. **Do not** open a public GitHub issue for security vulnerabilities
+2. Contact the maintainer through a private channel
+3. Include a detailed description of the vulnerability
+4. Include steps to reproduce the issue (if applicable)
+5. Include potential impact assessment
+
+### What to Expect
+
+- **Response Time**: We aim to acknowledge receipt within 48 hours
+- **Initial Assessment**: We will provide an initial assessment within 7 days
+- **Updates**: You will receive regular updates on the progress of the fix
+- **Disclosure**: We will coordinate with you on the disclosure timeline after a fix is available
+
+### Scope
+
+This security policy applies to:
+
+- The xbbg Python package and its dependencies
+- Security issues in the codebase
+- Vulnerabilities in the build/packaging process
+
+**Note**: Issues related to Bloomberg API access, authentication, or data usage policies should be directed to Bloomberg support, not this repository.
