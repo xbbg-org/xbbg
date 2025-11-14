@@ -469,8 +469,17 @@ Out[14]:
 # Incorrect: get(px_last for('AAPL US Equity'))
 # blp.bql("get(px_last) for('AAPL US Equity')")  # doctest: +SKIP
 
-# BQL Options query example
+# BQL Options query example - sum open interest
 # blp.bql("get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))")  # doctest: +SKIP
+
+# BQL Options metadata - get available expiries
+# blp.bql("get(expire_dt) for(options('INDEX Ticker'))")  # doctest: +SKIP
+
+# BQL Options metadata - get option tickers for an underlying
+# blp.bql("get(id) for(options('INDEX Ticker'))")  # doctest: +SKIP
+
+# BQL Options metadata - get option chain (expiry, strike, put/call)
+# blp.bql("get(id, expire_dt, strike_px, PUT_CALL) for(filter(options('INDEX Ticker'), expire_dt=='YYYY-MM-DD'))")  # doctest: +SKIP
 
 # Bloomberg Equity Screening (BEQS)
 # blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP

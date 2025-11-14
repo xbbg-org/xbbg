@@ -1231,6 +1231,28 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         ...     "get(open_int) for(filter(options('SPX Index'), expire_dt==20251121))"
         ... )
 
+        Option chain metadata queries:
+
+        >>> # Get available option expiries for an underlying
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(expire_dt) for(options('SPX Index'))"
+        ... )
+
+        >>> # Get option tickers/IDs for an underlying
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(id) for(options('SPX Index'))"
+        ... )
+
+        >>> # Get option chain metadata (expiry, strike, put/call) for specific expiry
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(id, expire_dt, strike_px, PUT_CALL) for(filter(options('SPX Index'), expire_dt=='2025-12-19'))"
+        ... )
+
+        >>> # Get all options for a specific expiry date
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(id, expire_dt, strike_px) for(filter(options('SPX Index'), expire_dt=='2025-12-19'))"
+        ... )
+
         Historical data queries:
 
         >>> # Historical data query with period
