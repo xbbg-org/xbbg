@@ -19,21 +19,8 @@ If you discover a security vulnerability in xbbg, please report it responsibly:
 2. Contact the maintainer through a private channel
 3. Include a detailed description of the vulnerability
 4. Include steps to reproduce the issue (if applicable)
-5. Include potential impact assessment
 
 ### What to Expect
 
-- **Response Time**: We aim to acknowledge receipt within 48 hours
-- **Initial Assessment**: We will provide an initial assessment within 7 days
-- **Updates**: You will receive regular updates on the progress of the fix
-- **Disclosure**: We will coordinate with you on the disclosure timeline after a fix is available
-
-### Scope
-
-This security policy applies to:
-
-- The xbbg Python package and its dependencies
-- Security issues in the codebase
-- Vulnerabilities in the build/packaging process
-
-**Note**: Issues related to Bloomberg API access, authentication, or data usage policies should be directed to Bloomberg support, not this repository.
+- We'll do our best to respond and address security issues in a timely manner
+- We'll keep you updated on the progress of any fixes
