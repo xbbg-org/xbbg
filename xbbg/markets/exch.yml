@@ -111,6 +111,11 @@ EquityUS:
 CurrencyGeneric:
   tz: America/New_York
   allday: [1701, 1700]
+  # Define an explicit "day" session for generic currencies so that callers
+  # using session='day' get a concrete interval instead of SessNA.
+  # This mirrors the allday window, but can be refined per currency
+  # via overrides if needed.
+  day: [1701, 1700]
 
 CurrencySouthKorea:
   tz: Asia/Seoul

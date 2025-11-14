@@ -75,7 +75,7 @@ def bdp(tickers, flds, **kwargs) -> pd.DataFrame:
     # Guard len() calls - only compute if DEBUG logging is enabled
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Sending Bloomberg reference data request for %d ticker(s), %d field(s)', len(tickers), len(flds))
-    handle = conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
 
     res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
@@ -133,7 +133,7 @@ def _bds_(
     )
     process.init_request(request=request, tickers=ticker, flds=fld, **kwargs)
     logger.debug('Sending Bloomberg reference data request for ticker: %s, field: %s', ticker, fld)
-    handle = conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
 
     res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
@@ -196,7 +196,7 @@ def bdh(
     # Guard len() calls - only compute if DEBUG logging is enabled
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Sending Bloomberg reference data request for %d ticker(s), %d field(s)', len(tickers), len(flds))
-    handle = conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
 
     res = pd.DataFrame(process.rec_events(process.process_hist, event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
@@ -536,7 +536,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
     need_info_log = logger.isEnabledFor(logging.DEBUG) or logger.isEnabledFor(logging.WARNING)
     if logger.isEnabledFor(logging.DEBUG) and need_info_log:
         logger.debug('Sending Bloomberg intraday bar data request for %s / %s / %s', q_tckr, cur_dt, typ)
-    handle = conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
 
     # Process response
     res = pd.DataFrame(process.rec_events(func=process.process_bar, event_queue=handle["event_queue"], **kwargs))
@@ -608,7 +608,7 @@ def bdtick(ticker, dt, session='allday', time_range=None, types=None, **kwargs) 
     )
 
     logger.debug('Sending Bloomberg tick data request for ticker: %s, event types: %s', ticker, types)
-    handle = conn.send_request(request=request)
+    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
 
     res = pd.DataFrame(process.rec_events(func=process.process_bar, typ='t', event_queue=handle["event_queue"], **kwargs))
     if kwargs.get('raw', False): return res
@@ -754,7 +754,7 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
     )
 
     logger.debug('Sending Bloomberg Equity Screening (BEQS) request for screen: %s, type: %s, group: %s', screen, typ, group)
-    handle = conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
     # Use longer timeout and more allowed timeouts for BEQS requests to ensure complete response
     # BEQS requests can take longer, especially for complex screens, and may have longer gaps between events
     beqs_timeout = kwargs.pop('timeout', 2000)  # 2 seconds default for BEQS (vs 500ms default)
@@ -845,7 +845,7 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
         override_info = f' with {len(overrides)} override(s)' if overrides else ''
         logger.debug('Sending Bloomberg SRCH request for domain: %s%s', domain, override_info)
 
-    handle = conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, service='//blp/exrsvc', **kwargs)
 
     # Use longer timeout for BSRCH requests (similar to BEQS)
     bsrch_timeout = kwargs.pop('timeout', 2000)
@@ -1204,7 +1204,7 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
     )
 
     logger.debug('Sending Bloomberg Query Language (BQL) request')
-    handle = conn.send_request(request=request, **kwargs)
+    handle = conn.send_request(request=request, service='//blp/bqlsvc', **kwargs)
 
     rows = list(process.rec_events(func=process.process_bql, event_queue=handle["event_queue"], **kwargs))
     return pd.DataFrame(rows) if rows else pd.DataFrame()
