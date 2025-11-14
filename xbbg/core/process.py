@@ -327,13 +327,8 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
                 if e.value:  # True if final RESPONSE
                     break
         elif ev.eventType() == blpapi.Event.TIMEOUT:
-<<<<<<< HEAD
             timeout_counts, should_stop = _handle_timeout(timeout_counts, max_timeouts)
             if should_stop:
-=======
-            timeout_counts += 1
-            if timeout_counts > max_timeouts:
->>>>>>> origin/issue-100-beqs-waiting
                 break
         else:
             if _handle_other_event(ev):
