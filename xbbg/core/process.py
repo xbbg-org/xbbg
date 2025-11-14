@@ -302,11 +302,10 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     timeout_counts = 0
     responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
     timeout = kwargs.pop('timeout', 500)
-    max_timeouts = kwargs.pop('max_timeouts', 20)
+    max_timeouts = kwargs.pop('max_timeouts', 20)  # Allow configurable max timeouts
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Starting Bloomberg event processing (timeout=%dms, max_timeouts=%d)', timeout, max_timeouts)
-
     while True:
         if event_queue is not None:
             ev = event_queue.nextEvent(timeout=timeout)
@@ -328,8 +327,13 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
                 if e.value:  # True if final RESPONSE
                     break
         elif ev.eventType() == blpapi.Event.TIMEOUT:
+<<<<<<< HEAD
             timeout_counts, should_stop = _handle_timeout(timeout_counts, max_timeouts)
             if should_stop:
+=======
+            timeout_counts += 1
+            if timeout_counts > max_timeouts:
+>>>>>>> origin/issue-100-beqs-waiting
                 break
         else:
             if _handle_other_event(ev):

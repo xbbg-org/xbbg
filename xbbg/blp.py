@@ -723,6 +723,10 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
         asof: as of date
         typ: GLOBAL/B (Bloomberg) or PRIVATE/C (Custom, default)
         group: group name if screen is organized into groups
+        timeout: Timeout in milliseconds for waiting between events (default: 2000ms).
+            Increase for complex screens that may have longer gaps between events.
+        max_timeouts: Maximum number of timeout events allowed before giving up
+            (default: 50). Increase for screens that take longer to complete.
         **kwargs: Additional request overrides for BeqsRequest.
 
     Returns:
@@ -744,7 +748,17 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
 
     logger.debug('Sending Bloomberg Equity Screening (BEQS) request for screen: %s, type: %s, group: %s', screen, typ, group)
     handle = conn.send_request(request=request, **kwargs)
-    res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **kwargs))
+    # Use longer timeout and more allowed timeouts for BEQS requests to ensure complete response
+    # BEQS requests can take longer, especially for complex screens, and may have longer gaps between events
+    beqs_timeout = kwargs.pop('timeout', 2000)  # 2 seconds default for BEQS (vs 500ms default)
+    beqs_max_timeouts = kwargs.pop('max_timeouts', 50)  # Allow more timeouts for BEQS (vs 20 default)
+    res = pd.DataFrame(process.rec_events(
+        func=process.process_ref,
+        event_queue=handle["event_queue"],
+        timeout=beqs_timeout,
+        max_timeouts=beqs_max_timeouts,
+        **kwargs
+    ))
     if res.empty:
         if kwargs.get('trial', 0): return pd.DataFrame()
         return beqs(screen=screen, asof=asof, typ=typ, group=group, trial=1, **kwargs)
