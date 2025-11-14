@@ -473,6 +473,9 @@ Out[14]:
 
 # Real-time subscriptions
 # blp.subscribe(['AAPL US Equity'], ['LAST_PRICE'], callback=my_handler)  # doctest: +SKIP
+
+# Subscribe with 10-second update interval
+# blp.subscribe(['AAPL US Equity'], interval=10)  # doctest: +SKIP
 ```
 
 ### 🔧 Utilities
