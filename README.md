@@ -134,6 +134,20 @@ hist = blp.bdh('SPX Index', ['high', 'low', 'last_price'], '2021-01-01', '2021-0
 print(hist.tail())
 ```
 
+### Connection Options
+
+By default, xbbg connects to `localhost` on port `8194`. To connect to a remote Bloomberg server, use the `server` and `port` parameters:
+
+```python
+from xbbg import blp
+
+# Connect to a remote Bloomberg server
+kwargs = {'server': '192.168.1.100', 'port': 18194}
+blp.bdp(tickers='NVDA US Equity', flds=['Security_Name'], **kwargs)
+```
+
+The `server` parameter (or `server_host`) can be passed through any function that accepts kwargs, just like the `port` parameter.
+
 ## Examples
 
 ### 📊 Reference Data
