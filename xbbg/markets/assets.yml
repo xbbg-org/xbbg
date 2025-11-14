@@ -87,6 +87,12 @@ Equity:
     exch: EquityStockholm
   - exch_codes: [US, UN]
     exch: EquityUS
+  - exch_codes: [GY]
+    exch: EquityXetra
+  - exch_codes: [IM]
+    exch: EquityItaly
+  - exch_codes: [SE]
+    exch: EquitySwitzerland
   - exch_codes: [IS, IB, IN]
     exch: EquityFuturesIndia
     is_fut: True

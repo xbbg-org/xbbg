@@ -97,6 +97,21 @@ EquityStockholm:
   day: [800, 1630]
   post: [1631, 1700]
 
+EquityXetra:
+  tz: Europe/Berlin
+  allday: [800, 1630]
+  day: [800, 1630]
+
+EquityItaly:
+  tz: Europe/Rome
+  allday: [800, 1630]
+  day: [800, 1630]
+
+EquitySwitzerland:
+  tz: Europe/Zurich
+  allday: [800, 1630]
+  day: [800, 1630]
+
 EquityUS:
   tz: America/New_York
   allday: [400, 2000]
