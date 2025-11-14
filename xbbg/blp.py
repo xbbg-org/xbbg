@@ -272,11 +272,13 @@ def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs)
         if len(identifier) >= 2:
             country_code = identifier[:2].upper()
     elif ticker.startswith('/cusip/') or ticker.startswith('/sedol/'):
-        # CUSIP/SEDOL: try to infer from ticker structure or use defaults
-        # For now, default to US for these (most common)
-        country_code = 'US'
+        # CUSIP/SEDOL: Cannot reliably determine country code from identifier alone
+        # User needs to provide calendar mapping or use ISIN format instead
+        country_code = None
     else:
         # Regular ticker format: US912810FE39 Govt -> extract US
+        # Note: CUSIP/SEDOL followed by asset type (e.g., "12345678 Govt") won't match here
+        # as they don't start with country code
         t_info = ticker.split()
         if t_info and len(t_info[0]) == 2:
             country_code = t_info[0].upper()
@@ -325,22 +327,34 @@ def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs)
                 logger.debug('PMC calendar lookup failed for %s: %s, using timezone defaults', ticker, e)
 
     # Fallback: timezone-based defaults
-    default_tz = kwargs.get('tz', 'America/New_York')  # Default to US Eastern
-    tz_map = {
-        'US': 'America/New_York',
-        'GB': 'Europe/London',
-        'UK': 'Europe/London',
-        'JP': 'Asia/Tokyo',
-        'DE': 'Europe/Berlin',
-        'FR': 'Europe/Paris',
-        'IT': 'Europe/Rome',
-        'ES': 'Europe/Madrid',
-        'NL': 'Europe/Amsterdam',
-        'CH': 'Europe/Zurich',
-        'AU': 'Australia/Sydney',
-        'CA': 'America/Toronto',
-    }
-    if country_code:
+    # If country_code is None (e.g., CUSIP/SEDOL), we can't determine calendar
+    if country_code is None:
+        # Check if this is a CUSIP/SEDOL identifier format
+        if ticker.startswith('/cusip/') or ticker.startswith('/sedol/'):
+            raise ValueError(
+                f'Cannot determine country code from {ticker}. '
+                'CUSIP/SEDOL identifiers do not contain country information. '
+                'Please use ISIN format (/isin/...) which includes country code, '
+                'or provide a calendar mapping via pandas-market-calendars.'
+            )
+        # For other cases where country_code is None, use default
+        default_tz = kwargs.get('tz', 'America/New_York')
+    else:
+        default_tz = kwargs.get('tz', 'America/New_York')  # Default to US Eastern
+        tz_map = {
+            'US': 'America/New_York',
+            'GB': 'Europe/London',
+            'UK': 'Europe/London',
+            'JP': 'Asia/Tokyo',
+            'DE': 'Europe/Berlin',
+            'FR': 'Europe/Paris',
+            'IT': 'Europe/Rome',
+            'ES': 'Europe/Madrid',
+            'NL': 'Europe/Amsterdam',
+            'CH': 'Europe/Zurich',
+            'AU': 'Australia/Sydney',
+            'CA': 'America/Toronto',
+        }
         default_tz = tz_map.get(country_code, default_tz)
 
     # Create default exchange info with allday session
@@ -472,9 +486,13 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
     if ex_info.empty:
         # Check if this is a fixed income security or identifier-based ticker
         t_info = ticker.split()
+        # Detect fixed income securities
+        # Note: We don't check for 'Govt', 'Corp', etc. suffixes as they don't reliably indicate
+        # fixed income when combined with CUSIP/SEDOL (which lack country codes)
         is_fixed_income = (
-            len(t_info) > 0 and t_info[-1] in ['Govt', 'Corp', 'Mtge', 'Muni'] or
-            ticker.startswith('/isin/') or ticker.startswith('/cusip/') or ticker.startswith('/sedol/')
+            ticker.startswith('/isin/') or ticker.startswith('/cusip/') or ticker.startswith('/sedol/') or
+            (len(t_info) > 0 and t_info[-1] in ['Govt', 'Corp', 'Mtge', 'Muni'] and
+             t_info[0] and len(t_info[0]) == 2)  # Only if starts with country code
         )
         if is_fixed_income:
             ex_info = _get_default_exchange_info(ticker=ticker, dt=dt, session=session, **kwargs)
