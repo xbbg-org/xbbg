@@ -1,8 +1,9 @@
 name: Attach Release Artifacts
 
 on:
-  release:
-    types: [ published ]
+  push:
+    tags:
+      - 'v*'  # Match all version tags
 
 jobs:
   build-and-attach:
@@ -18,7 +19,7 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: '3.11'
-    - name: Install uv (Linux/macOS)
+    - name: Install uv
       shell: bash
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh

@@ -1,4 +1,4 @@
-name: Semantic Version Release
+name: Bump Version and Create Release
 
 on:
   workflow_dispatch:

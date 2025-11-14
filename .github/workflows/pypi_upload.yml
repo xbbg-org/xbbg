@@ -1,16 +1,20 @@
 name: Upload Python Package
 
 on:
-  release:
-    types: [ created ]
+  push:
+    tags:
+      - 'v*'  # Match all version tags
 
 jobs:
   deploy:
-
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
+    # Only upload stable releases to PyPI (pre-releases go to TestPyPI)
+    # Pre-releases have format vX.Y.ZaN, vX.Y.ZbN, or vX.Y.ZrcN
+    # Skip if tag matches pre-release pattern (contains a/b/rc after version numbers)
+    if: ${{ !contains(github.ref_name, 'a') && !contains(github.ref_name, 'b') && !contains(github.ref_name, 'rc') }}
 
     steps:
     - uses: actions/checkout@v5
