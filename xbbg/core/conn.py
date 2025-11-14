@@ -101,7 +101,15 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
 
 
 def connect_bbg(**kwargs) -> blpapi.Session:
-    """Create and connect a Bloomberg session."""
+    """Create and connect a Bloomberg session.
+
+    Args:
+        **kwargs:
+            port: port number (default 8194)
+            server: server hostname or IP address (default 'localhost')
+            server_host: alternative name for server parameter
+            sess: existing blpapi.Session to reuse
+    """
     logger = logging.getLogger(__name__)
 
     # Register blpapi logging callback if not already registered (only once)
@@ -118,15 +126,18 @@ def connect_bbg(**kwargs) -> blpapi.Session:
         logger.debug('Reusing existing Bloomberg session: %s', session)
     else:
         sess_opts = blpapi.SessionOptions()
-        sess_opts.setServerHost('localhost')
+        server_host = kwargs.get('server') or kwargs.get('server_host', 'localhost')
+        sess_opts.setServerHost(server_host)
         sess_opts.setServerPort(kwargs.get('port', _PORT_))
         session = blpapi.Session(sess_opts)
 
-    logger.debug('Establishing connection to Bloomberg Terminal (localhost:%d)', kwargs.get('port', _PORT_))
+    server_host = kwargs.get('server') or kwargs.get('server_host', 'localhost')
+    port = kwargs.get('port', _PORT_)
+    logger.debug('Establishing connection to Bloomberg Terminal (%s:%d)', server_host, port)
     if session.start():
         logger.debug('Successfully connected to Bloomberg Terminal')
         return session
-    logger.error('Failed to start Bloomberg session - check Terminal is running and port %d is accessible', kwargs.get('port', _PORT_))
+    logger.error('Failed to start Bloomberg session - check Terminal is running and %s:%d is accessible', server_host, port)
     raise ConnectionError('Cannot connect to Bloomberg')
 
 
@@ -136,6 +147,8 @@ def bbg_session(**kwargs) -> blpapi.Session:
     Args:
         **kwargs:
             port: port number (default 8194)
+            server: server hostname or IP address (default 'localhost')
+            server_host: alternative name for server parameter
             restart: whether to restart session
 
     Returns:
@@ -160,6 +173,8 @@ def bbg_service(service: str, **kwargs) -> blpapi.Service:
         service: service name
         **kwargs:
             port: port number
+            server: server hostname or IP address (default 'localhost')
+            server_host: alternative name for server parameter
 
     Returns:
         Bloomberg service
