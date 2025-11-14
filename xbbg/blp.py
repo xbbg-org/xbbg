@@ -263,10 +263,23 @@ def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs)
     }
 
     # Try to infer country code from ticker
-    t_info = ticker.split()
     country_code = None
-    if t_info and len(t_info[0]) == 2:
-        country_code = t_info[0].upper()
+    
+    # Handle identifier-based tickers (/isin/, /cusip/, /sedol/)
+    if ticker.startswith('/isin/'):
+        # ISIN format: /isin/US912810FE39 -> extract US (first 2 chars after /isin/)
+        identifier = ticker.replace('/isin/', '')
+        if len(identifier) >= 2:
+            country_code = identifier[:2].upper()
+    elif ticker.startswith('/cusip/') or ticker.startswith('/sedol/'):
+        # CUSIP/SEDOL: try to infer from ticker structure or use defaults
+        # For now, default to US for these (most common)
+        country_code = 'US'
+    else:
+        # Regular ticker format: US912810FE39 Govt -> extract US
+        t_info = ticker.split()
+        if t_info and len(t_info[0]) == 2:
+            country_code = t_info[0].upper()
 
     # Try to use PMC calendar if available and date is provided
     if dt and country_code and country_code in country_to_pmc_calendar:
@@ -277,12 +290,17 @@ def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs)
             s_date = pd.Timestamp(dt).date()
 
             # Get schedule for the date
-            if session == 'allday':
-                sched = cal.schedule(start_date=s_date, end_date=s_date, start='pre', end='post')
-                pre_col = 'pre' if 'pre' in sched.columns else 'market_open'
-                post_col = 'post' if 'post' in sched.columns else 'market_close'
+            # Note: SIFMA calendars may not support 'pre'/'post', so use regular schedule
+            sched = cal.schedule(start_date=s_date, end_date=s_date)
+            if sched.empty:
+                # Date might be a holiday/weekend, fall through to defaults
+                raise ValueError(f'No schedule available for {s_date} (likely holiday/weekend)')
+            
+            # Check for extended hours columns, fallback to regular market hours
+            if 'pre' in sched.columns and 'post' in sched.columns and session == 'allday':
+                pre_col = 'pre'
+                post_col = 'post'
             else:
-                sched = cal.schedule(start_date=s_date, end_date=s_date)
                 pre_col = 'market_open'
                 post_col = 'market_close'
 
