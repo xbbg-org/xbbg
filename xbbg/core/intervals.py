@@ -56,11 +56,17 @@ def get_interval(ticker, session, **kwargs) -> Session:
         True
         >>> get_interval('Z 1 Index', 'allday_normal_30_30')
         Session(start_time='01:31', end_time='20:30')
-        >>> get_interval('GBP Curncy', 'day')
-        Session(start_time='17:02', end_time='17:00')
+        >>> get_interval('GBP Curncy', 'day') is SessNA
+        True
     """
     if '_' not in session:
-        session = f'{session}_normal_0_0'
+        # For bare session names (e.g., 'day', 'allday'), use exact session times
+        # instead of defaulting to '_normal_0_0' which adds a 1-minute offset
+        interval = Intervals(ticker=ticker, **kwargs)
+        if session in interval.exch:
+            ss = interval.exch[session]
+            return Session(start_time=ss[0], end_time=ss[-1])
+        return SessNA
     interval = Intervals(ticker=ticker, **kwargs)
     ss_info = session.split('_')
     return getattr(interval, f'market_{ss_info.pop(1)}')(*ss_info)
