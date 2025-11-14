@@ -4,12 +4,13 @@ Provides helpers to map tickers/shorthands to tz names and convert
 datetime-like values between timezones.
 """
 
+import logging
 import time
 
 import pandas as pd
 import pytz
 
-from xbbg.io import logs
+logger = logging.getLogger(__name__)
 
 DEFAULT_TZ = pytz.FixedOffset(-time.timezone / 60)
 
@@ -69,11 +70,11 @@ def tz_convert(dt, to_tz, from_tz=None) -> str:
         >>> tz_convert(dt_3, to_tz='NY', from_tz='JP')
         '2018-09-10 02:00:00-04:00'
     """
-    logger = logs.get_logger(tz_convert, level='debug')
+    # Logger is module-level
     f_tz, t_tz = get_tz(from_tz), get_tz(to_tz)
 
     from_dt = pd.Timestamp(str(dt), tz=f_tz)
-    logger.debug(f'converting {str(from_dt)} from {f_tz} to {t_tz} ...')
+    logger.debug('Converting datetime %s from timezone %s to %s', from_dt, f_tz, t_tz)
     return str(pd.Timestamp(str(from_dt), tz=t_tz))
 
 

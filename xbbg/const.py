@@ -1,11 +1,14 @@
 """Constants, configuration mappings, and market utilities for xbbg."""
 
 from collections import namedtuple
+import logging
 
 import pandas as pd
 
 from xbbg.core import timezone
-from xbbg.io import files, logs, param
+from xbbg.io import files, param
+
+logger = logging.getLogger(__name__)
 
 Futures = {
     'Jan': 'F', 'Feb': 'G', 'Mar': 'H', 'Apr': 'J', 'May': 'K', 'Jun': 'M',
@@ -161,7 +164,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         >>> exch_info('TESTTCK Index')
         Series([], dtype: object)
     """
-    logger = logs.get_logger(exch_info, level='debug')
+    # Logger is module-level
 
     if kwargs.get('ref', ''):
         return exch_info(ticker=kwargs['ref'], **{k: v for k, v in kwargs.items() if k != 'ref'})
@@ -188,7 +191,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         return info.dropna().apply(param.to_hours)
 
     if original:
-        logger.error(f'exchange info cannot be found in {original} ...')
+        logger.error('Exchange information not found for ticker: %s', original)
         return pd.Series(dtype=object)
 
     # Case 2: Use ticker to find exchange
@@ -377,8 +380,7 @@ def ccy_pair(local, base='USD') -> CurrencyPair:
             info['factor'] *= 100.
 
     else:
-        logger = logs.get_logger(ccy_pair, level='debug')
-        logger.error(f'incorrect currency - local {local} / base {base}')
+        logger.error('Invalid currency pair configuration: local currency %s, base currency %s', local, base)
         return CurrencyPair(ticker='', factor=1., power=1.0)
 
     if 'factor' not in info: info['factor'] = 1.
@@ -418,10 +420,10 @@ def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
         >>> market_timing('TESTTICKER Corp', dt='2018-09-10')
         ''
     """
-    logger = logs.get_logger(market_timing, level='debug')
+    # Logger is module-level
     exch = pd.Series(exch_info(ticker=ticker, **kwargs))
     if any(req not in exch.index for req in ['tz', 'allday', 'day']):
-        logger.error(f'required exchange info cannot be found in {ticker} ...')
+        logger.error('Required exchange information (tz, allday, day) not found for ticker: %s', ticker)
         return ''
 
     mkt_time = {

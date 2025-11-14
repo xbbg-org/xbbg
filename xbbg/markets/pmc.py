@@ -18,11 +18,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 import os
 
 import pandas as pd
 
-from xbbg.io import files, logs
+from xbbg.io import files
+
+logger = logging.getLogger(__name__)
 
 PKG_PATH = files.abspath(__file__, 1)
 _CACHE_FILE = f"{PKG_PATH}/markets/cached/pmc_cache.pkl"
@@ -45,19 +48,21 @@ def _load_pmc_map(logger=None) -> dict:
 
     Returns an empty dict if none is found.
     """
-    logger = logger or logs.get_logger(_load_pmc_map)
+    # Use module-level logger if none provided
+    if logger is None:
+        logger = logging.getLogger(__name__)
     for path in _MAP_PATHS:
         if path and files.exists(path):
             try:
                 with open(path, encoding='utf-8') as fp:
                     data = json.load(fp)
                 if not isinstance(data, dict):
-                    logger.warning(f'pmc_map.json at {path} is not a JSON object, ignoring.')
+                    logger.warning('PMC mapping file at %s is not a valid JSON object, skipping', path)
                     continue
                 return {str(k).upper(): str(v) for k, v in data.items()}
             except Exception as e:
-                logger.error(f'failed reading pmc_map from {path}: {e}')
-    logger.warning('pmc_map.json not found; pandas-market-calendars lookup disabled.')
+                logger.error('Failed to read PMC mapping file from %s: %s', path, e)
+    logger.warning('PMC mapping file (pmc_map.json) not found; pandas-market-calendars integration disabled')
     return {}
 
 
@@ -140,29 +145,29 @@ def pmc_add_mapping(exch_code: str, calendar: str, scope: str = 'user') -> None:
     - Validates calendar id; refuses to save invalid ids.
     - Clears local pmc cache so changes take effect immediately.
     """
-    logger = logs.get_logger(pmc_add_mapping)
+    # Logger is module-level
     if not exch_code or not calendar:
-        logger.error('exch_code and calendar are required')
+        logger.error('Both exch_code and calendar parameters are required to add PMC mapping')
         return
     exch_code = _normalize_exch_code(exch_code)
     if not _validate_calendar_id(calendar):
-        logger.error(f'Invalid PMC calendar id: {calendar}')
+        logger.error('Invalid pandas-market-calendars calendar ID: %s (validation failed)', calendar)
         return
     path = _user_map_path() if scope == 'user' else _MAP_PATHS[-1]
     if not path:
-        logger.error('BBG_ROOT is not set; cannot write user mapping')
+        logger.error('BBG_ROOT environment variable not set; cannot write user-scope PMC mapping')
         return
     data = _load_map_at(path)
     data[exch_code] = str(calendar)
     _save_map_at(path, data)
     # clear caches
     _save_cache({})
-    logger.info(f'pmc mapping saved: {exch_code.upper()} -> {calendar} ({scope})')
+    logger.info('PMC mapping saved: %s -> %s (scope: %s)', exch_code.upper(), calendar, scope)
 
 
 def pmc_remove_mapping(exch_code: str, scope: str = 'user') -> None:
     """Remove a mapping by exch_code from selected scope."""
-    logger = logs.get_logger(pmc_remove_mapping)
+    # Logger is module-level
     path = _user_map_path() if scope == 'user' else _MAP_PATHS[-1]
     data = _load_map_at(path)
     key = _normalize_exch_code(exch_code)
@@ -170,14 +175,14 @@ def pmc_remove_mapping(exch_code: str, scope: str = 'user') -> None:
         data.pop(key)
         _save_map_at(path, data)
         _save_cache({})
-        logger.info(f'removed pmc mapping: {key} from {scope}')
+        logger.info('PMC mapping removed: %s from %s scope', key, scope)
     else:
-        logger.warning(f'pmc mapping not found: {key} in {scope}')
+        logger.warning('PMC mapping not found: %s in %s scope', key, scope)
 
 
 def _get_exch_code(ticker: str, **kwargs) -> str:
     """Fetch Bloomberg exch_code for ticker (cached)."""
-    logger = logs.get_logger(_get_exch_code, **kwargs)
+    # Logger is module-level
     cache = _load_cache()
     tkey = f"exch_code::{ticker}"
     if tkey in cache:
@@ -187,7 +192,7 @@ def _get_exch_code(ticker: str, **kwargs) -> str:
         from xbbg.blp import bdp  # lazy import
         df = bdp(tickers=ticker, flds=['exch_code'], **kwargs)
     except Exception as e:
-        logger.error(f'error fetching exch_code from Bloomberg for {ticker}: {e}')
+        logger.error('Failed to fetch exchange code from Bloomberg for ticker %s: %s', ticker, e)
         return ''
 
     code = ''
@@ -213,7 +218,7 @@ def resolve_calendar_name(ticker: str, **kwargs) -> str:
 
     Looks up exch_code in user JSON mapping.
     """
-    logger = logs.get_logger(resolve_calendar_name, **kwargs)
+    # Logger is module-level
     cache = _load_cache()
     tkey = f"calendar::{ticker}"
     if tkey in cache:
@@ -222,7 +227,7 @@ def resolve_calendar_name(ticker: str, **kwargs) -> str:
     exch_code = _get_exch_code(ticker, **kwargs)
     cal = _get_calendar_name_from_exch_code(exch_code)
     if not cal:
-        logger.warning(f'No PMC calendar mapping for exch_code={exch_code} (ticker={ticker}).')
+        logger.warning('No PMC calendar mapping found for exchange code %s (ticker: %s)', exch_code, ticker)
         return ''
     cache[tkey] = cal
     _save_cache(cache)
@@ -239,7 +244,7 @@ def pmc_session_for_date(ticker: str, dt, session: str = 'day', include_extended
     - session='day': market_open to market_close
     - session='allday': pre to post if available, else falls back to market times
     """
-    logger = logs.get_logger(pmc_session_for_date, **kwargs)
+    # Logger is module-level
 
     cal_name = resolve_calendar_name(ticker, **kwargs)
     if not cal_name:
@@ -248,7 +253,7 @@ def pmc_session_for_date(ticker: str, dt, session: str = 'day', include_extended
     try:
         import pandas_market_calendars as mcal  # type: ignore
     except Exception as e:
-        logger.error(f'pandas_market_calendars not available: {e}')
+        logger.error('pandas-market-calendars package not available: %s (install with: pip install pandas-market-calendars)', e)
         return None
 
     cal = mcal.get_calendar(cal_name)
@@ -289,7 +294,7 @@ def pmc_wizard(ticker: str, scope: str = 'user', **kwargs) -> None:
     2) Display current effective mapping (if any) and available PMC calendars.
     3) Prompt for a calendar id and save to the chosen scope (default: user).
     """
-    logger = logs.get_logger(pmc_wizard, **kwargs)
+    # Logger is module-level
 
     exch_code = _get_exch_code(ticker, **kwargs)
     if not exch_code:
@@ -297,7 +302,7 @@ def pmc_wizard(ticker: str, scope: str = 'user', **kwargs) -> None:
         hint = ' (hint: TRACE for US credit/OTC)' if ticker.endswith(' Corp') else ''
         typed = input(f"Enter exch_code manually{hint}: ").strip()
         if not typed:
-            logger.error(f'No exch_code provided; aborting wizard for {ticker}.')
+            logger.error('No exchange code provided; cannot run PMC wizard for ticker %s', ticker)
             return
         exch_code = _normalize_exch_code(typed)
 
@@ -352,12 +357,12 @@ def pmc_wizard(ticker: str, scope: str = 'user', **kwargs) -> None:
         user_val = input(prompt).strip()
         calendar = user_val or current
     if not calendar:
-        logger.error('No calendar provided; aborting.')
+        logger.error('No calendar ID provided; cannot complete PMC mapping operation')
         return
 
     # Strictly validate calendar id before saving
     if not _validate_calendar_id(calendar):
-        logger.error(f'Invalid PMC calendar id: {calendar}. Aborting save.')
+        logger.error('Invalid PMC calendar ID: %s (validation failed); aborting save operation', calendar)
         return
 
     pmc_add_mapping(exch_code=exch_code, calendar=calendar, scope=scope)
@@ -410,7 +415,7 @@ def pmc_bulk_add(pairs: list[tuple[str, str]] | None = None, text: str | None = 
 
     Returns a summary dict with counts.
     """
-    logger = logs.get_logger(pmc_bulk_add)
+    # Logger is module-level
     if (pairs is None) and (text is None):
         return {'saved': 0, 'skipped': 0}
     items: list[tuple[str, str]] = []
@@ -430,7 +435,7 @@ def pmc_bulk_add(pairs: list[tuple[str, str]] | None = None, text: str | None = 
     for code, cal in items:
         code_n = _normalize_exch_code(code)
         if not _validate_calendar_id(cal):
-            logger.error(f'Skipping invalid calendar id: {cal} for exch_code={code_n}')
+            logger.error('Skipping invalid calendar ID %s for exchange code %s in bulk add operation', cal, code_n)
             skipped += 1
             continue
         pmc_add_mapping(exch_code=code_n, calendar=cal, scope=scope)

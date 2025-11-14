@@ -152,10 +152,9 @@ def latest_file(path_name, keyword='', ext='', **kwargs) -> str:
     )
 
     if not files:
-        from xbbg.io import logs
-
-        logger = logs.get_logger(latest_file, level=kwargs.pop('log', 'warning'))
-        logger.debug(f'no file in folder: {path_name}')
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug('No files found in directory: %s', path_name)
         return ''
 
     return str(files[0]).replace('\\', '/')

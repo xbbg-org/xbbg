@@ -18,10 +18,19 @@ except (ImportError, AttributeError):
     import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
+import logging
+
 from xbbg import const
 from xbbg.core import conn, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
-from xbbg.io import logs
+
+logger = logging.getLogger(__name__)
+
+# Import blpapi logging helpers (optional, won't break if blpapi unavailable)
+try:
+    from xbbg.core import blpapi_logging
+except ImportError:
+    blpapi_logging = None  # type: ignore[assignment]
 
 RESPONSE_ERROR = blpapi.Name("responseError")
 SESSION_TERMINATED = blpapi.Name("SessionTerminated")
@@ -135,7 +144,7 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     """
     pmc_extended = bool(kwargs.pop('pmc_extended', False))
 
-    logger = logs.get_logger(time_range, level='debug')
+    logger = logging.getLogger(__name__)
 
     # First try legacy exch.yml-based sessions
     try:
@@ -163,9 +172,17 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
             )
             if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
             return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
-    except Exception:
-        # fall through to PMC
-        pass
+    except Exception:  # noqa: BLE001
+        # Fall through to PMC fallback - exception is expected and handled by fallback logic.
+        # We intentionally do not re-raise here because the PMC-based fallback below
+        # provides a secondary path to resolve the session.
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                'Primary session resolution failed for %s on %s; falling back to PMC',
+                ticker,
+                dt,
+                exc_info=True,
+            )
 
     # Fallback: try pandas-market-calendars via exch_code mapping
     try:
@@ -176,7 +193,7 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
     except Exception:
         pmc_ss = None
     if pmc_ss is not None:
-        logger.warning(f'Falling back to pandas-market-calendars for {ticker} (session={session}).')
+        logger.warning('Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars', ticker, session)
         cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
         time_fmt = '%Y-%m-%dT%H:%M:%S'
         try:
@@ -197,8 +214,78 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
         return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
 
     # If all fails, return an empty session in UTC day bounds (conservative)
-    logger.error(f'Unable to resolve trading session for {ticker} on {dt}.')
+    logger.error('Unable to resolve trading session for ticker %s on date %s', ticker, dt)
     return intervals.SessNA
+
+
+def _process_response_event(ev: blpapi.Event, func, **kwargs):
+    """Process RESPONSE or PARTIAL_RESPONSE event.
+
+    Args:
+        ev: Bloomberg event.
+        func: Generator function yielding parsed messages.
+        **kwargs: Arguments forwarded to func.
+
+    Yields:
+        Elements from func.
+
+    Returns:
+        True if final RESPONSE received (should stop), False otherwise.
+    """
+    msg_count = 0
+    for msg in ev:
+        msg_count += 1
+        if blpapi_logging:
+            blpapi_logging.log_message_info(msg, context='rec_events')
+        yield from func(msg=msg, **kwargs)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        event_type_str = 'RESPONSE' if ev.eventType() == blpapi.Event.RESPONSE else 'PARTIAL_RESPONSE'
+        logger.debug('Processed %d message(s) from %s event', msg_count, event_type_str)
+
+    is_final = ev.eventType() == blpapi.Event.RESPONSE
+    if is_final and logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Received final RESPONSE event, completing event processing')
+    # Return value from generator - will be available via StopIteration.value
+    return is_final
+
+
+def _handle_timeout(timeout_counts: int, max_timeouts: int) -> tuple[int, bool]:
+    """Handle timeout event.
+
+    Args:
+        timeout_counts: Current timeout count.
+        max_timeouts: Maximum allowed timeouts.
+
+    Returns:
+        Tuple of (updated_timeout_counts, should_stop_flag).
+    """
+    timeout_counts += 1
+    should_stop = timeout_counts > max_timeouts
+
+    if timeout_counts % 5 == 0 or should_stop:
+        if should_stop:
+            logger.warning('Maximum timeout count (%d) reached, stopping event processing', max_timeouts)
+        elif logger.isEnabledFor(logging.DEBUG):
+            logger.debug('Event timeout %d/%d', timeout_counts, max_timeouts)
+
+    return timeout_counts, should_stop
+
+
+def _handle_other_event(ev: blpapi.Event) -> bool:
+    """Handle other event types (e.g., SESSION_TERMINATED).
+
+    Args:
+        ev: Bloomberg event.
+
+    Returns:
+        True if should stop processing, False otherwise.
+    """
+    for _ in ev:
+        if getattr(ev, 'messageType', lambda: None)() == SESSION_TERMINATED:
+            logger.warning('Session terminated event received, stopping event processing')
+            return True
+    return False
 
 
 def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
@@ -215,24 +302,38 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     timeout_counts = 0
     responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
     timeout = kwargs.pop('timeout', 500)
+    max_timeouts = kwargs.pop('max_timeouts', 20)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Starting Bloomberg event processing (timeout=%dms, max_timeouts=%d)', timeout, max_timeouts)
+
     while True:
         if event_queue is not None:
             ev = event_queue.nextEvent(timeout=timeout)
         else:
             ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+
+        if blpapi_logging and logger.isEnabledFor(logging.DEBUG):
+            blpapi_logging.log_event_info(ev, context='rec_events')
+
         if ev.eventType() in responses:
-            for msg in ev:
-                yield from func(msg=msg, **kwargs)
-            if ev.eventType() == blpapi.Event.RESPONSE:
-                break
+            # Process response event (generator that yields messages)
+            gen = _process_response_event(ev, func, **kwargs)
+            # Yield all values from the generator
+            try:
+                while True:
+                    yield next(gen)
+            except StopIteration as e:
+                # Generator exhausted, check return value
+                if e.value:  # True if final RESPONSE
+                    break
         elif ev.eventType() == blpapi.Event.TIMEOUT:
-            timeout_counts += 1
-            if timeout_counts > 20:
+            timeout_counts, should_stop = _handle_timeout(timeout_counts, max_timeouts)
+            if should_stop:
                 break
         else:
-            for _ in ev:
-                if getattr(ev, 'messageType', lambda: None)() \
-                    == SESSION_TERMINATED: break
+            if _handle_other_event(ev):
+                break
 
 
 def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
@@ -491,6 +592,6 @@ def check_current(dt, logger, **kwargs) -> bool:
     t_1 = pd.Timestamp('today').date() - pd.Timedelta('1D')
     whole_day = pd.Timestamp(dt).date() < t_1
     if (not whole_day) and kwargs.get('batch', False):
-        logger.warning(f'Querying date {t_1} is too close, ignoring download ...')
+        logger.warning('Query date %s is too close to current time, skipping download to avoid incomplete data', t_1)
         return False
     return True

@@ -1,12 +1,15 @@
 """Storage path helpers for cached Bloomberg data files."""
 
+import logging
 import os
 
 import pandas as pd
 
 from xbbg import const
 from xbbg.core import overrides, utils
-from xbbg.io import files, logs
+from xbbg.io import files
+
+logger = logging.getLogger(__name__)
 
 PKG_PATH = files.abspath(__file__, 1)
 
@@ -153,13 +156,13 @@ def save_intraday(data: pd.DataFrame, ticker: str, dt, typ='TRADE', **kwargs):
         >>> save_intraday(sample, 'AAPL US Equity', cur_dt_)
     """
     cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-    logger = logs.get_logger(save_intraday, **kwargs)
+    # Logger is module-level
     info = f'{ticker} / {cur_dt} / {typ}'
     data_file = bar_file(ticker=ticker, dt=dt, typ=typ)
     if not data_file: return
 
     if data.empty:
-        logger.warning(f'data is empty for {info} ...')
+        logger.warning('No data to save for %s (empty DataFrame)', info)
         return
 
     exch = const.exch_info(ticker=ticker, **kwargs)
@@ -171,9 +174,16 @@ def save_intraday(data: pd.DataFrame, ticker: str, dt, typ='TRADE', **kwargs):
     now = pd.Timestamp('now', tz=exch.tz) - pd.Timedelta('1h')
 
     if end_time > now:
-        logger.debug(f'skip saving cause market close ({end_time}) < now - 1h ({now}) ...')
+        logger.debug('Skipping save: market close time %s is less than 1 hour ago (%s), data may be incomplete', end_time, now)
         return
 
-    logger.info(f'saving data to {data_file} ...')
+    # Only compute row count if INFO logging is enabled (avoid overhead)
+    if logger.isEnabledFor(logging.INFO):
+        logger.info('Saving intraday data to cache: %s (%d rows)', data_file, len(data))
+    else:
+        logger.info('Saving intraday data to cache: %s', data_file)
     files.create_folder(data_file, is_file=True)
     data.to_parquet(data_file)
+    # Only log success if DEBUG enabled (avoid redundant logs)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug('Successfully saved intraday data to cache')

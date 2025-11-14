@@ -108,12 +108,15 @@ ignore = [
   "E501", # line too long
   "D104", # Missing docstring in public package
   "D107", # Missing docstring in __init__
+  "UP031", # Use format specifiers instead of percent format (intentionally using % for performance in logging)
+  "S110", # try/except/pass detected (intentional in logging code to avoid recursion, and in fallback logic)
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "xbbg/__init__.py" = ["F401"]
 "xbbg/**/__init__.py" = ["F401"]
 "xbbg/tests/**" = ["D"]
+"xbbg/core/blpapi_logging.py" = ["S110"]  # Intentional try/except/pass to avoid recursive logging
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]

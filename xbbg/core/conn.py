@@ -24,7 +24,9 @@ except (ImportError, AttributeError):
     import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
-from xbbg.io import logs
+import logging
+
+logger = logging.getLogger(__name__)
 
 _CON_SYM_ = '_xcon_'
 _PORT_ = 8194
@@ -100,19 +102,31 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
 
 def connect_bbg(**kwargs) -> blpapi.Session:
     """Create and connect a Bloomberg session."""
-    logger = logs.get_logger(connect_bbg, **kwargs)
+    logger = logging.getLogger(__name__)
+
+    # Register blpapi logging callback if not already registered (only once)
+    try:
+        from xbbg.core import blpapi_logging
+        if blpapi_logging and not hasattr(connect_bbg, '_blpapi_logging_registered'):
+            blpapi_logging.register_blpapi_logging_callback()
+            connect_bbg._blpapi_logging_registered = True  # type: ignore[attr-defined]
+    except ImportError:
+        pass
 
     if isinstance(kwargs.get('sess'), blpapi.Session):
         session = kwargs['sess']
-        logger.debug(f'Using Bloomberg session {session} ...')
+        logger.debug('Reusing existing Bloomberg session: %s', session)
     else:
         sess_opts = blpapi.SessionOptions()
         sess_opts.setServerHost('localhost')
         sess_opts.setServerPort(kwargs.get('port', _PORT_))
         session = blpapi.Session(sess_opts)
 
-    logger.debug('Connecting to Bloomberg ...')
-    if session.start(): return session
+    logger.debug('Establishing connection to Bloomberg Terminal (localhost:%d)', kwargs.get('port', _PORT_))
+    if session.start():
+        logger.debug('Successfully connected to Bloomberg Terminal')
+        return session
+    logger.error('Failed to start Bloomberg session - check Terminal is running and port %d is accessible', kwargs.get('port', _PORT_))
     raise ConnectionError('Cannot connect to Bloomberg')
 
 
@@ -150,18 +164,19 @@ def bbg_service(service: str, **kwargs) -> blpapi.Service:
     Returns:
         Bloomberg service
     """
-    logger = logs.get_logger(bbg_service, **kwargs)
+    logger = logging.getLogger(__name__)
 
     port = kwargs.get('port', _PORT_)
     serv_sym = f'{_CON_SYM_}/{port}{service}'
 
-    log_info = f'Initiating service {service} ...'
+    # Use parameterized strings (avoid f-string overhead when logging disabled)
+    log_info = 'Initiating service %s ...' % service
     if (serv_sym in globals()) and (getattr(globals()[serv_sym], '_Service__handle', None) is None):
-        log_info = f'Restarting service {service} ...'
+        log_info = 'Restarting service %s ...' % service
         del globals()[serv_sym]
 
     if serv_sym not in globals():
-        logger.debug(log_info)
+        logger.debug('Bloomberg service operation: %s', log_info)
         bbg_session(**kwargs).openService(service)
         globals()[serv_sym] = bbg_session(**kwargs).getService(service)
 
@@ -188,7 +203,7 @@ def send_request(request: blpapi.Request, **kwargs):
     Returns:
         dict: A mapping with ``event_queue`` and ``correlation_id``.
     """
-    logger = logs.get_logger(send_request, **kwargs)
+    logger = logging.getLogger(__name__)
 
     # Always use per-request EventQueue and CorrelationId by default
     event_queue = kwargs.get('event_queue') or blpapi.EventQueue()
@@ -196,9 +211,20 @@ def send_request(request: blpapi.Request, **kwargs):
 
     sess = bbg_session(**kwargs)
     try:
+        # Only log request details if DEBUG enabled (avoid overhead)
+        if logger.isEnabledFor(logging.DEBUG):
+            # Get service name safely (Request doesn't have serviceName() method)
+            try:
+                service_name = str(request.service())
+            except (AttributeError, Exception):
+                service_name = 'unknown'
+            logger.debug('Sending Bloomberg API request (service: %s)', service_name)
         sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('Bloomberg API request sent successfully')
     except blpapi.InvalidStateException as e:
-        logger.exception(e)
+        # Log exception with stack trace (important error, rare)
+        logger.exception('Error sending Bloomberg request: %s', e)
 
         # Delete existing connection and send again
         port = kwargs.get('port', _PORT_)
