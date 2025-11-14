@@ -244,13 +244,78 @@ def _resolve_bdib_ticker(ticker: str, dt, ex_info) -> tuple[str, bool]:
     return q_tckr, True
 
 
-def _build_bdib_request(ticker: str, dt, typ: str, **kwargs):
+def _get_default_exchange_info(ticker: str, **kwargs) -> pd.Series:
+    """Get default exchange info for fixed income securities.
+
+    Returns:
+        pd.Series with default timezone and session info.
+    """
+    # Try to infer timezone from ticker country code
+    # US government bonds -> US/Eastern
+    # UK -> Europe/London, etc.
+    default_tz = kwargs.get('tz', 'America/New_York')  # Default to US Eastern
+    
+    # Check if ticker starts with country code (e.g., US, GB, etc.)
+    t_info = ticker.split()
+    if t_info and len(t_info[0]) == 2:
+        country_code = t_info[0].upper()
+        tz_map = {
+            'US': 'America/New_York',
+            'GB': 'Europe/London',
+            'JP': 'Asia/Tokyo',
+            'DE': 'Europe/Berlin',
+            'FR': 'Europe/Paris',
+            'IT': 'Europe/Rome',
+            'ES': 'Europe/Madrid',
+            'NL': 'Europe/Amsterdam',
+            'CH': 'Europe/Zurich',
+            'AU': 'Australia/Sydney',
+            'CA': 'America/Toronto',
+        }
+        default_tz = tz_map.get(country_code, default_tz)
+    
+    # Create default exchange info with allday session
+    return pd.Series({
+        'tz': default_tz,
+        'allday': ['00:00', '23:59'],
+        'day': ['00:00', '23:59'],
+    })
+
+
+def _build_bdib_request(ticker: str, dt, typ: str, ex_info, **kwargs):
     """Build Bloomberg intraday bar request.
 
     Returns:
         Tuple of (request, date_string).
     """
-    time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', **kwargs)
+    time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', tz=ex_info.tz, **kwargs)
+    
+    # If time_range returns None (no session found), create default time range
+    if time_rng.start_time is None or time_rng.end_time is None:
+        cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+        # Use allday session from ex_info or default to full day
+        if 'allday' in ex_info.index:
+            start_time = ex_info['allday'][0]
+            end_time = ex_info['allday'][1]
+        else:
+            start_time = '00:00'
+            end_time = '23:59'
+        
+        time_fmt = '%Y-%m-%dT%H:%M:%S'
+        time_idx = (
+            pd.DatetimeIndex([
+                f'{cur_dt} {start_time}',
+                f'{cur_dt} {end_time}'],
+            )
+            .tz_localize(ex_info.tz)
+            .tz_convert('UTC')
+        )
+        start_dt = time_idx[0].strftime(time_fmt)
+        end_dt = time_idx[1].strftime(time_fmt)
+    else:
+        start_dt = time_rng.start_time
+        end_dt = time_rng.end_time
+    
     interval = kwargs.get('interval', 1)
     use_seconds = kwargs.get('intervalHasSeconds', False)
 
@@ -258,8 +323,8 @@ def _build_bdib_request(ticker: str, dt, typ: str, **kwargs):
         ('security', ticker),
         ('eventType', typ),
         ('interval', interval),
-        ('startDateTime', time_rng[0]),
-        ('endDateTime', time_rng[1]),
+        ('startDateTime', start_dt),
+        ('endDateTime', end_dt),
     ]
     if use_seconds:
         settings.append(('intervalHasSeconds', True))
@@ -334,8 +399,19 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
     from xbbg.core import trials
 
     ex_info = const.exch_info(ticker=ticker, **kwargs)
+    # For fixed income securities (Govt, Corp, etc.), use default exchange info
     if ex_info.empty:
-        raise KeyError(f'Cannot find exchange info for {ticker}')
+        # Check if this is a fixed income security or identifier-based ticker
+        t_info = ticker.split()
+        is_fixed_income = (
+            len(t_info) > 0 and t_info[-1] in ['Govt', 'Corp', 'Mtge', 'Muni'] or
+            ticker.startswith('/isin/') or ticker.startswith('/cusip/') or ticker.startswith('/sedol/')
+        )
+        if is_fixed_income:
+            ex_info = _get_default_exchange_info(ticker=ticker, **kwargs)
+            logger.debug('Using default exchange info for fixed income security: %s', ticker)
+        else:
+            raise KeyError(f'Cannot find exchange info for {ticker}')
 
     # Try loading from cache
     cached_data = _load_cached_bdib(ticker, dt, session, typ, ex_info, **kwargs)
@@ -362,7 +438,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         return pd.DataFrame()
 
     # Build and send request
-    request, cur_dt = _build_bdib_request(ticker, dt, typ, **kwargs)
+    request, cur_dt = _build_bdib_request(ticker, dt, typ, ex_info, **kwargs)
     need_info_log = logger.isEnabledFor(logging.DEBUG) or logger.isEnabledFor(logging.WARNING)
     if logger.isEnabledFor(logging.DEBUG) and need_info_log:
         logger.debug('Sending Bloomberg intraday bar data request for %s / %s / %s', q_tckr, cur_dt, typ)
