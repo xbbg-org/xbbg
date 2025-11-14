@@ -264,7 +264,7 @@ def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs)
 
     # Try to infer country code from ticker
     country_code = None
-    
+
     # Handle identifier-based tickers (/isin/, /cusip/, /sedol/)
     if ticker.startswith('/isin/'):
         # ISIN format: /isin/US912810FE39 -> extract US (first 2 chars after /isin/)
@@ -295,7 +295,7 @@ def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs)
             if sched.empty:
                 # Date might be a holiday/weekend, fall through to defaults
                 raise ValueError(f'No schedule available for {s_date} (likely holiday/weekend)')
-            
+
             # Check for extended hours columns, fallback to regular market hours
             if 'pre' in sched.columns and 'post' in sched.columns and session == 'allday':
                 pre_col = 'pre'
