@@ -78,8 +78,8 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 | Function | Description | Key Features |
 |----------|-------------|--------------|
 | 📊 **Reference Data** | | |
-| `bdp()` | Single point-in-time reference data | Multiple tickers/fields, Excel dates, overrides |
-| `bds()` | Bulk/block data (multi-row) | Portfolio data, date filtering, nested structures |
+| `bdp()` | Single point-in-time reference data | Multiple tickers/fields, Excel dates, overrides, **ISIN/CUSIP/SEDOL support** |
+| `bds()` | Bulk/block data (multi-row) | Portfolio data, date filtering, nested structures, **Fixed income cash flows** |
 | 📈 **Historical Data** | | |
 | `bdh()` | End-of-day historical data | Date ranges, frequencies, dividend/split adjustments |
 | `dividend()` | Dividend & split history | Multiple types, date ranges, projected dividends |
