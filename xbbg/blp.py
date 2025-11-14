@@ -244,34 +244,85 @@ def _resolve_bdib_ticker(ticker: str, dt, ex_info) -> tuple[str, bool]:
     return q_tckr, True
 
 
-def _get_default_exchange_info(ticker: str, **kwargs) -> pd.Series:
+def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs) -> pd.Series:
     """Get default exchange info for fixed income securities.
+
+    Tries to use pandas-market-calendars (PMC) with appropriate bond market calendars
+    (SIFMA_US, SIFMA_UK, SIFMA_JP, etc.) based on country code.
+    Falls back to timezone-based defaults if PMC is not available.
 
     Returns:
         pd.Series with default timezone and session info.
     """
-    # Try to infer timezone from ticker country code
-    # US government bonds -> US/Eastern
-    # UK -> Europe/London, etc.
-    default_tz = kwargs.get('tz', 'America/New_York')  # Default to US Eastern
+    # Map country codes to PMC bond market calendars
+    country_to_pmc_calendar = {
+        'US': 'SIFMA_US',
+        'GB': 'SIFMA_UK',
+        'UK': 'SIFMA_UK',
+        'JP': 'SIFMA_JP',
+    }
 
-    # Check if ticker starts with country code (e.g., US, GB, etc.)
+    # Try to infer country code from ticker
     t_info = ticker.split()
+    country_code = None
     if t_info and len(t_info[0]) == 2:
         country_code = t_info[0].upper()
-        tz_map = {
-            'US': 'America/New_York',
-            'GB': 'Europe/London',
-            'JP': 'Asia/Tokyo',
-            'DE': 'Europe/Berlin',
-            'FR': 'Europe/Paris',
-            'IT': 'Europe/Rome',
-            'ES': 'Europe/Madrid',
-            'NL': 'Europe/Amsterdam',
-            'CH': 'Europe/Zurich',
-            'AU': 'Australia/Sydney',
-            'CA': 'America/Toronto',
-        }
+
+    # Try to use PMC calendar if available and date is provided
+    if dt and country_code and country_code in country_to_pmc_calendar:
+        try:
+            import pandas_market_calendars as mcal  # type: ignore
+            cal_name = country_to_pmc_calendar[country_code]
+            cal = mcal.get_calendar(cal_name)
+            s_date = pd.Timestamp(dt).date()
+
+            # Get schedule for the date
+            if session == 'allday':
+                sched = cal.schedule(start_date=s_date, end_date=s_date, start='pre', end='post')
+                pre_col = 'pre' if 'pre' in sched.columns else 'market_open'
+                post_col = 'post' if 'post' in sched.columns else 'market_close'
+            else:
+                sched = cal.schedule(start_date=s_date, end_date=s_date)
+                pre_col = 'market_open'
+                post_col = 'market_close'
+
+            if not sched.empty:
+                tz_name = cal.tz.zone if hasattr(cal.tz, 'zone') else str(cal.tz)
+                start_ts = sched.iloc[0][pre_col]
+                end_ts = sched.iloc[0][post_col]
+
+                # Convert to timezone-aware timestamps and extract HH:MM
+                start_time = start_ts.tz_convert(tz_name).strftime('%H:%M')
+                end_time = end_ts.tz_convert(tz_name).strftime('%H:%M')
+
+                logger.debug('Using PMC calendar %s for fixed income security %s', cal_name, ticker)
+                return pd.Series({
+                    'tz': tz_name,
+                    'allday': [start_time, end_time],
+                    'day': [start_time, end_time],
+                })
+        except Exception as e:
+            # PMC not available or calendar lookup failed, fall through to defaults
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug('PMC calendar lookup failed for %s: %s, using timezone defaults', ticker, e)
+
+    # Fallback: timezone-based defaults
+    default_tz = kwargs.get('tz', 'America/New_York')  # Default to US Eastern
+    tz_map = {
+        'US': 'America/New_York',
+        'GB': 'Europe/London',
+        'UK': 'Europe/London',
+        'JP': 'Asia/Tokyo',
+        'DE': 'Europe/Berlin',
+        'FR': 'Europe/Paris',
+        'IT': 'Europe/Rome',
+        'ES': 'Europe/Madrid',
+        'NL': 'Europe/Amsterdam',
+        'CH': 'Europe/Zurich',
+        'AU': 'Australia/Sydney',
+        'CA': 'America/Toronto',
+    }
+    if country_code:
         default_tz = tz_map.get(country_code, default_tz)
 
     # Create default exchange info with allday session
@@ -408,7 +459,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
             ticker.startswith('/isin/') or ticker.startswith('/cusip/') or ticker.startswith('/sedol/')
         )
         if is_fixed_income:
-            ex_info = _get_default_exchange_info(ticker=ticker, **kwargs)
+            ex_info = _get_default_exchange_info(ticker=ticker, dt=dt, session=session, **kwargs)
             logger.debug('Using default exchange info for fixed income security: %s', ticker)
         else:
             raise KeyError(f'Cannot find exchange info for {ticker}')
