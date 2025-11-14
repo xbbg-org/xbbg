@@ -1172,8 +1172,14 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
     r"""Execute a BQL (Bloomberg Query Language) request.
 
     Args:
-        query: BQL query string.
+        query: BQL query string. Must be a complete BQL expression.
+            **IMPORTANT:** The ``for`` clause must be OUTSIDE the ``get()`` function,
+            not inside. Correct: ``get(px_last) for('AAPL US Equity')``.
+            Incorrect: ``get(px_last for('AAPL US Equity'))``.
         params: Optional request options for BQL (mapped directly to elements).
+            Note: The ``mode`` parameter is not currently supported by the Bloomberg
+            BQL API. If you need cached/live mode, check Bloomberg documentation
+            for the correct syntax or use query-level options.
         overrides: Optional list of (field, value) overrides for the BQL request.
         **kwargs: Session and logging options.
 
@@ -1184,9 +1190,76 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         Basic usage (requires Bloomberg session; skipped in doctest):
 
         >>> from xbbg import blp  # doctest: +SKIP
-        >>> df = blp.bql("get(px_last for('AAPL US Equity'))")  # doctest: +SKIP
+        >>> # Simple price query - NOTE: 'for' is OUTSIDE get()
+        >>> df = blp.bql("get(px_last) for('AAPL US Equity')")  # doctest: +SKIP
         >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
         True
+
+        >>> # Multiple fields for multiple securities
+        >>> df = blp.bql("get(px_last, volume) for(['AAPL US Equity', 'MSFT US Equity'])")  # doctest: +SKIP
+
+        Options queries with filters and aggregations:
+
+        >>> # Options query: Get open interest for filtered options
+        >>> # IMPORTANT: 'for' clause is OUTSIDE get(), filter() is inside for()
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(open_int) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
+        ... )
+
+        >>> # Options query: Sum of open interest for filtered options
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
+        ... )
+
+        >>> # Get individual option contracts with multiple fields
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(id, open_int, strike_px) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
+        ... )
+
+        >>> # Options query: Group by strike price and sum open interest
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(sum(group(open_int, by=strike_px))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
+        ... )
+
+        >>> # Options query: Filter by multiple criteria
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(open_int, strike_px) for(filter(options('SPX Index'), expire_dt=='2025-11-21', call_put=='C'))"
+        ... )
+
+        >>> # Alternative date format (integer YYYYMMDD)
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(open_int) for(filter(options('SPX Index'), expire_dt==20251121))"
+        ... )
+
+        Historical data queries:
+
+        >>> # Historical data query with period
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(px_last) for('AAPL US Equity') with(Period('1M', '2024-01-01', '2024-01-31'))"
+        ... )
+
+        >>> # Daily historical data query
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(px_last) for('AAPL US Equity') with(Period('1D', '2024-01-01', '2024-01-31'))"
+        ... )
+
+        Common mistakes to avoid:
+
+        >>> # INCORRECT: 'for' inside get() - will cause parse error
+        >>> # df = blp.bql("get(px_last for('AAPL US Equity'))")  # doctest: +SKIP
+
+        >>> # INCORRECT: Missing get() wrapper
+        >>> # This will return empty results without error
+        >>> # df = blp.bql("filter(options('SPX Index'), expire_dt=='2025-11-21'), sum(group(open_int))")  # doctest: +SKIP
+
+        >>> # INCORRECT: Using mode parameter (not supported)
+        >>> # This will raise NotFoundException
+        >>> # df = blp.bql("get(...)", params={"mode": "cached"})  # doctest: +SKIP
+
+        >>> # CORRECT: 'for' is OUTSIDE get(), filter() is inside for()
+        >>> df = blp.bql(  # doctest: +SKIP
+        ...     "get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
+        ... )
     """
     # Logger is module-level
 

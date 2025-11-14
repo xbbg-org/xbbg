@@ -464,14 +464,19 @@ Out[14]:
 
 ```python
 # Bloomberg Query Language (BQL)
-# blp.bql("get(px_last for('AAPL US Equity'))")  # doctest: +SKIP
+# IMPORTANT: The 'for' clause must be OUTSIDE get(), not inside
+# Correct: get(px_last) for('AAPL US Equity')
+# Incorrect: get(px_last for('AAPL US Equity'))
+# blp.bql("get(px_last) for('AAPL US Equity')")  # doctest: +SKIP
+
+# BQL Options query example
+# blp.bql("get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))")  # doctest: +SKIP
 
 # Bloomberg Equity Screening (BEQS)
 # blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP
 
-```python
 # SRCH (Search) - Fixed Income example
-blp.bsrch("FI:YOURSRCH")  # doctest: +SKIP
+# blp.bsrch("FI:YOURSRCH")  # doctest: +SKIP
 ```
 
 ```pydocstring

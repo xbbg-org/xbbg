@@ -491,9 +491,23 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
             if not isinstance(result_str, str):
                 return iter([])
             result_json = json.loads(result_str)
+
+            # Check for errors first - raise exception if errors found
+            if 'responseExceptions' in result_json and result_json['responseExceptions']:
+                errors = result_json['responseExceptions']
+                error_messages = []
+                for exc in errors:
+                    msg_text = exc.get('message', exc.get('internalMessage', 'Unknown error'))
+                    error_messages.append(msg_text)
+                error_msg = '; '.join(error_messages)
+                raise ValueError(f"BQL query error: {error_msg}")
+
             if 'results' in result_json:
                 results_data = result_json.get('results')
-                if not results_data or not isinstance(results_data, dict):
+                # Handle None results (empty query result)
+                if results_data is None:
+                    return iter([])
+                if not isinstance(results_data, dict):
                     return iter([])
                 # Extract data from JSON structure
                 for field_name, field_data in results_data.items():
