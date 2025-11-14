@@ -254,7 +254,7 @@ def _get_default_exchange_info(ticker: str, **kwargs) -> pd.Series:
     # US government bonds -> US/Eastern
     # UK -> Europe/London, etc.
     default_tz = kwargs.get('tz', 'America/New_York')  # Default to US Eastern
-    
+
     # Check if ticker starts with country code (e.g., US, GB, etc.)
     t_info = ticker.split()
     if t_info and len(t_info[0]) == 2:
@@ -273,7 +273,7 @@ def _get_default_exchange_info(ticker: str, **kwargs) -> pd.Series:
             'CA': 'America/Toronto',
         }
         default_tz = tz_map.get(country_code, default_tz)
-    
+
     # Create default exchange info with allday session
     return pd.Series({
         'tz': default_tz,
@@ -289,7 +289,7 @@ def _build_bdib_request(ticker: str, dt, typ: str, ex_info, **kwargs):
         Tuple of (request, date_string).
     """
     time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', tz=ex_info.tz, **kwargs)
-    
+
     # If time_range returns None (no session found), create default time range
     if time_rng.start_time is None or time_rng.end_time is None:
         cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
@@ -300,7 +300,7 @@ def _build_bdib_request(ticker: str, dt, typ: str, ex_info, **kwargs):
         else:
             start_time = '00:00'
             end_time = '23:59'
-        
+
         time_fmt = '%Y-%m-%dT%H:%M:%S'
         time_idx = (
             pd.DatetimeIndex([
@@ -315,7 +315,7 @@ def _build_bdib_request(ticker: str, dt, typ: str, ex_info, **kwargs):
     else:
         start_dt = time_rng.start_time
         end_dt = time_rng.end_time
-    
+
     interval = kwargs.get('interval', 1)
     use_seconds = kwargs.get('intervalHasSeconds', False)
 
