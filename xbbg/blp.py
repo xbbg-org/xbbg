@@ -492,7 +492,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         is_fixed_income = (
             ticker.startswith('/isin/') or ticker.startswith('/cusip/') or ticker.startswith('/sedol/') or
             (len(t_info) > 0 and t_info[-1] in ['Govt', 'Corp', 'Mtge', 'Muni'] and
-             t_info[0] and len(t_info[0]) == 2)  # Only if starts with country code
+             t_info[0] and len(t_info[0]) >= 2 and t_info[0][:2].isalpha())  # Only if starts with 2-letter country code
         )
         if is_fixed_income:
             ex_info = _get_default_exchange_info(ticker=ticker, dt=dt, session=session, **kwargs)
