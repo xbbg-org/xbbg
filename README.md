@@ -31,7 +31,7 @@ xbbg is the **most comprehensive and intuitive blpapi wrapper for Python**, prov
 
 **Why xbbg?**
 
-- 🎯 **Complete API Coverage**: Reference, historical, intraday bars, tick data, real-time subscriptions, equity screening (BEQS), BQL support, and Bloomberg SRCH queries
+- 🎯 **Complete API Coverage**: Reference, historical, intraday bars, tick data, real-time subscriptions, equity screening (BEQS), BQL support, and SRCH queries
 - 📊 **Excel-Compatible**: Use familiar Excel date formats and field names - no learning curve
 - ⚡ **Built-in Caching**: Automatic Parquet-based local storage reduces API calls and speeds up workflows
 - 🔧 **Rich Utilities**: Currency conversion, futures/CDX resolvers, exchange-aware market hours, and more
@@ -52,8 +52,8 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 | Tick Data | ✅ | ❌ | ❌ | ❌ |
 | Real-time Subscriptions | ✅ | ❌ | ❌ | ❌ |
 | Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ |
-| BQL Support | ✅ | ❌ | ❌ | ❌ |
-| Bloomberg SRCH (BSRCH) | ✅ | ❌ | ❌ | ❌ |
+| Query Language (BQL) | ✅ | ❌ | ❌ | ❌ |
+| Search (BSRCH) | ✅ | ❌ | ❌ | ❌ |
 | Excel-compatible inputs | ✅ | ❌ | ❌ | ❌ |
 | Sub-minute intervals | ✅ | ❌ | ❌ | ❌ |
 | Local Parquet caching | ✅ | ❌ | ❌ | ❌ |
@@ -64,15 +64,6 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 | DataFrame Library | pandas | pandas | pandas | Polars |
 
 [^1]: pdblp has been superseded by blp and is no longer under active development.
-
-**Key Advantages:**
-
-- 🎯 **Most Complete API**: Covers reference, historical, intraday, tick, real-time, screening, BQL, and Bloomberg SRCH queries
-- 📊 **Excel Compatibility**: Use familiar Excel date formats and field names
-- ⚡ **Performance**: Built-in Parquet caching reduces API calls and speeds up workflows
-- 🔧 **Rich Utilities**: Currency conversion, futures resolvers, and more out of the box
-- 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
-- 💡 **Intuitive Design**: Simple, consistent API that feels natural to use
 
 ## Supported Functionality
 
@@ -92,7 +83,7 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 | 🔍 **Screening & Queries** | | |
 | `beqs()` | Bloomberg Equity Screening | Custom criteria, private/public screens |
 | `bql()` | Bloomberg Query Language | SQL-like syntax, complex transformations |
-| `bsrch()` | Bloomberg SRCH (Search) | User-defined searches, commodity screens, weather data |
+| `bsrch()` | SRCH (Search) | User-defined searches, commodity screens, weather data |
 | 📡 **Real-time** | | |
 | `live()` | Real-time market data | Async updates, context manager support |
 | `subscribe()` | Real-time subscriptions | Field-level subscriptions, event callbacks |
@@ -229,7 +220,7 @@ Out[10]:
 /isin/US1234567890   2027-05-15        21250.0               0.0
 ```
 
-**Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to Bloomberg's API.
+**Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to blpapi.
 
 ### 📈 Historical Data
 
@@ -465,7 +456,7 @@ Out[14]:
 # blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP
 
 ```python
-# Bloomberg SRCH (Search) - Fixed Income example
+# SRCH (Search) - Fixed Income example
 blp.bsrch("FI:YOURSRCH")  # doctest: +SKIP
 ```
 
@@ -480,7 +471,7 @@ Out[16]:
 ```
 
 ```python
-# Bloomberg SRCH - Weather data with parameters
+# SRCH - Weather data with parameters
 blp.bsrch(  # doctest: +SKIP
     "comdty:weather",
     overrides={
@@ -506,7 +497,7 @@ Out[17]:
 4 2021-01-05 06:00:00+00:00              2.15              -1.20                   35.75                     0.0
 ```
 
-**Note:** The `bsrch()` function uses the Bloomberg Excel service (`//blp/exrsvc`) and supports user-defined SRCH screens, commodity screens, and Bloomberg example screens. For weather data and other specialized searches, use the `overrides` parameter to pass search-specific parameters.
+**Note:** The `bsrch()` function uses the blpapi Excel service (`//blp/exrsvc`) and supports user-defined SRCH screens, commodity screens, and blpapi example screens. For weather data and other specialized searches, use the `overrides` parameter to pass search-specific parameters.
 
 ### 📡 Real-time
 
@@ -567,7 +558,7 @@ Out[18]:
 
 ## Data Storage
 
-If `BBG_ROOT` is provided in `os.environ`, data can be saved locally in Parquet format. By default, local storage is preferred over Bloomberg for all queries.
+If `BBG_ROOT` is provided in `os.environ`, data can be saved locally in Parquet format. By default, local storage is preferred over blpapi for all queries.
 
 **Setup**:
 
@@ -576,7 +567,7 @@ import os
 os.environ['BBG_ROOT'] = '/path/to/your/data/directory'
 ```
 
-Once configured, xbbg will automatically save and retrieve data from local Parquet files, reducing Bloomberg API calls and improving performance.
+Once configured, xbbg will automatically save and retrieve data from local Parquet files, reducing blpapi calls and improving performance.
 
 **Important**: Local data usage must be compliant with Bloomberg Datafeed Addendum (full description in `DAPI<GO>`):
 
