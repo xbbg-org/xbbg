@@ -211,6 +211,7 @@ def send_request(request: blpapi.Request, **kwargs):
 
     Args:
         request: Bloomberg request to send.
+        service: Optional service name for logging purposes (e.g., '//blp/refdata').
         event_queue: Optional ``blpapi.EventQueue`` to receive events. Created if not provided.
         correlation_id: Optional ``blpapi.CorrelationId`` for the request. Created if not provided.
         **kwargs: Additional options forwarded to session retrieval (for example, ``port``).
@@ -228,12 +229,12 @@ def send_request(request: blpapi.Request, **kwargs):
     try:
         # Only log request details if DEBUG enabled (avoid overhead)
         if logger.isEnabledFor(logging.DEBUG):
-            # Get service name safely (Request doesn't have serviceName() method)
-            try:
-                service_name = str(request.service())
-            except (AttributeError, Exception):
-                service_name = 'unknown'
-            logger.debug('Sending Bloomberg API request (service: %s)', service_name)
+            # Service name is passed explicitly since Request objects don't have service() method
+            service_name = kwargs.get('service')
+            if service_name:
+                logger.debug('Sending Bloomberg API request (service: %s)', service_name)
+            else:
+                logger.debug('Sending Bloomberg API request')
         sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug('Bloomberg API request sent successfully')
