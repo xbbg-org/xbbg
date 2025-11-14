@@ -7,6 +7,12 @@ import logging
 
 import pandas as pd
 
+try:
+    import blpapi  # type: ignore[reportMissingImports]
+except (ImportError, AttributeError):
+    import pytest  # type: ignore[reportMissingImports]
+    blpapi = pytest.importorskip('blpapi')
+
 from xbbg import __version__, const, pipeline
 from xbbg.core import conn, process, utils
 from xbbg.core.conn import connect
@@ -26,6 +32,7 @@ __all__ = [
     'earning',
     'dividend',
     'beqs',
+    'bsrch',
     'live',
     'subscribe',
     'adjust_ccy',
@@ -774,6 +781,88 @@ def beqs(screen, asof=None, typ='PRIVATE', group='General', **kwargs) -> pd.Data
         .loc[:, cols]
         .pipe(pipeline.standard_cols)
     )
+
+
+def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
+    """Bloomberg SRCH (Search) queries - equivalent to Excel =@BSRCH function.
+
+    Executes Bloomberg search queries using the Excel service (exrsvc).
+    Supports user-defined SRCH screens, commodity screens, and Bloomberg example screens.
+
+    Args:
+        domain: Domain string in format <domain>:<search_name>.
+            Examples: "FI:YOURSRCH", "comdty:weather", "FI:SRCHEX.@CLOSUB"
+        overrides: Optional dict of override name-value pairs for search parameters.
+            For weather data: {"provider": "wsi", "location": "US_IL", "model": "ACTUALS",
+            "frequency": "DAILY", "target_start_date": "2021-01-01",
+            "target_end_date": "2024-12-31", "location_time": "false",
+            "fields": "WIND_SPEED|TEMPERATURE|..."}
+        timeout: Timeout in milliseconds for waiting between events (default: 2000ms).
+        max_timeouts: Maximum number of timeout events allowed (default: 50).
+        **kwargs: Additional options forwarded to session and logging.
+
+    Returns:
+        pd.DataFrame: Search results with columns as returned by the search.
+
+    Examples:
+        Basic usage (requires Bloomberg session; skipped in doctest):
+
+        >>> from xbbg import blp  # doctest: +SKIP
+        >>> # Fixed income search
+        >>> df = blp.bsrch("FI:SRCHEX.@CLOSUB")  # doctest: +SKIP
+        >>> # Weather data with parameters
+        >>> weather_df = blp.bsrch(  # doctest: +SKIP
+        ...     "comdty:weather",
+        ...     overrides={
+        ...         "provider": "wsi",
+        ...         "location": "US_IL",
+        ...         "model": "ACTUALS",
+        ...         "frequency": "DAILY",
+        ...         "target_start_date": "2021-01-01",
+        ...         "target_end_date": "2024-12-31",
+        ...         "fields": "WIND_SPEED|TEMPERATURE"
+        ...     }
+        ... )  # doctest: +SKIP
+    """
+    # Logger is module-level
+
+    # Create request using exrsvc service
+    exr_service = conn.bbg_service(service='//blp/exrsvc', **kwargs)
+    request = exr_service.createRequest('ExcelGetGridRequest')
+
+    # Set Domain element
+    request.getElement(blpapi.Name('Domain')).setValue(domain)
+
+    # Add overrides if provided
+    if overrides:
+        overrides_elem = request.getElement(blpapi.Name('Overrides'))
+        for name, value in overrides.items():
+            override_item = overrides_elem.appendElement()
+            override_item.setElement(blpapi.Name('name'), name)
+            override_item.setElement(blpapi.Name('value'), str(value))
+
+    if logger.isEnabledFor(logging.DEBUG):
+        override_info = f' with {len(overrides)} override(s)' if overrides else ''
+        logger.debug('Sending Bloomberg SRCH request for domain: %s%s', domain, override_info)
+
+    handle = conn.send_request(request=request, **kwargs)
+
+    # Use longer timeout for BSRCH requests (similar to BEQS)
+    bsrch_timeout = kwargs.pop('timeout', 2000)
+    bsrch_max_timeouts = kwargs.pop('max_timeouts', 50)
+
+    rows = list(process.rec_events(
+        func=process.process_bsrch,
+        event_queue=handle["event_queue"],
+        timeout=bsrch_timeout,
+        max_timeouts=bsrch_max_timeouts,
+        **kwargs
+    ))
+
+    if not rows:
+        return pd.DataFrame()
+
+    return pd.DataFrame(rows)
 
 
 @contextmanager

@@ -586,6 +586,61 @@ def earning_pct(data: pd.DataFrame, yr):
         if snap.level == 2: sub_pct.append(r)
 
 
+def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
+    """Process BSRCH GridResponse messages from Bloomberg Excel service.
+
+    Args:
+        msg: Bloomberg GridResponse message from exrsvc.
+        **kwargs: Additional options (unused).
+
+    Yields:
+        OrderedDict: Row dictionaries with column names as keys.
+    """
+    kwargs.pop('(^_^)', None)
+
+    if str(msg.messageType()) != 'GridResponse':
+        return iter([])
+
+    try:
+        # Get grid structure
+        num_records_elem = msg.getElement(blpapi.Name('NumOfRecords'))
+        num_records = int(num_records_elem.getValue())
+
+        column_titles = msg.getElement(blpapi.Name('ColumnTitles'))
+        num_cols = column_titles.numValues()
+
+        # Extract column names
+        col_names = []
+        for i in range(num_cols):
+            col_names.append(column_titles.getValue(i))
+
+        # Extract data records
+        data_records = msg.getElement(blpapi.Name('DataRecords'))
+
+        # Process all records
+        for i in range(num_records):
+            data_record = data_records.getValueAsElement(i)
+            data_fields = data_record.getElement(blpapi.Name('DataFields'))
+
+            row = OrderedDict()
+            for j in range(num_cols):
+                data_field = data_fields.getValueAsElement(j)
+                data_value = data_field.getChoice()
+
+                # Extract value - Python blpapi getValue() returns appropriate type
+                try:
+                    val = data_value.getValue()
+                    row[col_names[j]] = val
+                except Exception:
+                    row[col_names[j]] = str(data_value)
+
+            yield row
+
+    except Exception as e:
+        logger.error('Error processing BSRCH GridResponse: %s', e, exc_info=True)
+        return iter([])
+
+
 def check_current(dt, logger, **kwargs) -> bool:
     """Check current time against T-1."""
     t_1 = pd.Timestamp('today').date() - pd.Timedelta('1D')
