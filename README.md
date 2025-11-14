@@ -145,6 +145,8 @@ print(hist.tail())
 
 ### 📊 Reference Data
 
+#### Equity and Index Securities
+
 ```python
 from xbbg import blp
 
@@ -196,6 +198,36 @@ Out[8]:
 AAPL US Equity    2018-05-01  2018-05-11  2018-05-14   2018-05-17             0.73            Quarter  Regular Cash
 AAPL US Equity    2018-02-01  2018-02-09  2018-02-12   2018-02-15             0.63            Quarter  Regular Cash
 ```
+
+#### Fixed Income Securities
+
+xbbg supports fixed income securities using standard security identifiers (ISIN, CUSIP, SEDOL). Use the `/isin/{isin}`, `/cusip/{cusip}`, or `/sedol/{sedol}` format as the ticker:
+
+```python
+# Reference data using ISIN
+blp.bdp(tickers='/isin/US1234567890', flds=['SECURITY_NAME', 'MATURITY', 'COUPON', 'PX_LAST'])
+```
+
+```pydocstring
+Out[9]:
+                       security_name    maturity coupon    px_last
+/isin/US1234567890  US Treasury Note  2035-05-15   4.25  101.25
+```
+
+```python
+# Cash flow schedule using ISIN
+blp.bds(tickers='/isin/US1234567890', flds='DES_CASH_FLOW')
+```
+
+```pydocstring
+Out[10]:
+                   payment_date  coupon_amount  principal_amount
+/isin/US1234567890   2026-05-15        21250.0               0.0
+/isin/US1234567890   2026-11-15        21250.0               0.0
+/isin/US1234567890   2027-05-15        21250.0               0.0
+```
+
+**Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to Bloomberg's API.
 
 ### 📈 Historical Data
 
