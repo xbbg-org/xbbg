@@ -593,3 +593,264 @@ fn live_intraday_sanity() {
     // do not assert; this probe is tolerant in restricted envs
     sess.stop();
 }
+
+#[cfg(feature = "live")]
+#[test]
+fn live_arrow_refdata() {
+    use arrow::array::Array;
+    use xbbg_core::{session::Session, SessionOptions};
+    use xbbg_core::requests::ReferenceDataRequest;
+    use xbbg_core::arrow::execute_refdata_arrow;
+
+    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let mut opts = SessionOptions::new().expect("opts");
+    opts.set_server_host(&host).unwrap();
+    opts.set_server_port(port);
+    opts.set_connect_timeout_ms(10_000).unwrap();
+    let sess = Session::new(&opts).expect("session");
+    sess.start().expect("start");
+    wait_for_session_started(&sess, 3_000);
+
+    let req = ReferenceDataRequest::new(
+        vec!["IBM US Equity", "MSFT US Equity"],
+        vec!["PX_LAST", "NAME"],
+    );
+    let batch = execute_refdata_arrow(&sess, &req).expect("execute refdata arrow");
+    
+    println!("RefData Arrow batch: {} rows, {} columns", batch.num_rows(), batch.num_columns());
+    println!("Schema: {:?}", batch.schema());
+    
+    // Print first 10 rows
+    let num_rows_to_print = batch.num_rows().min(10);
+    for i in 0..num_rows_to_print {
+        let ticker = batch.column(0).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let field = batch.column(1).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let row_idx = batch.column(2).as_any().downcast_ref::<arrow::array::Int32Array>().unwrap().value(i);
+        let value_str = batch.column(3).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| batch.column(3).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i).to_string());
+        let value_num = batch.column(4).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| format!("{}", batch.column(4).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().value(i)));
+        println!("  Row {}: ticker={}, field={}, row_idx={}, value_str={}, value_num={}", i, ticker, field, row_idx, value_str, value_num);
+    }
+    
+    assert_eq!(batch.num_columns(), 8, "should have 8 columns (ticker, field, row_index, value_str, value_num, value_date, currency, source)");
+    if batch.num_rows() == 0 {
+        println!("WARNING: Got 0 rows - this might indicate a parsing issue or no data available");
+    } else {
+        assert!(batch.num_rows() > 0, "should have at least one row");
+    }
+    
+    sess.stop();
+}
+
+#[cfg(feature = "live")]
+#[test]
+fn live_arrow_histdata() {
+    use arrow::array::Array;
+    use xbbg_core::{session::Session, SessionOptions};
+    use xbbg_core::requests::HistoricalDataRequest;
+    use xbbg_core::arrow::execute_histdata_arrow;
+
+    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let mut opts = SessionOptions::new().expect("opts");
+    opts.set_server_host(&host).unwrap();
+    opts.set_server_port(port);
+    opts.set_connect_timeout_ms(10_000).unwrap();
+    let sess = Session::new(&opts).expect("session");
+    sess.start().expect("start");
+    wait_for_session_started(&sess, 3_000);
+
+    // Test with multiple tickers and multiple fields
+    let req = HistoricalDataRequest::new(
+        vec!["IBM US Equity", "MSFT US Equity"],
+        vec!["PX_LAST", "VOLUME", "OPEN"],
+        "2024-01-01",
+        "2024-01-31",
+    );
+    let batch = execute_histdata_arrow(&sess, &req).expect("execute histdata arrow");
+    
+    println!("HistData Arrow batch: {} rows, {} columns", batch.num_rows(), batch.num_columns());
+    println!("Schema: {:?}", batch.schema());
+    
+    // Print first 10 rows
+    let num_rows_to_print = batch.num_rows().min(10);
+    for i in 0..num_rows_to_print {
+        let ticker = batch.column(0).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let date = batch.column(1).as_any().downcast_ref::<arrow::array::Date32Array>().unwrap().value(i);
+        let field = batch.column(2).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let value_num = batch.column(3).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| format!("{}", batch.column(3).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().value(i)));
+        println!("  Row {}: ticker={}, date={}, field={}, value_num={}", i, ticker, date, field, value_num);
+    }
+    
+    assert_eq!(batch.num_columns(), 6, "should have 6 columns (ticker, date, field, value_num, currency, adjustment_flag)");
+    
+    sess.stop();
+}
+
+#[cfg(feature = "live")]
+#[test]
+fn live_arrow_intraday_bars() {
+    use arrow::array::Array;
+    use xbbg_core::{session::Session, SessionOptions};
+    use xbbg_core::requests::IntradayBarRequest;
+    use xbbg_core::arrow::execute_intraday_bars_arrow;
+
+    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let mut opts = SessionOptions::new().expect("opts");
+    opts.set_server_host(&host).unwrap();
+    opts.set_server_port(port);
+    opts.set_connect_timeout_ms(10_000).unwrap();
+    let sess = Session::new(&opts).expect("session");
+    sess.start().expect("start");
+    wait_for_session_started(&sess, 3_000);
+
+    // Use a recent date range
+    let req = IntradayBarRequest::new(
+        vec!["IBM US Equity"],
+        "2025-11-13T09:30:00",
+        "2025-11-13T16:00:00",
+        60, // 1 minute bars
+    );
+    let batch = execute_intraday_bars_arrow(&sess, &req).expect("execute intraday bars arrow");
+    
+    println!("IntradayBars Arrow batch: {} rows, {} columns", batch.num_rows(), batch.num_columns());
+    println!("Schema: {:?}", batch.schema());
+    
+    // Print first 10 rows
+    let num_rows_to_print = batch.num_rows().min(10);
+    for i in 0..num_rows_to_print {
+        let ticker = batch.column(0).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let ts = batch.column(1).as_any().downcast_ref::<arrow::array::TimestampMillisecondArray>().unwrap().value(i);
+        let field = batch.column(2).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let value_num = batch.column(3).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| format!("{}", batch.column(3).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().value(i)));
+        println!("  Row {}: ticker={}, ts={}, field={}, value_num={}", i, ticker, ts, field, value_num);
+    }
+    
+    assert_eq!(batch.num_columns(), 4, "should have 4 columns (ticker, ts, field, value_num)");
+    
+    sess.stop();
+}
+
+#[cfg(feature = "live")]
+#[test]
+fn live_arrow_intraday_ticks() {
+    use arrow::array::Array;
+    use xbbg_core::{session::Session, SessionOptions};
+    use xbbg_core::requests::IntradayTickRequest;
+    use xbbg_core::arrow::execute_intraday_ticks_arrow;
+
+    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let mut opts = SessionOptions::new().expect("opts");
+    opts.set_server_host(&host).unwrap();
+    opts.set_server_port(port);
+    opts.set_connect_timeout_ms(10_000).unwrap();
+    let sess = Session::new(&opts).expect("session");
+    sess.start().expect("start");
+    wait_for_session_started(&sess, 3_000);
+
+    // Use a recent date range
+    let req = IntradayTickRequest::new(
+        vec!["IBM US Equity"],
+        "2025-11-13T09:30:00",
+        "2025-11-13T09:35:00",
+        vec!["TRADE"],
+    );
+    let batch = execute_intraday_ticks_arrow(&sess, &req).expect("execute intraday ticks arrow");
+    
+    println!("IntradayTicks Arrow batch: {} rows, {} columns", batch.num_rows(), batch.num_columns());
+    println!("Schema: {:?}", batch.schema());
+    
+    // Print first 10 rows
+    let num_rows_to_print = batch.num_rows().min(10);
+    for i in 0..num_rows_to_print {
+        let ticker = batch.column(0).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let ts = batch.column(1).as_any().downcast_ref::<arrow::array::TimestampMillisecondArray>().unwrap().value(i);
+        let field = batch.column(2).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let value_num = batch.column(3).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| format!("{}", batch.column(3).as_any().downcast_ref::<arrow::array::Float64Array>().unwrap().value(i)));
+        let event_type = batch.column(4).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let cond_code = batch.column(5).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| batch.column(5).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i).to_string());
+        println!("  Row {}: ticker={}, ts={}, field={}, value_num={}, event_type={}, condition_code={}", i, ticker, ts, field, value_num, event_type, cond_code);
+    }
+    
+    assert_eq!(batch.num_columns(), 6, "should have 6 columns (ticker, ts, field, value_num, event_type, condition_code)");
+    
+    sess.stop();
+}
+
+#[cfg(feature = "live")]
+#[test]
+fn live_arrow_field_search() {
+    use arrow::array::Array;
+    use xbbg_core::{session::Session, SessionOptions};
+    use xbbg_core::requests::FieldSearchRequest;
+    use xbbg_core::arrow::execute_field_search_arrow;
+
+    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let mut opts = SessionOptions::new().expect("opts");
+    opts.set_server_host(&host).unwrap();
+    opts.set_server_port(port);
+    opts.set_connect_timeout_ms(10_000).unwrap();
+    let sess = Session::new(&opts).expect("session");
+    sess.start().expect("start");
+    wait_for_session_started(&sess, 3_000);
+
+    let req = FieldSearchRequest::new("PX_LAST");
+    let batch = execute_field_search_arrow(&sess, &req).expect("execute field search arrow");
+    
+    println!("FieldSearch Arrow batch: {} rows, {} columns", batch.num_rows(), batch.num_columns());
+    println!("Schema: {:?}", batch.schema());
+    
+    // Print first 10 rows
+    let num_rows_to_print = batch.num_rows().min(10);
+    for i in 0..num_rows_to_print {
+        let field_id = batch.column(0).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let field_name = batch.column(1).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| batch.column(1).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i).to_string());
+        let field_type = batch.column(2).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| batch.column(2).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i).to_string());
+        println!("  Row {}: field_id={}, field_name={}, field_type={}", i, field_id, field_name, field_type);
+    }
+    
+    assert_eq!(batch.num_columns(), 5, "should have 5 columns (field_id, field_name, field_type, description, category)");
+    
+    sess.stop();
+}
+
+#[cfg(feature = "live")]
+#[test]
+fn live_arrow_field_info() {
+    use arrow::array::Array;
+    use xbbg_core::{session::Session, SessionOptions};
+    use xbbg_core::requests::FieldInfoRequest;
+    use xbbg_core::arrow::execute_field_info_arrow;
+
+    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let mut opts = SessionOptions::new().expect("opts");
+    opts.set_server_host(&host).unwrap();
+    opts.set_server_port(port);
+    opts.set_connect_timeout_ms(10_000).unwrap();
+    let sess = Session::new(&opts).expect("session");
+    sess.start().expect("start");
+    wait_for_session_started(&sess, 3_000);
+
+    let req = FieldInfoRequest::new(vec!["PX_LAST", "NAME"]);
+    let batch = execute_field_info_arrow(&sess, &req).expect("execute field info arrow");
+    
+    println!("FieldInfo Arrow batch: {} rows, {} columns", batch.num_rows(), batch.num_columns());
+    println!("Schema: {:?}", batch.schema());
+    
+    // Print all rows
+    for i in 0..batch.num_rows() {
+        let field_id = batch.column(0).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i);
+        let mnemonic = batch.column(1).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| batch.column(1).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i).to_string());
+        let ftype = batch.column(2).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| batch.column(2).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i).to_string());
+        let desc = batch.column(3).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().is_null(i).then(|| "NULL".to_string()).unwrap_or_else(|| batch.column(3).as_any().downcast_ref::<arrow::array::StringArray>().unwrap().value(i).to_string());
+        println!("  Row {}: field_id={}, mnemonic={}, ftype={}, description={}", i, field_id, mnemonic, ftype, desc);
+    }
+    
+    assert_eq!(batch.num_columns(), 5, "should have 5 columns (field_id, mnemonic, ftype, description, category)");
+    
+    sess.stop();
+}

@@ -3,6 +3,7 @@ pub fn version() -> &'static str {
 }
 
 mod errors;
+pub mod requests;
 mod ffi;
 mod name;
 mod correlation;
@@ -23,6 +24,7 @@ mod tag_registry;
 pub mod schema;
 
 pub use errors::{BlpError, CorrelationContext, Result};
+pub use requests::*;
 pub use name::Name;
 pub use correlation::CorrelationId;
 pub use options::SessionOptions;
@@ -36,4 +38,5 @@ pub use element::{ElementRef};
 pub use subscription::{SubscriptionList, SubscriptionListBuilder};
 pub use poller::EventPoller;
 pub mod session;
+pub mod arrow;
 

@@ -25,6 +25,11 @@ impl MessageRef {
         }
     }
 
+    pub fn elements(&self) -> crate::element::ElementRef {
+        let el_ptr = unsafe { blpapi_sys::blpapi_Message_elements(self.ptr) };
+        crate::element::ElementRef::from_raw(el_ptr).expect("message elements")
+    }
+
     pub fn payload_definition(&self) -> crate::schema::SchemaElementDefinition {
         let el_ptr = unsafe { blpapi_sys::blpapi_Message_elements(self.ptr) };
         let def_ptr = unsafe { blpapi_sys::blpapi_Element_definition(el_ptr) };
