@@ -61,14 +61,14 @@ def get_interval(ticker, session, **kwargs) -> Session:
     """
     if '_' not in session:
         # For bare session names (e.g., 'day', 'allday'), use exact session times
-        # instead of defaulting to '_normal_0_0' which adds a 1-minute offset
+        # instead of defaulting to '_normal_0_0' which adds a 1-minute offset.
+        #
+        # If the requested bare session is not defined for the exchange, we
+        # return SessNA and rely on `exch.yml` (or overrides) to explicitly
+        # define additional sessions where needed rather than guessing.
         interval = Intervals(ticker=ticker, **kwargs)
         if session in interval.exch:
             ss = interval.exch[session]
-            return Session(start_time=ss[0], end_time=ss[-1])
-        # Fall back to 'allday' if requested session doesn't exist (e.g., 'day' not defined)
-        if session != 'allday' and 'allday' in interval.exch:
-            ss = interval.exch['allday']
             return Session(start_time=ss[0], end_time=ss[-1])
         return SessNA
     interval = Intervals(ticker=ticker, **kwargs)
