@@ -126,7 +126,7 @@ def ref_file(
 
     # Check date info
     if has_date:
-        cache_file = str(root / f'asof=[cur_date], {info}.{ext}')
+        cache_file = (root / f'asof=[cur_date], {info}.{ext}').as_posix()
         cur_dt = utils.cur_time()
         start_dt = pd.date_range(end=cur_dt, freq=f'{cache_days}D', periods=2)[0]
         for dt in pd.date_range(start=start_dt, end=cur_dt, normalize=True)[1:][::-1]:
@@ -134,7 +134,7 @@ def ref_file(
             if files.exists(cur_file): return cur_file
         return cache_file.replace('[cur_date]', str(cur_dt))
 
-    return str(root / f'{info}.{ext}')
+    return (root / f'{info}.{ext}').as_posix()
 
 
 def save_intraday(data: pd.DataFrame, ticker: str, dt, typ='TRADE', **kwargs):
