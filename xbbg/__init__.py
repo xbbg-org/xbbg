@@ -18,7 +18,7 @@ logger.addHandler(logging.NullHandler())
 logger.setLevel(logging.WARNING)
 
 # Backward compatibility: re-export pipeline from utils
-from xbbg.utils import pipeline  # noqa: F401
+from xbbg.utils import pipeline  # noqa: E402, F401
 
 try:
     from xbbg.core import blpapi_logging  # noqa: F401

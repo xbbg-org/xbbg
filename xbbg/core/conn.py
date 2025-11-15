@@ -5,8 +5,8 @@ services, and send requests with sensible defaults.
 """
 
 import os
-import sys
 from pathlib import Path
+import sys
 
 try:
     ver = sys.version_info

@@ -15,8 +15,8 @@ except (ImportError, AttributeError):
     import pytest  # type: ignore[reportMissingImports]
     blpapi = pytest.importorskip('blpapi')
 
-from xbbg.utils import pipeline
 from xbbg.core import conn, process, utils
+from xbbg.utils import pipeline
 
 logger = logging.getLogger(__name__)
 

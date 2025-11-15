@@ -11,8 +11,6 @@ from itertools import product
 import logging
 from typing import TYPE_CHECKING
 
-import pandas as pd
-
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 

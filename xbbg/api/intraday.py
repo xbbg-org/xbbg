@@ -16,11 +16,11 @@ except (ImportError, AttributeError):
     blpapi = pytest.importorskip('blpapi')
 
 from xbbg import const
-from xbbg.utils import pipeline
 from xbbg.core import conn, process
 from xbbg.core.process import DEFAULT_TZ
 from xbbg.io import files, storage
 from xbbg.markets import resolvers
+from xbbg.utils import pipeline
 
 logger = logging.getLogger(__name__)
 

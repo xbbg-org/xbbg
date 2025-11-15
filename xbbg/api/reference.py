@@ -11,9 +11,9 @@ import logging
 
 import pandas as pd
 
-from xbbg.utils import pipeline
 from xbbg.core import conn, helpers, process
 from xbbg.io import files, storage
+from xbbg.utils import pipeline
 
 logger = logging.getLogger(__name__)
 
