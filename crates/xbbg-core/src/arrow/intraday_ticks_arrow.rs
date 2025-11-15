@@ -1,7 +1,7 @@
 //! Arrow builders for intraday ticks (BDTICK).
 
 use crate::requests::IntradayTickRequest;
-use crate::{Result, Event, EventType};
+use crate::{Result, EventType, MessageRef};
 use crate::session::Session;
 use crate::correlation::CorrelationId;
 use crate::request::Request;
@@ -68,7 +68,7 @@ pub fn execute_intraday_ticks_arrow(
                     if let Some(cid) = msg.correlation_id(0) {
                         if let Some(idx) = cid.as_u64() {
                             if let Some(ticker) = correlation_map.get(&idx) {
-                                process_intraday_ticks_response(&event, ticker, &mut tickers, &mut timestamps,
+                                process_intraday_ticks_response(&msg, ticker, &mut tickers, &mut timestamps,
                                     &mut fields, &mut value_nums, &mut event_types, &mut condition_codes)?;
                                 completed.insert(idx);
                             }
@@ -82,7 +82,7 @@ pub fn execute_intraday_ticks_arrow(
                     if let Some(cid) = msg.correlation_id(0) {
                         if let Some(idx) = cid.as_u64() {
                             if let Some(ticker) = correlation_map.get(&idx) {
-                                process_intraday_ticks_response(&event, ticker, &mut tickers, &mut timestamps,
+                                process_intraday_ticks_response(&msg, ticker, &mut tickers, &mut timestamps,
                                     &mut fields, &mut value_nums, &mut event_types, &mut condition_codes)?;
                             }
                         }
@@ -245,7 +245,7 @@ fn create_intraday_tick_request(
 }
 
 fn process_intraday_ticks_response(
-    event: &Event,
+    msg: &MessageRef,
     ticker: &str,
     tickers: &mut Vec<String>,
     timestamps: &mut Vec<i64>,
@@ -254,34 +254,32 @@ fn process_intraday_ticks_response(
     event_types: &mut Vec<String>,
     condition_codes: &mut Vec<Option<String>>,
 ) -> Result<()> {
-    for msg in event.iter() {
-        let msg_type = msg.message_type();
-        if msg_type.as_str() != "IntradayTickResponse" {
-            continue;
-        }
+    let msg_type = msg.message_type();
+    if msg_type.as_str() != "IntradayTickResponse" {
+        return Ok(());
+    }
 
-        // Check for response errors
-        let root = msg.elements();
-        if let Some(error_el) = root.get_element("responseError") {
-            let category = error_el.get_element("category")
-                .and_then(|el| el.get_value_as_string(0))
-                .unwrap_or_default();
-            let message = error_el.get_element("message")
-                .and_then(|el| el.get_value_as_string(0))
-                .unwrap_or_default();
-            return Err(crate::BlpError::Internal {
-                detail: format!("Intraday Tick Error: {}: {}", category, message),
-            });
-        }
+    // Check for response errors
+    let root = msg.elements();
+    if let Some(error_el) = root.get_element("responseError") {
+        let category = error_el.get_element("category")
+            .and_then(|el| el.get_value_as_string(0))
+            .unwrap_or_default();
+        let message = error_el.get_element("message")
+            .and_then(|el| el.get_value_as_string(0))
+            .unwrap_or_default();
+        return Err(crate::BlpError::Internal {
+            detail: format!("Intraday Tick Error: {}: {}", category, message),
+        });
+    }
 
-        // Structure: tickData.tickData[] - array of tick sequences
-        if let Some(tick_data) = root.get_element("tickData") {
-            if let Some(tick_data_array) = tick_data.get_element("tickData") {
-                let num_ticks = tick_data_array.num_values();
-                for tick_idx in 0..num_ticks {
-                    if let Some(tick_el) = tick_data_array.get_value_as_element(tick_idx) {
-                        process_tick_data(&tick_el, ticker, tickers, timestamps, fields, value_nums, event_types, condition_codes);
-                    }
+    // Structure: tickData.tickData[] - array of tick sequences
+    if let Some(tick_data) = root.get_element("tickData") {
+        if let Some(tick_data_array) = tick_data.get_element("tickData") {
+            let num_ticks = tick_data_array.num_values();
+            for tick_idx in 0..num_ticks {
+                if let Some(tick_el) = tick_data_array.get_value_as_element(tick_idx) {
+                    process_tick_data(&tick_el, ticker, tickers, timestamps, fields, value_nums, event_types, condition_codes);
                 }
             }
         }

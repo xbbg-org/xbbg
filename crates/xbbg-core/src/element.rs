@@ -161,6 +161,7 @@ impl ElementRef {
         crate::schema::SchemaElementDefinition::from_raw(def_ptr).expect("element definition")
     }
 
+    #[allow(dead_code)]
     pub(crate) fn as_raw(&self) -> *mut blpapi_sys::blpapi_Element_t {
         self.ptr
     }

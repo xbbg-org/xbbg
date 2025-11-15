@@ -1,7 +1,7 @@
 //! Arrow builders for historical data (BDH).
 
 use crate::requests::HistoricalDataRequest;
-use crate::{Result, RequestBuilder, Event, EventType};
+use crate::{Result, RequestBuilder, Event, EventType, CorrelationId};
 use crate::session::Session;
 use std::ffi::CString;
 use std::sync::Arc;
@@ -85,8 +85,10 @@ pub fn execute_histdata_arrow(
         }
     }
 
-    // Send request
-    session.send_request(&blp_request, None, None)?;
+    // Send request with an explicit correlation id so we can safely multiplex
+    // multiple in-flight requests on the same session.
+    let cid = CorrelationId::next();
+    session.send_request(&blp_request, None, Some(&cid))?;
 
     // Collect response data
     let mut tickers = Vec::new();
@@ -102,18 +104,21 @@ pub fn execute_histdata_arrow(
         let event = session.next_event(Some(60000))?; // 60s timeout
         match event.event_type() {
             EventType::Response => {
-                process_histdata_response(&event, &mut tickers, &mut dates, &mut fields,
+                process_histdata_response(&event, &cid, &mut tickers, &mut dates, &mut fields,
                     &mut value_nums, &mut currencies, &mut adjustment_flags)?;
                 break;
             }
             EventType::PartialResponse => {
-                process_histdata_response(&event, &mut tickers, &mut dates, &mut fields,
+                process_histdata_response(&event, &cid, &mut tickers, &mut dates, &mut fields,
                     &mut value_nums, &mut currencies, &mut adjustment_flags)?;
                 // Continue to wait for final RESPONSE
             }
             EventType::RequestStatus => {
                 // Check for errors
                 for msg in event.iter() {
+                    if !msg.matches_correlation_id(&cid) {
+                        continue;
+                    }
                     let msg_type = msg.message_type();
                     if msg_type.as_str() == "RequestFailure" {
                         return Err(crate::BlpError::Internal {
@@ -158,6 +163,7 @@ pub fn execute_histdata_arrow(
 
 fn process_histdata_response(
     event: &Event,
+    cid: &CorrelationId,
     tickers: &mut Vec<String>,
     dates: &mut Vec<i32>,
     fields: &mut Vec<String>,
@@ -166,6 +172,10 @@ fn process_histdata_response(
     adjustment_flags: &mut Vec<Option<String>>,
 ) -> Result<()> {
     for msg in event.iter() {
+        // Only process messages for our correlation id.
+        if !msg.matches_correlation_id(cid) {
+            continue;
+        }
         let msg_type = msg.message_type();
         if msg_type.as_str() != "HistoricalDataResponse" {
             continue;

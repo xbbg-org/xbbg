@@ -75,6 +75,12 @@ impl MessageRef {
         }
         None
     }
+
+    /// Check if this message matches the given correlation ID.
+    /// Returns `false` if the message has no correlation ID or it doesn't match.
+    pub fn matches_correlation_id(&self, cid: &CorrelationId) -> bool {
+        self.correlation_id(0).map(|msg_cid| &msg_cid == cid).unwrap_or(false)
+    }
     pub fn get_request_id(&self) -> Option<&str> {
         let mut req_id: *const i8 = std::ptr::null();
         let rc = unsafe { blpapi_sys::blpapi_Message_getRequestId(self.ptr, &mut req_id) };

@@ -2,7 +2,6 @@ use std::ffi::CString;
 
 use crate::correlation::CorrelationId;
 use crate::errors::{BlpError, Result};
-use crate::tag_registry::TAG_REGISTRY;
 
 pub struct SubscriptionList {
     ptr: *mut blpapi_sys::blpapi_SubscriptionList_t,
@@ -34,11 +33,7 @@ impl SubscriptionList {
             .collect::<Result<Vec<_>>>()?;
         let mut fields_ptrs: Vec<*const i8> = fields_c.iter().map(|c| c.as_ptr()).collect();
         let mut cid_raw = match cid {
-            Some(CorrelationId::U64(v)) => CorrelationId::to_ffi_u64(*v),
-            Some(CorrelationId::Tag(s)) => {
-                let (ptr, _arc) = TAG_REGISTRY.register(s);
-                CorrelationId::to_ffi_ptr(ptr)
-            }
+            Some(c) => c.to_ffi(),
             None => CorrelationId::to_ffi_autogen(),
         };
         let fields_ptr_raw: *mut *const i8 = if fields_ptrs.is_empty() {

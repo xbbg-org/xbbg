@@ -1,7 +1,7 @@
 //! Arrow builders for intraday bars (BDIB).
 
 use crate::requests::IntradayBarRequest;
-use crate::{Result, Event, EventType};
+use crate::{Result, EventType, MessageRef};
 use crate::session::Session;
 use crate::correlation::CorrelationId;
 use crate::request::Request;
@@ -64,7 +64,7 @@ pub fn execute_intraday_bars_arrow(
                     if let Some(cid) = msg.correlation_id(0) {
                         if let Some(idx) = cid.as_u64() {
                             if let Some(ticker) = correlation_map.get(&idx) {
-                                process_intraday_bars_response(&event, ticker, &mut tickers, &mut timestamps,
+                                process_intraday_bars_response(&msg, ticker, &mut tickers, &mut timestamps,
                                     &mut fields, &mut value_nums)?;
                                 completed.insert(idx);
                             }
@@ -78,7 +78,7 @@ pub fn execute_intraday_bars_arrow(
                     if let Some(cid) = msg.correlation_id(0) {
                         if let Some(idx) = cid.as_u64() {
                             if let Some(ticker) = correlation_map.get(&idx) {
-                                process_intraday_bars_response(&event, ticker, &mut tickers, &mut timestamps,
+                                process_intraday_bars_response(&msg, ticker, &mut tickers, &mut timestamps,
                                     &mut fields, &mut value_nums)?;
                             }
                         }
@@ -211,41 +211,39 @@ fn create_intraday_bar_request(
 }
 
 fn process_intraday_bars_response(
-    event: &Event,
+    msg: &MessageRef,
     ticker: &str,
     tickers: &mut Vec<String>,
     timestamps: &mut Vec<i64>,
     fields: &mut Vec<String>,
     value_nums: &mut Vec<Option<f64>>,
 ) -> Result<()> {
-    for msg in event.iter() {
-        let msg_type = msg.message_type();
-        if msg_type.as_str() != "IntradayBarResponse" {
-            continue;
-        }
+    let msg_type = msg.message_type();
+    if msg_type.as_str() != "IntradayBarResponse" {
+        return Ok(());
+    }
 
-        // Check for response errors
-        let root = msg.elements();
-        if let Some(error_el) = root.get_element("responseError") {
-            let category = error_el.get_element("category")
-                .and_then(|el| el.get_value_as_string(0))
-                .unwrap_or_default();
-            let message = error_el.get_element("message")
-                .and_then(|el| el.get_value_as_string(0))
-                .unwrap_or_default();
-            return Err(crate::BlpError::Internal {
-                detail: format!("Intraday Bar Error: {}: {}", category, message),
-            });
-        }
+    // Check for response errors
+    let root = msg.elements();
+    if let Some(error_el) = root.get_element("responseError") {
+        let category = error_el.get_element("category")
+            .and_then(|el| el.get_value_as_string(0))
+            .unwrap_or_default();
+        let message = error_el.get_element("message")
+            .and_then(|el| el.get_value_as_string(0))
+            .unwrap_or_default();
+        return Err(crate::BlpError::Internal {
+            detail: format!("Intraday Bar Error: {}: {}", category, message),
+        });
+    }
 
-        // Structure: barData.barTickData[] - array of bar sequences
-        if let Some(bar_data) = root.get_element("barData") {
-            if let Some(bar_tick_data_array) = bar_data.get_element("barTickData") {
-                let num_bars = bar_tick_data_array.num_values();
-                for bar_idx in 0..num_bars {
-                    if let Some(bar_el) = bar_tick_data_array.get_value_as_element(bar_idx) {
-                        process_bar_element(&bar_el, ticker, tickers, timestamps, fields, value_nums);
-                    }
+    // Structure: barData.barTickData[] - array of bar sequences
+    if let Some(bar_data) = root.get_element("barData") {
+        if let Some(bar_tick_data_array) = bar_data.get_element("barTickData") {
+            let num_bars = bar_tick_data_array.num_values();
+            for bar_idx in 0..num_bars {
+                if let Some(bar_el) = bar_tick_data_array.get_value_as_element(bar_idx) {
+                    process_bar_element(&bar_el, ticker, tickers, timestamps, fields, value_nums);
                 }
             }
         }

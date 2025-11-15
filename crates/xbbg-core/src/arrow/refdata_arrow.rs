@@ -1,7 +1,7 @@
 //! Arrow builders for reference data (BDP/BDS).
 
 use crate::requests::ReferenceDataRequest;
-use crate::{Result, RequestBuilder, Event, EventType};
+use crate::{Result, RequestBuilder, Event, EventType, CorrelationId};
 use crate::session::Session;
 use std::ffi::CString;
 use std::sync::Arc;
@@ -64,8 +64,10 @@ pub fn execute_refdata_arrow(
         }
     }
 
-    // Send request
-    session.send_request(&blp_request, None, None)?;
+    // Send request with an explicit correlation id so we can safely multiplex
+    // multiple in-flight requests on the same session.
+    let cid = CorrelationId::next();
+    session.send_request(&blp_request, None, Some(&cid))?;
 
     // Collect response data
     let mut tickers = Vec::new();
@@ -85,18 +87,21 @@ pub fn execute_refdata_arrow(
         let event = session.next_event(Some(60000))?; // 60s timeout
         match event.event_type() {
             EventType::Response => {
-                process_refdata_response(&event, &requested_fields, &mut tickers, &mut fields, &mut row_indices,
+                process_refdata_response(&event, &cid, &requested_fields, &mut tickers, &mut fields, &mut row_indices,
                     &mut value_strs, &mut value_nums, &mut value_dates, &mut currencies, &mut sources)?;
                 break;
             }
             EventType::PartialResponse => {
-                process_refdata_response(&event, &requested_fields, &mut tickers, &mut fields, &mut row_indices,
+                process_refdata_response(&event, &cid, &requested_fields, &mut tickers, &mut fields, &mut row_indices,
                     &mut value_strs, &mut value_nums, &mut value_dates, &mut currencies, &mut sources)?;
                 // Continue to wait for final RESPONSE
             }
             EventType::RequestStatus => {
                 // Check for errors
                 for msg in event.iter() {
+                    if !msg.matches_correlation_id(&cid) {
+                        continue;
+                    }
                     let msg_type = msg.message_type();
                     if msg_type.as_str() == "RequestFailure" {
                         return Err(crate::BlpError::Internal {
@@ -149,6 +154,7 @@ pub fn execute_refdata_arrow(
 
 fn process_refdata_response(
     event: &Event,
+    cid: &CorrelationId,
     requested_fields: &[String],
     tickers: &mut Vec<String>,
     fields: &mut Vec<String>,
@@ -160,6 +166,10 @@ fn process_refdata_response(
     sources: &mut Vec<Option<String>>,
 ) -> Result<()> {
     for msg in event.iter() {
+        // Only process messages for our correlation id.
+        if !msg.matches_correlation_id(cid) {
+            continue;
+        }
         let msg_type = msg.message_type();
         if msg_type.as_str() != "ReferenceDataResponse" {
             continue;

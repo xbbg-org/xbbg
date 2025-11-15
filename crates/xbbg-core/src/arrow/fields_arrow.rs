@@ -1,7 +1,7 @@
 //! Arrow builders for field search / info.
 
 use crate::requests::{FieldInfoRequest, FieldSearchRequest};
-use crate::{Result, Event, EventType};
+use crate::{Result, Event, EventType, CorrelationId};
 use crate::session::Session;
 use std::ffi::CString;
 use std::sync::Arc;
@@ -47,8 +47,10 @@ pub fn execute_field_search_arrow(
             blpapi_sys::blpapi_Element_setElementBool(root_el, k_return_field_documentation.as_ptr(), std::ptr::null(), 1);
         }
 
-    // Send request
-    session.send_request(&blp_request, None, None)?;
+    // Send request with an explicit correlation id so we can safely multiplex
+    // multiple in-flight requests on the same session.
+    let cid = CorrelationId::next();
+    session.send_request(&blp_request, None, Some(&cid))?;
 
     // Collect response data
     let mut field_ids = Vec::new();
@@ -62,18 +64,21 @@ pub fn execute_field_search_arrow(
         let event = session.next_event(Some(60000))?; // 60s timeout
         match event.event_type() {
             EventType::Response => {
-                process_field_search_response(&event, &mut field_ids, &mut field_names,
+                process_field_search_response(&event, &cid, &mut field_ids, &mut field_names,
                     &mut field_types, &mut descriptions, &mut categories)?;
                 break;
             }
             EventType::PartialResponse => {
-                process_field_search_response(&event, &mut field_ids, &mut field_names,
+                process_field_search_response(&event, &cid, &mut field_ids, &mut field_names,
                     &mut field_types, &mut descriptions, &mut categories)?;
                 // Continue to wait for final RESPONSE
             }
             EventType::RequestStatus => {
                 // Check for errors
                 for msg in event.iter() {
+                    if !msg.matches_correlation_id(&cid) {
+                        continue;
+                    }
                     let msg_type = msg.message_type();
                     if msg_type.as_str() == "RequestFailure" {
                         return Err(crate::BlpError::Internal {
@@ -116,6 +121,7 @@ pub fn execute_field_search_arrow(
 
 fn process_field_search_response(
     event: &Event,
+    cid: &CorrelationId,
     field_ids: &mut Vec<String>,
     field_names: &mut Vec<Option<String>>,
     field_types: &mut Vec<Option<String>>,
@@ -123,6 +129,10 @@ fn process_field_search_response(
     categories: &mut Vec<Option<String>>,
 ) -> Result<()> {
     for msg in event.iter() {
+        // Only process messages for our correlation id.
+        if !msg.matches_correlation_id(cid) {
+            continue;
+        }
         let msg_type = msg.message_type();
         // Also check for alternative response types
         if msg_type.as_str() != "FieldSearchResponse" && msg_type.as_str() != "fieldResponse" {
@@ -210,8 +220,10 @@ pub fn execute_field_info_arrow(
         }
     }
 
-    // Send request
-    session.send_request(&blp_request, None, None)?;
+    // Send request with an explicit correlation id so we can safely multiplex
+    // multiple in-flight requests on the same session.
+    let cid = CorrelationId::next();
+    session.send_request(&blp_request, None, Some(&cid))?;
 
     // Collect response data
     let mut field_ids = Vec::new();
@@ -225,18 +237,21 @@ pub fn execute_field_info_arrow(
         let event = session.next_event(Some(60000))?; // 60s timeout
         match event.event_type() {
             EventType::Response => {
-                process_field_info_response(&event, &mut field_ids, &mut mnemonics,
+                process_field_info_response(&event, &cid, &mut field_ids, &mut mnemonics,
                     &mut ftypes, &mut descriptions, &mut categories)?;
                 break;
             }
             EventType::PartialResponse => {
-                process_field_info_response(&event, &mut field_ids, &mut mnemonics,
+                process_field_info_response(&event, &cid, &mut field_ids, &mut mnemonics,
                     &mut ftypes, &mut descriptions, &mut categories)?;
                 // Continue to wait for final RESPONSE
             }
             EventType::RequestStatus => {
                 // Check for errors
                 for msg in event.iter() {
+                    if !msg.matches_correlation_id(&cid) {
+                        continue;
+                    }
                     let msg_type = msg.message_type();
                     if msg_type.as_str() == "RequestFailure" {
                         return Err(crate::BlpError::Internal {
@@ -279,6 +294,7 @@ pub fn execute_field_info_arrow(
 
 fn process_field_info_response(
     event: &Event,
+    cid: &CorrelationId,
     field_ids: &mut Vec<String>,
     mnemonics: &mut Vec<Option<String>>,
     ftypes: &mut Vec<Option<String>>,
@@ -286,6 +302,10 @@ fn process_field_info_response(
     categories: &mut Vec<Option<String>>,
 ) -> Result<()> {
     for msg in event.iter() {
+        // Only process messages for our correlation id.
+        if !msg.matches_correlation_id(cid) {
+            continue;
+        }
         let msg_type = msg.message_type();
         if msg_type.as_str() != "FieldInfoResponse" && msg_type.as_str() != "fieldResponse" {
             continue;
