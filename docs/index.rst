@@ -27,7 +27,7 @@ xbbg
 ====
 
 .. xbbg:latest-release-start
-Latest release: xbbg== (release: `notes <>`_)
+Latest release: xbbg==
 .. xbbg:latest-release-end
 
 Overview
@@ -141,7 +141,6 @@ What's New
 ==========
 
 .. xbbg:changelog-start
-** - see release: `notes <>`_
 
 
 .. xbbg:changelog-end
