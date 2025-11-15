@@ -34,12 +34,13 @@ def bar_file(ticker: str, dt, typ='TRADE') -> str:
         >>> bar_file(ticker='ES1 Index', dt='2018-08-01')
         '/data/bbg/Index/ES1 Index/TRADE/2018-08-01.parq'
     """
-    data_path = Path(os.environ.get(overrides.BBG_ROOT, ''))
-    if not data_path.as_posix(): return ''
+    data_path_str = os.environ.get(overrides.BBG_ROOT, '')
+    if not data_path_str: return ''
+    data_path = Path(data_path_str)
     asset = ticker.split()[-1]
     proper_ticker = ticker.replace('/', '_')
     cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-    return str(data_path / asset / proper_ticker / typ / f'{cur_dt}.parq')
+    return (data_path / asset / proper_ticker / typ / f'{cur_dt}.parq').as_posix()
 
 
 def ref_file(
@@ -112,8 +113,9 @@ def ref_file(
         >>> exist_file == updated_file
         True
     """
-    data_path = Path(os.environ.get(overrides.BBG_ROOT, ''))
-    if (not data_path.as_posix()) or (not cache): return ''
+    data_path_str = os.environ.get(overrides.BBG_ROOT, '')
+    if (not data_path_str) or (not cache): return ''
+    data_path = Path(data_path_str)
 
     proper_ticker = ticker.replace('/', '_')
     cache_days = kwargs.pop('cache_days', 10)

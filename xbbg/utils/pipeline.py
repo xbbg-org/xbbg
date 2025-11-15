@@ -59,9 +59,9 @@ def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) ->
         >>> dvd.pipe(standard_cols, col_maps={'Declared Date': 'dec_date'})
                         dec_date     ex_date record_date payable_date
         MC FP Equity  2019-07-24  2019-12-06  2019-12-09   2019-12-10
-        MC FP Equity    2019-01-29  2019-04-25  2019-04-26   2019-04-29
-        MC FP Equity    2018-07-24  2018-12-04  2018-12-05   2018-12-06
-        MC FP Equity    2018-01-25  2018-04-17  2018-04-18   2018-04-19
+        MC FP Equity  2019-01-29  2019-04-25  2019-04-26   2019-04-29
+        MC FP Equity  2018-07-24  2018-12-04  2018-12-05   2018-12-06
+        MC FP Equity  2018-01-25  2018-04-17  2018-04-18   2018-04-19
     """
     if col_maps is None: col_maps = {}
     return data.rename(
