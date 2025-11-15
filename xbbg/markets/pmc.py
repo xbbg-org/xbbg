@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import json
 import logging
 import os
+from pathlib import Path
 
 import pandas as pd
 
@@ -28,10 +29,10 @@ from xbbg.io import files
 logger = logging.getLogger(__name__)
 
 PKG_PATH = files.abspath(__file__, 1)
-_CACHE_FILE = f"{PKG_PATH}/markets/cached/pmc_cache.pkl"
+_CACHE_FILE = str(Path(PKG_PATH) / 'markets' / 'cached' / 'pmc_cache.pkl')
 _MAP_PATHS = [
-    os.path.join(os.environ.get('BBG_ROOT', '').replace('\\', '/'), 'markets/pmc_map.json'),
-    f"{PKG_PATH}/markets/pmc_map.json",
+    str(Path(os.environ.get('BBG_ROOT', '')) / 'markets' / 'pmc_map.json') if os.environ.get('BBG_ROOT', '') else '',
+    str(Path(PKG_PATH) / 'markets' / 'pmc_map.json'),
 ]
 
 
@@ -75,14 +76,14 @@ def _load_cache() -> dict:
     if files.exists(_CACHE_FILE):
         try:
             return pd.read_pickle(_CACHE_FILE) or {}
-        except Exception:
+        except (FileNotFoundError, EOFError, ValueError):
             return {}
     return {}
 
 
 def _user_map_path() -> str:
-    root = os.environ.get('BBG_ROOT', '').replace('\\', '/')
-    return os.path.join(root, 'markets/pmc_map.json') if root else ''
+    root = Path(os.environ.get('BBG_ROOT', ''))
+    return str(root / 'markets' / 'pmc_map.json') if root.as_posix() else ''
 
 
 def _load_map_at(path: str) -> dict:
@@ -92,7 +93,7 @@ def _load_map_at(path: str) -> dict:
         with open(path, encoding='utf-8') as fp:
             data = json.load(fp)
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
 
 

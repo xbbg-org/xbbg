@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 
 import pandas as pd
 
@@ -33,12 +34,12 @@ def bar_file(ticker: str, dt, typ='TRADE') -> str:
         >>> bar_file(ticker='ES1 Index', dt='2018-08-01')
         '/data/bbg/Index/ES1 Index/TRADE/2018-08-01.parq'
     """
-    data_path = os.environ.get(overrides.BBG_ROOT, '').replace('\\', '/')
-    if not data_path: return ''
+    data_path = Path(os.environ.get(overrides.BBG_ROOT, ''))
+    if not data_path.as_posix(): return ''
     asset = ticker.split()[-1]
     proper_ticker = ticker.replace('/', '_')
     cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-    return f'{data_path}/{asset}/{proper_ticker}/{typ}/{cur_dt}.parq'
+    return str(data_path / asset / proper_ticker / typ / f'{cur_dt}.parq')
 
 
 def ref_file(
@@ -68,7 +69,8 @@ def ref_file(
         '/data/bbg/Equity/BLT LN Equity/Crncy/ovrd=None.parq'
         >>> ref_file('BLT LN Equity', fld='Crncy')
         ''
-        >>> cur_dt_ = utils.cur_time(tz=utils.DEFAULT_TZ)
+        >>> from xbbg.core.timezone import DEFAULT_TZ
+        >>> cur_dt_ = utils.cur_time(tz=DEFAULT_TZ)
         >>> ref_file(
         ...     'BLT LN Equity', fld='DVD_Hist_All', has_date=True, cache=True,
         ... ).replace(cur_dt_, '[cur_date]')
@@ -110,19 +112,19 @@ def ref_file(
         >>> exist_file == updated_file
         True
     """
-    data_path = os.environ.get(overrides.BBG_ROOT, '').replace('\\', '/')
-    if (not data_path) or (not cache): return ''
+    data_path = Path(os.environ.get(overrides.BBG_ROOT, ''))
+    if (not data_path.as_posix()) or (not cache): return ''
 
     proper_ticker = ticker.replace('/', '_')
     cache_days = kwargs.pop('cache_days', 10)
-    root = f'{data_path}/{ticker.split()[-1]}/{proper_ticker}/{fld}'
+    root = data_path / ticker.split()[-1] / proper_ticker / fld
 
     ref_kw = {k: v for k, v in kwargs.items() if k not in overrides.PRSV_COLS}
     info = utils.to_str(ref_kw)[1:-1].replace('|', '_') if len(ref_kw) > 0 else 'ovrd=None'
 
     # Check date info
     if has_date:
-        cache_file = f'{root}/asof=[cur_date], {info}.{ext}'
+        cache_file = str(root / f'asof=[cur_date], {info}.{ext}')
         cur_dt = utils.cur_time()
         start_dt = pd.date_range(end=cur_dt, freq=f'{cache_days}D', periods=2)[0]
         for dt in pd.date_range(start=start_dt, end=cur_dt, normalize=True)[1:][::-1]:
@@ -130,7 +132,7 @@ def ref_file(
             if files.exists(cur_file): return cur_file
         return cache_file.replace('[cur_date]', str(cur_dt))
 
-    return f'{root}/{info}.{ext}'
+    return str(root / f'{info}.{ext}')
 
 
 def save_intraday(data: pd.DataFrame, ticker: str, dt, typ='TRADE', **kwargs):

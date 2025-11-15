@@ -3,19 +3,20 @@
 Follows Google-style docstrings as per docs/docstring_style.rst.
 """
 
+from __future__ import annotations
+
 import datetime
-import inspect
-from pathlib import Path
-import sys
-import time
+from typing import Any
 
 import pandas as pd
 import pytz
 
-DEFAULT_TZ = pytz.FixedOffset(-time.timezone / 60)
 
-
-def flatten(iterable, maps=None, unique=False) -> list:
+def flatten(
+    iterable: Any,
+    maps: dict[Any, Any] | None = None,
+    unique: bool = False,
+) -> list[Any]:
     """Flatten any array of items to list.
 
     Args:
@@ -51,18 +52,22 @@ def flatten(iterable, maps=None, unique=False) -> list:
     return list(set(x)) if unique else x
 
 
-def _to_gen_(iterable):
+def _to_gen_(iterable: Any) -> Any:
     """Recursively iterate lists and tuples."""
     from collections.abc import Iterable
 
     for elm in iterable:
         if isinstance(elm, Iterable) and not isinstance(elm, (str, bytes)):
             yield from _to_gen_(elm)
-        else: yield elm
+        else:
+            yield elm
 
 
-def fmt_dt(dt, fmt='%Y-%m-%d') -> str:
-    """Format date string.
+def fmt_dt(
+    dt: str | pd.Timestamp | datetime.date | Any,
+    fmt: str = '%Y-%m-%d',
+) -> str:
+    """Format date string (wrapper around pd.Timestamp.strftime).
 
     Args:
         dt: any date format
@@ -80,12 +85,15 @@ def fmt_dt(dt, fmt='%Y-%m-%d') -> str:
     return pd.Timestamp(dt).strftime(fmt)
 
 
-def cur_time(typ='date', tz=DEFAULT_TZ) -> datetime.date | str:
+def cur_time(
+    typ: str = 'date',
+    tz: str | pytz.BaseTzInfo | None = None,
+) -> datetime.date | str | pd.Timestamp:
     """Current time.
 
     Args:
         typ: one of ['date', 'time', 'time_path', 'raw', '']
-        tz: timezone
+        tz: timezone (defaults to local timezone if None)
 
     Returns:
         Relevant current time or date.
@@ -103,10 +111,12 @@ def cur_time(typ='date', tz=DEFAULT_TZ) -> datetime.date | str:
         >>> cur_time(typ='') == cur_dt.date()
         True
     """
-    # Use naive local time for formatted outputs by default to keep doctests stable
-    if (tz == DEFAULT_TZ) and (typ in {'date', 'time', 'time_path', ''}):
+    if tz is None and (typ in {'date', 'time', 'time_path', ''}):
         dt = pd.Timestamp('now')
     else:
+        if tz is None:
+            from xbbg.core.timezone import DEFAULT_TZ  # noqa: PLC0415
+            tz = DEFAULT_TZ
         dt = pd.Timestamp('now', tz=tz)
 
     if typ == 'date': return dt.strftime('%Y-%m-%d')
@@ -117,51 +127,11 @@ def cur_time(typ='date', tz=DEFAULT_TZ) -> datetime.date | str:
     return dt.date()
 
 
-class FString:
-    """Deferred f-string evaluation using caller context."""
-
-    def __init__(self, str_fmt, **kwargs):
-        """Initialize with a format string and optional variables."""
-        self.str_fmt = str_fmt
-        self._kwargs = dict(kwargs) if kwargs else {}
-
-    def __str__(self):
-        """Render the f-string with the caller's locals/globals."""
-        frame = inspect.currentframe()
-        caller = frame.f_back if (frame is not None) else None
-        context = {}
-        if caller is not None:
-            # Safely build context from caller frame
-            context = caller.f_globals.copy()
-            context.update(getattr(caller, 'f_locals', {}))
-        context.update(self._kwargs)
-        return self.str_fmt.format(**context)
-
-
-def fstr(fmt, **kwargs) -> str:
-    """Delayed evaluation of f-strings.
-
-    Args:
-        fmt: f-string but in terms of normal string, i.e., '{path}/{file}.parq'
-        **kwargs: variables for f-strings, i.e., path, file = '/data', 'daily'
-
-    Returns:
-        str: Rendered string after late evaluation.
-
-    References:
-        https://stackoverflow.com/a/42497694/1332656
-        https://stackoverflow.com/a/4014070/1332656
-
-    Examples:
-        >>> fmt = '{data_path}/{data_file}.parq'
-        >>> fstr(fmt, data_path='your/data/path', data_file='sample')
-        'your/data/path/sample.parq'
-    """
-    return f'{FString(str_fmt=fmt, **kwargs)}'
-
-
 def to_str(
-        data: dict, fmt='{key}={value}', sep=', ', public_only=True
+    data: dict[str, Any],
+    fmt: str = '{key}={value}',
+    sep: str = ', ',
+    public_only: bool = True,
 ) -> str:
     """Convert dict to string.
 
@@ -186,63 +156,7 @@ def to_str(
     keys = list(filter(lambda vv: vv[0] != '_', data.keys())) if public_only else list(data.keys())
     return '{' + sep.join([
         to_str(data=v, fmt=fmt, sep=sep)
-        if isinstance(v, dict) else fstr(fmt=fmt, key=k, value=v)
+        if isinstance(v, dict) else fmt.format(key=k, value=v)
         for k, v in data.items() if k in keys
     ]) + '}'
 
-
-def func_scope(func) -> str:
-    """Function scope name.
-
-    Args:
-        func: python function
-
-    Returns:
-        str: ``module_name.func_name``.
-
-    Examples:
-        >>> func_scope(flatten)
-        'xbbg.core.utils.flatten'
-        >>> func_scope(time.strftime)
-        'time.strftime'
-    """
-    cur_mod = sys.modules[func.__module__]
-    return f'{cur_mod.__name__}.{func.__name__}'
-
-
-def load_module(full_path):
-    """Load a Python module from a filesystem path.
-
-    Args:
-        full_path: Module full path name.
-
-    Returns:
-        ModuleType: The loaded Python module.
-
-    References:
-        https://stackoverflow.com/a/67692/1332656
-
-    Examples:
-        >>> from pathlib import Path
-        >>> cur_path = Path(__file__).parent
-        >>> load_module(cur_path / 'timezone.py').__name__
-        'timezone'
-        >>> load_module(cur_path / 'timezone.pyc')
-        Traceback (most recent call last):
-        ImportError: not a python file: timezone.pyc
-    """
-    from importlib import util
-
-    file_name = Path(full_path).name
-    if file_name[-3:] != '.py':
-        raise ImportError(f'not a python file: {file_name}')
-    module_name = file_name[:-3]
-
-    spec = util.spec_from_file_location(name=module_name, location=str(full_path))
-    if spec is None or spec.loader is None:
-        raise ImportError(f'cannot load module spec for: {file_name}')
-    module = util.module_from_spec(spec)
-    # Loader is guaranteed non-None by the guard above
-    spec.loader.exec_module(module)  # type: ignore[assignment]
-
-    return module

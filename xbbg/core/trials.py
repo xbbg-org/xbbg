@@ -6,6 +6,7 @@ counting and updating attempt counters, and writing per-query log files.
 
 from collections.abc import Iterator
 import os
+from pathlib import Path
 
 from xbbg.core import utils
 from xbbg.core.overrides import BBG_ROOT
@@ -23,17 +24,17 @@ TRIALS_TABLE = """
 """
 
 
-def root_path() -> str:
+def root_path() -> Path:
     """Root data path of Bloomberg."""
-    return os.environ.get(BBG_ROOT, '').replace('\\', '/')
+    return Path(os.environ.get(BBG_ROOT, ''))
 
 
 def convert_exisiting():
     """Update existing missing logs to database."""
     data_path = root_path()
-    if not data_path: return
+    if not data_path.as_posix(): return
 
-    with db.SQLite(f'{data_path}/Logs/xbbg.db') as con:
+    with db.SQLite(str(data_path / 'Logs' / 'xbbg.db')) as con:
         con.execute(TRIALS_TABLE)
         for item in all_trials():
             con.execute(db.replace_into(table='trials', **item))
@@ -46,8 +47,8 @@ def all_trials() -> Iterator[dict]:
         dict: Trial metadata records for backfilling the database.
     """
     data_path = root_path()
-    if data_path:
-        for sub1 in files.all_folders(f'{data_path}/Logs/bdib'):
+    if data_path.as_posix():
+        for sub1 in files.all_folders(str(data_path / 'Logs' / 'bdib')):
             for sub2 in files.all_folders(sub1, has_date=True):
                 for sub3 in files.all_folders(sub2):
                     cnt = len(files.all_files(sub3, ext='log'))
@@ -84,7 +85,7 @@ def missing_info(**kwargs) -> str:
         if dt not in kwargs: continue
         kwargs[dt] = utils.fmt_dt(kwargs[dt])
     info = utils.to_str(kwargs, fmt='{value}', sep='/')[1:-1]
-    return f'{func}/{info}'
+    return f'{func}/{info}'  # Path fragment, not a file path
 
 
 def num_trials(**kwargs) -> int:
@@ -94,9 +95,9 @@ def num_trials(**kwargs) -> int:
         int: Number of trials already tried.
     """
     data_path = root_path()
-    if not data_path: return 0
+    if not data_path.as_posix(): return 0
 
-    db_file = f'{data_path}/Logs/xbbg.db'
+    db_file = str(data_path / 'Logs' / 'xbbg.db')
     files.create_folder(db_file, is_file=True)
     with db.SQLite(db_file) as con:
         con.execute(TRIALS_TABLE)
@@ -111,12 +112,12 @@ def num_trials(**kwargs) -> int:
 def update_trials(**kwargs):
     """Update number of trials for missing values."""
     data_path = root_path()
-    if not data_path: return
+    if not data_path.as_posix(): return
 
     if 'cnt' not in kwargs:
         kwargs['cnt'] = num_trials(**kwargs) + 1
 
-    db_file = f'{data_path}/Logs/xbbg.db'
+    db_file = str(data_path / 'Logs' / 'xbbg.db')
     files.create_folder(db_file, is_file=True)
     with db.SQLite(db_file) as con:
         con.execute(TRIALS_TABLE)
@@ -133,18 +134,18 @@ def current_missing(**kwargs) -> int:
         int: Number of trials already tried.
     """
     data_path = root_path()
-    if not data_path: return 0
-    return len(files.all_files(f'{data_path}/Logs/{missing_info(**kwargs)}'))
+    if not data_path.as_posix(): return 0
+    return len(files.all_files(str(data_path / 'Logs' / missing_info(**kwargs))))
 
 
 def update_missing(**kwargs):
     """Update number of trials for missing values."""
     data_path = root_path()
-    if not data_path: return
+    if not data_path.as_posix(): return
     if len(kwargs) == 0: return
 
-    log_path = f'{data_path}/Logs/{missing_info(**kwargs)}'
+    log_path = data_path / 'Logs' / missing_info(**kwargs)
 
-    cnt = len(files.all_files(log_path)) + 1
-    files.create_folder(log_path)
-    open(f'{log_path}/{cnt}.log', 'a').close()
+    cnt = len(files.all_files(str(log_path))) + 1
+    files.create_folder(str(log_path))
+    (log_path / f'{cnt}.log').touch()

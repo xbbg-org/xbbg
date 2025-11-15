@@ -1,8 +1,23 @@
 """Data processing pipeline helpers for series, stats, and formatting."""
+
+from __future__ import annotations
+
 import pandas as pd
 
+__all__ = [
+    'add_ticker',
+    'apply_fx',
+    'daily_stats',
+    'dropna',
+    'format_raw',
+    'get_series',
+    'perf',
+    'since_year',
+    'standard_cols',
+]
 
-def get_series(data: pd.Series | pd.DataFrame, col='close') -> pd.DataFrame:
+
+def get_series(data: pd.Series | pd.DataFrame, col: str = 'close') -> pd.DataFrame:
     """Get close column from intraday data.
 
     Args:
@@ -10,7 +25,7 @@ def get_series(data: pd.Series | pd.DataFrame, col='close') -> pd.DataFrame:
         col: column to return
 
     Returns:
-        pd.Series or pd.DataFrame
+        pd.DataFrame
     """
     if isinstance(data, pd.Series): return pd.DataFrame(data)
     if not isinstance(data.columns, pd.MultiIndex): return data
@@ -44,9 +59,9 @@ def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) ->
         >>> dvd.pipe(standard_cols, col_maps={'Declared Date': 'dec_date'})
                         dec_date     ex_date record_date payable_date
         MC FP Equity  2019-07-24  2019-12-06  2019-12-09   2019-12-10
-        MC FP Equity  2019-01-29  2019-04-25  2019-04-26   2019-04-29
-        MC FP Equity  2018-07-24  2018-12-04  2018-12-05   2018-12-06
-        MC FP Equity  2018-01-25  2018-04-17  2018-04-18   2018-04-19
+        MC FP Equity    2019-01-29  2019-04-25  2019-04-26   2019-04-29
+        MC FP Equity    2018-07-24  2018-12-04  2018-12-05   2018-12-06
+        MC FP Equity    2018-01-25  2018-04-17  2018-04-18   2018-04-19
     """
     if col_maps is None: col_maps = {}
     return data.rename(
@@ -57,9 +72,9 @@ def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) ->
 
 
 def apply_fx(
-        data: pd.Series | pd.DataFrame,
-        fx: int | float | pd.Series | pd.DataFrame,
-        power=-1.,
+    data: pd.Series | pd.DataFrame,
+    fx: int | float | pd.Series | pd.DataFrame,
+    power: float = -1.0,
 ) -> pd.DataFrame:
     """Apply FX to data.
 
@@ -117,6 +132,13 @@ def apply_fx(
 def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
     """Daily stats for given data.
 
+    Args:
+        data: input data
+        **kwargs: Additional arguments passed to describe().
+
+    Returns:
+        pd.DataFrame with daily statistics.
+
     Examples:
         >>> pd.options.display.precision = 2
         >>> (
@@ -137,10 +159,18 @@ def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
 
 
 def dropna(
-        data: pd.Series | pd.DataFrame,
-        cols: int | list = 0,
+    data: pd.Series | pd.DataFrame,
+    cols: int | list[int] = 0,
 ) -> pd.Series | pd.DataFrame:
-    """Drop NAs by columns."""
+    """Drop NAs by columns.
+
+    Args:
+        data: input data
+        cols: column index or list of column indices to check for NAs
+
+    Returns:
+        pd.Series or pd.DataFrame with NAs dropped.
+    """
     if isinstance(data, pd.Series): return data.dropna()
     if isinstance(cols, int): cols = [cols]
     return data.dropna(how='all', subset=data.columns[cols])
@@ -148,6 +178,12 @@ def dropna(
 
 def format_raw(data: pd.DataFrame) -> pd.DataFrame:
     """Convert data to datetime if possible.
+
+    Args:
+        data: input DataFrame
+
+    Returns:
+        pd.DataFrame with datetime columns converted where possible.
 
     Examples:
         >>> dvd = pd.read_pickle('xbbg/tests/data/sample_dvd_mc_raw.pkl')
@@ -173,7 +209,7 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
     def _to_numeric_if_possible(col: pd.Series) -> pd.Series:
         try:
             return pd.to_numeric(col)
-        except Exception:
+        except (ValueError, TypeError):
             return col
 
     res = data.apply(_to_numeric_if_possible)
@@ -201,7 +237,7 @@ def add_ticker(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
         ticker: ticker
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame with ticker as first level of MultiIndex columns.
 
     Examples:
         >>> (
@@ -232,7 +268,7 @@ def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
         year: starting year
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame with columns filtered by year.
 
     Examples:
         >>> pd.options.display.width = 120
@@ -257,6 +293,12 @@ def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
 
 def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     """Performance rebased to 100.
+
+    Args:
+        data: input data
+
+    Returns:
+        pd.Series or pd.DataFrame with performance rebased to 100.
 
     Examples:
         >>> import numpy as np
@@ -285,3 +327,4 @@ def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
             .mul(100)
         )
     return data.apply(perf, axis=0)
+

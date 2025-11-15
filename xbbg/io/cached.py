@@ -4,7 +4,7 @@ Provides utilities to identify which ticker/field pairs are already cached
 on disk and which remain to be queried.
 """
 
-from collections import namedtuple
+from dataclasses import dataclass
 from itertools import product
 import logging
 
@@ -15,7 +15,15 @@ from xbbg.io import files, storage
 
 logger = logging.getLogger(__name__)
 
-ToQuery = namedtuple('ToQuery', ['tickers', 'flds', 'cached_data'])
+
+@dataclass(frozen=True)
+class ToQuery:
+    """Query result with tickers, fields, and cached data."""
+    tickers: list[str]
+    flds: list[str]
+    cached_data: list[pd.DataFrame]
+
+
 EXC_COLS = ['tickers', 'flds', 'raw', 'log', 'col_maps']
 
 
@@ -32,7 +40,6 @@ def bdp_bds_cache(func, tickers, flds, **kwargs) -> ToQuery:
         ToQuery: Tickers and fields still to query, and any cached data.
     """
     cache_data = []
-    # Logger is module-level
     kwargs['has_date'] = kwargs.pop('has_date', func == 'bds')
     kwargs['cache'] = kwargs.get('cache', True)
 
@@ -47,7 +54,6 @@ def bdp_bds_cache(func, tickers, flds, **kwargs) -> ToQuery:
             }
         )
         if not files.exists(data_file): continue
-        # Guard logging in loop - only log if DEBUG enabled
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug('Reading cached data from file: %s', data_file)
         cache_data.append(pd.read_pickle(data_file))
@@ -56,7 +62,6 @@ def bdp_bds_cache(func, tickers, flds, **kwargs) -> ToQuery:
     to_qry = loaded.where(loaded == 0)\
         .dropna(how='all', axis=1).dropna(how='all', axis=0)
 
-    # Log cache statistics only if DEBUG enabled (aggregate, not per-item)
     if logger.isEnabledFor(logging.DEBUG):
         cached_count = loaded.sum().sum()
         total_count = len(tickers) * len(flds)

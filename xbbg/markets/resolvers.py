@@ -20,7 +20,7 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     Returns:
         str: ticker name
     """
-    from xbbg.blp import bdp  # lazy import to avoid circular
+    from xbbg.blp import bdp  # noqa: PLC0415
 
     t_info = ticker.split()
     prefix, asset = ' '.join(t_info[:-1]), t_info[-1]
@@ -46,7 +46,7 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     if pd.Timestamp(dt).month < first_matu.month: return fut_1
 
     dts = pd.bdate_range(end=dt, periods=10)
-    from xbbg.blp import bdh  # lazy
+    from xbbg.blp import bdh  # noqa: PLC0415
     volume = bdh(fut_tk.index, flds='volume', start_date=dts[0], end_date=dts[-1])
     if volume.empty: return fut_1
     return volume.iloc[-1].idxmax()[0]
@@ -88,13 +88,11 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
     if not eff_freq:
         logger.error("Missing or invalid 'freq' parameter for generic ticker '%s'. Please provide explicit 'freq' in assets.yml.", gen_ticker)
         return ''
-    # Normalize deprecated pandas offsets
     if eff_freq == 'M':
         eff_freq = 'ME'
     elif eff_freq == 'Q':
         eff_freq = 'QE-DEC'
     months = pd.date_range(start=dt, periods=max(idx + month_ext, 3), freq=eff_freq)
-    # Guard expensive tolist() conversion - only do if DEBUG logging is enabled
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Computing futures expiry dates for %d months', len(months))
 

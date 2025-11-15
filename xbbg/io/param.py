@@ -5,6 +5,7 @@ numeric time formats into ``HH:MM`` strings.
 """
 
 import os
+from pathlib import Path
 
 import pandas as pd
 from ruamel.yaml import YAML
@@ -26,13 +27,14 @@ def config_files(cat: str) -> list:
     Returns:
         list: Files that exist for the given category.
     """
+    paths = [
+        Path(PKG_PATH),
+        Path(os.environ.get('BBG_ROOT', '')),
+    ]
     return [
-        f'{r}/markets/{cat}.yml'
-        for r in [
-            PKG_PATH,
-            os.environ.get('BBG_ROOT', '').replace('\\', '/'),
-        ]
-        if files.exists(f'{r}/markets/{cat}.yml')
+        str(p / 'markets' / f'{cat}.yml')
+        for p in paths
+        if p.as_posix() and files.exists(str(p / 'markets' / f'{cat}.yml'))
     ]
 
 
@@ -46,7 +48,7 @@ def load_config(cat: str) -> pd.DataFrame:
         pd.DataFrame: Concatenated configuration.
     """
     cfg_files = config_files(cat=cat)
-    cache_cfg = f'{PKG_PATH}/markets/cached/{cat}_cfg.pkl'
+    cache_cfg = str(Path(PKG_PATH) / 'markets' / 'cached' / f'{cat}_cfg.pkl')
     last_mod = max(map(files.modified_time, cfg_files))
     if files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
         return pd.read_pickle(cache_cfg)

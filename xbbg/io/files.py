@@ -15,9 +15,9 @@ DATE_FMT = r'\d{4}-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])'
 
 
 def exists(path) -> bool:
-    """Check path or file exists (use os.path.exists)."""
+    """Check path or file exists."""
     if not path: return False
-    return Path(path).is_dir() or Path(path).is_file()
+    return Path(path).exists()
 
 
 def abspath(cur_file, parent=0) -> str:
@@ -32,7 +32,7 @@ def abspath(cur_file, parent=0) -> str:
     """
     p = Path(cur_file)
     cur_path = p.parent if p.is_file() else p
-    if parent == 0: return str(cur_path).replace('\\', '/')
+    if parent == 0: return cur_path.as_posix()
     return abspath(cur_file=cur_path.parent, parent=parent - 1)
 
 
@@ -73,7 +73,7 @@ def all_files(
     keyword += f'.{ext}' if ext else '.*'
     r = re.compile(f'.*{date_fmt}.*')
     return [
-        str(f).replace('\\', '/') if full_path else f.name
+        f.as_posix() if full_path else f.name
         for f in p.glob(keyword)
         if f.is_file() and (f.name[0] != '~') and ((not has_date) or r.match(f.name))
     ]
@@ -100,7 +100,7 @@ def all_folders(
 
     r = re.compile(f'.*{date_fmt}.*')
     return [
-        str(f).replace('\\', '/')
+        f.as_posix()
         for f in p.glob(f'*{keyword}*' if keyword else '*')
         if f.is_dir() and (f.name[0] != '~') and ((not has_date) or r.match(f.name))
     ]
@@ -157,7 +157,7 @@ def latest_file(path_name, keyword='', ext='', **kwargs) -> str:
         logger.debug('No files found in directory: %s', path_name)
         return ''
 
-    return str(files[0]).replace('\\', '/')
+    return Path(files[0]).as_posix()
 
 
 def modified_time(file_name):

@@ -6,12 +6,13 @@ services, and send requests with sensible defaults.
 
 import os
 import sys
+from pathlib import Path
 
 try:
     ver = sys.version_info
     if f'{ver.major}.{ver.minor}' == '3.8':
         dll_path = os.environ.get('BBG_DLL', 'C:/blp/DAPI')
-        if os.path.exists(dll_path):
+        if Path(dll_path).exists():
             with os.add_dll_directory(dll_path):
                 import blpapi  # type: ignore[reportMissingImports]
         else:

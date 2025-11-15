@@ -4,7 +4,6 @@ Includes helpers to create requests, initialize overrides, iterate
 Bloomberg event streams, and parse reference, historical, and intraday data.
 """
 
-from collections import OrderedDict
 from collections.abc import Iterator
 from itertools import starmap
 from typing import Any
@@ -21,12 +20,11 @@ except (ImportError, AttributeError):
 import logging
 
 from xbbg import const
-from xbbg.core import conn, intervals, overrides
+from xbbg.core import conn, helpers, intervals, overrides
 from xbbg.core.timezone import DEFAULT_TZ
 
 logger = logging.getLogger(__name__)
 
-# Import blpapi logging helpers (optional, won't break if blpapi unavailable)
 try:
     from xbbg.core import blpapi_logging
 except ImportError:
@@ -99,10 +97,10 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
     """
     while conn.bbg_session(**kwargs).tryNextEvent(): pass
 
-    if isinstance(tickers, str): tickers = [tickers]
+    tickers = helpers.normalize_tickers(tickers)
     for ticker in tickers: request.append(blpapi.Name('securities'), ticker)
 
-    if isinstance(flds, str): flds = [flds]
+    flds = helpers.normalize_flds(flds)
     for fld in flds: request.append(blpapi.Name('fields'), fld)
 
     adjust = kwargs.pop('adjust', None)
@@ -282,7 +280,7 @@ def _handle_other_event(ev: blpapi.Event) -> bool:
         True if should stop processing, False otherwise.
     """
     for _ in ev:
-        if getattr(ev, 'messageType', lambda: None)() == SESSION_TERMINATED:
+        if getattr(ev, 'messageType', lambda: None)() is SESSION_TERMINATED:
             logger.warning('Session terminated event received, stopping event processing')
             return True
     return False
@@ -360,7 +358,7 @@ def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
             info = [('ticker', ticker), ('field', str(fld.name()))]
             if fld.isArray():
                 for item in fld.values():
-                    yield OrderedDict(info + [
+                    yield dict(info + [
                         (
                             str(elem.name()),
                             None if elem.isNull() else elem.getValue()
@@ -368,7 +366,7 @@ def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
                         for elem in item.elements()
                     ])
             else:
-                yield OrderedDict(info + [
+                yield dict(info + [
                     ('value', None if fld.isNull() else fld.getValue()),
                 ])
 
@@ -388,12 +386,12 @@ def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     ticker = msg.getElement(blpapi.Name('securityData')).getElement(blpapi.Name('security')).getValue()
     for val in msg.getElement(blpapi.Name('securityData')).getElement(blpapi.Name('fieldData')).values():
         if val.hasElement(blpapi.Name('date')):
-            yield OrderedDict([('ticker', ticker)] + [
+            yield dict([('ticker', ticker)] + [
                 (str(elem.name()), elem.getValue()) for elem in val.elements()
             ])
 
 
-def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDict]:
+def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[dict]:
     """Process Bloomberg intraday bar messages.
 
     Args:
@@ -402,7 +400,7 @@ def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDic
         **kwargs: Additional options (unused).
 
     Yields:
-        OrderedDict.
+        dict.
     """
     kwargs.pop('(#_#)', None)
     check_error(msg=msg)
@@ -410,10 +408,10 @@ def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDic
 
     if msg.hasElement(lvls[0]):
         for bar in msg.getElement(lvls[0]).getElement(lvls[1]).values():
-            yield OrderedDict([
-                (str(elem.name()), elem.getValue())
+            yield {
+                str(elem.name()): elem.getValue()
                 for elem in bar.elements()
-            ])
+            }
 
 
 def check_error(msg):
@@ -458,7 +456,7 @@ def _flatten_element(element: blpapi.Element) -> dict[str, Any]:
     return out
 
 
-def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
+def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """Process BQL response messages into row dictionaries.
 
     Attempts to parse tabular BQL results; falls back to flattened dicts.
@@ -472,7 +470,7 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
         **kwargs: Unused.
 
     Yields:
-        OrderedDict: Row-like mappings parsed from BQL results.
+        dict: Row-like mappings parsed from BQL results.
     """
     import json
 
@@ -526,10 +524,10 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
 
                             # Yield rows
                             for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
-                                row = OrderedDict([
-                                    ('ID', ticker),
-                                    (field_name, value),
-                                ])
+                                row = {
+                                    'ID': ticker,
+                                    field_name: value,
+                                }
                                 # Add secondary columns
                                 for col_name, col_values in secondary_cols.items():
                                     if i < len(col_values):
@@ -546,7 +544,7 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
                                     else:
                                         items.append((new_key, v))
                                 return dict(items)
-                            yield OrderedDict(_flatten_dict(field_data))
+                            yield dict(_flatten_dict(field_data))
                 return
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
@@ -557,7 +555,7 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
             if res.hasElement(TABLE):
                 table = res.getElement(TABLE)
                 if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
-                    yield OrderedDict(_flatten_element(res))
+                    yield dict(_flatten_element(res))
                     continue
 
                 cols: list[str] = []
@@ -574,9 +572,9 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
                     if row.hasElement(VALUES):
                         for v in row.getElement(VALUES).values():
                             values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
-                    yield OrderedDict(zip(cols, values, strict=False))
+                    yield dict(zip(cols, values, strict=False))
             else:
-                yield OrderedDict(_flatten_element(res))
+                yield dict(_flatten_element(res))
 
 
 def earning_pct(data: pd.DataFrame, yr):
@@ -600,7 +598,7 @@ def earning_pct(data: pd.DataFrame, yr):
         if snap.level == 2: sub_pct.append(r)
 
 
-def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
+def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """Process BSRCH GridResponse messages from Bloomberg Excel service.
 
     Args:
@@ -608,7 +606,7 @@ def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
         **kwargs: Additional options (unused).
 
     Yields:
-        OrderedDict: Row dictionaries with column names as keys.
+        dict: Row dictionaries with column names as keys.
     """
     kwargs.pop('(^_^)', None)
 
@@ -636,7 +634,7 @@ def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
             data_record = data_records.getValueAsElement(i)
             data_fields = data_record.getElement(blpapi.Name('DataFields'))
 
-            row = OrderedDict()
+            row = {}
             for j in range(num_cols):
                 data_field = data_fields.getValueAsElement(j)
                 data_value = data_field.getChoice()

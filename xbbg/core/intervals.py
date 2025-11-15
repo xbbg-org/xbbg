@@ -4,7 +4,7 @@ Defines helpers to derive time windows (open, close, normal, exact)
 for an instrument's predefined sessions based on exchange metadata.
 """
 
-from collections import namedtuple
+from dataclasses import dataclass
 import logging
 from typing import cast
 
@@ -16,7 +16,14 @@ from xbbg.io import param
 
 logger = logging.getLogger(__name__)
 
-Session = namedtuple('Session', ['start_time', 'end_time'])
+
+@dataclass(frozen=True)
+class Session:
+    """Trading session time interval."""
+    start_time: str | None
+    end_time: str | None
+
+
 SessNA = Session(None, None)
 
 
