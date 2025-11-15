@@ -27,7 +27,9 @@ xbbg
 ====
 
 .. xbbg:latest-release-start
+
 Latest release: xbbg==
+
 .. xbbg:latest-release-end
 
 Overview
