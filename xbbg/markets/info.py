@@ -11,12 +11,19 @@ from pathlib import Path
 import pandas as pd
 
 from xbbg import const
-from xbbg.core import timezone
+from xbbg.core.utils import timezone
 from xbbg.io import files, param
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['exch_info', 'market_info', 'market_timing', 'asset_config', 'ccy_pair']
+__all__ = [
+    'exch_info',
+    'market_info',
+    'market_timing',
+    'asset_config',
+    'ccy_pair',
+    'convert_session_times_to_utc',
+]
 
 
 def exch_info(ticker: str, **kwargs) -> pd.Series:
@@ -82,8 +89,8 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         >>> exch_info('TESTTCK Index')
         Series([], dtype: object)
     """
-    if kwargs.get('ref', ''):
-        return exch_info(ticker=kwargs['ref'], **{k: v for k, v in kwargs.items() if k != 'ref'})
+    if ref := kwargs.get('ref'):
+        return exch_info(ticker=ref, **{k: v for k, v in kwargs.items() if k != 'ref'})
 
     exch = kwargs.get('config', param.load_config(cat='exch'))
     original = kwargs.get('original', '')
@@ -91,19 +98,13 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
     # Case 1: Use exchange directly
     if ticker in exch.index:
         info = exch.loc[ticker].dropna()
-
-        # Check required info
         if info.reindex(['allday', 'tz']).dropna().size < 2:
             logger.error(
-                f'required info (allday + tz) cannot be found in '
-                f'{original if original else ticker} ...'
+                f'required info (allday + tz) cannot be found in {original or ticker} ...'
             )
             return pd.Series(dtype=object)
-
-        # Fill day session info if not provided
         if 'day' not in info:
             info['day'] = info['allday']
-
         return info.dropna().apply(param.to_hours)
 
     if original:
@@ -111,13 +112,9 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         return pd.Series(dtype=object)
 
     # Case 2: Use ticker to find exchange
-    exch_name = market_info(ticker=ticker).get('exch', '')
-    if not exch_name: return pd.Series(dtype=object)
-    return exch_info(
-        ticker=exch_name,
-        original=ticker,
-        config=exch,
-    )
+    if not (exch_name := market_info(ticker=ticker).get('exch', '')):
+        return pd.Series(dtype=object)
+    return exch_info(ticker=exch_name, original=ticker, config=exch)
 
 
 def market_info(ticker: str) -> pd.Series:
@@ -189,18 +186,9 @@ def market_info(ticker: str) -> pd.Series:
 
 
 def take_first(data: pd.DataFrame, query: str) -> pd.Series:
-    """Query and take the 1st row of result.
-
-    Args:
-        data: pd.DataFrame
-        query: query string
-
-    Returns:
-        pd.Series
-    """
-    if data.empty: return pd.Series(dtype=object)
-    res = data.query(query)
-    if res.empty: return pd.Series(dtype=object)
+    """Query and take the 1st row of result."""
+    if data.empty or (res := data.query(query)).empty:
+        return pd.Series(dtype=object)
     return res.reset_index(drop=True).iloc[0]
 
 
@@ -213,10 +201,12 @@ def asset_config(asset: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame
     """
+    from xbbg import const
+
     cfg_files = param.config_files('assets')
     cache_cfg = str(Path(const.PKG_PATH) / 'markets' / 'cached' / f'{asset}_cfg.pkl')
-    last_mod = max(map(files.modified_time, cfg_files))
-    if files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
+    if (last_mod := max(map(files.modified_time, cfg_files), default=0)) and \
+       files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
         return pd.read_pickle(cache_cfg)
 
     config = (
@@ -296,15 +286,61 @@ def ccy_pair(local, base='USD') -> const.CurrencyPair:
             info['factor'] *= 100.
 
     else:
+        from xbbg import const
         logger.error('Invalid currency pair configuration: local currency %s, base currency %s', local, base)
         return const.CurrencyPair(ticker='', factor=1., power=1.0)
 
-    if 'factor' not in info: info['factor'] = 1.
-    if 'power' not in info: info['power'] = 1.
-    # Normalize numeric types for stable repr in doctests
-    info['factor'] = float(info.get('factor', 1.0))
-    info['power'] = float(info.get('power', 1.0))
-    return const.CurrencyPair(**info)
+    from xbbg import const
+    info.setdefault('factor', 1.0)
+    info.setdefault('power', 1.0)
+    return const.CurrencyPair(
+        ticker=info.get('ticker', ''),
+        factor=float(info['factor']),
+        power=float(info['power']),
+    )
+
+
+def convert_session_times_to_utc(
+    start_time: str,
+    end_time: str,
+    exchange_tz: str,
+    time_fmt: str = '%Y-%m-%dT%H:%M:%S',
+) -> tuple[str, str]:
+    """Convert timezone-naive session times from exchange timezone to UTC.
+
+    Bloomberg API expects UTC times, but session windows are typically
+    timezone-naive strings in the exchange's local timezone. This function
+    converts them to UTC format strings suitable for Bloomberg requests.
+
+    Args:
+        start_time: Start time string (timezone-naive, in exchange timezone).
+        end_time: End time string (timezone-naive, in exchange timezone).
+        exchange_tz: Exchange timezone (e.g., 'America/New_York').
+        time_fmt: Output time format. Defaults to '%Y-%m-%dT%H:%M:%S'.
+
+    Returns:
+        Tuple of (start_time_utc, end_time_utc) as formatted strings.
+
+    Examples:
+        >>> convert_session_times_to_utc(
+        ...     '2025-11-14T09:30:00',
+        ...     '2025-11-14T10:00:00',
+        ...     'America/New_York'
+        ... )
+        ('2025-11-14T14:30:00', '2025-11-14T15:00:00')
+        >>> convert_session_times_to_utc(
+        ...     '2025-11-14T09:30:00',
+        ...     '2025-11-14T10:00:00',
+        ...     'UTC'
+        ... )
+        ('2025-11-14T09:30:00', '2025-11-14T10:00:00')
+    """
+    if exchange_tz == 'UTC':
+        return start_time, end_time
+
+    start_ts = pd.Timestamp(start_time).tz_localize(exchange_tz).tz_convert('UTC')
+    end_ts = pd.Timestamp(end_time).tz_localize(exchange_tz).tz_convert('UTC')
+    return start_ts.strftime(time_fmt), end_ts.strftime(time_fmt)
 
 
 def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
@@ -337,16 +373,14 @@ def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
         ''
     """
     exch = pd.Series(exch_info(ticker=ticker, **kwargs))
-    if any(req not in exch.index for req in ['tz', 'allday', 'day']):
-        logger.error('Required exchange information (tz, allday, day) not found for ticker: %s', ticker)
+    required = {'tz', 'allday', 'day'}
+    if not required.issubset(exch.index):
+        logger.error('Required exchange information %s not found for ticker: %s', required, ticker)
         return ''
 
-    mkt_time = {
-        'BOD': exch.day[0], 'FINISHED': exch.allday[-1]
-    }.get(timing, exch.day[-1])
-
+    mkt_time = {'BOD': exch.day[0], 'FINISHED': exch.allday[-1]}.get(timing, exch.day[-1])
     cur_dt = pd.Timestamp(str(dt)).strftime('%Y-%m-%d')
-    if tz == 'local': return f'{cur_dt} {mkt_time}'
-
+    if tz == 'local':
+        return f'{cur_dt} {mkt_time}'
     return timezone.tz_convert(f'{cur_dt} {mkt_time}', to_tz=tz, from_tz=exch.tz)
 

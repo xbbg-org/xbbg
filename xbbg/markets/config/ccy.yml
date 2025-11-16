@@ -6,7 +6,7 @@
 # ========================================
 
 # Override or expand this list by providing
-#   os.environ['BBG_ROOT']/markets/ccy.yml
+#   os.environ['BBG_ROOT']/markets/config/ccy.yml
 
 AUDUSD:
   ticker: AUD Curncy

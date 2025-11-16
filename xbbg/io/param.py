@@ -32,9 +32,9 @@ def config_files(cat: str) -> list:
         Path(os.environ.get('BBG_ROOT', '')),
     ]
     return [
-        str(p / 'markets' / f'{cat}.yml')
+        str(p / 'markets' / 'config' / f'{cat}.yml')
         for p in paths
-        if p.as_posix() and files.exists(str(p / 'markets' / f'{cat}.yml'))
+        if p.as_posix() and files.exists(str(p / 'markets' / 'config' / f'{cat}.yml'))
     ]
 
 
@@ -73,10 +73,10 @@ def load_yaml(yaml_file: str) -> pd.Series:
     Returns:
         pd.Series: Parsed YAML content.
     """
-    cache_file = (
-        yaml_file
-        .replace('/markets/', '/markets/cached/')
-        .replace('.yml', '.pkl')
+    # Convert to Path for cross-platform compatibility
+    yaml_path = Path(yaml_file)
+    cache_file = str(
+        yaml_path.parent.parent / 'cached' / yaml_path.with_suffix('.pkl').name
     )
     cur_mod = files.modified_time(yaml_file)
     if files.exists(cache_file) and files.modified_time(cache_file) > cur_mod:

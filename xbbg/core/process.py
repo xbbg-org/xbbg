@@ -8,10 +8,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from itertools import starmap
+import logging
 from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from xbbg.core.context import BloombergContext
 
 import numpy as np
 import pandas as pd
@@ -20,18 +18,23 @@ try:
     import blpapi  # type: ignore[reportMissingImports]
 except (ImportError, AttributeError):
     import pytest  # type: ignore[reportMissingImports]
+
     blpapi = pytest.importorskip('blpapi')
 
-import logging
-
 from xbbg import const
-from xbbg.core import conn, helpers, intervals, overrides
-from xbbg.core.timezone import DEFAULT_TZ
+from xbbg.core.config import intervals, overrides
+from xbbg.core.infra import conn
+from xbbg.core.utils import timezone, utils as utils_module
+
+if TYPE_CHECKING:
+    from xbbg.core.domain.context import BloombergContext
+
+DEFAULT_TZ = timezone.DEFAULT_TZ
 
 logger = logging.getLogger(__name__)
 
 try:
-    from xbbg.core import blpapi_logging
+    from xbbg.core.infra import blpapi_logging
 except ImportError:
     blpapi_logging = None  # type: ignore[assignment]
 
@@ -102,10 +105,10 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
     """
     while conn.bbg_session(**kwargs).tryNextEvent(): pass
 
-    tickers = helpers.normalize_tickers(tickers)
+    tickers = utils_module.normalize_tickers(tickers)
     for ticker in tickers: request.append(blpapi.Name('securities'), ticker)
 
-    flds = helpers.normalize_flds(flds)
+    flds = utils_module.normalize_flds(flds)
     for fld in flds: request.append(blpapi.Name('fields'), fld)
 
     adjust = kwargs.pop('adjust', None)
@@ -159,7 +162,7 @@ def time_range(
         for backward compatibility. When kwargs are provided, only infrastructure
         kwargs are extracted and passed to internal functions.
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     logger = logging.getLogger(__name__)
 
@@ -185,7 +188,7 @@ def time_range(
             time_fmt = '%Y-%m-%dT%H:%M:%S'
             # Normalize destination timezone aliases (e.g., 'NY' -> full tz)
             try:
-                from xbbg.core import timezone as _tz
+                from xbbg.core.utils import timezone as _tz
                 dest_tz = _tz.get_tz(tz)
             except Exception:
                 dest_tz = tz
@@ -229,7 +232,7 @@ def time_range(
             cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
             time_fmt = '%Y-%m-%dT%H:%M:%S'
             try:
-                from xbbg.core import timezone as _tz
+                from xbbg.core.utils import timezone as _tz
                 dest_tz = _tz.get_tz(tz)
             except Exception:
                 dest_tz = tz
@@ -341,10 +344,17 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Starting Bloomberg event processing (timeout=%dms, max_timeouts=%d)', timeout, max_timeouts)
     while True:
-        if event_queue is not None:
-            ev = event_queue.nextEvent(timeout=timeout)
-        else:
-            ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+        try:
+            if event_queue is not None:
+                ev = event_queue.nextEvent(timeout=timeout)
+            else:
+                ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+        except blpapi.InvalidStateException as e:
+            logger.error('Bloomberg session in invalid state: %s', e)
+            raise
+        except blpapi.Exception as e:
+            logger.error('Bloomberg API error during event retrieval: %s', e)
+            raise
 
         if blpapi_logging and logger.isEnabledFor(logging.DEBUG):
             blpapi_logging.log_event_info(ev, context='rec_events')
@@ -360,6 +370,10 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
                 # Generator exhausted, check return value
                 if e.value:  # True if final RESPONSE
                     break
+            except (ValueError, blpapi.Exception) as e:
+                # Message processing errors (e.g., from check_error or blpapi exceptions)
+                logger.error('Error processing Bloomberg message: %s', e)
+                raise
         elif ev.eventType() == blpapi.Event.TIMEOUT:
             timeout_counts, should_stop = _handle_timeout(timeout_counts, max_timeouts)
             if should_stop:

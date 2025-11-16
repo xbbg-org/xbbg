@@ -6,16 +6,16 @@ This package contains the main Bloomberg API functions organized into logical mo
 - intraday: Intraday bars and tick data
 - screening: Screening and query functions (BEQS, BSRCH, BQL)
 - realtime: Real-time subscriptions and live data
-- utils: Utility functions (currency conversion, etc.)
+- helpers: Shared utility functions (currency conversion, etc.)
 """
 
 # Re-export all public functions for convenience
+from xbbg.api.helpers import adjust_ccy
 from xbbg.api.historical import bdh, dividend, earning, turnover
 from xbbg.api.intraday import bdib, bdtick
 from xbbg.api.realtime import live, subscribe
 from xbbg.api.reference import bdp, bds
 from xbbg.api.screening import beqs, bql, bsrch
-from xbbg.api.utils import adjust_ccy
 
 __all__ = [
     'bdp',

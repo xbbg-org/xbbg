@@ -21,7 +21,7 @@ logger.setLevel(logging.WARNING)
 from xbbg.utils import pipeline  # noqa: E402, F401
 
 try:
-    from xbbg.core import blpapi_logging  # noqa: F401
+    from xbbg.core.infra import blpapi_logging  # noqa: F401
 
     __all__ = ['__version__', 'blpapi_logging', 'pipeline']
 except ImportError:

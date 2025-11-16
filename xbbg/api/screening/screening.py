@@ -9,15 +9,6 @@ import logging
 
 import pandas as pd
 
-try:
-    import blpapi  # type: ignore[reportMissingImports]
-except (ImportError, AttributeError):
-    import pytest  # type: ignore[reportMissingImports]
-    blpapi = pytest.importorskip('blpapi')
-
-from xbbg.core import conn, process, utils
-from xbbg.utils import pipeline
-
 logger = logging.getLogger(__name__)
 
 __all__ = ['beqs', 'bsrch', 'bql']
@@ -46,58 +37,36 @@ def beqs(
     Returns:
         pd.DataFrame.
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, beqs_pipeline_config
 
-    # Split kwargs at API boundary
+    # Preserve retry mechanism
+    trial = kwargs.get('trial', 0)
+
+    # Split kwargs
     split = split_kwargs(**kwargs)
-    ctx = split.infra
-    override_kwargs = split.override_like
 
-    # Merge override_kwargs back into kwargs for Bloomberg request building
-    all_kwargs = {**ctx.to_kwargs(), **override_kwargs}
-
-    request = process.create_request(
-        service='//blp/refdata',
-        request='BeqsRequest',
-        settings=[
-            ('screenName', screen),
-            ('screenType', 'GLOBAL' if typ[0].upper() in ['G', 'B'] else 'PRIVATE'),
-            ('Group', group),
-        ],
-        ovrds=[('PiTDate', utils.fmt_dt(asof, '%Y%m%d'))] if asof else [],
-        **all_kwargs,
+    # Build request - use a dummy ticker since BEQS doesn't use tickers
+    request = (
+        RequestBuilder()
+        .ticker('DUMMY')  # BEQS doesn't use ticker, but DataRequest requires one
+        .date(asof if asof else 'today')
+        .context(split.infra)
+        .cache_policy(enabled=False)  # BEQS typically not cached
+        .request_opts(screen=screen, asof=asof, typ=typ, group=group)
+        .override_kwargs(**split.override_like)
+        .build()
     )
 
-    logger.debug('Sending Bloomberg Equity Screening (BEQS) request for screen: %s, type: %s, group: %s', screen, typ, group)
-    handle = conn.send_request(request=request, service='//blp/refdata', **ctx.to_kwargs())
-    # Use longer timeout and more allowed timeouts for BEQS requests to ensure complete response
-    # BEQS requests can take longer, especially for complex screens, and may have longer gaps between events
-    beqs_timeout = ctx.timeout if ctx.timeout is not None else 2000  # 2 seconds default for BEQS (vs 500ms default)
-    beqs_max_timeouts = getattr(ctx, 'max_timeouts', 50)  # Allow more timeouts for BEQS (vs 20 default)
-    res = pd.DataFrame(process.rec_events(
-        func=process.process_ref,
-        event_queue=handle["event_queue"],
-        timeout=beqs_timeout,
-        max_timeouts=beqs_max_timeouts,
-        **ctx.to_kwargs()
-    ))
-    if res.empty:
-        # Check for trial flag in original kwargs (not in context)
-        trial = kwargs.get('trial', 0)
-        if trial: return pd.DataFrame()
+    # Run pipeline
+    pipeline = BloombergPipeline(config=beqs_pipeline_config())
+    result = pipeline.run(request)
+
+    # Handle retry logic
+    if result.empty and trial == 0:
         return beqs(screen=screen, asof=asof, typ=typ, group=group, trial=1, **kwargs)
 
-    if ctx.raw: return res
-    cols = res.field.unique()
-    return (
-        res
-        .set_index(['ticker', 'field'])
-        .unstack(level=1)
-        .rename_axis(index=None, columns=[None, None])
-        .droplevel(axis=1, level=0)
-        .loc[:, cols]
-        .pipe(pipeline.standard_cols)
-    )
+    return result
 
 
 def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
@@ -141,49 +110,27 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
         ...     }
         ... )  # doctest: +SKIP
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bsrch_pipeline_config
 
-    # Split kwargs at API boundary
+    # Split kwargs
     split = split_kwargs(**kwargs)
-    ctx = split.infra
 
-    # Create request using exrsvc service
-    exr_service = conn.bbg_service(service='//blp/exrsvc', **ctx.to_kwargs())
-    request = exr_service.createRequest('ExcelGetGridRequest')
+    # Build request
+    request = (
+        RequestBuilder()
+        .ticker('DUMMY')  # BSRCH doesn't use ticker
+        .date('today')
+        .context(split.infra)
+        .cache_policy(enabled=False)  # BSRCH typically not cached
+        .request_opts(domain=domain, overrides=overrides)
+        .override_kwargs(**split.override_like)
+        .build()
+    )
 
-    # Set Domain element
-    request.getElement(blpapi.Name('Domain')).setValue(domain)
-
-    # Add overrides if provided
-    if overrides:
-        overrides_elem = request.getElement(blpapi.Name('Overrides'))
-        for name, value in overrides.items():
-            override_item = overrides_elem.appendElement()
-            override_item.setElement(blpapi.Name('name'), name)
-            override_item.setElement(blpapi.Name('value'), str(value))
-
-    if logger.isEnabledFor(logging.DEBUG):
-        override_info = f' with {len(overrides)} override(s)' if overrides else ''
-        logger.debug('Sending Bloomberg SRCH request for domain: %s%s', domain, override_info)
-
-    handle = conn.send_request(request=request, service='//blp/exrsvc', **ctx.to_kwargs())
-
-    # Use longer timeout for BSRCH requests (similar to BEQS)
-    bsrch_timeout = ctx.timeout if ctx.timeout is not None else 2000
-    bsrch_max_timeouts = getattr(ctx, 'max_timeouts', 50)
-
-    rows = list(process.rec_events(
-        func=process.process_bsrch,
-        event_queue=handle["event_queue"],
-        timeout=bsrch_timeout,
-        max_timeouts=bsrch_max_timeouts,
-        **ctx.to_kwargs()
-    ))
-
-    if not rows:
-        return pd.DataFrame()
-
-    return pd.DataFrame(rows)
+    # Run pipeline
+    pipeline = BloombergPipeline(config=bsrch_pipeline_config())
+    return pipeline.run(request)
 
 
 def bql(query: str, params: dict | None = None, overrides: list[tuple[str, object]] | None = None, **kwargs) -> pd.DataFrame:
@@ -301,28 +248,25 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         ...     "get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
         ... )
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bql_pipeline_config
 
-    # Split kwargs at API boundary
+    # Split kwargs
     split = split_kwargs(**kwargs)
-    ctx = split.infra
 
-    # Use BQL sendQuery with 'expression', mirroring common BQL request shape.
-    settings = [('expression', query)]
-    if params:
-        settings.extend([(str(k), v) for k, v in params.items()])
-
-    request = process.create_request(
-        service='//blp/bqlsvc',
-        request='sendQuery',
-        settings=settings,
-        ovrds=overrides or [],
-        **ctx.to_kwargs(),
+    # Build request
+    request = (
+        RequestBuilder()
+        .ticker('DUMMY')  # BQL doesn't use ticker
+        .date('today')
+        .context(split.infra)
+        .cache_policy(enabled=False)  # BQL typically not cached
+        .request_opts(query=query, params=params, overrides=overrides)
+        .override_kwargs(**split.override_like)
+        .build()
     )
 
-    logger.debug('Sending Bloomberg Query Language (BQL) request')
-    handle = conn.send_request(request=request, service='//blp/bqlsvc', **ctx.to_kwargs())
-
-    rows = list(process.rec_events(func=process.process_bql, event_queue=handle["event_queue"], **ctx.to_kwargs()))
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
+    # Run pipeline
+    pipeline = BloombergPipeline(config=bql_pipeline_config())
+    return pipeline.run(request)
 

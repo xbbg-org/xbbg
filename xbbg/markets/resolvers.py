@@ -10,7 +10,7 @@ import pandas as pd
 from xbbg import const
 
 if TYPE_CHECKING:
-    from xbbg.core.context import BloombergContext
+    from xbbg.core.domain.context import BloombergContext
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ def cdx_ticker(
         Resolved ticker string.
     """
     # Logger is module-level
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     dt = pd.Timestamp(dt)
     from xbbg.blp import bdp  # lazy
@@ -238,7 +238,7 @@ def active_cdx(
     Returns:
         Active ticker string.
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     # Extract context - prefer explicit ctx, otherwise extract from kwargs
     if ctx is None:

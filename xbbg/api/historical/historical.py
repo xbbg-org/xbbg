@@ -11,7 +11,8 @@ import pandas as pd
 
 from xbbg import const
 from xbbg.api.reference import bds
-from xbbg.core import conn, helpers, process, utils
+from xbbg.core import process
+from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
@@ -44,48 +45,45 @@ def bdh(
     Returns:
         pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, historical_pipeline_config
 
-    # Split kwargs at API boundary
+    # Normalize tickers to list
+    ticker_list = utils.normalize_tickers(tickers)
+    primary_ticker = str(ticker_list[0] if ticker_list else tickers)
+
+    # Split kwargs
     split = split_kwargs(**kwargs)
-    ctx = split.infra
-    override_kwargs = split.override_like
 
-    # Merge override_kwargs back into kwargs for Bloomberg request building
-    all_kwargs = {**ctx.to_kwargs(), **override_kwargs}
+    # Build request - use first ticker as primary, store all in request_opts
+    if flds is None:
+        flds = ['Last_Price']
 
-    if flds is None: flds = ['Last_Price']
     e_dt = utils.fmt_dt(end_date, fmt='%Y%m%d')
-    if start_date is None: start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
+    if start_date is None:
+        start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
     s_dt = utils.fmt_dt(start_date, fmt='%Y%m%d')
 
-    request = process.create_request(
-        service='//blp/refdata',
-        request='HistoricalDataRequest',
-        **all_kwargs,
+    request = (
+        RequestBuilder()
+        .ticker(primary_ticker)
+        .date(end_date)  # Use end_date as primary date
+        .context(split.infra)
+        .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
+        .request_opts(
+            tickers=ticker_list,
+            flds=flds,
+            start_date=s_dt,
+            end_date=e_dt,
+            adjust=adjust,
+        )
+        .override_kwargs(**split.override_like)
+        .build()
     )
-    process.init_request(
-        request=request, tickers=tickers, flds=flds,
-        start_date=s_dt, end_date=e_dt, adjust=adjust, **all_kwargs
-    )
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug('Sending Bloomberg reference data request for %d ticker(s), %d field(s)', len(tickers), len(flds))
-    handle = conn.send_request(request=request, service='//blp/refdata', **ctx.to_kwargs())
 
-    res = pd.DataFrame(process.rec_events(process.process_hist, event_queue=handle["event_queue"], **ctx.to_kwargs()))
-    if ctx.raw: return res
-    if helpers.check_empty_result(res, ['ticker', 'date']):
-        return pd.DataFrame()
-
-    return (
-        res
-        .set_index(['ticker', 'date'])
-        .unstack(level=0)
-        .rename_axis(index=None, columns=[None, None])
-        .swaplevel(0, 1, axis=1)
-        .reindex(columns=utils.flatten(tickers), level=0)
-        .reindex(columns=utils.flatten(flds), level=1)
-    )
+    # Run pipeline
+    pipeline = BloombergPipeline(config=historical_pipeline_config())
+    return pipeline.run(request)
 
 
 def earning(
@@ -176,7 +174,7 @@ def dividend(
         pd.DataFrame
     """
     kwargs.pop('raw', None)
-    tickers = helpers.normalize_tickers(tickers)
+    tickers = utils.normalize_tickers(tickers)
     tickers = [t for t in tickers if ('Equity' in t) and ('=' not in t)]
 
     fld = const.DVD_TPYES.get(typ, typ)
@@ -217,7 +215,7 @@ def turnover(
         end_date = pd.bdate_range(end='today', periods=2)[0]
     if start_date is None:
         start_date = pd.bdate_range(end=end_date, periods=2, freq='M')[0]
-    tickers = helpers.normalize_tickers(tickers)
+    tickers = utils.normalize_tickers(tickers)
 
     data = bdh(tickers=tickers, flds=flds, start_date=start_date, end_date=end_date)
     cols = data.columns.get_level_values(level=0).unique()
@@ -237,6 +235,6 @@ def turnover(
                            vol_data.xs('volume', axis=1, level=1)
 
     if data.empty and use_volume.empty: return pd.DataFrame()
-    from xbbg.api.utils import adjust_ccy  # noqa: PLC0415
+    from xbbg.api.helpers import adjust_ccy  # noqa: PLC0415
     return pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
 

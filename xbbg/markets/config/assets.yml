@@ -1,7 +1,7 @@
 # Override or expand this list by providing
-#   os.environ['BBG_ROOT']/markets/assets.yml
+#   os.environ['BBG_ROOT']/markets/config/assets.yml
 #
-# New exchange should be added to exch.yml
+# New exchange should be added to config/exch.yml
 
 Comdty:
   - tickers: [CL]

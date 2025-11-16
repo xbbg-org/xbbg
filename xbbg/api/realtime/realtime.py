@@ -24,7 +24,9 @@ import asyncio
 from queue import Queue
 
 from xbbg import const
-from xbbg.core import conn, helpers, process
+from xbbg.core import process
+from xbbg.core.infra import conn
+from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +70,9 @@ def subscribe(
         >>> # Subscribe with both interval and custom options
         >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10, options='fields=LAST_PRICE'): pass  # doctest: +SKIP
     """
-    tickers = helpers.normalize_tickers(tickers)
+    tickers = utils.normalize_tickers(tickers)
     if flds is None: flds = ['Last_Price', 'Bid', 'Ask']
-    flds = helpers.normalize_flds(flds)
+    flds = utils.normalize_flds(flds)
 
     # Build options string from interval and options parameters
     opts_parts = []
@@ -130,7 +132,7 @@ async def live(
     if flds is None:
         s_flds: list[str] = ['LAST_PRICE', 'BID', 'ASK']
     else:
-        flds = helpers.normalize_flds(flds)
+        flds = utils.normalize_flds(flds)
         s_flds = [fld.upper() for fld in flds]
 
     if isinstance(info, str): info = [info]
@@ -153,7 +155,7 @@ async def live(
             # Log event information only if DEBUG is enabled (avoid overhead in hot path)
             if logger.isEnabledFor(logging.DEBUG):
                 try:
-                    from xbbg.core import blpapi_logging
+                    from xbbg.core.infra import blpapi_logging
                     if blpapi_logging:
                         blpapi_logging.log_event_info(event, context='live_subscription')
                 except ImportError:
@@ -173,7 +175,7 @@ async def live(
                 # This avoids per-message overhead in tight subscription loops
                 if msg_count == 0 and logger.isEnabledFor(logging.DEBUG):
                     try:
-                        from xbbg.core import blpapi_logging
+                        from xbbg.core.infra import blpapi_logging
                         if blpapi_logging:
                             blpapi_logging.log_message_info(msg, context='live_subscription')
                     except ImportError:

@@ -117,6 +117,7 @@ LIVE_RATIO = {
 }
 
 # Re-export market info functions for backward compatibility
+# Use providers internally for better testability
 from xbbg.markets.info import (  # noqa: E402
     asset_config,
     ccy_pair,

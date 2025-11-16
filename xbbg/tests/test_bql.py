@@ -2,7 +2,8 @@ import pandas as pd
 import pytest
 
 from xbbg import blp
-from xbbg.core import conn, process
+from xbbg.core import process
+from xbbg.core.infra import conn
 
 
 @pytest.fixture

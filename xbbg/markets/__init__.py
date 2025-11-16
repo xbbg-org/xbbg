@@ -3,7 +3,7 @@
 # Lazy imports to avoid circular dependencies
 def __getattr__(name: str):
     """Lazy import for market functions."""
-    if name in ('asset_config', 'ccy_pair', 'exch_info', 'market_info', 'market_timing'):
+    if name in ('asset_config', 'ccy_pair', 'exch_info', 'market_info', 'market_timing', 'convert_session_times_to_utc'):
         from xbbg.markets import info  # noqa: PLC0415
         return getattr(info, name)
     if name in ('active_cdx', 'active_futures', 'cdx_ticker', 'fut_ticker'):
@@ -12,12 +12,13 @@ def __getattr__(name: str):
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Direct imports for modules (no circular dependency)
-from xbbg.markets import pmc, resolvers  # noqa: E402
+from xbbg.markets import pmc, providers, resolvers  # noqa: E402
 
 __all__ = [
     # Market info functions
     'asset_config',
     'ccy_pair',
+    'convert_session_times_to_utc',
     'exch_info',
     'market_info',
     'market_timing',
@@ -29,6 +30,7 @@ __all__ = [
     # Modules
     'info',
     'pmc',
+    'providers',
     'resolvers',
 ]
 

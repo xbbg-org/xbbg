@@ -28,7 +28,7 @@ import pandas as pd
 from xbbg.io import files
 
 if TYPE_CHECKING:
-    from xbbg.core.context import BloombergContext
+    from xbbg.core.domain.context import BloombergContext
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ def _get_exch_code(
         Exchange code string.
     """
     # Logger is module-level
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     cache = _load_cache()
     tkey = f"exch_code::{ticker}"
@@ -261,7 +261,7 @@ def resolve_calendar_name(
         Calendar name string.
     """
     # Logger is module-level
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     cache = _load_cache()
     tkey = f"calendar::{ticker}"
@@ -313,7 +313,7 @@ def pmc_session_for_date(
         PmcSession or None if not available.
     """
     # Logger is module-level
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     # Extract context - prefer explicit ctx, otherwise extract from kwargs
     if ctx is None:
@@ -381,7 +381,7 @@ def pmc_wizard(
         **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
     """
     # Logger is module-level
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     # Extract context - prefer explicit ctx, otherwise extract from kwargs
     if ctx is None:

@@ -8,8 +8,8 @@ from collections.abc import Iterator
 import os
 from pathlib import Path
 
-from xbbg.core import utils
-from xbbg.core.overrides import BBG_ROOT
+from xbbg.core.config.overrides import BBG_ROOT
+from xbbg.core.utils import utils
 from xbbg.io import db, files
 
 TRIALS_TABLE = """

@@ -6,13 +6,14 @@ bulk/block data (BDS) queries.
 
 from __future__ import annotations
 
-from functools import partial
 import logging
 
 import pandas as pd
 
-from xbbg.core import conn, helpers, process
-from xbbg.io import files, storage
+from xbbg.core import process
+from xbbg.core.infra import conn
+from xbbg.core.utils import utils
+from xbbg.io import cache, files
 from xbbg.utils import pipeline
 
 logger = logging.getLogger(__name__)
@@ -35,44 +36,32 @@ def bdp(
     Returns:
         pd.DataFrame: Reference data with tickers as index and fields as columns.
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, reference_pipeline_config
 
-    # Split kwargs at API boundary
+    # Normalize tickers to list
+    ticker_list = utils.normalize_tickers(tickers)
+    primary_ticker = ticker_list[0] if ticker_list else tickers
+    fld_list = utils.normalize_flds(flds)
+
+    # Split kwargs
     split = split_kwargs(**kwargs)
-    ctx = split.infra
-    override_kwargs = split.override_like
 
-    # Merge override_kwargs back into kwargs for Bloomberg request building
-    # (init_request and create_request handle override processing)
-    all_kwargs = {**ctx.to_kwargs(), **override_kwargs}
-
-    tickers = helpers.normalize_tickers(tickers)
-    flds = helpers.normalize_flds(flds)
-
-    request = process.create_request(
-        service='//blp/refdata',
-        request='ReferenceDataRequest',
-        **all_kwargs,
+    # Build request
+    request = (
+        RequestBuilder()
+        .ticker(primary_ticker)
+        .date('today')  # Reference data doesn't use dates, but DataRequest requires one
+        .context(split.infra)
+        .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
+        .request_opts(tickers=ticker_list, flds=fld_list)
+        .override_kwargs(**split.override_like)
+        .build()
     )
-    process.init_request(request=request, tickers=tickers, flds=flds, **all_kwargs)
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug('Sending Bloomberg reference data request for %d ticker(s), %d field(s)', len(tickers), len(flds))
-    handle = conn.send_request(request=request, service='//blp/refdata', **ctx.to_kwargs())
 
-    res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **ctx.to_kwargs()))
-    if ctx.raw: return res
-    if helpers.check_empty_result(res, ['ticker', 'field']):
-        return pd.DataFrame()
-
-    return (
-        res
-        .set_index(['ticker', 'field'])
-        .unstack(level=1)
-        .rename_axis(index=None, columns=[None, None])
-        .droplevel(axis=1, level=0)
-        .loc[:, res.field.unique()]
-        .pipe(pipeline.standard_cols, col_maps=ctx.col_maps)
-    )
+    # Run pipeline
+    pipeline = BloombergPipeline(config=reference_pipeline_config())
+    return pipeline.run(request)
 
 
 def bds(
@@ -92,19 +81,31 @@ def bds(
     Returns:
         pd.DataFrame: Block data with multi-row results per ticker.
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, block_data_pipeline_config
 
-    # Split kwargs at API boundary
+    # Split kwargs
     split = split_kwargs(**kwargs)
-    ctx = split.infra
-    override_kwargs = split.override_like
+    ticker_list = utils.normalize_tickers(tickers)
 
-    # Merge override_kwargs back into kwargs for Bloomberg request building
-    all_kwargs = {**ctx.to_kwargs(), **override_kwargs}
+    # Process each ticker using pipeline
+    def _process_ticker(ticker: str) -> pd.DataFrame:
+        request = (
+            RequestBuilder()
+            .ticker(ticker)
+            .date('today')
+            .context(split.infra)
+            .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
+            .request_opts(fld=flds, use_port=use_port)
+            .override_kwargs(**split.override_like)
+            .build()
+        )
 
-    part = partial(_bds_, fld=flds, logger=logger, use_port=use_port, ctx=ctx, **all_kwargs)
-    tickers = helpers.normalize_tickers(tickers)
-    return pd.DataFrame(pd.concat(map(part, tickers), sort=False))
+        pipeline = BloombergPipeline(config=block_data_pipeline_config())
+        return pipeline.run(request)
+
+    results = [_process_ticker(t) for t in ticker_list]
+    return pd.DataFrame(pd.concat(results, sort=False))
 
 
 def _bds_(
@@ -128,7 +129,7 @@ def _bds_(
     Returns:
         BDS data DataFrame.
     """
-    from xbbg.core.context import split_kwargs
+    from xbbg.core.domain.context import split_kwargs
 
     # Extract context - prefer explicit ctx, otherwise extract from kwargs
     if ctx is None:
@@ -145,7 +146,7 @@ def _bds_(
     # Set has_date if not already set (BDS typically needs date context)
     if 'has_date' not in all_kwargs:
         all_kwargs['has_date'] = True
-    data_file = storage.ref_file(ticker=ticker, fld=fld, ext='pkl', **ctx.to_kwargs())
+    data_file = cache.ref_file(ticker=ticker, fld=fld, ext='pkl', **ctx.to_kwargs())
     if files.exists(data_file):
         logger.debug('Loading cached Bloomberg reference data from: %s', data_file)
         return pd.DataFrame(pd.read_pickle(data_file))
@@ -161,7 +162,7 @@ def _bds_(
 
     res = pd.DataFrame(process.rec_events(func=process.process_ref, event_queue=handle["event_queue"], **ctx.to_kwargs()))
     if ctx.raw: return res
-    if helpers.check_empty_result(res, ['ticker', 'field']):
+    if utils.check_empty_result(res, ['ticker', 'field']):
         return pd.DataFrame()
 
     data = (

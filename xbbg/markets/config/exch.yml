@@ -5,7 +5,7 @@
 # =========================================
 
 # Override or expand this list by providing
-#   os.environ['BBG_ROOT']/markets/exch.yml
+#   os.environ['BBG_ROOT']/markets/config/exch.yml
 
 # ------------
 #   Equities

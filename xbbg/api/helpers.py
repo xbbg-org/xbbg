@@ -1,15 +1,11 @@
-"""Bloomberg API utility functions.
+"""Shared helper functions for Bloomberg API modules.
 
-Provides utility functions for data processing and transformation.
+This module provides utility functions that can be used across multiple API modules.
 """
 
 from __future__ import annotations
 
-import logging
-
 import pandas as pd
-
-logger = logging.getLogger(__name__)
 
 __all__ = ['adjust_ccy']
 
@@ -17,12 +13,26 @@ __all__ = ['adjust_ccy']
 def adjust_ccy(data: pd.DataFrame, ccy: str = 'USD') -> pd.DataFrame:
     """Adjust series to a target currency.
 
+    This is a general utility function that can be used with any time-series DataFrame
+    from historical (bdh), intraday (bdib), or other APIs that return DataFrames with
+    date/datetime index and ticker columns.
+
     Args:
-        data: daily price / turnover / etc. to adjust
-        ccy: currency to adjust to
+        data: DataFrame with date/datetime index and MultiIndex columns (ticker, field).
+            Can be from bdh, bdib, or any other time-series API.
+        ccy: currency to adjust to (default: 'USD'). Use 'local' for no adjustment.
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame: Currency-adjusted data in the same format as input.
+
+    Examples:
+        >>> # Works with historical data
+        >>> hist_data = blp.bdh('AAPL US Equity', start_date='2024-01-01')
+        >>> adjusted = blp.adjust_ccy(hist_data, ccy='EUR')
+        >>>
+        >>> # Could also work with intraday data
+        >>> intraday_data = blp.bdib('AAPL US Equity', dt='2024-01-01')
+        >>> adjusted_intraday = blp.adjust_ccy(intraday_data, ccy='EUR')
     """
     from xbbg.api.historical import bdh  # noqa: PLC0415
     from xbbg.api.reference import bdp  # noqa: PLC0415
