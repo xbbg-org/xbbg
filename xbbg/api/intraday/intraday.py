@@ -370,7 +370,7 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
     Examples:
         Get 10-second bars (requires Bloomberg):
 
-        >>> # from xbbg import blp  # doctest: +SKIP
+        >>> # from xbbg import blp
         >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10, intervalHasSeconds=True)  # doctest: +SKIP
 
         Get 10-minute bars (default behavior):

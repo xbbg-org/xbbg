@@ -233,15 +233,15 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         Common mistakes to avoid:
 
         >>> # INCORRECT: 'for' inside get() - will cause parse error
-        >>> # df = blp.bql("get(px_last for('AAPL US Equity'))")  # doctest: +SKIP
+        >>> # df = blp.bql("get(px_last for('AAPL US Equity'))")
 
         >>> # INCORRECT: Missing get() wrapper
         >>> # This will return empty results without error
-        >>> # df = blp.bql("filter(options('SPX Index'), expire_dt=='2025-11-21'), sum(group(open_int))")  # doctest: +SKIP
+        >>> # df = blp.bql("filter(options('SPX Index'), expire_dt=='2025-11-21'), sum(group(open_int))")
 
         >>> # INCORRECT: Using mode parameter (not supported)
         >>> # This will raise NotFoundException
-        >>> # df = blp.bql("get(...)", params={"mode": "cached"})  # doctest: +SKIP
+        >>> # df = blp.bql("get(...)", params={"mode": "cached"})
 
         >>> # CORRECT: 'for' is OUTSIDE get(), filter() is inside for()
         >>> df = blp.bql(  # doctest: +SKIP

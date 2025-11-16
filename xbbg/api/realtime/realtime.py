@@ -56,19 +56,19 @@ def subscribe(
 
     Examples:
         >>> # Subscribe with default fields
-        >>> # for _ in blp.subscribe(['AAPL US Equity']): pass  # doctest: +SKIP
+        >>> # for _ in blp.subscribe(['AAPL US Equity']): pass
         >>>
         >>> # Subscribe with custom fields
-        >>> # for _ in blp.subscribe(['AAPL US Equity'], ['LAST_PRICE', 'VOLUME']): pass  # doctest: +SKIP
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], ['LAST_PRICE', 'VOLUME']): pass
         >>>
         >>> # Subscribe with 10-second interval
-        >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10): pass  # doctest: +SKIP
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10): pass
         >>>
         >>> # Subscribe with custom options
-        >>> # for _ in blp.subscribe(['AAPL US Equity'], options='fields=LAST_PRICE,BID,ASK'): pass  # doctest: +SKIP
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], options='fields=LAST_PRICE,BID,ASK'): pass
         >>>
         >>> # Subscribe with both interval and custom options
-        >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10, options='fields=LAST_PRICE'): pass  # doctest: +SKIP
+        >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10, options='fields=LAST_PRICE'): pass
     """
     tickers = utils.normalize_tickers(tickers)
     if flds is None: flds = ['Last_Price', 'Bid', 'Ask']

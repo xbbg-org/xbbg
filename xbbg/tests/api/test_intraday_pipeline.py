@@ -11,7 +11,7 @@ import dataclasses
 import pandas as pd
 import pytest
 
-from xbbg.api.pipeline import RequestBuilder
+from xbbg.core.pipeline import RequestBuilder
 from xbbg.core.domain.contracts import CachePolicy, DataRequest
 
 

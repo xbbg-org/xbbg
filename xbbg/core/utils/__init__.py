@@ -6,11 +6,11 @@ This package contains supporting utilities:
 - trials: Retry tracking for missing data
 """
 
-# Import modules directly (avoiding circular import)
-from xbbg.core.utils import (
-    timezone,  # noqa: PLC0415
-    trials,  # noqa: PLC0415
-    utils,  # noqa: PLC0415
+# Import modules directly using relative imports
+from . import (
+    timezone,
+    trials,
+    utils,
 )
 
 __all__ = ['utils', 'timezone', 'trials']
