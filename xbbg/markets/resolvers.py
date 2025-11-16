@@ -53,7 +53,7 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
 
     dts = pd.bdate_range(end=dt, periods=10)
     from xbbg.blp import bdh  # noqa: PLC0415
-    volume = bdh(fut_tk.index, flds='volume', start_date=dts[0], end_date=dts[-1])
+    volume = bdh(tickers=list(fut_tk.index), flds='volume', start_date=dts[0], end_date=dts[-1])
     if volume.empty: return fut_1
     return volume.iloc[-1].idxmax()[0]
 
