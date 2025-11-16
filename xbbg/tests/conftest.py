@@ -1,6 +1,8 @@
 import logging
 import sys
 
+import pytest
+
 
 def pytest_addoption(parser):
 
@@ -55,6 +57,26 @@ def pytest_configure(config):
     sys.pytest_call = True
     # Store prompt option globally for use in hooks
     config._prompt_between_tests = config.getoption('--prompt-between-tests', default=False)
+
+
+def pytest_ignore_collect(collection_path, config):
+    """Exclude test_live_endpoints.py from collection unless --run-xbbg-live is set."""
+    if collection_path.name == 'test_live_endpoints.py':
+        if not config.getoption('--run-xbbg-live', default=False):
+            return True  # Ignore this file
+    return False  # Don't ignore other files
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip live endpoint tests unless --run-xbbg-live flag is provided."""
+    if not config.getoption('--run-xbbg-live', default=False):
+        skip_live = pytest.mark.skip(
+            reason='Live Bloomberg tests skipped. Use --run-xbbg-live to enable.'
+        )
+        for item in items:
+            # Skip tests marked with live_endpoint marker (backup check)
+            if 'live_endpoint' in item.keywords:
+                item.add_marker(skip_live)
 
 
 def pytest_unconfigure(config):

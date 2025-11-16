@@ -131,15 +131,8 @@ BQL_QUERY = "get(px_last) for('AAPL US Equity')"
 BSRCH_QUERY = "FI:TEST"  # Simple query - likely returns empty but tests endpoint
 
 
-def pytest_collection_modifyitems(config, items):
-    """Skip live endpoint tests unless --run-xbbg-live flag is provided."""
-    if not config.getoption('--run-xbbg-live'):
-        skip_live = pytest.mark.skip(
-            reason='Live Bloomberg tests skipped. Use --run-xbbg-live to enable.'
-        )
-        for item in items:
-            if 'live_endpoint' in item.keywords:
-                item.add_marker(skip_live)
+# pytest_collection_modifyitems is now handled in conftest.py
+# This ensures live endpoint tests are excluded from default test runs
 
 
 def pytest_runtest_setup(item):

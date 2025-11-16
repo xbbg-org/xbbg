@@ -152,4 +152,8 @@ log_cli_format = "%(levelname)-8s %(name)s:%(filename)s:%(lineno)d %(message)s"
 log_cli_date_format = "%H:%M:%S"
 
 [dependency-groups]
-dev = ["blpapi"]
+dev = [
+    "blpapi",
+    "coverage>=7.11.0",
+    "pytest-cov>=7.0.0",
+]

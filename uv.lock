@@ -2204,6 +2204,8 @@ test = [
 [package.dev-dependencies]
 dev = [
     { name = "blpapi" },
+    { name = "coverage" },
+    { name = "pytest-cov" },
 ]
 
 [package.metadata]
@@ -2232,7 +2234,11 @@ requires-dist = [
 provides-extras = ["test", "dev", "docs"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "blpapi", index = "https://blpapi.bloomberg.com/repository/releases/python/simple/" }]
+dev = [
+    { name = "blpapi", index = "https://blpapi.bloomberg.com/repository/releases/python/simple/" },
+    { name = "coverage", specifier = ">=7.11.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+]
 
 [[package]]
 name = "zipp"
