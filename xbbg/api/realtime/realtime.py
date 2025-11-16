@@ -125,7 +125,7 @@ async def live(
         >>> # async for _ in live('SPY US Equity', info=const.LIVE_INFO): pass
         >>>
         >>> # Subscribe with 10-second interval
-        >>> # async for _ in live('SPY US Equity', interval=10): pass  # doctest: +SKIP
+        >>> # async for _ in live('SPY US Equity', interval=10): pass
     """
     evt_typs = conn.event_types()
 
