@@ -144,4 +144,4 @@ filterwarnings = [
 ]
 
 [dependency-groups]
-dev = []
+dev = ["blpapi"]
