@@ -252,6 +252,35 @@ try:
     except Exception as e:
         print(f"[WARN] turnover() test failed: {e}")
 
+    # Test 3a: Turnover - Multiple tickers
+    print("\n" + "=" * 80)
+    print("TEST 3a: turnover() - Multiple Tickers")
+    print("=" * 80)
+    try:
+        result_turnover_multi = blp.turnover(
+            tickers=['AAPL US Equity', 'MSFT US Equity'],
+            start_date=start_date.strftime('%Y-%m-%d'),
+            end_date=end_date.strftime('%Y-%m-%d'),
+            ccy='USD',
+        )
+
+        if not result_turnover_multi.empty:
+            print(f"\nDataFrame Shape: {result_turnover_multi.shape}")
+            print(f"\nIndex Type: {type(result_turnover_multi.index)}")
+            print(f"Index dtype: {result_turnover_multi.index.dtype}")
+            if len(result_turnover_multi.index) > 0:
+                print(f"First index value type: {type(result_turnover_multi.index[0])}")
+            print(f"\nColumn Type: {type(result_turnover_multi.columns)}")
+            print(f"Is MultiIndex: {isinstance(result_turnover_multi.columns, pd.MultiIndex)}")
+            print(f"Columns: {list(result_turnover_multi.columns)}")
+            print("\nDataFrame (first 3 rows):")
+            print(result_turnover_multi.head(3))
+            analyze_structure(result_turnover_multi, "turnover() Multiple Tickers")
+        else:
+            print("[WARN] turnover() with multiple tickers returned empty DataFrame")
+    except Exception as e:
+        print(f"[WARN] turnover() multiple tickers test failed: {e}")
+
     # Test 4: BDH with periodicity (weekly)
     print("\n" + "=" * 80)
     print("TEST 4: BDH - Periodicity (Weekly)")
@@ -358,6 +387,38 @@ try:
             print("[INFO] dividend() returned empty DataFrame (no dividends in date range)")
     except Exception as e:
         print(f"[WARN] dividend() test failed: {e}")
+
+    # Test 6a: Dividend history - Multiple tickers
+    print("\n" + "=" * 80)
+    print("TEST 6a: dividend() - Multiple Tickers")
+    print("=" * 80)
+    try:
+        # Use a longer range to increase chance of finding dividends
+        dividend_start = (end_date - timedelta(days=90)).strftime('%Y-%m-%d')
+        result_dividend_multi = blp.dividend(
+            tickers=['AAPL US Equity', 'MSFT US Equity'],
+            start_date=dividend_start,
+            end_date=end_date.strftime('%Y-%m-%d'),
+        )
+
+        if not result_dividend_multi.empty:
+            print(f"\nDataFrame Shape: {result_dividend_multi.shape}")
+            print(f"\nIndex Type: {type(result_dividend_multi.index)}")
+            print(f"Index dtype: {result_dividend_multi.index.dtype}")
+            if len(result_dividend_multi.index) > 0:
+                print(f"First index value: {result_dividend_multi.index[0]}")
+                print(f"First index value type: {type(result_dividend_multi.index[0])}")
+                print(f"Unique tickers in index: {list(result_dividend_multi.index.unique())}")
+            print(f"\nColumn Type: {type(result_dividend_multi.columns)}")
+            print(f"Is MultiIndex: {isinstance(result_dividend_multi.columns, pd.MultiIndex)}")
+            print(f"Columns: {list(result_dividend_multi.columns)}")
+            print("\nDataFrame (first 3 rows):")
+            print(result_dividend_multi.head(3))
+            analyze_structure(result_dividend_multi, "dividend() Multiple Tickers")
+        else:
+            print("[INFO] dividend() with multiple tickers returned empty DataFrame (no dividends in date range)")
+    except Exception as e:
+        print(f"[WARN] dividend() multiple tickers test failed: {e}")
 
     # Test 7: adjust_ccy() - Currency conversion
     print("\n" + "=" * 80)

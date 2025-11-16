@@ -738,6 +738,57 @@ def test_bdib_reference_exchange():
 
 
 @pytest.mark.live_endpoint
+@pytest.mark.skip(reason="Requires Japanese market ticker - disabled for general testing")
+def test_bdib_am_open_session():
+    """Test BDIB with am_open_30 session (as shown in README examples for Japanese markets).
+
+    Uses minimal data by limiting request to first 30 minutes of AM session.
+    This test is disabled by default as it requires a Japanese market ticker.
+    """
+    from xbbg.core import trials
+
+    # Reset trial count for this test to allow retry after fix
+    # Use a Japanese ticker for this test
+    japanese_ticker = '7974 JT Equity'  # Example from README
+    trial_kw = {'ticker': japanese_ticker, 'dt': TEST_DATE.strftime('%Y-%m-%d'), 'typ': 'TRADE', 'func': 'bdib'}
+    trials.update_trials(cnt=0, **trial_kw)
+
+    print(f"\n{'='*80}")
+    print("Testing BDIB (AM Open Session - Japanese Market)")
+    print(f"{'='*80}")
+
+    # Use am_open_30 session for Japanese markets (as shown in README)
+    result = blp.bdib(
+        ticker=japanese_ticker,
+        dt=TEST_DATE.strftime('%Y-%m-%d'),
+        session='am_open_30',  # First 30 minutes of AM session (as shown in README)
+        interval=5,    # 5-minute bars
+    )
+
+    assert isinstance(result, pd.DataFrame), "BDIB should return a DataFrame"
+    assert not result.empty, "BDIB result should not be empty - check if market was open on test date"
+
+    # Structure validation (same as regular BDIB)
+    assert isinstance(result.index, (pd.DatetimeIndex, pd.Index)), "BDIB should have DatetimeIndex"
+    assert pd.api.types.is_datetime64_any_dtype(result.index), "BDIB index should be datetime type"
+    assert isinstance(result.columns, pd.MultiIndex), "BDIB should have MultiIndex columns (ticker, field)"
+    assert len(result.columns.levels) == 2, "MultiIndex should have 2 levels (ticker, field)"
+    assert japanese_ticker in result.columns.get_level_values(0), f"Ticker {japanese_ticker} should be in column level 0"
+    expected_cols = ['open', 'high', 'low', 'close', 'volume']
+    result_cols_lower = [col.lower() for col in result.columns.get_level_values(1)]
+    for col in expected_cols:
+        assert any(col in c for c in result_cols_lower), f"Expected column '{col}' should be present"
+    assert result.index.is_monotonic_increasing, "BDIB index should be sorted in ascending order"
+
+    print("\nBDIB Result (am_open_30 session):")
+    print(result)
+    print(f"\nShape: {result.shape}")
+    print(f"Time range: {result.index.min()} to {result.index.max()}")
+    print(f"Index type: {type(result.index)}")
+    print("✓ BDIB am_open_30 session working correctly")
+
+
+@pytest.mark.live_endpoint
 def test_bdtick_tick_data():
     """Test BDTICK (tick data) endpoint with live Bloomberg data.
 
@@ -789,6 +840,58 @@ def test_bdtick_tick_data():
 
 
 @pytest.mark.live_endpoint
+@pytest.mark.skip(reason="BDTICK with session parameter - disabled for general testing")
+def test_bdtick_session_parameter():
+    """Test BDTICK with session parameter (as shown in README examples).
+
+    Uses minimal data by:
+    - Using session='day' parameter instead of time_range
+    - Only requesting TRADE events
+    - Using timeout to avoid long waits
+    """
+    print(f"\n{'='*80}")
+    print("Testing BDTICK (Session Parameter)")
+    print(f"{'='*80}")
+
+    # Use session='day' parameter as shown in README
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime('%Y-%m-%d'),
+        session='day',  # Use session parameter instead of time_range
+        types=['TRADE'],  # Only trade events
+        timeout=5000,  # 5 second timeout
+    )
+
+    assert isinstance(result, pd.DataFrame), "BDTICK should return a DataFrame"
+    assert not result.empty, "BDTICK result should not be empty - check if market was open on test date"
+
+    # Structure validation (same as regular BDTICK)
+    assert isinstance(result.index, (pd.DatetimeIndex, pd.Index)), "BDTICK should have DatetimeIndex"
+    assert pd.api.types.is_datetime64_any_dtype(result.index), "BDTICK index should be datetime type"
+    # BDTICK should have MultiIndex columns with ticker as first level
+    assert isinstance(result.columns, pd.MultiIndex), "BDTICK should have MultiIndex columns (ticker, field)"
+    assert len(result.columns.levels) == 2, "MultiIndex should have 2 levels (ticker, field)"
+    assert TEST_TICKER in result.columns.get_level_values(0), f"Ticker {TEST_TICKER} should be in column level 0"
+    # Expected columns: volume, typ, cond, exch, trd_time (at minimum)
+    expected_cols = ['volume', 'typ']
+    result_cols_lower = [col.lower() for col in result.columns.get_level_values(1)]
+    for col in expected_cols:
+        assert any(col in c for c in result_cols_lower), f"Expected column '{col}' should be present"
+    # Index should be sorted (ascending time)
+    assert result.index.is_monotonic_increasing, "BDTICK index should be sorted in ascending order"
+
+    print("\nBDTICK Result (session='day', TRADE only):")
+    print(result)
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Time range: {result.index.min()} to {result.index.max()}")
+    print(f"Index type: {type(result.index)}")
+    print(f"Column levels: {result.columns.nlevels}")
+    print(f"Sample rows:\n{result.head()}")
+    print("✓ BDTICK session parameter working correctly")
+
+
+@pytest.mark.live_endpoint
 def test_dividend_history():
     """Test dividend() endpoint with live Bloomberg data.
 
@@ -827,6 +930,53 @@ def test_dividend_history():
     print(f"Index type: {type(result.index)}")
     print(f"Sample rows:\n{result.head()}")
     print("✓ dividend() endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_dividend_multiple_tickers():
+    """Test dividend() with multiple tickers (as shown in README examples).
+
+    Uses a quarter (90 days) date range to increase likelihood of finding dividends.
+    """
+    print(f"\n{'='*80}")
+    print("Testing dividend() (Multiple Tickers)")
+    print(f"{'='*80}")
+
+    # Use a quarter (90 days) range to increase likelihood of finding dividends
+    dividend_start = (END_DATE - timedelta(days=90)).strftime('%Y-%m-%d')
+    result = blp.dividend(
+        tickers=TEST_TICKERS[:2],  # Multiple tickers as shown in README
+        start_date=dividend_start,
+        end_date=END_DATE.strftime('%Y-%m-%d'),
+    )
+
+    assert isinstance(result, pd.DataFrame), "dividend() should return a DataFrame"
+    # Allow empty results - dividends may not exist in date range for all tickers
+    if result.empty:
+        print("\ndividend() returned empty results (no dividends in date range)")
+        print("✓ dividend() endpoint working correctly (empty result is valid)")
+    else:
+        # Structure validation
+        assert isinstance(result.index, pd.Index), "dividend() should have Index"
+        assert not isinstance(result.columns, pd.MultiIndex), "dividend() should have single-level columns"
+        assert len(result.columns) > 0, "dividend() should have at least one column"
+        # Verify at least one requested ticker is in index
+        result_index_values = set(result.index)
+        assert any(ticker in result_index_values for ticker in TEST_TICKERS[:2]), \
+            f"At least one ticker from {TEST_TICKERS[:2]} should be in index"
+        # Expect date-related columns for dividend data
+        result_cols_lower = [col.lower() for col in result.columns]
+        date_related_cols = ['date', 'ex', 'record', 'payable', 'dividend', 'amount']
+        assert any(any(dc in col for dc in date_related_cols) for col in result_cols_lower), \
+            "dividend() should have date-related columns"
+
+        print("\nDividend Result (Multiple Tickers):")
+        print(result)
+        print(f"\nShape: {result.shape}")
+        print(f"Tickers in index: {list(result.index.unique())}")
+        print(f"Columns: {list(result.columns)}")
+        print(f"Sample rows:\n{result.head()}")
+        print("✓ dividend() multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -908,6 +1058,65 @@ def test_turnover():
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
     print("✓ turnover() endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_turnover_multiple_tickers():
+    """Test turnover() with multiple tickers (as shown in README examples)."""
+    print(f"\n{'='*80}")
+    print("Testing turnover() (Multiple Tickers)")
+    print(f"{'='*80}")
+
+    result = blp.turnover(
+        tickers=TEST_TICKERS[:2],  # Multiple tickers as shown in README
+        start_date=START_DATE.strftime('%Y-%m-%d'),
+        end_date=END_DATE.strftime('%Y-%m-%d'),
+        ccy='USD',
+    )
+
+    assert isinstance(result, pd.DataFrame), "turnover() should return a DataFrame"
+    assert not result.empty, "turnover() result should not be empty"
+
+    # Structure validation
+    # turnover() uses bdh internally, so index can be DatetimeIndex or regular Index with date strings/objects
+    assert isinstance(result.index, pd.Index), "turnover() should have Index"
+    # Check if index contains date-like values (datetime64 dtype, datetime.date, Timestamp, or date strings)
+    if len(result.index) > 0:
+        first_idx_val = result.index[0]
+        is_date_like = (
+            pd.api.types.is_datetime64_any_dtype(result.index) or
+            isinstance(first_idx_val, (pd.Timestamp, datetime, date)) or
+            (isinstance(first_idx_val, str) and len(str(first_idx_val)) >= 8)  # Date string like '2018-10-10'
+        )
+        assert is_date_like, f"turnover() index should contain date-like values (got {type(first_idx_val)})"
+    # turnover() with multiple tickers returns single-level columns (ticker names)
+    assert not isinstance(result.columns, pd.MultiIndex), "turnover() with multiple tickers should have single-level columns"
+    assert len(result.columns) >= 2, "turnover() with multiple tickers should have at least 2 columns"
+    # Verify requested tickers are in columns
+    result_cols = list(result.columns)
+    for ticker in TEST_TICKERS[:2]:
+        assert ticker in result_cols, f"Ticker {ticker} should be in columns"
+    # Index should be sorted (ascending dates)
+    try:
+        is_sorted = result.index.is_monotonic_increasing
+    except (TypeError, ValueError):
+        # Fallback: convert to DatetimeIndex for comparison if native check fails
+        try:
+            ts_index = pd.DatetimeIndex(pd.to_datetime(result.index))
+            is_sorted = ts_index.is_monotonic_increasing
+        except (ValueError, TypeError):
+            # If conversion fails, skip this check
+            is_sorted = True
+    assert is_sorted, "turnover() index should be sorted in ascending order"
+
+    print("\nTurnover Result (Multiple Tickers):")
+    print(result)
+    print(f"\nShape: {result.shape}")
+    print(f"Tickers: {list(result.columns)}")
+    print(f"Date range: {result.index.min()} to {result.index.max()}")
+    print(f"Index type: {type(result.index)}")
+    print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
+    print("✓ turnover() multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1049,6 +1258,50 @@ def test_bsrch_search():
         print(f"Columns: {list(result.columns)}")
         print(f"Sample rows:\n{result.head()}")
         print("✓ BSRCH endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+@pytest.mark.skip(reason="BSRCH with overrides requires specific weather data setup - disabled for general testing")
+def test_bsrch_with_overrides():
+    """Test BSRCH with overrides parameter (weather data example from README).
+
+    Note: This test uses a weather data query with overrides. The query may return
+    empty results if the screen doesn't exist or weather data is unavailable.
+    The test passes if the endpoint works correctly, regardless of result count.
+    """
+    print(f"\n{'='*80}")
+    print("Testing BSRCH (With Overrides - Weather Data)")
+    print(f"{'='*80}")
+
+    # Use weather data query with overrides as shown in README
+    result = blp.bsrch(
+        "comdty:weather",
+        overrides={
+            "provider": "wsi",
+            "location": "US_XX",
+            "model": "ACTUALS",
+            "frequency": "DAILY",
+            "target_start_date": "2021-01-01",
+            "target_end_date": "2021-01-05",
+            "location_time": "false",
+            "fields": "WIND_SPEED|TEMPERATURE|HDD_65F|CDD_65F|HDD_18C|CDD_18C|PRECIPITATION_24HR|CLOUD_COVER|FEELS_LIKE_TEMPERATURE|MSL_PRESSURE|TEMPERATURE_MAX_24HR|TEMPERATURE_MIN_24HR"
+        }
+    )
+
+    assert isinstance(result, pd.DataFrame), "BSRCH should return a DataFrame"
+    # Allow empty results - weather screens may not exist or may return no results
+    # The important thing is that the endpoint works correctly with overrides
+    if result.empty:
+        print("\nBSRCH with overrides returned empty results (screen may not exist or have no matches)")
+        print("✓ BSRCH with overrides endpoint working correctly (empty result is valid)")
+    else:
+        print(f"\nBSRCH with overrides returned {len(result)} rows")
+        print("\nBSRCH Result (With Overrides):")
+        print(result)
+        print(f"\nShape: {result.shape}")
+        print(f"Columns: {list(result.columns)}")
+        print(f"Sample rows:\n{result.head()}")
+        print("✓ BSRCH with overrides endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
