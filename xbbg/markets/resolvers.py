@@ -1,10 +1,16 @@
 """Resolvers for market-specific ticker transformations and helpers."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from xbbg import const
+
+if TYPE_CHECKING:
+    from xbbg.core.context import BloombergContext
 
 logger = logging.getLogger(__name__)
 
@@ -132,23 +138,48 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
     return sub_fut.index.values[idx]
 
 
-def cdx_ticker(gen_ticker: str, dt, **kwargs) -> str:
+def cdx_ticker(
+    gen_ticker: str,
+    dt,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> str:
     """Resolve generic CDX 5Y ticker (e.g., 'CDX IG CDSI GEN 5Y Corp') to concrete series.
 
     Uses Bloomberg fields:
       - rolling_series: returns current on-the-run series number
       - on_the_run_current_bd_indicator: 'Y' if on-the-run
       - cds_first_accrual_start_date: start date of current series trading
+
+    Args:
+        gen_ticker: Generic CDX ticker.
+        dt: Date to resolve for.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        Resolved ticker string.
     """
     # Logger is module-level
+    from xbbg.core.context import split_kwargs
+
     dt = pd.Timestamp(dt)
     from xbbg.blp import bdp  # lazy
+
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    # Convert context to kwargs for bdp call
+    safe_kwargs = ctx.to_kwargs()
 
     try:
         info = bdp(
             tickers=gen_ticker,
             flds=['rolling_series', 'on_the_run_current_bd_indicator', 'cds_first_accrual_start_date'],
-            **kwargs,
+            **safe_kwargs,
         )
     except Exception as e:
         logger.error('Failed to fetch CDX metadata for generic ticker %s: %s', gen_ticker, e)
@@ -185,12 +216,36 @@ def cdx_ticker(gen_ticker: str, dt, **kwargs) -> str:
     return resolved
 
 
-def active_cdx(gen_ticker: str, dt, lookback_days: int = 10, **kwargs) -> str:
+def active_cdx(
+    gen_ticker: str,
+    dt,
+    lookback_days: int = 10,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> str:
     """Choose active CDX series for a date, preferring on-the-run unless it's not started yet.
 
     If ambiguous, prefer the series with recent non-empty PX_LAST over the lookback window.
+
+    Args:
+        gen_ticker: Generic CDX ticker.
+        dt: Date to resolve for.
+        lookback_days: Number of days to look back for activity.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        Active ticker string.
     """
-    cur = cdx_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs)
+    from xbbg.core.context import split_kwargs
+
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    cur = cdx_ticker(gen_ticker=gen_ticker, dt=dt, ctx=ctx)
     if not cur:
         return ''
 
@@ -210,9 +265,11 @@ def active_cdx(gen_ticker: str, dt, lookback_days: int = 10, **kwargs) -> str:
         return cur
 
     from xbbg.blp import bdh, bdp  # lazy
+    # Convert context to kwargs for bdp/bdh calls
+    safe_kwargs = ctx.to_kwargs()
     # If dt is before accrual start, prefer prev
     try:
-        cur_meta = bdp(cur, ['cds_first_accrual_start_date'], **kwargs)
+        cur_meta = bdp(cur, ['cds_first_accrual_start_date'], **safe_kwargs)
         cur_start = pd.Timestamp(cur_meta.iloc[0, 0]) if not cur_meta.empty else None
     except Exception:
         cur_start = None
@@ -224,7 +281,7 @@ def active_cdx(gen_ticker: str, dt, lookback_days: int = 10, **kwargs) -> str:
     end = pd.Timestamp(dt)
     start = end - pd.Timedelta(days=lookback_days)
     try:
-        px = bdh([cur, prev], ['PX_LAST'], start_date=start, end_date=end, **kwargs)
+        px = bdh([cur, prev], ['PX_LAST'], start_date=start, end_date=end, **safe_kwargs)
         if px.empty:
             return cur
         last_non_na = px.xs('PX_LAST', axis=1, level=1).ffill().iloc[-1]

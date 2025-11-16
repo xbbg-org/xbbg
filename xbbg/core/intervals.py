@@ -6,7 +6,6 @@ for an instrument's predefined sessions based on exchange metadata.
 
 from dataclasses import dataclass
 import logging
-from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -27,16 +26,55 @@ class Session:
 SessNA = Session(None, None)
 
 
+def _get_standard_sessions() -> set[str]:
+    """Extract standard session names from exch.yml dynamically.
+
+    Sessions are extracted from all exchanges defined in exch.yml.
+    This allows new sessions to be added to exch.yml without code changes.
+
+    Returns:
+        Set of session names found in exch.yml (excluding 'tz' which is not a session).
+    """
+    try:
+        from xbbg.io import param
+        exch = param.load_config(cat='exch')
+        sessions = set()
+        for idx in exch.index:
+            row = exch.loc[idx]
+            if hasattr(row, 'index'):
+                # Extract all keys that are not 'tz' and have list/str values (session definitions)
+                sessions.update(
+                    k for k in row.index
+                    if k != 'tz' and isinstance(row.get(k), (list, str))
+                )
+        return sessions
+    except Exception:
+        # Fallback to known sessions if config loading fails
+        return {'allday', 'day', 'am', 'pm', 'pre', 'post', 'night'}
+
+
+# Cache the standard sessions (computed once at module load)
+STANDARD_SESSIONS = _get_standard_sessions()
+
+
 def get_interval(ticker, session, **kwargs) -> Session:
     """Get interval from a defined session.
 
     Args:
         ticker: ticker
-        session: session
+        session: Session name. Sessions are dynamically extracted from ``exch.yml``.
+            Common sessions include: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
+            Availability depends on exchange - check ``xbbg/markets/exch.yml`` for specific definitions.
+
+            Also supports compound sessions like ``day_open_30``, ``day_normal_30_20``, etc.
+            Raises ``ValueError`` if session is not defined for the ticker's exchange.
         **kwargs: Additional arguments forwarded to exchange resolvers.
 
     Returns:
         Session of start_time and end_time.
+
+    Raises:
+        ValueError: If session is not defined for the ticker's exchange.
 
     Examples:
         >>> get_interval('005490 KS Equity', 'day_open_30')
@@ -69,18 +107,54 @@ def get_interval(ticker, session, **kwargs) -> Session:
     if '_' not in session:
         # For bare session names (e.g., 'day', 'allday'), use exact session times
         # instead of defaulting to '_normal_0_0' which adds a 1-minute offset.
-        #
-        # If the requested bare session is not defined for the exchange, we
-        # return SessNA and rely on `exch.yml` (or overrides) to explicitly
-        # define additional sessions where needed rather than guessing.
         interval = Intervals(ticker=ticker, **kwargs)
         if session in interval.exch:
             ss = interval.exch[session]
-            return Session(start_time=ss[0], end_time=ss[-1])
-        return SessNA
+            return Session(start_time=str(ss[0]), end_time=str(ss[-1]))
+
+        # Session not found - raise error with helpful message
+        available_sessions = [s for s in interval.exch.index if s != 'tz']
+        if available_sessions:
+            raise ValueError(
+                f'Session "{session}" is not defined for ticker {ticker}. '
+                f'Available sessions: {", ".join(sorted(available_sessions))}. '
+                f'See xbbg/markets/exch.yml for exchange-specific session definitions.'
+            )
+        raise ValueError(
+            f'Session "{session}" is not defined for ticker {ticker} and no sessions found. '
+            f'Check that exchange info is correctly configured for this ticker.'
+        )
+    # Handle compound sessions (e.g., 'day_open_30', 'day_normal_30_20')
     interval = Intervals(ticker=ticker, **kwargs)
     ss_info = session.split('_')
-    return getattr(interval, f'market_{ss_info.pop(1)}')(*ss_info)
+    if len(ss_info) < 2:
+        available_sessions = [s for s in interval.exch.index if s != 'tz']
+        raise ValueError(
+            f'Invalid session format: "{session}". Expected format: "session_type_params" '
+            f'(e.g., "day_open_30"). Available base sessions: {", ".join(sorted(available_sessions))}'
+        )
+
+    # Check if base session exists before trying compound parsing
+    base_session = ss_info[0]
+    if base_session not in interval.exch.index:
+        available_sessions = [s for s in interval.exch.index if s != 'tz']
+        raise ValueError(
+            f'Base session "{base_session}" is not defined for ticker {ticker}. '
+            f'Available sessions: {", ".join(sorted(available_sessions))}. '
+            f'See xbbg/markets/exch.yml for exchange-specific session definitions.'
+        )
+
+    session_type = ss_info[1]
+    method_name = f'market_{session_type}'
+    if not hasattr(interval, method_name):
+        available_methods = [m.replace('market_', '') for m in dir(interval) if m.startswith('market_')]
+        raise ValueError(
+            f'Session type "{session_type}" is not supported. '
+            f'Supported types: {", ".join(sorted(available_methods))}. '
+            f'Session format: "session_type_params" (e.g., "day_open_30", "day_normal_30_20")'
+        )
+    ss_info.pop(1)  # Remove the session type, leaving base session and params
+    return getattr(interval, method_name)(*ss_info)
 
 
 def shift_time(start_time, mins) -> str:
@@ -182,18 +256,18 @@ class Intervals:
 
         same_day = ss[0] < ss[-1]
 
-        if not start_time: s_time = ss[0]
+        if not start_time: s_time = str(ss[0])
         else:
-            s_time = param.to_hours(int(start_time))
-            if same_day: s_time = max(s_time, ss[0])
+            s_time = str(param.to_hours(int(start_time)))
+            if same_day: s_time = max(s_time, str(ss[0]))
 
-        if not end_time: e_time = ss[-1]
+        if not end_time: e_time = str(ss[-1])
         else:
-            e_time = param.to_hours(int(end_time))
-            if same_day: e_time = min(e_time, ss[-1])
+            e_time = str(param.to_hours(int(end_time)))
+            if same_day: e_time = min(e_time, str(ss[-1]))
 
         if same_day and (
-            pd.Timestamp(cast(str, s_time)) > pd.Timestamp(cast(str, e_time))
+            pd.Timestamp(s_time) > pd.Timestamp(e_time)
         ):
             return SessNA
         return Session(start_time=s_time, end_time=e_time)

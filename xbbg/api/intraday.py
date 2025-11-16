@@ -27,19 +27,47 @@ logger = logging.getLogger(__name__)
 __all__ = ['bdib', 'bdtick']
 
 
-def _load_cached_bdib(ticker: str, dt, session: str, typ: str, ex_info, **kwargs) -> pd.DataFrame | None:
+def _load_cached_bdib(
+    ticker: str,
+    dt,
+    session: str,
+    typ: str,
+    ex_info,
+    ctx=None,
+    **kwargs,
+) -> pd.DataFrame | None:
     """Load cached intraday bar data if available.
+
+    Args:
+        ticker: Ticker symbol.
+        dt: Date.
+        session: Session name.
+        typ: Event type.
+        ex_info: Exchange info.
+        ctx: Bloomberg context (infrastructure kwargs only).
+        **kwargs: Legacy kwargs support.
 
     Returns:
         Cached DataFrame if available, None otherwise.
     """
-    ss_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=ex_info.tz, **kwargs)
+    ss_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=ex_info.tz, ctx=ctx, **kwargs)
+    if ss_rng.start_time is None or ss_rng.end_time is None:
+        raise ValueError(
+            f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
+            f'This should not happen - session validation should have caught this earlier.'
+        )
     data_file = storage.bar_file(ticker=ticker, dt=dt, typ=typ)
-    if files.exists(data_file) and kwargs.get('cache', True) and (not kwargs.get('reload', False)):
+    if ctx is None:
+        cache_enabled = kwargs.get('cache', True)
+        reload_flag = kwargs.get('reload', False)
+    else:
+        cache_enabled = ctx.cache
+        reload_flag = ctx.reload
+    if files.exists(data_file) and cache_enabled and (not reload_flag):
         res = (
             pd.read_parquet(data_file)
             .pipe(pipeline.add_ticker, ticker=ticker)
-            .loc[ss_rng[0]:ss_rng[1]]
+            .loc[ss_rng.start_time:ss_rng.end_time]
         )
         if not res.empty:
             logger.debug('Loading cached Bloomberg intraday data from: %s', data_file)
@@ -185,13 +213,21 @@ def _get_default_exchange_info(ticker: str, dt=None, session='allday', **kwargs)
     })
 
 
-def _build_bdib_request(ticker: str, dt, typ: str, ex_info, **kwargs):
+def _build_bdib_request(ticker: str, dt, typ: str, ex_info, ctx=None, **kwargs):
     """Build Bloomberg intraday bar request.
+
+    Args:
+        ticker: Ticker symbol.
+        dt: Date.
+        typ: Event type.
+        ex_info: Exchange info.
+        ctx: Bloomberg context (infrastructure kwargs only).
+        **kwargs: Legacy kwargs support.
 
     Returns:
         Tuple of (request, date_string).
     """
-    time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', tz=ex_info.tz, **kwargs)
+    time_rng = process.time_range(dt=dt, ticker=ticker, session='allday', tz=ex_info.tz, ctx=ctx, **kwargs)
 
     # If time_range returns None (no session found), create default time range
     if time_rng.start_time is None or time_rng.end_time is None:
@@ -242,8 +278,27 @@ def _build_bdib_request(ticker: str, dt, typ: str, ex_info, **kwargs):
     return request, cur_dt
 
 
-def _process_bdib_response(res: pd.DataFrame, ticker: str, dt, session: str, typ: str, ex_info, **kwargs) -> pd.DataFrame:
+def _process_bdib_response(
+    res: pd.DataFrame,
+    ticker: str,
+    dt,
+    session: str,
+    typ: str,
+    ex_info,
+    ctx=None,
+    **kwargs,
+) -> pd.DataFrame:
     """Process and transform Bloomberg intraday bar response.
+
+    Args:
+        res: Raw response DataFrame.
+        ticker: Ticker symbol.
+        dt: Date.
+        session: Session name.
+        typ: Event type.
+        ex_info: Exchange info.
+        ctx: Bloomberg context (infrastructure kwargs only).
+        **kwargs: Legacy kwargs support.
 
     Returns:
         Processed DataFrame filtered by session range.
@@ -251,7 +306,7 @@ def _process_bdib_response(res: pd.DataFrame, ticker: str, dt, session: str, typ
     if res.empty or ('time' not in res):
         return pd.DataFrame()
 
-    ss_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=ex_info.tz, **kwargs)
+    ss_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=ex_info.tz, ctx=ctx, **kwargs)
     data = (
         res
         .set_index('time')
@@ -261,10 +316,21 @@ def _process_bdib_response(res: pd.DataFrame, ticker: str, dt, session: str, typ
         .tz_convert(ex_info.tz)
         .pipe(pipeline.add_ticker, ticker=ticker)
     )
-    if kwargs.get('cache', True):
-        storage.save_intraday(data=data[ticker], ticker=ticker, dt=dt, typ=typ, **kwargs)
+    if ctx is None:
+        cache_enabled = kwargs.get('cache', True)
+        cache_kwargs = kwargs
+    else:
+        cache_enabled = ctx.cache
+        cache_kwargs = ctx.to_kwargs()
+    if cache_enabled:
+        storage.save_intraday(data=data[ticker], ticker=ticker, dt=dt, typ=typ, **cache_kwargs)
 
-    return data.loc[ss_rng[0]:ss_rng[1]]
+    if ss_rng.start_time is None or ss_rng.end_time is None:
+        raise ValueError(
+            f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
+            f'This should not happen - session validation should have caught this earlier.'
+        )
+    return data.loc[ss_rng.start_time:ss_rng.end_time]
 
 
 def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFrame:
@@ -273,7 +339,10 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
     Args:
         ticker: ticker name
         dt: date to download
-        session: [allday, day, am, pm, pre, post]
+        session: Trading session name. Sessions are dynamically extracted from ``exch.yml``.
+            Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
+            Availability depends on exchange - check ``xbbg/markets/exch.yml`` for definitions.
+            Raises ``ValueError`` if session is not defined for the ticker's exchange.
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
         **kwargs:
             interval: bar interval in minutes (default: 1). For sub-minute intervals,
@@ -300,8 +369,19 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10)  # doctest: +SKIP
     """
     from xbbg.core import trials
+    from xbbg.core.context import split_kwargs
 
-    ex_info = const.exch_info(ticker=ticker, **kwargs)
+    # Split kwargs at API boundary
+    split = split_kwargs(**kwargs)
+    ctx = split.infra
+    override_kwargs = split.override_like
+    request_opts = split.request_opts
+
+    # Merge override_kwargs back into kwargs for Bloomberg request building
+    # (init_request and create_request handle override processing)
+    all_kwargs = {**ctx.to_kwargs(), **override_kwargs, **request_opts}
+
+    ex_info = const.exch_info(ticker=ticker, **ctx.to_kwargs())
     # For fixed income securities (Govt, Corp, etc.), use default exchange info
     if ex_info.empty:
         # Check if this is a fixed income security or identifier-based ticker
@@ -315,17 +395,17 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
              t_info[0] and len(t_info[0]) >= 2 and t_info[0][:2].isalpha())  # Only if starts with 2-letter country code
         )
         if is_fixed_income:
-            ex_info = _get_default_exchange_info(ticker=ticker, dt=dt, session=session, **kwargs)
+            ex_info = _get_default_exchange_info(ticker=ticker, dt=dt, session=session, **ctx.to_kwargs())
             logger.debug('Using default exchange info for fixed income security: %s', ticker)
         else:
             raise KeyError(f'Cannot find exchange info for {ticker}')
 
     # Try loading from cache
-    cached_data = _load_cached_bdib(ticker, dt, session, typ, ex_info, **kwargs)
+    cached_data = _load_cached_bdib(ticker, dt, session, typ, ex_info, ctx=ctx)
     if cached_data is not None:
         return cached_data
 
-    if not process.check_current(dt=dt, logger=logger, **kwargs):
+    if not process.check_current(dt=dt, logger=logger, **ctx.to_kwargs()):
         return pd.DataFrame()
 
     # Resolve futures ticker if needed
@@ -337,29 +417,29 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
     trial_kw = {'ticker': ticker, 'dt': dt, 'typ': typ, 'func': 'bdib'}
     num_trials = trials.num_trials(**trial_kw)
     if num_trials >= 2:
-        if kwargs.get('batch', False):
+        if ctx.batch:
             return pd.DataFrame()
         if logger.isEnabledFor(logging.INFO):
             cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
             logger.info('No data available after %d attempt(s) for %s / %s / %s', num_trials, q_tckr, cur_dt, typ)
         return pd.DataFrame()
 
-    # Build and send request
-    request, cur_dt = _build_bdib_request(ticker, dt, typ, ex_info, **kwargs)
+    # Build and send request (use all_kwargs for Bloomberg request building)
+    request, cur_dt = _build_bdib_request(ticker, dt, typ, ex_info, ctx=ctx, **all_kwargs)
     need_info_log = logger.isEnabledFor(logging.DEBUG) or logger.isEnabledFor(logging.WARNING)
     if logger.isEnabledFor(logging.DEBUG) and need_info_log:
         logger.debug('Sending Bloomberg intraday bar data request for %s / %s / %s', q_tckr, cur_dt, typ)
-    handle = process.conn.send_request(request=request, service='//blp/refdata', **kwargs)
+    handle = process.conn.send_request(request=request, service='//blp/refdata', **ctx.to_kwargs())
 
     # Process response
-    res = pd.DataFrame(process.rec_events(func=process.process_bar, event_queue=handle["event_queue"], **kwargs))
+    res = pd.DataFrame(process.rec_events(func=process.process_bar, event_queue=handle["event_queue"], **ctx.to_kwargs()))
     if res.empty or ('time' not in res):
         if logger.isEnabledFor(logging.WARNING):
             logger.warning('No intraday bar data returned for %s / %s / %s', q_tckr, cur_dt, typ)
         trials.update_trials(cnt=num_trials + 1, **trial_kw)
         return pd.DataFrame()
 
-    return _process_bdib_response(res, ticker, dt, session, typ, ex_info, **kwargs)
+    return _process_bdib_response(res, ticker, dt, session, typ, ex_info, ctx=ctx)
 
 
 def bdtick(
@@ -375,7 +455,10 @@ def bdtick(
     Args:
         ticker: Ticker name.
         dt: Date to download.
-        session: Market session: [allday, day, am, pm, pre, post]. Defaults to 'allday'.
+        session: Trading session name. Sessions are dynamically extracted from ``exch.yml``.
+            Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
+            Availability depends on exchange. Defaults to 'allday'.
+            Raises ``ValueError`` if session is not defined for the ticker's exchange.
         time_range: Tuple of (start_time, end_time) in HH:MM format.
             If provided, `dt` and `session` are ignored. Times are converted to UTC.
         types: Single event type or list of event types. One or more of:
@@ -402,15 +485,22 @@ def bdtick(
             .tz_convert('UTC')
         )
     else:
-        time_rng = process.time_range(dt=dt, ticker=ticker, session=session, **kwargs)
+        from xbbg.core.context import split_kwargs
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+        time_rng = process.time_range(dt=dt, ticker=ticker, session=session, ctx=ctx, **kwargs)
+        if time_rng.start_time is None or time_rng.end_time is None:
+            raise ValueError(f'Unable to resolve trading session for ticker {ticker} on date {dt}')
+        start_dt = time_rng.start_time
+        end_dt = time_rng.end_time
 
     request = process.create_request(
         service='//blp/refdata',
         request='IntradayTickRequest',
         settings=[
             ('security', ticker),
-            ('startDateTime', time_rng[0]),
-            ('endDateTime', time_rng[1]),
+            ('startDateTime', start_dt),
+            ('endDateTime', end_dt),
             ('includeConditionCodes', True),
             ('includeExchangeCodes', True),
             ('includeNonPlottableEvents', True),

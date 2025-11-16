@@ -39,11 +39,21 @@ def bdh(
             - `split`: Adjust for splits and ignore all dividends
             - `all` == `dvd|split`: Adjust for all
             - None: Bloomberg default OR use kwargs
-        **kwargs: Additional overrides.
+        **kwargs: Additional overrides and infrastructure options.
 
     Returns:
         pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
     """
+    from xbbg.core.context import split_kwargs
+
+    # Split kwargs at API boundary
+    split = split_kwargs(**kwargs)
+    ctx = split.infra
+    override_kwargs = split.override_like
+
+    # Merge override_kwargs back into kwargs for Bloomberg request building
+    all_kwargs = {**ctx.to_kwargs(), **override_kwargs}
+
     if flds is None: flds = ['Last_Price']
     e_dt = utils.fmt_dt(end_date, fmt='%Y%m%d')
     if start_date is None: start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
@@ -52,18 +62,18 @@ def bdh(
     request = process.create_request(
         service='//blp/refdata',
         request='HistoricalDataRequest',
-        **kwargs,
+        **all_kwargs,
     )
     process.init_request(
         request=request, tickers=tickers, flds=flds,
-        start_date=s_dt, end_date=e_dt, adjust=adjust, **kwargs
+        start_date=s_dt, end_date=e_dt, adjust=adjust, **all_kwargs
     )
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Sending Bloomberg reference data request for %d ticker(s), %d field(s)', len(tickers), len(flds))
-    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
+    handle = conn.send_request(request=request, service='//blp/refdata', **ctx.to_kwargs())
 
-    res = pd.DataFrame(process.rec_events(process.process_hist, event_queue=handle["event_queue"], **kwargs))
-    if kwargs.get('raw', False): return res
+    res = pd.DataFrame(process.rec_events(process.process_hist, event_queue=handle["event_queue"], **ctx.to_kwargs()))
+    if ctx.raw: return res
     if helpers.check_empty_result(res, ['ticker', 'date']):
         return pd.DataFrame()
 

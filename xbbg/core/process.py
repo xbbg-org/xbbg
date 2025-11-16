@@ -4,9 +4,14 @@ Includes helpers to create requests, initialize overrides, iterate
 Bloomberg event streams, and parse reference, historical, and intraday data.
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterator
 from itertools import starmap
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from xbbg.core.context import BloombergContext
 
 import numpy as np
 import pandas as pd
@@ -127,7 +132,14 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
         ovrd.setElement(blpapi.Name('value'), ovrd_val)
 
 
-def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Session:
+def time_range(
+    dt,
+    ticker,
+    session='allday',
+    tz='UTC',
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> intervals.Session:
     """Time range in UTC (for intraday bar) or other timezone.
 
     Args:
@@ -135,19 +147,37 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
         ticker: Ticker.
         session: Market session defined in ``markets/exch.yml``.
         tz: Target timezone name or tz-resolvable input.
-        **kwargs: Passed to exchange/session resolvers.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
 
     Returns:
         intervals.Session.
+
+    Note:
+        This function accepts either a BloombergContext (preferred) or kwargs
+        for backward compatibility. When kwargs are provided, only infrastructure
+        kwargs are extracted and passed to internal functions.
     """
-    pmc_extended = bool(kwargs.pop('pmc_extended', False))
+    from xbbg.core.context import split_kwargs
 
     logger = logging.getLogger(__name__)
 
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+        pmc_extended = bool(split.request_opts.get('pmc_extended', False))
+    else:
+        pmc_extended = bool(kwargs.pop('pmc_extended', False))
+
+    # Convert context to kwargs for internal functions (backward compatibility)
+    session_kwargs = ctx.to_kwargs()
+
     # First try legacy exch.yml-based sessions
     try:
-        ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
-        ex_info = const.exch_info(ticker=ticker, **kwargs)
+        ss = intervals.get_interval(ticker=ticker, session=session, **session_kwargs)
+        ex_info = const.exch_info(ticker=ticker, **session_kwargs)
         has_session = (ss.start_time is not None) and (ss.end_time is not None)
         has_tz = ('tz' in ex_info.index) if hasattr(ex_info, 'index') else False
         if has_session and has_tz:
@@ -170,10 +200,11 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
             )
             if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
             return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+    except ValueError:
+        # ValueError from get_interval means session is not defined - re-raise it
+        raise
     except Exception:  # noqa: BLE001
-        # Fall through to PMC fallback - exception is expected and handled by fallback logic.
-        # We intentionally do not re-raise here because the PMC-based fallback below
-        # provides a secondary path to resolve the session.
+        # Other exceptions fall through to PMC fallback
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 'Primary session resolution failed for %s on %s; falling back to PMC',
@@ -183,37 +214,42 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
             )
 
     # Fallback: try pandas-market-calendars via exch_code mapping
-    try:
-        from xbbg.markets.pmc import pmc_session_for_date
-        pmc_ss = pmc_session_for_date(
-            ticker=ticker, dt=dt, session=session, include_extended=pmc_extended, **kwargs
-        )
-    except Exception:
-        pmc_ss = None
-    if pmc_ss is not None:
-        logger.warning('Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars', ticker, session)
-        cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-        time_fmt = '%Y-%m-%dT%H:%M:%S'
+    # Note: PMC only supports 'day' and 'allday' sessions
+    pmc_supported_sessions = {'day', 'allday'}
+    if session in pmc_supported_sessions:
         try:
-            from xbbg.core import timezone as _tz
-            dest_tz = _tz.get_tz(tz)
-        except Exception:
-            dest_tz = tz
-        time_idx = (
-            pd.DatetimeIndex([
-                f'{cur_dt} {pmc_ss.start}',
-                f'{cur_dt} {pmc_ss.end}'],
+            from xbbg.markets.pmc import pmc_session_for_date
+            pmc_ss = pmc_session_for_date(
+                ticker=ticker, dt=dt, session=session, include_extended=pmc_extended, ctx=ctx
             )
-            .tz_localize(pmc_ss.tz)
-            .tz_convert(DEFAULT_TZ)
-            .tz_convert(dest_tz)
-        )
-        if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
-        return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+        except Exception:
+            pmc_ss = None
+        if pmc_ss is not None:
+            logger.warning('Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars', ticker, session)
+            cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+            time_fmt = '%Y-%m-%dT%H:%M:%S'
+            try:
+                from xbbg.core import timezone as _tz
+                dest_tz = _tz.get_tz(tz)
+            except Exception:
+                dest_tz = tz
+            time_idx = (
+                pd.DatetimeIndex([
+                    f'{cur_dt} {pmc_ss.start}',
+                    f'{cur_dt} {pmc_ss.end}'],
+                )
+                .tz_localize(pmc_ss.tz)
+                .tz_convert(DEFAULT_TZ)
+                .tz_convert(dest_tz)
+            )
+            if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+            return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
 
-    # If all fails, return an empty session in UTC day bounds (conservative)
-    logger.error('Unable to resolve trading session for ticker %s on date %s', ticker, dt)
-    return intervals.SessNA
+    # If all fails, raise error - session must be defined
+    raise ValueError(
+        f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
+        f'Session is not defined in exch.yml and PMC fallback is not available or does not support this session.'
+    )
 
 
 def _process_response_event(ev: blpapi.Event, func, **kwargs):

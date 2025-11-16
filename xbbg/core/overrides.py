@@ -13,6 +13,9 @@ BBG_ROOT = 'BBG_ROOT'
 PRSV_COLS = [
     'raw', 'has_date', 'cache', 'cache_days', 'col_maps',
     'keep_one', 'price_only', 'port', 'log', 'timeout', 'sess',
+    # Request-specific parameters (not Bloomberg override fields)
+    'interval', 'typ', 'types', 'intervalHasSeconds', 'time_range',
+    'batch', 'reload',
 ]
 
 ELEMENTS = [

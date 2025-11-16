@@ -21,10 +21,14 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from xbbg.io import files
+
+if TYPE_CHECKING:
+    from xbbg.core.context import BloombergContext
 
 logger = logging.getLogger(__name__)
 
@@ -181,17 +185,41 @@ def pmc_remove_mapping(exch_code: str, scope: str = 'user') -> None:
         logger.warning('PMC mapping not found: %s in %s scope', key, scope)
 
 
-def _get_exch_code(ticker: str, **kwargs) -> str:
-    """Fetch Bloomberg exch_code for ticker (cached)."""
+def _get_exch_code(
+    ticker: str,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> str:
+    """Fetch Bloomberg exch_code for ticker (cached).
+
+    Args:
+        ticker: Ticker symbol.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        Exchange code string.
+    """
     # Logger is module-level
+    from xbbg.core.context import split_kwargs
+
     cache = _load_cache()
     tkey = f"exch_code::{ticker}"
     if tkey in cache:
         return cache[tkey]
 
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    # Convert context to kwargs for bdp call
+    safe_kwargs = ctx.to_kwargs()
+
     try:
         from xbbg.blp import bdp  # lazy import
-        df = bdp(tickers=ticker, flds=['exch_code'], **kwargs)
+        df = bdp(tickers=ticker, flds=['exch_code'], **safe_kwargs)
     except Exception as e:
         logger.error('Failed to fetch exchange code from Bloomberg for ticker %s: %s', ticker, e)
         return ''
@@ -214,18 +242,38 @@ def _get_calendar_name_from_exch_code(exch_code: str) -> str:
     return mapping.get(exch_code.upper(), '') if exch_code else ''
 
 
-def resolve_calendar_name(ticker: str, **kwargs) -> str:
+def resolve_calendar_name(
+    ticker: str,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> str:
     """Resolve pandas-market-calendars id for ticker via Bloomberg exch_code.
 
     Looks up exch_code in user JSON mapping.
+
+    Args:
+        ticker: Ticker symbol.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        Calendar name string.
     """
     # Logger is module-level
+    from xbbg.core.context import split_kwargs
+
     cache = _load_cache()
     tkey = f"calendar::{ticker}"
     if tkey in cache:
         return cache[tkey]
 
-    exch_code = _get_exch_code(ticker, **kwargs)
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    exch_code = _get_exch_code(ticker, ctx=ctx)
     cal = _get_calendar_name_from_exch_code(exch_code)
     if not cal:
         logger.warning('No PMC calendar mapping found for exchange code %s (ticker: %s)', exch_code, ticker)
@@ -239,15 +287,40 @@ def _to_hhmm(ts: pd.Timestamp) -> str:
     return ts.strftime('%H:%M')
 
 
-def pmc_session_for_date(ticker: str, dt, session: str = 'day', include_extended: bool = False, **kwargs) -> PmcSession | None:
+def pmc_session_for_date(
+    ticker: str,
+    dt,
+    session: str = 'day',
+    include_extended: bool = False,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> PmcSession | None:
     """Compute session open/close using pandas-market-calendars.
 
     - session='day': market_open to market_close
     - session='allday': pre to post if available, else falls back to market times
+
+    Args:
+        ticker: Ticker symbol.
+        dt: Date to compute session for.
+        session: Session name ('day' or 'allday').
+        include_extended: Whether to include extended hours.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        PmcSession or None if not available.
     """
     # Logger is module-level
+    from xbbg.core.context import split_kwargs
 
-    cal_name = resolve_calendar_name(ticker, **kwargs)
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    cal_name = resolve_calendar_name(ticker, ctx=ctx)
     if not cal_name:
         return None
 
@@ -287,17 +360,35 @@ def pmc_session_for_date(ticker: str, dt, session: str = 'day', include_extended
 
 
 
-def pmc_wizard(ticker: str, scope: str = 'user', **kwargs) -> None:
+def pmc_wizard(
+    ticker: str,
+    scope: str = 'user',
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> None:
     """Interactive wizard to add/update PMC mapping for a security's exch_code.
 
     Steps:
     1) Fetch Bloomberg exch_code for the given ticker.
     2) Display current effective mapping (if any) and available PMC calendars.
     3) Prompt for a calendar id and save to the chosen scope (default: user).
+
+    Args:
+        ticker: Ticker symbol.
+        scope: Mapping scope ('user' or 'package').
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
     """
     # Logger is module-level
+    from xbbg.core.context import split_kwargs
 
-    exch_code = _get_exch_code(ticker, **kwargs)
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    exch_code = _get_exch_code(ticker, ctx=ctx)
     if not exch_code:
         print(f"Could not resolve exch_code from Bloomberg for: {ticker}")
         hint = ' (hint: TRACE for US credit/OTC)' if ticker.endswith(' Corp') else ''

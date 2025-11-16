@@ -41,11 +41,21 @@ def beqs(
             Increase for complex screens that may have longer gaps between events.
         max_timeouts: Maximum number of timeout events allowed before giving up
             (default: 50). Increase for screens that take longer to complete.
-        **kwargs: Additional request overrides for BeqsRequest.
+        **kwargs: Additional request overrides for BeqsRequest and infrastructure options.
 
     Returns:
         pd.DataFrame.
     """
+    from xbbg.core.context import split_kwargs
+
+    # Split kwargs at API boundary
+    split = split_kwargs(**kwargs)
+    ctx = split.infra
+    override_kwargs = split.override_like
+
+    # Merge override_kwargs back into kwargs for Bloomberg request building
+    all_kwargs = {**ctx.to_kwargs(), **override_kwargs}
+
     request = process.create_request(
         service='//blp/refdata',
         request='BeqsRequest',
@@ -55,27 +65,29 @@ def beqs(
             ('Group', group),
         ],
         ovrds=[('PiTDate', utils.fmt_dt(asof, '%Y%m%d'))] if asof else [],
-        **kwargs,
+        **all_kwargs,
     )
 
     logger.debug('Sending Bloomberg Equity Screening (BEQS) request for screen: %s, type: %s, group: %s', screen, typ, group)
-    handle = conn.send_request(request=request, service='//blp/refdata', **kwargs)
+    handle = conn.send_request(request=request, service='//blp/refdata', **ctx.to_kwargs())
     # Use longer timeout and more allowed timeouts for BEQS requests to ensure complete response
     # BEQS requests can take longer, especially for complex screens, and may have longer gaps between events
-    beqs_timeout = kwargs.pop('timeout', 2000)  # 2 seconds default for BEQS (vs 500ms default)
-    beqs_max_timeouts = kwargs.pop('max_timeouts', 50)  # Allow more timeouts for BEQS (vs 20 default)
+    beqs_timeout = ctx.timeout if ctx.timeout is not None else 2000  # 2 seconds default for BEQS (vs 500ms default)
+    beqs_max_timeouts = getattr(ctx, 'max_timeouts', 50)  # Allow more timeouts for BEQS (vs 20 default)
     res = pd.DataFrame(process.rec_events(
         func=process.process_ref,
         event_queue=handle["event_queue"],
         timeout=beqs_timeout,
         max_timeouts=beqs_max_timeouts,
-        **kwargs
+        **ctx.to_kwargs()
     ))
     if res.empty:
-        if kwargs.get('trial', 0): return pd.DataFrame()
+        # Check for trial flag in original kwargs (not in context)
+        trial = kwargs.get('trial', 0)
+        if trial: return pd.DataFrame()
         return beqs(screen=screen, asof=asof, typ=typ, group=group, trial=1, **kwargs)
 
-    if kwargs.get('raw', False): return res
+    if ctx.raw: return res
     cols = res.field.unique()
     return (
         res
@@ -129,8 +141,14 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
         ...     }
         ... )  # doctest: +SKIP
     """
+    from xbbg.core.context import split_kwargs
+
+    # Split kwargs at API boundary
+    split = split_kwargs(**kwargs)
+    ctx = split.infra
+
     # Create request using exrsvc service
-    exr_service = conn.bbg_service(service='//blp/exrsvc', **kwargs)
+    exr_service = conn.bbg_service(service='//blp/exrsvc', **ctx.to_kwargs())
     request = exr_service.createRequest('ExcelGetGridRequest')
 
     # Set Domain element
@@ -148,18 +166,18 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
         override_info = f' with {len(overrides)} override(s)' if overrides else ''
         logger.debug('Sending Bloomberg SRCH request for domain: %s%s', domain, override_info)
 
-    handle = conn.send_request(request=request, service='//blp/exrsvc', **kwargs)
+    handle = conn.send_request(request=request, service='//blp/exrsvc', **ctx.to_kwargs())
 
     # Use longer timeout for BSRCH requests (similar to BEQS)
-    bsrch_timeout = kwargs.pop('timeout', 2000)
-    bsrch_max_timeouts = kwargs.pop('max_timeouts', 50)
+    bsrch_timeout = ctx.timeout if ctx.timeout is not None else 2000
+    bsrch_max_timeouts = getattr(ctx, 'max_timeouts', 50)
 
     rows = list(process.rec_events(
         func=process.process_bsrch,
         event_queue=handle["event_queue"],
         timeout=bsrch_timeout,
         max_timeouts=bsrch_max_timeouts,
-        **kwargs
+        **ctx.to_kwargs()
     ))
 
     if not rows:
@@ -283,6 +301,12 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         ...     "get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
         ... )
     """
+    from xbbg.core.context import split_kwargs
+
+    # Split kwargs at API boundary
+    split = split_kwargs(**kwargs)
+    ctx = split.infra
+
     # Use BQL sendQuery with 'expression', mirroring common BQL request shape.
     settings = [('expression', query)]
     if params:
@@ -293,12 +317,12 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         request='sendQuery',
         settings=settings,
         ovrds=overrides or [],
-        **kwargs,
+        **ctx.to_kwargs(),
     )
 
     logger.debug('Sending Bloomberg Query Language (BQL) request')
-    handle = conn.send_request(request=request, service='//blp/bqlsvc', **kwargs)
+    handle = conn.send_request(request=request, service='//blp/bqlsvc', **ctx.to_kwargs())
 
-    rows = list(process.rec_events(func=process.process_bql, event_queue=handle["event_queue"], **kwargs))
+    rows = list(process.rec_events(func=process.process_bql, event_queue=handle["event_queue"], **ctx.to_kwargs()))
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
