@@ -54,17 +54,14 @@ def pytest_configure(config):
             logging.getLogger().setLevel(log_level)
 
     print(config)
-    sys.pytest_call = True
+    sys.pytest_call = True  # type: ignore[attr-defined]  # Dynamic attribute for pytest session tracking
     # Store prompt option globally for use in hooks
     config._prompt_between_tests = config.getoption('--prompt-between-tests', default=False)
 
 
 def pytest_ignore_collect(collection_path, config):
     """Exclude test_live_endpoints.py from collection unless --run-xbbg-live is set."""
-    if collection_path.name == 'test_live_endpoints.py':
-        if not config.getoption('--run-xbbg-live', default=False):
-            return True  # Ignore this file
-    return False  # Don't ignore other files
+    return collection_path.name == 'test_live_endpoints.py' and not config.getoption('--run-xbbg-live', default=False)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -83,4 +80,4 @@ def pytest_unconfigure(config):
 
     print(config)
     if hasattr(sys, 'pytest_call'):
-        del sys.pytest_call
+        del sys.pytest_call  # type: ignore[attr-defined]
