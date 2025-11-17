@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PKG_PATH = files.abspath(__file__, 1)
-_CACHE_FILE = str(Path(PKG_PATH) / 'markets' / 'cached' / 'pmc_cache.pkl')
+_CACHE_FILE = str(Path(PKG_PATH) / 'markets' / 'cached' / 'pmc_cache.json')
 _MAP_PATHS = [
     str(Path(os.environ.get('BBG_ROOT', '')) / 'markets' / 'pmc_map.json') if os.environ.get('BBG_ROOT', '') else '',
     str(Path(PKG_PATH) / 'markets' / 'pmc_map.json'),
@@ -72,15 +72,24 @@ def _load_pmc_map(logger=None) -> dict:
 
 
 def _save_cache(cache: dict):
+    """Save PMC cache dictionary to JSON file."""
     files.create_folder(_CACHE_FILE, is_file=True)
-    pd.to_pickle(cache, _CACHE_FILE)
+    try:
+        with open(_CACHE_FILE, 'w', encoding='utf-8') as fp:
+            json.dump(cache, fp, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error('Failed to save PMC cache to %s: %s', _CACHE_FILE, e)
 
 
 def _load_cache() -> dict:
+    """Load PMC cache dictionary from JSON file."""
     if files.exists(_CACHE_FILE):
         try:
-            return pd.read_pickle(_CACHE_FILE) or {}
-        except (FileNotFoundError, EOFError, ValueError):
+            with open(_CACHE_FILE, encoding='utf-8') as fp:
+                data = json.load(fp)
+                return data if isinstance(data, dict) else {}
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            logger.debug('Failed to load PMC cache from %s: %s', _CACHE_FILE, e)
             return {}
     return {}
 

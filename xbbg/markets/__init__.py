@@ -12,9 +12,12 @@ def __getattr__(name: str):
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Direct imports for modules (no circular dependency)
-from xbbg.markets import pmc, providers  # noqa: E402
 # Import resolvers here to avoid reimport warning, but functions are accessed via __getattr__
-from xbbg.markets import resolvers  # noqa: E402, PLC0415
+from xbbg.markets import (  # noqa: E402
+    pmc,
+    providers,
+    resolvers,  # noqa: E402, PLC0415
+)
 
 __all__ = [
     # Market info functions (lazy-loaded via __getattr__)

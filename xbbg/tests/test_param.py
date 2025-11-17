@@ -68,16 +68,18 @@ class TestLoadYaml:
 
     @patch('xbbg.io.param.files.exists')
     @patch('xbbg.io.param.files.modified_time')
-    @patch('xbbg.io.param.pd.read_pickle')
-    def test_load_yaml_from_cache(self, mock_read_pickle, mock_mod_time, mock_exists):
+    @patch('xbbg.io.param.pd.read_parquet')
+    def test_load_yaml_from_cache(self, mock_read_parquet, mock_mod_time, mock_exists):
         """Test loading YAML from cache."""
         mock_exists.return_value = True
         mock_mod_time.side_effect = [100, 150]  # cache is newer
-        mock_read_pickle.return_value = pd.Series({'key': 'value'})
+        # Mock parquet read: returns DataFrame with 'value' column containing Series data
+        mock_df = pd.DataFrame({'value': pd.Series({'key': 'value'})})
+        mock_read_parquet.return_value = mock_df
 
         result = param.load_yaml('test.yml')
         assert isinstance(result, pd.Series)
-        mock_read_pickle.assert_called_once()
+        mock_read_parquet.assert_called_once()
 
     def test_load_yaml_from_source_skipped(self):
         """Test loading YAML from source file - skipped due to file system complexity."""

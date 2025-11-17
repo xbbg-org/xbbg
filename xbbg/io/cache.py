@@ -6,7 +6,6 @@ for Bloomberg intraday bar data and reference data (BDP/BDS).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import os
 from pathlib import Path

@@ -48,10 +48,10 @@ def load_config(cat: str) -> pd.DataFrame:
         pd.DataFrame: Concatenated configuration.
     """
     cfg_files = config_files(cat=cat)
-    cache_cfg = str(Path(PKG_PATH) / 'markets' / 'cached' / f'{cat}_cfg.pkl')
-    last_mod = max(map(files.modified_time, cfg_files))
+    cache_cfg = str(Path(PKG_PATH) / 'markets' / 'cached' / f'{cat}_cfg.parq')
+    last_mod = max(map(files.modified_time, cfg_files), default=0)
     if files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
-        return pd.read_pickle(cache_cfg)
+        return pd.read_parquet(cache_cfg)
 
     config = (
         pd.concat([
@@ -60,7 +60,7 @@ def load_config(cat: str) -> pd.DataFrame:
         ], sort=False)
     )
     files.create_folder(cache_cfg, is_file=True)
-    config.to_pickle(cache_cfg)
+    config.to_parquet(cache_cfg)
     return config
 
 
@@ -76,16 +76,22 @@ def load_yaml(yaml_file: str) -> pd.Series:
     # Convert to Path for cross-platform compatibility
     yaml_path = Path(yaml_file)
     cache_file = str(
-        yaml_path.parent.parent / 'cached' / yaml_path.with_suffix('.pkl').name
+        yaml_path.parent.parent / 'cached' / yaml_path.with_suffix('.parq').name
     )
     cur_mod = files.modified_time(yaml_file)
     if files.exists(cache_file) and files.modified_time(cache_file) > cur_mod:
-        return pd.read_pickle(cache_file)
+        # Load from parquet: Series was saved as DataFrame with 'value' column
+        df = pd.read_parquet(cache_file)
+        # Restore Series with original index
+        return pd.Series(df['value'].values, index=df.index, name=df['value'].name)
 
     with open(yaml_file) as fp:
         data = pd.Series(_yaml.load(fp))
         files.create_folder(cache_file, is_file=True)
-        data.to_pickle(cache_file)
+        # Convert Series to DataFrame for parquet storage
+        # Store index as column and values as 'value' column
+        df = pd.DataFrame({'value': data.values}, index=data.index)
+        df.to_parquet(cache_file)
         return data
 
 
