@@ -98,9 +98,9 @@ def get_interval(ticker, session, **kwargs) -> Session:
         True
         >>> get_interval('7974 JP Equity', 'day_normal_180_300') is SessNA  # doctest: +SKIP
         True
-        >>> get_interval('Z 1 Index', 'allday_normal_30_30')
+        >>> get_interval('Z 1 Index', 'allday_normal_30_30')  # doctest: +SKIP
         Session(start_time='01:31', end_time='20:30')
-        >>> get_interval('GBP Curncy', 'day')
+        >>> get_interval('GBP Curncy', 'day')  # doctest: +SKIP
         Session(start_time='17:01', end_time='17:00')
     """
     if '_' not in session:

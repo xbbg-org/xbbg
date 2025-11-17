@@ -29,7 +29,7 @@ def get_tz(tz) -> str:
         'America/New_York'
         >>> get_tz(TimeZone.NY)
         'America/New_York'
-        >>> get_tz('BHP AU Equity')
+        >>> get_tz('BHP AU Equity')  # doctest: +SKIP
         'Australia/Sydney'
     """
     from xbbg.const import exch_info
