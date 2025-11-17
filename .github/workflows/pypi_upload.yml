@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'  # Match all version tags
+  workflow_dispatch:
 
 jobs:
   deploy:
