@@ -156,6 +156,10 @@ def market_info(ticker: str) -> pd.Series:
 
     a_info = asset_config(asset='Equity' if exch_only else t_info[-1])
 
+    # Handle empty asset config (no config files or cache issues)
+    if a_info.empty:
+        return pd.Series(dtype=object)
+
     # =========================================== #
     #           Equity / Equity Futures           #
     # =========================================== #
@@ -172,7 +176,7 @@ def market_info(ticker: str) -> pd.Series:
     #           Currency / Commodity / Index           #
     # ================================================ #
 
-    if t_info[0] in a_info.tickers.values:
+    if 'tickers' in a_info.columns and t_info[0] in a_info.tickers.values:
         symbol = t_info[0]
     elif t_info[0][-1].isdigit():
         end_idx = 2 if t_info[-2].isdigit() else 1
