@@ -95,6 +95,12 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
     exch = kwargs.get('config', param.load_config(cat='exch'))
     original = kwargs.get('original', '')
 
+    # Handle empty exchange config
+    if exch.empty:
+        if original:
+            logger.error('Exchange information not found for ticker: %s', original)
+        return pd.Series(dtype=object)
+
     # Case 1: Use exchange directly
     if ticker in exch.index:
         info = exch.loc[ticker].dropna()
@@ -206,11 +212,15 @@ def asset_config(asset: str) -> pd.DataFrame:
         pd.DataFrame
     """
     cfg_files = param.config_files('assets')
+    if not cfg_files:
+        return pd.DataFrame()
     cache_cfg = str(Path(const.PKG_PATH) / 'markets' / 'cached' / f'{asset}_cfg.parq')
     if (last_mod := max(map(files.modified_time, cfg_files), default=0)) and \
        files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
         return pd.read_parquet(cache_cfg)
 
+    if not cfg_files:
+        return pd.DataFrame()
     config = (
         pd.concat([
             explode(
@@ -222,6 +232,8 @@ def asset_config(asset: str) -> pd.DataFrame:
         .drop_duplicates(keep='last')
         .reset_index(drop=True)
     )
+    if config.empty:
+        return pd.DataFrame()
     files.create_folder(cache_cfg, is_file=True)
     config.to_parquet(cache_cfg)
     return config

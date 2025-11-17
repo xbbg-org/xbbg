@@ -49,17 +49,23 @@ def load_config(cat: str) -> pd.DataFrame:
         pd.DataFrame: Concatenated configuration.
     """
     cfg_files = config_files(cat=cat)
+    if not cfg_files:
+        return pd.DataFrame()
     cache_cfg = str(Path(PKG_PATH) / 'markets' / 'cached' / f'{cat}_cfg.parq')
     last_mod = max(map(files.modified_time, cfg_files), default=0)
     if files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
         return pd.read_parquet(cache_cfg)
 
+    if not cfg_files:
+        return pd.DataFrame()
     config = (
         pd.concat([
             load_yaml(cf).apply(pd.Series)
             for cf in cfg_files
         ], sort=False)
     )
+    if config.empty:
+        return pd.DataFrame()
     files.create_folder(cache_cfg, is_file=True)
     config.to_parquet(cache_cfg)
     return config
@@ -116,9 +122,11 @@ def to_hours(num_ts: str | list | int | float | np.integer | np.floating) -> str
     if isinstance(num_ts, str): return num_ts
     # Handle numpy scalar types (int64, int32, float64, etc.)
     if isinstance(num_ts, (int, float, np.integer, np.floating)):
-        return f'{int(num_ts / 100):02d}:{int(num_ts % 100):02d}'
+        num_val = float(num_ts)
+        return f'{int(num_val / 100):02d}:{int(num_val % 100):02d}'
     # Handle list-like types (list, tuple, array, etc.)
     if hasattr(num_ts, '__iter__') and not isinstance(num_ts, (str, bytes)):
         return [to_hours(num) for num in num_ts]
-    # Fallback: treat as scalar
-    return f'{int(num_ts / 100):02d}:{int(num_ts % 100):02d}'
+    # Fallback: treat as scalar (convert to float first)
+    num_val = float(num_ts)
+    return f'{int(num_val / 100):02d}:{int(num_val % 100):02d}'
