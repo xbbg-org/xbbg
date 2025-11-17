@@ -7,16 +7,15 @@ def __getattr__(name: str):
         from xbbg.markets import info  # noqa: PLC0415
         return getattr(info, name)
     if name in ('active_cdx', 'active_futures', 'cdx_ticker', 'fut_ticker'):
-        from xbbg.markets import resolvers  # noqa: PLC0415
+        # Use module-level resolvers import (avoid reimport)
         return getattr(resolvers, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Direct imports for modules (no circular dependency)
-# Import resolvers here to avoid reimport warning, but functions are accessed via __getattr__
 from xbbg.markets import (  # noqa: E402
     pmc,
     providers,
-    resolvers,  # noqa: E402, PLC0415
+    resolvers,  # noqa: E402
 )
 
 __all__ = [

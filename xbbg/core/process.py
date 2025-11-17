@@ -231,8 +231,7 @@ def time_range(
             cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
             time_fmt = '%Y-%m-%dT%H:%M:%S'
             try:
-                from xbbg.core.utils import timezone as _tz
-                dest_tz = _tz.get_tz(tz)
+                dest_tz = timezone.get_tz(tz)
             except Exception:
                 dest_tz = tz
             time_idx = (

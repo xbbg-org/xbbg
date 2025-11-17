@@ -7,6 +7,7 @@ numeric time formats into ``HH:MM`` strings.
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from ruamel.yaml import YAML
 
@@ -95,7 +96,7 @@ def load_yaml(yaml_file: str) -> pd.Series:
         return data
 
 
-def to_hours(num_ts: str | list | int | float) -> str | list:
+def to_hours(num_ts: str | list | int | float | np.integer | np.floating) -> str | list:
     """Convert YAML input to hours.
 
     Args:
@@ -113,6 +114,11 @@ def to_hours(num_ts: str | list | int | float) -> str | list:
         'XYZ'
     """
     if isinstance(num_ts, str): return num_ts
-    if isinstance(num_ts, (int, float)):
+    # Handle numpy scalar types (int64, int32, float64, etc.)
+    if isinstance(num_ts, (int, float, np.integer, np.floating)):
         return f'{int(num_ts / 100):02d}:{int(num_ts % 100):02d}'
-    return [to_hours(num) for num in num_ts]
+    # Handle list-like types (list, tuple, array, etc.)
+    if hasattr(num_ts, '__iter__') and not isinstance(num_ts, (str, bytes)):
+        return [to_hours(num) for num in num_ts]
+    # Fallback: treat as scalar
+    return f'{int(num_ts / 100):02d}:{int(num_ts % 100):02d}'

@@ -284,11 +284,9 @@ def ccy_pair(local, base='USD') -> const.CurrencyPair:
             info['factor'] *= 100.
 
     else:
-        from xbbg import const
         logger.error('Invalid currency pair configuration: local currency %s, base currency %s', local, base)
         return const.CurrencyPair(ticker='', factor=1., power=1.0)
 
-    from xbbg import const
     info.setdefault('factor', 1.0)
     info.setdefault('power', 1.0)
     return const.CurrencyPair(
