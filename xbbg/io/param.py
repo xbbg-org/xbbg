@@ -5,7 +5,9 @@ numeric time formats into ``HH:MM`` strings.
 """
 
 import os
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from ruamel.yaml import YAML
 
@@ -26,13 +28,14 @@ def config_files(cat: str) -> list:
     Returns:
         list: Files that exist for the given category.
     """
+    paths = [
+        Path(PKG_PATH),
+        Path(os.environ.get('BBG_ROOT', '')),
+    ]
     return [
-        f'{r}/markets/{cat}.yml'
-        for r in [
-            PKG_PATH,
-            os.environ.get('BBG_ROOT', '').replace('\\', '/'),
-        ]
-        if files.exists(f'{r}/markets/{cat}.yml')
+        str(p / 'markets' / 'config' / f'{cat}.yml')
+        for p in paths
+        if p.as_posix() and files.exists(str(p / 'markets' / 'config' / f'{cat}.yml'))
     ]
 
 
@@ -46,19 +49,25 @@ def load_config(cat: str) -> pd.DataFrame:
         pd.DataFrame: Concatenated configuration.
     """
     cfg_files = config_files(cat=cat)
-    cache_cfg = f'{PKG_PATH}/markets/cached/{cat}_cfg.pkl'
-    last_mod = max(map(files.modified_time, cfg_files))
+    if not cfg_files:
+        return pd.DataFrame()
+    cache_cfg = str(Path(PKG_PATH) / 'markets' / 'cached' / f'{cat}_cfg.parq')
+    last_mod = max(map(files.modified_time, cfg_files), default=0)
     if files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
-        return pd.read_pickle(cache_cfg)
+        return pd.read_parquet(cache_cfg)
 
+    if not cfg_files:
+        return pd.DataFrame()
     config = (
         pd.concat([
             load_yaml(cf).apply(pd.Series)
             for cf in cfg_files
         ], sort=False)
     )
+    if config.empty:
+        return pd.DataFrame()
     files.create_folder(cache_cfg, is_file=True)
-    config.to_pickle(cache_cfg)
+    config.to_parquet(cache_cfg)
     return config
 
 
@@ -71,23 +80,29 @@ def load_yaml(yaml_file: str) -> pd.Series:
     Returns:
         pd.Series: Parsed YAML content.
     """
-    cache_file = (
-        yaml_file
-        .replace('/markets/', '/markets/cached/')
-        .replace('.yml', '.pkl')
+    # Convert to Path for cross-platform compatibility
+    yaml_path = Path(yaml_file)
+    cache_file = str(
+        yaml_path.parent.parent / 'cached' / yaml_path.with_suffix('.parq').name
     )
     cur_mod = files.modified_time(yaml_file)
     if files.exists(cache_file) and files.modified_time(cache_file) > cur_mod:
-        return pd.read_pickle(cache_file)
+        # Load from parquet: Series was saved as DataFrame with 'value' column
+        df = pd.read_parquet(cache_file)
+        # Restore Series with original index
+        return pd.Series(df['value'].values, index=df.index, name=df['value'].name)
 
     with open(yaml_file) as fp:
         data = pd.Series(_yaml.load(fp))
         files.create_folder(cache_file, is_file=True)
-        data.to_pickle(cache_file)
+        # Convert Series to DataFrame for parquet storage
+        # Store index as column and values as 'value' column
+        df = pd.DataFrame({'value': data.values}, index=data.index)
+        df.to_parquet(cache_file)
         return data
 
 
-def to_hours(num_ts: str | list | int | float) -> str | list:
+def to_hours(num_ts: str | list | int | float | np.integer | np.floating) -> str | list:
     """Convert YAML input to hours.
 
     Args:
@@ -105,6 +120,13 @@ def to_hours(num_ts: str | list | int | float) -> str | list:
         'XYZ'
     """
     if isinstance(num_ts, str): return num_ts
-    if isinstance(num_ts, (int, float)):
-        return f'{int(num_ts / 100):02d}:{int(num_ts % 100):02d}'
-    return [to_hours(num) for num in num_ts]
+    # Handle numpy scalar types (int64, int32, float64, etc.)
+    if isinstance(num_ts, (int, float, np.integer, np.floating)):
+        num_val = float(num_ts)
+        return f'{int(num_val / 100):02d}:{int(num_val % 100):02d}'
+    # Handle list-like types (list, tuple, array, etc.)
+    if hasattr(num_ts, '__iter__') and not isinstance(num_ts, (str, bytes)):
+        return [to_hours(num) for num in num_ts]
+    # Fallback: treat as scalar (convert to float first)
+    num_val = float(num_ts)
+    return f'{int(num_val / 100):02d}:{int(num_val % 100):02d}'

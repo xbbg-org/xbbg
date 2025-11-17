@@ -4,10 +4,12 @@ Includes helpers to create requests, initialize overrides, iterate
 Bloomberg event streams, and parse reference, historical, and intraday data.
 """
 
-from collections import OrderedDict
+from __future__ import annotations
+
 from collections.abc import Iterator
 from itertools import starmap
-from typing import Any
+import logging
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -16,19 +18,23 @@ try:
     import blpapi  # type: ignore[reportMissingImports]
 except (ImportError, AttributeError):
     import pytest  # type: ignore[reportMissingImports]
+
     blpapi = pytest.importorskip('blpapi')
 
-import logging
-
 from xbbg import const
-from xbbg.core import conn, intervals, overrides
-from xbbg.core.timezone import DEFAULT_TZ
+from xbbg.core.config import intervals, overrides
+from xbbg.core.infra import conn
+from xbbg.core.utils import timezone, utils as utils_module
+
+if TYPE_CHECKING:
+    from xbbg.core.domain.context import BloombergContext
+
+DEFAULT_TZ = timezone.DEFAULT_TZ
 
 logger = logging.getLogger(__name__)
 
-# Import blpapi logging helpers (optional, won't break if blpapi unavailable)
 try:
-    from xbbg.core import blpapi_logging
+    from xbbg.core.infra import blpapi_logging
 except ImportError:
     blpapi_logging = None  # type: ignore[assignment]
 
@@ -99,10 +105,10 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
     """
     while conn.bbg_session(**kwargs).tryNextEvent(): pass
 
-    if isinstance(tickers, str): tickers = [tickers]
+    tickers = utils_module.normalize_tickers(tickers)
     for ticker in tickers: request.append(blpapi.Name('securities'), ticker)
 
-    if isinstance(flds, str): flds = [flds]
+    flds = utils_module.normalize_flds(flds)
     for fld in flds: request.append(blpapi.Name('fields'), fld)
 
     adjust = kwargs.pop('adjust', None)
@@ -129,53 +135,99 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
         ovrd.setElement(blpapi.Name('value'), ovrd_val)
 
 
-def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Session:
+def time_range(
+    dt,
+    ticker,
+    session: str = 'allday',
+    tz: str = 'UTC',
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> intervals.Session:
     """Time range in UTC (for intraday bar) or other timezone.
+
+    This is a thin orchestration wrapper that tries exch.yml-based metadata
+    first, then falls back to pandas-market-calendars (PMC). The detailed
+    resolution logic lives in dedicated helpers to keep this function simple.
 
     Args:
         dt: Date-like input to compute the range for.
         ticker: Ticker.
         session: Market session defined in ``markets/exch.yml``.
         tz: Target timezone name or tz-resolvable input.
-        **kwargs: Passed to exchange/session resolvers.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
 
     Returns:
         intervals.Session.
     """
-    pmc_extended = bool(kwargs.pop('pmc_extended', False))
+    from xbbg.core.domain.context import split_kwargs
 
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+        pmc_extended = bool(split.request_opts.get('pmc_extended', False))
+    else:
+        pmc_extended = bool(kwargs.pop('pmc_extended', False))
+
+    session_kwargs = ctx.to_kwargs()
+
+    # 1) Primary: exch.yml-based session metadata
+    primary = _time_range_from_exch_metadata(
+        dt=dt,
+        ticker=ticker,
+        session=session,
+        tz=tz,
+        session_kwargs=session_kwargs,
+    )
+    if primary is not None:
+        return primary
+
+    # 2) Fallback: pandas-market-calendars-based session
+    pmc_session = _time_range_from_pmc(
+        dt=dt,
+        ticker=ticker,
+        session=session,
+        tz=tz,
+        ctx=ctx,
+        pmc_extended=pmc_extended,
+    )
+    if pmc_session is not None:
+        return pmc_session
+
+    # 3) Nothing worked – propagate a clear error
+    raise ValueError(
+        f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
+        f'Session is not defined in exch.yml and PMC fallback is not available or does not support this session.'
+    )
+
+
+def _normalize_dest_tz(tz: str) -> str:
+    """Normalize destination timezone aliases (e.g., 'NY' -> full tz)."""
+    try:
+        return timezone.get_tz(tz)
+    except Exception:  # noqa: BLE001
+        return tz
+
+
+def _time_range_from_exch_metadata(
+    dt,
+    ticker: str,
+    session: str,
+    tz: str,
+    session_kwargs: dict,
+) -> intervals.Session | None:
+    """Resolve time range using exch.yml-based metadata, or return None on failure."""
     logger = logging.getLogger(__name__)
 
-    # First try legacy exch.yml-based sessions
     try:
-        ss = intervals.get_interval(ticker=ticker, session=session, **kwargs)
-        ex_info = const.exch_info(ticker=ticker, **kwargs)
-        has_session = (ss.start_time is not None) and (ss.end_time is not None)
-        has_tz = ('tz' in ex_info.index) if hasattr(ex_info, 'index') else False
-        if has_session and has_tz:
-            cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-            time_fmt = '%Y-%m-%dT%H:%M:%S'
-            # Normalize destination timezone aliases (e.g., 'NY' -> full tz)
-            try:
-                from xbbg.core import timezone as _tz
-                dest_tz = _tz.get_tz(tz)
-            except Exception:
-                dest_tz = tz
-            time_idx = (
-                pd.DatetimeIndex([
-                    f'{cur_dt} {ss.start_time}',
-                    f'{cur_dt} {ss.end_time}'],
-                )
-                .tz_localize(ex_info.tz)
-                .tz_convert(DEFAULT_TZ)
-                .tz_convert(dest_tz)
-            )
-            if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
-            return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+        ss = intervals.get_interval(ticker=ticker, session=session, **session_kwargs)
+        ex_info = const.exch_info(ticker=ticker, **session_kwargs)
+    except ValueError:
+        # ValueError from get_interval means session is not defined - propagate
+        raise
     except Exception:  # noqa: BLE001
-        # Fall through to PMC fallback - exception is expected and handled by fallback logic.
-        # We intentionally do not re-raise here because the PMC-based fallback below
-        # provides a secondary path to resolve the session.
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 'Primary session resolution failed for %s on %s; falling back to PMC',
@@ -183,39 +235,94 @@ def time_range(dt, ticker, session='allday', tz='UTC', **kwargs) -> intervals.Se
                 dt,
                 exc_info=True,
             )
+        return None
 
-    # Fallback: try pandas-market-calendars via exch_code mapping
+    has_session = (ss.start_time is not None) and (ss.end_time is not None)
+    has_tz = hasattr(ex_info, 'index') and ('tz' in ex_info.index)
+    if not (has_session and has_tz):
+        return None
+
+    cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+    time_fmt = '%Y-%m-%dT%H:%M:%S'
+    dest_tz = _normalize_dest_tz(tz)
+
+    time_idx = (
+        pd.DatetimeIndex(
+            [
+                f'{cur_dt} {ss.start_time}',
+                f'{cur_dt} {ss.end_time}',
+            ],
+        )
+        .tz_localize(ex_info.tz)
+        .tz_convert(DEFAULT_TZ)
+        .tz_convert(dest_tz)
+    )
+    if time_idx[0] > time_idx[1]:
+        time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+    return intervals.Session(
+        time_idx[0].strftime(time_fmt),
+        time_idx[1].strftime(time_fmt),
+    )
+
+
+def _time_range_from_pmc(
+    dt,
+    ticker: str,
+    session: str,
+    tz: str,
+    ctx: BloombergContext,
+    pmc_extended: bool,
+) -> intervals.Session | None:
+    """Resolve time range using pandas-market-calendars, or return None on failure."""
+    logger = logging.getLogger(__name__)
+
+    pmc_supported_sessions = {'day', 'allday'}
+    if session not in pmc_supported_sessions:
+        return None
+
     try:
         from xbbg.markets.pmc import pmc_session_for_date
-        pmc_ss = pmc_session_for_date(
-            ticker=ticker, dt=dt, session=session, include_extended=pmc_extended, **kwargs
-        )
-    except Exception:
-        pmc_ss = None
-    if pmc_ss is not None:
-        logger.warning('Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars', ticker, session)
-        cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-        time_fmt = '%Y-%m-%dT%H:%M:%S'
-        try:
-            from xbbg.core import timezone as _tz
-            dest_tz = _tz.get_tz(tz)
-        except Exception:
-            dest_tz = tz
-        time_idx = (
-            pd.DatetimeIndex([
-                f'{cur_dt} {pmc_ss.start}',
-                f'{cur_dt} {pmc_ss.end}'],
-            )
-            .tz_localize(pmc_ss.tz)
-            .tz_convert(DEFAULT_TZ)
-            .tz_convert(dest_tz)
-        )
-        if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
-        return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
 
-    # If all fails, return an empty session in UTC day bounds (conservative)
-    logger.error('Unable to resolve trading session for ticker %s on date %s', ticker, dt)
-    return intervals.SessNA
+        pmc_ss = pmc_session_for_date(
+            ticker=ticker,
+            dt=dt,
+            session=session,
+            include_extended=pmc_extended,
+            ctx=ctx,
+        )
+    except Exception:  # noqa: BLE001
+        pmc_ss = None
+
+    if pmc_ss is None:
+        return None
+
+    logger.warning(
+        'Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars',
+        ticker,
+        session,
+    )
+
+    cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+    time_fmt = '%Y-%m-%dT%H:%M:%S'
+    dest_tz = _normalize_dest_tz(tz)
+
+    time_idx = (
+        pd.DatetimeIndex(
+            [
+                f'{cur_dt} {pmc_ss.start}',
+                f'{cur_dt} {pmc_ss.end}',
+            ],
+        )
+        .tz_localize(pmc_ss.tz)
+        .tz_convert(DEFAULT_TZ)
+        .tz_convert(dest_tz)
+    )
+    if time_idx[0] > time_idx[1]:
+        time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+    return intervals.Session(
+        time_idx[0].strftime(time_fmt),
+        time_idx[1].strftime(time_fmt),
+    )
 
 
 def _process_response_event(ev: blpapi.Event, func, **kwargs):
@@ -282,7 +389,7 @@ def _handle_other_event(ev: blpapi.Event) -> bool:
         True if should stop processing, False otherwise.
     """
     for _ in ev:
-        if getattr(ev, 'messageType', lambda: None)() == SESSION_TERMINATED:
+        if getattr(ev, 'messageType', lambda: None)() is SESSION_TERMINATED:
             logger.warning('Session terminated event received, stopping event processing')
             return True
     return False
@@ -307,10 +414,17 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Starting Bloomberg event processing (timeout=%dms, max_timeouts=%d)', timeout, max_timeouts)
     while True:
-        if event_queue is not None:
-            ev = event_queue.nextEvent(timeout=timeout)
-        else:
-            ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+        try:
+            if event_queue is not None:
+                ev = event_queue.nextEvent(timeout=timeout)
+            else:
+                ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+        except blpapi.InvalidStateException as e:
+            logger.error('Bloomberg session in invalid state: %s', e)
+            raise
+        except blpapi.Exception as e:
+            logger.error('Bloomberg API error during event retrieval: %s', e)
+            raise
 
         if blpapi_logging and logger.isEnabledFor(logging.DEBUG):
             blpapi_logging.log_event_info(ev, context='rec_events')
@@ -326,6 +440,10 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
                 # Generator exhausted, check return value
                 if e.value:  # True if final RESPONSE
                     break
+            except (ValueError, blpapi.Exception) as e:
+                # Message processing errors (e.g., from check_error or blpapi exceptions)
+                logger.error('Error processing Bloomberg message: %s', e)
+                raise
         elif ev.eventType() == blpapi.Event.TIMEOUT:
             timeout_counts, should_stop = _handle_timeout(timeout_counts, max_timeouts)
             if should_stop:
@@ -360,7 +478,7 @@ def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
             info = [('ticker', ticker), ('field', str(fld.name()))]
             if fld.isArray():
                 for item in fld.values():
-                    yield OrderedDict(info + [
+                    yield dict(info + [
                         (
                             str(elem.name()),
                             None if elem.isNull() else elem.getValue()
@@ -368,7 +486,7 @@ def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
                         for elem in item.elements()
                     ])
             else:
-                yield OrderedDict(info + [
+                yield dict(info + [
                     ('value', None if fld.isNull() else fld.getValue()),
                 ])
 
@@ -388,12 +506,12 @@ def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     ticker = msg.getElement(blpapi.Name('securityData')).getElement(blpapi.Name('security')).getValue()
     for val in msg.getElement(blpapi.Name('securityData')).getElement(blpapi.Name('fieldData')).values():
         if val.hasElement(blpapi.Name('date')):
-            yield OrderedDict([('ticker', ticker)] + [
+            yield dict([('ticker', ticker)] + [
                 (str(elem.name()), elem.getValue()) for elem in val.elements()
             ])
 
 
-def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDict]:
+def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[dict]:
     """Process Bloomberg intraday bar messages.
 
     Args:
@@ -402,7 +520,7 @@ def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDic
         **kwargs: Additional options (unused).
 
     Yields:
-        OrderedDict.
+        dict.
     """
     kwargs.pop('(#_#)', None)
     check_error(msg=msg)
@@ -410,10 +528,10 @@ def process_bar(msg: blpapi.Message, typ='bar', **kwargs) -> Iterator[OrderedDic
 
     if msg.hasElement(lvls[0]):
         for bar in msg.getElement(lvls[0]).getElement(lvls[1]).values():
-            yield OrderedDict([
-                (str(elem.name()), elem.getValue())
+            yield {
+                str(elem.name()): elem.getValue()
                 for elem in bar.elements()
-            ])
+            }
 
 
 def check_error(msg):
@@ -458,24 +576,20 @@ def _flatten_element(element: blpapi.Element) -> dict[str, Any]:
     return out
 
 
-def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
+def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """Process BQL response messages into row dictionaries.
 
     Attempts to parse tabular BQL results; falls back to flattened dicts.
-    Handles both structured 'results' element and JSON string 'result' element.
-
-    This function is BQL-specific and should only be called for BQL queries
-    (via blp.bql()). It checks for BQL-specific message formats.
+    Handles both structured ``results`` element and JSON string ``result``
+    element. The detailed parsing is delegated to helpers for readability.
 
     Args:
         msg: Bloomberg BQL message.
         **kwargs: Unused.
 
     Yields:
-        OrderedDict: Row-like mappings parsed from BQL results.
+        dict: Row-like mappings parsed from BQL results.
     """
-    import json
-
     kwargs.pop('(^_^)', None)
 
     # Gate: Only process messages with BQL-specific message type "result"
@@ -483,100 +597,126 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
     if str(msg.messageType()) != 'result':
         return iter([])
 
-    # Check if message element itself is a JSON string (BQL format)
-    msg_elem = msg.asElement()
-    if msg_elem.datatype() == blpapi.DataType.STRING:
-        try:
-            result_str = msg_elem.getValue()
-            if not isinstance(result_str, str):
-                return iter([])
-            result_json = json.loads(result_str)
+    # 1) Try JSON-string payload format first
+    handled_any = False
+    for row in _iter_bql_json_rows(msg):
+        handled_any = True
+        yield row
+    if handled_any:
+        return
 
-            # Check for errors first - raise exception if errors found
-            if 'responseExceptions' in result_json and result_json['responseExceptions']:
-                errors = result_json['responseExceptions']
-                error_messages = []
-                for exc in errors:
-                    msg_text = exc.get('message', exc.get('internalMessage', 'Unknown error'))
-                    error_messages.append(msg_text)
-                error_msg = '; '.join(error_messages)
-                raise ValueError(f"BQL query error: {error_msg}")
-
-            if 'results' in result_json:
-                results_data = result_json.get('results')
-                # Handle None results (empty query result)
-                if results_data is None:
-                    return iter([])
-                if not isinstance(results_data, dict):
-                    return iter([])
-                # Extract data from JSON structure
-                for field_name, field_data in results_data.items():
-                    if isinstance(field_data, dict):
-                        # Check for idColumn and valuesColumn structure
-                        if 'idColumn' in field_data and 'valuesColumn' in field_data:
-                            ids = field_data['idColumn'].get('values', [])
-                            values = field_data['valuesColumn'].get('values', [])
-                            # Also check for secondary columns (like DATE, CURRENCY)
-                            secondary_cols = {}
-                            if 'secondaryColumns' in field_data:
-                                for sec_col in field_data['secondaryColumns']:
-                                    col_name = sec_col.get('name', '')
-                                    col_values = sec_col.get('values', [])
-                                    secondary_cols[col_name] = col_values
-
-                            # Yield rows
-                            for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
-                                row = OrderedDict([
-                                    ('ID', ticker),
-                                    (field_name, value),
-                                ])
-                                # Add secondary columns
-                                for col_name, col_values in secondary_cols.items():
-                                    if i < len(col_values):
-                                        row[col_name] = col_values[i]
-                                yield row
-                        else:
-                            # Fallback: flatten the structure
-                            def _flatten_dict(d: dict, parent_key: str = '', sep: str = '_') -> dict:
-                                items = []
-                                for k, v in d.items():
-                                    new_key = f"{parent_key}{sep}{k}" if parent_key else k
-                                    if isinstance(v, dict):
-                                        items.extend(_flatten_dict(v, new_key, sep=sep).items())
-                                    else:
-                                        items.append((new_key, v))
-                                return dict(items)
-                            yield OrderedDict(_flatten_dict(field_data))
-                return
-        except (json.JSONDecodeError, KeyError, TypeError):
-            pass
-
-    # Check for structured 'results' element (plural) - older BQL format
+    # 2) Fallback: structured BQL elements (RESULTS/TABLE)
     if msg.hasElement(RESULTS):
-        for res in msg.getElement(RESULTS).values():
-            if res.hasElement(TABLE):
-                table = res.getElement(TABLE)
-                if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
-                    yield OrderedDict(_flatten_element(res))
-                    continue
+        yield from _iter_bql_structured_rows(msg)
 
-                cols: list[str] = []
-                for col in table.getElement(COLUMNS).values():
-                    if col.hasElement(NAME):
-                        cols.append(col.getElement(NAME).getValue())
-                    elif col.hasElement(FIELD):
-                        cols.append(str(col.getElement(FIELD).getValue()))
-                    else:
-                        cols.append(str(col.name()))
 
-                for row in table.getElement(ROWS).values():
-                    values: list[Any] = []
-                    if row.hasElement(VALUES):
-                        for v in row.getElement(VALUES).values():
-                            values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
-                    yield OrderedDict(zip(cols, values, strict=False))
+def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
+    """Iterate rows from JSON-string BQL result payload, if present."""
+    import json
+
+    msg_elem = msg.asElement()
+    if msg_elem.datatype() != blpapi.DataType.STRING:
+        return iter(())
+
+    try:
+        result_str = msg_elem.getValue()
+        if not isinstance(result_str, str):
+            return iter(())
+        result_json = json.loads(result_str)
+
+        # Check for errors first - raise exception if errors found
+        if 'responseExceptions' in result_json and result_json['responseExceptions']:
+            errors = result_json['responseExceptions']
+            error_messages = []
+            for exc in errors:
+                msg_text = exc.get('message', exc.get('internalMessage', 'Unknown error'))
+                error_messages.append(msg_text)
+            error_msg = '; '.join(error_messages)
+            raise ValueError(f"BQL query error: {error_msg}")
+
+        if 'results' not in result_json:
+            return iter(())
+
+        results_data = result_json.get('results')
+        # Handle None results (empty query result)
+        if results_data is None or not isinstance(results_data, dict):
+            return iter(())
+
+        for field_name, field_data in results_data.items():
+            if not isinstance(field_data, dict):
+                continue
+
+            # idColumn / valuesColumn schema
+            if 'idColumn' in field_data and 'valuesColumn' in field_data:
+                ids = field_data['idColumn'].get('values', [])
+                values = field_data['valuesColumn'].get('values', [])
+                secondary_cols: dict[str, list[Any]] = {}
+                if 'secondaryColumns' in field_data:
+                    for sec_col in field_data['secondaryColumns']:
+                        col_name = sec_col.get('name', '')
+                        col_values = sec_col.get('values', [])
+                        secondary_cols[col_name] = col_values
+
+                for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
+                    row: dict[str, Any] = {
+                        'ID': ticker,
+                        field_name: value,
+                    }
+                    for col_name, col_values in secondary_cols.items():
+                        if i < len(col_values):
+                            row[col_name] = col_values[i]
+                    yield row
             else:
-                yield OrderedDict(_flatten_element(res))
+                # Fallback: flatten arbitrary dict structure
+                yield dict(_flatten_dict(field_data))
+    except (json.JSONDecodeError, KeyError, TypeError):
+        # Let caller fall back to structured-element parsing
+        return iter(())
+
+
+def _flatten_dict(d: dict, parent_key: str = '', sep: str = '_') -> dict:
+    """Flatten a nested dict using ``sep`` between levels."""
+    items: list[tuple[str, Any]] = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
+def _iter_bql_structured_rows(msg: blpapi.Message) -> Iterator[dict]:
+    """Iterate rows from structured ``RESULTS/TABLE`` BQL format."""
+    for res in msg.getElement(RESULTS).values():
+        if not res.hasElement(TABLE):
+            # Fallback: flatten entire result element
+            yield dict(_flatten_element(res))
+            continue
+
+        table = res.getElement(TABLE)
+        if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
+            yield dict(_flatten_element(res))
+            continue
+
+        cols: list[str] = []
+        for col in table.getElement(COLUMNS).values():
+            if col.hasElement(NAME):
+                cols.append(col.getElement(NAME).getValue())
+            elif col.hasElement(FIELD):
+                cols.append(str(col.getElement(FIELD).getValue()))
+            else:
+                cols.append(str(col.name()))
+
+        for row in table.getElement(ROWS).values():
+            values: list[Any] = []
+            if row.hasElement(VALUES):
+                for v in row.getElement(VALUES).values():
+                    values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
+            # Defensive: skip rows with mismatched column/value counts
+            if len(values) != len(cols):
+                continue
+            yield dict(zip(cols, values, strict=False))
 
 
 def earning_pct(data: pd.DataFrame, yr):
@@ -600,7 +740,7 @@ def earning_pct(data: pd.DataFrame, yr):
         if snap.level == 2: sub_pct.append(r)
 
 
-def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
+def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """Process BSRCH GridResponse messages from Bloomberg Excel service.
 
     Args:
@@ -608,7 +748,7 @@ def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
         **kwargs: Additional options (unused).
 
     Yields:
-        OrderedDict: Row dictionaries with column names as keys.
+        dict: Row dictionaries with column names as keys.
     """
     kwargs.pop('(^_^)', None)
 
@@ -636,7 +776,7 @@ def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[OrderedDict]:
             data_record = data_records.getValueAsElement(i)
             data_fields = data_record.getElement(blpapi.Name('DataFields'))
 
-            row = OrderedDict()
+            row = {}
             for j in range(num_cols):
                 data_field = data_fields.getValueAsElement(j)
                 data_value = data_field.getChoice()

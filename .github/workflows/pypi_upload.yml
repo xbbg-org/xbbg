@@ -11,10 +11,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    # Only upload stable releases to PyPI (pre-releases go to TestPyPI)
+    # Upload all releases (including pre-releases) to PyPI
     # Pre-releases have format vX.Y.ZaN, vX.Y.ZbN, or vX.Y.ZrcN
-    # Skip if tag matches pre-release pattern (contains a/b/rc after version numbers)
-    if: ${{ !contains(github.ref_name, 'a') && !contains(github.ref_name, 'b') && !contains(github.ref_name, 'rc') }}
 
     steps:
     - uses: actions/checkout@v5

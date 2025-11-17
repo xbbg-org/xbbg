@@ -20,18 +20,23 @@ from dataclasses import dataclass
 import json
 import logging
 import os
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from xbbg.io import files
 
+if TYPE_CHECKING:
+    from xbbg.core.domain.context import BloombergContext
+
 logger = logging.getLogger(__name__)
 
 PKG_PATH = files.abspath(__file__, 1)
-_CACHE_FILE = f"{PKG_PATH}/markets/cached/pmc_cache.pkl"
+_CACHE_FILE = str(Path(PKG_PATH) / 'markets' / 'cached' / 'pmc_cache.json')
 _MAP_PATHS = [
-    os.path.join(os.environ.get('BBG_ROOT', '').replace('\\', '/'), 'markets/pmc_map.json'),
-    f"{PKG_PATH}/markets/pmc_map.json",
+    str(Path(os.environ.get('BBG_ROOT', '')) / 'markets' / 'pmc_map.json') if os.environ.get('BBG_ROOT', '') else '',
+    str(Path(PKG_PATH) / 'markets' / 'pmc_map.json'),
 ]
 
 
@@ -67,22 +72,31 @@ def _load_pmc_map(logger=None) -> dict:
 
 
 def _save_cache(cache: dict):
+    """Save PMC cache dictionary to JSON file."""
     files.create_folder(_CACHE_FILE, is_file=True)
-    pd.to_pickle(cache, _CACHE_FILE)
+    try:
+        with open(_CACHE_FILE, 'w', encoding='utf-8') as fp:
+            json.dump(cache, fp, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error('Failed to save PMC cache to %s: %s', _CACHE_FILE, e)
 
 
 def _load_cache() -> dict:
+    """Load PMC cache dictionary from JSON file."""
     if files.exists(_CACHE_FILE):
         try:
-            return pd.read_pickle(_CACHE_FILE) or {}
-        except Exception:
+            with open(_CACHE_FILE, encoding='utf-8') as fp:
+                data = json.load(fp)
+                return data if isinstance(data, dict) else {}
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            logger.debug('Failed to load PMC cache from %s: %s', _CACHE_FILE, e)
             return {}
     return {}
 
 
 def _user_map_path() -> str:
-    root = os.environ.get('BBG_ROOT', '').replace('\\', '/')
-    return os.path.join(root, 'markets/pmc_map.json') if root else ''
+    root = Path(os.environ.get('BBG_ROOT', ''))
+    return str(root / 'markets' / 'pmc_map.json') if root.as_posix() else ''
 
 
 def _load_map_at(path: str) -> dict:
@@ -92,7 +106,7 @@ def _load_map_at(path: str) -> dict:
         with open(path, encoding='utf-8') as fp:
             data = json.load(fp)
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
 
 
@@ -180,17 +194,41 @@ def pmc_remove_mapping(exch_code: str, scope: str = 'user') -> None:
         logger.warning('PMC mapping not found: %s in %s scope', key, scope)
 
 
-def _get_exch_code(ticker: str, **kwargs) -> str:
-    """Fetch Bloomberg exch_code for ticker (cached)."""
+def _get_exch_code(
+    ticker: str,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> str:
+    """Fetch Bloomberg exch_code for ticker (cached).
+
+    Args:
+        ticker: Ticker symbol.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        Exchange code string.
+    """
     # Logger is module-level
+    from xbbg.core.domain.context import split_kwargs
+
     cache = _load_cache()
     tkey = f"exch_code::{ticker}"
     if tkey in cache:
         return cache[tkey]
 
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    # Convert context to kwargs for bdp call
+    safe_kwargs = ctx.to_kwargs()
+
     try:
         from xbbg.blp import bdp  # lazy import
-        df = bdp(tickers=ticker, flds=['exch_code'], **kwargs)
+        df = bdp(tickers=ticker, flds=['exch_code'], **safe_kwargs)
     except Exception as e:
         logger.error('Failed to fetch exchange code from Bloomberg for ticker %s: %s', ticker, e)
         return ''
@@ -213,18 +251,38 @@ def _get_calendar_name_from_exch_code(exch_code: str) -> str:
     return mapping.get(exch_code.upper(), '') if exch_code else ''
 
 
-def resolve_calendar_name(ticker: str, **kwargs) -> str:
+def resolve_calendar_name(
+    ticker: str,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> str:
     """Resolve pandas-market-calendars id for ticker via Bloomberg exch_code.
 
     Looks up exch_code in user JSON mapping.
+
+    Args:
+        ticker: Ticker symbol.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        Calendar name string.
     """
     # Logger is module-level
+    from xbbg.core.domain.context import split_kwargs
+
     cache = _load_cache()
     tkey = f"calendar::{ticker}"
     if tkey in cache:
         return cache[tkey]
 
-    exch_code = _get_exch_code(ticker, **kwargs)
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    exch_code = _get_exch_code(ticker, ctx=ctx)
     cal = _get_calendar_name_from_exch_code(exch_code)
     if not cal:
         logger.warning('No PMC calendar mapping found for exchange code %s (ticker: %s)', exch_code, ticker)
@@ -238,15 +296,40 @@ def _to_hhmm(ts: pd.Timestamp) -> str:
     return ts.strftime('%H:%M')
 
 
-def pmc_session_for_date(ticker: str, dt, session: str = 'day', include_extended: bool = False, **kwargs) -> PmcSession | None:
+def pmc_session_for_date(
+    ticker: str,
+    dt,
+    session: str = 'day',
+    include_extended: bool = False,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> PmcSession | None:
     """Compute session open/close using pandas-market-calendars.
 
     - session='day': market_open to market_close
     - session='allday': pre to post if available, else falls back to market times
+
+    Args:
+        ticker: Ticker symbol.
+        dt: Date to compute session for.
+        session: Session name ('day' or 'allday').
+        include_extended: Whether to include extended hours.
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        PmcSession or None if not available.
     """
     # Logger is module-level
+    from xbbg.core.domain.context import split_kwargs
 
-    cal_name = resolve_calendar_name(ticker, **kwargs)
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    cal_name = resolve_calendar_name(ticker, ctx=ctx)
     if not cal_name:
         return None
 
@@ -286,76 +369,50 @@ def pmc_session_for_date(ticker: str, dt, session: str = 'day', include_extended
 
 
 
-def pmc_wizard(ticker: str, scope: str = 'user', **kwargs) -> None:
+def pmc_wizard(
+    ticker: str,
+    scope: str = 'user',
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> None:
     """Interactive wizard to add/update PMC mapping for a security's exch_code.
 
     Steps:
     1) Fetch Bloomberg exch_code for the given ticker.
     2) Display current effective mapping (if any) and available PMC calendars.
     3) Prompt for a calendar id and save to the chosen scope (default: user).
-    """
-    # Logger is module-level
 
-    exch_code = _get_exch_code(ticker, **kwargs)
+    Args:
+        ticker: Ticker symbol.
+        scope: Mapping scope ('user' or 'package').
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+    """
+    from xbbg.core.domain.context import split_kwargs
+
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    exch_code = _resolve_exch_code_for_wizard(ticker=ticker, ctx=ctx)
     if not exch_code:
-        print(f"Could not resolve exch_code from Bloomberg for: {ticker}")
-        hint = ' (hint: TRACE for US credit/OTC)' if ticker.endswith(' Corp') else ''
-        typed = input(f"Enter exch_code manually{hint}: ").strip()
-        if not typed:
-            logger.error('No exchange code provided; cannot run PMC wizard for ticker %s', ticker)
-            return
-        exch_code = _normalize_exch_code(typed)
+        return
 
     current = pmc_list_mappings(scope='effective').get(exch_code.upper(), '')
-
-    try:
-        import pandas_market_calendars as mcal  # type: ignore
-        avail = sorted(set(getattr(mcal, 'get_calendar_names', lambda: [])()))
-    except Exception:
-        avail = []
+    avail = _load_available_calendars()
 
     print(f"Ticker: {ticker}")
     print(f"Resolved exch_code: {exch_code}")
     print(f"Current mapping (effective): {current or '<none>'}")
-    calendar = current
-    if avail:
-        suggestions = _suggest_calendars(exch_code, avail, current)
-        print(f"Select PMC calendar for exch_code={exch_code}")
-        for i, c in enumerate(suggestions, 1):
-            mark = "*" if current and c == current else ""
-            print(f"  [{i}] {c} {mark}")
-        print("  [0] Other (search)")
-        raw = input("Enter number (default 1): ").strip()
-        sel_idx = 1 if not raw else (int(raw) if raw.isdigit() else -1)
-        if sel_idx == 0:
-            # Simple search
-            key = input("Enter keyword to search calendars: ").strip().lower()
-            if key:
-                matches = [c for c in avail if key in c.lower()]
-                if not matches:
-                    print("No matches found.")
-                else:
-                    for j, m in enumerate(matches[:30], 1):
-                        print(f"  [{j}] {m}")
-                    pick = input("Enter number (or exact id): ").strip()
-                    if pick.isdigit():
-                        j = int(pick)
-                        if 1 <= j <= min(30, len(matches)):
-                            calendar = matches[j - 1]
-                    elif pick in avail:
-                        calendar = pick
-        elif 1 <= sel_idx <= len(suggestions):
-            calendar = suggestions[sel_idx - 1]
-        else:
-            # fallback to default suggestion
-            calendar = suggestions[0] if suggestions else current
-    else:
-        prompt = f"Enter PMC calendar id for exch_code={exch_code}"
-        if current:
-            prompt += f" [default: {current}]"
-        prompt += ": "
-        user_val = input(prompt).strip()
-        calendar = user_val or current
+
+    calendar = _choose_calendar_interactively(
+        ticker=ticker,
+        exch_code=exch_code,
+        current=current,
+        available=avail,
+    )
     if not calendar:
         logger.error('No calendar ID provided; cannot complete PMC mapping operation')
         return
@@ -367,6 +424,80 @@ def pmc_wizard(ticker: str, scope: str = 'user', **kwargs) -> None:
 
     pmc_add_mapping(exch_code=exch_code, calendar=calendar, scope=scope)
     print(f"Saved mapping: {exch_code.upper()} -> {calendar} ({scope}).")
+
+
+def _resolve_exch_code_for_wizard(ticker: str, ctx: BloombergContext) -> str | None:
+    """Resolve exchange code for wizard, prompting user when necessary."""
+    exch_code = _get_exch_code(ticker, ctx=ctx)
+    if exch_code:
+        return exch_code
+
+    print(f"Could not resolve exch_code from Bloomberg for: {ticker}")
+    hint = ' (hint: TRACE for US credit/OTC)' if ticker.endswith(' Corp') else ''
+    typed = input(f"Enter exch_code manually{hint}: ").strip()
+    if not typed:
+        logger.error('No exchange code provided; cannot run PMC wizard for ticker %s', ticker)
+        return None
+    return _normalize_exch_code(typed)
+
+
+def _load_available_calendars() -> list[str]:
+    """Load available PMC calendar ids from pandas-market-calendars."""
+    try:
+        import pandas_market_calendars as mcal  # type: ignore
+
+        return sorted(set(getattr(mcal, 'get_calendar_names', lambda: [])()))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _choose_calendar_interactively(
+    ticker: str,
+    exch_code: str,
+    current: str | None,
+    available: list[str],
+) -> str | None:
+    """Interactive flow to select or enter a PMC calendar id."""
+    calendar = current or ''
+    if available:
+        suggestions = _suggest_calendars(exch_code, available, current)
+        print(f"Select PMC calendar for exch_code={exch_code}")
+        for i, c in enumerate(suggestions, 1):
+            mark = "*" if current and c == current else ""
+            print(f"  [{i}] {c} {mark}")
+        print("  [0] Other (search)")
+        raw = input("Enter number (default 1): ").strip()
+        sel_idx = 1 if not raw else (int(raw) if raw.isdigit() else -1)
+        if sel_idx == 0:
+            # Simple search
+            key = input("Enter keyword to search calendars: ").strip().lower()
+            if key:
+                matches = [c for c in available if key in c.lower()]
+                if not matches:
+                    print("No matches found.")
+                else:
+                    for j, m in enumerate(matches[:30], 1):
+                        print(f"  [{j}] {m}")
+                    pick = input("Enter number (or exact id): ").strip()
+                    if pick.isdigit():
+                        j = int(pick)
+                        if 1 <= j <= min(30, len(matches)):
+                            calendar = matches[j - 1]
+                    elif pick in available:
+                        calendar = pick
+        elif 1 <= sel_idx <= len(suggestions):
+            calendar = suggestions[sel_idx - 1]
+        else:
+            # fallback to default suggestion
+            calendar = suggestions[0] if suggestions else current or ''
+    else:
+        prompt = f"Enter PMC calendar id for exch_code={exch_code}"
+        if current:
+            prompt += f" [default: {current}]"
+        prompt += ": "
+        user_val = input(prompt).strip()
+        calendar = user_val or (current or '')
+    return calendar or None
 
 def _suggest_calendars(exch_code: str, avail: list[str], current: str | None) -> list[str]:
     code = (exch_code or '').upper()

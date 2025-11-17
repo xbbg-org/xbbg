@@ -1,6 +1,10 @@
 # Ignore local PMC mapping and cache files
 xbbg/markets/pmc_map.json
 xbbg/markets/cached/pmc_cache.pkl
+
+# Ignore runtime-generated logs and trial tracking database
+Logs/
+xbbg.db
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

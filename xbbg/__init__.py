@@ -1,4 +1,9 @@
-"""An intuitive Bloomberg API."""
+"""An intuitive Bloomberg API.
+
+Main entry point for xbbg. For API functions, use `from xbbg import blp` or
+`from xbbg.api import bdp, bdh, ...`. For pipeline utilities, use
+`from xbbg.utils import pipeline` or `from xbbg import pipeline` (backward compat).
+"""
 
 from importlib.metadata import PackageNotFoundError, version
 import logging
@@ -8,18 +13,16 @@ try:
 except PackageNotFoundError:
     __version__ = "0+unknown"
 
-# Root logger for xbbg package - add NullHandler following best practices
-# Applications should configure their own handlers and levels
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
-# Ensure logging is disabled by default (inherit WARNING from root, but be explicit)
-# Users must explicitly enable logging if they want to see xbbg logs
 logger.setLevel(logging.WARNING)
 
-# Export blpapi logging utilities if available
-try:
-    from xbbg.core import blpapi_logging  # noqa: F401
+# Backward compatibility: re-export pipeline from utils
+from xbbg.utils import pipeline  # noqa: E402, F401
 
-    __all__ = ['__version__', 'blpapi_logging']
+try:
+    from xbbg.core.infra import blpapi_logging  # noqa: F401
+
+    __all__ = ['__version__', 'blpapi_logging', 'pipeline']
 except ImportError:
-    __all__ = ['__version__']
+    __all__ = ['__version__', 'pipeline']
