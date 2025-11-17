@@ -360,8 +360,27 @@ Out[9]:
 2018-10-17 16:10:00+11:00         33.66 33.66 33.66 33.66  1115523      216
 ```
 
+**Selecting bar intervals:**
+
+- **Minute-based intervals** (default): Use the `interval` parameter to specify minutes.
+  By default, `interval=1` (1-minute bars). Common intervals:
+  - `interval=5` → 5-minute bars
+  - `interval=15` → 15-minute bars
+  - `interval=30` → 30-minute bars
+  - `interval=60` → 1-hour bars
+
 ```python
-# Sub-minute intervals (10-second bars)
+# 5-minute bars
+blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=5).head()
+
+# 15-minute bars
+blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=15).head()
+```
+
+- **Sub-minute intervals** (seconds): Set `intervalHasSeconds=True` and specify seconds:
+
+```python
+# 10-second bars
 blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=10, intervalHasSeconds=True).head()
 ```
 
@@ -374,7 +393,7 @@ Out[9a]:
 2025-11-12 09:31:20-05:00        150.35  150.45  150.30  150.40  22000      135
 ```
 
-Note: Set `intervalHasSeconds=True` to use seconds-based intervals. By default, `interval` is interpreted as minutes.
+**Note:** By default, `interval` is interpreted as **minutes**. Set `intervalHasSeconds=True` to use seconds-based intervals.
 
 ```python
 # Market session filtering
