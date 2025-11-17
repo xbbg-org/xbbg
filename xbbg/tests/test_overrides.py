@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from xbbg.core.config import overrides
 
 
@@ -161,7 +159,7 @@ class TestInfoQry:
         result = overrides.info_qry(tickers=tickers, flds=['PX_LAST'])
         # Should wrap to multiple lines
         lines = result.split('\n')
-        assert len([l for l in lines if l.startswith('tickers:') or l.startswith('         ')]) >= 3
+        assert len([line for line in lines if line.startswith('tickers:') or line.startswith('         ')]) >= 3
 
     def test_info_qry_empty_tickers(self):
         """Test info query with empty tickers."""

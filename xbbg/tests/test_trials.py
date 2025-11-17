@@ -6,8 +6,6 @@ import os
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
-
 from xbbg.core.utils import trials
 
 
@@ -113,7 +111,7 @@ class TestNumTrials:
         mock_cursor.fetchall.return_value = [(5,)]
         mock_con.execute.return_value = mock_cursor
         mock_sqlite.return_value.__enter__.return_value = mock_con
-        
+
         result = trials.num_trials(func='bdh', ticker='AAPL US Equity', dt='2024-01-01')
         assert result == 5
 
@@ -139,7 +137,7 @@ class TestNumTrials:
         mock_cursor.fetchall.return_value = []
         mock_con.execute.return_value = mock_cursor
         mock_sqlite.return_value.__enter__.return_value = mock_con
-        
+
         result = trials.num_trials(func='bdh', ticker='AAPL US Equity')
         assert result == 0
 
@@ -164,7 +162,7 @@ class TestUpdateTrials:
         mock_num.return_value = 3
         mock_con = Mock()
         mock_sqlite.return_value.__enter__.return_value = mock_con
-        
+
         trials.update_trials(func='bdh', ticker='AAPL US Equity', dt='2024-01-01')
         # Should increment from 3 to 4
         mock_con.execute.assert_called()
@@ -179,7 +177,7 @@ class TestUpdateTrials:
         mock_root.return_value = Path('/test/path')
         mock_con = Mock()
         mock_sqlite.return_value.__enter__.return_value = mock_con
-        
+
         trials.update_trials(func='bdh', ticker='AAPL US Equity', cnt=5)
         mock_con.execute.assert_called()
 
@@ -206,7 +204,7 @@ class TestCurrentMissing:
         mock_root.return_value = Path('/test/path')
         mock_missing.return_value = 'bdh/AAPL US Equity/2024-01-01'
         mock_all_files.return_value = ['file1.log', 'file2.log', 'file3.log']
-        
+
         result = trials.current_missing(func='bdh', ticker='AAPL US Equity', dt='2024-01-01')
         assert result == 3
 
@@ -245,7 +243,7 @@ class TestUpdateMissing:
         mock_root.return_value = mock_path
         mock_missing.return_value = 'bdh/AAPL US Equity/2024-01-01'
         mock_all_files.return_value = ['file1.log', 'file2.log']
-        
+
         trials.update_missing(func='bdh', ticker='AAPL US Equity', dt='2024-01-01')
         # Should create folder
         mock_create.assert_called()
