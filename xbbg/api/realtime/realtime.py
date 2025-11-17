@@ -14,12 +14,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-try:
-    import blpapi  # type: ignore[reportMissingImports]
-except (ImportError, AttributeError):
-    import pytest  # type: ignore[reportMissingImports]
-    blpapi = pytest.importorskip('blpapi')
-
 import asyncio
 from queue import Queue
 

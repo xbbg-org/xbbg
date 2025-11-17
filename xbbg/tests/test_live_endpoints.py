@@ -1460,7 +1460,7 @@ def test_active_cdx():
 
 
 if __name__ == '__main__':
-    """Allow running tests directly with verbose output."""
+    # Allow running tests directly with verbose output
     print("\n" + "="*80)
     print("Live Bloomberg Endpoint Tests")
     print("="*80)

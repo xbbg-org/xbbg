@@ -83,5 +83,4 @@ class TestLoadYaml:
         """Test loading YAML from source file - skipped due to file system complexity."""
         # This test is skipped because it requires complex file system mocking
         # The function is tested indirectly through other tests
-        pass
 

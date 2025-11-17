@@ -211,7 +211,7 @@ class TickCacheAdapter:
         session_window: contracts.SessionWindow,
     ) -> None:
         """Save tick data (not implemented yet)."""
-        pass
+        ...
 
 
 # ============================================================================

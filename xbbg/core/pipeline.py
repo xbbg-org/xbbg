@@ -1074,7 +1074,7 @@ def intraday_pipeline_config() -> PipelineConfig:
         transformer=IntradayTransformer(),
         needs_session=True,
         default_resolvers=create_default_resolver_chain,
-        default_cache_adapter=lambda: BarCacheAdapter(),
+        default_cache_adapter=BarCacheAdapter,
     )
 
 

@@ -1,15 +1,21 @@
 # Testing xbbg Versions with uv
 
-This directory contains scripts to test xbbg 0.7.7 and latest version, and verify the structure of returned DataFrames.
+This directory contains scripts to test xbbg 0.7.7 and latest version,
+and verify the structure of returned DataFrames.
 
 ## Files
 
-- `test_xbbg_0.7.7.py` - Test script for xbbg 0.7.7 that makes a BDH request and analyzes the structure
+- `test_xbbg_0.7.7.py` - Test script for xbbg 0.7.7 that makes a BDH
+  request and analyzes the structure
 - `test_xbbg_latest.py` - Test script for latest xbbg version
-- `run_xbbg_0.7.7_test.ps1` - PowerShell script to run the 0.7.7 test with uv (Windows)
-- `run_xbbg_latest_test.ps1` - PowerShell script to run the latest version test with uv (Windows)
-- `run_both_tests.ps1` - PowerShell script to run both tests for comparison
-- `run_xbbg_0.7.7_test.sh` - Bash script to run the test with uv (Linux/Mac)
+- `run_xbbg_0.7.7_test.ps1` - PowerShell script to run the 0.7.7 test
+  with uv (Windows)
+- `run_xbbg_latest_test.ps1` - PowerShell script to run the latest
+  version test with uv (Windows)
+- `run_both_tests.ps1` - PowerShell script to run both tests for
+  comparison
+- `run_xbbg_0.7.7_test.sh` - Bash script to run the test with uv
+  (Linux/Mac)
 
 ## Quick Start (Windows PowerShell)
 
@@ -74,22 +80,30 @@ rm -rf .venv_xbbg_0.7.7  # or Remove-Item -Recurse -Force .venv_xbbg_0.7.7 on Wi
 ## Test Results Summary
 
 ### xbbg 0.7.7:
-- **Index**: Regular `Index` with `datetime.date` objects (not DatetimeIndex)
+
+- **Index**: Regular `Index` with `datetime.date` objects (not
+  DatetimeIndex)
 - **Index dtype**: `object`
 - **Columns**: **MultiIndex** with 2 levels (even for single ticker)
   - Level 0: tickers
   - Level 1: fields
 
 ### xbbg 0.7.11 (Latest):
-- **Index**: Regular `Index` with `datetime.date` objects (not DatetimeIndex)
+
+- **Index**: Regular `Index` with `datetime.date` objects (not
+  DatetimeIndex)
 - **Index dtype**: `object`
 - **Columns**: **MultiIndex** with 2 levels (even for single ticker)
   - Level 0: tickers
   - Level 1: fields
 
 ### Key Finding:
+
 Both versions have **identical structure**:
-- Both use regular Index with `datetime.date` objects (not strings, not DatetimeIndex)
+
+- Both use regular Index with `datetime.date` objects (not strings, not
+  DatetimeIndex)
 - Both return MultiIndex columns even for single ticker requests
-- This means tests need to handle `datetime.date` objects in the index and expect MultiIndex columns for all BDH requests
+- This means tests need to handle `datetime.date` objects in the index
+  and expect MultiIndex columns for all BDH requests
 

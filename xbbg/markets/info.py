@@ -201,8 +201,6 @@ def asset_config(asset: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame
     """
-    from xbbg import const
-
     cfg_files = param.config_files('assets')
     cache_cfg = str(Path(const.PKG_PATH) / 'markets' / 'cached' / f'{asset}_cfg.pkl')
     if (last_mod := max(map(files.modified_time, cfg_files), default=0)) and \

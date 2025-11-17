@@ -9,12 +9,6 @@ import logging
 
 import pandas as pd
 
-try:
-    import blpapi  # type: ignore[reportMissingImports]
-except (ImportError, AttributeError):
-    import pytest  # type: ignore[reportMissingImports]
-    blpapi = pytest.importorskip('blpapi')
-
 from xbbg import const
 from xbbg.core import process
 from xbbg.core.infra import conn

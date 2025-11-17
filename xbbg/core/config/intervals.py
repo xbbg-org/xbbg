@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 
 from xbbg import const
-from xbbg.io import param
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ def _get_standard_sessions() -> set[str]:
         Set of session names found in exch.yml (excluding 'tz' which is not a session).
     """
     try:
-        from xbbg.io import param
+        from xbbg.io import param  # noqa: PLC0415
         exch = param.load_config(cat='exch')
         sessions = set()
         for idx in exch.index:
@@ -253,6 +252,7 @@ class Intervals:
 
         same_day = ss[0] < ss[-1]
 
+        from xbbg.io import param  # noqa: PLC0415
         if not start_time: s_time = str(ss[0])
         else:
             s_time = str(param.to_hours(int(start_time)))

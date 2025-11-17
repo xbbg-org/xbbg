@@ -1,34 +1,34 @@
 # PowerShell script to test xbbg 0.7.7 using uv
 # This script creates a virtual environment, installs xbbg 0.7.7, and runs the test
 
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "xbbg 0.7.7 Test Script" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host ""
+Write-Output "=========================================="
+Write-Output "xbbg 0.7.7 Test Script"
+Write-Output "=========================================="
+Write-Output ""
 
 # Create a temporary virtual environment
 $VENV_DIR = ".venv_xbbg_0.7.7"
-Write-Host "Creating virtual environment: $VENV_DIR" -ForegroundColor Yellow
+Write-Output "Creating virtual environment: $VENV_DIR"
 uv venv $VENV_DIR
 
 # Activate virtual environment
-Write-Host "Activating virtual environment..." -ForegroundColor Yellow
+Write-Output "Activating virtual environment..."
 & "$VENV_DIR\Scripts\Activate.ps1"
 
-Write-Host ""
-Write-Host "Installing dependencies (pandas first)..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "Installing dependencies (pandas first)..."
 uv pip install pandas
 
-Write-Host ""
-Write-Host "Installing xbbg==0.7.7..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "Installing xbbg==0.7.7..."
 uv pip install xbbg==0.7.7
 
-Write-Host ""
-Write-Host "Installing blpapi..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "Installing blpapi..."
 uv pip install --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
 
-Write-Host ""
-Write-Host "Verifying installed version..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "Verifying installed version..."
 # Use full path and change to temp directory to avoid importing from current directory
 $pythonExe = Join-Path (Resolve-Path $VENV_DIR) "Scripts\python.exe"
 Push-Location $env:TEMP
@@ -38,8 +38,8 @@ try {
     Pop-Location
 }
 
-Write-Host ""
-Write-Host "Running test script..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "Running test script..."
 # Set PYTHONPATH to empty to prevent importing from current directory
 $env:PYTHONPATH = ""
 # Get the script directory (where this .ps1 file is located)
@@ -47,13 +47,13 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $scriptPath = Join-Path $scriptDir "test_xbbg_0.7.7.py"
 & $pythonExe $scriptPath
 
-Write-Host ""
-Write-Host "Cleaning up..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "Cleaning up..."
 deactivate
 Remove-Item -Recurse -Force $VENV_DIR
 
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Test Complete" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Output ""
+Write-Output "=========================================="
+Write-Output "Test Complete"
+Write-Output "=========================================="
 
