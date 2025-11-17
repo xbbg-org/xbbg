@@ -83,7 +83,7 @@ class TestFmtDt:
 class TestCurTime:
     """Test current time utility function."""
 
-    @patch('xbbg.core.utils.utils.pd.Timestamp')
+    @patch('pandas.Timestamp')
     def test_cur_time_date(self, mock_timestamp):
         """Test current time as date string."""
         mock_timestamp.return_value.strftime.return_value = '2024-01-15'
@@ -92,7 +92,7 @@ class TestCurTime:
         result = utils.cur_time(typ='date')
         assert result == '2024-01-15'
 
-    @patch('xbbg.core.utils.utils.pd.Timestamp')
+    @patch('pandas.Timestamp')
     def test_cur_time_time(self, mock_timestamp):
         """Test current time as time string."""
         mock_ts = Mock()
@@ -101,7 +101,7 @@ class TestCurTime:
         result = utils.cur_time(typ='time')
         assert result == '2024-01-15 10:30:00'
 
-    @patch('xbbg.core.utils.utils.pd.Timestamp')
+    @patch('pandas.Timestamp')
     def test_cur_time_time_path(self, mock_timestamp):
         """Test current time as path string."""
         mock_ts = Mock()
@@ -115,7 +115,7 @@ class TestCurTime:
         result = utils.cur_time(typ='raw')
         assert isinstance(result, pd.Timestamp)
 
-    @patch('xbbg.core.utils.utils.pd.Timestamp')
+    @patch('pandas.Timestamp')
     def test_cur_time_empty_type(self, mock_timestamp):
         """Test current time with empty type (returns date)."""
         mock_ts = Mock()
@@ -124,7 +124,7 @@ class TestCurTime:
         result = utils.cur_time(typ='')
         assert result == datetime.date(2024, 1, 15)
 
-    @patch('xbbg.core.utils.utils.pd.Timestamp')
+    @patch('pandas.Timestamp')
     def test_cur_time_with_timezone(self, mock_timestamp):
         """Test current time with timezone."""
         mock_ts = Mock()
