@@ -115,7 +115,7 @@ def connect_bbg(**kwargs) -> blpapi.Session:
 
     # Register blpapi logging callback if not already registered (only once)
     try:
-        from xbbg.core import blpapi_logging
+        from xbbg.core.infra import blpapi_logging
         if blpapi_logging and not hasattr(connect_bbg, '_blpapi_logging_registered'):
             blpapi_logging.register_blpapi_logging_callback()
             connect_bbg._blpapi_logging_registered = True  # type: ignore[attr-defined]
