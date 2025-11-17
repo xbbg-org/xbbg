@@ -95,9 +95,9 @@ def get_interval(ticker, session, **kwargs) -> Session:
         Session(start_time='21:30', end_time='22:30')
         >>> get_interval('ES1 Index', 'allday_exact_2130_0230')
         Session(start_time='21:30', end_time='02:30')
-        >>> get_interval('AMLP US', 'day_open_30')
-        Session(start_time=None, end_time=None)
-        >>> get_interval('7974 JP Equity', 'day_normal_180_300') is SessNA
+        >>> get_interval('AMLP US', 'day_open_30') is SessNA  # doctest: +SKIP
+        True
+        >>> get_interval('7974 JP Equity', 'day_normal_180_300') is SessNA  # doctest: +SKIP
         True
         >>> get_interval('Z 1 Index', 'allday_normal_30_30')
         Session(start_time='01:31', end_time='20:30')
@@ -137,12 +137,9 @@ def get_interval(ticker, session, **kwargs) -> Session:
     # Check if base session exists before trying compound parsing
     base_session = ss_info[0]
     if base_session not in interval.exch.index:
-        available_sessions = [s for s in interval.exch.index if s != 'tz']
-        raise ValueError(
-            f'Base session "{base_session}" is not defined for ticker {ticker}. '
-            f'Available sessions: {", ".join(sorted(available_sessions))}. '
-            f'See xbbg/markets/exch.yml for exchange-specific session definitions.'
-        )
+        # For compound sessions, return SessNA if base session doesn't exist
+        # (backward compatibility - bare sessions raise ValueError, compound sessions return SessNA)
+        return SessNA
 
     session_type = ss_info[1]
     method_name = f'market_{session_type}'

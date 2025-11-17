@@ -46,10 +46,12 @@ def register_blpapi_logging_callback(
         The registered callback function, or None if blpapi is not available.
 
     Examples:
-        >>> from xbbg.core import blpapi_logging
+        >>> from xbbg.core.infra import blpapi_logging
         >>> # Register before creating sessions
-        >>> blpapi_logging.register_blpapi_logging_callback()
-        >>> # Now all blpapi internal logs will go through Python logging
+        >>> cb = blpapi_logging.register_blpapi_logging_callback()
+        >>> # Returns callback function or None if blpapi not available
+        >>> cb is None or callable(cb)
+        True
     """
     if blpapi is None:
         logger.warning('blpapi not available; cannot register logging callback')

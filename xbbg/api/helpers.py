@@ -26,6 +26,7 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = 'USD') -> pd.DataFrame:
         pd.DataFrame: Currency-adjusted data in the same format as input.
 
     Examples:
+        >>> from xbbg import blp
         >>> # Works with historical data
         >>> hist_data = blp.bdh('AAPL US Equity', start_date='2024-01-01')
         >>> adjusted = blp.adjust_ccy(hist_data, ccy='EUR')
