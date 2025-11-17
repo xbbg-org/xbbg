@@ -7,11 +7,10 @@ This package contains supporting utilities:
 """
 
 # Import modules directly using relative imports
-from . import (
-    timezone,
-    trials,
-    utils,
-)
+# Import trials first to avoid namespace conflicts with utils module
+from . import trials
+from . import timezone
+from . import utils
 
 __all__ = ['utils', 'timezone', 'trials']
 

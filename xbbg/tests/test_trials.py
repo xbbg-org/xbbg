@@ -103,7 +103,7 @@ class TestMissingInfo:
 class TestNumTrials:
     """Test num_trials function."""
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     @patch('xbbg.io.files.create_folder')
     @patch('xbbg.io.db.SQLite')
     def test_num_trials_with_path(self, mock_sqlite, mock_create, mock_root):
@@ -118,7 +118,7 @@ class TestNumTrials:
         result = trials.num_trials(func='bdh', ticker='AAPL US Equity', dt='2024-01-01')
         assert result == 5
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     def test_num_trials_no_path(self, mock_root):
         """Test num_trials when BBG_ROOT is not set."""
         # Mock root_path to return a Path with empty as_posix()
@@ -129,7 +129,7 @@ class TestNumTrials:
         # Function checks `if not data_path.as_posix(): return 0`
         assert result == 0
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     @patch('xbbg.io.files.create_folder')
     @patch('xbbg.io.db.SQLite')
     def test_num_trials_no_results(self, mock_sqlite, mock_create, mock_root):
@@ -148,14 +148,14 @@ class TestNumTrials:
 class TestUpdateTrials:
     """Test update_trials function."""
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     def test_update_trials_no_path(self, mock_root):
         """Test update_trials when BBG_ROOT is not set."""
         mock_root.return_value = Path('')
         # Should not raise an error
         trials.update_trials(func='bdh', ticker='AAPL US Equity')
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     @patch.object(trials_module, 'num_trials')
     @patch('xbbg.io.files.create_folder')
     @patch('xbbg.io.db.SQLite')
@@ -172,7 +172,7 @@ class TestUpdateTrials:
         call_args = mock_con.execute.call_args[0][0]
         assert 'cnt=4' in call_args or 'cnt' in str(call_args)
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     @patch('xbbg.io.files.create_folder')
     @patch('xbbg.io.db.SQLite')
     def test_update_trials_with_explicit_count(self, mock_sqlite, mock_create, mock_root):
@@ -188,7 +188,7 @@ class TestUpdateTrials:
 class TestCurrentMissing:
     """Test current_missing function."""
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     def test_current_missing_no_path(self, mock_root):
         """Test current_missing when BBG_ROOT is not set."""
         # Mock root_path to return a Path with empty as_posix()
@@ -199,7 +199,7 @@ class TestCurrentMissing:
         # Function checks `if not data_path.as_posix(): return 0`
         assert result == 0
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     @patch.object(trials_module, 'missing_info')
     @patch('xbbg.io.files.all_files')
     def test_current_missing_with_path(self, mock_all_files, mock_missing, mock_root):
@@ -215,21 +215,21 @@ class TestCurrentMissing:
 class TestUpdateMissing:
     """Test update_missing function."""
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     def test_update_missing_no_path(self, mock_root):
         """Test update_missing when BBG_ROOT is not set."""
         mock_root.return_value = Path('')
         # Should not raise an error
         trials.update_missing(func='bdh', ticker='AAPL US Equity')
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     def test_update_missing_empty_kwargs(self, mock_root):
         """Test update_missing with empty kwargs."""
         mock_root.return_value = Path('/test/path')
         # Should not raise an error
         trials.update_missing()
 
-    @patch('xbbg.core.utils.trials.root_path')
+    @patch.object(trials_module, 'root_path')
     @patch.object(trials_module, 'missing_info')
     @patch('xbbg.io.files.all_files')
     @patch('xbbg.io.files.create_folder')
