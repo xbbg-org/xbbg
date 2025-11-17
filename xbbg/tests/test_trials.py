@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from xbbg.core.utils import trials
+
+trials_module = importlib.import_module('xbbg.core.utils.trials')
 
 
 class TestRootPath:
@@ -153,7 +156,7 @@ class TestUpdateTrials:
         trials.update_trials(func='bdh', ticker='AAPL US Equity')
 
     @patch('xbbg.core.utils.trials.root_path')
-    @patch('xbbg.core.utils.trials.num_trials')
+    @patch.object(trials_module, 'num_trials')
     @patch('xbbg.io.files.create_folder')
     @patch('xbbg.io.db.SQLite')
     def test_update_trials_increment(self, mock_sqlite, mock_create, mock_num, mock_root):
@@ -197,7 +200,7 @@ class TestCurrentMissing:
         assert result == 0
 
     @patch('xbbg.core.utils.trials.root_path')
-    @patch('xbbg.core.utils.trials.missing_info')
+    @patch.object(trials_module, 'missing_info')
     @patch('xbbg.io.files.all_files')
     def test_current_missing_with_path(self, mock_all_files, mock_missing, mock_root):
         """Test current_missing when BBG_ROOT is set."""
@@ -227,7 +230,7 @@ class TestUpdateMissing:
         trials.update_missing()
 
     @patch('xbbg.core.utils.trials.root_path')
-    @patch('xbbg.core.utils.trials.missing_info')
+    @patch.object(trials_module, 'missing_info')
     @patch('xbbg.io.files.all_files')
     @patch('xbbg.io.files.create_folder')
     @patch('pathlib.Path.touch')
