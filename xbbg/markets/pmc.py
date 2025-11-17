@@ -389,7 +389,6 @@ def pmc_wizard(
             extracted from kwargs for backward compatibility.
         **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
     """
-    # Logger is module-level
     from xbbg.core.domain.context import split_kwargs
 
     # Extract context - prefer explicit ctx, otherwise extract from kwargs
@@ -397,66 +396,23 @@ def pmc_wizard(
         split = split_kwargs(**kwargs)
         ctx = split.infra
 
-    exch_code = _get_exch_code(ticker, ctx=ctx)
+    exch_code = _resolve_exch_code_for_wizard(ticker=ticker, ctx=ctx)
     if not exch_code:
-        print(f"Could not resolve exch_code from Bloomberg for: {ticker}")
-        hint = ' (hint: TRACE for US credit/OTC)' if ticker.endswith(' Corp') else ''
-        typed = input(f"Enter exch_code manually{hint}: ").strip()
-        if not typed:
-            logger.error('No exchange code provided; cannot run PMC wizard for ticker %s', ticker)
-            return
-        exch_code = _normalize_exch_code(typed)
+        return
 
     current = pmc_list_mappings(scope='effective').get(exch_code.upper(), '')
-
-    try:
-        import pandas_market_calendars as mcal  # type: ignore
-        avail = sorted(set(getattr(mcal, 'get_calendar_names', lambda: [])()))
-    except Exception:
-        avail = []
+    avail = _load_available_calendars()
 
     print(f"Ticker: {ticker}")
     print(f"Resolved exch_code: {exch_code}")
     print(f"Current mapping (effective): {current or '<none>'}")
-    calendar = current
-    if avail:
-        suggestions = _suggest_calendars(exch_code, avail, current)
-        print(f"Select PMC calendar for exch_code={exch_code}")
-        for i, c in enumerate(suggestions, 1):
-            mark = "*" if current and c == current else ""
-            print(f"  [{i}] {c} {mark}")
-        print("  [0] Other (search)")
-        raw = input("Enter number (default 1): ").strip()
-        sel_idx = 1 if not raw else (int(raw) if raw.isdigit() else -1)
-        if sel_idx == 0:
-            # Simple search
-            key = input("Enter keyword to search calendars: ").strip().lower()
-            if key:
-                matches = [c for c in avail if key in c.lower()]
-                if not matches:
-                    print("No matches found.")
-                else:
-                    for j, m in enumerate(matches[:30], 1):
-                        print(f"  [{j}] {m}")
-                    pick = input("Enter number (or exact id): ").strip()
-                    if pick.isdigit():
-                        j = int(pick)
-                        if 1 <= j <= min(30, len(matches)):
-                            calendar = matches[j - 1]
-                    elif pick in avail:
-                        calendar = pick
-        elif 1 <= sel_idx <= len(suggestions):
-            calendar = suggestions[sel_idx - 1]
-        else:
-            # fallback to default suggestion
-            calendar = suggestions[0] if suggestions else current
-    else:
-        prompt = f"Enter PMC calendar id for exch_code={exch_code}"
-        if current:
-            prompt += f" [default: {current}]"
-        prompt += ": "
-        user_val = input(prompt).strip()
-        calendar = user_val or current
+
+    calendar = _choose_calendar_interactively(
+        ticker=ticker,
+        exch_code=exch_code,
+        current=current,
+        available=avail,
+    )
     if not calendar:
         logger.error('No calendar ID provided; cannot complete PMC mapping operation')
         return
@@ -468,6 +424,80 @@ def pmc_wizard(
 
     pmc_add_mapping(exch_code=exch_code, calendar=calendar, scope=scope)
     print(f"Saved mapping: {exch_code.upper()} -> {calendar} ({scope}).")
+
+
+def _resolve_exch_code_for_wizard(ticker: str, ctx: BloombergContext) -> str | None:
+    """Resolve exchange code for wizard, prompting user when necessary."""
+    exch_code = _get_exch_code(ticker, ctx=ctx)
+    if exch_code:
+        return exch_code
+
+    print(f"Could not resolve exch_code from Bloomberg for: {ticker}")
+    hint = ' (hint: TRACE for US credit/OTC)' if ticker.endswith(' Corp') else ''
+    typed = input(f"Enter exch_code manually{hint}: ").strip()
+    if not typed:
+        logger.error('No exchange code provided; cannot run PMC wizard for ticker %s', ticker)
+        return None
+    return _normalize_exch_code(typed)
+
+
+def _load_available_calendars() -> list[str]:
+    """Load available PMC calendar ids from pandas-market-calendars."""
+    try:
+        import pandas_market_calendars as mcal  # type: ignore
+
+        return sorted(set(getattr(mcal, 'get_calendar_names', lambda: [])()))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _choose_calendar_interactively(
+    ticker: str,
+    exch_code: str,
+    current: str | None,
+    available: list[str],
+) -> str | None:
+    """Interactive flow to select or enter a PMC calendar id."""
+    calendar = current or ''
+    if available:
+        suggestions = _suggest_calendars(exch_code, available, current)
+        print(f"Select PMC calendar for exch_code={exch_code}")
+        for i, c in enumerate(suggestions, 1):
+            mark = "*" if current and c == current else ""
+            print(f"  [{i}] {c} {mark}")
+        print("  [0] Other (search)")
+        raw = input("Enter number (default 1): ").strip()
+        sel_idx = 1 if not raw else (int(raw) if raw.isdigit() else -1)
+        if sel_idx == 0:
+            # Simple search
+            key = input("Enter keyword to search calendars: ").strip().lower()
+            if key:
+                matches = [c for c in available if key in c.lower()]
+                if not matches:
+                    print("No matches found.")
+                else:
+                    for j, m in enumerate(matches[:30], 1):
+                        print(f"  [{j}] {m}")
+                    pick = input("Enter number (or exact id): ").strip()
+                    if pick.isdigit():
+                        j = int(pick)
+                        if 1 <= j <= min(30, len(matches)):
+                            calendar = matches[j - 1]
+                    elif pick in available:
+                        calendar = pick
+        elif 1 <= sel_idx <= len(suggestions):
+            calendar = suggestions[sel_idx - 1]
+        else:
+            # fallback to default suggestion
+            calendar = suggestions[0] if suggestions else current or ''
+    else:
+        prompt = f"Enter PMC calendar id for exch_code={exch_code}"
+        if current:
+            prompt += f" [default: {current}]"
+        prompt += ": "
+        user_val = input(prompt).strip()
+        calendar = user_val or (current or '')
+    return calendar or None
 
 def _suggest_calendars(exch_code: str, avail: list[str], current: str | None) -> list[str]:
     code = (exch_code or '').upper()

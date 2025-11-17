@@ -156,7 +156,9 @@ start_date = end_date - timedelta(days=5)
 print(f"Date Range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 print()
 
-try:
+
+def _run_bdh_and_related_tests(blp, start_date: datetime, end_date: datetime) -> None:
+    """Run the suite of BDH/turnover/dividend/adjust_ccy structure checks."""
     # Test 1: Single ticker BDH
     print("\n" + "=" * 80)
     print("TEST 1: BDH - Single Ticker")
@@ -495,6 +497,9 @@ try:
     print("All Tests Complete")
     print("=" * 80)
 
+
+try:
+    _run_bdh_and_related_tests(blp=blp, start_date=start_date, end_date=end_date)
 except Exception as e:
     print(f"\nERROR: Bloomberg request failed: {e}")
     import traceback

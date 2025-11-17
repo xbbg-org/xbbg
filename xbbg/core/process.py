@@ -138,12 +138,16 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
 def time_range(
     dt,
     ticker,
-    session='allday',
-    tz='UTC',
+    session: str = 'allday',
+    tz: str = 'UTC',
     ctx: BloombergContext | None = None,
     **kwargs,
 ) -> intervals.Session:
     """Time range in UTC (for intraday bar) or other timezone.
+
+    This is a thin orchestration wrapper that tries exch.yml-based metadata
+    first, then falls back to pandas-market-calendars (PMC). The detailed
+    resolution logic lives in dedicated helpers to keep this function simple.
 
     Args:
         dt: Date-like input to compute the range for.
@@ -156,15 +160,8 @@ def time_range(
 
     Returns:
         intervals.Session.
-
-    Note:
-        This function accepts either a BloombergContext (preferred) or kwargs
-        for backward compatibility. When kwargs are provided, only infrastructure
-        kwargs are extracted and passed to internal functions.
     """
     from xbbg.core.domain.context import split_kwargs
-
-    logger = logging.getLogger(__name__)
 
     # Extract context - prefer explicit ctx, otherwise extract from kwargs
     if ctx is None:
@@ -174,39 +171,63 @@ def time_range(
     else:
         pmc_extended = bool(kwargs.pop('pmc_extended', False))
 
-    # Convert context to kwargs for internal functions (backward compatibility)
     session_kwargs = ctx.to_kwargs()
 
-    # First try legacy exch.yml-based sessions
+    # 1) Primary: exch.yml-based session metadata
+    primary = _time_range_from_exch_metadata(
+        dt=dt,
+        ticker=ticker,
+        session=session,
+        tz=tz,
+        session_kwargs=session_kwargs,
+    )
+    if primary is not None:
+        return primary
+
+    # 2) Fallback: pandas-market-calendars-based session
+    pmc_session = _time_range_from_pmc(
+        dt=dt,
+        ticker=ticker,
+        session=session,
+        tz=tz,
+        ctx=ctx,
+        pmc_extended=pmc_extended,
+    )
+    if pmc_session is not None:
+        return pmc_session
+
+    # 3) Nothing worked – propagate a clear error
+    raise ValueError(
+        f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
+        f'Session is not defined in exch.yml and PMC fallback is not available or does not support this session.'
+    )
+
+
+def _normalize_dest_tz(tz: str) -> str:
+    """Normalize destination timezone aliases (e.g., 'NY' -> full tz)."""
+    try:
+        return timezone.get_tz(tz)
+    except Exception:  # noqa: BLE001
+        return tz
+
+
+def _time_range_from_exch_metadata(
+    dt,
+    ticker: str,
+    session: str,
+    tz: str,
+    session_kwargs: dict,
+) -> intervals.Session | None:
+    """Resolve time range using exch.yml-based metadata, or return None on failure."""
+    logger = logging.getLogger(__name__)
+
     try:
         ss = intervals.get_interval(ticker=ticker, session=session, **session_kwargs)
         ex_info = const.exch_info(ticker=ticker, **session_kwargs)
-        has_session = (ss.start_time is not None) and (ss.end_time is not None)
-        has_tz = ('tz' in ex_info.index) if hasattr(ex_info, 'index') else False
-        if has_session and has_tz:
-            cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-            time_fmt = '%Y-%m-%dT%H:%M:%S'
-            # Normalize destination timezone aliases (e.g., 'NY' -> full tz)
-            try:
-                dest_tz = timezone.get_tz(tz)
-            except Exception:
-                dest_tz = tz
-            time_idx = (
-                pd.DatetimeIndex([
-                    f'{cur_dt} {ss.start_time}',
-                    f'{cur_dt} {ss.end_time}'],
-                )
-                .tz_localize(ex_info.tz)
-                .tz_convert(DEFAULT_TZ)
-                .tz_convert(dest_tz)
-            )
-            if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
-            return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
     except ValueError:
-        # ValueError from get_interval means session is not defined - re-raise it
+        # ValueError from get_interval means session is not defined - propagate
         raise
     except Exception:  # noqa: BLE001
-        # Other exceptions fall through to PMC fallback
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 'Primary session resolution failed for %s on %s; falling back to PMC',
@@ -214,42 +235,93 @@ def time_range(
                 dt,
                 exc_info=True,
             )
+        return None
 
-    # Fallback: try pandas-market-calendars via exch_code mapping
-    # Note: PMC only supports 'day' and 'allday' sessions
+    has_session = (ss.start_time is not None) and (ss.end_time is not None)
+    has_tz = hasattr(ex_info, 'index') and ('tz' in ex_info.index)
+    if not (has_session and has_tz):
+        return None
+
+    cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+    time_fmt = '%Y-%m-%dT%H:%M:%S'
+    dest_tz = _normalize_dest_tz(tz)
+
+    time_idx = (
+        pd.DatetimeIndex(
+            [
+                f'{cur_dt} {ss.start_time}',
+                f'{cur_dt} {ss.end_time}',
+            ],
+        )
+        .tz_localize(ex_info.tz)
+        .tz_convert(DEFAULT_TZ)
+        .tz_convert(dest_tz)
+    )
+    if time_idx[0] > time_idx[1]:
+        time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+    return intervals.Session(
+        time_idx[0].strftime(time_fmt),
+        time_idx[1].strftime(time_fmt),
+    )
+
+
+def _time_range_from_pmc(
+    dt,
+    ticker: str,
+    session: str,
+    tz: str,
+    ctx: BloombergContext,
+    pmc_extended: bool,
+) -> intervals.Session | None:
+    """Resolve time range using pandas-market-calendars, or return None on failure."""
+    logger = logging.getLogger(__name__)
+
     pmc_supported_sessions = {'day', 'allday'}
-    if session in pmc_supported_sessions:
-        try:
-            from xbbg.markets.pmc import pmc_session_for_date
-            pmc_ss = pmc_session_for_date(
-                ticker=ticker, dt=dt, session=session, include_extended=pmc_extended, ctx=ctx
-            )
-        except Exception:
-            pmc_ss = None
-        if pmc_ss is not None:
-            logger.warning('Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars', ticker, session)
-            cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-            time_fmt = '%Y-%m-%dT%H:%M:%S'
-            try:
-                dest_tz = timezone.get_tz(tz)
-            except Exception:
-                dest_tz = tz
-            time_idx = (
-                pd.DatetimeIndex([
-                    f'{cur_dt} {pmc_ss.start}',
-                    f'{cur_dt} {pmc_ss.end}'],
-                )
-                .tz_localize(pmc_ss.tz)
-                .tz_convert(DEFAULT_TZ)
-                .tz_convert(dest_tz)
-            )
-            if time_idx[0] > time_idx[1]: time_idx -= pd.TimedeltaIndex(['1D', '0D'])
-            return intervals.Session(time_idx[0].strftime(time_fmt), time_idx[1].strftime(time_fmt))
+    if session not in pmc_supported_sessions:
+        return None
 
-    # If all fails, raise error - session must be defined
-    raise ValueError(
-        f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
-        f'Session is not defined in exch.yml and PMC fallback is not available or does not support this session.'
+    try:
+        from xbbg.markets.pmc import pmc_session_for_date
+
+        pmc_ss = pmc_session_for_date(
+            ticker=ticker,
+            dt=dt,
+            session=session,
+            include_extended=pmc_extended,
+            ctx=ctx,
+        )
+    except Exception:  # noqa: BLE001
+        pmc_ss = None
+
+    if pmc_ss is None:
+        return None
+
+    logger.warning(
+        'Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars',
+        ticker,
+        session,
+    )
+
+    cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+    time_fmt = '%Y-%m-%dT%H:%M:%S'
+    dest_tz = _normalize_dest_tz(tz)
+
+    time_idx = (
+        pd.DatetimeIndex(
+            [
+                f'{cur_dt} {pmc_ss.start}',
+                f'{cur_dt} {pmc_ss.end}',
+            ],
+        )
+        .tz_localize(pmc_ss.tz)
+        .tz_convert(DEFAULT_TZ)
+        .tz_convert(dest_tz)
+    )
+    if time_idx[0] > time_idx[1]:
+        time_idx -= pd.TimedeltaIndex(['1D', '0D'])
+    return intervals.Session(
+        time_idx[0].strftime(time_fmt),
+        time_idx[1].strftime(time_fmt),
     )
 
 
@@ -508,10 +580,8 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """Process BQL response messages into row dictionaries.
 
     Attempts to parse tabular BQL results; falls back to flattened dicts.
-    Handles both structured 'results' element and JSON string 'result' element.
-
-    This function is BQL-specific and should only be called for BQL queries
-    (via blp.bql()). It checks for BQL-specific message formats.
+    Handles both structured ``results`` element and JSON string ``result``
+    element. The detailed parsing is delegated to helpers for readability.
 
     Args:
         msg: Bloomberg BQL message.
@@ -520,8 +590,6 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     Yields:
         dict: Row-like mappings parsed from BQL results.
     """
-    import json
-
     kwargs.pop('(^_^)', None)
 
     # Gate: Only process messages with BQL-specific message type "result"
@@ -529,100 +597,126 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     if str(msg.messageType()) != 'result':
         return iter([])
 
-    # Check if message element itself is a JSON string (BQL format)
-    msg_elem = msg.asElement()
-    if msg_elem.datatype() == blpapi.DataType.STRING:
-        try:
-            result_str = msg_elem.getValue()
-            if not isinstance(result_str, str):
-                return iter([])
-            result_json = json.loads(result_str)
+    # 1) Try JSON-string payload format first
+    handled_any = False
+    for row in _iter_bql_json_rows(msg):
+        handled_any = True
+        yield row
+    if handled_any:
+        return
 
-            # Check for errors first - raise exception if errors found
-            if 'responseExceptions' in result_json and result_json['responseExceptions']:
-                errors = result_json['responseExceptions']
-                error_messages = []
-                for exc in errors:
-                    msg_text = exc.get('message', exc.get('internalMessage', 'Unknown error'))
-                    error_messages.append(msg_text)
-                error_msg = '; '.join(error_messages)
-                raise ValueError(f"BQL query error: {error_msg}")
-
-            if 'results' in result_json:
-                results_data = result_json.get('results')
-                # Handle None results (empty query result)
-                if results_data is None:
-                    return iter([])
-                if not isinstance(results_data, dict):
-                    return iter([])
-                # Extract data from JSON structure
-                for field_name, field_data in results_data.items():
-                    if isinstance(field_data, dict):
-                        # Check for idColumn and valuesColumn structure
-                        if 'idColumn' in field_data and 'valuesColumn' in field_data:
-                            ids = field_data['idColumn'].get('values', [])
-                            values = field_data['valuesColumn'].get('values', [])
-                            # Also check for secondary columns (like DATE, CURRENCY)
-                            secondary_cols = {}
-                            if 'secondaryColumns' in field_data:
-                                for sec_col in field_data['secondaryColumns']:
-                                    col_name = sec_col.get('name', '')
-                                    col_values = sec_col.get('values', [])
-                                    secondary_cols[col_name] = col_values
-
-                            # Yield rows
-                            for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
-                                row = {
-                                    'ID': ticker,
-                                    field_name: value,
-                                }
-                                # Add secondary columns
-                                for col_name, col_values in secondary_cols.items():
-                                    if i < len(col_values):
-                                        row[col_name] = col_values[i]
-                                yield row
-                        else:
-                            # Fallback: flatten the structure
-                            def _flatten_dict(d: dict, parent_key: str = '', sep: str = '_') -> dict:
-                                items = []
-                                for k, v in d.items():
-                                    new_key = f"{parent_key}{sep}{k}" if parent_key else k
-                                    if isinstance(v, dict):
-                                        items.extend(_flatten_dict(v, new_key, sep=sep).items())
-                                    else:
-                                        items.append((new_key, v))
-                                return dict(items)
-                            yield dict(_flatten_dict(field_data))
-                return
-        except (json.JSONDecodeError, KeyError, TypeError):
-            pass
-
-    # Check for structured 'results' element (plural) - older BQL format
+    # 2) Fallback: structured BQL elements (RESULTS/TABLE)
     if msg.hasElement(RESULTS):
-        for res in msg.getElement(RESULTS).values():
-            if res.hasElement(TABLE):
-                table = res.getElement(TABLE)
-                if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
-                    yield dict(_flatten_element(res))
-                    continue
+        yield from _iter_bql_structured_rows(msg)
 
-                cols: list[str] = []
-                for col in table.getElement(COLUMNS).values():
-                    if col.hasElement(NAME):
-                        cols.append(col.getElement(NAME).getValue())
-                    elif col.hasElement(FIELD):
-                        cols.append(str(col.getElement(FIELD).getValue()))
-                    else:
-                        cols.append(str(col.name()))
 
-                for row in table.getElement(ROWS).values():
-                    values: list[Any] = []
-                    if row.hasElement(VALUES):
-                        for v in row.getElement(VALUES).values():
-                            values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
-                    yield dict(zip(cols, values, strict=False))
+def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
+    """Iterate rows from JSON-string BQL result payload, if present."""
+    import json
+
+    msg_elem = msg.asElement()
+    if msg_elem.datatype() != blpapi.DataType.STRING:
+        return iter(())
+
+    try:
+        result_str = msg_elem.getValue()
+        if not isinstance(result_str, str):
+            return iter(())
+        result_json = json.loads(result_str)
+
+        # Check for errors first - raise exception if errors found
+        if 'responseExceptions' in result_json and result_json['responseExceptions']:
+            errors = result_json['responseExceptions']
+            error_messages = []
+            for exc in errors:
+                msg_text = exc.get('message', exc.get('internalMessage', 'Unknown error'))
+                error_messages.append(msg_text)
+            error_msg = '; '.join(error_messages)
+            raise ValueError(f"BQL query error: {error_msg}")
+
+        if 'results' not in result_json:
+            return iter(())
+
+        results_data = result_json.get('results')
+        # Handle None results (empty query result)
+        if results_data is None or not isinstance(results_data, dict):
+            return iter(())
+
+        for field_name, field_data in results_data.items():
+            if not isinstance(field_data, dict):
+                continue
+
+            # idColumn / valuesColumn schema
+            if 'idColumn' in field_data and 'valuesColumn' in field_data:
+                ids = field_data['idColumn'].get('values', [])
+                values = field_data['valuesColumn'].get('values', [])
+                secondary_cols: dict[str, list[Any]] = {}
+                if 'secondaryColumns' in field_data:
+                    for sec_col in field_data['secondaryColumns']:
+                        col_name = sec_col.get('name', '')
+                        col_values = sec_col.get('values', [])
+                        secondary_cols[col_name] = col_values
+
+                for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
+                    row: dict[str, Any] = {
+                        'ID': ticker,
+                        field_name: value,
+                    }
+                    for col_name, col_values in secondary_cols.items():
+                        if i < len(col_values):
+                            row[col_name] = col_values[i]
+                    yield row
             else:
-                yield dict(_flatten_element(res))
+                # Fallback: flatten arbitrary dict structure
+                yield dict(_flatten_dict(field_data))
+    except (json.JSONDecodeError, KeyError, TypeError):
+        # Let caller fall back to structured-element parsing
+        return iter(())
+
+
+def _flatten_dict(d: dict, parent_key: str = '', sep: str = '_') -> dict:
+    """Flatten a nested dict using ``sep`` between levels."""
+    items: list[tuple[str, Any]] = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
+def _iter_bql_structured_rows(msg: blpapi.Message) -> Iterator[dict]:
+    """Iterate rows from structured ``RESULTS/TABLE`` BQL format."""
+    for res in msg.getElement(RESULTS).values():
+        if not res.hasElement(TABLE):
+            # Fallback: flatten entire result element
+            yield dict(_flatten_element(res))
+            continue
+
+        table = res.getElement(TABLE)
+        if not (table.hasElement(COLUMNS) and table.hasElement(ROWS)):
+            yield dict(_flatten_element(res))
+            continue
+
+        cols: list[str] = []
+        for col in table.getElement(COLUMNS).values():
+            if col.hasElement(NAME):
+                cols.append(col.getElement(NAME).getValue())
+            elif col.hasElement(FIELD):
+                cols.append(str(col.getElement(FIELD).getValue()))
+            else:
+                cols.append(str(col.name()))
+
+        for row in table.getElement(ROWS).values():
+            values: list[Any] = []
+            if row.hasElement(VALUES):
+                for v in row.getElement(VALUES).values():
+                    values.append(elem_value(v) if not v.isComplexType() else _flatten_element(v))
+            # Defensive: skip rows with mismatched column/value counts
+            if len(values) != len(cols):
+                continue
+            yield dict(zip(cols, values, strict=False))
 
 
 def earning_pct(data: pd.DataFrame, yr):
