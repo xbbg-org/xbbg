@@ -79,7 +79,7 @@ rm -rf .venv_xbbg_0.7.7  # or Remove-Item -Recurse -Force .venv_xbbg_0.7.7 on Wi
 
 ## Test Results Summary
 
-### xbbg 0.7.7:
+### xbbg 0.7.7
 
 - **Index**: Regular `Index` with `datetime.date` objects (not
   DatetimeIndex)
@@ -88,7 +88,7 @@ rm -rf .venv_xbbg_0.7.7  # or Remove-Item -Recurse -Force .venv_xbbg_0.7.7 on Wi
   - Level 0: tickers
   - Level 1: fields
 
-### xbbg 0.7.11 (Latest):
+### xbbg 0.7.11 (Latest)
 
 - **Index**: Regular `Index` with `datetime.date` objects (not
   DatetimeIndex)
@@ -97,7 +97,7 @@ rm -rf .venv_xbbg_0.7.7  # or Remove-Item -Recurse -Force .venv_xbbg_0.7.7 on Wi
   - Level 0: tickers
   - Level 1: fields
 
-### Key Finding:
+### Key Finding
 
 Both versions have **identical structure**:
 
@@ -106,4 +106,3 @@ Both versions have **identical structure**:
 - Both return MultiIndex columns even for single ticker requests
 - This means tests need to handle `datetime.date` objects in the index
   and expect MultiIndex columns for all BDH requests
-
