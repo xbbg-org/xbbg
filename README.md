@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-**Latest release:** xbbg==0.7.11 ([release notes](https://github.com/alpha-xone/xbbg/releases/tag/xbbg%3D%3D0.7.11))
+Latest release: xbbg== (release: [notes]())
 <!-- xbbg:latest-release-end -->
 
 ## Overview
@@ -747,16 +747,9 @@ uv run pytest --doctest-modules -q
 ## What's New
 
 <!-- xbbg:changelog-start -->
-_0.7.11_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/xbbg%3D%3D0.7.11)
+__ - see release: [notes]()
 
-What's Changed
 
-- ci: use uv build in publish workflows by @kj55-dev in #125
-- docs: standardize docstrings (Google) + Ruff/napoleon config by @kj55-dev in #127
-- feat: BQL support + CI workflow improvements (uv venv) by @kj55-dev in #128
-- feat(bdib): add support for sub-minute intervals via intervalHasSeconds flag by @kj55-dev in #131
-
-Full Changelog: xbbg==0.7.10...xbbg==0.7.11
 <!-- xbbg:changelog-end -->
 
 _0.7.7a2_ - Custom `config` and etc. for reference exchange (author `hceh`)
