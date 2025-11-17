@@ -392,6 +392,72 @@ Out[11]:
 2018-10-17 09:31:00+09:00      39,990.00 40,000.00 39,980.00 39,990.00   2000       15
 ```
 
+#### How the `session` parameter works
+
+The `session` parameter is resolved by `xbbg.core.config.intervals.get_interval()`
+and `xbbg.core.process.time_range()` using exchange metadata from
+`xbbg/markets/config/exch.yml`:
+
+- **Base sessions** (no underscores) map directly to session windows defined
+  for the ticker's exchange in `exch.yml`:
+  - `allday` - Full trading day including pre/post market (e.g., `[400, 2000]` for US equities)
+  - `day` - Regular trading hours (e.g., `[0930, 1600]` for US equities)
+  - `am` - Morning session (e.g., `[901, 1130]` for Japanese equities)
+  - `pm` - Afternoon session (e.g., `[1230, 1458]` for Japanese equities)
+  - `pre` - Pre-market session (e.g., `[400, 0930]` for US equities)
+  - `post` - Post-market session (e.g., `[1601, 2000]` for US equities)
+  - `night` - Night trading session (e.g., `[1710, 700]` for Australian futures)
+  
+  Not all exchanges define all sessions. For example, `GBP Curncy` uses
+  `CurrencyGeneric` which defines `allday` and `day` only.
+
+- **Compound sessions** (with underscores) allow finer control by combining
+  a base session with modifiers (`open`, `close`, `normal`, `exact`):
+  - **Open windows** (first N minutes of a session):
+    - `day_open_30` → first 30 minutes of the `day` session
+    - `am_open_30` → first 30 minutes of the `am` session
+    - Note: `open` is not a base session; use `day_open_30`, not `open_30`
+  - **Close windows** (last N minutes of a session):
+    - `day_close_20` → last 20 minutes of the `day` session
+    - `am_close_30` → last 30 minutes of the `am` session
+    - Note: `close` is not a base session; use `day_close_20`, not `close_20`
+  - **Normal windows** (skip open/close buffers):
+    - `day_normal_30_20` → skips first 30 min and last 20 min of `day`
+    - `am_normal_30_30` → skips first 30 min and last 30 min of `am`
+  - **Exact clock times** (exchange-local HHMM format):
+    - `day_exact_2130_2230` → [21:30, 22:30] local time (marker session)
+    - `allday_exact_2130_2230` → [21:30, 22:30] local time (actual window)
+    - `allday_exact_2130_0230` → [21:30, 02:30 next day] local time
+
+- **Resolution order and fallbacks**:
+  - `blp.bdib` / `blp.bdtick` call `time_range()`, which:
+    1. Uses `exch.yml` + `get_interval()` and `const.exch_info()` to resolve
+       local session times and exchange timezone.
+    2. Converts that window to UTC and then to your requested `tz` argument
+       (e.g., `'UTC'`, `'NY'`, `'Europe/London'`).
+    3. If exchange metadata is missing for `session` and the asset, it may
+       fall back to pandas‑market‑calendars (PMC) for simple sessions
+       (`'day'` / `'allday'`), based on the exchange code.
+
+- **Errors and diagnostics**:
+  - If a `session` name is not defined for the ticker’s exchange,
+    `get_interval()` raises a `ValueError` listing the available sessions
+    for that exchange and points to `xbbg/markets/exch.yml`.
+  - For compound sessions whose base session doesn’t exist (e.g. mis-typed
+    `am_open_30` for an exchange that has no `am` section), `get_interval()`
+    returns `SessNA` and `time_range()` will then try the PMC fallback or
+    ultimately raise a clear `ValueError`.
+
+In practice:
+
+- Use simple names like `session='day'` or `session='allday'` when you just
+  want the main trading hours.
+- Use compound names like `session='day_open_30'` or `session='am_normal_30_30'`
+  when you need to focus on opening/closing auctions or to exclude “micro”
+  windows (e.g. the first X minutes).
+- If you add or customize sessions, update `exch.yml` and rely on
+  `get_interval()` to pick them up automatically.
+
 ```python
 # Using reference exchange for market hours
 blp.bdib(ticker='ESM0 Index', dt='2020-03-20', ref='ES1 Index').tail()
