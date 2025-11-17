@@ -27,14 +27,31 @@ jobs:
 
       - name: Determine target release tag
         id: target_tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "release" ]; then
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
           elif [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ -z "${GITHUB_TOKEN:-}" ]; then
+              echo "GITHUB_TOKEN is required to lookup the latest release" >&2
+              exit 1
+            fi
+            TAG=$(curl -fsSL \
+                    -H "Authorization: Bearer $GITHUB_TOKEN" \
+                    -H "Accept: application/vnd.github+json" \
+                    "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+                  | jq -r '.tag_name // empty')
+            if [ -z "$TAG" ]; then
+              echo "Latest release lookup returned empty tag; falling back to latest stable tag." >&2
+              TAG=$(git tag --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+            fi
           else
-            TAG=$(git tag --sort=-version:refname | grep '^v' | head -n 1 || true)
+            TAG=$(git tag --sort=-version:refname | head -n 1 || true)
           fi
           if [ -z "${TAG:-}" ]; then
             echo "Unable to determine a release tag to build." >&2
