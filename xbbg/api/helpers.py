@@ -26,14 +26,14 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = 'USD') -> pd.DataFrame:
         pd.DataFrame: Currency-adjusted data in the same format as input.
 
     Examples:
-        >>> from xbbg import blp
+        >>> from xbbg import blp  # doctest: +SKIP
         >>> # Works with historical data
-        >>> hist_data = blp.bdh('AAPL US Equity', start_date='2024-01-01')
-        >>> adjusted = blp.adjust_ccy(hist_data, ccy='EUR')
+        >>> hist_data = blp.bdh('AAPL US Equity', start_date='2024-01-01')  # doctest: +SKIP
+        >>> adjusted = blp.adjust_ccy(hist_data, ccy='EUR')  # doctest: +SKIP
         >>>
         >>> # Could also work with intraday data
-        >>> intraday_data = blp.bdib('AAPL US Equity', dt='2024-01-01')
-        >>> adjusted_intraday = blp.adjust_ccy(intraday_data, ccy='EUR')
+        >>> intraday_data = blp.bdib('AAPL US Equity', dt='2024-01-01')  # doctest: +SKIP
+        >>> adjusted_intraday = blp.adjust_ccy(intraday_data, ccy='EUR')  # doctest: +SKIP
     """
     from xbbg.api.historical import bdh  # noqa: PLC0415
     from xbbg.api.reference import bdp  # noqa: PLC0415
