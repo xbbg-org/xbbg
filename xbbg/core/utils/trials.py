@@ -29,17 +29,6 @@ def root_path() -> Path:
     return Path(os.environ.get(BBG_ROOT, ''))
 
 
-def convert_exisiting():
-    """Update existing missing logs to database."""
-    data_path = root_path()
-    if not data_path.as_posix(): return
-
-    with db.SQLite(str(data_path / 'Logs' / 'xbbg.db')) as con:
-        con.execute(TRIALS_TABLE)
-        for item in all_trials():
-            con.execute(db.replace_into(table='trials', **item))
-
-
 def all_trials() -> Iterator[dict]:
     """Yield all missing logs.
 
