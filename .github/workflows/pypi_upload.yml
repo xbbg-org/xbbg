@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'  # Match all version tags
+  release:
+    types: [published]  # Handle manual releases that don't push new tags
   workflow_dispatch:
 
 jobs:
@@ -16,26 +18,108 @@ jobs:
     # Pre-releases have format vX.Y.ZaN, vX.Y.ZbN, or vX.Y.ZrcN
 
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
-    - name: Install uv
-      shell: bash
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-    - name: Create uv virtual environment
-      run: |
-        uv venv
-    - name: Build distributions with uv
-      run: |
-        uv build
-    - name: Publish to PyPI via OIDC
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        packages-dir: dist/
-        skip-existing: true
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          # When triggered by a release event, explicitly check out the tagged commit.
+          # For workflow_dispatch we checkout the branch now and switch to the tag later.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - name: Determine target release tag
+        id: target_tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          elif [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG=$(git tag --sort=-version:refname | grep '^v' | head -n 1 || true)
+          fi
+          if [ -z "${TAG:-}" ]; then
+            echo "Unable to determine a release tag to build." >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Target tag: $TAG"
+
+      - name: Determine release version
+        id: target_version
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.target_tag.outputs.tag }}'
+          VERSION="${TAG#v}"
+          VERSION="${VERSION#xbbg==}"
+          if [ -z "$VERSION" ]; then
+            echo "Could not derive a version from tag $TAG" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Verify target tag exists on origin
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.target_tag.outputs.tag }}'
+          if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
+            echo "Confirmed tag $TAG exists on origin."
+          else
+            echo "Tag $TAG not found on origin; cannot publish. Exiting." >&2
+            exit 1
+          fi
+
+      - name: Checkout target tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.target_tag.outputs.tag }}'
+          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          git checkout "refs/tags/$TAG"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Check PyPI for target version
+        id: pypi_check
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.target_version.outputs.version }}'
+          PACKAGE="xbbg"
+          python -m pip install --upgrade pip --quiet
+          python -m pip index versions "$PACKAGE" > /tmp/pip_versions.txt
+          if grep -E "^  ${VERSION}([[:space:]]|$)" /tmp/pip_versions.txt >/dev/null; then
+            echo "Version $PACKAGE==$VERSION already exists on PyPI."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version $PACKAGE==$VERSION not found on PyPI. Proceeding with publish."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Version already published
+        if: steps.pypi_check.outputs.exists == 'true'
+        run: |
+          echo "xbbg==${{ steps.target_version.outputs.version }} already available on PyPI; skipping publish."
+
+      - name: Install uv
+        if: steps.pypi_check.outputs.exists != 'true'
+        shell: bash
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Create uv virtual environment
+        if: steps.pypi_check.outputs.exists != 'true'
+        run: |
+          uv venv
+      - name: Build distributions with uv
+        if: steps.pypi_check.outputs.exists != 'true'
+        run: |
+          uv build
+      - name: Publish to PyPI via OIDC
+        if: steps.pypi_check.outputs.exists != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
