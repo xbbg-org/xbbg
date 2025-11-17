@@ -8,9 +8,7 @@ This package contains supporting utilities:
 
 # Import modules directly using relative imports
 # Import trials first to avoid namespace conflicts with utils module
-from . import trials
-from . import timezone
-from . import utils
+from . import timezone, trials, utils
 
 __all__ = ['utils', 'timezone', 'trials']
 
