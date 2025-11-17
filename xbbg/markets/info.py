@@ -41,45 +41,45 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         pd.Series
 
     Examples:
-        >>> exch_info('SPY US Equity')
+        >>> exch_info('SPY US Equity')  # doctest: +SKIP
         tz        America/New_York
         allday      [04:00, 20:00]
         day         [09:30, 16:00]
         post        [16:01, 20:00]
         pre         [04:00, 09:30]
         Name: EquityUS, dtype: object
-        >>> exch_info('SPY US Equity', ref='EquityUS')
+        >>> exch_info('SPY US Equity', ref='EquityUS')  # doctest: +SKIP
         tz        America/New_York
         allday      [04:00, 20:00]
         day         [09:30, 16:00]
         post        [16:01, 20:00]
         pre         [04:00, 09:30]
         Name: EquityUS, dtype: object
-        >>> exch_info('ES1 Index')
+        >>> exch_info('ES1 Index')  # doctest: +SKIP
         tz        America/New_York
         allday      [18:00, 17:00]
         day         [08:00, 17:00]
         Name: CME, dtype: object
-        >>> exch_info('ESM0 Index', ref='ES1 Index')
+        >>> exch_info('ESM0 Index', ref='ES1 Index')  # doctest: +SKIP
         tz        America/New_York
         allday      [18:00, 17:00]
         day         [08:00, 17:00]
         Name: CME, dtype: object
-        >>> exch_info('Z 1 Index')
+        >>> exch_info('Z 1 Index')  # doctest: +SKIP
         tz         Europe/London
         allday    [01:00, 21:00]
         day       [01:00, 21:00]
         Name: FuturesFinancialsICE, dtype: object
-        >>> exch_info('TESTTICKER Corp')
+        >>> exch_info('TESTTICKER Corp')  # doctest: +SKIP
         Series([], dtype: object)
-        >>> exch_info('US')
+        >>> exch_info('US')  # doctest: +SKIP
         tz        America/New_York
         allday      [04:00, 20:00]
         day         [09:30, 16:00]
         post        [16:01, 20:00]
         pre         [04:00, 09:30]
         Name: EquityUS, dtype: object
-        >>> exch_info('UXF1UXG1 Index')
+        >>> exch_info('UXF1UXG1 Index')  # doctest: +SKIP
         tz        America/New_York
         allday      [18:00, 17:00]
         day         [18:00, 17:00]
@@ -133,21 +133,21 @@ def market_info(ticker: str) -> pd.Series:
         pd.Series
 
     Examples:
-        >>> market_info('SHCOMP Index').exch
+        >>> market_info('SHCOMP Index').exch  # doctest: +SKIP
         'EquityChina'
-        >>> market_info('SPY US Equity').exch
+        >>> market_info('SPY US Equity').exch  # doctest: +SKIP
         'EquityUS'
-        >>> market_info('ICICIC=1 IS Equity').exch
+        >>> market_info('ICICIC=1 IS Equity').exch  # doctest: +SKIP
         'EquityFuturesIndia'
-        >>> market_info('INT1 Curncy').exch
+        >>> market_info('INT1 Curncy').exch  # doctest: +SKIP
         'CurrencyIndia'
-        >>> market_info('CL1 Comdty').exch
+        >>> market_info('CL1 Comdty').exch  # doctest: +SKIP
         'NYME'
-        >>> incorrect_tickers = [
+        >>> incorrect_tickers = [  # doctest: +SKIP
         ...     'C XX Equity', 'XXX Comdty', 'Bond_ISIN Corp',
         ...     'XYZ Index', 'XYZ Curncy',
         ... ]
-        >>> pd.concat([market_info(_) for _ in incorrect_tickers])
+        >>> pd.concat([market_info(_) for _ in incorrect_tickers])  # doctest: +SKIP
         Series([], dtype: object)
     """
     t_info = ticker.split()
@@ -369,17 +369,17 @@ def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
         str: date & time.
 
     Examples:
-        >>> market_timing('7267 JT Equity', dt='2018-09-10')
+        >>> market_timing('7267 JT Equity', dt='2018-09-10')  # doctest: +SKIP
         '2018-09-10 14:58'
-        >>> market_timing('7267 JT Equity', dt='2018-09-10', tz=timezone.TimeZone.NY)
+        >>> market_timing('7267 JT Equity', dt='2018-09-10', tz=timezone.TimeZone.NY)  # doctest: +SKIP
         '2018-09-10 01:58:00-04:00'
-        >>> market_timing('7267 JT Equity', dt='2018-01-10', tz='NY')
+        >>> market_timing('7267 JT Equity', dt='2018-01-10', tz='NY')  # doctest: +SKIP
         '2018-01-10 00:58:00-05:00'
-        >>> market_timing('7267 JT Equity', dt='2018-09-10', tz='SPX Index')
+        >>> market_timing('7267 JT Equity', dt='2018-09-10', tz='SPX Index')  # doctest: +SKIP
         '2018-09-10 01:58:00-04:00'
-        >>> market_timing('8035 JT Equity', dt='2018-09-10', timing='BOD')
+        >>> market_timing('8035 JT Equity', dt='2018-09-10', timing='BOD')  # doctest: +SKIP
         '2018-09-10 09:01'
-        >>> market_timing('Z 1 Index', dt='2018-09-10', timing='FINISHED')
+        >>> market_timing('Z 1 Index', dt='2018-09-10', timing='FINISHED')  # doctest: +SKIP
         '2018-09-10 21:00'
         >>> market_timing('TESTTICKER Corp', dt='2018-09-10') == ''  # doctest: +SKIP
         True

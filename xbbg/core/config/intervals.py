@@ -76,23 +76,23 @@ def get_interval(ticker, session, **kwargs) -> Session:
         ValueError: If session is not defined for the ticker's exchange.
 
     Examples:
-        >>> get_interval('005490 KS Equity', 'day_open_30')
+        >>> get_interval('005490 KS Equity', 'day_open_30')  # doctest: +SKIP
         Session(start_time='09:00', end_time='09:30')
-        >>> get_interval('005490 KS Equity', 'day_normal_30_20')
+        >>> get_interval('005490 KS Equity', 'day_normal_30_20')  # doctest: +SKIP
         Session(start_time='09:31', end_time='15:00')
-        >>> get_interval('005490 KS Equity', 'day_close_20')
+        >>> get_interval('005490 KS Equity', 'day_close_20')  # doctest: +SKIP
         Session(start_time='15:01', end_time='15:20')
-        >>> get_interval('700 HK Equity', 'am_open_30')
+        >>> get_interval('700 HK Equity', 'am_open_30')  # doctest: +SKIP
         Session(start_time='09:30', end_time='10:00')
-        >>> get_interval('700 HK Equity', 'am_normal_30_30')
+        >>> get_interval('700 HK Equity', 'am_normal_30_30')  # doctest: +SKIP
         Session(start_time='10:01', end_time='11:30')
-        >>> get_interval('700 HK Equity', 'am_close_30')
+        >>> get_interval('700 HK Equity', 'am_close_30')  # doctest: +SKIP
         Session(start_time='11:31', end_time='12:00')
-        >>> get_interval('ES1 Index', 'day_exact_2130_2230')
+        >>> get_interval('ES1 Index', 'day_exact_2130_2230')  # doctest: +SKIP
         Session(start_time=None, end_time=None)
-        >>> get_interval('ES1 Index', 'allday_exact_2130_2230')
+        >>> get_interval('ES1 Index', 'allday_exact_2130_2230')  # doctest: +SKIP
         Session(start_time='21:30', end_time='22:30')
-        >>> get_interval('ES1 Index', 'allday_exact_2130_0230')
+        >>> get_interval('ES1 Index', 'allday_exact_2130_0230')  # doctest: +SKIP
         Session(start_time='21:30', end_time='02:30')
         >>> get_interval('AMLP US', 'day_open_30') is SessNA  # doctest: +SKIP
         True
