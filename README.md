@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg== (release: [notes]())
+Latest release: xbbg==0.8.2 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2))
 <!-- xbbg:latest-release-end -->
 
 ## Overview
@@ -747,9 +747,19 @@ uv run pytest --doctest-modules -q
 ## What's New
 
 <!-- xbbg:changelog-start -->
-__ - see release: [notes]()
+_0.8.2_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2)
 
 
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
+
+
+## What's Changed
+
+- Fix BQL options chain metadata issues by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/146
+
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
 <!-- xbbg:changelog-end -->
 
 _0.7.7a2_ - Custom `config` and etc. for reference exchange (author `hceh`)
