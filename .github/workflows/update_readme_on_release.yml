@@ -3,6 +3,12 @@ name: Update README on Release
 on:
   release:
     types: [ published ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag name'
+        required: true
+        type: string
 
 jobs:
   update-readme:
@@ -14,10 +20,25 @@ jobs:
       with:
         ref: main
     
+    - name: Get release info for workflow_dispatch
+      if: github.event_name == 'workflow_dispatch'
+      id: release_info
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG="${{ inputs.tag }}"
+        RELEASE_INFO=$(gh api repos/${{ github.repository }}/releases/tags/$TAG)
+        echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+        echo "release_url=$(echo "$RELEASE_INFO" | jq -r '.html_url')" >> $GITHUB_OUTPUT
+        echo "release_body<<EOF" >> $GITHUB_OUTPUT
+        echo "$(echo "$RELEASE_INFO" | jq -r '.body')" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "published_at=$(echo "$RELEASE_INFO" | jq -r '.published_at')" >> $GITHUB_OUTPUT
+    
     - name: Update latest release line in README
       env:
-        TAG_NAME: ${{ github.event.release.tag_name }}
-        RELEASE_URL: ${{ github.event.release.html_url }}
+        TAG_NAME: ${{ github.event.release.tag_name || steps.release_info.outputs.tag_name }}
+        RELEASE_URL: ${{ github.event.release.html_url || steps.release_info.outputs.release_url }}
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
@@ -32,10 +53,10 @@ jobs:
         ' README.md > README.md.tmp && mv README.md.tmp README.md
     - name: Update changelog section in README
       env:
-        TAG_NAME: ${{ github.event.release.tag_name }}
-        RELEASE_URL: ${{ github.event.release.html_url }}
-        RELEASE_BODY: ${{ github.event.release.body }}
-        PUBLISHED_AT: ${{ github.event.release.published_at }}
+        TAG_NAME: ${{ github.event.release.tag_name || steps.release_info.outputs.tag_name }}
+        RELEASE_URL: ${{ github.event.release.html_url || steps.release_info.outputs.release_url }}
+        RELEASE_BODY: ${{ github.event.release.body || steps.release_info.outputs.release_body }}
+        PUBLISHED_AT: ${{ github.event.release.published_at || steps.release_info.outputs.published_at }}
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
@@ -70,5 +91,5 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs(README): update changelog and latest release for ${{ github.event.release.tag_name }}"
+        git commit -m "docs(README): update changelog and latest release for ${{ github.event.release.tag_name || inputs.tag }}"
         git push origin main

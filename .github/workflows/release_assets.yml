@@ -3,6 +3,12 @@ name: Attach Release Artifacts
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to attach artifacts to'
+        required: true
+        type: string
 
 jobs:
   build-and-attach:
@@ -14,6 +20,7 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
+        ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name || github.ref }}
     - name: Set up Python 3.11
       uses: actions/setup-python@v6
       with:
@@ -30,6 +37,7 @@ jobs:
     - name: Upload artifacts to GitHub Release
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
         files: |
           dist/*.whl
           dist/*.tar.gz

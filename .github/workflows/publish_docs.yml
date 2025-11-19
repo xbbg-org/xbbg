@@ -3,6 +3,7 @@ name: Publish Docs (Read the Docs)
 on:
   release:
     types: [ published ]
+  workflow_dispatch:
 
 jobs:
   publish:
