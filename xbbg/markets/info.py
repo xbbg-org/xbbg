@@ -221,10 +221,13 @@ def asset_config(asset: str) -> pd.DataFrame:
 
     if not cfg_files:
         return pd.DataFrame()
+
+    logger.debug('Loading asset config for %s from %s', asset, cfg_files)
+
     config = (
         pd.concat([
             explode(
-                data=pd.DataFrame(param.load_yaml(cf).get(asset, [])),
+                data=pd.DataFrame(list(param.load_yaml(cf).get(asset, []))),
                 columns=const.ASSET_INFO[asset],
             )
             for cf in cfg_files
@@ -249,9 +252,25 @@ def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
     Returns:
         pd.DataFrame
     """
-    if data.empty: return pd.DataFrame()
+    if data.empty:
+        return pd.DataFrame()
+
+    # Check if all required columns exist before attempting to explode
+    # This prevents KeyError when DataFrames are created from malformed YAML entries
+    # (e.g., empty dicts like Corp: [{}] which create DataFrames with no columns)
+    missing_cols = [col for col in columns if col not in data.columns]
+    if missing_cols:
+        logger.warning(
+            'Missing columns %s in DataFrame for explode. '
+            'Available columns: %s. '
+            'Returning empty DataFrame. This may indicate malformed config data.',
+            missing_cols, list(data.columns)
+        )
+        return pd.DataFrame()
+
     if len(columns) == 1:
         return data.explode(column=columns[0])
+
     return explode(
         data=data.explode(column=columns[-1]),
         columns=columns[:-1],
