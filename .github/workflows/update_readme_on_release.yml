@@ -71,9 +71,49 @@ jobs:
         # Use the ISO date part
         DATE="${PUBLISHED_AT%%T}"
         # Prepare changelog entry (avoid bare URL)
-        printf "_%s_ - see release: [notes](%s)\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .changelog_entry.md
-        # Normalize list bullets to dash and ensure a blank line before list items
-        sed -E 's/^\* /- /' .changelog_entry.md > .changelog_entry.bullets && mv .changelog_entry.bullets .changelog_entry.md
+        printf "_%s_ - see release: [notes](%s)\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .changelog_entry_raw.md
+        # Normalize list bullets to dash
+        sed -E 's/^\* /- /' .changelog_entry_raw.md > .changelog_entry_temp.md
+        # Clean up the body: remove duplicate "Full Changelog" lines and excessive blank lines
+        # Extract header (first 2 lines: version line + blank line)
+        head -n 2 .changelog_entry_temp.md > .changelog_header.md
+        # Extract body (everything after header)
+        tail -n +3 .changelog_entry_temp.md > .changelog_body.md
+        # Process body: remove duplicate "Full Changelog" lines and excessive blank lines
+        awk '
+          BEGIN { seen_changelog=0; prev_empty=0; has_content=0 }
+          {
+            # Track if we have seen a "Full Changelog" line
+            if ($0 ~ /Full Changelog/) {
+              if (!seen_changelog) {
+                lines[++n] = $0
+                seen_changelog=1
+                has_content=1
+              }
+              prev_empty=0
+              next
+            }
+            # Handle blank lines - only keep single consecutive blanks
+            if ($0 ~ /^\s*$/) {
+              if (prev_empty == 0 && has_content) {
+                lines[++n] = $0
+                prev_empty=1
+              }
+            } else {
+              lines[++n] = $0
+              prev_empty=0
+              has_content=1
+            }
+          }
+          END {
+            # Remove trailing empty lines
+            while (n > 0 && lines[n] ~ /^\s*$/) n--
+            for (i=1; i<=n; i++) print lines[i]
+          }
+        ' .changelog_body.md > .changelog_body_clean.md
+        # Rebuild changelog entry
+        cat .changelog_header.md .changelog_body_clean.md > .changelog_entry.md
+        # Ensure blank line before list items
         awk 'BEGIN{prev_empty=1} {
           if ($0 ~ /^-/ && prev_empty==0) { print "" }
           print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0

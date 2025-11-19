@@ -68,13 +68,56 @@ jobs:
         # Remove v prefix (backward compatible with xbbg== prefix)
         VERSION="${VERSION#v}"
         VERSION="${VERSION#xbbg==}"
-        # Prepare RST changelog entry from the release body; normalize bullets and ensure blank line
-        printf "*%s* - see release: \`notes <%s>\`_\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .idx_changelog_entry.rst
-        sed -E 's/^\* /- /' .idx_changelog_entry.rst > .idx_changelog_entry.fix && mv .idx_changelog_entry.fix .idx_changelog_entry.rst
+        # Prepare RST changelog entry from the release body
+        printf "*%s* - see release: \`notes <%s>\`_\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .idx_changelog_entry_raw.rst
+        # Normalize bullets to dash
+        sed -E 's/^\* /- /' .idx_changelog_entry_raw.rst > .idx_changelog_entry_temp.rst
+        # Clean up the body: remove duplicate "Full Changelog" lines and excessive blank lines
+        # Extract header (first 2 lines: version line + blank line)
+        head -n 2 .idx_changelog_entry_temp.rst > .idx_changelog_header.rst
+        # Extract body (everything after header)
+        tail -n +3 .idx_changelog_entry_temp.rst > .idx_changelog_body.rst
+        # Process body: remove duplicate "Full Changelog" lines and excessive blank lines
+        awk '
+          BEGIN { seen_changelog=0; prev_empty=0; has_content=0 }
+          {
+            # Track if we have seen a "Full Changelog" line
+            if ($0 ~ /Full Changelog/) {
+              if (!seen_changelog) {
+                lines[++n] = $0
+                seen_changelog=1
+                has_content=1
+              }
+              prev_empty=0
+              next
+            }
+            # Handle blank lines - only keep single consecutive blanks
+            if ($0 ~ /^\s*$/) {
+              if (prev_empty == 0 && has_content) {
+                lines[++n] = $0
+                prev_empty=1
+              }
+            } else {
+              lines[++n] = $0
+              prev_empty=0
+              has_content=1
+            }
+          }
+          END {
+            # Remove trailing empty lines
+            while (n > 0 && lines[n] ~ /^\s*$/) n--
+            for (i=1; i<=n; i++) print lines[i]
+          }
+        ' .idx_changelog_body.rst > .idx_changelog_body_clean.rst
+        # Rebuild changelog entry
+        cat .idx_changelog_header.rst .idx_changelog_body_clean.rst > .idx_changelog_entry.rst
+        # Ensure blank line before list items
         awk 'BEGIN{prev_empty=1} {
           if ($0 ~ /^-/ && prev_empty==0) { print "" }
           print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0
         }' .idx_changelog_entry.rst > .idx_changelog_entry2.rst && mv .idx_changelog_entry2.rst .idx_changelog_entry.rst
+        # Convert markdown links to RST format
+        sed -E 's/\[([^\]]+)\]\(([^)]+)\)/`\1 <\2>`_/g' .idx_changelog_entry.rst > .idx_changelog_entry_final.rst && mv .idx_changelog_entry_final.rst .idx_changelog_entry.rst
         # Extract existing changelog entries between markers (if any) and reformat them
         awk '/\.. xbbg:changelog-start/,/\.. xbbg:changelog-end/ {
           if ($0 ~ /\.. xbbg:changelog-start/) next

@@ -143,22 +143,105 @@ What's New
 .. xbbg:changelog-start
 *0.8.2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2>`_
 
-
-
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
-
 
 ## What's Changed
 
 - Fix BQL options chain metadata issues by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/146
 
+*0.8.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.1>`_
 
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.0...v0.8.1
+
+*0.8.0* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.0>`_
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.11...v0.8.0
+
+## What's Changed
+* Improved logging with blpapi integration and performance optimizations by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/135
+* feat: add fixed income securities support to bdib by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/136
+* feat: add interval parameter to subscribe() and live() functions by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/132
+* fix(beqs): increase timeout and max_timeouts for BEQS requests by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/133
+* feat: add bsrch() function for Bloomberg SRCH queries (Excel =@BSRCH equivalent) by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/137
+* feat: add server host parameter support to connect_bbg() by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/138
+* fix: remove 1-minute offset for bare session names in bdtick by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/139
+* fix(issue-68): Add support for GY (Xetra), IM (Borsa Italiana), and SE (SIX) exchanges by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/140
+* Fix BQL syntax documentation and error handling (Fixes #141) by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/142
+* refactor: comprehensive codebase cleanup and restructuring by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/144
+
+
+*0.7.10* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.10>`_
+
+## What's Changed
+
+* Migrate to uv + PEP 621; modernize CI and blpapi index by @contributor in https://github.com/alpha-xone/xbbg/pull/124
+
+
+
+## New Contributors
+
+* @contributor made their first contribution in https://github.com/alpha-xone/xbbg/pull/124
+
+
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.9...v0.7.10
+
+*0.7.11* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.11>`_
+
+## What's Changed
+
+* ci: use uv build in publish workflows by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/125
+
+* docs: standardize docstrings (Google) + Ruff/napoleon config by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/127
+
+* feat: BQL support + CI workflow improvements (uv venv) by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/128
+
+* feat(bdib): add support for sub-minute intervals via intervalHasSeconds flag by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/131
+
+
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.10...v0.7.11
+
+*0.7.9* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9>`_
+
+## What's Changed
+
+* Fixing typo in TLS Options when creating a new connection by @rchiorean in https://github.com/alpha-xone/xbbg/pull/110
+
+* Fixing Auto CI by @rchiorean in https://github.com/alpha-xone/xbbg/pull/111
+
+
+
+## New Contributors
+
+* @rchiorean made their first contribution in https://github.com/alpha-xone/xbbg/pull/110
+
+
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.7...v0.7.9
+
+*0.7.8a2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.8a2>`_
+
+*0.7.7* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7>`_
+
+*0.7.7a4* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a4>`_
+
+*0.7.7a3* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a3>`_
+
+*0.7.7a2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a2>`_
+
+*0.7.7a1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a1>`_
+
+*0.7.6* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6>`_
+
+*0.7.6a8* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a8>`_
+
+*0.7.6a7* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a7>`_
+
+*0.7.6a6* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a6>`_
+
+*0.7.6a5* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a5>`_
 .. xbbg:changelog-end
-
-*0.7.7a2* - Custom `config` and etc. for reference exchange (author `hceh`)
-
-*0.7.6a2* - Use `blp.connect` for alternative Bloomberg connection (author `anxl2008`)
 
 *0.7.2* - Use `async` for live data feeds
 
