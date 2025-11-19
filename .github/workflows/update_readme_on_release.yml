@@ -78,12 +78,27 @@ jobs:
           if ($0 ~ /^-/ && prev_empty==0) { print "" }
           print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0
         }' .changelog_entry.md > .changelog_entry.fix && mv .changelog_entry.fix .changelog_entry.md
-        # Extract existing changelog entries between markers (if any)
+        # Extract existing changelog entries between markers (if any) and reformat them
         awk '/<!-- xbbg:changelog-start -->/,/<!-- xbbg:changelog-end -->/ {
           if ($0 ~ /<!-- xbbg:changelog-start -->/) next
           if ($0 ~ /<!-- xbbg:changelog-end -->/) next
           print
-        }' README.md > .existing_changelog.md
+        }' README.md > .existing_changelog_raw.md
+        
+        # Reformat preserved entries to simple format: extract version and release URL
+        if [ -s .existing_changelog_raw.md ]; then
+          # Extract version and URL from the first line (format: _version_ - see release: [notes](url))
+          VERSION_LINE=$(head -n 1 .existing_changelog_raw.md)
+          if echo "$VERSION_LINE" | grep -qE '^_.*_ - see release: \[notes\]\(.*\)'; then
+            # Extract version (between underscores) and URL (between parentheses)
+            PRESERVED_VERSION=$(echo "$VERSION_LINE" | sed -E 's/^_([^_]+)_.*/\1/')
+            PRESERVED_URL=$(echo "$VERSION_LINE" | sed -E 's/.*\[notes\]\((.*)\)/\1/')
+            printf "_%s_ - see release: [notes](%s)\n" "$PRESERVED_VERSION" "$PRESERVED_URL" > .existing_changelog.md
+          else
+            # Fallback: keep as-is if format doesn't match
+            cp .existing_changelog_raw.md .existing_changelog.md
+          fi
+        fi
         
         # Replace the block between markers with new entry + preserved old entries
         sed -n '1,/<!-- xbbg:changelog-start -->/p' README.md > README.md.tmp
