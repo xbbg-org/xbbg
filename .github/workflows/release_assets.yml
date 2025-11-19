@@ -1,9 +1,8 @@
 name: Attach Release Artifacts
 
 on:
-  push:
-    tags:
-      - 'v*'  # Match all version tags
+  release:
+    types: [published]
 
 jobs:
   build-and-attach:

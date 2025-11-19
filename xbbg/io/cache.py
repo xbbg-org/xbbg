@@ -43,6 +43,7 @@ def bar_file(ticker: str, dt, typ='TRADE') -> str:
     """
     data_path_str = os.environ.get(overrides.BBG_ROOT, '')
     if not data_path_str:
+        # Don't log warning here - it will be logged in cache adapter when caching is requested
         return ''
     data_path = Path(data_path_str)
     asset = ticker.split()[-1]
@@ -69,6 +70,11 @@ def ref_file(
     """
     data_path_str = os.environ.get(overrides.BBG_ROOT, '')
     if (not data_path_str) or (not cache):
+        if cache and not data_path_str:
+            logger.warning(
+                'BBG_ROOT environment variable not set. Caching requested but disabled. '
+                'Set BBG_ROOT to enable data caching.'
+            )
         return ''
     data_path = Path(data_path_str)
 
@@ -151,6 +157,9 @@ class BarCacheAdapter:
             return None
 
         data_file = bar_file(ticker=request.ticker, dt=request.dt, typ=request.event_type)
+        if not data_file:
+            # BBG_ROOT not set - warning already logged in bar_file
+            return None
         if not files.exists(data_file):
             return None
 
@@ -180,6 +189,17 @@ class BarCacheAdapter:
         """Save bar data to cache."""
         if data.empty:
             logger.warning('No data to save for %s / %s', request.ticker, request.to_date_string())
+            return
+
+        # Check if BBG_ROOT is set before attempting to save
+        data_path_str = os.environ.get(overrides.BBG_ROOT, '')
+        if not data_path_str:
+            logger.warning(
+                'BBG_ROOT environment variable not set. Cannot save cache for %s / %s. '
+                'Set BBG_ROOT to enable data caching.',
+                request.ticker,
+                request.to_date_string(),
+            )
             return
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}

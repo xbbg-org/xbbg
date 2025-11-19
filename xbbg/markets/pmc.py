@@ -227,7 +227,8 @@ def _get_exch_code(
     safe_kwargs = ctx.to_kwargs()
 
     try:
-        from xbbg.blp import bdp  # lazy import
+        # Import directly from API modules to avoid circular dependency
+        from xbbg.api.reference import bdp  # lazy import
         df = bdp(tickers=ticker, flds=['exch_code'], **safe_kwargs)
     except Exception as e:
         logger.error('Failed to fetch exchange code from Bloomberg for ticker %s: %s', ticker, e)

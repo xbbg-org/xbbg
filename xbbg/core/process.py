@@ -14,16 +14,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
-try:
-    import blpapi  # type: ignore[reportMissingImports]
-except (ImportError, AttributeError):
-    import pytest  # type: ignore[reportMissingImports]
-
-    blpapi = pytest.importorskip('blpapi')
-
 from xbbg import const
 from xbbg.core.config import intervals, overrides
 from xbbg.core.infra import conn
+from xbbg.core.infra.blpapi_wrapper import blpapi
 from xbbg.core.utils import timezone, utils as utils_module
 
 if TYPE_CHECKING:
@@ -611,7 +605,12 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
 
 
 def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
-    """Iterate rows from JSON-string BQL result payload, if present."""
+    """Iterate rows from JSON-string BQL result payload, if present.
+
+    Merges multiple fields by ID to avoid duplicate rows when multiple fields
+    are requested in a single query.
+    """
+    from collections import defaultdict
     import json
 
     msg_elem = msg.asElement()
@@ -642,12 +641,17 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
         if results_data is None or not isinstance(results_data, dict):
             return iter(())
 
+        # Collect all rows by ID to merge fields
+        rows_by_id: dict[str, dict[str, Any]] = defaultdict(dict)
+        has_structured_fields = False
+
         for field_name, field_data in results_data.items():
             if not isinstance(field_data, dict):
                 continue
 
             # idColumn / valuesColumn schema
             if 'idColumn' in field_data and 'valuesColumn' in field_data:
+                has_structured_fields = True
                 ids = field_data['idColumn'].get('values', [])
                 values = field_data['valuesColumn'].get('values', [])
                 secondary_cols: dict[str, list[Any]] = {}
@@ -657,18 +661,24 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
                         col_values = sec_col.get('values', [])
                         secondary_cols[col_name] = col_values
 
+                # Merge this field's data into rows_by_id
                 for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
-                    row: dict[str, Any] = {
-                        'ID': ticker,
-                        field_name: value,
-                    }
+                    if ticker not in rows_by_id:
+                        rows_by_id[ticker]['ID'] = ticker
+                    rows_by_id[ticker][field_name] = value
+
+                    # Add secondary columns
                     for col_name, col_values in secondary_cols.items():
                         if i < len(col_values):
-                            row[col_name] = col_values[i]
-                    yield row
+                            rows_by_id[ticker][col_name] = col_values[i]
             else:
                 # Fallback: flatten arbitrary dict structure
+                # For non-structured fields, yield immediately (can't merge by ID)
                 yield dict(_flatten_dict(field_data))
+
+        # Yield merged rows if we had structured fields
+        if has_structured_fields:
+            yield from rows_by_id.values()
     except (json.JSONDecodeError, KeyError, TypeError):
         # Let caller fall back to structured-element parsing
         return iter(())
@@ -720,24 +730,47 @@ def _iter_bql_structured_rows(msg: blpapi.Message) -> Iterator[dict]:
 
 
 def earning_pct(data: pd.DataFrame, yr):
-    """Calculate % of earnings by year."""
+    """Calculate % of earnings by year.
+
+    Optimized implementation using vectorized operations where possible.
+    """
     pct = f'{yr}_pct'
     data.loc[:, pct] = np.nan
 
-    # Calculate level 1 percentage
-    data.loc[data.level == 1, pct] = \
-        100 * data.loc[data.level == 1, yr] / data.loc[data.level == 1, yr].sum()
+    # Calculate level 1 percentage (vectorized)
+    level_1_mask = data.level == 1
+    if level_1_mask.any():
+        level_1_sum = data.loc[level_1_mask, yr].sum()
+        if level_1_sum != 0:
+            data.loc[level_1_mask, pct] = 100 * data.loc[level_1_mask, yr] / level_1_sum
 
-    # Calculate level 2 percentage (higher levels will be ignored)
-    sub_pct = []
-    for r, snap in data.reset_index()[::-1].iterrows():
-        if snap.level > 2: continue
-        if snap.level == 1:
-            if len(sub_pct) == 0: continue
-            data.iloc[sub_pct, data.columns.get_loc(pct)] = \
-                100 * data[yr].iloc[sub_pct] / data[yr].iloc[sub_pct].sum()
-            sub_pct = []
-        if snap.level == 2: sub_pct.append(r)
+    # Calculate level 2 percentage
+    # Iterate backwards to group level 2 rows by their level 1 parent
+    # Use vectorized operations for the actual percentage calculation
+    data_reset = data.reset_index()
+    level_2_indices = []
+
+    for i in range(len(data_reset) - 1, -1, -1):
+        row_level = data_reset.iloc[i]['level']
+        if row_level > 2:
+            continue
+        if row_level == 1:
+            if level_2_indices:
+                # Calculate percentage for level 2 group (vectorized)
+                level_2_idx = data_reset.iloc[level_2_indices].index
+                group_sum = data.loc[level_2_idx, yr].sum()
+                if group_sum != 0:
+                    data.loc[level_2_idx, pct] = 100 * data.loc[level_2_idx, yr] / group_sum
+            level_2_indices = []
+        if row_level == 2:
+            level_2_indices.append(i)
+
+    # Handle remaining level 2 positions at the beginning
+    if level_2_indices:
+        level_2_idx = data_reset.iloc[level_2_indices].index
+        group_sum = data.loc[level_2_idx, yr].sum()
+        if group_sum != 0:
+            data.loc[level_2_idx, pct] = 100 * data.loc[level_2_idx, yr] / group_sum
 
 
 def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
@@ -796,8 +829,12 @@ def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
 
 
 def check_current(dt, logger, **kwargs) -> bool:
-    """Check current time against T-1."""
-    t_1 = pd.Timestamp('today').date() - pd.Timedelta('1D')
+    """Check current time against T-1.
+
+    Uses UTC for current time to ensure consistent behavior across servers.
+    """
+    # Use UTC for 'today' to avoid server location dependencies
+    t_1 = pd.Timestamp('today', tz='UTC').date() - pd.Timedelta('1D')
     whole_day = pd.Timestamp(dt).date() < t_1
     if (not whole_day) and kwargs.get('batch', False):
         logger.warning('Query date %s is too close to current time, skipping download to avoid incomplete data', t_1)

@@ -5,14 +5,15 @@ datetime-like values between timezones.
 """
 
 import logging
-import time
 
 import pandas as pd
 import pytz
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TZ = pytz.FixedOffset(-time.timezone / 60)
+# Use UTC as default timezone instead of system local time
+# This ensures consistent behavior across different server locations
+DEFAULT_TZ = pytz.UTC
 
 
 def get_tz(tz) -> str:

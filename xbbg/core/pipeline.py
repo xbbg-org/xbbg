@@ -805,11 +805,7 @@ class BsrchRequestBuilder:
         session_window: SessionWindow,
     ) -> tuple[Any, dict[str, Any]]:
         """Build BSRCH request."""
-        try:
-            import blpapi  # type: ignore[reportMissingImports]
-        except (ImportError, AttributeError):
-            import pytest  # type: ignore[reportMissingImports]
-            blpapi = pytest.importorskip('blpapi')
+        from xbbg.core.infra.blpapi_wrapper import blpapi
 
         domain = request.request_opts.get('domain', '')
         overrides = request.request_opts.get('overrides')
@@ -895,6 +891,48 @@ class BqlTransformer:
         session_window: SessionWindow,
     ) -> pd.DataFrame:
         """Transform BQL response."""
+        if raw_data.empty:
+            return raw_data
+
+        # Auto-convert date columns (vectorized approach)
+        # Identify potential date columns by name
+        date_cols = [
+            col for col in raw_data.columns
+            if any(keyword in str(col).lower() for keyword in ['date', 'dt', 'time'])
+        ]
+
+        if not date_cols:
+            return raw_data
+
+        # Process each potential date column
+        for col in date_cols:
+            # Only attempt conversion for object/string columns
+            if raw_data[col].dtype != 'object':
+                continue
+
+            # Check if column contains date-like strings
+            # Sample a few non-null values to determine if conversion is needed
+            non_null_values = raw_data[col].dropna()
+            if non_null_values.empty:
+                continue
+
+            # Check if values look like dates (sample-based check for efficiency)
+            sample_size = min(10, len(non_null_values))
+            sample = non_null_values.head(sample_size)
+
+            # Check if sample contains date-like strings
+            date_like_patterns = ['-', '/', 'T', ':']
+            has_date_patterns = any(
+                isinstance(val, str) and any(pattern in val for pattern in date_like_patterns)
+                for val in sample
+            )
+
+            if has_date_patterns:
+                from contextlib import suppress
+                # Attempt vectorized conversion
+                with suppress(ValueError, TypeError):
+                    raw_data[col] = pd.to_datetime(raw_data[col], errors='coerce', infer_datetime_format=True)
+
         return raw_data
 
 

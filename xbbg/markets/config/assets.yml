@@ -184,5 +184,4 @@ Index:
   - tickers: [TESTTCK]
     exch: TestExch
 
-Corp:
-  - {}
+Corp: []

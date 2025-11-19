@@ -26,7 +26,8 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     Returns:
         str: ticker name
     """
-    from xbbg.blp import bdp  # noqa: PLC0415
+    # Import directly from API modules to avoid circular dependency
+    from xbbg.api.reference import bdp  # noqa: PLC0415
 
     t_info = ticker.split()
     prefix, asset = ' '.join(t_info[:-1]), t_info[-1]
@@ -52,7 +53,7 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     if pd.Timestamp(dt).month < first_matu.month: return fut_1
 
     dts = pd.bdate_range(end=dt, periods=10)
-    from xbbg.blp import bdh  # noqa: PLC0415
+    from xbbg.api.historical import bdh  # noqa: PLC0415
     volume = bdh(tickers=list(fut_tk.index), flds='volume', start_date=dts[0], end_date=dts[-1])
     if volume.empty: return fut_1
     return volume.iloc[-1].idxmax()[0]
@@ -110,7 +111,8 @@ def fut_ticker(gen_ticker: str, dt, freq: str, **kwargs) -> str:
     # Guard list conversion - only log if DEBUG enabled (avoid string conversion overhead)
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug('Attempting to resolve %d futures contracts', len(fut))
-    from xbbg.blp import bdp  # lazy
+    # Import directly from API modules to avoid circular dependency
+    from xbbg.api.reference import bdp  # lazy
     # noinspection PyBroadException
     try:
         fut_matu = bdp(tickers=fut, flds='last_tradeable_dt')
@@ -165,7 +167,8 @@ def cdx_ticker(
     from xbbg.core.domain.context import split_kwargs
 
     dt = pd.Timestamp(dt)
-    from xbbg.blp import bdp  # lazy
+    # Import directly from API modules to avoid circular dependency
+    from xbbg.api.reference import bdp  # lazy
 
     # Extract context - prefer explicit ctx, otherwise extract from kwargs
     if ctx is None:
@@ -264,7 +267,9 @@ def active_cdx(
     if not prev:
         return cur
 
-    from xbbg.blp import bdh, bdp  # lazy
+    # Import directly from API modules to avoid circular dependency
+    from xbbg.api.historical import bdh  # lazy
+    from xbbg.api.reference import bdp  # lazy
     # Convert context to kwargs for bdp/bdh calls
     safe_kwargs = ctx.to_kwargs()
     # If dt is before accrual start, prefer prev
