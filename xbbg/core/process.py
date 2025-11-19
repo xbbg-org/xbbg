@@ -611,8 +611,13 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
 
 
 def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
-    """Iterate rows from JSON-string BQL result payload, if present."""
+    """Iterate rows from JSON-string BQL result payload, if present.
+    
+    Merges multiple fields by ID to avoid duplicate rows when multiple fields
+    are requested in a single query.
+    """
     import json
+    from collections import defaultdict
 
     msg_elem = msg.asElement()
     if msg_elem.datatype() != blpapi.DataType.STRING:
@@ -642,12 +647,17 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
         if results_data is None or not isinstance(results_data, dict):
             return iter(())
 
+        # Collect all rows by ID to merge fields
+        rows_by_id: dict[str, dict[str, Any]] = defaultdict(dict)
+        has_structured_fields = False
+
         for field_name, field_data in results_data.items():
             if not isinstance(field_data, dict):
                 continue
 
             # idColumn / valuesColumn schema
             if 'idColumn' in field_data and 'valuesColumn' in field_data:
+                has_structured_fields = True
                 ids = field_data['idColumn'].get('values', [])
                 values = field_data['valuesColumn'].get('values', [])
                 secondary_cols: dict[str, list[Any]] = {}
@@ -657,18 +667,25 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
                         col_values = sec_col.get('values', [])
                         secondary_cols[col_name] = col_values
 
+                # Merge this field's data into rows_by_id
                 for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
-                    row: dict[str, Any] = {
-                        'ID': ticker,
-                        field_name: value,
-                    }
+                    if ticker not in rows_by_id:
+                        rows_by_id[ticker]['ID'] = ticker
+                    rows_by_id[ticker][field_name] = value
+                    
+                    # Add secondary columns
                     for col_name, col_values in secondary_cols.items():
                         if i < len(col_values):
-                            row[col_name] = col_values[i]
-                    yield row
+                            rows_by_id[ticker][col_name] = col_values[i]
             else:
                 # Fallback: flatten arbitrary dict structure
+                # For non-structured fields, yield immediately (can't merge by ID)
                 yield dict(_flatten_dict(field_data))
+
+        # Yield merged rows if we had structured fields
+        if has_structured_fields:
+            for row in rows_by_id.values():
+                yield row
     except (json.JSONDecodeError, KeyError, TypeError):
         # Let caller fall back to structured-element parsing
         return iter(())

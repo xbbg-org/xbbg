@@ -895,6 +895,33 @@ class BqlTransformer:
         session_window: SessionWindow,
     ) -> pd.DataFrame:
         """Transform BQL response."""
+        if raw_data.empty:
+            return raw_data
+
+        # Auto-convert date columns
+        for col in raw_data.columns:
+            col_lower = str(col).lower()
+            if 'date' in col_lower or 'dt' in col_lower or 'time' in col_lower:
+                # Only attempt conversion for object/string columns
+                if raw_data[col].dtype == 'object':
+                    try:
+                        # Attempt to convert to datetime
+                        # Use errors='ignore' to leave non-date values alone
+                        # But 'ignore' in to_datetime doesn't work for mixed types as expected in all versions
+                        # So we check if it looks like a date first or just try/except
+                        
+                        # Check first value to see if it looks like a date string
+                        first_valid = raw_data[col].dropna().iloc[0] if not raw_data[col].dropna().empty else None
+                        if isinstance(first_valid, str) and (
+                            '-' in first_valid or '/' in first_valid or 'T' in first_valid or ':' in first_valid
+                        ):
+                            try:
+                                raw_data[col] = pd.to_datetime(raw_data[col])
+                            except (ValueError, TypeError):
+                                pass
+                    except (ValueError, TypeError):
+                        pass
+                        
         return raw_data
 
 
