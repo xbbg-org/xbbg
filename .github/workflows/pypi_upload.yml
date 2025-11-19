@@ -1,11 +1,8 @@
 name: Upload Python Package
 
 on:
-  push:
-    tags:
-      - 'v*'  # Match all version tags
   release:
-    types: [published]  # Handle manual releases that don't push new tags
+    types: [published]
   workflow_dispatch:
 
 jobs:
