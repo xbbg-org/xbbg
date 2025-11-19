@@ -35,7 +35,7 @@ except (ImportError, AttributeError):
     # Try pytest importorskip as fallback (mostly for testing environments)
     try:
         import pytest  # type: ignore[reportMissingImports]
-        blpapi = pytest.importorskip('blpapi')
+        blpapi = pytest.importorskip('blpapi')  # type: ignore[assignment]
         _BLPAPI_AVAILABLE = True
     except (ImportError, AttributeError):
         blpapi = None  # type: ignore[assignment]
