@@ -27,7 +27,9 @@ xbbg
 ====
 
 .. xbbg:latest-release-start
+
 Latest release: xbbg==0.8.2 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2>`_)
+
 .. xbbg:latest-release-end
 
 Overview
@@ -141,7 +143,8 @@ What's New
 ==========
 
 .. xbbg:changelog-start
-*0.8.2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2>`_
+
+*0.8.2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2>`__
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
 
@@ -149,11 +152,11 @@ What's New
 
 - Fix BQL options chain metadata issues by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/146
 
-*0.8.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.1>`_
+*0.8.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.1>`__
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.0...v0.8.1
 
-*0.8.0* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.0>`_
+*0.8.0* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.0>`__
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.11...v0.8.0
 
@@ -170,7 +173,7 @@ What's New
 * refactor: comprehensive codebase cleanup and restructuring by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/144
 
 
-*0.7.10* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.10>`_
+*0.7.10* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.10>`__
 
 ## What's Changed
 
@@ -186,7 +189,7 @@ What's New
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.9...v0.7.10
 
-*0.7.11* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.11>`_
+*0.7.11* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.11>`__
 
 ## What's Changed
 
@@ -202,7 +205,7 @@ What's New
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.10...v0.7.11
 
-*0.7.9* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9>`_
+*0.7.9* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9>`__
 
 ## What's Changed
 
@@ -220,27 +223,27 @@ What's New
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.7...v0.7.9
 
-*0.7.8a2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.8a2>`_
+*0.7.8a2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.8a2>`__
 
-*0.7.7* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7>`_
+*0.7.7* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7>`__
 
-*0.7.7a4* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a4>`_
+*0.7.7a4* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a4>`__
 
-*0.7.7a3* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a3>`_
+*0.7.7a3* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a3>`__
 
-*0.7.7a2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a2>`_
+*0.7.7a2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a2>`__
 
-*0.7.7a1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a1>`_
+*0.7.7a1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.7a1>`__
 
-*0.7.6* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6>`_
+*0.7.6* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6>`__
 
-*0.7.6a8* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a8>`_
+*0.7.6a8* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a8>`__
 
-*0.7.6a7* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a7>`_
+*0.7.6a7* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a7>`__
 
-*0.7.6a6* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a6>`_
+*0.7.6a6* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a6>`__
 
-*0.7.6a5* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a5>`_
+*0.7.6a5* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.7.6a5>`__
 .. xbbg:changelog-end
 
 *0.7.2* - Use `async` for live data feeds

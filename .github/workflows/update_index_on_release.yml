@@ -68,8 +68,8 @@ jobs:
         # Remove v prefix (backward compatible with xbbg== prefix)
         VERSION="${VERSION#v}"
         VERSION="${VERSION#xbbg==}"
-        # Prepare RST changelog entry from the release body
-        printf "*%s* - see release: \`notes <%s>\`_\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .idx_changelog_entry_raw.rst
+        # Prepare RST changelog entry from the release body (use anonymous link __ to avoid duplicate targets)
+        printf "*%s* - see release: \`notes <%s>\`__\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .idx_changelog_entry_raw.rst
         # Normalize bullets to dash
         sed -E 's/^\* /- /' .idx_changelog_entry_raw.rst > .idx_changelog_entry_temp.rst
         # Clean up the body: remove duplicate "Full Changelog" lines and excessive blank lines
@@ -132,8 +132,8 @@ jobs:
           if echo "$VERSION_LINE" | grep -qE '^\*[^*]+\* - see release:'; then
             # Extract version (between asterisks) and URL (between < and >)
             PRESERVED_VERSION=$(echo "$VERSION_LINE" | sed -E 's/^\*([^*]+)\*.*/\1/')
-            PRESERVED_URL=$(echo "$VERSION_LINE" | sed -E 's/.*`notes <([^>]+)>`_.*/\1/')
-            printf "*%s* - see release: \`notes <%s>\`_\n" "$PRESERVED_VERSION" "$PRESERVED_URL" > .existing_idx_changelog.rst
+            PRESERVED_URL=$(echo "$VERSION_LINE" | sed -E 's/.*`notes <([^>]+)>`__.*/\1/')
+            printf "*%s* - see release: \`notes <%s>\`__\n" "$PRESERVED_VERSION" "$PRESERVED_URL" > .existing_idx_changelog.rst
           else
             # Fallback: keep as-is if format doesn't match
             cp .existing_idx_changelog_raw.rst .existing_idx_changelog.rst
@@ -144,6 +144,7 @@ jobs:
         awk 'BEGIN{emit=1}
              /\.. xbbg:changelog-start/ { 
                print
+               print ""  # Add blank line after marker
                system("cat .idx_changelog_entry.rst")
                if (system("test -s .existing_idx_changelog.rst") == 0) {
                  print ""

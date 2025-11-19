@@ -142,6 +142,7 @@ jobs:
         
         # Replace the block between markers with new entry + preserved old entries
         sed -n '1,/<!-- xbbg:changelog-start -->/p' README.md > README.md.tmp
+        echo "" >> README.md.tmp  # Add blank line after marker
         cat .changelog_entry.md >> README.md.tmp
         # Add blank line if there's existing content to preserve
         if [ -s .existing_changelog.md ]; then
