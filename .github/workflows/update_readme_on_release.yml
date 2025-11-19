@@ -78,9 +78,21 @@ jobs:
           if ($0 ~ /^-/ && prev_empty==0) { print "" }
           print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0
         }' .changelog_entry.md > .changelog_entry.fix && mv .changelog_entry.fix .changelog_entry.md
-        # Replace the block between markers with the new entry
+        # Extract existing changelog entries between markers (if any)
+        awk '/<!-- xbbg:changelog-start -->/,/<!-- xbbg:changelog-end -->/ {
+          if ($0 ~ /<!-- xbbg:changelog-start -->/) next
+          if ($0 ~ /<!-- xbbg:changelog-end -->/) next
+          print
+        }' README.md > .existing_changelog.md
+        
+        # Replace the block between markers with new entry + preserved old entries
         sed -n '1,/<!-- xbbg:changelog-start -->/p' README.md > README.md.tmp
         cat .changelog_entry.md >> README.md.tmp
+        # Add blank line if there's existing content to preserve
+        if [ -s .existing_changelog.md ]; then
+          echo "" >> README.md.tmp
+          cat .existing_changelog.md >> README.md.tmp
+        fi
         sed -n '/<!-- xbbg:changelog-end -->/,$p' README.md >> README.md.tmp
         mv README.md.tmp README.md
     - name: Commit README updates

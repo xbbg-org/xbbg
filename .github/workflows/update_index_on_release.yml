@@ -75,9 +75,25 @@ jobs:
           if ($0 ~ /^-/ && prev_empty==0) { print "" }
           print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0
         }' .idx_changelog_entry.rst > .idx_changelog_entry2.rst && mv .idx_changelog_entry2.rst .idx_changelog_entry.rst
-        # Replace the block between markers with the new entry
+        # Extract existing changelog entries between markers (if any)
+        awk '/\.. xbbg:changelog-start/,/\.. xbbg:changelog-end/ {
+          if ($0 ~ /\.. xbbg:changelog-start/) next
+          if ($0 ~ /\.. xbbg:changelog-end/) next
+          print
+        }' docs/index.rst > .existing_idx_changelog.rst
+        
+        # Replace the block between markers with new entry + preserved old entries
         awk 'BEGIN{emit=1}
-             /\.. xbbg:changelog-start/ { print; system("cat .idx_changelog_entry.rst"); skip=1; next }
+             /\.. xbbg:changelog-start/ { 
+               print
+               system("cat .idx_changelog_entry.rst")
+               if (system("test -s .existing_idx_changelog.rst") == 0) {
+                 print ""
+                 system("cat .existing_idx_changelog.rst")
+               }
+               skip=1
+               next
+             }
              /\.. xbbg:changelog-end/   { skip=0; print; next }
              skip!=1 { print }' docs/index.rst > docs/index.rst.tmp && mv docs/index.rst.tmp docs/index.rst
     - name: Commit docs index update
