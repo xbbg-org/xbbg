@@ -8,23 +8,22 @@ from collections.abc import Callable
 from contextlib import suppress
 import logging
 
-try:
-    import blpapi  # type: ignore[reportMissingImports]
-except (ImportError, AttributeError):
-    blpapi = None  # type: ignore[assignment]
+from xbbg.core.infra.blpapi_wrapper import blpapi, is_available
 
 logger = logging.getLogger(__name__)
 
 # Map blpapi severity levels to Python logging levels
-_BLPAPI_TO_PYTHON_LOG_LEVEL = {
-    blpapi.Logger.SEVERITY_OFF: logging.NOTSET,
-    blpapi.Logger.SEVERITY_FATAL: logging.CRITICAL,
-    blpapi.Logger.SEVERITY_ERROR: logging.ERROR,
-    blpapi.Logger.SEVERITY_WARN: logging.WARNING,
-    blpapi.Logger.SEVERITY_INFO: logging.INFO,
-    blpapi.Logger.SEVERITY_DEBUG: logging.DEBUG,
-    blpapi.Logger.SEVERITY_TRACE: logging.DEBUG,
-} if blpapi else {}
+_BLPAPI_TO_PYTHON_LOG_LEVEL = {}
+if is_available():
+    _BLPAPI_TO_PYTHON_LOG_LEVEL = {
+        blpapi.Logger.SEVERITY_OFF: logging.NOTSET,
+        blpapi.Logger.SEVERITY_FATAL: logging.CRITICAL,
+        blpapi.Logger.SEVERITY_ERROR: logging.ERROR,
+        blpapi.Logger.SEVERITY_WARN: logging.WARNING,
+        blpapi.Logger.SEVERITY_INFO: logging.INFO,
+        blpapi.Logger.SEVERITY_DEBUG: logging.DEBUG,
+        blpapi.Logger.SEVERITY_TRACE: logging.DEBUG,
+    }
 
 
 def register_blpapi_logging_callback(
@@ -53,7 +52,7 @@ def register_blpapi_logging_callback(
         >>> cb is None or callable(cb)
         True
     """
-    if blpapi is None:
+    if not is_available():
         logger.warning('blpapi not available; cannot register logging callback')
         return None
 
@@ -115,7 +114,7 @@ def log_event_info(event, context: str = '') -> None:
         event: blpapi.Event object.
         context: Optional context string (e.g., function name, operation).
     """
-    if blpapi is None:
+    if not is_available():
         return
 
     # Early return if DEBUG logging is disabled
@@ -172,7 +171,7 @@ def log_message_info(msg, context: str = '') -> None:
         msg: blpapi.Message object.
         context: Optional context string (e.g., function name, operation).
     """
-    if blpapi is None:
+    if not is_available():
         return
 
     # Always check for errors (important, rare, should be logged)
@@ -247,7 +246,7 @@ def log_message_info(msg, context: str = '') -> None:
 
 def _get_event_type_name(event_type: int) -> str:
     """Get human-readable name for event type."""
-    if blpapi is None:
+    if not is_available():
         return f'UNKNOWN({event_type})'
 
     event_type_map = {

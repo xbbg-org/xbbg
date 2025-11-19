@@ -4,33 +4,103 @@ Provides utilities to create and reuse `blpapi.Session` objects, open
 services, and send requests with sensible defaults.
 """
 
-import os
-from pathlib import Path
-import sys
-
-try:
-    ver = sys.version_info
-    if f'{ver.major}.{ver.minor}' == '3.8':
-        dll_path = os.environ.get('BBG_DLL', 'C:/blp/DAPI')
-        if Path(dll_path).exists():
-            with os.add_dll_directory(dll_path):
-                import blpapi  # type: ignore[reportMissingImports]
-        else:
-            raise ImportError(
-                'Please add BBG_DLL to your PATH variable'
-            )
-    else:
-        import blpapi  # type: ignore[reportMissingImports]
-except (ImportError, AttributeError):
-    import pytest  # type: ignore[reportMissingImports]
-    blpapi = pytest.importorskip('blpapi')
-
 import logging
+from threading import Lock
+from typing import Any
+
+from xbbg.core.infra.blpapi_wrapper import blpapi
 
 logger = logging.getLogger(__name__)
 
-_CON_SYM_ = '_xcon_'
 _PORT_ = 8194
+
+
+class SessionManager:
+    """Manages Bloomberg sessions and services (Singleton pattern).
+
+    Thread-safe manager for Bloomberg API sessions and services.
+    Replaces the previous globals()-based approach for better testability.
+    """
+
+    _instance: Any = None
+    _lock = Lock()
+
+    def __new__(cls):
+        """Create singleton instance."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._sessions: dict[str, blpapi.Session] = {}
+                    cls._instance._services: dict[str, blpapi.Service] = {}
+        return cls._instance
+
+    def get_session(self, port: int = _PORT_, **kwargs) -> blpapi.Session:
+        """Get or create a Bloomberg session for the given port.
+
+        Args:
+            port: Port number (default 8194).
+            **kwargs: Additional session options.
+
+        Returns:
+            Bloomberg session instance.
+        """
+        con_key = f'//{port}'
+
+        # Check if session exists and is valid
+        if con_key in self._sessions:
+            session = self._sessions[con_key]
+            # Check if session handle is still valid
+            if getattr(session, '_Session__handle', None) is None:
+                del self._sessions[con_key]
+            else:
+                return session
+
+        # Create new session
+        self._sessions[con_key] = connect_bbg(port=port, **kwargs)
+        return self._sessions[con_key]
+
+    def remove_session(self, port: int = _PORT_) -> None:
+        """Remove a session from the manager.
+
+        Args:
+            port: Port number (default 8194).
+        """
+        con_key = f'//{port}'
+        if con_key in self._sessions:
+            del self._sessions[con_key]
+
+    def get_service(self, service: str, port: int = _PORT_, **kwargs) -> blpapi.Service:
+        """Get or create a Bloomberg service.
+
+        Args:
+            service: Service name (e.g., '//blp/refdata').
+            port: Port number (default 8194).
+            **kwargs: Additional session options.
+
+        Returns:
+            Bloomberg service instance.
+        """
+        serv_key = f'//{port}{service}'
+
+        # Check if service exists and is valid
+        if serv_key in self._services:
+            svc = self._services[serv_key]
+            # Check if service handle is still valid
+            if getattr(svc, '_Service__handle', None) is None:
+                del self._services[serv_key]
+            else:
+                return svc
+
+        # Create new service
+        session = self.get_session(port=port, **kwargs)
+        session.openService(service)
+        self._services[serv_key] = session.getService(service)
+        return self._services[serv_key]
+
+
+# Global singleton instance
+_session_manager = SessionManager()
 
 
 def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
@@ -151,20 +221,17 @@ def bbg_session(**kwargs) -> blpapi.Session:
             server: server hostname or IP address (default 'localhost')
             server_host: alternative name for server parameter
             restart: whether to restart session
+            sess: existing blpapi.Session to reuse
 
     Returns:
         Bloomberg session instance
     """
+    # If an existing session is provided, return it directly
+    if isinstance(kwargs.get('sess'), blpapi.Session):
+        return kwargs['sess']
+
     port = kwargs.get('port', _PORT_)
-    con_sym = f'{_CON_SYM_}//{port}'
-
-    if (con_sym in globals()) and (getattr(globals()[con_sym], '_Session__handle', None) is None):
-        del globals()[con_sym]
-
-    if con_sym not in globals():
-        globals()[con_sym] = connect_bbg(**kwargs)
-
-    return globals()[con_sym]
+    return _session_manager.get_session(port=port, **kwargs)
 
 
 def bbg_service(service: str, **kwargs) -> blpapi.Service:
@@ -180,23 +247,8 @@ def bbg_service(service: str, **kwargs) -> blpapi.Service:
     Returns:
         Bloomberg service
     """
-    logger = logging.getLogger(__name__)
-
     port = kwargs.get('port', _PORT_)
-    serv_sym = f'{_CON_SYM_}/{port}{service}'
-
-    # Use parameterized strings (avoid f-string overhead when logging disabled)
-    log_info = 'Initiating service %s ...' % service
-    if (serv_sym in globals()) and (getattr(globals()[serv_sym], '_Service__handle', None) is None):
-        log_info = 'Restarting service %s ...' % service
-        del globals()[serv_sym]
-
-    if serv_sym not in globals():
-        logger.debug('Bloomberg service operation: %s', log_info)
-        bbg_session(**kwargs).openService(service)
-        globals()[serv_sym] = bbg_session(**kwargs).getService(service)
-
-    return globals()[serv_sym]
+    return _session_manager.get_service(service=service, port=port, **kwargs)
 
 
 def event_types() -> dict:
@@ -243,10 +295,9 @@ def send_request(request: blpapi.Request, **kwargs):
         # Log exception with stack trace (important error, rare)
         logger.exception('Error sending Bloomberg request: %s', e)
 
-        # Delete existing connection and send again
+        # Remove invalid session and retry
         port = kwargs.get('port', _PORT_)
-        con_sym = f'{_CON_SYM_}//{port}'
-        if con_sym in globals(): del globals()[con_sym]
+        _session_manager.remove_session(port=port)
 
         sess = bbg_session(**kwargs)
         sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)

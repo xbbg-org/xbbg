@@ -93,13 +93,13 @@ def cur_time(
 
     Args:
         typ: one of ['date', 'time', 'time_path', 'raw', '']
-        tz: timezone (defaults to local timezone if None)
+        tz: timezone (defaults to UTC if None for consistency)
 
     Returns:
         Relevant current time or date.
 
     Examples:
-        >>> cur_dt = pd.Timestamp('now')
+        >>> cur_dt = pd.Timestamp('now', tz='UTC')
         >>> cur_time(typ='date') == cur_dt.strftime('%Y-%m-%d')
         True
         >>> cur_time(typ='time') == cur_dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -111,13 +111,12 @@ def cur_time(
         >>> cur_time(typ='') == cur_dt.date()
         True
     """
-    if tz is None and (typ in {'date', 'time', 'time_path', ''}):
-        dt = pd.Timestamp('now')
-    else:
-        if tz is None:
-            from xbbg.core.utils.timezone import DEFAULT_TZ  # noqa: PLC0415
-            tz = DEFAULT_TZ
-        dt = pd.Timestamp('now', tz=tz)
+    # Use UTC by default for consistency across server locations
+    if tz is None:
+        from xbbg.core.utils.timezone import DEFAULT_TZ  # noqa: PLC0415
+        tz = DEFAULT_TZ
+
+    dt = pd.Timestamp('now', tz=tz)
 
     if typ == 'date': return dt.strftime('%Y-%m-%d')
     if typ == 'time': return dt.strftime('%Y-%m-%d %H:%M:%S')
