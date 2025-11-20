@@ -1,7 +1,7 @@
 """Unit tests for market resolvers."""
 
-import pytest
 import pandas as pd
+import pytest
 
 from xbbg.markets.resolvers import active_futures
 
@@ -62,7 +62,7 @@ class TestActiveFuturesValidation:
         """Test that error message is helpful."""
         with pytest.raises(ValueError) as exc_info:
             active_futures('UXZ5 Index', pd.Timestamp('2024-01-15'))
-        
+
         error_msg = str(exc_info.value)
         assert "UXZ5 Index" in error_msg
         assert "specific futures contract" in error_msg
