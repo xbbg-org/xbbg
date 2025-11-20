@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
-import pytest
 
 from xbbg.core.domain.contracts import DataRequest, SessionWindow
 from xbbg.io.cache import BarCacheAdapter, get_cache_root

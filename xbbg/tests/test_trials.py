@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import os
-import threading
 from pathlib import Path
+import threading
 from unittest.mock import Mock, patch
 
 from xbbg.core.utils import trials
