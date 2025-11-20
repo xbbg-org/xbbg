@@ -19,7 +19,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -34,10 +33,21 @@ logger = logging.getLogger(__name__)
 
 PKG_PATH = files.abspath(__file__, 1)
 _CACHE_FILE = str(Path(PKG_PATH) / 'markets' / 'cached' / 'pmc_cache.json')
-_MAP_PATHS = [
-    str(Path(os.environ.get('BBG_ROOT', '')) / 'markets' / 'pmc_map.json') if os.environ.get('BBG_ROOT', '') else '',
-    str(Path(PKG_PATH) / 'markets' / 'pmc_map.json'),
-]
+
+
+def _get_map_paths() -> list[str]:
+    """Get PMC map paths, using lazy import to avoid circular dependency."""
+    from xbbg.io.cache import get_cache_root
+    cache_root = get_cache_root()
+    return [
+        str(Path(cache_root) / 'markets' / 'pmc_map.json') if cache_root else '',
+        str(Path(PKG_PATH) / 'markets' / 'pmc_map.json'),
+    ]
+
+
+def _get_package_map_path() -> str:
+    """Get the package fallback map path."""
+    return str(Path(PKG_PATH) / 'markets' / 'pmc_map.json')
 
 
 @dataclass(frozen=True)
@@ -56,7 +66,8 @@ def _load_pmc_map(logger=None) -> dict:
     # Use module-level logger if none provided
     if logger is None:
         logger = logging.getLogger(__name__)
-    for path in _MAP_PATHS:
+    # Get map paths (lazy import handled in _get_map_paths)
+    for path in _get_map_paths():
         if path and files.exists(path):
             try:
                 with open(path, encoding='utf-8') as fp:
@@ -95,8 +106,13 @@ def _load_cache() -> dict:
 
 
 def _user_map_path() -> str:
-    root = Path(os.environ.get('BBG_ROOT', ''))
-    return str(root / 'markets' / 'pmc_map.json') if root.as_posix() else ''
+    """Get user PMC map path, using lazy import to avoid circular dependency."""
+    from xbbg.io.cache import get_cache_root
+    root_str = get_cache_root()
+    if not root_str:
+        return ''
+    root = Path(root_str)
+    return str(root / 'markets' / 'pmc_map.json')
 
 
 def _load_map_at(path: str) -> dict:
@@ -140,7 +156,7 @@ def pmc_list_mappings(scope: str = 'effective') -> dict:
     scope: 'effective' (merged view), 'user' (BBG_ROOT), or 'package' (fallback).
     """
     user_path = _user_map_path()
-    pkg_path = _MAP_PATHS[-1]
+    pkg_path = _get_package_map_path()
     if scope == 'user':
         return _load_map_at(user_path)
     if scope == 'package':
@@ -167,7 +183,7 @@ def pmc_add_mapping(exch_code: str, calendar: str, scope: str = 'user') -> None:
     if not _validate_calendar_id(calendar):
         logger.error('Invalid pandas-market-calendars calendar ID: %s (validation failed)', calendar)
         return
-    path = _user_map_path() if scope == 'user' else _MAP_PATHS[-1]
+    path = _user_map_path() if scope == 'user' else _get_package_map_path()
     if not path:
         logger.error('BBG_ROOT environment variable not set; cannot write user-scope PMC mapping')
         return
@@ -182,7 +198,7 @@ def pmc_add_mapping(exch_code: str, calendar: str, scope: str = 'user') -> None:
 def pmc_remove_mapping(exch_code: str, scope: str = 'user') -> None:
     """Remove a mapping by exch_code from selected scope."""
     # Logger is module-level
-    path = _user_map_path() if scope == 'user' else _MAP_PATHS[-1]
+    path = _user_map_path() if scope == 'user' else _get_package_map_path()
     data = _load_map_at(path)
     key = _normalize_exch_code(exch_code)
     if key in data:

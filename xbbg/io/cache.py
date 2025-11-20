@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+import sys
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -24,10 +25,58 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Module-level flag to log default cache location only once
+_default_cache_logged = False
+
 
 # ============================================================================
 # Path Resolution
 # ============================================================================
+
+
+def get_cache_root() -> str:
+    """Get the cache root directory path.
+
+    Returns BBG_ROOT if set, otherwise returns a platform-specific default cache location.
+    Logs an INFO message once when default location is first used.
+
+    Returns:
+        str: Cache root directory path, or empty string if no cache location available.
+    """
+    global _default_cache_logged
+
+    # Check if BBG_ROOT is explicitly set
+    bbg_root = os.environ.get(overrides.BBG_ROOT, '')
+    if bbg_root:
+        return bbg_root
+
+    # Use platform-specific default cache location
+    try:
+        home = Path.home()
+    except RuntimeError:
+        # Fallback if home directory cannot be determined
+        # Use current directory as last resort
+        home = Path.cwd()
+
+    if sys.platform == 'win32':
+        # Windows: Use APPDATA if available, otherwise use user home
+        appdata = os.environ.get('APPDATA', '')
+        default_cache = Path(appdata) / 'xbbg' if appdata else home / '.xbbg'
+    else:
+        # Linux/Mac: Use .cache directory if it exists, otherwise use .xbbg in home
+        cache_dir = home / '.cache'
+        default_cache = cache_dir / 'xbbg' if cache_dir.exists() else home / '.xbbg'
+
+    # Log once when default is first used
+    if not _default_cache_logged:
+        logger.info(
+            'BBG_ROOT not set. Using default cache location: %s. '
+            'Set BBG_ROOT environment variable to use a custom location.',
+            default_cache
+        )
+        _default_cache_logged = True
+
+    return str(default_cache)
 
 
 def bar_file(ticker: str, dt, typ='TRADE') -> str:
@@ -39,11 +88,10 @@ def bar_file(ticker: str, dt, typ='TRADE') -> str:
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
 
     Returns:
-        str: File location or empty string if BBG_ROOT not set.
+        str: File location (uses default cache location if BBG_ROOT not set).
     """
-    data_path_str = os.environ.get(overrides.BBG_ROOT, '')
+    data_path_str = get_cache_root()
     if not data_path_str:
-        # Don't log warning here - it will be logged in cache adapter when caching is requested
         return ''
     data_path = Path(data_path_str)
     asset = ticker.split()[-1]
@@ -68,13 +116,10 @@ def ref_file(
     Returns:
         str: File location or empty string if not cached.
     """
-    data_path_str = os.environ.get(overrides.BBG_ROOT, '')
-    if (not data_path_str) or (not cache):
-        if cache and not data_path_str:
-            logger.warning(
-                'BBG_ROOT environment variable not set. Caching requested but disabled. '
-                'Set BBG_ROOT to enable data caching.'
-            )
+    if not cache:
+        return ''
+    data_path_str = get_cache_root()
+    if not data_path_str:
         return ''
     data_path = Path(data_path_str)
 
@@ -158,7 +203,7 @@ class BarCacheAdapter:
 
         data_file = bar_file(ticker=request.ticker, dt=request.dt, typ=request.event_type)
         if not data_file:
-            # BBG_ROOT not set - warning already logged in bar_file
+            # BBG_ROOT not set - debug message logged in save() method if needed
             return None
         if not files.exists(data_file):
             return None
@@ -191,15 +236,9 @@ class BarCacheAdapter:
             logger.warning('No data to save for %s / %s', request.ticker, request.to_date_string())
             return
 
-        # Check if BBG_ROOT is set before attempting to save
-        data_path_str = os.environ.get(overrides.BBG_ROOT, '')
+        # Get cache root (uses default if BBG_ROOT not set)
+        data_path_str = get_cache_root()
         if not data_path_str:
-            logger.warning(
-                'BBG_ROOT environment variable not set. Cannot save cache for %s / %s. '
-                'Set BBG_ROOT to enable data caching.',
-                request.ticker,
-                request.to_date_string(),
-            )
             return
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}

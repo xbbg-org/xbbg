@@ -37,7 +37,8 @@ def bdp(
 
     # Normalize tickers to list
     ticker_list = utils.normalize_tickers(tickers)
-    primary_ticker = ticker_list[0] if ticker_list else tickers
+    # Ensure primary_ticker is always a string (use first ticker or convert single string)
+    primary_ticker = ticker_list[0] if ticker_list else (tickers if isinstance(tickers, str) else '')
     fld_list = utils.normalize_flds(flds)
 
     # Split kwargs

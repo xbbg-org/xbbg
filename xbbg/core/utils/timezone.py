@@ -35,7 +35,8 @@ def get_tz(tz) -> str:
     """
     from xbbg.const import exch_info
 
-    if tz is None: return DEFAULT_TZ
+    if tz is None:
+        return 'UTC'
 
     to_tz = tz
     if isinstance(tz, str):
