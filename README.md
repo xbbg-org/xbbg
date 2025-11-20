@@ -74,6 +74,10 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 | `bds()` | Bulk/block data (multi-row) | Portfolio data, date filtering, nested structures, **Fixed income cash flows** |
 | `abdp()` | Async reference data | Non-blocking, concurrent requests, same API as `bdp()` |
 | `abds()` | Async block data | Non-blocking, concurrent requests, same API as `bds()` |
+| `fieldInfo()` | Field metadata | Data types, descriptions, field information |
+| `fieldSearch()` | Field search | Search fields by name/description |
+| `lookupSecurity()` | Security lookup | Find tickers by company name, asset class filtering |
+| `getPortfolio()` | Portfolio data | Dedicated portfolio query function |
 | 📈 **Historical Data** | | |
 | `bdh()` | End-of-day historical data | Date ranges, frequencies, dividend/split adjustments |
 | `abdh()` | Async historical data | Non-blocking, concurrent requests, same API as `bdh()` |
@@ -271,6 +275,37 @@ Out[10]:
 ```
 
 **Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to blpapi.
+
+#### Field Information and Search
+
+```python
+# Get metadata about fields
+blp.fieldInfo(['PX_LAST', 'VOLUME'])
+```
+
+```python
+# Search for fields by name or description
+blp.fieldSearch('vwap')
+```
+
+#### Security Lookup
+
+```python
+# Look up securities by company name
+blp.lookupSecurity('IBM', max_results=10)
+```
+
+```python
+# Lookup with asset class filter
+blp.lookupSecurity('Apple', yellowkey='eqty', max_results=20)
+```
+
+#### Portfolio Data
+
+```python
+# Get portfolio data (dedicated function)
+blp.getPortfolio('PORTFOLIO_NAME', 'PORTFOLIO_MWEIGHT')
+```
 
 ### 📈 Historical Data
 

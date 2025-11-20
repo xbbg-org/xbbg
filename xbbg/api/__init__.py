@@ -14,7 +14,17 @@ from xbbg.api.helpers import adjust_ccy
 from xbbg.api.historical import abdh, bdh, dividend, earning, turnover
 from xbbg.api.intraday import bdib, bdtick
 from xbbg.api.realtime import live, subscribe
-from xbbg.api.reference import abdp, abds, bdp, bds
+from xbbg.api.reference import (
+    abdp,
+    abds,
+    bdp,
+    bds,
+    fieldInfo,
+    fieldSearch,
+    getBlpapiVersion,
+    getPortfolio,
+    lookupSecurity,
+)
 from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
 
 __all__ = [
@@ -36,5 +46,10 @@ __all__ = [
     'turnover',
     'bql',
     'etf_holdings',
+    'fieldInfo',
+    'fieldSearch',
+    'lookupSecurity',
+    'getPortfolio',
+    'getBlpapiVersion',
 ]
 
