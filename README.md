@@ -72,8 +72,11 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 | 📊 **Reference Data** | | |
 | `bdp()` | Single point-in-time reference data | Multiple tickers/fields, Excel dates, overrides, **ISIN/CUSIP/SEDOL support** |
 | `bds()` | Bulk/block data (multi-row) | Portfolio data, date filtering, nested structures, **Fixed income cash flows** |
+| `abdp()` | Async reference data | Non-blocking, concurrent requests, same API as `bdp()` |
+| `abds()` | Async block data | Non-blocking, concurrent requests, same API as `bds()` |
 | 📈 **Historical Data** | | |
 | `bdh()` | End-of-day historical data | Date ranges, frequencies, dividend/split adjustments |
+| `abdh()` | Async historical data | Non-blocking, concurrent requests, same API as `bdh()` |
 | `dividend()` | Dividend & split history | Multiple types, date ranges, projected dividends |
 | `earning()` | Corporate earnings breakdowns | Geographic/product breakdowns, fiscal periods |
 | `turnover()` | Trading volume & turnover | Currency conversion, multi-currency support |
@@ -147,6 +150,39 @@ blp.bdp(tickers='NVDA US Equity', flds=['Security_Name'], **kwargs)
 ```
 
 The `server` parameter (or `server_host`) can be passed through any function that accepts kwargs, just like the `port` parameter.
+
+### Async Functions
+
+xbbg provides async versions of reference and historical data functions for non-blocking, concurrent requests. Use `abdp()`, `abds()`, and `abdh()` in async contexts:
+
+```python
+import asyncio
+from xbbg import blp
+
+# Single async request
+async def get_data():
+    df = await blp.abdp(tickers='TICKER US Equity', flds=['PX_LAST', 'VOLUME'])
+    return df
+
+# Concurrent requests for multiple tickers
+async def get_multiple():
+    results = await asyncio.gather(
+        blp.abdp(tickers='TICKER1 US Equity', flds=['PX_LAST']),
+        blp.abdp(tickers='TICKER2 US Equity', flds=['PX_LAST']),
+        blp.abdh(tickers='TICKER3 US Equity', start_date='2024-01-01'),
+    )
+    return results
+
+# Run async functions
+data = asyncio.run(get_data())
+multiple = asyncio.run(get_multiple())
+```
+
+**Benefits:**
+- Non-blocking: doesn't block the event loop
+- Concurrent: use `asyncio.gather()` for parallel requests
+- Compatible: works with async web frameworks and async codebases
+- Same API: identical parameters to sync versions (`bdp`, `bds`, `bdh`)
 
 ## Examples
 
