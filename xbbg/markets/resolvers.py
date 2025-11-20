@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -19,13 +20,48 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     """Active futures contract.
 
     Args:
-        ticker: futures ticker, i.e., ESA Index, Z A Index, CLA Comdty, etc.
+        ticker: Generic futures ticker, i.e., UX1 Index, ESA Index, Z A Index, CLA Comdty, etc.
+            Must be a generic contract (e.g., UX1 Index), not a specific contract (e.g., UXZ5 Index).
         dt: date
         **kwargs: Passed through to downstream resolvers (e.g., logging).
 
     Returns:
         str: ticker name
+
+    Raises:
+        ValueError: If ticker is a specific contract instead of a generic one.
     """
+    # Check if ticker is already a specific contract (contains month codes)
+    month_codes = set(const.Futures.values())  # {'F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z'}
+    ticker_base = ticker.rsplit(' ', 1)[0]  # Remove asset type (Index, Comdty, etc.)
+
+    # Generic tickers end with just a number (1, 2, etc.) like UX1, ESA1, ZA1
+    # Specific contracts end with month code + year digits like UXZ5, UXZ24, ESAM24
+    # Pattern: ends with [month_code][1-2 digits] where month_code is immediately before digits
+    month_code_pattern = rf'[{re.escape("".join(month_codes))}]'
+    # Match pattern: [anything][month_code][1-2 digits] at the end
+    match = re.search(rf'(.+)({month_code_pattern})(\d{{1,2}})$', ticker_base)
+    if match:
+        prefix, month_char, digits = match.groups()
+        # If it ends with [month_code][2 digits] it's definitely specific
+        # If it ends with [month_code][1 digit], check length: very short (3 chars) is likely generic
+        if len(digits) == 2:
+            # Two digit year = definitely specific contract
+            raise ValueError(
+                f"'{ticker}' appears to be a specific futures contract (ends with month code + 2-digit year), "
+                f"not a generic one. Please use a generic ticker (e.g., 'UX1 Index' instead of 'UXZ24 Index'). "
+                f"Generic tickers end with a number (1, 2, etc.) before the asset type."
+            )
+        # Single digit: could be generic (UX1) or specific (UXZ5)
+        # Check length: very short (3 chars) with single digit is likely generic
+        if len(digits) == 1 and len(ticker_base) > 3:
+            # Longer ticker ending in [month_code][digit] is likely specific (e.g., "UXZ5", "ESAM4")
+            raise ValueError(
+                f"'{ticker}' appears to be a specific futures contract, not a generic one. "
+                f"Please use a generic ticker (e.g., 'UX1 Index' instead of 'UXZ5 Index'). "
+                f"Generic tickers end with a number (1, 2, etc.) before the asset type."
+            )
+
     # Import directly from API modules to avoid circular dependency
     from xbbg.api.reference import bdp  # noqa: PLC0415
 
