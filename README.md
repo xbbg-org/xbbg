@@ -566,6 +566,14 @@ Out[14]:
 # BQL Options metadata - get option chain (expiry, strike, put/call)
 # blp.bql("get(id, expire_dt, strike_px, PUT_CALL) for(filter(options('INDEX Ticker'), expire_dt=='YYYY-MM-DD'))")  # doctest: +SKIP
 
+# ETF Holdings (BQL)
+# blp.etf_holdings('SPY US Equity')  # doctest: +SKIP
+# Returns:
+#               holding       id_isin SOURCE POSITION_TYPE  weights  position
+# 0     MSFT US Equity  US5949181045    ETF             L   0.0725   123456.0
+# 1     AAPL US Equity  US0378331005    ETF             L   0.0685   112233.0
+# 2     NVDA US Equity  US67066G1040    ETF             L   0.0450    88776.0
+
 # Bloomberg Equity Screening (BEQS)
 # blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP
 

@@ -14,7 +14,7 @@ from xbbg.api.historical import bdh, dividend, earning, turnover
 from xbbg.api.intraday import bdib, bdtick
 from xbbg.api.realtime import live, subscribe
 from xbbg.api.reference import bdp, bds
-from xbbg.api.screening import beqs, bql, bsrch
+from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
 from xbbg.core.infra.conn import connect
 from xbbg.markets import resolvers as _res
 
@@ -43,6 +43,7 @@ __all__ = [
     'adjust_ccy',
     'turnover',
     'bql',
+    'etf_holdings',
     'active_futures',
     'fut_ticker',
     'cdx_ticker',
