@@ -5,6 +5,7 @@ Provides functions for end-of-day historical data, dividends, earnings, and turn
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import pandas as pd
@@ -16,7 +17,7 @@ from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['bdh', 'dividend', 'earning', 'turnover']
+__all__ = ['bdh', 'dividend', 'earning', 'turnover', 'abdh']
 
 
 def bdh(
@@ -237,4 +238,55 @@ def turnover(
     if data.empty and use_volume.empty: return pd.DataFrame()
     from xbbg.api.helpers import adjust_ccy  # noqa: PLC0415
     return pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
+
+
+async def abdh(
+    tickers: str | list[str],
+    flds: str | list[str] | None = None,
+    start_date: str | pd.Timestamp | None = None,
+    end_date: str | pd.Timestamp = 'today',
+    adjust: str | None = None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Async Bloomberg historical data.
+
+    Non-blocking async version of `bdh()`. Use this in async contexts to avoid
+    blocking the event loop.
+
+    Args:
+        tickers: Single ticker or list of tickers.
+        flds: Single field or list of fields. Defaults to ['Last_Price'].
+        start_date: Start date. Defaults to 8 weeks before end_date.
+        end_date: End date. Defaults to 'today'.
+        adjust: Adjustment type: `all`, `dvd`, `normal`, `abn` (=abnormal), `split`, `-` or None.
+            - `-`: No adjustment for dividend or split
+            - `dvd` or `normal|abn`: Adjust for all dividends except splits
+            - `split`: Adjust for splits and ignore all dividends
+            - `all` == `dvd|split`: Adjust for all
+            - None: Bloomberg default OR use kwargs
+        **kwargs: Additional overrides and infrastructure options.
+
+    Returns:
+        pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
+
+    Examples:
+        >>> import asyncio
+        >>> # Single request
+        >>> # df = await blp.abdh('AAPL US Equity', start_date='2024-01-01')
+        >>>
+        >>> # Concurrent requests for multiple tickers
+        >>> # results = await asyncio.gather(
+        >>> #     blp.abdh('AAPL US Equity', start_date='2024-01-01'),
+        >>> #     blp.abdh('MSFT US Equity', start_date='2024-01-01'),
+        >>> # )
+    """
+    return await asyncio.to_thread(
+        bdh,
+        tickers=tickers,
+        flds=flds,
+        start_date=start_date,
+        end_date=end_date,
+        adjust=adjust,
+        **kwargs,
+    )
 

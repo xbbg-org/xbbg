@@ -458,7 +458,18 @@ class ReferenceTransformer:
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         col_maps = ctx_kwargs.get('col_maps')
 
-        return (
+        # Get original ticker order from request
+        original_tickers = request.request_opts.get('tickers', [request.ticker])
+        # Normalize to iterable of tickers while preserving duplicates and order
+        original_tickers = utils_module.normalize_tickers(original_tickers)
+        # Convert to list explicitly in case normalize_tickers returned a tuple or other iterable
+        if original_tickers is None:
+            original_tickers = []
+        elif not isinstance(original_tickers, list):
+            original_tickers = list(original_tickers)
+
+        # Transform the data
+        result = (
             raw_data
             .set_index(['ticker', 'field'])
             .unstack(level=1)
@@ -467,6 +478,14 @@ class ReferenceTransformer:
             .loc[:, raw_data.field.unique()]
             .pipe(pipeline_utils.standard_cols, col_maps=col_maps)
         )
+
+        # Preserve original ticker order by reindexing
+        # Only include tickers that exist in the result
+        available_tickers = [t for t in original_tickers if t in result.index]
+        if available_tickers:
+            result = result.reindex(available_tickers)
+
+        return result
 
 
 # Historical Data Strategies

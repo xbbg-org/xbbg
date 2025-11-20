@@ -1,16 +1,14 @@
 """Helpers to track and persist retries (trials) for missing data.
 
-Utilities include reading existing logs, normalizing trial metadata,
-counting and updating attempt counters, and writing per-query log files.
+Utilities for tracking retry attempts when Bloomberg data queries return empty results.
+Uses SQLite database for efficient storage and retrieval of trial counts.
 """
 
-from collections.abc import Iterator
-import os
 from pathlib import Path
 
-from xbbg.core.config.overrides import BBG_ROOT
 from xbbg.core.utils import utils
 from xbbg.io import db, files
+from xbbg.io.cache import get_cache_root
 
 TRIALS_TABLE = """
     CREATE TABLE IF NOT EXISTS trials (
@@ -24,34 +22,21 @@ TRIALS_TABLE = """
 """
 
 
-def root_path() -> Path:
-    """Root data path of Bloomberg."""
-    return Path(os.environ.get(BBG_ROOT, ''))
+def _get_db_path() -> Path | None:
+    """Get the path to the trials database file.
 
-
-def all_trials() -> Iterator[dict]:
-    """Yield all missing logs.
-
-    Yields:
-        dict: Trial metadata records for backfilling the database.
+    Returns:
+        Path to database file, or None if cache root is not available.
     """
-    data_path = root_path()
-    if data_path.as_posix():
-        for sub1 in files.all_folders(str(data_path / 'Logs' / 'bdib')):
-            for sub2 in files.all_folders(sub1, has_date=True):
-                for sub3 in files.all_folders(sub2):
-                    cnt = len(files.all_files(sub3, ext='log'))
-                    if cnt:
-                        yield {
-                            'func': 'bdib',
-                            'ticker': Path(sub1).name,
-                            'dt': Path(sub2).name,
-                            'typ': Path(sub3).name,
-                            'cnt': cnt,
-                        }
+    cache_root = get_cache_root()
+    if not cache_root:
+        return None
+    data_path = Path(cache_root)
+    # Store database directly in cache root, not in a subfolder
+    return data_path / 'xbbg_trials.db'
 
 
-def trail_info(**kwargs) -> dict:
+def _trial_info(**kwargs) -> dict:
     """Convert trial info to a normalized format for the database.
 
     Returns:
@@ -61,80 +46,55 @@ def trail_info(**kwargs) -> dict:
     if 'ticker' in kwargs:
         kwargs['ticker'] = kwargs['ticker'].replace('/', '_')
     for dt in ['dt', 'start_dt', 'end_dt', 'start_date', 'end_date']:
-        if dt not in kwargs: continue
+        if dt not in kwargs:
+            continue
         kwargs[dt] = utils.fmt_dt(kwargs[dt])
     return kwargs
-
-
-def missing_info(**kwargs) -> str:
-    """Full information path fragment for a missing query."""
-    func = kwargs.pop('func', 'unknown')
-    if 'ticker' in kwargs: kwargs['ticker'] = kwargs['ticker'].replace('/', '_')
-    for dt in ['dt', 'start_dt', 'end_dt', 'start_date', 'end_date']:
-        if dt not in kwargs: continue
-        kwargs[dt] = utils.fmt_dt(kwargs[dt])
-    info = utils.to_str(kwargs, fmt='{value}', sep='/')[1:-1]
-    return f'{func}/{info}'  # Path fragment, not a file path
 
 
 def num_trials(**kwargs) -> int:
     """Check number of trials for missing values.
 
-    Returns:
-        int: Number of trials already tried.
-    """
-    data_path = root_path()
-    if not data_path.as_posix(): return 0
+    Args:
+        **kwargs: Trial parameters (func, ticker, dt, typ, etc.)
 
-    db_file = str(data_path / 'Logs' / 'xbbg.db')
-    files.create_folder(db_file, is_file=True)
-    with db.SQLite(db_file) as con:
+    Returns:
+        int: Number of trials already tried, or 0 if not found or cache unavailable.
+    """
+    db_file = _get_db_path()
+    if db_file is None:
+        return 0
+
+    files.create_folder(str(db_file), is_file=True)
+    with db.SQLite(str(db_file)) as con:
         con.execute(TRIALS_TABLE)
         num = con.execute(db.select(
             table='trials',
-            **trail_info(**kwargs),
+            **_trial_info(**kwargs),
         )).fetchall()
-        if not num: return 0
+        if not num:
+            return 0
         return num[0][-1]
 
 
 def update_trials(**kwargs):
-    """Update number of trials for missing values."""
-    data_path = root_path()
-    if not data_path.as_posix(): return
+    """Update number of trials for missing values.
+
+    Args:
+        **kwargs: Trial parameters (func, ticker, dt, typ, cnt, etc.)
+            If 'cnt' is not provided, it will be auto-incremented.
+    """
+    db_file = _get_db_path()
+    if db_file is None:
+        return
 
     if 'cnt' not in kwargs:
         kwargs['cnt'] = num_trials(**kwargs) + 1
 
-    db_file = str(data_path / 'Logs' / 'xbbg.db')
-    files.create_folder(db_file, is_file=True)
-    with db.SQLite(db_file) as con:
+    files.create_folder(str(db_file), is_file=True)
+    with db.SQLite(str(db_file)) as con:
         con.execute(TRIALS_TABLE)
         con.execute(db.replace_into(
             table='trials',
-            **trail_info(**kwargs),
+            **_trial_info(**kwargs),
         ))
-
-
-def current_missing(**kwargs) -> int:
-    """Check number of trials for missing values.
-
-    Returns:
-        int: Number of trials already tried.
-    """
-    data_path = root_path()
-    if not data_path.as_posix(): return 0
-    return len(files.all_files(str(data_path / 'Logs' / missing_info(**kwargs))))
-
-
-def update_missing(**kwargs):
-    """Update number of trials for missing values."""
-    data_path = root_path()
-    if not data_path.as_posix(): return
-    if len(kwargs) == 0: return
-
-    log_path = data_path / 'Logs' / missing_info(**kwargs)
-
-    cnt = len(files.all_files(str(log_path))) + 1
-    files.create_folder(str(log_path))
-    (log_path / f'{cnt}.log').touch()

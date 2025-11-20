@@ -113,8 +113,7 @@ def cur_time(
     """
     # Use UTC by default for consistency across server locations
     if tz is None:
-        from xbbg.core.utils.timezone import DEFAULT_TZ  # noqa: PLC0415
-        tz = DEFAULT_TZ
+        tz = 'UTC'
 
     dt = pd.Timestamp('now', tz=tz)
 

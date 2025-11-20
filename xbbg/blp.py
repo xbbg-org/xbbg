@@ -10,11 +10,21 @@ import logging
 
 from xbbg import __version__
 from xbbg.api.helpers import adjust_ccy
-from xbbg.api.historical import bdh, dividend, earning, turnover
+from xbbg.api.historical import abdh, bdh, dividend, earning, turnover
 from xbbg.api.intraday import bdib, bdtick
 from xbbg.api.realtime import live, subscribe
-from xbbg.api.reference import bdp, bds
-from xbbg.api.screening import beqs, bql, bsrch
+from xbbg.api.reference import (
+    abdp,
+    abds,
+    bdp,
+    bds,
+    fieldInfo,
+    fieldSearch,
+    getBlpapiVersion,
+    getPortfolio,
+    lookupSecurity,
+)
+from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
 from xbbg.core.infra.conn import connect
 from xbbg.markets import resolvers as _res
 
@@ -31,7 +41,10 @@ __all__ = [
     'connect',
     'bdp',
     'bds',
+    'abdp',
+    'abds',
     'bdh',
+    'abdh',
     'bdib',
     'bdtick',
     'earning',
@@ -43,6 +56,12 @@ __all__ = [
     'adjust_ccy',
     'turnover',
     'bql',
+    'etf_holdings',
+    'fieldInfo',
+    'fieldSearch',
+    'lookupSecurity',
+    'getPortfolio',
+    'getBlpapiVersion',
     'active_futures',
     'fut_ticker',
     'cdx_ticker',

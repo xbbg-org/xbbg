@@ -72,8 +72,15 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 | 📊 **Reference Data** | | |
 | `bdp()` | Single point-in-time reference data | Multiple tickers/fields, Excel dates, overrides, **ISIN/CUSIP/SEDOL support** |
 | `bds()` | Bulk/block data (multi-row) | Portfolio data, date filtering, nested structures, **Fixed income cash flows** |
+| `abdp()` | Async reference data | Non-blocking, concurrent requests, same API as `bdp()` |
+| `abds()` | Async block data | Non-blocking, concurrent requests, same API as `bds()` |
+| `fieldInfo()` | Field metadata | Data types, descriptions, field information |
+| `fieldSearch()` | Field search | Search fields by name/description |
+| `lookupSecurity()` | Security lookup | Find tickers by company name, asset class filtering |
+| `getPortfolio()` | Portfolio data | Dedicated portfolio query function |
 | 📈 **Historical Data** | | |
 | `bdh()` | End-of-day historical data | Date ranges, frequencies, dividend/split adjustments |
+| `abdh()` | Async historical data | Non-blocking, concurrent requests, same API as `bdh()` |
 | `dividend()` | Dividend & split history | Multiple types, date ranges, projected dividends |
 | `earning()` | Corporate earnings breakdowns | Geographic/product breakdowns, fiscal periods |
 | `turnover()` | Trading volume & turnover | Currency conversion, multi-currency support |
@@ -147,6 +154,39 @@ blp.bdp(tickers='NVDA US Equity', flds=['Security_Name'], **kwargs)
 ```
 
 The `server` parameter (or `server_host`) can be passed through any function that accepts kwargs, just like the `port` parameter.
+
+### Async Functions
+
+xbbg provides async versions of reference and historical data functions for non-blocking, concurrent requests. Use `abdp()`, `abds()`, and `abdh()` in async contexts:
+
+```python
+import asyncio
+from xbbg import blp
+
+# Single async request
+async def get_data():
+    df = await blp.abdp(tickers='TICKER US Equity', flds=['PX_LAST', 'VOLUME'])
+    return df
+
+# Concurrent requests for multiple tickers
+async def get_multiple():
+    results = await asyncio.gather(
+        blp.abdp(tickers='TICKER1 US Equity', flds=['PX_LAST']),
+        blp.abdp(tickers='TICKER2 US Equity', flds=['PX_LAST']),
+        blp.abdh(tickers='TICKER3 US Equity', start_date='2024-01-01'),
+    )
+    return results
+
+# Run async functions
+data = asyncio.run(get_data())
+multiple = asyncio.run(get_multiple())
+```
+
+**Benefits:**
+- Non-blocking: doesn't block the event loop
+- Concurrent: use `asyncio.gather()` for parallel requests
+- Compatible: works with async web frameworks and async codebases
+- Same API: identical parameters to sync versions (`bdp`, `bds`, `bdh`)
 
 ## Examples
 
@@ -235,6 +275,37 @@ Out[10]:
 ```
 
 **Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to blpapi.
+
+#### Field Information and Search
+
+```python
+# Get metadata about fields
+blp.fieldInfo(['PX_LAST', 'VOLUME'])
+```
+
+```python
+# Search for fields by name or description
+blp.fieldSearch('vwap')
+```
+
+#### Security Lookup
+
+```python
+# Look up securities by company name
+blp.lookupSecurity('IBM', max_results=10)
+```
+
+```python
+# Lookup with asset class filter
+blp.lookupSecurity('Apple', yellowkey='eqty', max_results=20)
+```
+
+#### Portfolio Data
+
+```python
+# Get portfolio data (dedicated function)
+blp.getPortfolio('PORTFOLIO_NAME', 'PORTFOLIO_MWEIGHT')
+```
 
 ### 📈 Historical Data
 
@@ -565,6 +636,14 @@ Out[14]:
 
 # BQL Options metadata - get option chain (expiry, strike, put/call)
 # blp.bql("get(id, expire_dt, strike_px, PUT_CALL) for(filter(options('INDEX Ticker'), expire_dt=='YYYY-MM-DD'))")  # doctest: +SKIP
+
+# ETF Holdings (BQL)
+# blp.etf_holdings('SPY US Equity')  # doctest: +SKIP
+# Returns:
+#               holding       id_isin SOURCE POSITION_TYPE  weights  position
+# 0     MSFT US Equity  US5949181045    ETF             L   0.0725   123456.0
+# 1     AAPL US Equity  US0378331005    ETF             L   0.0685   112233.0
+# 2     NVDA US Equity  US67066G1040    ETF             L   0.0450    88776.0
 
 # Bloomberg Equity Screening (BEQS)
 # blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP

@@ -11,7 +11,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['beqs', 'bsrch', 'bql']
+__all__ = ['beqs', 'bsrch', 'bql', 'etf_holdings']
 
 
 def beqs(
@@ -269,4 +269,75 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
     # Run pipeline
     pipeline = BloombergPipeline(config=bql_pipeline_config())
     return pipeline.run(request)
+
+
+def etf_holdings(
+    etf_ticker: str,
+    fields: list[str] | None = None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Get ETF holdings using Bloomberg Query Language (BQL).
+
+    Retrieves holdings information for an ETF including ISIN, weights, and position IDs.
+
+    Args:
+        etf_ticker: ETF ticker (e.g., 'SPY US Equity' or 'SPY'). If no suffix is provided,
+            ' US Equity' will be appended automatically.
+        fields: Optional list of additional fields to retrieve. Default fields are
+            id_isin, weights, and id().position. If provided, these will be added to
+            the default fields.
+        **kwargs: Additional options passed to the underlying BQL query (e.g., params, overrides).
+
+    Returns:
+        pd.DataFrame: ETF holdings data with columns for ISIN, weights, position IDs,
+            and any additional requested fields.
+
+    Examples:
+        Basic usage (requires Bloomberg session; skipped in doctest):
+
+        >>> from xbbg import blp  # doctest: +SKIP
+        >>> # Get holdings for an ETF
+        >>> df = blp.etf_holdings('SPY US Equity')  # doctest: +SKIP
+        >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
+        True
+
+        >>> # Get holdings with additional fields
+        >>> df = blp.etf_holdings(  # doctest: +SKIP
+        ...     'SPY US Equity',
+        ...     fields=['name', 'px_last']
+        ... )
+
+        >>> # Ticker without suffix (will append ' US Equity')
+        >>> df = blp.etf_holdings('SPY')  # doctest: +SKIP
+    """
+    # Normalize ticker format - ensure it has proper suffix
+    if ' ' not in etf_ticker:
+        etf_ticker = f"{etf_ticker} US Equity"
+
+    # Default fields
+    default_fields = ['id_isin', 'weights', 'id().position']
+
+    # Combine default fields with any additional fields
+    all_fields = default_fields + [f for f in fields if f not in default_fields] if fields else default_fields
+
+    # Build BQL query - format: holdings('FULL_TICKER')
+    fields_str = ', '.join(all_fields)
+    bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
+
+    logger.debug(f"ETF holdings BQL query: {bql_query}")
+
+    # Execute BQL query
+    res = bql(query=bql_query, **kwargs)
+
+    if res.empty:
+        return res
+
+    # Clean up column names
+    # BQL returns 'id().position' which is awkward to access
+    rename_map = {
+        'id().position': 'position',
+        'ID': 'holding'
+    }
+    return res.rename(columns=rename_map)
+
 
