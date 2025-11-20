@@ -6,6 +6,7 @@ Utilities include a keyed Singleton-enabled connection wrapper
 
 import json
 import sqlite3
+import threading
 
 import pandas as pd
 
@@ -38,6 +39,8 @@ class Singleton(type):
 class SQLite(metaclass=Singleton):
     """Thin wrapper around ``sqlite3`` with convenience APIs.
 
+    Thread-safe: Each thread gets its own connection while sharing the wrapper instance.
+
     Examples:
     >>> from xbbg.io import files
     >>>
@@ -67,7 +70,8 @@ class SQLite(metaclass=Singleton):
         """Initialize the database wrapper."""
         self.db_file = db_file
         self.keep_live = keep_live
-        self._con_ = None
+        # Use thread-local storage for connections to ensure thread safety
+        self._local = threading.local()
 
     def tables(self) -> list:
         """All tables within database."""
@@ -151,31 +155,51 @@ class SQLite(metaclass=Singleton):
         if not keep_live: self.close()
 
     @property
+    def _con_(self) -> sqlite3.Connection | None:
+        """Get thread-local connection."""
+        return getattr(self._local, 'connection', None)
+
+    @_con_.setter
+    def _con_(self, value: sqlite3.Connection | None) -> None:
+        """Set thread-local connection."""
+        self._local.connection = value
+
+    @property
     def is_live(self) -> bool:
         """Whether the underlying connection is live."""
-        if not isinstance(self._con_, sqlite3.Connection):
+        con = self._con_
+        if not isinstance(con, sqlite3.Connection):
             return False
         try:
-            self._con_.execute(ALL_TABLES)
+            con.execute(ALL_TABLES)
             return True
         except sqlite3.Error:
             return False
 
     @property
     def con(self) -> sqlite3.Connection:
-        """Get or open a live connection."""
+        """Get or open a live connection (thread-local)."""
         if not self.is_live:
-            self._con_ = sqlite3.connect(self.db_file)
+            # Create a new connection for this thread
+            # Use check_same_thread=False for thread safety
+            # Set timeout to handle concurrent access (5 seconds)
+            self._con_ = sqlite3.connect(
+                self.db_file,
+                check_same_thread=False,
+                timeout=5.0,
+            )
             self._con_.execute(WAL_MODE)
         return self._con_
 
     def close(self, keep_live=False):
         """Commit and optionally close the connection."""
         try:
-            if isinstance(self._con_, sqlite3.Connection):
-                self._con_.commit()
+            con = self._con_
+            if isinstance(con, sqlite3.Connection):
+                con.commit()
                 if not keep_live:
-                    self._con_.close()
+                    con.close()
+                    self._con_ = None
         except sqlite3.ProgrammingError:
             pass
         except sqlite3.Error as e:

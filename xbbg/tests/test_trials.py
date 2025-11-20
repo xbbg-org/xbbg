@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -88,4 +89,38 @@ class TestUpdateTrials:
 
         trials.update_trials(func='bdh', ticker='AAPL US Equity', cnt=5)
         mock_con.execute.assert_called()
+
+
+class TestThreadSafety:
+    """Test thread safety of trials database operations."""
+
+    @patch('xbbg.core.utils.trials._get_db_path')
+    def test_thread_safety(self, mock_get_db, tmp_path):
+        """Test that trials operations work correctly from multiple threads."""
+        db_file = tmp_path / 'xbbg_trials.db'
+        mock_get_db.return_value = db_file
+
+        results = []
+        errors = []
+
+        def worker(thread_id: int):
+            """Worker function that runs in a thread."""
+            try:
+                # Each thread should be able to read/write independently
+                count = trials.num_trials(func='test', ticker=f'TICKER{thread_id}', dt='2024-01-01')
+                trials.update_trials(func='test', ticker=f'TICKER{thread_id}', dt='2024-01-01', cnt=count + 1)
+                results.append(thread_id)
+            except Exception as e:
+                errors.append((thread_id, str(e)))
+
+        # Create multiple threads
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All threads should complete successfully
+        assert len(errors) == 0, f"Thread errors: {errors}"
+        assert len(results) == 5, "All threads should complete successfully"
 
