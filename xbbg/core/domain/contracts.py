@@ -84,11 +84,13 @@ class DataRequest:
 
     Attributes:
         ticker: Ticker symbol (may be generic, e.g., 'ES1 Index').
-        dt: Date for the request.
+        dt: Date for the request (used for single-day requests).
         session: Trading session name (e.g., 'allday', 'day').
         event_type: Event type (e.g., 'TRADE', 'BID', 'ASK').
         interval: Bar interval in minutes (or seconds if interval_has_seconds=True).
         interval_has_seconds: If True, interpret interval as seconds.
+        start_datetime: Explicit start datetime for multi-day requests (optional).
+        end_datetime: Explicit end datetime for multi-day requests (optional).
         context: Bloomberg infrastructure context.
         cache_policy: Cache policy configuration.
         request_opts: Request-specific options (not Bloomberg overrides).
@@ -100,6 +102,8 @@ class DataRequest:
     event_type: str = 'TRADE'
     interval: int = 1
     interval_has_seconds: bool = False
+    start_datetime: str | pd.Timestamp | None = None
+    end_datetime: str | pd.Timestamp | None = None
     context: BloombergContext | None = None
     cache_policy: CachePolicy = field(default_factory=CachePolicy)
     request_opts: dict[str, Any] = field(default_factory=dict)
@@ -108,6 +112,10 @@ class DataRequest:
     def to_date_string(self) -> str:
         """Convert dt to YYYY-MM-DD string."""
         return pd.Timestamp(self.dt).strftime('%Y-%m-%d')
+
+    def is_multi_day(self) -> bool:
+        """Check if this is a multi-day request (explicit datetime range)."""
+        return self.start_datetime is not None and self.end_datetime is not None
 
 
 class MarketResolver(Protocol):

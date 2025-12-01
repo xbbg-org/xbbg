@@ -5,10 +5,16 @@ Uses SQLite database for efficient storage and retrieval of trial counts.
 """
 
 from pathlib import Path
+import sqlite3
+import time
 
 from xbbg.core.utils import utils
 from xbbg.io import db, files
 from xbbg.io.cache import get_cache_root
+
+# Retry settings for SQLite database locking (common on Windows)
+MAX_RETRIES = 3
+RETRY_DELAY = 0.1  # seconds
 
 TRIALS_TABLE = """
     CREATE TABLE IF NOT EXISTS trials (
@@ -33,7 +39,7 @@ def _get_db_path() -> Path | None:
         return None
     data_path = Path(cache_root)
     # Store database directly in cache root, not in a subfolder
-    return data_path / 'xbbg_trials.db'
+    return data_path / "xbbg_trials.db"
 
 
 def _trial_info(**kwargs) -> dict:
@@ -42,10 +48,10 @@ def _trial_info(**kwargs) -> dict:
     Returns:
         dict: Normalized key/value pairs for storage.
     """
-    kwargs['func'] = kwargs.pop('func', 'unknown')
-    if 'ticker' in kwargs:
-        kwargs['ticker'] = kwargs['ticker'].replace('/', '_')
-    for dt in ['dt', 'start_dt', 'end_dt', 'start_date', 'end_date']:
+    kwargs["func"] = kwargs.pop("func", "unknown")
+    if "ticker" in kwargs:
+        kwargs["ticker"] = kwargs["ticker"].replace("/", "_")
+    for dt in ["dt", "start_dt", "end_dt", "start_date", "end_date"]:
         if dt not in kwargs:
             continue
         kwargs[dt] = utils.fmt_dt(kwargs[dt])
@@ -66,15 +72,26 @@ def num_trials(**kwargs) -> int:
         return 0
 
     files.create_folder(str(db_file), is_file=True)
-    with db.SQLite(str(db_file)) as con:
-        con.execute(TRIALS_TABLE)
-        num = con.execute(db.select(
-            table='trials',
-            **_trial_info(**kwargs),
-        )).fetchall()
-        if not num:
-            return 0
-        return num[0][-1]
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            with db.SQLite(str(db_file)) as con:
+                con.execute(TRIALS_TABLE)
+                num = con.execute(
+                    db.select(
+                        table="trials",
+                        **_trial_info(**kwargs),
+                    )
+                ).fetchall()
+                if not num:
+                    return 0
+                return num[0][-1]
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() and attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+                continue
+            raise
+    return 0
 
 
 def update_trials(**kwargs):
@@ -88,13 +105,24 @@ def update_trials(**kwargs):
     if db_file is None:
         return
 
-    if 'cnt' not in kwargs:
-        kwargs['cnt'] = num_trials(**kwargs) + 1
+    if "cnt" not in kwargs:
+        kwargs["cnt"] = num_trials(**kwargs) + 1
 
     files.create_folder(str(db_file), is_file=True)
-    with db.SQLite(str(db_file)) as con:
-        con.execute(TRIALS_TABLE)
-        con.execute(db.replace_into(
-            table='trials',
-            **_trial_info(**kwargs),
-        ))
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            with db.SQLite(str(db_file)) as con:
+                con.execute(TRIALS_TABLE)
+                con.execute(
+                    db.replace_into(
+                        table="trials",
+                        **_trial_info(**kwargs),
+                    )
+                )
+            return
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() and attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+                continue
+            raise
