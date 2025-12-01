@@ -336,17 +336,33 @@ def _process_bdib_response(
     return data.loc[ss_rng.start_time:ss_rng.end_time]
 
 
-def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFrame:
+def bdib(
+    ticker: str,
+    dt=None,
+    session='allday',
+    typ='TRADE',
+    start_datetime=None,
+    end_datetime=None,
+    **kwargs,
+) -> pd.DataFrame:
     """Bloomberg intraday bar data.
 
     Args:
         ticker: ticker name
-        dt: date to download
+        dt: date to download (for single-day requests). Can be omitted if
+            start_datetime and end_datetime are provided.
         session: Trading session name. Sessions are dynamically extracted from ``exch.yml``.
             Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
             Availability depends on exchange - check ``xbbg/markets/exch.yml`` for definitions.
             Raises ``ValueError`` if session is not defined for the ticker's exchange.
+            Ignored when start_datetime and end_datetime are provided.
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
+        start_datetime: explicit start datetime for multi-day requests (e.g., '2025-01-01 09:30:00').
+            When provided with end_datetime, bypasses session-based time resolution.
+            Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
+        end_datetime: explicit end datetime for multi-day requests (e.g., '2025-01-05 16:00:00').
+            When provided with start_datetime, bypasses session-based time resolution.
+            Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
         **kwargs:
             interval: bar interval in minutes (default: 1). For sub-minute intervals,
                 set ``intervalHasSeconds=True`` and specify seconds (e.g., interval=10
@@ -370,7 +386,20 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         Get 10-minute bars (default behavior):
 
         >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10)
+
+        Get multi-day intraday data:
+
+        >>> # blp.bdib('AAPL US Equity', start_datetime='2025-01-01 09:30:00',
+        >>> #         end_datetime='2025-01-05 16:00:00', interval=5)
     """
+    # Validate parameters
+    is_multi_day = start_datetime is not None and end_datetime is not None
+    if not is_multi_day and dt is None:
+        raise ValueError('Either dt or both start_datetime and end_datetime must be provided')
+
+    # For multi-day requests without dt, use start_datetime's date as fallback
+    if dt is None and is_multi_day:
+        dt = pd.Timestamp(start_datetime).strftime('%Y-%m-%d')
     from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, intraday_pipeline_config
     from xbbg.core.utils import trials
 
@@ -380,6 +409,8 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         dt=dt,
         session=session,
         typ=typ,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
         **kwargs,
     )
 
@@ -400,29 +431,32 @@ def bdib(ticker: str, dt, session='allday', typ='TRADE', **kwargs) -> pd.DataFra
         if not is_fixed_income:
             raise KeyError(f'Cannot find exchange info for {ticker}')
 
-    # Check trial count (preserve legacy behavior)
-    trial_kw = {'ticker': ticker, 'dt': dt, 'typ': typ, 'func': 'bdib'}
-    num_trials = trials.num_trials(**trial_kw)
-    if num_trials >= 2:
-        if request.context and request.context.batch:
+    # Check trial count (preserve legacy behavior) - skip for multi-day requests
+    if not is_multi_day:
+        trial_kw = {'ticker': ticker, 'dt': dt, 'typ': typ, 'func': 'bdib'}
+        num_trials = trials.num_trials(**trial_kw)
+        if num_trials >= 2:
+            if request.context and request.context.batch:
+                return pd.DataFrame()
+            if logger.isEnabledFor(logging.INFO):
+                cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
+                logger.info(
+                    'No data available after %d attempt(s) for %s / %s / %s',
+                    num_trials,
+                    ticker,
+                    cur_dt,
+                    typ,
+                )
             return pd.DataFrame()
-        if logger.isEnabledFor(logging.INFO):
-            cur_dt = pd.Timestamp(dt).strftime('%Y-%m-%d')
-            logger.info(
-                'No data available after %d attempt(s) for %s / %s / %s',
-                num_trials,
-                ticker,
-                cur_dt,
-                typ,
-            )
-        return pd.DataFrame()
+    else:
+        num_trials = 0
 
     # Run pipeline
     pipeline = BloombergPipeline(config=intraday_pipeline_config())
     result = pipeline.run(request)
 
-    # Update trial count if no data returned
-    if result.empty:
+    # Update trial count if no data returned (only for single-day requests)
+    if result.empty and not is_multi_day:
         trials.update_trials(cnt=num_trials + 1, **trial_kw)
 
     return result

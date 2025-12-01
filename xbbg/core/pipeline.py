@@ -179,7 +179,8 @@ class BloombergPipeline(BaseContextAware):
 
         # Step 3: Resolve session window (if needed)
         session_window = self._resolve_session(request, resolver_result.exchange_info)
-        if self.config.needs_session and session_window.session_name and not session_window.is_valid():
+        # Skip session validation for multi-day requests (they use explicit datetime range)
+        if self.config.needs_session and not request.is_multi_day() and session_window.session_name and not session_window.is_valid():
             logger.warning(
                 'Session resolution failed for %s / %s / %s',
                 request.ticker,
@@ -255,6 +256,18 @@ class BloombergPipeline(BaseContextAware):
                 end_time=None,
                 session_name='',
                 timezone='UTC',
+            )
+
+        # For multi-day requests with explicit datetime range, skip session resolution
+        # The IntradayRequestBuilder will use the explicit datetime range directly
+        if request.is_multi_day():
+            # Determine timezone from exchange_info or default to UTC
+            tz = exchange_info.get('tz', 'UTC') if not exchange_info.empty else 'UTC'
+            return SessionWindow(
+                start_time=None,  # Not used for multi-day
+                end_time=None,    # Not used for multi-day
+                session_name='',  # No session filtering for multi-day
+                timezone=tz,
             )
 
         # For intraday: use process.time_range
@@ -376,6 +389,8 @@ class BloombergPipeline(BaseContextAware):
             event_type=request.event_type,
             interval=request.interval,
             interval_has_seconds=request.interval_has_seconds,
+            start_datetime=request.start_datetime,
+            end_datetime=request.end_datetime,
             context=ctx,
             cache_policy=request.cache_policy,
             override_kwargs=request.override_kwargs,
@@ -391,6 +406,8 @@ class BloombergPipeline(BaseContextAware):
             event_type=request.event_type,
             interval=request.interval,
             interval_has_seconds=request.interval_has_seconds,
+            start_datetime=request.start_datetime,
+            end_datetime=request.end_datetime,
             context=request.context,
             cache_policy=request.cache_policy,
             override_kwargs=request.override_kwargs,
@@ -592,27 +609,47 @@ class IntradayRequestBuilder:
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         all_kwargs = {**ctx_kwargs, **request.override_kwargs, **request.request_opts}
 
-        start_dt = session_window.start_time
-        end_dt = session_window.end_time
+        # Check if this is a multi-day request with explicit datetime range
+        if request.is_multi_day():
+            # Use explicit datetime range - convert to UTC ISO format
+            time_fmt = '%Y-%m-%dT%H:%M:%S'
+            start_ts = pd.Timestamp(request.start_datetime)
+            end_ts = pd.Timestamp(request.end_datetime)
 
-        if not start_dt or not end_dt:
-            raise ValueError('Invalid session window for Bloomberg request')
+            # If timestamps are timezone-aware, convert to UTC
+            # If timezone-naive, assume they are already in UTC
+            if start_ts.tzinfo is not None:
+                start_dt = start_ts.tz_convert('UTC').strftime(time_fmt)
+            else:
+                start_dt = start_ts.strftime(time_fmt)
 
-        # Convert session window times from exchange timezone to UTC
-        # Session window times are timezone-naive strings in the exchange timezone,
-        # but Bloomberg expects UTC times
-        if session_window.timezone:
-            from xbbg.markets import convert_session_times_to_utc
-            start_dt, end_dt = convert_session_times_to_utc(
-                start_time=start_dt,
-                end_time=end_dt,
-                exchange_tz=session_window.timezone,
-            )
+            if end_ts.tzinfo is not None:
+                end_dt = end_ts.tz_convert('UTC').strftime(time_fmt)
+            else:
+                end_dt = end_ts.strftime(time_fmt)
         else:
-            # No timezone info - assume UTC (fallback)
-            logger.warning(
-                'Session window has no timezone info, assuming UTC for Bloomberg request'
-            )
+            # Use session window for single-day requests
+            start_dt = session_window.start_time
+            end_dt = session_window.end_time
+
+            if not start_dt or not end_dt:
+                raise ValueError('Invalid session window for Bloomberg request')
+
+            # Convert session window times from exchange timezone to UTC
+            # Session window times are timezone-naive strings in the exchange timezone,
+            # but Bloomberg expects UTC times
+            if session_window.timezone:
+                from xbbg.markets import convert_session_times_to_utc
+                start_dt, end_dt = convert_session_times_to_utc(
+                    start_time=start_dt,
+                    end_time=end_dt,
+                    exchange_tz=session_window.timezone,
+                )
+            else:
+                # No timezone info - assume UTC (fallback)
+                logger.warning(
+                    'Session window has no timezone info, assuming UTC for Bloomberg request'
+                )
 
         settings = [
             ('security', request.ticker),
@@ -631,12 +668,21 @@ class IntradayRequestBuilder:
             **all_kwargs,
         )
 
-        logger.debug(
-            'Sending Bloomberg intraday bar data request for %s / %s / %s',
-            request.ticker,
-            request.to_date_string(),
-            request.event_type,
-        )
+        if request.is_multi_day():
+            logger.debug(
+                'Sending Bloomberg intraday bar data request for %s / %s to %s / %s',
+                request.ticker,
+                start_dt,
+                end_dt,
+                request.event_type,
+            )
+        else:
+            logger.debug(
+                'Sending Bloomberg intraday bar data request for %s / %s / %s',
+                request.ticker,
+                request.to_date_string(),
+                request.event_type,
+            )
 
         return blp_request, ctx_kwargs
 
@@ -667,7 +713,11 @@ class IntradayTransformer:
             .pipe(pipeline_utils.add_ticker, ticker=request.ticker)
         )
 
-        # Filter by session window
+        # For multi-day requests, return all data without session filtering
+        if request.is_multi_day():
+            return data
+
+        # Filter by session window for single-day requests
         if session_window.is_valid():
             return data.loc[session_window.start_time:session_window.end_time]
 
@@ -974,6 +1024,8 @@ class RequestBuilder:
         self._event_type: str = 'TRADE'
         self._interval: int = 1
         self._interval_has_seconds: bool = False
+        self._start_datetime = None
+        self._end_datetime = None
         self._context = None
         self._cache_policy = CachePolicy()
         self._request_opts: dict = {}
@@ -1003,6 +1055,12 @@ class RequestBuilder:
         """Set interval."""
         self._interval = interval
         self._interval_has_seconds = has_seconds
+        return self
+
+    def datetime_range(self, start_datetime, end_datetime) -> RequestBuilder:
+        """Set explicit datetime range for multi-day requests."""
+        self._start_datetime = start_datetime
+        self._end_datetime = end_datetime
         return self
 
     def context(self, ctx) -> RequestBuilder:
@@ -1046,6 +1104,8 @@ class RequestBuilder:
             event_type=self._event_type,
             interval=self._interval,
             interval_has_seconds=self._interval_has_seconds,
+            start_datetime=self._start_datetime,
+            end_datetime=self._end_datetime,
             context=self._context,
             cache_policy=self._cache_policy,
             request_opts=self._request_opts,
@@ -1053,7 +1113,16 @@ class RequestBuilder:
         )
 
     @classmethod
-    def from_legacy_kwargs(cls, ticker: str, dt, session: str = 'allday', typ: str = 'TRADE', **kwargs) -> DataRequest:
+    def from_legacy_kwargs(
+        cls,
+        ticker: str,
+        dt,
+        session: str = 'allday',
+        typ: str = 'TRADE',
+        start_datetime=None,
+        end_datetime=None,
+        **kwargs,
+    ) -> DataRequest:
         """Build from legacy function signature.
 
         Args:
@@ -1061,6 +1130,8 @@ class RequestBuilder:
             dt: Date.
             session: Session name.
             typ: Event type.
+            start_datetime: Optional explicit start datetime for multi-day requests.
+            end_datetime: Optional explicit end datetime for multi-day requests.
             **kwargs: Legacy kwargs (will be split).
 
         Returns:
@@ -1079,6 +1150,10 @@ class RequestBuilder:
         interval = split.request_opts.get('interval', 1)
         interval_has_seconds = split.request_opts.get('intervalHasSeconds', False)
         builder.interval(interval, interval_has_seconds)
+
+        # Set datetime range if provided
+        if start_datetime is not None and end_datetime is not None:
+            builder.datetime_range(start_datetime, end_datetime)
 
         # Merge remaining request_opts and override_kwargs
         builder.request_opts(**split.request_opts)
