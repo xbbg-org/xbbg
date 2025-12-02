@@ -136,6 +136,36 @@ jobs:
         make_latest: ${{ inputs.pre_release == 'none' || inputs.pre_release == '' }}
         draft: false
     
+    - name: Trigger release workflows
+      if: inputs.create_release == true
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG="${{ steps.new_version.outputs.tag }}"
+        echo "Triggering release workflows for $TAG..."
+
+        # PyPI upload (no tag input needed)
+        gh workflow run pypi_upload.yml
+        echo "  - Triggered pypi_upload.yml"
+
+        # Attach release artifacts
+        gh workflow run release_assets.yml -f tag="$TAG"
+        echo "  - Triggered release_assets.yml"
+
+        # Update README changelog
+        gh workflow run update_readme_on_release.yml -f tag="$TAG"
+        echo "  - Triggered update_readme_on_release.yml"
+
+        # Update Sphinx index.rst
+        gh workflow run update_index_on_release.yml -f tag="$TAG"
+        echo "  - Triggered update_index_on_release.yml"
+
+        # Publish docs to Read the Docs
+        gh workflow run publish_docs.yml
+        echo "  - Triggered publish_docs.yml"
+
+        echo "All release workflows triggered successfully."
+
     - name: Output summary
       run: |
         echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
@@ -145,8 +175,10 @@ jobs:
         echo "- **Tag**: ${{ steps.new_version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Type**: ${{ inputs.bump_type }}${{ inputs.pre_release != 'none' && inputs.pre_release != '' && format(' ({0})', inputs.pre_release) || '' }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "The release workflow will now:" >> $GITHUB_STEP_SUMMARY
-        echo "1. Build and upload to PyPI" >> $GITHUB_STEP_SUMMARY
-        echo "2. Attach release artifacts" >> $GITHUB_STEP_SUMMARY
-        echo "3. Update README.md and docs/index.rst" >> $GITHUB_STEP_SUMMARY
+        echo "The following release workflows were triggered:" >> $GITHUB_STEP_SUMMARY
+        echo "1. **pypi_upload.yml** - Build and upload to PyPI" >> $GITHUB_STEP_SUMMARY
+        echo "2. **release_assets.yml** - Attach wheel/tarball to release" >> $GITHUB_STEP_SUMMARY
+        echo "3. **update_readme_on_release.yml** - Update README.md changelog" >> $GITHUB_STEP_SUMMARY
+        echo "4. **update_index_on_release.yml** - Update docs/index.rst" >> $GITHUB_STEP_SUMMARY
+        echo "5. **publish_docs.yml** - Trigger Read the Docs build" >> $GITHUB_STEP_SUMMARY
 
