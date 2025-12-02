@@ -1,8 +1,7 @@
 name: Publish Docs (Read the Docs)
 
+# Triggered by semantic_version.yml after creating a release
 on:
-  release:
-    types: [ published ]
   workflow_dispatch:
 
 jobs:

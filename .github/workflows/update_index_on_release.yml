@@ -1,8 +1,7 @@
 name: Update Sphinx index.rst on Release
 
+# Triggered by semantic_version.yml after creating a release
 on:
-  release:
-    types: [ published ]
   workflow_dispatch:
     inputs:
       tag:
