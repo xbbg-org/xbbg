@@ -27,9 +27,7 @@ xbbg
 ====
 
 .. xbbg:latest-release-start
-
-Latest release: xbbg==0.8.2 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2>`_)
-
+Latest release: xbbg==0.9.0 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.9.0>`_)
 .. xbbg:latest-release-end
 
 Overview
@@ -143,6 +141,21 @@ What's New
 ==========
 
 .. xbbg:changelog-start
+
+*0.9.0* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.9.0>`__
+
+## What's Changed
+
+- feat: Add etf_holdings() function for retrieving ETF holdings via BQL by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/147
+
+- feat: Add multi-day support to bdib() by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/148
+
+- feat: Add multi-day cache support for bdib() by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/149
+
+- fix: resolve RST duplicate link targets and Sphinx build warnings
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.2...v0.9.0
+
 
 *0.8.2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2>`__
 
