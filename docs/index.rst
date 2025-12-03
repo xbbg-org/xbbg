@@ -27,7 +27,9 @@ xbbg
 ====
 
 .. xbbg:latest-release-start
+
 Latest release: xbbg==0.9.0 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.9.0>`_)
+
 .. xbbg:latest-release-end
 
 Overview
