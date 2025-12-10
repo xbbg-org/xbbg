@@ -661,16 +661,39 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
                         col_values = sec_col.get('values', [])
                         secondary_cols[col_name] = col_values
 
-                # Merge this field's data into rows_by_id
-                for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
-                    if ticker not in rows_by_id:
-                        rows_by_id[ticker]['ID'] = ticker
-                    rows_by_id[ticker][field_name] = value
+# Check if IDs have duplicates (like eco_calendar where all rows have same ID)
+                # In that case, we can't merge by ID - yield rows directly
+                has_duplicate_ids = len(ids) != len(set(ids))
+                if has_duplicate_ids:
+                    # Duplicate IDs - yield rows directly, don't merge by ID
+                    for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
+                        row: dict[str, Any] = {
+                            'ID': ticker,
+                            field_name: value,
+                        }
+                        for col_name, col_values in secondary_cols.items():
+                            if i < len(col_values):
+                                row[col_name] = col_values[i]
+                        yield row
+                else:
+                    # Unique IDs: merge fields by ID
+                    for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
+                        if ticker not in rows_by_id:
+                            rows_by_id[ticker]['ID'] = ticker
+                        rows_by_id[ticker][field_name] = value
 
-                    # Add secondary columns
-                    for col_name, col_values in secondary_cols.items():
-                        if i < len(col_values):
-                            rows_by_id[ticker][col_name] = col_values[i]
+                        # Add secondary columns
+                        for col_name, col_values in secondary_cols.items():
+                            if i < len(col_values):
+                                rows_by_id[ticker][col_name] = col_values[i]
+            # rows schema (e.g., other table-based BQL results)
+            elif 'rows' in field_data and isinstance(field_data['rows'], list):
+                rows_list = field_data['rows']
+                for row_data in rows_list:
+                    if isinstance(row_data, dict):
+                        yield row_data
+                    else:
+                        yield {field_name: row_data}
             else:
                 # Fallback: flatten arbitrary dict structure
                 # For non-structured fields, yield immediately (can't merge by ID)

@@ -79,3 +79,76 @@ def test_bql_accepts_params(monkeypatch, fake_handle):
     assert df.iloc[0, 0] == 1
 
 
+def test_iter_bql_json_rows_handles_duplicate_ids():
+    """Test BQL JSON parser handles duplicate IDs (e.g., eco_calendar).
+
+    This is the main fix for issue #150: BQL only returns one row when
+    requesting multiple calendar events. The issue was that rows_by_id
+    merged all rows with the same ID into one.
+    """
+    import json
+    from unittest.mock import MagicMock
+
+    import blpapi
+
+    # Simulate eco_calendar response: same ID repeated for all values
+    json_payload = json.dumps({
+        "results": {
+            "eco_calendar": {
+                "idColumn": {"values": ["US Country", "US Country", "US Country"]},
+                "valuesColumn": {"values": ["GDP", "CPI", "NFP"]},
+                "secondaryColumns": [
+                    {"name": "RELEASE_DATE", "values": ["2024-01-01", "2024-01-15", "2024-01-05"]}
+                ]
+            }
+        }
+    })
+
+    mock_elem = MagicMock()
+    mock_elem.datatype.return_value = blpapi.DataType.STRING
+    mock_elem.getValue.return_value = json_payload
+
+    mock_msg = MagicMock()
+    mock_msg.messageType.return_value = "result"
+    mock_msg.asElement.return_value = mock_elem
+
+    rows = list(process._iter_bql_json_rows(mock_msg))
+
+    # Should return 3 rows (one per value), not 1 merged row
+    assert len(rows) == 3
+    assert rows[0] == {"ID": "US Country", "eco_calendar": "GDP", "RELEASE_DATE": "2024-01-01"}
+    assert rows[1] == {"ID": "US Country", "eco_calendar": "CPI", "RELEASE_DATE": "2024-01-15"}
+    assert rows[2] == {"ID": "US Country", "eco_calendar": "NFP", "RELEASE_DATE": "2024-01-05"}
+
+
+def test_iter_bql_json_rows_handles_rows_schema():
+    """Test that BQL JSON parser handles rows schema as fallback."""
+    import json
+    from unittest.mock import MagicMock
+
+    import blpapi
+
+    json_payload = json.dumps({
+        "results": {
+            "data": {
+                "rows": [
+                    {"event_name": "GDP", "country": "US"},
+                    {"event_name": "CPI", "country": "US"},
+                ]
+            }
+        }
+    })
+
+    mock_elem = MagicMock()
+    mock_elem.datatype.return_value = blpapi.DataType.STRING
+    mock_elem.getValue.return_value = json_payload
+
+    mock_msg = MagicMock()
+    mock_msg.messageType.return_value = "result"
+    mock_msg.asElement.return_value = mock_elem
+
+    rows = list(process._iter_bql_json_rows(mock_msg))
+
+    assert len(rows) == 2
+    assert rows[0] == {"event_name": "GDP", "country": "US"}
+    assert rows[1] == {"event_name": "CPI", "country": "US"}
