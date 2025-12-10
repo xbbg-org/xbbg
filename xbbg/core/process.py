@@ -657,7 +657,12 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
                         col_values = sec_col.get('values', [])
                         secondary_cols[col_name] = col_values
 
-                for i, (ticker, value) in enumerate(zip(ids, values, strict=False)):
+                # Iterate over all values; use corresponding ID or last available ID
+                # This handles cases like eco_calendar where one ID maps to many values
+                num_rows = max(len(ids), len(values))
+                for i in range(num_rows):
+                    ticker = ids[i] if i < len(ids) else (ids[-1] if ids else None)
+                    value = values[i] if i < len(values) else None
                     row: dict[str, Any] = {
                         'ID': ticker,
                         field_name: value,
@@ -666,6 +671,15 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
                         if i < len(col_values):
                             row[col_name] = col_values[i]
                     yield row
+            # rows schema (e.g., eco_calendar, other table-based BQL results)
+            elif 'rows' in field_data and isinstance(field_data['rows'], list):
+                rows_list = field_data['rows']
+                for row_data in rows_list:
+                    if isinstance(row_data, dict):
+                        yield row_data
+                    else:
+                        # If row is not a dict, wrap it
+                        yield {field_name: row_data}
             else:
                 # Fallback: flatten arbitrary dict structure
                 yield dict(_flatten_dict(field_data))
