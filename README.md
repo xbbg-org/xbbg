@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.9.0 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.9.0))
+Latest release: xbbg==0.9.1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.9.1))
 <!-- xbbg:latest-release-end -->
 
 ## Overview
@@ -826,6 +826,21 @@ uv run pytest --doctest-modules -q
 ## What's New
 
 <!-- xbbg:changelog-start -->
+
+_0.9.1_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.9.1)
+
+## What's Changed
+
+- fix: Fix BQL returning only one row for multi-value results by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/152
+
+- fix(docs): add blank lines around latest-release markers in index.rst
+
+- ci: remove redundant release triggers from workflows
+
+- ci: trigger release workflows explicitly from semantic_version
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.9.0...v0.9.1
+
 
 _0.9.0_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.9.0)
 
