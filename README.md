@@ -48,12 +48,12 @@ xbbg stands out as the most comprehensive and user-friendly blpapi wrapper for P
 |---------|------|-------|-----|------------------|
 | Reference Data (BDP/BDS) | ✅ | ✅ | ✅ | ✅ |
 | Historical Data (BDH) | ✅ | ✅ | ✅ | ✅ |
-| Intraday Bars (BDIB) | ✅ | ❌ | ❌ | ❌ |
+| Intraday Bars (BDIB) | ✅ | ❌ | ❌ | ✅ |
 | Tick Data | ✅ | ❌ | ❌ | ❌ |
 | Real-time Subscriptions | ✅ | ❌ | ❌ | ❌ |
 | Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ |
-| Query Language (BQL) | ✅ | ❌ | ❌ | ❌ |
-| Search (BSRCH) | ✅ | ❌ | ❌ | ❌ |
+| Query Language (BQL) | ✅ | ❌ | ❌ | ✅ |
+| Search (BSRCH) | ✅ | ❌ | ❌ | ✅ |
 | Excel-compatible inputs | ✅ | ❌ | ❌ | ❌ |
 | Sub-minute intervals | ✅ | ❌ | ❌ | ❌ |
 | Local Parquet caching | ✅ | ❌ | ❌ | ❌ |
