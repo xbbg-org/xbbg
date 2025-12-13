@@ -78,7 +78,7 @@ def subscribe(
 
     sub_list = conn.blpapi.SubscriptionList()
     for ticker in tickers:
-        topic = f'//blp/mktdata/{ticker}'
+        topic = utils.parse_subscription_topic(ticker)
         cid = conn.blpapi.CorrelationId(ticker)
         logger.debug('Subscribing to Bloomberg market data: %s (correlation ID: %s) with options: %s', topic, cid, final_options)
         sub_list.add(topic, flds, correlationId=cid, options=final_options)
@@ -167,7 +167,7 @@ async def live(
 
     sub_list = conn.blpapi.SubscriptionList()
     for ticker in (tickers if isinstance(tickers, list) else [tickers]):
-        topic = f'//blp/mktdata/{ticker}'
+        topic = utils.parse_subscription_topic(ticker)
         cid = conn.blpapi.CorrelationId(ticker)
         logger.debug('Subscribing to Bloomberg market data: %s (correlation ID: %s) with options: %s', topic, cid, final_options)
         sub_list.add(topic, s_flds, correlationId=cid, options=final_options)
