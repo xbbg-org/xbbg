@@ -50,6 +50,3 @@ impl FieldInfoRequest {
         Ok(())
     }
 }
-
-
-

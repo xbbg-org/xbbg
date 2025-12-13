@@ -1,9 +1,9 @@
 use std::ffi::CString;
 
 use crate::errors::{BlpError, Result};
-use crate::request::Request;
-use crate::schema::{SchemaElementDefinition, Operation};
 use crate::name::Name;
+use crate::request::Request;
+use crate::schema::{Operation, SchemaElementDefinition};
 
 pub struct Service {
     ptr: *mut blpapi_sys::blpapi_Service_t,
@@ -78,10 +78,17 @@ impl Service {
     pub fn get_operation(&self, name: &Name) -> Result<Operation> {
         let mut op_ptr: *mut blpapi_sys::blpapi_Operation_t = std::ptr::null_mut();
         let rc = unsafe {
-            blpapi_sys::blpapi_Service_getOperation(self.ptr, &mut op_ptr, std::ptr::null(), name.as_raw())
+            blpapi_sys::blpapi_Service_getOperation(
+                self.ptr,
+                &mut op_ptr,
+                std::ptr::null(),
+                name.as_raw(),
+            )
         };
         if rc != 0 || op_ptr.is_null() {
-            return Err(BlpError::Internal { detail: format!("operation not found: {}", name.as_str()) });
+            return Err(BlpError::Internal {
+                detail: format!("operation not found: {}", name.as_str()),
+            });
         }
         Ok(Operation { ptr: op_ptr })
     }
@@ -96,7 +103,9 @@ impl Service {
             blpapi_sys::blpapi_Service_getEventDefinitionAt(self.ptr, &mut def_ptr, index)
         };
         if rc != 0 || def_ptr.is_null() {
-            return Err(BlpError::Internal { detail: format!("getEventDefinitionAt rc={rc}") });
+            return Err(BlpError::Internal {
+                detail: format!("getEventDefinitionAt rc={rc}"),
+            });
         }
         SchemaElementDefinition::from_raw(def_ptr)
     }
@@ -104,10 +113,17 @@ impl Service {
     pub fn get_event_definition_by_name(&self, name: &Name) -> Result<SchemaElementDefinition> {
         let mut def_ptr: *mut blpapi_sys::blpapi_SchemaElementDefinition_t = std::ptr::null_mut();
         let rc = unsafe {
-            blpapi_sys::blpapi_Service_getEventDefinition(self.ptr, &mut def_ptr, std::ptr::null(), name.as_raw())
+            blpapi_sys::blpapi_Service_getEventDefinition(
+                self.ptr,
+                &mut def_ptr,
+                std::ptr::null(),
+                name.as_raw(),
+            )
         };
         if rc != 0 || def_ptr.is_null() {
-            return Err(BlpError::Internal { detail: format!("getEventDefinition rc={rc}") });
+            return Err(BlpError::Internal {
+                detail: format!("getEventDefinition rc={rc}"),
+            });
         }
         SchemaElementDefinition::from_raw(def_ptr)
     }
@@ -131,7 +147,11 @@ impl Service {
     #[cfg(feature = "schema-debug")]
     pub fn print_schema(&self) -> String {
         let mut out = String::new();
-        unsafe extern "C" fn write_cb(data: *const i8, len: i32, ctx: *mut core::ffi::c_void) -> i32 {
+        unsafe extern "C" fn write_cb(
+            data: *const i8,
+            len: i32,
+            ctx: *mut core::ffi::c_void,
+        ) -> i32 {
             if ctx.is_null() || data.is_null() || len <= 0 {
                 return 0;
             }
@@ -164,5 +184,3 @@ impl Drop for Service {
         }
     }
 }
-
-

@@ -57,9 +57,7 @@ pub enum BlpError {
     Timeout,
 
     #[error("request template terminated")]
-    TemplateTerminated {
-        cid: Option<CorrelationContext>,
-    },
+    TemplateTerminated { cid: Option<CorrelationContext> },
 
     #[error("subscription failure")]
     SubscriptionFailure {
@@ -107,5 +105,3 @@ impl BlpError {
         }
     }
 }
-
-

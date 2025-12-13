@@ -13,5 +13,3 @@ pub struct RouterMetrics {
     pub dropped: u64,
     pub routes: u64,
 }
-
-

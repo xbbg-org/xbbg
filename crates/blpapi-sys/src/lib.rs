@@ -11,11 +11,15 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 extern "C" {
     pub fn blpapiext_cid_autogen(out: *mut blpapi_CorrelationId_t) -> i32;
     pub fn blpapiext_cid_from_u64(out: *mut blpapi_CorrelationId_t, value: u64) -> i32;
-    pub fn blpapiext_cid_from_ptr(out: *mut blpapi_CorrelationId_t, p: *const core::ffi::c_void) -> i32;
+    pub fn blpapiext_cid_from_ptr(
+        out: *mut blpapi_CorrelationId_t,
+        p: *const core::ffi::c_void,
+    ) -> i32;
     pub fn blpapiext_cid_is_int(cid: *const blpapi_CorrelationId_t) -> i32;
     pub fn blpapiext_cid_is_ptr(cid: *const blpapi_CorrelationId_t) -> i32;
     pub fn blpapiext_cid_get_u64(cid: *const blpapi_CorrelationId_t, out: *mut u64) -> i32;
-    pub fn blpapiext_cid_get_ptr(cid: *const blpapi_CorrelationId_t, out: *mut *const core::ffi::c_void) -> i32;
+    pub fn blpapiext_cid_get_ptr(
+        cid: *const blpapi_CorrelationId_t,
+        out: *mut *const core::ffi::c_void,
+    ) -> i32;
 }
-
-

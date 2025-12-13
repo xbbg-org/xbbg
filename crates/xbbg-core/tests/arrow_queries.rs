@@ -9,11 +9,17 @@
 #[cfg(feature = "live")]
 #[test]
 fn test_refdata_arrow_bdp() {
-    use xbbg_core::{session::Session, SessionOptions, requests::ReferenceDataRequest, arrow::execute_refdata_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_refdata_arrow, requests::ReferenceDataRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -52,11 +58,17 @@ fn test_refdata_arrow_bdp() {
 #[cfg(feature = "live")]
 #[test]
 fn test_refdata_arrow_bds() {
-    use xbbg_core::{session::Session, SessionOptions, requests::ReferenceDataRequest, arrow::execute_refdata_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_refdata_arrow, requests::ReferenceDataRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -77,10 +89,10 @@ fn test_refdata_arrow_bds() {
 
     // Validate schema
     assert_eq!(batch.num_columns(), 9);
-    
+
     let num_rows = batch.num_rows();
     println!("BDS: Got {} rows", num_rows);
-    
+
     // BDS should have multiple rows per ticker/field
     if num_rows > 0 {
         print_batch_summary("BDS", &batch);
@@ -92,11 +104,17 @@ fn test_refdata_arrow_bds() {
 #[cfg(feature = "live")]
 #[test]
 fn test_histdata_arrow() {
-    use xbbg_core::{session::Session, SessionOptions, requests::HistoricalDataRequest, arrow::execute_histdata_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_histdata_arrow, requests::HistoricalDataRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -127,7 +145,7 @@ fn test_histdata_arrow() {
 
     let num_rows = batch.num_rows();
     println!("BDH: Got {} rows", num_rows);
-    
+
     if num_rows > 0 {
         print_batch_summary("BDH", &batch);
     }
@@ -138,11 +156,17 @@ fn test_histdata_arrow() {
 #[cfg(feature = "live")]
 #[test]
 fn test_intraday_bars_arrow() {
-    use xbbg_core::{session::Session, SessionOptions, requests::IntradayBarRequest, arrow::execute_intraday_bars_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_intraday_bars_arrow, requests::IntradayBarRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -156,7 +180,7 @@ fn test_intraday_bars_arrow() {
     // Test intraday bars - use fixed date 11/13/2025
     let start = "2025-11-13T09:30:00";
     let end = "2025-11-13T16:00:00";
-    
+
     let req = IntradayBarRequest::new(
         vec!["IBM US Equity"],
         start.to_string(),
@@ -174,7 +198,7 @@ fn test_intraday_bars_arrow() {
 
     let num_rows = batch.num_rows();
     println!("BDIB: Got {} rows", num_rows);
-    
+
     if num_rows > 0 {
         print_batch_summary("BDIB", &batch);
     }
@@ -185,11 +209,17 @@ fn test_intraday_bars_arrow() {
 #[cfg(feature = "live")]
 #[test]
 fn test_intraday_bars_arrow_multi_ticker() {
-    use xbbg_core::{session::Session, SessionOptions, requests::IntradayBarRequest, arrow::execute_intraday_bars_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_intraday_bars_arrow, requests::IntradayBarRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -203,7 +233,7 @@ fn test_intraday_bars_arrow_multi_ticker() {
     // Test intraday bars with multiple tickers - use fixed date 11/13/2025
     let start = "2025-11-13T09:30:00";
     let end = "2025-11-13T16:00:00";
-    
+
     let req = IntradayBarRequest::new(
         vec!["IBM US Equity", "MSFT US Equity"],
         start.to_string(),
@@ -211,7 +241,8 @@ fn test_intraday_bars_arrow_multi_ticker() {
         60, // 1-minute bars
     );
 
-    let batch = execute_intraday_bars_arrow(&sess, &req).expect("execute intraday bars multi-ticker");
+    let batch =
+        execute_intraday_bars_arrow(&sess, &req).expect("execute intraday bars multi-ticker");
 
     // Validate schema
     assert_eq!(batch.num_columns(), 4);
@@ -221,15 +252,23 @@ fn test_intraday_bars_arrow_multi_ticker() {
 
     let num_rows = batch.num_rows();
     println!("BDIB Multi-ticker: Got {} rows", num_rows);
-    
+
     // Verify we have data from both tickers
     if num_rows > 0 {
-        use arrow::array::{StringArray, Array};
-        let ticker_col = batch.column(0).as_any().downcast_ref::<StringArray>().unwrap();
+        use arrow::array::{Array, StringArray};
+        let ticker_col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         let unique_tickers: std::collections::HashSet<String> = (0..ticker_col.len())
             .map(|i| ticker_col.value(i).to_string())
             .collect();
-        println!("BDIB Multi-ticker: Found {} unique tickers: {:?}", unique_tickers.len(), unique_tickers);
+        println!(
+            "BDIB Multi-ticker: Found {} unique tickers: {:?}",
+            unique_tickers.len(),
+            unique_tickers
+        );
         assert!(unique_tickers.len() >= 1, "Should have at least one ticker");
         print_batch_summary("BDIB Multi-ticker", &batch);
     }
@@ -240,11 +279,17 @@ fn test_intraday_bars_arrow_multi_ticker() {
 #[cfg(feature = "live")]
 #[test]
 fn test_intraday_ticks_arrow() {
-    use xbbg_core::{session::Session, SessionOptions, requests::IntradayTickRequest, arrow::execute_intraday_ticks_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_intraday_ticks_arrow, requests::IntradayTickRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -258,7 +303,7 @@ fn test_intraday_ticks_arrow() {
     // Test intraday ticks - use fixed date 11/13/2025
     let start = "2025-11-13T09:30:00";
     let end = "2025-11-13T16:00:00";
-    
+
     let req = IntradayTickRequest::new(
         vec!["IBM US Equity"],
         start.to_string(),
@@ -277,7 +322,7 @@ fn test_intraday_ticks_arrow() {
 
     let num_rows = batch.num_rows();
     println!("BDTICK: Got {} rows", num_rows);
-    
+
     if num_rows > 0 {
         print_batch_summary("BDTICK", &batch);
     }
@@ -288,11 +333,17 @@ fn test_intraday_ticks_arrow() {
 #[cfg(feature = "live")]
 #[test]
 fn test_intraday_ticks_arrow_multi_ticker() {
-    use xbbg_core::{session::Session, SessionOptions, requests::IntradayTickRequest, arrow::execute_intraday_ticks_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_intraday_ticks_arrow, requests::IntradayTickRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -306,7 +357,7 @@ fn test_intraday_ticks_arrow_multi_ticker() {
     // Test intraday ticks with multiple tickers - use fixed date 11/13/2025
     let start = "2025-11-13T09:30:00";
     let end = "2025-11-13T16:00:00";
-    
+
     let req = IntradayTickRequest::new(
         vec!["IBM US Equity", "MSFT US Equity"],
         start.to_string(),
@@ -314,7 +365,8 @@ fn test_intraday_ticks_arrow_multi_ticker() {
         vec!["TRADE", "BID", "ASK"],
     );
 
-    let batch = execute_intraday_ticks_arrow(&sess, &req).expect("execute intraday ticks multi-ticker");
+    let batch =
+        execute_intraday_ticks_arrow(&sess, &req).expect("execute intraday ticks multi-ticker");
 
     // Validate schema
     assert_eq!(batch.num_columns(), 6);
@@ -325,15 +377,23 @@ fn test_intraday_ticks_arrow_multi_ticker() {
 
     let num_rows = batch.num_rows();
     println!("BDTICK Multi-ticker: Got {} rows", num_rows);
-    
+
     // Verify we have data from both tickers
     if num_rows > 0 {
-        use arrow::array::{StringArray, Array};
-        let ticker_col = batch.column(0).as_any().downcast_ref::<StringArray>().unwrap();
+        use arrow::array::{Array, StringArray};
+        let ticker_col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         let unique_tickers: std::collections::HashSet<String> = (0..ticker_col.len())
             .map(|i| ticker_col.value(i).to_string())
             .collect();
-        println!("BDTICK Multi-ticker: Found {} unique tickers: {:?}", unique_tickers.len(), unique_tickers);
+        println!(
+            "BDTICK Multi-ticker: Found {} unique tickers: {:?}",
+            unique_tickers.len(),
+            unique_tickers
+        );
         assert!(unique_tickers.len() >= 1, "Should have at least one ticker");
         print_batch_summary("BDTICK Multi-ticker", &batch);
     }
@@ -344,11 +404,17 @@ fn test_intraday_ticks_arrow_multi_ticker() {
 #[cfg(feature = "live")]
 #[test]
 fn test_field_search_arrow() {
-    use xbbg_core::{session::Session, SessionOptions, requests::FieldSearchRequest, arrow::execute_field_search_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_field_search_arrow, requests::FieldSearchRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -372,7 +438,7 @@ fn test_field_search_arrow() {
 
     let num_rows = batch.num_rows();
     println!("Field Search: Got {} rows", num_rows);
-    
+
     if num_rows > 0 {
         print_batch_summary("Field Search", &batch);
     }
@@ -383,11 +449,17 @@ fn test_field_search_arrow() {
 #[cfg(feature = "live")]
 #[test]
 fn test_field_info_arrow() {
-    use xbbg_core::{session::Session, SessionOptions, requests::FieldInfoRequest, arrow::execute_field_info_arrow};
     use arrow::record_batch::RecordBatch;
+    use xbbg_core::{
+        arrow::execute_field_info_arrow, requests::FieldInfoRequest, session::Session,
+        SessionOptions,
+    };
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -411,7 +483,7 @@ fn test_field_info_arrow() {
 
     let num_rows = batch.num_rows();
     println!("Field Info: Got {} rows", num_rows);
-    
+
     if num_rows > 0 {
         print_batch_summary("Field Info", &batch);
     }
@@ -423,8 +495,8 @@ fn test_field_info_arrow() {
 
 #[cfg(feature = "live")]
 fn wait_for_session_started(sess: &xbbg_core::session::Session, timeout_ms: u64) {
-    use std::time::{Duration, Instant};
     use std::thread::sleep;
+    use std::time::{Duration, Instant};
     use xbbg_core::EventType;
 
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
@@ -451,8 +523,12 @@ fn print_batch_summary(name: &str, batch: &arrow::record_batch::RecordBatch) {
     use arrow::datatypes::*;
 
     println!("\n=== {} Summary ===", name);
-    println!("Schema: {} columns, {} rows", batch.num_columns(), batch.num_rows());
-    
+    println!(
+        "Schema: {} columns, {} rows",
+        batch.num_columns(),
+        batch.num_rows()
+    );
+
     // Print column names and types
     for (i, field) in batch.schema().fields().iter().enumerate() {
         println!("  Column {}: {} ({:?})", i, field.name(), field.data_type());
@@ -511,7 +587,10 @@ fn print_batch_summary(name: &str, batch: &arrow::record_batch::RecordBatch) {
                         }
                     }
                     DataType::Timestamp(_, _) => {
-                        let arr = column.as_any().downcast_ref::<TimestampMillisecondArray>().unwrap();
+                        let arr = column
+                            .as_any()
+                            .downcast_ref::<TimestampMillisecondArray>()
+                            .unwrap();
                         if arr.is_null(row_idx) {
                             print!("{}: NULL, ", field.name());
                         } else {
@@ -533,4 +612,3 @@ fn print_batch_summary(name: &str, batch: &arrow::record_batch::RecordBatch) {
     }
     println!();
 }
-

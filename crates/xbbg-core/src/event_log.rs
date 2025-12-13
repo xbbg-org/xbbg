@@ -30,4 +30,3 @@ pub fn dump() -> Vec<EventRecord> {
     let q = EVENT_LOG.lock().unwrap();
     q.iter().cloned().collect()
 }
-

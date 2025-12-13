@@ -12,7 +12,9 @@ pub struct TagRegistry {
 
 impl TagRegistry {
     pub fn new() -> Self {
-        Self { map: RwLock::new(HashMap::new()) }
+        Self {
+            map: RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn register(&self, s: &str) -> (*const core::ffi::c_void, Arc<CString>) {
@@ -39,4 +41,3 @@ impl TagRegistry {
 }
 
 pub static TAG_REGISTRY: Lazy<TagRegistry> = Lazy::new(|| TagRegistry::new());
-

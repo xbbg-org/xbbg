@@ -27,9 +27,11 @@ impl SubscriptionList {
         })?;
         let fields_c: Vec<CString> = fields
             .iter()
-            .map(|s| CString::new(*s).map_err(|e| BlpError::InvalidArgument {
-                detail: format!("invalid field: {e}"),
-            }))
+            .map(|s| {
+                CString::new(*s).map_err(|e| BlpError::InvalidArgument {
+                    detail: format!("invalid field: {e}"),
+                })
+            })
             .collect::<Result<Vec<_>>>()?;
         let mut fields_ptrs: Vec<*const i8> = fields_c.iter().map(|c| c.as_ptr()).collect();
         let mut cid_raw = match cid {
@@ -102,4 +104,3 @@ impl SubscriptionListBuilder {
         Ok(list)
     }
 }
-

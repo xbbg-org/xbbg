@@ -3,7 +3,7 @@ name = "pyo3-xbbg"
 version = "0.0.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "PyO3 bindings for xbbg-core"
+description = "PyO3 bindings for xbbg Bloomberg engine"
 repository = "https://github.com/alpha-xone/xbbg"
 
 [lib]
@@ -12,6 +12,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+arrow = "54"
 xbbg_core = { path = "../xbbg-core" }
+xbbg-async = { path = "../xbbg-async" }
 
 

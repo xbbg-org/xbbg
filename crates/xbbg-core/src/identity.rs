@@ -29,5 +29,3 @@ impl Drop for Identity {
         self.ptr = std::ptr::null_mut();
     }
 }
-
-

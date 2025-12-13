@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use xbbg_core::CorrelationId;
 
 use crate::config::AsyncOptions;
+use crate::metrics::RouterMetrics;
 use shard::Shard;
-use crate::metrics::{RouterMetrics};
 use tracing::trace;
 
 #[derive(Clone, Debug)]
@@ -29,7 +29,10 @@ pub struct Router {
 impl Router {
     pub fn new(opts: &AsyncOptions) -> Self {
         let shards = (0..opts.shards).map(|_| Shard::new(opts)).collect();
-        Self { shards, _opts: opts.clone() }
+        Self {
+            shards,
+            _opts: opts.clone(),
+        }
     }
 
     fn shard_for(&self, key: u64) -> &Shard {
@@ -64,12 +67,13 @@ impl Router {
     pub fn metrics(&self) -> RouterMetrics {
         let mut m = RouterMetrics::default();
         for s in &self.shards {
-            m.enqueued += s.metrics.enqueued.load(std::sync::atomic::Ordering::Relaxed);
+            m.enqueued += s
+                .metrics
+                .enqueued
+                .load(std::sync::atomic::Ordering::Relaxed);
             m.dropped += s.metrics.dropped.load(std::sync::atomic::Ordering::Relaxed);
             m.routes += s.metrics.routes.load(std::sync::atomic::Ordering::Relaxed);
         }
         m
     }
 }
-
-

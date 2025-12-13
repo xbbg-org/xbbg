@@ -1,10 +1,9 @@
 use std::sync::Arc;
 use xbbg_core::session::Session;
 
-
-use crate::router::{Router, Envelope};
+use crate::router::{Envelope, Router};
 use std::time::Duration;
-use tracing::{trace, debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 pub fn run_pump(session: Arc<Session>, router: Arc<Router>) {
     info!("dispatcher: pump thread started");
@@ -31,7 +30,10 @@ pub fn run_pump(session: Arc<Session>, router: Arc<Router>) {
                     // Dispatch to each correlation id (MCM aware)
                     let n = msg.num_correlation_ids();
                     if n == 0 {
-                        warn!("pump: message without correlation ids: type={}", envelope.message_type);
+                        warn!(
+                            "pump: message without correlation ids: type={}",
+                            envelope.message_type
+                        );
                     }
                     for i in 0..(n as usize) {
                         if let Some(cid) = msg.correlation_id(i) {
@@ -51,5 +53,3 @@ pub fn run_pump(session: Arc<Session>, router: Arc<Router>) {
         }
     }
 }
-
-

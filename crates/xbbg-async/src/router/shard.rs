@@ -1,9 +1,9 @@
 use ahash::AHashMap;
-use std::sync::{Mutex};
+use std::sync::Mutex;
 use tokio::sync::mpsc;
 
-use crate::config::AsyncOptions;
 use super::Envelope;
+use crate::config::AsyncOptions;
 use crate::metrics::ShardMetrics;
 use tracing::{trace, warn};
 
@@ -26,7 +26,9 @@ impl Shard {
         let mut map = self.inner.lock().unwrap();
         let (tx, rx) = mpsc::channel(self.queue_size);
         map.entry(key).or_default().push(tx);
-        self.metrics.routes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.metrics
+            .routes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         trace!(key, "router/shard: route registered");
         rx
     }
@@ -38,13 +40,15 @@ impl Shard {
         };
         for tx in senders {
             if tx.try_send(env.clone()).is_ok() {
-                self.metrics.enqueued.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.metrics
+                    .enqueued
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             } else {
-                self.metrics.dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.metrics
+                    .dropped
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 warn!(key, msg_type=%env.message_type, event_type=?env.event_type, "router/shard: queue full, dropped");
             }
         }
     }
 }
-
-

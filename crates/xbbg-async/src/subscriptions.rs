@@ -3,8 +3,8 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
 
-use xbbg_core::{CorrelationId, SubscriptionList};
 use xbbg_core::EventType;
+use xbbg_core::{CorrelationId, SubscriptionList};
 
 use crate::{BlpAsyncError, Router};
 use tracing::{info, trace};
@@ -25,7 +25,9 @@ impl SubscriptionHandle {
     }
 
     pub fn unsubscribe(&self) -> Result<(), BlpAsyncError> {
-        self.core.unsubscribe(&self.as_list_dummy()).map_err(|e| BlpAsyncError::Internal(format!("unsubscribe: {e:?}")))
+        self.core
+            .unsubscribe(&self.as_list_dummy())
+            .map_err(|e| BlpAsyncError::Internal(format!("unsubscribe: {e:?}")))
     }
 
     fn as_list_dummy(&self) -> SubscriptionList {
@@ -75,7 +77,8 @@ pub(crate) fn subscribe_with_cids(
     }
     // Subscribe via core
     info!(count = cids.len(), label, "subscription: subscribe");
-    core.subscribe(list, label).map_err(|e| BlpAsyncError::Internal(format!("subscribe: {e:?}")))?;
+    core.subscribe(list, label)
+        .map_err(|e| BlpAsyncError::Internal(format!("subscribe: {e:?}")))?;
 
     Ok(SubscriptionHandle {
         data_rx,
@@ -84,5 +87,3 @@ pub(crate) fn subscribe_with_cids(
         core,
     })
 }
-
-

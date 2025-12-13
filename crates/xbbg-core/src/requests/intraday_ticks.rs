@@ -55,6 +55,3 @@ impl IntradayTickRequest {
         Ok(())
     }
 }
-
-
-

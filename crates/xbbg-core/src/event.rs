@@ -23,16 +23,32 @@ impl From<i32> for EventType {
     fn from(v: i32) -> Self {
         match v {
             x if x == blpapi_sys::BLPAPI_EVENTTYPE_ADMIN as i32 => EventType::Admin,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SESSION_STATUS as i32 => EventType::SessionStatus,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SUBSCRIPTION_STATUS as i32 => EventType::SubscriptionStatus,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_REQUEST_STATUS as i32 => EventType::RequestStatus,
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SESSION_STATUS as i32 => {
+                EventType::SessionStatus
+            }
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SUBSCRIPTION_STATUS as i32 => {
+                EventType::SubscriptionStatus
+            }
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_REQUEST_STATUS as i32 => {
+                EventType::RequestStatus
+            }
             x if x == blpapi_sys::BLPAPI_EVENTTYPE_RESPONSE as i32 => EventType::Response,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_PARTIAL_RESPONSE as i32 => EventType::PartialResponse,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SUBSCRIPTION_DATA as i32 => EventType::SubscriptionData,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SERVICE_STATUS as i32 => EventType::ServiceStatus,
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_PARTIAL_RESPONSE as i32 => {
+                EventType::PartialResponse
+            }
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SUBSCRIPTION_DATA as i32 => {
+                EventType::SubscriptionData
+            }
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_SERVICE_STATUS as i32 => {
+                EventType::ServiceStatus
+            }
             x if x == blpapi_sys::BLPAPI_EVENTTYPE_TIMEOUT as i32 => EventType::Timeout,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_AUTHORIZATION_STATUS as i32 => EventType::AuthorizationStatus,
-            x if x == blpapi_sys::BLPAPI_EVENTTYPE_RESOLUTION_STATUS as i32 => EventType::ResolutionStatus,
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_AUTHORIZATION_STATUS as i32 => {
+                EventType::AuthorizationStatus
+            }
+            x if x == blpapi_sys::BLPAPI_EVENTTYPE_RESOLUTION_STATUS as i32 => {
+                EventType::ResolutionStatus
+            }
             x if x == blpapi_sys::BLPAPI_EVENTTYPE_TOPIC_STATUS as i32 => EventType::TopicStatus,
             x if x == blpapi_sys::BLPAPI_EVENTTYPE_TOKEN_STATUS as i32 => EventType::TokenStatus,
             other => EventType::Unknown(other),
@@ -114,5 +130,3 @@ impl Drop for MessageIter {
         }
     }
 }
-
-

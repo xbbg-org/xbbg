@@ -61,6 +61,3 @@ impl IntradayBarRequest {
         Ok(())
     }
 }
-
-
-

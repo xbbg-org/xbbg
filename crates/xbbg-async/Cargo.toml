@@ -15,6 +15,8 @@ futures = "0.3"
 tracing = "0.1"
 once_cell = "1.19"
 ahash = "0.8"
+slab = "0.4"
+arrow = "54"
 
 [features]
 default = []

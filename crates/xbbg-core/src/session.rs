@@ -1,14 +1,14 @@
 use std::ffi::CString;
 
+use crate::correlation::CorrelationId;
 use crate::errors::{BlpError, Result};
 use crate::event::Event;
-use crate::options::SessionOptions;
-use crate::service::Service;
-use crate::request_template::RequestTemplate;
 use crate::identity::Identity;
-use crate::subscription::SubscriptionList;
-use crate::correlation::CorrelationId;
+use crate::options::SessionOptions;
 use crate::request::Request;
+use crate::request_template::RequestTemplate;
+use crate::service::Service;
+use crate::subscription::SubscriptionList;
 
 pub struct Session {
     ptr: *mut blpapi_sys::blpapi_Session_t,
@@ -73,11 +73,7 @@ impl Session {
     pub fn next_event(&self, timeout_ms: Option<u32>) -> Result<Event> {
         let mut ev_ptr: *mut blpapi_sys::blpapi_Event_t = std::ptr::null_mut();
         let rc = unsafe {
-            blpapi_sys::blpapi_Session_nextEvent(
-                self.ptr,
-                &mut ev_ptr,
-                timeout_ms.unwrap_or(0),
-            )
+            blpapi_sys::blpapi_Session_nextEvent(self.ptr, &mut ev_ptr, timeout_ms.unwrap_or(0))
         };
         if rc != 0 {
             return Err(BlpError::Internal {
@@ -117,8 +113,9 @@ impl Session {
             detail: format!("invalid service name: {e}"),
         })?;
         let mut svc_ptr: *mut blpapi_sys::blpapi_Service_t = std::ptr::null_mut();
-        let rc =
-            unsafe { blpapi_sys::blpapi_Session_getService(self.ptr, &mut svc_ptr, cname.as_ptr()) };
+        let rc = unsafe {
+            blpapi_sys::blpapi_Session_getService(self.ptr, &mut svc_ptr, cname.as_ptr())
+        };
         if rc != 0 {
             return Err(BlpError::OpenService {
                 service: name.to_string(),
@@ -150,22 +147,21 @@ impl Session {
         };
         drop(owned);
         if rc != 0 {
-            return Err(BlpError::Internal { detail: format!("subscribe rc={rc}") });
+            return Err(BlpError::Internal {
+                detail: format!("subscribe rc={rc}"),
+            });
         }
         Ok(())
     }
 
     pub fn unsubscribe(&self, subs: &SubscriptionList) -> Result<()> {
         let rc = unsafe {
-            blpapi_sys::blpapi_Session_unsubscribe(
-                self.ptr,
-                subs.as_raw(),
-                std::ptr::null(),
-                0,
-            )
+            blpapi_sys::blpapi_Session_unsubscribe(self.ptr, subs.as_raw(), std::ptr::null(), 0)
         };
         if rc != 0 {
-            return Err(BlpError::Internal { detail: format!("unsubscribe rc={rc}") });
+            return Err(BlpError::Internal {
+                detail: format!("unsubscribe rc={rc}"),
+            });
         }
         Ok(())
     }
@@ -181,7 +177,9 @@ impl Session {
             )
         };
         if rc != 0 {
-            return Err(BlpError::Internal { detail: format!("setStatusCorrelationId rc={rc}") });
+            return Err(BlpError::Internal {
+                detail: format!("setStatusCorrelationId rc={rc}"),
+            });
         }
         Ok(())
     }
@@ -210,7 +208,9 @@ impl Session {
             )
         };
         if rc != 0 {
-            return Err(BlpError::Internal { detail: format!("sendRequest rc={rc}") });
+            return Err(BlpError::Internal {
+                detail: format!("sendRequest rc={rc}"),
+            });
         }
         Ok(())
     }
@@ -298,7 +298,9 @@ impl Session {
         };
         drop(owned);
         if rc != 0 {
-            return Err(BlpError::Internal { detail: format!("cancel rc={rc}") });
+            return Err(BlpError::Internal {
+                detail: format!("cancel rc={rc}"),
+            });
         }
         Ok(())
     }
@@ -317,5 +319,3 @@ impl Drop for Session {
         }
     }
 }
-
-

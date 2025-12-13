@@ -11,8 +11,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BLPAPI_LINK_LIB_NAME");
 
     // Resolve include and lib directories from environment (precedence order)
-    let (include_dir, lib_dir) = resolve_include_and_lib_dirs()
-        .unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
+    let (include_dir, lib_dir) =
+        resolve_include_and_lib_dirs().unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
 
     // Emit link search path
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
@@ -41,8 +41,8 @@ fn main() {
     }
 
     // Build bindgen wrapper that includes all blpapi_*.h headers found
-    let wrapper = generate_wrapper_header(&include_dir)
-        .unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
+    let wrapper =
+        generate_wrapper_header(&include_dir).unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
 
     // Prepare bindgen
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
@@ -141,9 +141,7 @@ fn validate_header_exists(include_dir: &Path) -> Result<(), String> {
         "blpapi_types.h",
         "blpapi_name.h",
     ];
-    let ok = candidates
-        .iter()
-        .any(|h| include_dir.join(h).is_file());
+    let ok = candidates.iter().any(|h| include_dir.join(h).is_file());
     if ok {
         Ok(())
     } else {
@@ -183,5 +181,3 @@ fn generate_wrapper_header(include_dir: &Path) -> Result<String, String> {
     }
     Ok(out)
 }
-
-

@@ -54,6 +54,3 @@ impl HistoricalDataRequest {
         Ok(())
     }
 }
-
-
-

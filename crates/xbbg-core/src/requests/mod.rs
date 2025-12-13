@@ -5,16 +5,16 @@
 //! `arrow` module, which turns these into concrete `blpapi` requests and
 //! Arrow tables.
 
-pub mod refdata;
+pub mod bulk;
+pub mod fields;
 pub mod hist;
 pub mod intraday_bars;
 pub mod intraday_ticks;
-pub mod bulk;
-pub mod fields;
+pub mod refdata;
 
-pub use refdata::ReferenceDataRequest;
+pub use bulk::BulkDataRequest;
+pub use fields::{FieldInfoRequest, FieldSearchRequest};
 pub use hist::HistoricalDataRequest;
 pub use intraday_bars::IntradayBarRequest;
 pub use intraday_ticks::IntradayTickRequest;
-pub use bulk::BulkDataRequest;
-pub use fields::{FieldSearchRequest, FieldInfoRequest};
+pub use refdata::ReferenceDataRequest;

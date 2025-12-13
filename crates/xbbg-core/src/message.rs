@@ -1,10 +1,9 @@
-use std::sync::Arc;
 use std::ffi::CStr;
+use std::sync::Arc;
 
-
+use crate::correlation::CorrelationId;
 use crate::name::Name;
 use crate::tag_registry::TAG_REGISTRY;
-use crate::correlation::CorrelationId;
 
 pub struct MessageRef {
     ptr: *mut blpapi_sys::blpapi_Message_t,
@@ -53,7 +52,9 @@ impl MessageRef {
         let mut out_u64: u64 = 0;
         let is_int = unsafe { blpapi_sys::blpapiext_cid_is_int(&raw as *const _) } != 0;
         if is_int {
-            let rc = unsafe { blpapi_sys::blpapiext_cid_get_u64(&raw as *const _, &mut out_u64 as *mut _) };
+            let rc = unsafe {
+                blpapi_sys::blpapiext_cid_get_u64(&raw as *const _, &mut out_u64 as *mut _)
+            };
             if rc == 0 {
                 return Some(CorrelationId::U64(out_u64));
             }
@@ -61,7 +62,9 @@ impl MessageRef {
         let mut out_ptr: *const core::ffi::c_void = core::ptr::null();
         let is_ptr = unsafe { blpapi_sys::blpapiext_cid_is_ptr(&raw as *const _) } != 0;
         if is_ptr {
-            let rc = unsafe { blpapi_sys::blpapiext_cid_get_ptr(&raw as *const _, &mut out_ptr as *mut _) };
+            let rc = unsafe {
+                blpapi_sys::blpapiext_cid_get_ptr(&raw as *const _, &mut out_ptr as *mut _)
+            };
             if rc == 0 && !out_ptr.is_null() {
                 if let Some(s) = TAG_REGISTRY.lookup(out_ptr) {
                     if let Ok(st) = s.to_str() {
@@ -79,13 +82,19 @@ impl MessageRef {
     /// Check if this message matches the given correlation ID.
     /// Returns `false` if the message has no correlation ID or it doesn't match.
     pub fn matches_correlation_id(&self, cid: &CorrelationId) -> bool {
-        self.correlation_id(0).map(|msg_cid| &msg_cid == cid).unwrap_or(false)
+        self.correlation_id(0)
+            .map(|msg_cid| &msg_cid == cid)
+            .unwrap_or(false)
     }
     pub fn get_request_id(&self) -> Option<&str> {
         let mut req_id: *const i8 = std::ptr::null();
         let rc = unsafe { blpapi_sys::blpapi_Message_getRequestId(self.ptr, &mut req_id) };
         if rc == 0 && !req_id.is_null() {
-            Some(unsafe { CStr::from_ptr(req_id) }.to_str().unwrap_or_default())
+            Some(
+                unsafe { CStr::from_ptr(req_id) }
+                    .to_str()
+                    .unwrap_or_default(),
+            )
         } else {
             None
         }
@@ -98,7 +107,11 @@ impl MessageRef {
     pub fn print_to_string(&self) -> String {
         // Fallback: use type string if print is unavailable
         let mut out = String::new();
-        unsafe extern "C" fn write_cb(data: *const i8, len: i32, ctx: *mut core::ffi::c_void) -> i32 {
+        unsafe extern "C" fn write_cb(
+            data: *const i8,
+            len: i32,
+            ctx: *mut core::ffi::c_void,
+        ) -> i32 {
             if ctx.is_null() || data.is_null() || len <= 0 {
                 return 0;
             }
@@ -152,7 +165,11 @@ impl MessageOwned {
         let mut req_id: *const i8 = std::ptr::null();
         let rc = unsafe { blpapi_sys::blpapi_Message_getRequestId(self.ptr, &mut req_id) };
         if rc == 0 && !req_id.is_null() {
-            Some(unsafe { CStr::from_ptr(req_id) }.to_str().unwrap_or_default())
+            Some(
+                unsafe { CStr::from_ptr(req_id) }
+                    .to_str()
+                    .unwrap_or_default(),
+            )
         } else {
             None
         }
@@ -167,4 +184,3 @@ impl Drop for MessageOwned {
         }
     }
 }
-

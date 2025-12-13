@@ -50,4 +50,3 @@ pub fn request_to_string(ptr: *mut blpapi_sys::blpapi_Request_t) -> String {
     }
     out
 }
-

@@ -1,6 +1,6 @@
 use crate::errors::{BlpError, Result};
-use std::ffi::CString;
 use crate::service::Service;
+use std::ffi::CString;
 
 pub struct Request {
     ptr: *mut blpapi_sys::blpapi_Request_t,
@@ -40,6 +40,20 @@ pub struct RequestBuilder {
     fields: Vec<String>,
     overrides: Vec<(String, String)>,
     label: Option<String>,
+    /// Single security (for intraday requests)
+    single_security: Option<String>,
+    /// Event type (TRADE, BID, ASK, etc.) for IntradayBarRequest
+    event_type: Option<String>,
+    /// Interval in minutes for IntradayBarRequest
+    interval: Option<u32>,
+    /// Start datetime (for intraday requests)
+    start_datetime: Option<String>,
+    /// End datetime (for intraday requests)
+    end_datetime: Option<String>,
+    /// Start date (for HistoricalDataRequest)
+    start_date: Option<String>,
+    /// End date (for HistoricalDataRequest)
+    end_date: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -50,11 +64,24 @@ impl RequestBuilder {
             fields: Vec::new(),
             overrides: Vec::new(),
             label: None,
+            single_security: None,
+            event_type: None,
+            interval: None,
+            start_datetime: None,
+            end_datetime: None,
+            start_date: None,
+            end_date: None,
         }
     }
 
     pub fn securities(mut self, secs: Vec<String>) -> Self {
         self.securities = secs;
+        self
+    }
+
+    /// Set a single security (for intraday requests)
+    pub fn security(mut self, sec: &str) -> Self {
+        self.single_security = Some(sec.to_string());
         self
     }
 
@@ -73,72 +100,436 @@ impl RequestBuilder {
         self
     }
 
+    /// Set the event type (TRADE, BID, ASK, etc.) for IntradayBarRequest
+    pub fn event_type(mut self, event_type: &str) -> Self {
+        self.event_type = Some(event_type.to_string());
+        self
+    }
+
+    /// Set the interval in minutes for IntradayBarRequest
+    pub fn interval(mut self, interval: u32) -> Self {
+        self.interval = Some(interval);
+        self
+    }
+
+    /// Set the start datetime (for intraday requests)
+    pub fn start_datetime(mut self, dt: &str) -> Self {
+        self.start_datetime = Some(dt.to_string());
+        self
+    }
+
+    /// Set the end datetime (for intraday requests)
+    pub fn end_datetime(mut self, dt: &str) -> Self {
+        self.end_datetime = Some(dt.to_string());
+        self
+    }
+
+    /// Set the start date (for HistoricalDataRequest)
+    pub fn start_date(mut self, date: &str) -> Self {
+        self.start_date = Some(date.to_string());
+        self
+    }
+
+    /// Set the end date (for HistoricalDataRequest)
+    pub fn end_date(mut self, date: &str) -> Self {
+        self.end_date = Some(date.to_string());
+        self
+    }
+
     pub fn build(self, service: &Service, operation: &str) -> Result<Request> {
-        if self.securities.is_empty() || self.fields.is_empty() {
-            return Err(BlpError::InvalidArgument {
-                detail: "securities and fields must be non-empty".into(),
-            });
-        }
         let request = service.create_request(operation)?;
+
         unsafe {
             let root_el = blpapi_sys::blpapi_Request_elements(request.as_raw());
-            // securities
-            let mut el_secs: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
-            let k_secs = CString::new("securities").unwrap();
-            let rc = blpapi_sys::blpapi_Element_getElement(root_el, &mut el_secs, k_secs.as_ptr(), std::ptr::null());
-            if rc != 0 || el_secs.is_null() {
-                return Err(BlpError::Internal { detail: format!("getElement('securities') rc={rc}") });
-            }
-            for s in &self.securities {
-                let cs = CString::new(s.as_str()).unwrap();
-                let rc = blpapi_sys::blpapi_Element_setValueString(el_secs, cs.as_ptr(), blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize);
-                if rc != 0 {
-                    return Err(BlpError::InvalidArgument { detail: format!("append security failed rc={rc}") });
+
+            match operation {
+                "IntradayBarRequest" => {
+                    self.build_intraday_bar(root_el)?;
                 }
-            }
-            // fields
-            let mut el_fields: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
-            let k_fields = CString::new("fields").unwrap();
-            let rc = blpapi_sys::blpapi_Element_getElement(root_el, &mut el_fields, k_fields.as_ptr(), std::ptr::null());
-            if rc != 0 || el_fields.is_null() {
-                return Err(BlpError::Internal { detail: format!("getElement('fields') rc={rc}") });
-            }
-            for f in &self.fields {
-                let cf = CString::new(f.as_str()).unwrap();
-                let rc = blpapi_sys::blpapi_Element_setValueString(el_fields, cf.as_ptr(), blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize);
-                if rc != 0 {
-                    return Err(BlpError::InvalidArgument { detail: format!("append field failed rc={rc}") });
+                "IntradayTickRequest" => {
+                    self.build_intraday_tick(root_el)?;
                 }
-            }
-            // overrides if present
-            if !self.overrides.is_empty() {
-                let mut el_ovs: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
-                let k_ovs = CString::new("overrides").unwrap();
-                let rc = blpapi_sys::blpapi_Element_getElement(root_el, &mut el_ovs, k_ovs.as_ptr(), std::ptr::null());
-                if rc != 0 || el_ovs.is_null() {
-                    return Err(BlpError::InvalidArgument { detail: format!("operation does not support overrides") });
+                "HistoricalDataRequest" => {
+                    self.build_historical_data(root_el)?;
                 }
-                for (name, value) in &self.overrides {
-                    // each override is a sequence with elements 'fieldId' and 'value'
-                    let mut ov_seq: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
-                    let rc = blpapi_sys::blpapi_Element_appendElement(el_ovs, &mut ov_seq);
-                    if rc != 0 || ov_seq.is_null() {
-                        return Err(BlpError::Internal { detail: format!("append override element rc={rc}") });
-                    }
-                    let k_field_id = CString::new("fieldId").unwrap();
-                    let k_value = CString::new("value").unwrap();
-                    let c_name = CString::new(name.as_str()).unwrap();
-                    let c_val = CString::new(value.as_str()).unwrap();
-                    let rc1 = blpapi_sys::blpapi_Element_setElementString(ov_seq, k_field_id.as_ptr(), std::ptr::null(), c_name.as_ptr());
-                    let rc2 = blpapi_sys::blpapi_Element_setElementString(ov_seq, k_value.as_ptr(), std::ptr::null(), c_val.as_ptr());
-                    if rc1 != 0 || rc2 != 0 {
-                        return Err(BlpError::InvalidArgument { detail: format!("set override values failed rc1={rc1} rc2={rc2}") });
-                    }
+                _ => {
+                    // ReferenceDataRequest or similar
+                    self.build_reference_data(root_el)?;
                 }
             }
         }
         Ok(request)
     }
+
+    unsafe fn build_reference_data(
+        &self,
+        root_el: *mut blpapi_sys::blpapi_Element_t,
+    ) -> Result<()> {
+        if self.securities.is_empty() || self.fields.is_empty() {
+            return Err(BlpError::InvalidArgument {
+                detail: "securities and fields must be non-empty".into(),
+            });
+        }
+
+        // securities
+        let mut el_secs: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+        let k_secs = CString::new("securities").unwrap();
+        let rc = blpapi_sys::blpapi_Element_getElement(
+            root_el,
+            &mut el_secs,
+            k_secs.as_ptr(),
+            std::ptr::null(),
+        );
+        if rc != 0 || el_secs.is_null() {
+            return Err(BlpError::Internal {
+                detail: format!("getElement('securities') rc={rc}"),
+            });
+        }
+        for s in &self.securities {
+            let cs = CString::new(s.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setValueString(
+                el_secs,
+                cs.as_ptr(),
+                blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("append security failed rc={rc}"),
+                });
+            }
+        }
+
+        // fields
+        let mut el_fields: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+        let k_fields = CString::new("fields").unwrap();
+        let rc = blpapi_sys::blpapi_Element_getElement(
+            root_el,
+            &mut el_fields,
+            k_fields.as_ptr(),
+            std::ptr::null(),
+        );
+        if rc != 0 || el_fields.is_null() {
+            return Err(BlpError::Internal {
+                detail: format!("getElement('fields') rc={rc}"),
+            });
+        }
+        for f in &self.fields {
+            let cf = CString::new(f.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setValueString(
+                el_fields,
+                cf.as_ptr(),
+                blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("append field failed rc={rc}"),
+                });
+            }
+        }
+
+        // overrides if present
+        if !self.overrides.is_empty() {
+            let mut el_ovs: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+            let k_ovs = CString::new("overrides").unwrap();
+            let rc = blpapi_sys::blpapi_Element_getElement(
+                root_el,
+                &mut el_ovs,
+                k_ovs.as_ptr(),
+                std::ptr::null(),
+            );
+            if rc != 0 || el_ovs.is_null() {
+                return Err(BlpError::InvalidArgument {
+                    detail: "operation does not support overrides".into(),
+                });
+            }
+            for (name, value) in &self.overrides {
+                let mut ov_seq: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+                let rc = blpapi_sys::blpapi_Element_appendElement(el_ovs, &mut ov_seq);
+                if rc != 0 || ov_seq.is_null() {
+                    return Err(BlpError::Internal {
+                        detail: format!("append override element rc={rc}"),
+                    });
+                }
+                let k_field_id = CString::new("fieldId").unwrap();
+                let k_value = CString::new("value").unwrap();
+                let c_name = CString::new(name.as_str()).unwrap();
+                let c_val = CString::new(value.as_str()).unwrap();
+                let rc1 = blpapi_sys::blpapi_Element_setElementString(
+                    ov_seq,
+                    k_field_id.as_ptr(),
+                    std::ptr::null(),
+                    c_name.as_ptr(),
+                );
+                let rc2 = blpapi_sys::blpapi_Element_setElementString(
+                    ov_seq,
+                    k_value.as_ptr(),
+                    std::ptr::null(),
+                    c_val.as_ptr(),
+                );
+                if rc1 != 0 || rc2 != 0 {
+                    return Err(BlpError::InvalidArgument {
+                        detail: format!("set override values failed rc1={rc1} rc2={rc2}"),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    unsafe fn build_historical_data(
+        &self,
+        root_el: *mut blpapi_sys::blpapi_Element_t,
+    ) -> Result<()> {
+        if self.securities.is_empty() || self.fields.is_empty() {
+            return Err(BlpError::InvalidArgument {
+                detail: "securities and fields must be non-empty".into(),
+            });
+        }
+
+        // securities
+        let mut el_secs: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+        let k_secs = CString::new("securities").unwrap();
+        let rc = blpapi_sys::blpapi_Element_getElement(
+            root_el,
+            &mut el_secs,
+            k_secs.as_ptr(),
+            std::ptr::null(),
+        );
+        if rc != 0 || el_secs.is_null() {
+            return Err(BlpError::Internal {
+                detail: format!("getElement('securities') rc={rc}"),
+            });
+        }
+        for s in &self.securities {
+            let cs = CString::new(s.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setValueString(
+                el_secs,
+                cs.as_ptr(),
+                blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("append security failed rc={rc}"),
+                });
+            }
+        }
+
+        // fields
+        let mut el_fields: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+        let k_fields = CString::new("fields").unwrap();
+        let rc = blpapi_sys::blpapi_Element_getElement(
+            root_el,
+            &mut el_fields,
+            k_fields.as_ptr(),
+            std::ptr::null(),
+        );
+        if rc != 0 || el_fields.is_null() {
+            return Err(BlpError::Internal {
+                detail: format!("getElement('fields') rc={rc}"),
+            });
+        }
+        for f in &self.fields {
+            let cf = CString::new(f.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setValueString(
+                el_fields,
+                cf.as_ptr(),
+                blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("append field failed rc={rc}"),
+                });
+            }
+        }
+
+        // startDate
+        if let Some(ref start_date) = self.start_date {
+            let k = CString::new("startDate").unwrap();
+            let v = CString::new(start_date.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                v.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set startDate failed rc={rc}"),
+                });
+            }
+        }
+
+        // endDate
+        if let Some(ref end_date) = self.end_date {
+            let k = CString::new("endDate").unwrap();
+            let v = CString::new(end_date.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                v.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set endDate failed rc={rc}"),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    unsafe fn build_intraday_bar(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
+        let security = self
+            .single_security
+            .as_ref()
+            .ok_or_else(|| BlpError::InvalidArgument {
+                detail: "IntradayBarRequest requires a single security".into(),
+            })?;
+
+        // security (single value, not array)
+        let k = CString::new("security").unwrap();
+        let v = CString::new(security.as_str()).unwrap();
+        let rc = blpapi_sys::blpapi_Element_setElementString(
+            root_el,
+            k.as_ptr(),
+            std::ptr::null(),
+            v.as_ptr(),
+        );
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("set security failed rc={rc}"),
+            });
+        }
+
+        // eventType
+        if let Some(ref event_type) = self.event_type {
+            let k = CString::new("eventType").unwrap();
+            let v = CString::new(event_type.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                v.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set eventType failed rc={rc}"),
+                });
+            }
+        }
+
+        // interval
+        if let Some(interval) = self.interval {
+            let k = CString::new("interval").unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementInt32(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                interval as i32,
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set interval failed rc={rc}"),
+                });
+            }
+        }
+
+        // startDateTime
+        if let Some(ref start_dt) = self.start_datetime {
+            let k = CString::new("startDateTime").unwrap();
+            let v = CString::new(start_dt.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                v.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set startDateTime failed rc={rc}"),
+                });
+            }
+        }
+
+        // endDateTime
+        if let Some(ref end_dt) = self.end_datetime {
+            let k = CString::new("endDateTime").unwrap();
+            let v = CString::new(end_dt.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                v.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set endDateTime failed rc={rc}"),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    unsafe fn build_intraday_tick(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
+        let security = self
+            .single_security
+            .as_ref()
+            .ok_or_else(|| BlpError::InvalidArgument {
+                detail: "IntradayTickRequest requires a single security".into(),
+            })?;
+
+        // security (single value, not array)
+        let k = CString::new("security").unwrap();
+        let v = CString::new(security.as_str()).unwrap();
+        let rc = blpapi_sys::blpapi_Element_setElementString(
+            root_el,
+            k.as_ptr(),
+            std::ptr::null(),
+            v.as_ptr(),
+        );
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("set security failed rc={rc}"),
+            });
+        }
+
+        // startDateTime
+        if let Some(ref start_dt) = self.start_datetime {
+            let k = CString::new("startDateTime").unwrap();
+            let v = CString::new(start_dt.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                v.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set startDateTime failed rc={rc}"),
+                });
+            }
+        }
+
+        // endDateTime
+        if let Some(ref end_dt) = self.end_datetime {
+            let k = CString::new("endDateTime").unwrap();
+            let v = CString::new(end_dt.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                k.as_ptr(),
+                std::ptr::null(),
+                v.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("set endDateTime failed rc={rc}"),
+                });
+            }
+        }
+
+        Ok(())
+    }
 }
-
-

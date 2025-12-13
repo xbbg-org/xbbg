@@ -2,41 +2,43 @@ pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-mod errors;
-pub mod requests;
-mod ffi;
-mod name;
 mod correlation;
-mod options;
-mod event;
-mod service;
-mod request;
-mod identity;
-mod request_template;
-mod message;
-mod subscription;
 mod element;
-mod poller;
-mod print;
+mod errors;
+mod event;
 #[cfg(feature = "event-log")]
 mod event_log;
-mod tag_registry;
+mod ffi;
+mod identity;
+mod message;
+mod name;
+mod options;
+mod poller;
+mod print;
+mod request;
+mod request_template;
+pub mod requests;
 pub mod schema;
+mod service;
+mod subscription;
+mod tag_registry;
 
-pub use errors::{BlpError, CorrelationContext, Result};
-pub use requests::*;
-pub use name::Name;
 pub use correlation::CorrelationId;
-pub use options::SessionOptions;
+pub use element::ElementRef;
+pub use errors::{BlpError, CorrelationContext, Result};
 pub use event::{Event, EventType};
-pub use service::Service;
+pub use message::MessageRef;
+pub use name::Name;
+pub use options::SessionOptions;
+pub use poller::EventPoller;
 pub use request::Request;
 pub use request::RequestBuilder;
 pub use request_template::RequestTemplate;
-pub use message::MessageRef;
-pub use element::{ElementRef};
+pub use requests::*;
+pub use service::Service;
 pub use subscription::{SubscriptionList, SubscriptionListBuilder};
-pub use poller::EventPoller;
-pub mod session;
 pub mod arrow;
+pub mod session;
 
+#[cfg(test)]
+mod tests;

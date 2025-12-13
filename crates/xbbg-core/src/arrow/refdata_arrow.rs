@@ -1,13 +1,13 @@
 //! Arrow builders for reference data (BDP/BDS).
 
 use crate::requests::ReferenceDataRequest;
-use crate::{Result, RequestBuilder, Event, EventType, CorrelationId};
 use crate::session::Session;
-use std::ffi::CString;
-use std::sync::Arc;
-use arrow::array::{Int32Array, StringArray, Float64Array, TimestampMillisecondArray};
+use crate::{CorrelationId, Event, EventType, RequestBuilder, Result};
+use arrow::array::{Float64Array, Int32Array, StringArray, TimestampMillisecondArray};
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
+use std::ffi::CString;
+use std::sync::Arc;
 
 /// Execute a reference-data style request (BDP/BDS) and return a
 /// long-format Arrow table.
@@ -21,18 +21,16 @@ use arrow::record_batch::RecordBatch;
 /// - value_date: timestamp[ms, tz="UTC"]
 /// - currency: utf8 (optional)
 /// - source: utf8 (optional)
-pub fn execute_refdata_arrow(
-    session: &Session,
-    req: &ReferenceDataRequest,
-) -> Result<RecordBatch> {
-    req.validate().map_err(|e| crate::BlpError::InvalidArgument {
-        detail: e.to_string(),
-    })?;
+pub fn execute_refdata_arrow(session: &Session, req: &ReferenceDataRequest) -> Result<RecordBatch> {
+    req.validate()
+        .map_err(|e| crate::BlpError::InvalidArgument {
+            detail: e.to_string(),
+        })?;
 
     // Open service and create request
     session.open_service("//blp/refdata")?;
     let service = session.get_service("//blp/refdata")?;
-    
+
     let blp_request = RequestBuilder::new()
         .securities(req.tickers.clone())
         .fields(req.fields.clone())
@@ -44,7 +42,12 @@ pub fn execute_refdata_arrow(
         let mut el_ovs: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
         let k_ovs = CString::new("overrides").unwrap();
         let rc = unsafe {
-            blpapi_sys::blpapi_Element_getElement(root_el, &mut el_ovs, k_ovs.as_ptr(), std::ptr::null())
+            blpapi_sys::blpapi_Element_getElement(
+                root_el,
+                &mut el_ovs,
+                k_ovs.as_ptr(),
+                std::ptr::null(),
+            )
         };
         if rc == 0 && !el_ovs.is_null() {
             for (name, value) in &req.overrides {
@@ -56,8 +59,18 @@ pub fn execute_refdata_arrow(
                     let c_name = CString::new(name.as_str()).unwrap();
                     let c_val = CString::new(value.as_str()).unwrap();
                     unsafe {
-                        blpapi_sys::blpapi_Element_setElementString(ov_seq, k_field_id.as_ptr(), std::ptr::null(), c_name.as_ptr());
-                        blpapi_sys::blpapi_Element_setElementString(ov_seq, k_value.as_ptr(), std::ptr::null(), c_val.as_ptr());
+                        blpapi_sys::blpapi_Element_setElementString(
+                            ov_seq,
+                            k_field_id.as_ptr(),
+                            std::ptr::null(),
+                            c_name.as_ptr(),
+                        );
+                        blpapi_sys::blpapi_Element_setElementString(
+                            ov_seq,
+                            k_value.as_ptr(),
+                            std::ptr::null(),
+                            c_val.as_ptr(),
+                        );
                     }
                 }
             }
@@ -87,13 +100,35 @@ pub fn execute_refdata_arrow(
         let event = session.next_event(Some(60000))?; // 60s timeout
         match event.event_type() {
             EventType::Response => {
-                process_refdata_response(&event, &cid, &requested_fields, &mut tickers, &mut fields, &mut row_indices,
-                    &mut value_strs, &mut value_nums, &mut value_dates, &mut currencies, &mut sources)?;
+                process_refdata_response(
+                    &event,
+                    &cid,
+                    &requested_fields,
+                    &mut tickers,
+                    &mut fields,
+                    &mut row_indices,
+                    &mut value_strs,
+                    &mut value_nums,
+                    &mut value_dates,
+                    &mut currencies,
+                    &mut sources,
+                )?;
                 break;
             }
             EventType::PartialResponse => {
-                process_refdata_response(&event, &cid, &requested_fields, &mut tickers, &mut fields, &mut row_indices,
-                    &mut value_strs, &mut value_nums, &mut value_dates, &mut currencies, &mut sources)?;
+                process_refdata_response(
+                    &event,
+                    &cid,
+                    &requested_fields,
+                    &mut tickers,
+                    &mut fields,
+                    &mut row_indices,
+                    &mut value_strs,
+                    &mut value_nums,
+                    &mut value_dates,
+                    &mut currencies,
+                    &mut sources,
+                )?;
                 // Continue to wait for final RESPONSE
             }
             EventType::RequestStatus => {
@@ -183,7 +218,8 @@ fn process_refdata_response(
             for sec_idx in 0..num_securities {
                 if let Some(sec_data) = security_data_array.get_value_as_element(sec_idx) {
                     // Get security (ticker)
-                    let ticker = sec_data.get_element("security")
+                    let ticker = sec_data
+                        .get_element("security")
                         .and_then(|el| el.get_value_as_string(0))
                         .unwrap_or_default();
 
@@ -197,34 +233,70 @@ fn process_refdata_response(
                         // fieldData is a sequence element with named child elements (the fields)
                         // Iterate over child elements by index
                         let num_field_elements = field_data.num_elements();
-                        
+
                         if num_field_elements > 0 {
                             // Standard path: iterate over child elements by index
                             for field_idx in 0..num_field_elements {
                                 if let Some(field_el) = field_data.get_element_at(field_idx) {
                                     let field_name = field_el.name_string().unwrap_or_default();
-                                    
+
                                     // Check if this field is an array (BDS) or single value (BDP)
                                     let num_values = field_el.num_values();
-                                    
+
                                     if num_values > 1 {
                                         // BDS: multiple rows per field
                                         for row_idx in 0..num_values {
-                                            extract_field_value(&field_el, row_idx, &ticker, &field_name,
-                                                row_idx as i32, tickers, fields, row_indices,
-                                                value_strs, value_nums, value_dates, currencies, sources);
+                                            extract_field_value(
+                                                &field_el,
+                                                row_idx,
+                                                &ticker,
+                                                &field_name,
+                                                row_idx as i32,
+                                                tickers,
+                                                fields,
+                                                row_indices,
+                                                value_strs,
+                                                value_nums,
+                                                value_dates,
+                                                currencies,
+                                                sources,
+                                            );
                                         }
                                     } else if num_values == 1 {
                                         // BDP: single value per field
-                                        extract_field_value(&field_el, 0, &ticker, &field_name, 0,
-                                            tickers, fields, row_indices,
-                                            value_strs, value_nums, value_dates, currencies, sources);
+                                        extract_field_value(
+                                            &field_el,
+                                            0,
+                                            &ticker,
+                                            &field_name,
+                                            0,
+                                            tickers,
+                                            fields,
+                                            row_indices,
+                                            value_strs,
+                                            value_nums,
+                                            value_dates,
+                                            currencies,
+                                            sources,
+                                        );
                                     } else {
                                         // num_values == 0: Try to extract anyway (might be a scalar)
                                         if !field_el.is_null() {
-                                            extract_field_value(&field_el, 0, &ticker, &field_name, 0,
-                                                tickers, fields, row_indices,
-                                                value_strs, value_nums, value_dates, currencies, sources);
+                                            extract_field_value(
+                                                &field_el,
+                                                0,
+                                                &ticker,
+                                                &field_name,
+                                                0,
+                                                tickers,
+                                                fields,
+                                                row_indices,
+                                                value_strs,
+                                                value_nums,
+                                                value_dates,
+                                                currencies,
+                                                sources,
+                                            );
                                         }
                                     }
                                 }
@@ -235,25 +307,61 @@ fn process_refdata_response(
                             for field_name in requested_fields {
                                 if let Some(field_el) = field_data.get_element(field_name) {
                                     let num_values = field_el.num_values();
-                                    
+
                                     if num_values > 1 {
                                         // BDS: multiple rows per field
                                         for row_idx in 0..num_values {
-                                            extract_field_value(&field_el, row_idx, &ticker, field_name.as_str(),
-                                                row_idx as i32, tickers, fields, row_indices,
-                                                value_strs, value_nums, value_dates, currencies, sources);
+                                            extract_field_value(
+                                                &field_el,
+                                                row_idx,
+                                                &ticker,
+                                                field_name.as_str(),
+                                                row_idx as i32,
+                                                tickers,
+                                                fields,
+                                                row_indices,
+                                                value_strs,
+                                                value_nums,
+                                                value_dates,
+                                                currencies,
+                                                sources,
+                                            );
                                         }
                                     } else if num_values == 1 {
                                         // BDP: single value per field
-                                        extract_field_value(&field_el, 0, &ticker, field_name.as_str(), 0,
-                                            tickers, fields, row_indices,
-                                            value_strs, value_nums, value_dates, currencies, sources);
+                                        extract_field_value(
+                                            &field_el,
+                                            0,
+                                            &ticker,
+                                            field_name.as_str(),
+                                            0,
+                                            tickers,
+                                            fields,
+                                            row_indices,
+                                            value_strs,
+                                            value_nums,
+                                            value_dates,
+                                            currencies,
+                                            sources,
+                                        );
                                     } else {
                                         // Try to extract anyway
                                         if !field_el.is_null() {
-                                            extract_field_value(&field_el, 0, &ticker, field_name.as_str(), 0,
-                                                tickers, fields, row_indices,
-                                                value_strs, value_nums, value_dates, currencies, sources);
+                                            extract_field_value(
+                                                &field_el,
+                                                0,
+                                                &ticker,
+                                                field_name.as_str(),
+                                                0,
+                                                tickers,
+                                                fields,
+                                                row_indices,
+                                                value_strs,
+                                                value_nums,
+                                                value_dates,
+                                                currencies,
+                                                sources,
+                                            );
                                         }
                                     }
                                 }
@@ -289,7 +397,7 @@ fn extract_field_value(
     // Try to extract value based on data type
     let def = field_el.definition();
     let data_type = def.data_type();
-    
+
     let mut value_str = None;
     let mut value_num = None;
     let mut value_date = None;
@@ -325,5 +433,3 @@ fn extract_field_value(
     currencies.push(None); // TODO: extract from field metadata if available
     sources.push(None); // TODO: extract from field metadata if available
 }
-
-

@@ -32,4 +32,3 @@ impl Drop for RequestTemplate {
         }
     }
 }
-

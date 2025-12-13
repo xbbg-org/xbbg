@@ -11,5 +11,3 @@ pub enum BlpAsyncError {
     #[error("timeout")]
     Timeout,
 }
-
-

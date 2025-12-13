@@ -15,4 +15,3 @@ impl<'a> EventPoller<'a> {
         self.session.next_event(timeout_ms)
     }
 }
-

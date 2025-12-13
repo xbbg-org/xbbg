@@ -19,7 +19,11 @@ impl RequestHandle {
         parts_rx: mpsc::Receiver<crate::router::Envelope>,
         final_rx: oneshot::Receiver<crate::router::Envelope>,
     ) -> Self {
-        Self { _cid: cid, parts_rx, final_rx }
+        Self {
+            _cid: cid,
+            parts_rx,
+            final_rx,
+        }
     }
 
     pub fn parts(self) -> impl Stream<Item = crate::router::Envelope> {
@@ -33,7 +37,13 @@ impl RequestHandle {
 }
 
 impl AsyncSession {
-    pub fn send_request(&self, _service: &Service, request: &Request, cid: &CorrelationId, label: Option<&str>) -> Result<RequestHandle, BlpAsyncError> {
+    pub fn send_request(
+        &self,
+        _service: &Service,
+        request: &Request,
+        cid: &CorrelationId,
+        label: Option<&str>,
+    ) -> Result<RequestHandle, BlpAsyncError> {
         // Register route before sending to avoid races
         info!(?cid, label, "request: register route & send");
         let rx = self.router.register_route(cid);
@@ -51,9 +61,13 @@ impl AsyncSession {
             }
         });
         // Send request via core
-        self.core.send_request(request, None, Some(cid)).map_err(|e| BlpAsyncError::Internal(format!("send_request: {e:?}")))?;
-        Ok(RequestHandle { _cid: cid.clone(), parts_rx, final_rx })
+        self.core
+            .send_request(request, None, Some(cid))
+            .map_err(|e| BlpAsyncError::Internal(format!("send_request: {e:?}")))?;
+        Ok(RequestHandle {
+            _cid: cid.clone(),
+            parts_rx,
+            final_rx,
+        })
     }
 }
-
-

@@ -48,6 +48,3 @@ impl BulkDataRequest {
         Ok(())
     }
 }
-
-
-

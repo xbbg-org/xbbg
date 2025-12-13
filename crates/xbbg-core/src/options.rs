@@ -63,9 +63,8 @@ impl SessionOptions {
     }
 
     pub fn set_connect_timeout_ms(&mut self, timeout_ms: u32) -> Result<&mut Self> {
-        let rc = unsafe {
-            blpapi_sys::blpapi_SessionOptions_setConnectTimeout(self.ptr, timeout_ms)
-        };
+        let rc =
+            unsafe { blpapi_sys::blpapi_SessionOptions_setConnectTimeout(self.ptr, timeout_ms) };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
                 detail: format!("connect timeout invalid: rc={rc}"),
@@ -75,8 +74,9 @@ impl SessionOptions {
     }
 
     pub fn set_service_check_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
-        let rc =
-            unsafe { blpapi_sys::blpapi_SessionOptions_setServiceCheckTimeout(self.ptr, timeout_ms) };
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setServiceCheckTimeout(self.ptr, timeout_ms)
+        };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
                 detail: format!("service check timeout invalid: rc={rc}"),
@@ -110,5 +110,3 @@ impl Drop for SessionOptions {
         }
     }
 }
-
-

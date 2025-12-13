@@ -5,13 +5,16 @@ fn init_tracing() {
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {
         let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
-        let _ = tracing_subscriber::fmt().with_env_filter(filter).with_test_writer().try_init();
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_test_writer()
+            .try_init();
         // Suppress noisy BLPAPI WARN logs in tests
         unsafe {
             // Raise SDK logging threshold to ERROR (ignore return code)
             let _ = blpapi_sys::blpapi_Logging_registerCallback(
                 None,
-                blpapi_sys::blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR as i32
+                blpapi_sys::blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR as i32,
             );
         }
     });
@@ -21,11 +24,14 @@ fn init_tracing() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_requests_two_u64_cids() {
     init_tracing();
-    use xbbg_async::{AsyncSession, AsyncOptions};
-    use xbbg_core::{SessionOptions, RequestBuilder, CorrelationId};
+    use xbbg_async::{AsyncOptions, AsyncSession};
+    use xbbg_core::{CorrelationId, RequestBuilder, SessionOptions};
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -40,21 +46,35 @@ async fn async_requests_two_u64_cids() {
     let req1 = RequestBuilder::new()
         .securities(vec!["IBM US Equity".into()])
         .fields(vec!["PX_LAST".into()])
-        .build(&svc, "ReferenceDataRequest").expect("req1");
+        .build(&svc, "ReferenceDataRequest")
+        .expect("req1");
     let req2 = RequestBuilder::new()
         .securities(vec!["MSFT US Equity".into()])
         .fields(vec!["PX_LAST".into()])
-        .build(&svc, "ReferenceDataRequest").expect("req2");
+        .build(&svc, "ReferenceDataRequest")
+        .expect("req2");
 
-    let h1 = sess.send_request(&svc, &req1, &CorrelationId::U64(1), None).expect("send1");
-    let h2 = sess.send_request(&svc, &req2, &CorrelationId::U64(2), None).expect("send2");
+    let h1 = sess
+        .send_request(&svc, &req1, &CorrelationId::U64(1), None)
+        .expect("send1");
+    let h2 = sess
+        .send_request(&svc, &req2, &CorrelationId::U64(2), None)
+        .expect("send2");
 
     let f1 = tokio::time::timeout(std::time::Duration::from_secs(20), h1.final_());
     let f2 = tokio::time::timeout(std::time::Duration::from_secs(20), h2.final_());
     let env1 = f1.await.expect("timeout f1").expect("final1");
     let env2 = f2.await.expect("timeout f2").expect("final2");
-    println!("final#1 type={} text:\n{}", env1.message_type, env1.text.unwrap_or_default());
-    println!("final#2 type={} text:\n{}", env2.message_type, env2.text.unwrap_or_default());
+    println!(
+        "final#1 type={} text:\n{}",
+        env1.message_type,
+        env1.text.unwrap_or_default()
+    );
+    println!(
+        "final#2 type={} text:\n{}",
+        env2.message_type,
+        env2.text.unwrap_or_default()
+    );
 
     // Avoid dropping embedded runtime from within async context
     std::mem::forget(sess);
@@ -64,12 +84,15 @@ async fn async_requests_two_u64_cids() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_subscription_tag_roundtrip() {
     init_tracing();
-    use xbbg_async::{AsyncSession, AsyncOptions};
-    use xbbg_core::{SessionOptions, SubscriptionListBuilder, CorrelationId};
     use std::sync::Arc;
+    use xbbg_async::{AsyncOptions, AsyncSession};
+    use xbbg_core::{CorrelationId, SessionOptions, SubscriptionListBuilder};
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -84,13 +107,23 @@ async fn async_subscription_tag_roundtrip() {
     let topic = "IBM US Equity".to_string();
     let cid = CorrelationId::Tag(Arc::<str>::from(topic.clone()));
     let list = SubscriptionListBuilder::new()
-        .add(&topic, &["LAST_PRICE","BID","ASK"], cid.clone())
-        .build().expect("list");
+        .add(&topic, &["LAST_PRICE", "BID", "ASK"], cid.clone())
+        .build()
+        .expect("list");
 
-    let handle = sess.subscribe_with_cids(&list, vec![cid.clone()], None).expect("subscribe");
+    let handle = sess
+        .subscribe_with_cids(&list, vec![cid.clone()], None)
+        .expect("subscribe");
     let mut status = handle.status();
-    let first = tokio::time::timeout(std::time::Duration::from_secs(10), status.next()).await.expect("timeout").expect("status");
-    println!("subscription status type={} text:\n{}", first.message_type, first.text.unwrap_or_default());
+    let first = tokio::time::timeout(std::time::Duration::from_secs(10), status.next())
+        .await
+        .expect("timeout")
+        .expect("status");
+    println!(
+        "subscription status type={} text:\n{}",
+        first.message_type,
+        first.text.unwrap_or_default()
+    );
 
     std::mem::forget(sess);
 }
@@ -99,12 +132,15 @@ async fn async_subscription_tag_roundtrip() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_subscription_field_echo() {
     init_tracing();
-    use xbbg_async::{AsyncSession, AsyncOptions};
-    use xbbg_core::{SessionOptions, SubscriptionListBuilder, CorrelationId};
     use std::sync::Arc;
+    use xbbg_async::{AsyncOptions, AsyncSession};
+    use xbbg_core::{CorrelationId, SessionOptions, SubscriptionListBuilder};
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -119,16 +155,21 @@ async fn async_subscription_field_echo() {
     let topic = "IBM US Equity".to_string();
     let cid = CorrelationId::Tag(Arc::<str>::from(topic.clone()));
     let list = SubscriptionListBuilder::new()
-        .add(&topic, &["LAST_PRICE","BID","ASK"], cid.clone())
-        .build().expect("list");
+        .add(&topic, &["LAST_PRICE", "BID", "ASK"], cid.clone())
+        .build()
+        .expect("list");
 
-    let handle = sess.subscribe_with_cids(&list, vec![cid.clone()], None).expect("subscribe");
+    let handle = sess
+        .subscribe_with_cids(&list, vec![cid.clone()], None)
+        .expect("subscribe");
     let mut data = handle.data();
 
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut found = false;
     while tokio::time::Instant::now() < deadline {
-        if let Ok(Some(env)) = tokio::time::timeout(std::time::Duration::from_millis(500), data.next()).await {
+        if let Ok(Some(env)) =
+            tokio::time::timeout(std::time::Duration::from_millis(500), data.next()).await
+        {
             let t = env.text.clone().unwrap_or_default();
             if t.contains("LAST_PRICE") || t.contains("BID") || t.contains("ASK") {
                 found = true;
@@ -136,7 +177,10 @@ async fn async_subscription_field_echo() {
             }
         }
     }
-    assert!(found, "did not see expected field mnemonics in recap/status payload");
+    assert!(
+        found,
+        "did not see expected field mnemonics in recap/status payload"
+    );
 
     std::mem::forget(sess);
 }
@@ -145,11 +189,14 @@ async fn async_subscription_field_echo() {
 #[tokio::test(flavor = "multi_thread")]
 async fn async_snapshot_template_send() {
     init_tracing();
-    use xbbg_async::{AsyncSession, AsyncOptions};
-    use xbbg_core::{SessionOptions, CorrelationId};
+    use xbbg_async::{AsyncOptions, AsyncSession};
+    use xbbg_core::{CorrelationId, SessionOptions};
 
     let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    let port: u16 = std::env::var("BLP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8194);
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
 
     let mut opts = SessionOptions::new().expect("opts");
     opts.set_server_host(&host).unwrap();
@@ -176,7 +223,10 @@ async fn async_snapshot_template_send() {
             available = true;
             break;
         } else if env.message_type == "RequestTemplateTerminated" {
-            eprintln!("template terminated early: {}", env.text.unwrap_or_default());
+            eprintln!(
+                "template terminated early: {}",
+                env.text.unwrap_or_default()
+            );
             break;
         }
     }
@@ -196,7 +246,7 @@ async fn async_snapshot_template_send() {
         }
     };
     match tokio::time::timeout(std::time::Duration::from_secs(60), rh.final_()).await {
-        Ok(Ok(_)) => {},
+        Ok(Ok(_)) => {}
         _ => {
             eprintln!("snapshot final timed out or failed; skipping in this env");
         }
@@ -204,5 +254,3 @@ async fn async_snapshot_template_send() {
 
     std::mem::forget(sess);
 }
-
-

@@ -1,16 +1,16 @@
 //! Arrow builders for intraday ticks (BDTICK).
 
-use crate::requests::IntradayTickRequest;
-use crate::{Result, EventType, MessageRef};
-use crate::session::Session;
 use crate::correlation::CorrelationId;
 use crate::request::Request;
-use std::ffi::CString;
-use std::sync::Arc;
-use std::collections::HashMap;
+use crate::requests::IntradayTickRequest;
+use crate::session::Session;
+use crate::{EventType, MessageRef, Result};
 use arrow::array::{Float64Array, StringArray, TimestampMillisecondArray};
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
+use std::collections::HashMap;
+use std::ffi::CString;
+use std::sync::Arc;
 
 /// Execute an intraday tick request and return a long-format Arrow batch.
 ///
@@ -26,19 +26,20 @@ pub fn execute_intraday_ticks_arrow(
     session: &Session,
     req: &IntradayTickRequest,
 ) -> Result<RecordBatch> {
-    req.validate().map_err(|e| crate::BlpError::InvalidArgument {
-        detail: e.to_string(),
-    })?;
+    req.validate()
+        .map_err(|e| crate::BlpError::InvalidArgument {
+            detail: e.to_string(),
+        })?;
 
     // Open service
     session.open_service("//blp/refdata")?;
     let service = session.get_service("//blp/refdata")?;
-    
+
     // IntradayTickRequest only supports one security per request
     // Send separate requests for each ticker with correlation IDs
     let num_tickers = req.tickers.len();
     let mut correlation_map: HashMap<u64, String> = HashMap::new();
-    
+
     // Send requests for all tickers
     for (idx, ticker) in req.tickers.iter().enumerate() {
         let blp_request = create_intraday_tick_request(&service, ticker, req)?;
@@ -54,10 +55,10 @@ pub fn execute_intraday_ticks_arrow(
     let mut value_nums = Vec::new();
     let mut event_types = Vec::new();
     let mut condition_codes = Vec::new();
-    
+
     // Track which tickers have completed (by index)
     let mut completed = std::collections::HashSet::<u64>::new();
-    
+
     // Process events until we get RESPONSE for all tickers
     while completed.len() < num_tickers {
         let event = session.next_event(Some(60000))?; // 60s timeout
@@ -68,8 +69,16 @@ pub fn execute_intraday_ticks_arrow(
                     if let Some(cid) = msg.correlation_id(0) {
                         if let Some(idx) = cid.as_u64() {
                             if let Some(ticker) = correlation_map.get(&idx) {
-                                process_intraday_ticks_response(&msg, ticker, &mut tickers, &mut timestamps,
-                                    &mut fields, &mut value_nums, &mut event_types, &mut condition_codes)?;
+                                process_intraday_ticks_response(
+                                    &msg,
+                                    ticker,
+                                    &mut tickers,
+                                    &mut timestamps,
+                                    &mut fields,
+                                    &mut value_nums,
+                                    &mut event_types,
+                                    &mut condition_codes,
+                                )?;
                                 completed.insert(idx);
                             }
                         }
@@ -82,8 +91,16 @@ pub fn execute_intraday_ticks_arrow(
                     if let Some(cid) = msg.correlation_id(0) {
                         if let Some(idx) = cid.as_u64() {
                             if let Some(ticker) = correlation_map.get(&idx) {
-                                process_intraday_ticks_response(&msg, ticker, &mut tickers, &mut timestamps,
-                                    &mut fields, &mut value_nums, &mut event_types, &mut condition_codes)?;
+                                process_intraday_ticks_response(
+                                    &msg,
+                                    ticker,
+                                    &mut tickers,
+                                    &mut timestamps,
+                                    &mut fields,
+                                    &mut value_nums,
+                                    &mut event_types,
+                                    &mut condition_codes,
+                                )?;
                             }
                         }
                     }
@@ -99,7 +116,11 @@ pub fn execute_intraday_ticks_arrow(
                             if let Some(idx) = cid.as_u64() {
                                 if let Some(ticker) = correlation_map.get(&idx) {
                                     return Err(crate::BlpError::Internal {
-                                        detail: format!("Request failed for {}: {}", ticker, msg.print_to_string()),
+                                        detail: format!(
+                                            "Request failed for {}: {}",
+                                            ticker,
+                                            msg.print_to_string()
+                                        ),
                                     });
                                 }
                             }
@@ -154,13 +175,18 @@ fn create_intraday_tick_request(
     req: &IntradayTickRequest,
 ) -> Result<Request> {
     let blp_request = service.create_request("IntradayTickRequest")?;
-    
+
     // Set security
     unsafe {
         let root_el = blpapi_sys::blpapi_Request_elements(blp_request.as_raw());
         let k_sec = CString::new("security").unwrap();
         let c_sec = CString::new(ticker).unwrap();
-        blpapi_sys::blpapi_Element_setElementString(root_el, k_sec.as_ptr(), std::ptr::null(), c_sec.as_ptr());
+        blpapi_sys::blpapi_Element_setElementString(
+            root_el,
+            k_sec.as_ptr(),
+            std::ptr::null(),
+            c_sec.as_ptr(),
+        );
     }
 
     // Set startDateTime, endDateTime, and eventTypes
@@ -171,9 +197,19 @@ fn create_intraday_tick_request(
         let k_event_types = CString::new("eventTypes").unwrap();
         let c_start = CString::new(req.start.as_str()).unwrap();
         let c_end = CString::new(req.end.as_str()).unwrap();
-        
-        let rc1 = blpapi_sys::blpapi_Element_setElementString(root_el, k_start.as_ptr(), std::ptr::null(), c_start.as_ptr());
-        let rc2 = blpapi_sys::blpapi_Element_setElementString(root_el, k_end.as_ptr(), std::ptr::null(), c_end.as_ptr());
+
+        let rc1 = blpapi_sys::blpapi_Element_setElementString(
+            root_el,
+            k_start.as_ptr(),
+            std::ptr::null(),
+            c_start.as_ptr(),
+        );
+        let rc2 = blpapi_sys::blpapi_Element_setElementString(
+            root_el,
+            k_end.as_ptr(),
+            std::ptr::null(),
+            c_end.as_ptr(),
+        );
         if rc1 != 0 || rc2 != 0 {
             return Err(crate::BlpError::InvalidArgument {
                 detail: format!("failed to set intraday tick parameters: rc1={rc1} rc2={rc2}"),
@@ -193,7 +229,12 @@ fn create_intraday_tick_request(
         ];
         for (flag_name, flag_value) in &include_flags {
             let k_flag = CString::new(*flag_name).unwrap();
-            let rc = blpapi_sys::blpapi_Element_setElementBool(root_el, k_flag.as_ptr(), std::ptr::null(), if *flag_value { 1 } else { 0 });
+            let rc = blpapi_sys::blpapi_Element_setElementBool(
+                root_el,
+                k_flag.as_ptr(),
+                std::ptr::null(),
+                if *flag_value { 1 } else { 0 },
+            );
             if rc != 0 {
                 // Non-fatal, just log
                 eprintln!("Warning: failed to set {}: rc={}", flag_name, rc);
@@ -202,11 +243,20 @@ fn create_intraday_tick_request(
 
         // Set event types
         let mut el_event_types: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
-        let rc = blpapi_sys::blpapi_Element_getElement(root_el, &mut el_event_types, k_event_types.as_ptr(), std::ptr::null());
+        let rc = blpapi_sys::blpapi_Element_getElement(
+            root_el,
+            &mut el_event_types,
+            k_event_types.as_ptr(),
+            std::ptr::null(),
+        );
         if rc == 0 && !el_event_types.is_null() {
             for event_type in &req.event_types {
                 let c_event_type = CString::new(event_type.as_str()).unwrap();
-                let rc = blpapi_sys::blpapi_Element_setValueString(el_event_types, c_event_type.as_ptr(), blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize);
+                let rc = blpapi_sys::blpapi_Element_setValueString(
+                    el_event_types,
+                    c_event_type.as_ptr(),
+                    blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+                );
                 if rc != 0 {
                     return Err(crate::BlpError::InvalidArgument {
                         detail: format!("failed to add event type: {event_type}"),
@@ -223,7 +273,12 @@ fn create_intraday_tick_request(
         if !req.overrides.is_empty() {
             let mut el_ovs: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
             let k_ovs = CString::new("overrides").unwrap();
-            let rc = blpapi_sys::blpapi_Element_getElement(root_el, &mut el_ovs, k_ovs.as_ptr(), std::ptr::null());
+            let rc = blpapi_sys::blpapi_Element_getElement(
+                root_el,
+                &mut el_ovs,
+                k_ovs.as_ptr(),
+                std::ptr::null(),
+            );
             if rc == 0 && !el_ovs.is_null() {
                 for (name, value) in &req.overrides {
                     let mut ov_seq: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
@@ -233,14 +288,24 @@ fn create_intraday_tick_request(
                         let k_value = CString::new("value").unwrap();
                         let c_name = CString::new(name.as_str()).unwrap();
                         let c_val = CString::new(value.as_str()).unwrap();
-                        blpapi_sys::blpapi_Element_setElementString(ov_seq, k_field_id.as_ptr(), std::ptr::null(), c_name.as_ptr());
-                        blpapi_sys::blpapi_Element_setElementString(ov_seq, k_value.as_ptr(), std::ptr::null(), c_val.as_ptr());
+                        blpapi_sys::blpapi_Element_setElementString(
+                            ov_seq,
+                            k_field_id.as_ptr(),
+                            std::ptr::null(),
+                            c_name.as_ptr(),
+                        );
+                        blpapi_sys::blpapi_Element_setElementString(
+                            ov_seq,
+                            k_value.as_ptr(),
+                            std::ptr::null(),
+                            c_val.as_ptr(),
+                        );
                     }
                 }
             }
         }
     }
-    
+
     Ok(blp_request)
 }
 
@@ -262,10 +327,12 @@ fn process_intraday_ticks_response(
     // Check for response errors
     let root = msg.elements();
     if let Some(error_el) = root.get_element("responseError") {
-        let category = error_el.get_element("category")
+        let category = error_el
+            .get_element("category")
             .and_then(|el| el.get_value_as_string(0))
             .unwrap_or_default();
-        let message = error_el.get_element("message")
+        let message = error_el
+            .get_element("message")
             .and_then(|el| el.get_value_as_string(0))
             .unwrap_or_default();
         return Err(crate::BlpError::Internal {
@@ -279,7 +346,16 @@ fn process_intraday_ticks_response(
             let num_ticks = tick_data_array.num_values();
             for tick_idx in 0..num_ticks {
                 if let Some(tick_el) = tick_data_array.get_value_as_element(tick_idx) {
-                    process_tick_data(&tick_el, ticker, tickers, timestamps, fields, value_nums, event_types, condition_codes);
+                    process_tick_data(
+                        &tick_el,
+                        ticker,
+                        tickers,
+                        timestamps,
+                        fields,
+                        value_nums,
+                        event_types,
+                        condition_codes,
+                    );
                 }
             }
         }
@@ -298,20 +374,23 @@ fn process_tick_data(
     condition_codes: &mut Vec<Option<String>>,
 ) {
     // Extract timestamp from tick element
-    let ts_opt = tick_el.get_element("time")
-        .and_then(|el| {
-            el.get_value_as_datetime(0).ok().flatten()
-                .map(|dt| dt.timestamp_millis())
-        });
+    let ts_opt = tick_el.get_element("time").and_then(|el| {
+        el.get_value_as_datetime(0)
+            .ok()
+            .flatten()
+            .map(|dt| dt.timestamp_millis())
+    });
 
     if let Some(ts) = ts_opt {
         // Extract event type
-        let event_type = tick_el.get_element("type")
+        let event_type = tick_el
+            .get_element("type")
             .and_then(|el| el.get_value_as_string(0))
             .unwrap_or_default();
 
         // Extract condition codes (Bloomberg uses conditionCodes, not conditionCode)
-        let condition_code = tick_el.get_element("conditionCodes")
+        let condition_code = tick_el
+            .get_element("conditionCodes")
             .and_then(|el| el.get_value_as_string(0));
 
         // Extract price (Bloomberg uses "value", not "price") and size fields

@@ -3,44 +3,198 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - main
-      - feat/**
+    branches: [main, feat/**, fix/**]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  BLPAPI_VERSION: "3.24.12.2"
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }}, py${{ matrix.python }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-
+  # ==========================================================================
+  # Build Docker image (cached)
+  # ==========================================================================
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          python-version: ${{ matrix.python }}
+          images: ghcr.io/${{ github.repository }}/ci
+          tags: |
+            type=raw,value=blpapi-${{ env.BLPAPI_VERSION }}
+
+      - name: Build and cache Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .github/docker
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BLPAPI_VERSION=${{ env.BLPAPI_VERSION }}
+
+      - name: Save Docker image
+        run: |
+          docker save ${{ steps.meta.outputs.tags }} | gzip > /tmp/ci-image.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/ci-image.tar.gz
+          retention-days: 1
+
+  # ==========================================================================
+  # Lint checks (fast, no Docker needed)
+  # ==========================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy,rustfmt
+          components: rustfmt
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v3
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Sync dependencies (all groups)
-        run: uv sync --all-groups --frozen
+      - name: Install ruff
+        run: pip install ruff
 
-      - name: Build extension (editable)
-        run: uvx maturin develop
+      - name: Rust format check
+        run: cargo fmt --all -- --check
 
-      - name: Run tests
-        run: uv run pytest -q py-xbbg/tests
+      - name: Python ruff check
+        run: ruff check .
 
+      - name: Python ruff format check
+        run: ruff format --check .
 
+  # ==========================================================================
+  # Rust checks (clippy, tests)
+  # ==========================================================================
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          gunzip -c /tmp/ci-image.tar.gz | docker load
+
+      - name: Cargo clippy
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace \
+            ghcr.io/${{ github.repository }}/ci:blpapi-${{ env.BLPAPI_VERSION }} \
+            cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Cargo test
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace \
+            ghcr.io/${{ github.repository }}/ci:blpapi-${{ env.BLPAPI_VERSION }} \
+            cargo test --workspace --lib
+
+      - name: Cargo build (release)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace \
+            ghcr.io/${{ github.repository }}/ci:blpapi-${{ env.BLPAPI_VERSION }} \
+            cargo build --workspace --release
+
+  # ==========================================================================
+  # Python checks (build wheel, tests)
+  # ==========================================================================
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          gunzip -c /tmp/ci-image.tar.gz | docker load
+
+      - name: Build wheel
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace \
+            ghcr.io/${{ github.repository }}/ci:blpapi-${{ env.BLPAPI_VERSION }} \
+            maturin build --release
+
+      - name: Run Python tests
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace \
+            ghcr.io/${{ github.repository }}/ci:blpapi-${{ env.BLPAPI_VERSION }} \
+            bash -c "pip install --break-system-packages target/wheels/*.whl && pytest py-xbbg/tests -v"
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux
+          path: target/wheels/*.whl
+
+  # ==========================================================================
+  # Integration tests (placeholder - requires Bloomberg connection)
+  # ==========================================================================
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust, python]
+    if: false  # Disabled - requires Bloomberg Terminal/BPIPE
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run integration tests
+        run: echo "Integration tests would run here with Bloomberg connection"
+
+  # ==========================================================================
+  # Final status check
+  # ==========================================================================
+  ci-status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [lint, rust, python]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.rust.result }}" != "success" ]] || \
+             [[ "${{ needs.python.result }}" != "success" ]]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed!"

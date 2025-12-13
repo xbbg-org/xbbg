@@ -13,7 +13,10 @@ pub struct SnapshotTemplateHandle {
 
 impl SnapshotTemplateHandle {
     pub(crate) fn new(tmpl: RequestTemplate, status_rx: mpsc::Receiver<Envelope>) -> Self {
-        Self { tmpl, status_rx: Some(status_rx) }
+        Self {
+            tmpl,
+            status_rx: Some(status_rx),
+        }
     }
 
     pub fn status(&mut self) -> impl Stream<Item = Envelope> {
@@ -21,5 +24,3 @@ impl SnapshotTemplateHandle {
         ReceiverStream::new(rx)
     }
 }
-
-

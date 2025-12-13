@@ -35,5 +35,3 @@ pub(crate) fn ensure_non_null_const<T>(ptr: *const T, context: &str) -> Result<*
         Ok(ptr)
     }
 }
-
-
