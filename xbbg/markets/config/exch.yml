@@ -20,11 +20,11 @@ EquityAustralia:
 EquityJapan:
   tz: Asia/Tokyo
   allday: [800, 1545]
-  day: [901, 1458]
+  day: [901, 1525]
   am: [901, 1130]
-  pm: [1230, 1458]
+  pm: [1230, 1525]
   pre: [0800, 901]
-  post: [1459, 1545]
+  post: [1526, 1545]
 
 EquitySouthKorea:
   tz: Asia/Seoul
