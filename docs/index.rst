@@ -146,6 +146,27 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.10.0* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.10.0>`__
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.9.1...v0.10.0
+
+## What's Changed
+
+- Updated polars-bloomberg support for BQL, BDIB and BSRCH by @MarekOzana in https://github.com/alpha-xone/xbbg/pull/155
+
+- fix: add identifier type prefix to B-Pipe subscription topics by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/156
+
+- fix: remove pandas version cap to support Python 3.14 by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/161
+
+- fix(docs): resolve RST formatting warning in index.rst by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/162
+
+- fix: update Japan equity market hours for TSE trading extension by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/163
+
+## New Contributors
+
+- @MarekOzana made their first contribution in https://github.com/alpha-xone/xbbg/pull/155
+
+
 *0.9.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.9.1>`__
 
 ## What's Changed
