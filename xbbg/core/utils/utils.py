@@ -205,3 +205,55 @@ def check_empty_result(res: pd.DataFrame, required_cols: list[str] | None = None
         return any(col not in res for col in required_cols)
     return False
 
+
+# Valid Bloomberg identifier types for B-Pipe subscriptions
+# Reference: Bloomberg B-Pipe symbology enforcement (effective Dec 31, 2025)
+BPIPE_IDENTIFIER_TYPES = frozenset({
+    'ticker', 'isin', 'cusip', 'sedol', 'figi', 'bbgid',
+    'buid', 'cats', 'cins', 'common', 'naics', 'sicovam',
+    'svm', 'wpk', 'trace',
+})
+
+
+def parse_subscription_topic(ticker: str) -> str:
+    """Parse ticker and build Bloomberg subscription topic with correct symbology.
+
+    Bloomberg B-Pipe subscriptions require an identifier type prefix in the topic.
+    This function detects the identifier type from the ticker format and builds
+    the appropriate topic string.
+
+    Supported formats:
+        - Standard ticker: 'IBM US Equity' -> '//blp/mktdata/TICKER/IBM US Equity'
+        - ISIN: '/isin/US0378331005' -> '//blp/mktdata/ISIN/US0378331005'
+        - CUSIP: '/cusip/037833100' -> '//blp/mktdata/CUSIP/037833100'
+        - SEDOL: '/sedol/1234567' -> '//blp/mktdata/SEDOL/1234567'
+        - FIGI: '/figi/BBG000B9XRY4' -> '//blp/mktdata/FIGI/BBG000B9XRY4'
+        - BBGID: '/bbgid/BBG000B9XRY4' -> '//blp/mktdata/BBGID/BBG000B9XRY4'
+
+    Args:
+        ticker: Ticker string, optionally prefixed with identifier type (e.g., '/isin/...').
+
+    Returns:
+        str: Full subscription topic string with identifier type prefix.
+
+    Examples:
+        >>> parse_subscription_topic('IBM US Equity')
+        '//blp/mktdata/TICKER/IBM US Equity'
+        >>> parse_subscription_topic('/isin/US0378331005')
+        '//blp/mktdata/ISIN/US0378331005'
+        >>> parse_subscription_topic('/cusip/037833100')
+        '//blp/mktdata/CUSIP/037833100'
+        >>> parse_subscription_topic('/figi/BBG000B9XRY4')
+        '//blp/mktdata/FIGI/BBG000B9XRY4'
+    """
+    # Check for identifier prefix format: /type/identifier
+    if ticker.startswith('/'):
+        parts = ticker.split('/', 2)  # Split into ['', 'type', 'identifier']
+        if len(parts) >= 3:
+            id_type = parts[1].lower()
+            identifier = parts[2]
+            if id_type in BPIPE_IDENTIFIER_TYPES:
+                return f'//blp/mktdata/{id_type.upper()}/{identifier}'
+
+    # Default to TICKER for standard Bloomberg ticker format
+    return f'//blp/mktdata/TICKER/{ticker}'
