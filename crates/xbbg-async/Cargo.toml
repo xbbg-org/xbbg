@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 xbbg_core = { path = "../xbbg-core" }
-thiserror = "1.0"
+thiserror = "2.0"
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream = "0.1"
 futures = "0.3"
