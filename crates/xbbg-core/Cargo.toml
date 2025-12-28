@@ -22,4 +22,4 @@ blpapi-sys = { path = "../blpapi-sys" }
 anyhow = "1.0"
 once_cell = "1.19"
 chrono = "0.4.42"
-arrow = "57.0.0"
+arrow = "57.1.0"
