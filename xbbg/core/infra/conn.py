@@ -180,16 +180,17 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
     Returns:
         blpapi.Session: A started Bloomberg session.
 
-    Examples:
-        >>> # Connect to B-Pipe server
-        >>> blp.connect(
-        ...     auth_method="app",
-        ...     server_host="bpipe-server.example.com",
-        ...     server_port=8195,
-        ...     app_name="myapp",
-        ... )
-        >>> # All subsequent calls use the B-Pipe connection
-        >>> px = blp.bdp("SPX Index", "PX_LAST")
+    Example::
+
+        # Connect to B-Pipe server
+        blp.connect(
+            auth_method="app",
+            server_host="bpipe-server.example.com",
+            server_port=8195,
+            app_name="myapp",
+        )
+        # All subsequent calls use the B-Pipe connection
+        px = blp.bdp("SPX Index", "PX_LAST")
     """
     server_host = kwargs.get('server_host', 'localhost')
     server_port = kwargs.get('server_port', _PORT_)
@@ -260,11 +261,12 @@ def disconnect() -> None:
     Call this to reset the connection state, allowing subsequent API calls
     to create a new connection (either to localhost or via a new ``connect()`` call).
 
-    Examples:
-        >>> blp.connect(server_host="bpipe-server", server_port=8195, ...)
-        >>> px = blp.bdp("SPX Index", "PX_LAST")  # Uses B-Pipe
-        >>> blp.disconnect()
-        >>> px = blp.bdp("SPX Index", "PX_LAST")  # Creates new localhost connection
+    Example::
+
+        blp.connect(server_host="bpipe-server", server_port=8195, ...)
+        px = blp.bdp("SPX Index", "PX_LAST")  # Uses B-Pipe
+        blp.disconnect()
+        px = blp.bdp("SPX Index", "PX_LAST")  # Creates new localhost connection
     """
     _session_manager.clear_default_session()
     logger.debug('Cleared default Bloomberg session')
