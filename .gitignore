@@ -2,7 +2,18 @@
 .env
 .env.local
 env.local
+
+# Claude Code
+.claude/
+
+# Cargo / Rust
 .cargo/config.toml
+Cargo.lock
+build_rust.bat
+
+# PyO3/maturin generated files
+py-xbbg/src/xbbg/_core.pyd
+py-xbbg/src/xbbg/*.so
 
 # Logs
 Logs/

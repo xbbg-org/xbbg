@@ -11,9 +11,9 @@ name = "xbbg_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "0.26", features = ["extension-module", "abi3-py310"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
-arrow = "57.0.0"
+arrow = { version = "57.0.0", features = ["pyarrow"] }
 xbbg_core = { path = "../xbbg-core" }
 xbbg-async = { path = "../xbbg-async" }
 

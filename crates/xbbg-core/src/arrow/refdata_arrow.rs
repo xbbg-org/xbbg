@@ -429,7 +429,8 @@ fn extract_field_value(
     value_nums.push(value_num);
     value_dates.push(value_date);
 
-    // Extract currency and source if present (these are typically metadata fields)
-    currencies.push(None); // TODO: extract from field metadata if available
-    sources.push(None); // TODO: extract from field metadata if available
+    // Currency and source metadata are not embedded in reference data responses.
+    // To get currency info, request the CRNCY field. For source, use FEED_SOURCE.
+    currencies.push(None);
+    sources.push(None);
 }

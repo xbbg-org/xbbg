@@ -58,7 +58,7 @@ impl PyEngine {
         fields: Vec<String>,
         overrides: Option<Vec<(String, String)>>,
         wide: bool,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let engine = self.engine.clone();
         let overrides = overrides.unwrap_or_default();
         let format = if wide {
@@ -100,7 +100,7 @@ impl PyEngine {
         start_date: String,
         end_date: String,
         options: Option<Vec<(String, String)>>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let engine = self.engine.clone();
         let options = options.unwrap_or_default();
 
@@ -132,7 +132,7 @@ impl PyEngine {
         ticker: String,
         field: String,
         overrides: Option<Vec<(String, String)>>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let engine = self.engine.clone();
         let overrides = overrides.unwrap_or_default();
 
@@ -164,7 +164,7 @@ impl PyEngine {
         interval: u32,
         start_datetime: String,
         end_datetime: String,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let engine = self.engine.clone();
 
         let batch = self
@@ -195,7 +195,7 @@ impl PyEngine {
         ticker: String,
         start_datetime: String,
         end_datetime: String,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let engine = self.engine.clone();
 
         let batch = self
@@ -207,140 +207,18 @@ impl PyEngine {
     }
 }
 
-/// Convert Arrow RecordBatch to PyArrow RecordBatch.
+/// Convert Arrow RecordBatch to PyArrow RecordBatch using zero-copy FFI.
 fn record_batch_to_pyarrow(
     py: Python<'_>,
     batch: arrow::record_batch::RecordBatch,
-) -> PyResult<PyObject> {
-    // Use arrow's FFI to convert to PyArrow
-    // This requires pyarrow to be installed
-    let pyarrow = py.import_bound("pyarrow")?;
+) -> PyResult<Py<PyAny>> {
+    use arrow::pyarrow::ToPyArrow;
 
-    // For now, return a placeholder - full FFI implementation would use arrow-rs's pyarrow feature
-    // or manually serialize/deserialize via IPC
-
-    // Simple approach: convert to JSON-like dict for each row
-    // This is inefficient but works without FFI setup
-    let schema = batch.schema();
-    let _num_rows = batch.num_rows();
-    let num_cols = batch.num_columns();
-
-    let columns = pyo3::types::PyDict::new_bound(py);
-
-    for col_idx in 0..num_cols {
-        let field = schema.field(col_idx);
-        let col_name = field.name();
-        let array = batch.column(col_idx);
-
-        // Convert array to Python list based on type
-        let py_list = array_to_pylist(py, array)?;
-        columns.set_item(col_name, py_list)?;
-    }
-
-    // Create a PyArrow Table from the dict
-    let table = pyarrow.call_method1("table", (columns,))?;
-
-    Ok(table.into_py(py))
-}
-
-/// Convert Arrow array to Python list.
-fn array_to_pylist(py: Python<'_>, array: &dyn arrow::array::Array) -> PyResult<PyObject> {
-    use arrow::array::*;
-    use arrow::datatypes::*;
-
-    let list = pyo3::types::PyList::empty_bound(py);
-
-    match array.data_type() {
-        DataType::Utf8 => {
-            let arr = array.as_any().downcast_ref::<StringArray>().unwrap();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    list.append(py.None())?;
-                } else {
-                    list.append(arr.value(i))?;
-                }
-            }
-        }
-        DataType::Float64 => {
-            let arr = array.as_any().downcast_ref::<Float64Array>().unwrap();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    list.append(py.None())?;
-                } else {
-                    list.append(arr.value(i))?;
-                }
-            }
-        }
-        DataType::Int32 => {
-            let arr = array.as_any().downcast_ref::<Int32Array>().unwrap();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    list.append(py.None())?;
-                } else {
-                    list.append(arr.value(i))?;
-                }
-            }
-        }
-        DataType::Int64 => {
-            let arr = array.as_any().downcast_ref::<Int64Array>().unwrap();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    list.append(py.None())?;
-                } else {
-                    list.append(arr.value(i))?;
-                }
-            }
-        }
-        DataType::Date32 => {
-            let arr = array.as_any().downcast_ref::<Date32Array>().unwrap();
-            let datetime = py.import_bound("datetime")?;
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    list.append(py.None())?;
-                } else {
-                    // Convert days since epoch to Python date
-                    let days = arr.value(i);
-                    let date = datetime.call_method1("date", (1970i32, 1i32, 1i32))?;
-                    let timedelta = datetime.call_method1("timedelta", (days,))?;
-                    let result = date.call_method1("__add__", (timedelta,))?;
-                    list.append(result)?;
-                }
-            }
-        }
-        DataType::Timestamp(TimeUnit::Microsecond, _) => {
-            let arr = array
-                .as_any()
-                .downcast_ref::<TimestampMicrosecondArray>()
-                .unwrap();
-            let datetime = py.import_bound("datetime")?;
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    list.append(py.None())?;
-                } else {
-                    let micros = arr.value(i);
-                    let secs = micros / 1_000_000;
-                    let usecs = (micros % 1_000_000) as i32;
-                    let dt = datetime
-                        .call_method1("datetime", (1970i32, 1i32, 1i32, 0i32, 0i32, 0i32, 0i32))?;
-                    let timedelta = datetime.call_method1("timedelta", (secs, usecs))?;
-                    let result = dt.call_method1("__add__", (timedelta,))?;
-                    list.append(result)?;
-                }
-            }
-        }
-        _ => {
-            // For unsupported types, use string representation
-            for i in 0..array.len() {
-                if array.is_null(i) {
-                    list.append(py.None())?;
-                } else {
-                    list.append(format!("<unsupported type>"))?;
-                }
-            }
-        }
-    }
-
-    Ok(list.into_py(py))
+    // Zero-copy conversion via Arrow C Data Interface
+    batch
+        .to_pyarrow(py)
+        .map(|b| b.unbind())
+        .map_err(|e| PyRuntimeError::new_err(format!("Arrow FFI conversion failed: {e}")))
 }
 
 #[pyfunction]

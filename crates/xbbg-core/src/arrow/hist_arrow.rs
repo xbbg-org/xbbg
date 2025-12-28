@@ -329,9 +329,11 @@ fn process_security_data(
 
                             value_nums.push(value_num);
 
-                            // Extract currency and adjustment_flag if present
-                            currencies.push(None); // TODO: extract from field metadata if available
-                            adjustment_flags.push(None); // TODO: extract from field metadata if available
+                            // Currency and adjustment flags are not embedded in historical data responses.
+                            // To get currency info, request the CRNCY field separately.
+                            // Adjustment flags are request parameters (adjustmentNormal, etc.), not response data.
+                            currencies.push(None);
+                            adjustment_flags.push(None);
                         }
                     }
                 }
