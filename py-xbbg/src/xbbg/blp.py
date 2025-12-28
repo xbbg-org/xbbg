@@ -1,14 +1,16 @@
 """High-level Bloomberg data API: reference, historical, intraday.
 
-This module provides the xbbg-compatible API using the Rust backend.
+This module provides the xbbg-compatible API using the Rust backend,
+with support for multiple DataFrame backends via narwhals.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+import warnings
+from typing import TYPE_CHECKING, Literal
 
-import pandas as pd
+import narwhals as nw
 import pyarrow as pa
 
 if TYPE_CHECKING:
@@ -22,10 +24,44 @@ __all__ = [
     "bdh",
     "bdib",
     "bdtick",
+    "set_backend",
+    "get_backend",
 ]
+
+# Backend configuration
+_VALID_BACKENDS = ("narwhals", "pandas", "polars", "pyarrow", None)
+_default_backend: str | None = None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
+
+
+def set_backend(backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None) -> None:
+    """Set the default DataFrame backend for all xbbg functions.
+
+    Args:
+        backend: The backend to use. Options:
+            - "narwhals": Return narwhals DataFrame (default, convert with .to_pandas() etc.)
+            - "pandas": Return pandas DataFrame
+            - "polars": Return polars DataFrame
+            - "pyarrow": Return pyarrow Table
+            - None: Same as "narwhals"
+
+    Example::
+
+        import xbbg
+        xbbg.set_backend("polars")
+        df = xbbg.bdh("AAPL US Equity", "PX_LAST")  # Returns polars.DataFrame
+    """
+    global _default_backend
+    if backend not in _VALID_BACKENDS:
+        raise ValueError(f"Invalid backend: {backend}. Must be one of {_VALID_BACKENDS}")
+    _default_backend = backend
+
+
+def get_backend() -> str | None:
+    """Get the current default DataFrame backend."""
+    return _default_backend
 
 
 def _get_engine():
@@ -88,6 +124,7 @@ def _extract_overrides(kwargs: dict) -> list[tuple[str, str]]:
         "typ",
         "adjust",
         "wide",
+        "backend",
     }
 
     # Treat remaining kwargs as potential overrides
@@ -99,13 +136,10 @@ def _extract_overrides(kwargs: dict) -> list[tuple[str, str]]:
     return overrides
 
 
-def _arrow_to_pandas(table: pa.Table) -> pd.DataFrame:
-    """Convert PyArrow table to pandas DataFrame."""
-    return table.to_pandas()
-
-
-def _fmt_date(dt: str | pd.Timestamp | None, fmt: str = "%Y%m%d") -> str:
+def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
     """Format date to string."""
+    import pandas as pd
+
     if dt is None:
         return pd.Timestamp.now().strftime(fmt)
     if isinstance(dt, str):
@@ -119,87 +153,154 @@ def _fmt_date(dt: str | pd.Timestamp | None, fmt: str = "%Y%m%d") -> str:
     return dt.strftime(fmt)
 
 
+def _convert_backend(
+    nw_df: nw.DataFrame,
+    backend: str | None,
+) -> nw.DataFrame | pa.Table:
+    """Convert narwhals DataFrame to the requested backend.
+
+    Args:
+        nw_df: A narwhals DataFrame
+        backend: Target backend ("pandas", "polars", "pyarrow", "narwhals", None)
+
+    Returns:
+        DataFrame in the requested backend format
+    """
+    effective_backend = backend if backend is not None else _default_backend
+
+    if effective_backend == "pandas":
+        return nw_df.to_pandas()
+    elif effective_backend == "polars":
+        return nw_df.to_native()
+    elif effective_backend == "pyarrow":
+        # narwhals doesn't have direct to_arrow, go through polars or pandas
+        try:
+            import polars as pl
+            return nw_df.to_native().to_arrow()
+        except ImportError:
+            return pa.Table.from_pandas(nw_df.to_pandas())
+    else:
+        # Default: return narwhals DataFrame
+        return nw_df
+
+
+def _handle_wide_deprecation(wide: bool | None, kwargs: dict) -> bool:
+    """Handle the deprecated wide parameter.
+
+    Returns True if wide format was requested (with warning).
+    """
+    if wide is True:
+        warnings.warn(
+            "wide=True is deprecated and will be removed in v2.0. "
+            "Data is now returned in long format by default. "
+            "Use df.pivot(on='field', index=['ticker', 'date'], values='value') "
+            "to convert to wide format.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return True
+    return False
+
+
 def bdp(
     tickers: str | Sequence[str],
-    flds: str | Sequence[str],
+    flds: str | Sequence[str] | None = None,
+    *,
+    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
+    wide: bool | None = None,
     **kwargs,
-) -> pd.DataFrame:
+):
     """Bloomberg reference data (BDP).
 
     Args:
         tickers: Single ticker or list of tickers.
         flds: Single field or list of fields to query.
+        backend: DataFrame backend to return. If None, uses global default.
+        wide: DEPRECATED. Use df.pivot() for wide format.
         **kwargs: Bloomberg overrides and infrastructure options.
-            wide: If True, return wide format with one column per field.
 
     Returns:
-        pd.DataFrame: Reference data with tickers as index and fields as columns.
+        DataFrame in long format with columns: ticker, field, value
 
-    Examples:
-        >>> bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
-        >>> bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST')
+    Example::
+
+        df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+        df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
     """
     engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
-    wide = kwargs.pop("wide", True)  # Default to wide format for bdp
     overrides = _extract_overrides(kwargs)
+    want_wide = _handle_wide_deprecation(wide, kwargs)
 
-    table = engine.bdp(ticker_list, field_list, overrides, wide)
-    df = _arrow_to_pandas(table)
+    # Always request long format from Rust
+    table = engine.bdp(ticker_list, field_list, overrides, False)
 
-    # Set ticker as index if wide format
-    if wide and "ticker" in df.columns:
-        df = df.set_index("ticker")
+    # Wrap in narwhals
+    nw_df = nw.from_native(table)
 
-    return df
+    # Handle deprecated wide format
+    if want_wide:
+        nw_df = nw_df.pivot(on="field", index="ticker", values="value")
+
+    return _convert_backend(nw_df, backend)
 
 
 def bds(
     tickers: str | Sequence[str],
     flds: str,
+    *,
+    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
     **kwargs,
-) -> pd.DataFrame:
+):
     """Bloomberg bulk data (BDS).
 
     Args:
         tickers: Single ticker or list of tickers.
         flds: Single field name (bulk fields return multiple rows).
+        backend: DataFrame backend to return. If None, uses global default.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
-        pd.DataFrame: Bulk data with multiple rows per ticker.
+        DataFrame with bulk data, multiple rows per ticker.
 
-    Examples:
-        >>> bds('AAPL US Equity', 'DVD_Hist_All')
-        >>> bds('SPX Index', 'INDX_MEMBERS')
+    Example::
+
+        df = bds('AAPL US Equity', 'DVD_Hist_All')
+        df = bds('SPX Index', 'INDX_MEMBERS', backend='polars')
     """
     engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
     overrides = _extract_overrides(kwargs)
 
     # Process each ticker
-    results = []
+    tables = []
     for ticker in ticker_list:
         table = engine.bds(ticker, flds, overrides)
-        df = _arrow_to_pandas(table)
-        if not df.empty:
-            df.insert(0, "ticker", ticker)
-            results.append(df)
+        tables.append(table)
 
-    if not results:
-        return pd.DataFrame()
+    if not tables:
+        # Return empty narwhals DataFrame
+        empty = pa.table({"ticker": [], "field": [], "value": []})
+        return _convert_backend(nw.from_native(empty), backend)
 
-    return pd.concat(results, ignore_index=True)
+    # Concatenate tables
+    combined = pa.concat_tables(tables)
+    nw_df = nw.from_native(combined)
+
+    return _convert_backend(nw_df, backend)
 
 
 def bdh(
     tickers: str | Sequence[str],
     flds: str | Sequence[str] | None = None,
-    start_date: str | pd.Timestamp | None = None,
-    end_date: str | pd.Timestamp = "today",
+    start_date: str | None = None,
+    end_date: str = "today",
+    *,
+    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
+    wide: bool | None = None,
     **kwargs,
-) -> pd.DataFrame:
+):
     """Bloomberg historical data (BDH).
 
     Args:
@@ -207,19 +308,25 @@ def bdh(
         flds: Single field or list of fields. Defaults to ['PX_LAST'].
         start_date: Start date. Defaults to 8 weeks before end_date.
         end_date: End date. Defaults to 'today'.
+        backend: DataFrame backend to return. If None, uses global default.
+        wide: DEPRECATED. Use df.pivot() for wide format.
         **kwargs: Additional overrides and infrastructure options.
             adjust: Adjustment type ('all', 'dvd', 'split', '-', None).
 
     Returns:
-        pd.DataFrame: Historical data with dates as index.
+        DataFrame in long format with columns: ticker, date, field, value
 
-    Examples:
-        >>> bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
-        >>> bdh(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'])
+    Example::
+
+        df = bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
+        df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
     """
+    import pandas as pd
+
     engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
+    want_wide = _handle_wide_deprecation(wide, kwargs)
 
     # Handle dates
     e_dt = _fmt_date(end_date, "%Y%m%d")
@@ -249,29 +356,27 @@ def bdh(
     options.extend(overrides)
 
     table = engine.bdh(ticker_list, field_list, s_dt, e_dt, options)
-    df = _arrow_to_pandas(table)
+    nw_df = nw.from_native(table)
 
-    # Convert date column to datetime index
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.set_index("date")
+    # Handle deprecated wide format
+    if want_wide:
+        nw_df = nw_df.pivot(on="field", index=["ticker", "date"], values="value")
 
-    # Pivot to multi-index columns if multiple tickers
-    if "ticker" in df.columns and len(ticker_list) > 1:
-        df = df.pivot_table(index=df.index, columns="ticker", values=field_list)
-
-    return df
+    return _convert_backend(nw_df, backend)
 
 
 def bdib(
     ticker: str,
-    dt: str | pd.Timestamp | None = None,
+    dt: str | None = None,
     session: str = "allday",
     typ: str = "TRADE",
-    start_datetime: str | pd.Timestamp | None = None,
-    end_datetime: str | pd.Timestamp | None = None,
+    *,
+    start_datetime: str | None = None,
+    end_datetime: str | None = None,
+    interval: int = 1,
+    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
     **kwargs,
-) -> pd.DataFrame:
+):
     """Bloomberg intraday bar data (BDIB).
 
     Args:
@@ -281,19 +386,22 @@ def bdib(
         typ: Event type (TRADE, BID, ASK, etc.).
         start_datetime: Explicit start datetime for multi-day requests.
         end_datetime: Explicit end datetime for multi-day requests.
-        **kwargs:
-            interval: Bar interval in minutes (default: 1).
+        interval: Bar interval in minutes (default: 1).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional options.
 
     Returns:
-        pd.DataFrame: Intraday bar data with time as index.
+        DataFrame with intraday bar data.
 
-    Examples:
-        >>> bdib('AAPL US Equity', dt='2024-12-01')
-        >>> bdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
-        ...      end_datetime='2024-12-01 16:00', interval=5)
+    Example::
+
+        df = bdib('AAPL US Equity', dt='2024-12-01')
+        df = bdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
+                  end_datetime='2024-12-01 16:00', interval=5, backend='polars')
     """
+    import pandas as pd
+
     engine = _get_engine()
-    interval = kwargs.pop("interval", 1)
 
     # Determine datetime range
     if start_datetime is not None and end_datetime is not None:
@@ -308,47 +416,44 @@ def bdib(
         raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
     table = engine.bdib(ticker, typ, interval, s_dt, e_dt)
-    df = _arrow_to_pandas(table)
+    nw_df = nw.from_native(table)
 
-    # Convert timestamp to datetime index
-    if "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df = df.set_index("timestamp")
-
-    return df
+    return _convert_backend(nw_df, backend)
 
 
 def bdtick(
     ticker: str,
-    start_datetime: str | pd.Timestamp,
-    end_datetime: str | pd.Timestamp,
+    start_datetime: str,
+    end_datetime: str,
+    *,
+    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
     **kwargs,
-) -> pd.DataFrame:
+):
     """Bloomberg tick data (BDTICK).
 
     Args:
         ticker: Ticker name.
         start_datetime: Start datetime.
         end_datetime: End datetime.
+        backend: DataFrame backend to return. If None, uses global default.
         **kwargs: Additional options.
 
     Returns:
-        pd.DataFrame: Tick data with time as index.
+        DataFrame with tick data.
 
-    Examples:
-        >>> bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
+    Example::
+
+        df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
+        df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
     """
+    import pandas as pd
+
     engine = _get_engine()
 
     s_dt = pd.Timestamp(start_datetime).isoformat()
     e_dt = pd.Timestamp(end_datetime).isoformat()
 
     table = engine.bdtick(ticker, s_dt, e_dt)
-    df = _arrow_to_pandas(table)
+    nw_df = nw.from_native(table)
 
-    # Convert timestamp to datetime index
-    if "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df = df.set_index("timestamp")
-
-    return df
+    return _convert_backend(nw_df, backend)

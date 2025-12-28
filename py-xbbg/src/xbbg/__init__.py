@@ -19,6 +19,8 @@ __all__ = [
     "bdh",
     "bdib",
     "bdtick",
+    "set_backend",
+    "get_backend",
 ]
 
 
@@ -28,7 +30,7 @@ def __getattr__(name: str):
         from . import _core as mod
 
         return mod
-    if name in ("bdp", "bds", "bdh", "bdib", "bdtick"):
+    if name in ("bdp", "bds", "bdh", "bdib", "bdtick", "set_backend", "get_backend"):
         from . import blp
 
         return getattr(blp, name)
