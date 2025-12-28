@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "_core",
+    "Backend",
     "bdp",
     "bds",
     "bdh",
@@ -30,7 +31,7 @@ def __getattr__(name: str):
         from . import _core as mod
 
         return mod
-    if name in ("bdp", "bds", "bdh", "bdib", "bdtick", "set_backend", "get_backend"):
+    if name in ("Backend", "bdp", "bds", "bdh", "bdib", "bdtick", "set_backend", "get_backend"):
         from . import blp
 
         return getattr(blp, name)

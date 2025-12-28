@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from enum import Enum
 from typing import TYPE_CHECKING, Literal
 
 import narwhals as nw
@@ -18,7 +19,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class Backend(str, Enum):
+    """DataFrame backend options for xbbg functions.
+
+    Attributes:
+        NARWHALS: Return narwhals DataFrame (default). Convert with .to_pandas(), .to_polars(), etc.
+        PANDAS: Return pandas DataFrame directly.
+        POLARS: Return polars DataFrame directly.
+        PYARROW: Return pyarrow Table directly.
+    """
+
+    NARWHALS = "narwhals"
+    PANDAS = "pandas"
+    POLARS = "polars"
+    PYARROW = "pyarrow"
+
+
 __all__ = [
+    "Backend",
     "bdp",
     "bds",
     "bdh",
@@ -29,37 +48,50 @@ __all__ = [
 ]
 
 # Backend configuration
-_VALID_BACKENDS = ("narwhals", "pandas", "polars", "pyarrow", None)
-_default_backend: str | None = None
+_default_backend: Backend | None = None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
 
 
-def set_backend(backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None) -> None:
+def set_backend(backend: Backend | str | None) -> None:
     """Set the default DataFrame backend for all xbbg functions.
 
     Args:
-        backend: The backend to use. Options:
-            - "narwhals": Return narwhals DataFrame (default, convert with .to_pandas() etc.)
-            - "pandas": Return pandas DataFrame
-            - "polars": Return polars DataFrame
-            - "pyarrow": Return pyarrow Table
-            - None: Same as "narwhals"
+        backend: The backend to use. Can be a Backend enum or string:
+            - Backend.NARWHALS / "narwhals": Return narwhals DataFrame (default)
+            - Backend.PANDAS / "pandas": Return pandas DataFrame
+            - Backend.POLARS / "polars": Return polars DataFrame
+            - Backend.PYARROW / "pyarrow": Return pyarrow Table
+            - None: Same as Backend.NARWHALS
 
     Example::
 
         import xbbg
-        xbbg.set_backend("polars")
+        from xbbg import Backend
+
+        xbbg.set_backend(Backend.POLARS)
         df = xbbg.bdh("AAPL US Equity", "PX_LAST")  # Returns polars.DataFrame
+
+        # String also works
+        xbbg.set_backend("pandas")
     """
     global _default_backend
-    if backend not in _VALID_BACKENDS:
-        raise ValueError(f"Invalid backend: {backend}. Must be one of {_VALID_BACKENDS}")
-    _default_backend = backend
+    if backend is None:
+        _default_backend = None
+    elif isinstance(backend, Backend):
+        _default_backend = backend
+    elif isinstance(backend, str):
+        try:
+            _default_backend = Backend(backend)
+        except ValueError:
+            valid = [b.value for b in Backend]
+            raise ValueError(f"Invalid backend: {backend}. Must be one of {valid}") from None
+    else:
+        raise TypeError(f"backend must be Backend, str, or None, not {type(backend).__name__}")
 
 
-def get_backend() -> str | None:
+def get_backend() -> Backend | None:
     """Get the current default DataFrame backend."""
     return _default_backend
 
@@ -155,24 +187,31 @@ def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
 
 def _convert_backend(
     nw_df: nw.DataFrame,
-    backend: str | None,
+    backend: Backend | str | None,
 ) -> nw.DataFrame | pa.Table:
     """Convert narwhals DataFrame to the requested backend.
 
     Args:
         nw_df: A narwhals DataFrame
-        backend: Target backend ("pandas", "polars", "pyarrow", "narwhals", None)
+        backend: Target backend (Backend enum, string, or None)
 
     Returns:
         DataFrame in the requested backend format
     """
-    effective_backend = backend if backend is not None else _default_backend
+    # Resolve effective backend
+    if backend is not None:
+        if isinstance(backend, str):
+            effective = Backend(backend)
+        else:
+            effective = backend
+    else:
+        effective = _default_backend
 
-    if effective_backend == "pandas":
+    if effective == Backend.PANDAS:
         return nw_df.to_pandas()
-    elif effective_backend == "polars":
+    elif effective == Backend.POLARS:
         return nw_df.to_native()
-    elif effective_backend == "pyarrow":
+    elif effective == Backend.PYARROW:
         # narwhals doesn't have direct to_arrow, go through polars or pandas
         try:
             import polars as pl
@@ -206,7 +245,7 @@ def bdp(
     tickers: str | Sequence[str],
     flds: str | Sequence[str] | None = None,
     *,
-    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
+    backend: Backend | str | None = None,
     wide: bool | None = None,
     **kwargs,
 ):
@@ -250,7 +289,7 @@ def bds(
     tickers: str | Sequence[str],
     flds: str,
     *,
-    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
+    backend: Backend | str | None = None,
     **kwargs,
 ):
     """Bloomberg bulk data (BDS).
@@ -297,7 +336,7 @@ def bdh(
     start_date: str | None = None,
     end_date: str = "today",
     *,
-    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
+    backend: Backend | str | None = None,
     wide: bool | None = None,
     **kwargs,
 ):
@@ -374,7 +413,7 @@ def bdib(
     start_datetime: str | None = None,
     end_datetime: str | None = None,
     interval: int = 1,
-    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
+    backend: Backend | str | None = None,
     **kwargs,
 ):
     """Bloomberg intraday bar data (BDIB).
@@ -426,7 +465,7 @@ def bdtick(
     start_datetime: str,
     end_datetime: str,
     *,
-    backend: Literal["narwhals", "pandas", "polars", "pyarrow"] | None = None,
+    backend: Backend | str | None = None,
     **kwargs,
 ):
     """Bloomberg tick data (BDTICK).
