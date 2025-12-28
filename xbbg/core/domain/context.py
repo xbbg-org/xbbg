@@ -31,6 +31,10 @@ _INFRA_KWARGS = {
     'ref',            # Reference ticker/exchange
     'original',       # Original ticker (for logging)
     'config',         # Exchange config override
+    # Connection parameters (for B-Pipe and alternative connections)
+    'server_host',    # Server hostname
+    'server_port',    # Server port
+    'server',         # Alternative name for server_host
 }
 
 
@@ -59,6 +63,9 @@ class BloombergContext:
         ref: Reference ticker/exchange (optional)
         original: Original ticker for logging (optional)
         config: Exchange config override (optional)
+        server_host: Server hostname for B-Pipe connections (optional)
+        server_port: Server port for B-Pipe connections (optional)
+        server: Alternative name for server_host (optional)
         _extra: Additional safe kwargs not explicitly listed
     """
     sess: Any = None
@@ -77,6 +84,9 @@ class BloombergContext:
     ref: str | None = None
     original: str | None = None
     config: Any = None
+    server_host: str | None = None
+    server_port: int | None = None
+    server: str | None = None
     _extra: dict[str, Any] = field(default_factory=dict)
 
     def to_kwargs(self) -> dict[str, Any]:
