@@ -25,15 +25,21 @@ class Backend(str, Enum):
 
     Attributes:
         NARWHALS: Return narwhals DataFrame (default). Convert with .to_pandas(), .to_polars(), etc.
+        NARWHALS_LAZY: Return narwhals LazyFrame. Call .collect() to materialize.
         PANDAS: Return pandas DataFrame directly.
         POLARS: Return polars DataFrame directly.
+        POLARS_LAZY: Return polars LazyFrame directly. Call .collect() to materialize.
         PYARROW: Return pyarrow Table directly.
+        DUCKDB: Return DuckDB relation (lazy). Call .df() or .arrow() to materialize.
     """
 
     NARWHALS = "narwhals"
+    NARWHALS_LAZY = "narwhals_lazy"
     PANDAS = "pandas"
     POLARS = "polars"
+    POLARS_LAZY = "polars_lazy"
     PYARROW = "pyarrow"
+    DUCKDB = "duckdb"
 
 
 __all__ = [
@@ -60,9 +66,12 @@ def set_backend(backend: Backend | str | None) -> None:
     Args:
         backend: The backend to use. Can be a Backend enum or string:
             - Backend.NARWHALS / "narwhals": Return narwhals DataFrame (default)
+            - Backend.NARWHALS_LAZY / "narwhals_lazy": Return narwhals LazyFrame
             - Backend.PANDAS / "pandas": Return pandas DataFrame
             - Backend.POLARS / "polars": Return polars DataFrame
+            - Backend.POLARS_LAZY / "polars_lazy": Return polars LazyFrame
             - Backend.PYARROW / "pyarrow": Return pyarrow Table
+            - Backend.DUCKDB / "duckdb": Return DuckDB relation (lazy)
             - None: Same as Backend.NARWHALS
 
     Example::
@@ -72,6 +81,11 @@ def set_backend(backend: Backend | str | None) -> None:
 
         xbbg.set_backend(Backend.POLARS)
         df = xbbg.bdh("AAPL US Equity", "PX_LAST")  # Returns polars.DataFrame
+
+        # Use lazy evaluation for deferred computation
+        xbbg.set_backend(Backend.POLARS_LAZY)
+        lf = xbbg.bdh("AAPL US Equity", "PX_LAST")  # Returns polars.LazyFrame
+        df = lf.collect()  # Materialize when ready
 
         # String also works
         xbbg.set_backend("pandas")
@@ -188,7 +202,7 @@ def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
 def _convert_backend(
     nw_df: nw.DataFrame,
     backend: Backend | str | None,
-) -> nw.DataFrame | pa.Table:
+) -> nw.DataFrame | nw.LazyFrame | pa.Table:
     """Convert narwhals DataFrame to the requested backend.
 
     Args:
@@ -196,7 +210,7 @@ def _convert_backend(
         backend: Target backend (Backend enum, string, or None)
 
     Returns:
-        DataFrame in the requested backend format
+        DataFrame/LazyFrame in the requested backend format
     """
     # Resolve effective backend
     if backend is not None:
@@ -211,13 +225,23 @@ def _convert_backend(
         return nw_df.to_pandas()
     elif effective == Backend.POLARS:
         return nw_df.to_native()
+    elif effective == Backend.POLARS_LAZY:
+        # Convert to polars LazyFrame
+        return nw_df.to_native().lazy()
     elif effective == Backend.PYARROW:
         # narwhals doesn't have direct to_arrow, go through polars or pandas
         try:
             import polars as pl
+
             return nw_df.to_native().to_arrow()
         except ImportError:
             return pa.Table.from_pandas(nw_df.to_pandas())
+    elif effective == Backend.NARWHALS_LAZY:
+        # Return narwhals LazyFrame (backed by polars)
+        return nw_df.lazy()
+    elif effective == Backend.DUCKDB:
+        # Convert to DuckDB relation via narwhals lazy with duckdb backend
+        return nw_df.lazy(backend="duckdb")
     else:
         # Default: return narwhals DataFrame
         return nw_df
@@ -255,16 +279,22 @@ def bdp(
         tickers: Single ticker or list of tickers.
         flds: Single field or list of fields to query.
         backend: DataFrame backend to return. If None, uses global default.
+            Supports lazy backends: 'polars_lazy', 'narwhals_lazy', 'duckdb'.
         wide: DEPRECATED. Use df.pivot() for wide format.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
-        DataFrame in long format with columns: ticker, field, value
+        DataFrame in long format with columns: ticker, field, value.
+        For lazy backends, returns LazyFrame that must be collected.
 
     Example::
 
         df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
         df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
+
+        # Lazy evaluation
+        lf = bdp('AAPL US Equity', 'PX_LAST', backend='polars_lazy')
+        df = lf.collect()
     """
     engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
@@ -348,17 +378,23 @@ def bdh(
         start_date: Start date. Defaults to 8 weeks before end_date.
         end_date: End date. Defaults to 'today'.
         backend: DataFrame backend to return. If None, uses global default.
+            Supports lazy backends: 'polars_lazy', 'narwhals_lazy', 'duckdb'.
         wide: DEPRECATED. Use df.pivot() for wide format.
         **kwargs: Additional overrides and infrastructure options.
             adjust: Adjustment type ('all', 'dvd', 'split', '-', None).
 
     Returns:
-        DataFrame in long format with columns: ticker, date, field, value
+        DataFrame in long format with columns: ticker, date, field, value.
+        For lazy backends, returns LazyFrame that must be collected.
 
     Example::
 
         df = bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
         df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
+
+        # Lazy evaluation for deferred computation
+        lf = bdh('AAPL US Equity', 'PX_LAST', backend='polars_lazy')
+        df = lf.filter(pl.col('value') > 100).collect()
     """
     import pandas as pd
 
