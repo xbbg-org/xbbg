@@ -1,5 +1,4 @@
 [env]
 XBBG_DEV_SDK_ROOT = { value = "vendor/blpapi/blpapi_cpp", relative = true }
-# Point PyO3 to the project-local Python used by uv (Windows path)
-PYO3_PYTHON = { value = ".venv/Scripts/python.exe", relative = true }
-
+# Note: PYO3_PYTHON is not set here - PyO3 auto-detects the Python interpreter.
+# For local dev with uv venv, activate the venv or set PYO3_PYTHON manually.
