@@ -373,7 +373,7 @@ jobs:
       - run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           cargo binstall -y --force cargo-udeps
-          rustup run nightly cargo-udeps --all-targets
+          cargo +nightly udeps --all-targets
 
   # ════════════════════════════════════════════════════════════════════════════
   # Unsafe Code Audit (optional, non-blocking)
@@ -425,7 +425,8 @@ jobs:
           cargo binstall -y --force cargo-geiger
           for crate in blpapi-sys xbbg-core xbbg-async pyo3-xbbg; do
             echo "=== $crate ==="
-            cargo-geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml"
+            # Allow warnings about unscanned files (generated bindings, C files)
+            cargo-geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml" || true
           done
 
   # ════════════════════════════════════════════════════════════════════════════
