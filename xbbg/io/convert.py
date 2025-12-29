@@ -43,11 +43,20 @@ def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
     if backend_value == "narwhals":
         return nw_frame
     if backend_value == "pandas":
-        return nw_frame.to_pandas()
+        # Use to_arrow() then to_pandas() to ensure consistent conversion
+        # This avoids issues with narwhals to_native() returning the underlying type
+        arrow_table = nw_frame.to_arrow()
+        return arrow_table.to_pandas()
     if backend_value == "polars":
-        return nw_frame.to_native()
+        import polars as pl
+
+        arrow_table = nw_frame.to_arrow()
+        return pl.from_arrow(arrow_table)
     if backend_value == "polars_lazy":
-        return nw_frame.to_native().lazy()
+        import polars as pl
+
+        arrow_table = nw_frame.to_arrow()
+        return pl.from_arrow(arrow_table).lazy()
     if backend_value == "pyarrow":
         return nw_frame.to_arrow()
     if backend_value == "duckdb":
@@ -148,9 +157,11 @@ def to_output(
     """
     # Handle empty table
     if arrow_table.num_rows == 0:
-        if backend == Backend.PANDAS:
+        # Use string comparison for robustness
+        backend_value = backend.value if isinstance(backend, Backend) else backend
+        if backend_value == "pandas":
             return pd.DataFrame()
-        return nw.from_native(pa.table({})).to_native()
+        return _convert_backend(nw.from_native(pa.table({})), backend)
 
     # Wrap arrow_table with narwhals
     nw_frame = nw.from_native(arrow_table)
