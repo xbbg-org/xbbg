@@ -165,10 +165,11 @@ jobs:
         with:
           target: ${{ matrix.target }}
           args: --release --out dist
-          manylinux: auto
-          # Install clang and SDK inside manylinux container (uses yum, not apt)
+          # Use manylinux_2_28 (AlmaLinux 8) for modern LLVM - manylinux2014 has ancient clang
+          manylinux: "2_28"
+          # Install clang and SDK inside manylinux container
           before-script-linux: |
-            yum install -y clang-devel
+            dnf install -y clang-devel
             mkdir -p /opt/blpapi
             curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-linux.tar.gz" \
               | tar -xz -C /opt/blpapi --strip-components=1
