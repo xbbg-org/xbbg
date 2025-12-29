@@ -25,9 +25,8 @@ pub enum DataType {
 }
 
 impl From<i32> for DataType {
+    #[allow(clippy::unnecessary_cast)] // bindgen generates u32 on Linux, i32 on Windows
     fn from(v: i32) -> Self {
-        // Cast constants to i32 for cross-platform compatibility
-        // (bindgen generates u32 on Linux, i32 on Windows)
         match v {
             x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_BOOL as i32 => DataType::Bool,
             x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_CHAR as i32 => DataType::Char,

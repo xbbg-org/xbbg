@@ -42,9 +42,10 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
+          cache: false  # No compilation in lint job
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
@@ -68,7 +69,9 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false  # No compilation in security job
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
@@ -123,13 +126,11 @@ jobs:
         run: sudo apt update && sudo apt install -y libclang-dev
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: ${{ matrix.target }}
+          target: ${{ matrix.target }}
           components: clippy
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+          rustflags: ""  # Don't override RUSTFLAGS, let clippy use -D warnings
 
       - name: Download Bloomberg SDK (Linux)
         if: runner.os == 'Linux'
@@ -155,8 +156,9 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Cargo test
-        run: cargo test --workspace --lib
+      - name: Cargo test (compile only)
+        run: cargo test --workspace --lib --no-run
+        # Note: Runtime tests require Bloomberg terminal connection
 
       - name: Install cargo-geiger
         if: runner.os == 'Linux'
@@ -250,16 +252,12 @@ jobs:
       - name: Install system dependencies
         run: sudo apt update && sudo apt install -y libclang-dev
 
-      - name: Setup Rust (nightly for udeps)
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: stable, nightly
           components: rust-src
-
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+          rustflags: ""
 
       - name: Download Bloomberg SDK
         run: |
