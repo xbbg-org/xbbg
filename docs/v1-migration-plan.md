@@ -297,7 +297,53 @@ def _apply_multiindex(
     return result
 ```
 
-### 1.5 Refactor API Functions
+### 1.5 Async-First API (matching Rust v1 pattern)
+
+The Rust v1 branch uses async-first design where sync functions wrap async:
+
+```python
+# Async core (returns Arrow, does the real work)
+async def abdp(tickers, flds, ..., backend=None, format=None) -> Any:
+    """Async Bloomberg reference data."""
+    # ... fetch from Bloomberg ...
+    arrow_table = _build_arrow_table(response)
+    return to_output(arrow_table, backend=backend, format=format)
+
+async def abdh(tickers, flds, ..., backend=None, format=None) -> Any:
+    """Async Bloomberg historical data."""
+    ...
+
+async def abds(tickers, flds, ..., backend=None, format=None) -> Any:
+    """Async Bloomberg bulk data."""
+    ...
+
+async def abdib(ticker, dt, ..., backend=None, format=None) -> Any:
+    """Async Bloomberg intraday bars."""
+    ...
+
+
+# Sync wrappers (for backward compatibility)
+def bdp(tickers, flds, ..., backend=None, format=None) -> Any:
+    """Bloomberg reference data (sync wrapper).
+
+    For async usage, use abdp() instead.
+    """
+    import asyncio
+    return asyncio.run(abdp(tickers, flds, ..., backend=backend, format=format))
+
+def bdh(tickers, flds, ..., backend=None, format=None) -> Any:
+    """Bloomberg historical data (sync wrapper)."""
+    import asyncio
+    return asyncio.run(abdh(tickers, flds, ..., backend=backend, format=format))
+```
+
+**Benefits:**
+- Consistent with Rust v1 branch API
+- Users get async support for free
+- Enables concurrent Bloomberg requests
+- Sync API preserved for backward compatibility
+
+### 1.6 Refactor API Functions
 
 Modify each API function to:
 1. Accept `backend` and `format` parameters
@@ -351,18 +397,18 @@ def bdh(
     )
 ```
 
-### 1.6 Functions to Update
+### 1.7 Functions to Update
 
-| Function | Current Output | Notes |
-|----------|----------------|-------|
-| `bdp()` | DataFrame (simple) | Simpler, may not need format option |
-| `bdh()` | DataFrame + MultiIndex | Full backend/format support |
-| `bds()` | DataFrame | May vary by field |
-| `bdib()` | DataFrame + MultiIndex | Full backend/format support |
-| `bdtick()` | DataFrame | Time series |
-| `bql()` | DataFrame | BQL queries |
+| Async | Sync | Current Output | Notes |
+|-------|------|----------------|-------|
+| `abdp()` | `bdp()` | DataFrame (simple) | Reference data |
+| `abdh()` | `bdh()` | DataFrame + MultiIndex | Historical data |
+| `abds()` | `bds()` | DataFrame | Bulk data |
+| `abdib()` | `bdib()` | DataFrame + MultiIndex | Intraday bars |
+| `abdtick()` | `bdtick()` | DataFrame | Tick data |
+| `abql()` | `bql()` | DataFrame | BQL queries |
 
-### 1.7 Testing
+### 1.8 Testing
 
 - [ ] Unit tests for `to_output()` with all backend/format combinations
 - [ ] Regression tests: verify current output matches new output with `backend='pandas', format='wide'`
