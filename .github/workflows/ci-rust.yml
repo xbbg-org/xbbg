@@ -338,6 +338,8 @@ jobs:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for semver-checks baseline
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libclang-dev
@@ -374,8 +376,7 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install analysis tools
-        run: |
-          cargo binstall -y cargo-udeps cargo-geiger cargo-semver-checks
+        run: cargo binstall -y cargo-udeps cargo-geiger cargo-semver-checks
 
       - name: Unused dependencies
         run: cargo +nightly udeps --all-targets 2>&1 || true
@@ -383,8 +384,14 @@ jobs:
       - name: Unsafe code audit
         run: cargo geiger --all-features --all-targets 2>&1 || true
 
-      - name: SemVer compatibility
-        run: cargo semver-checks check-release 2>&1 || true
+      - name: Semver compatibility check
+        run: |
+          # Compare against main branch (or skip if on main with no previous tag)
+          if git rev-parse origin/main >/dev/null 2>&1; then
+            cargo semver-checks --baseline-rev origin/main 2>&1 || true
+          else
+            echo "Skipping semver-checks: no baseline available"
+          fi
 
   # ════════════════════════════════════════════════════════════════════════════
   # Kani verification (optional, non-blocking)
