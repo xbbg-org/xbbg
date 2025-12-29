@@ -420,7 +420,7 @@ jobs:
           cargo binstall -y cargo-geiger
           for crate in blpapi-sys xbbg-core xbbg-async pyo3-xbbg; do
             echo "=== $crate ==="
-            cargo geiger --manifest-path crates/$crate/Cargo.toml
+            cargo geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml"
           done
 
   # ════════════════════════════════════════════════════════════════════════════
