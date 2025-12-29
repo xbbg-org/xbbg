@@ -29,10 +29,9 @@ RUN rustup component add clippy rustfmt
 ENV PATH="/root/.local/bin:$PATH"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Download and install Bloomberg C++ SDK (latest version detected via uv)
-RUN BLPAPI_VERSION=$(uv pip index versions blpapi \
-        --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ \
-        2>/dev/null | grep -oP 'blpapi \(\K[0-9.]+' | head -1) \
+# Download and install Bloomberg C++ SDK (latest version detected from PyPI index)
+RUN BLPAPI_VERSION=$(curl -s https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/ \
+        | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1) \
     && echo "Installing Bloomberg SDK version: $BLPAPI_VERSION" \
     && mkdir -p /opt/blpapi \
     && curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \

@@ -24,15 +24,11 @@ jobs:
     outputs:
       version: ${{ steps.detect.outputs.version }}
     steps:
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v7
-
       - name: Detect latest blpapi version
         id: detect
         run: |
-          VERSION=$(uv pip index versions blpapi \
-            --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ \
-            2>/dev/null | grep -oP 'blpapi \(\K[0-9.]+' | head -1)
+          VERSION=$(curl -s https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/ \
+            | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
           echo "Detected Bloomberg SDK version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -88,7 +84,7 @@ jobs:
             sdk-platform: macos
             sdk-ext: tar.gz
           # macOS x64 (Intel)
-          - os: macos-13
+          - os: macos-15
             target: x86_64-apple-darwin
             sdk-platform: macos
             sdk-ext: tar.gz
