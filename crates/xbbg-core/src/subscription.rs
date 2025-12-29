@@ -81,6 +81,12 @@ pub struct SubscriptionListBuilder {
     subs: Vec<(String, Vec<String>, CorrelationId)>,
 }
 
+impl Default for SubscriptionListBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SubscriptionListBuilder {
     pub fn new() -> Self {
         Self { subs: Vec::new() }

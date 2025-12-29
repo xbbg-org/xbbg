@@ -194,7 +194,7 @@ impl Session {
         // matching the C++ default-constructed CorrelationId semantics.
         let mut raw = cid
             .map(|c| c.to_ffi())
-            .unwrap_or_else(|| CorrelationId::to_ffi_autogen());
+            .unwrap_or_else(CorrelationId::to_ffi_autogen);
         let id_ptr = identity.map(|i| i.as_raw()).unwrap_or(std::ptr::null_mut());
         let rc = unsafe {
             blpapi_sys::blpapi_Session_sendRequest(
@@ -264,7 +264,7 @@ impl Session {
     ) -> Result<()> {
         let mut raw = cid
             .map(|c| c.to_ffi())
-            .unwrap_or_else(|| CorrelationId::to_ffi_autogen());
+            .unwrap_or_else(CorrelationId::to_ffi_autogen);
         let rc = unsafe {
             blpapi_sys::blpapi_Session_sendRequestTemplate(self.ptr, tmpl.as_raw(), &mut raw)
         };

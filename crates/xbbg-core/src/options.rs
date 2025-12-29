@@ -163,8 +163,9 @@ impl SessionOptions {
     ///
     /// Keep-alive helps detect dead connections. Enabled by default.
     pub fn set_keep_alive_enabled(&mut self, enabled: bool) -> Result<&mut Self> {
-        let rc =
-            unsafe { blpapi_sys::blpapi_SessionOptions_setKeepAliveEnabled(self.ptr, enabled as i32) };
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setKeepAliveEnabled(self.ptr, enabled as i32)
+        };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
                 detail: format!("keep alive enabled invalid: rc={rc}"),
@@ -194,8 +195,7 @@ impl SessionOptions {
     pub fn set_keep_alive_response_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
         let rc = unsafe {
             blpapi_sys::blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout(
-                self.ptr,
-                timeout_ms,
+                self.ptr, timeout_ms,
             )
         };
         if rc != 0 {
@@ -212,7 +212,10 @@ impl SessionOptions {
     /// This is useful for high-frequency data scenarios.
     pub fn set_bandwidth_save_mode_disabled(&mut self, disabled: bool) -> Result<&mut Self> {
         let rc = unsafe {
-            blpapi_sys::blpapi_SessionOptions_setBandwidthSaveModeDisabled(self.ptr, disabled as i32)
+            blpapi_sys::blpapi_SessionOptions_setBandwidthSaveModeDisabled(
+                self.ptr,
+                disabled as i32,
+            )
         };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {

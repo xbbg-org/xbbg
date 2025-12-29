@@ -306,12 +306,10 @@ impl PumpC {
         // Multi-correlator aware
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(cid) = msg.correlation_id(i as usize) {
-                if let CorrelationId::U64(key) = cid {
-                    if let Some(state) = self.requests.get_mut(key as usize) {
-                        state.on_partial(msg);
-                        tracing::trace!(key = key, "partial response processed");
-                    }
+            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+                if let Some(state) = self.requests.get_mut(key as usize) {
+                    state.on_partial(msg);
+                    tracing::trace!(key = key, "partial response processed");
                 }
             }
         }
@@ -321,13 +319,11 @@ impl PumpC {
         // Multi-correlator aware
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(cid) = msg.correlation_id(i as usize) {
-                if let CorrelationId::U64(key) = cid {
-                    if self.requests.contains(key as usize) {
-                        let state = self.requests.remove(key as usize);
-                        state.finish_and_reply(msg);
-                        tracing::debug!(key = key, "response completed");
-                    }
+            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+                if self.requests.contains(key as usize) {
+                    let state = self.requests.remove(key as usize);
+                    state.finish_and_reply(msg);
+                    tracing::debug!(key = key, "response completed");
                 }
             }
         }
@@ -339,16 +335,14 @@ impl PumpC {
         let n = msg.num_correlation_ids();
 
         for i in 0..n {
-            if let Some(cid) = msg.correlation_id(i as usize) {
-                if let CorrelationId::U64(key) = cid {
-                    if msg_type == "RequestFailure" {
-                        tracing::error!(key = key, "request failed");
-                        if self.requests.contains(key as usize) {
-                            let state = self.requests.remove(key as usize);
-                            state.fail(BlpError::Internal {
-                                detail: "RequestFailure".into(),
-                            });
-                        }
+            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+                if msg_type == "RequestFailure" {
+                    tracing::error!(key = key, "request failed");
+                    if self.requests.contains(key as usize) {
+                        let state = self.requests.remove(key as usize);
+                        state.fail(BlpError::Internal {
+                            detail: "RequestFailure".into(),
+                        });
                     }
                 }
             }

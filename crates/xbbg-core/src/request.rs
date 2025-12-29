@@ -56,6 +56,12 @@ pub struct RequestBuilder {
     end_date: Option<String>,
 }
 
+impl Default for RequestBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(dead_code)]
 impl RequestBuilder {
     pub fn new() -> Self {

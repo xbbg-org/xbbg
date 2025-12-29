@@ -32,6 +32,7 @@ pub enum RequestState {
 }
 
 /// Unified request state for Lane C (intraday requests).
+#[allow(clippy::large_enum_variant)]
 pub enum IntradayRequestState {
     Bar(IntradayBarState),
     Tick(IntradayTickState),

@@ -27,44 +27,30 @@ pub enum DataType {
 impl From<i32> for DataType {
     fn from(v: i32) -> Self {
         match v {
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_BOOL as i32 => DataType::Bool,
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_CHAR as i32 => DataType::Char,
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_BYTE as i32 => DataType::Byte,
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_INT32 as i32 => DataType::Int32,
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_INT64 as i32 => DataType::Int64,
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_FLOAT32 as i32 => {
-                DataType::Float32
-            }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_FLOAT64 as i32 => {
-                DataType::Float64
-            }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_STRING as i32 => {
-                DataType::String
-            }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_BYTEARRAY as i32 => {
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_BOOL => DataType::Bool,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_CHAR => DataType::Char,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_BYTE => DataType::Byte,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_INT32 => DataType::Int32,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_INT64 => DataType::Int64,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_FLOAT32 => DataType::Float32,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_FLOAT64 => DataType::Float64,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_STRING => DataType::String,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_BYTEARRAY => {
                 DataType::ByteArray
             }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_DATE as i32 => DataType::Date,
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_TIME as i32 => DataType::Time,
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_DECIMAL as i32 => {
-                DataType::Decimal
-            }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_DATETIME as i32 => {
-                DataType::Datetime
-            }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_ENUMERATION as i32 => {
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_DATE => DataType::Date,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_TIME => DataType::Time,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_DECIMAL => DataType::Decimal,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_DATETIME => DataType::Datetime,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_ENUMERATION => {
                 DataType::Enumeration
             }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_SEQUENCE as i32 => {
-                DataType::Sequence
-            }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_CHOICE as i32 => {
-                DataType::Choice
-            }
-            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_CORRELATION_ID as i32 => {
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_SEQUENCE => DataType::Sequence,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_CHOICE => DataType::Choice,
+            x if x == blpapi_sys::blpapi_DataType_t_BLPAPI_DATATYPE_CORRELATION_ID => {
                 DataType::CorrelationId
             }
-            other => DataType::Unknown(other as i32),
+            other => DataType::Unknown(other),
         }
     }
 }

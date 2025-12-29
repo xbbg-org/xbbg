@@ -203,6 +203,7 @@ pub fn execute_histdata_arrow(
     Ok(batch)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_histdata_response(
     event: &Event,
     cid: &CorrelationId,

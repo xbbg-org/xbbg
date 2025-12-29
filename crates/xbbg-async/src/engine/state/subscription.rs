@@ -181,28 +181,23 @@ impl SubscriptionState {
                 }
             }
             OverflowPolicy::DropOldest => {
-                // Try to send; if full, drain one from receiver side and retry
-                // Note: This requires the receiver to cooperate, so we use a loop
-                // with try_send and a reserve check
-                loop {
-                    match self.stream.try_send(batch.clone()) {
-                        Ok(()) => break,
-                        Err(mpsc::error::TrySendError::Full(_)) => {
-                            // For DropOldest, we need the receiver to drop old messages
-                            // Since we can't access the receiver here, we fall back to
-                            // dropping newest with a warning
-                            self.dropped_batches += 1;
-                            tracing::warn!(
-                                topic = %self.topic,
-                                dropped = self.dropped_batches,
-                                "stream full - DropOldest policy (dropping newest as fallback)"
-                            );
-                            break;
-                        }
-                        Err(mpsc::error::TrySendError::Closed(_)) => {
-                            tracing::warn!(topic = %self.topic, "stream closed");
-                            break;
-                        }
+                // Try to send; if full, fall back to dropping newest with warning
+                // (true DropOldest would require receiver cooperation)
+                match self.stream.try_send(batch.clone()) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        // For DropOldest, we need the receiver to drop old messages
+                        // Since we can't access the receiver here, we fall back to
+                        // dropping newest with a warning
+                        self.dropped_batches += 1;
+                        tracing::warn!(
+                            topic = %self.topic,
+                            dropped = self.dropped_batches,
+                            "stream full - DropOldest policy (dropping newest as fallback)"
+                        );
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        tracing::warn!(topic = %self.topic, "stream closed");
                     }
                 }
             }

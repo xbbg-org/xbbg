@@ -48,7 +48,7 @@ impl MessageRef {
         if n <= 0 || index >= n as usize {
             return None;
         }
-        let raw = unsafe { blpapi_sys::blpapi_Message_correlationId(self.ptr, index as usize) };
+        let raw = unsafe { blpapi_sys::blpapi_Message_correlationId(self.ptr, index) };
         let mut out_u64: u64 = 0;
         let is_int = unsafe { blpapi_sys::blpapiext_cid_is_int(&raw as *const _) } != 0;
         if is_int {
@@ -117,19 +117,17 @@ impl MessageRef {
             }
             let s = std::slice::from_raw_parts(data as *const u8, len as usize);
             let buf = &mut *(ctx as *mut String);
-            let _ = buf.extend(s.iter().map(|&b| b as char));
+            buf.extend(s.iter().map(|&b| b as char));
             0
         }
         unsafe {
-            if blpapi_sys::blpapi_Message_print as *const () != std::ptr::null() {
-                let _rc = blpapi_sys::blpapi_Message_print(
-                    self.ptr,
-                    Some(write_cb),
-                    &mut out as *mut _ as *mut core::ffi::c_void,
-                    0,
-                    -1,
-                );
-            }
+            let _rc = blpapi_sys::blpapi_Message_print(
+                self.ptr,
+                Some(write_cb),
+                &mut out as *mut _ as *mut core::ffi::c_void,
+                0,
+                -1,
+            );
         }
         if out.is_empty() {
             format!("{}", self.message_type())

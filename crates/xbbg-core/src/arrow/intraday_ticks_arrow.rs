@@ -309,6 +309,7 @@ fn create_intraday_tick_request(
     Ok(blp_request)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_intraday_ticks_response(
     msg: &MessageRef,
     ticker: &str,
@@ -363,6 +364,7 @@ fn process_intraday_ticks_response(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_tick_data(
     tick_el: &crate::element::ElementRef,
     ticker: &str,

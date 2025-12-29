@@ -187,6 +187,7 @@ pub fn execute_refdata_arrow(session: &Session, req: &ReferenceDataRequest) -> R
     Ok(batch)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_refdata_response(
     event: &Event,
     cid: &CorrelationId,
@@ -375,6 +376,7 @@ fn process_refdata_response(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extract_field_value(
     field_el: &crate::element::ElementRef,
     value_idx: usize,

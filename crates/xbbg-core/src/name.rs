@@ -66,6 +66,11 @@ impl Name {
         unsafe { blpapi_sys::blpapi_Name_length(self.ptr) as usize }
     }
 
+    /// Check if the underlying string is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     #[allow(dead_code)]
     pub(crate) fn as_raw(&self) -> *mut blpapi_sys::blpapi_Name_t {
         self.ptr

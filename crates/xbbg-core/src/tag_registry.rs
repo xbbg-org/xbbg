@@ -40,4 +40,4 @@ impl TagRegistry {
     }
 }
 
-pub static TAG_REGISTRY: Lazy<TagRegistry> = Lazy::new(|| TagRegistry::new());
+pub static TAG_REGISTRY: Lazy<TagRegistry> = Lazy::new(TagRegistry::new);

@@ -167,30 +167,27 @@ impl PumpA {
         // Multi-correlator aware
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(cid) = msg.correlation_id(i as usize) {
-                if let CorrelationId::U64(key) = cid {
-                    if let Some(state) = self.subs.get_mut(key as usize) {
-                        // Check for DATALOSS
-                        let elem = msg.elements();
-                        if let Some(event_type) = elem.get_element("MKTDATA_EVENT_TYPE") {
-                            if let Some(val) = event_type.get_value_as_string(0) {
-                                if val == "SUMMARY" {
-                                    if let Some(subtype) = elem.get_element("MKTDATA_EVENT_SUBTYPE")
-                                    {
-                                        if let Some(sub_val) = subtype.get_value_as_string(0) {
-                                            if sub_val == "DATALOSS" {
-                                                state.on_dataloss();
-                                                continue;
-                                            }
+            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+                if let Some(state) = self.subs.get_mut(key as usize) {
+                    // Check for DATALOSS
+                    let elem = msg.elements();
+                    if let Some(event_type) = elem.get_element("MKTDATA_EVENT_TYPE") {
+                        if let Some(val) = event_type.get_value_as_string(0) {
+                            if val == "SUMMARY" {
+                                if let Some(subtype) = elem.get_element("MKTDATA_EVENT_SUBTYPE") {
+                                    if let Some(sub_val) = subtype.get_value_as_string(0) {
+                                        if sub_val == "DATALOSS" {
+                                            state.on_dataloss();
+                                            continue;
                                         }
                                     }
                                 }
                             }
                         }
-
-                        // Normal data
-                        state.on_message(msg);
                     }
+
+                    // Normal data
+                    state.on_message(msg);
                 }
             }
         }
@@ -202,27 +199,25 @@ impl PumpA {
         let n = msg.num_correlation_ids();
 
         for i in 0..n {
-            if let Some(cid) = msg.correlation_id(i as usize) {
-                if let CorrelationId::U64(key) = cid {
-                    match msg_type {
-                        "SubscriptionStarted" => {
-                            tracing::debug!(key = key, "subscription started");
+            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+                match msg_type {
+                    "SubscriptionStarted" => {
+                        tracing::debug!(key = key, "subscription started");
+                    }
+                    "SubscriptionFailure" => {
+                        tracing::error!(key = key, "subscription failed");
+                        if self.subs.contains(key as usize) {
+                            self.subs.remove(key as usize);
                         }
-                        "SubscriptionFailure" => {
-                            tracing::error!(key = key, "subscription failed");
-                            if self.subs.contains(key as usize) {
-                                self.subs.remove(key as usize);
-                            }
+                    }
+                    "SubscriptionTerminated" => {
+                        tracing::info!(key = key, "subscription terminated");
+                        if self.subs.contains(key as usize) {
+                            self.subs.remove(key as usize);
                         }
-                        "SubscriptionTerminated" => {
-                            tracing::info!(key = key, "subscription terminated");
-                            if self.subs.contains(key as usize) {
-                                self.subs.remove(key as usize);
-                            }
-                        }
-                        _ => {
-                            tracing::trace!(key = key, msg_type = msg_type, "subscription status");
-                        }
+                    }
+                    _ => {
+                        tracing::trace!(key = key, msg_type = msg_type, "subscription status");
                     }
                 }
             }

@@ -141,7 +141,7 @@ impl ElementRef {
         let millis = dt.milliSeconds as u32;
 
         if let Some(date) =
-            chrono::NaiveDate::from_ymd_opt(year, month.max(1).min(12), day.max(1).min(31))
+            chrono::NaiveDate::from_ymd_opt(year, month.clamp(1, 12), day.clamp(1, 31))
         {
             if let Some(datetime) =
                 date.and_hms_milli_opt(hour.min(23), minute.min(59), second.min(59), millis)
