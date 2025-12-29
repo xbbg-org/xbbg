@@ -146,6 +146,15 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.10.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.10.1>`__
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.0...v0.10.1
+
+## What's Changed
+
+- fix: persist blp.connect() session for subsequent API calls by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/165
+
+
 *0.10.0* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.10.0>`__
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.9.1...v0.10.0
