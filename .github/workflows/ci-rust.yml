@@ -215,6 +215,9 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Install blpapi from Bloomberg
+        run: uv pip install --system --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
+
       - name: Install wheel and test dependencies
         run: |
           uv pip install --system --find-links dist xbbg
