@@ -54,7 +54,7 @@ We need to mirror this in pure Python so the API is identical.
 |---------|-----------|
 | 0.11    | Add options, refactor internals to Arrow, no warnings |
 | 0.12    | Add deprecation warnings for implicit defaults |
-| 1.0     | Flip defaults to `backend=Backend.NARWHALS`, `format='semi-long'` |
+| 1.0     | Flip defaults to `backend=Backend.NARWHALS`, `format=Format.LONG` |
 
 ---
 
@@ -88,8 +88,8 @@ class Backend(str, Enum):
 
 class Format(str, Enum):
     """Output format for xbbg data."""
-    SEMI_LONG = "semi-long"   # Default in v1: ticker, date, field1, field2, ...
-    LONG = "long"             # Tidy: ticker, date, field, value
+    LONG = "long"             # Default in v1: ticker, date, field, value (tidy data)
+    SEMI_LONG = "semi-long"   # ticker, date, field1, field2, ... (fields as columns)
     WIDE = "wide"             # Pandas only: MultiIndex columns (ticker, field)
 ```
 
@@ -102,7 +102,7 @@ from xbbg.backend import Backend, Format
 
 # Module-level state (matching Rust v1 pattern)
 _default_backend: Backend = Backend.PANDAS  # 0.x default, will flip to NARWHALS in 1.0
-_default_format: Format = Format.WIDE       # 0.x default, will flip to SEMI_LONG in 1.0
+_default_format: Format = Format.WIDE       # 0.x default, will flip to LONG in 1.0
 
 def get_backend() -> Backend:
     """Get the current default backend."""
@@ -226,8 +226,8 @@ def _convert_backend(
 
 def to_output(
     arrow_table: pa.Table,
-    backend: Backend = Backend.PANDAS,
-    format: Format = Format.SEMI_LONG,
+    backend: Backend = Backend.NARWHALS,
+    format: Format = Format.LONG,
     ticker_col: str = 'ticker',
     date_col: str = 'date',
     field_cols: list[str] | None = None,
@@ -238,7 +238,7 @@ def to_output(
         PyArrow Table → narwhals → format transform → _convert_backend()
 
     Args:
-        arrow_table: Source data as PyArrow Table
+        arrow_table: Source data as PyArrow Table (in semi-long format internally)
         backend: Target backend (Backend enum)
         format: Output format (Format enum)
         ticker_col: Name of ticker column
@@ -252,21 +252,24 @@ def to_output(
     df = nw.from_native(arrow_table)
 
     # Apply format transformation
+    # Internal Arrow table is semi-long: ticker, date, field1, field2, ...
     if format == Format.LONG:
-        # Unpivot field columns to long format
+        # Unpivot field columns to true tidy/long format
         df = df.unpivot(
             on=field_cols,
             index=[ticker_col, date_col],
             variable_name='field',
             value_name='value'
         )
+    elif format == Format.SEMI_LONG:
+        # No transformation needed (this is what Arrow naturally produces)
+        pass
     elif format == Format.WIDE:
         if backend != Backend.PANDAS:
             raise ValueError("format='wide' requires backend='pandas' (MultiIndex not supported elsewhere)")
         # Wide with MultiIndex (pandas only)
         pdf = df.to_pandas()
         return _apply_multiindex(pdf, ticker_col, date_col, field_cols)
-    # Format.SEMI_LONG: no transformation needed (this is what Arrow naturally produces)
 
     # Convert to requested backend
     return _convert_backend(df, backend)
