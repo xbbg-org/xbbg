@@ -102,7 +102,8 @@ jobs:
           args: --release --out dist -i ${{ matrix.python }}
           manylinux: "2_28"
           before-script-linux: |
-            dnf install -y clang-devel
+            dnf install -y git clang-devel
+            git config --global --add safe.directory /io
             mkdir -p /opt/blpapi
             curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-linux.tar.gz" \
               | tar -xz -C /opt/blpapi --strip-components=1
