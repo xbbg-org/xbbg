@@ -471,10 +471,11 @@ jobs:
       - name: Run cargo-semver-checks
         run: |
           cargo binstall -y cargo-semver-checks
-          if git rev-parse origin/main >/dev/null 2>&1; then
+          # Check if Rust crates directory exists in main branch
+          if git show origin/main:crates/xbbg-core/Cargo.toml >/dev/null 2>&1; then
             cargo semver-checks --baseline-rev origin/main
           else
-            echo "Skipping: no baseline available"
+            echo "Skipping: Rust crates not in baseline yet (will run after merge to main)"
           fi
 
   # ════════════════════════════════════════════════════════════════════════════
