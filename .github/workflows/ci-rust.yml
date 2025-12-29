@@ -373,7 +373,7 @@ jobs:
       - run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           cargo binstall -y --force cargo-udeps
-          cargo +nightly udeps --all-targets
+          rustup run nightly cargo-udeps --all-targets
 
   # ════════════════════════════════════════════════════════════════════════════
   # Unsafe Code Audit (optional, non-blocking)
@@ -424,7 +424,7 @@ jobs:
           cargo binstall -y --force cargo-geiger
           for crate in blpapi-sys xbbg-core xbbg-async pyo3-xbbg; do
             echo "=== $crate ==="
-            cargo geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml"
+            cargo-geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml"
           done
 
   # ════════════════════════════════════════════════════════════════════════════
@@ -478,7 +478,7 @@ jobs:
           cargo binstall -y --force cargo-semver-checks
           # Check if Rust crates directory exists in main branch
           if git show origin/main:crates/xbbg-core/Cargo.toml >/dev/null 2>&1; then
-            cargo semver-checks --baseline-rev origin/main
+            cargo-semver-checks --baseline-rev origin/main
           else
             echo "Skipping: Rust crates not in baseline yet (will run after merge to main)"
           fi
