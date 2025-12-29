@@ -9,7 +9,6 @@ import datetime
 from typing import Any
 
 import pandas as pd
-import pytz
 
 
 def flatten(
@@ -87,7 +86,7 @@ def fmt_dt(
 
 def cur_time(
     typ: str = 'date',
-    tz: str | pytz.BaseTzInfo | None = None,
+    tz: str | datetime.tzinfo | None = None,
 ) -> datetime.date | str | pd.Timestamp:
     """Current time.
 
