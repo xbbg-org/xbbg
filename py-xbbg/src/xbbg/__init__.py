@@ -223,6 +223,7 @@ def clear_sdk_path() -> None:
 
 
 __all__ = [
+    "__version__",
     "_core",
     "Backend",
     # Sync API
@@ -248,6 +249,11 @@ __all__ = [
 def __getattr__(name: str):
     """Lazy attribute access for deferred imports."""
     global _importing_core, _core_module
+    if name == "__version__":
+        # Version from git describe, embedded at compile time
+        from . import _core
+
+        return _core.__version__
     if name == "_core":
         # Return cached module if already imported
         if _core_module is not None:

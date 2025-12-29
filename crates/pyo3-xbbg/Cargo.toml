@@ -1,10 +1,10 @@
 [package]
 name = "pyo3-xbbg"
-version = "0.0.0"
-edition = "2021"
-license = "Apache-2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "PyO3 bindings for xbbg Bloomberg engine"
-repository = "https://github.com/alpha-xone/xbbg"
 
 [lib]
 name = "xbbg_core"
@@ -17,5 +17,8 @@ tokio = { version = "1.48", features = ["rt-multi-thread", "sync"] }
 arrow = { version = "57.1.0", features = ["pyarrow"] }
 xbbg_core = { path = "../xbbg-core" }
 xbbg-async = { path = "../xbbg-async" }
+
+[build-dependencies]
+vergen-gitcl = { version = "1", features = ["build", "cargo"] }
 
 

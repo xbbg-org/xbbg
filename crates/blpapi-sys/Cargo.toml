@@ -1,8 +1,9 @@
 [package]
 name = "blpapi-sys"
-version = "0.0.0"
-edition = "2021"
-license = "Apache-2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 links = "blpapi"
 description = "Unsafe, zero-policy FFI bindings to blpapi C API (blpapi_*) generated at build time."
 publish = false

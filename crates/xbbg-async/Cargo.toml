@@ -1,8 +1,9 @@
 [package]
 name = "xbbg-async"
-version = "0.0.0"
-edition = "2021"
-license = "Apache-2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Async layer over xbbg-core with pump/router and streams"
 publish = false
 

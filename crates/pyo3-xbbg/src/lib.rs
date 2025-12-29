@@ -218,7 +218,11 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_async_runtimes::tokio::init_with_runtime(runtime)
         .map_err(|_| PyRuntimeError::new_err("Failed to init tokio runtime"))?;
 
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    // Version from git describe (e.g., "v1.0.0" or "v1.0.0-5-g1a2b3c4")
+    // Strip the leading 'v' for Python version string
+    let git_version = env!("VERGEN_GIT_DESCRIBE");
+    let pkg_version = git_version.strip_prefix('v').unwrap_or(git_version);
+    m.add("__version__", pkg_version)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_class::<PyEngine>()?;
     Ok(())
