@@ -122,3 +122,6 @@ xbbg/tests/data/**/TRADE/*.parq
 
 #Ruff
 .ruff_cache/
+
+# Claude Code
+.claude/
