@@ -140,11 +140,10 @@ jobs:
             | tar -xz -C "$HOME/blpapi" --strip-components=1
           # SDK has Linux/ instead of lib/, create symlink for build.rs
           ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          # Debug: show library files
-          echo "SDK contents:" && ls -la "$HOME/blpapi/lib/"
+          # Create libblpapi3.so symlink (SDK has libblpapi3_64.so)
+          ln -s "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$HOME/blpapi/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Download Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
@@ -265,6 +264,7 @@ jobs:
           curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
           ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -s "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
@@ -308,6 +308,7 @@ jobs:
           curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
           ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -s "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
 
       - name: Setup Kani
