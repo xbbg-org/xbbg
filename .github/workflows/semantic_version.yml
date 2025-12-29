@@ -44,18 +44,18 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    
+
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
         python-version: '3.11'
-    
+
     - name: Get current version
       id: current_version
       run: |
@@ -66,7 +66,7 @@ jobs:
         fi
         echo "current=$CURRENT" >> $GITHUB_OUTPUT
         echo "Current version: $CURRENT"
-    
+
     - name: Calculate new version
       id: new_version
       run: |
@@ -74,10 +74,10 @@ jobs:
         BUMP_TYPE="${{ inputs.bump_type }}"
         PRE_RELEASE="${{ inputs.pre_release }}"
         PRE_NUM="${{ inputs.pre_number }}"
-        
+
         # Parse current version
         IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-        
+
         # Bump version
         case "$BUMP_TYPE" in
           major)
@@ -93,9 +93,9 @@ jobs:
             PATCH=$((PATCH + 1))
             ;;
         esac
-        
+
         NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-        
+
         # Add pre-release suffix if specified
         if [ -n "$PRE_RELEASE" ] && [ "$PRE_RELEASE" != "none" ]; then
           # Map alpha/beta/rc to a/b/rc format
@@ -107,12 +107,12 @@ jobs:
           esac
           NEW_VERSION="${NEW_VERSION}${PRE_SUFFIX}${PRE_NUM}"
         fi
-        
+
         echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
         echo "tag=v${NEW_VERSION}" >> $GITHUB_OUTPUT
         echo "New version: $NEW_VERSION"
         echo "Tag: v${NEW_VERSION}"
-    
+
     - name: Create git tag
       run: |
         TAG="${{ steps.new_version.outputs.tag }}"
@@ -120,7 +120,7 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git tag -a "$TAG" -m "Release $TAG"
         git push origin "$TAG"
-    
+
     - name: Create GitHub Release
       if: inputs.create_release == true
       uses: softprops/action-gh-release@v2
@@ -129,42 +129,12 @@ jobs:
         name: xbbg ${{ steps.new_version.outputs.new_version }}
         body: |
           ${{ inputs.release_notes }}
-          
+
           **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.current_version.outputs.current }}...${{ steps.new_version.outputs.tag }}
         prerelease: ${{ inputs.pre_release != 'none' && inputs.pre_release != '' }}
         generate_release_notes: ${{ inputs.release_notes == '' }}
         make_latest: ${{ inputs.pre_release == 'none' || inputs.pre_release == '' }}
         draft: false
-    
-    - name: Trigger release workflows
-      if: inputs.create_release == true
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        TAG="${{ steps.new_version.outputs.tag }}"
-        echo "Triggering release workflows for $TAG..."
-
-        # PyPI upload (no tag input needed)
-        gh workflow run pypi_upload.yml
-        echo "  - Triggered pypi_upload.yml"
-
-        # Attach release artifacts
-        gh workflow run release_assets.yml -f tag="$TAG"
-        echo "  - Triggered release_assets.yml"
-
-        # Update README changelog
-        gh workflow run update_readme_on_release.yml -f tag="$TAG"
-        echo "  - Triggered update_readme_on_release.yml"
-
-        # Update Sphinx index.rst
-        gh workflow run update_index_on_release.yml -f tag="$TAG"
-        echo "  - Triggered update_index_on_release.yml"
-
-        # Publish docs to Read the Docs
-        gh workflow run publish_docs.yml
-        echo "  - Triggered publish_docs.yml"
-
-        echo "All release workflows triggered successfully."
 
     - name: Output summary
       run: |
@@ -175,10 +145,9 @@ jobs:
         echo "- **Tag**: ${{ steps.new_version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Type**: ${{ inputs.bump_type }}${{ inputs.pre_release != 'none' && inputs.pre_release != '' && format(' ({0})', inputs.pre_release) || '' }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "The following release workflows were triggered:" >> $GITHUB_STEP_SUMMARY
+        echo "The following workflows will be triggered automatically by the release event:" >> $GITHUB_STEP_SUMMARY
         echo "1. **pypi_upload.yml** - Build and upload to PyPI" >> $GITHUB_STEP_SUMMARY
         echo "2. **release_assets.yml** - Attach wheel/tarball to release" >> $GITHUB_STEP_SUMMARY
         echo "3. **update_readme_on_release.yml** - Update README.md changelog" >> $GITHUB_STEP_SUMMARY
         echo "4. **update_index_on_release.yml** - Update docs/index.rst" >> $GITHUB_STEP_SUMMARY
         echo "5. **publish_docs.yml** - Trigger Read the Docs build" >> $GITHUB_STEP_SUMMARY
-

@@ -1,7 +1,8 @@
 name: Publish Docs (Read the Docs)
 
-# Triggered by semantic_version.yml after creating a release
 on:
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -11,6 +12,7 @@ jobs:
       contents: read
     steps:
     - uses: actions/checkout@v5
+
     - name: Trigger Read the Docs build for latest
       if: env.READTHEDOCS_TOKEN != '' && env.READTHEDOCS_PROJECT != ''
       env:
@@ -22,4 +24,3 @@ jobs:
           -H "Content-Type: application/json" \
           -d '{"version": "latest"}' \
           https://readthedocs.org/api/v3/projects/${READTHEDOCS_PROJECT}/versions/latest/builds/
-

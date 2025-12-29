@@ -1,7 +1,8 @@
 name: Upload Python Package
 
-# Triggered by semantic_version.yml after creating a release
 on:
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -10,16 +11,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    # Upload all releases (including pre-releases) to PyPI
-    # Pre-releases have format vX.Y.ZaN, vX.Y.ZbN, or vX.Y.ZrcN
 
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          # When triggered by a release event, explicitly check out the tagged commit.
-          # For workflow_dispatch we checkout the branch now and switch to the tag later.
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
       - name: Determine target release tag
         id: target_tag
@@ -102,8 +99,8 @@ jobs:
           VERSION='${{ steps.target_version.outputs.version }}'
           PACKAGE="xbbg"
           python -m pip install --upgrade pip --quiet
-          python -m pip index versions "$PACKAGE" > /tmp/pip_versions.txt
-          if grep -E "^  ${VERSION}([[:space:]]|$)" /tmp/pip_versions.txt >/dev/null; then
+          python -m pip index versions "$PACKAGE" > /tmp/pip_versions.txt || true
+          if grep -E "^  ${VERSION}([[:space:]]|$)" /tmp/pip_versions.txt >/dev/null 2>&1; then
             echo "Version $PACKAGE==$VERSION already exists on PyPI."
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
@@ -122,14 +119,15 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Create uv virtual environment
         if: steps.pypi_check.outputs.exists != 'true'
-        run: |
-          uv venv
+        run: uv venv
+
       - name: Build distributions with uv
         if: steps.pypi_check.outputs.exists != 'true'
-        run: |
-          uv build
+        run: uv build
+
       - name: Publish to PyPI via OIDC
         if: steps.pypi_check.outputs.exists != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1

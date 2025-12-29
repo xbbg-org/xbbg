@@ -1,7 +1,8 @@
 name: Update Sphinx index.rst on Release
 
-# Triggered by semantic_version.yml after creating a release
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -19,30 +20,37 @@ jobs:
       with:
         ref: main
         fetch-depth: 0
-    
+
     - name: Pull latest changes
       run: |
         git pull origin main
-    
-    - name: Get release info for workflow_dispatch
-      if: github.event_name == 'workflow_dispatch'
+
+    - name: Get release info
       id: release_info
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        TAG="${{ inputs.tag }}"
-        RELEASE_INFO=$(gh api repos/${{ github.repository }}/releases/tags/$TAG)
+        TAG="${{ github.event.release.tag_name || inputs.tag }}"
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          RELEASE_INFO=$(gh api repos/${{ github.repository }}/releases/tags/$TAG)
+          echo "release_url=$(echo "$RELEASE_INFO" | jq -r '.html_url')" >> $GITHUB_OUTPUT
+          echo "release_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$(echo "$RELEASE_INFO" | jq -r '.body')" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "published_at=$(echo "$RELEASE_INFO" | jq -r '.published_at')" >> $GITHUB_OUTPUT
+        else
+          echo "release_url=${{ github.event.release.html_url }}" >> $GITHUB_OUTPUT
+          echo "release_body<<EOF" >> $GITHUB_OUTPUT
+          echo "${{ github.event.release.body }}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "published_at=${{ github.event.release.published_at }}" >> $GITHUB_OUTPUT
+        fi
         echo "tag_name=$TAG" >> $GITHUB_OUTPUT
-        echo "release_url=$(echo "$RELEASE_INFO" | jq -r '.html_url')" >> $GITHUB_OUTPUT
-        echo "release_body<<EOF" >> $GITHUB_OUTPUT
-        echo "$(echo "$RELEASE_INFO" | jq -r '.body')" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-        echo "published_at=$(echo "$RELEASE_INFO" | jq -r '.published_at')" >> $GITHUB_OUTPUT
-    
+
     - name: Update latest release line in docs/index.rst
       env:
-        TAG_NAME: ${{ github.event.release.tag_name || steps.release_info.outputs.tag_name }}
-        RELEASE_URL: ${{ github.event.release.html_url || steps.release_info.outputs.release_url }}
+        TAG_NAME: ${{ steps.release_info.outputs.tag_name }}
+        RELEASE_URL: ${{ steps.release_info.outputs.release_url }}
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
@@ -55,12 +63,13 @@ jobs:
           /\.. xbbg:latest-release-end/   { drop=0; print; next }
           drop != 1 { print }
         ' docs/index.rst > docs/index.rst.tmp && mv docs/index.rst.tmp docs/index.rst
+
     - name: Update changelog section in docs/index.rst
       env:
-        TAG_NAME: ${{ github.event.release.tag_name || steps.release_info.outputs.tag_name }}
-        RELEASE_URL: ${{ github.event.release.html_url || steps.release_info.outputs.release_url }}
-        RELEASE_BODY: ${{ github.event.release.body || steps.release_info.outputs.release_body }}
-        PUBLISHED_AT: ${{ github.event.release.published_at || steps.release_info.outputs.published_at }}
+        TAG_NAME: ${{ steps.release_info.outputs.tag_name }}
+        RELEASE_URL: ${{ steps.release_info.outputs.release_url }}
+        RELEASE_BODY: ${{ steps.release_info.outputs.release_body }}
+        PUBLISHED_AT: ${{ steps.release_info.outputs.published_at }}
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
@@ -123,7 +132,7 @@ jobs:
           if ($0 ~ /\.. xbbg:changelog-end/) next
           print
         }' docs/index.rst > .existing_idx_changelog_raw.rst
-        
+
         # Reformat preserved entries to simple format: extract version and release URL
         if [ -s .existing_idx_changelog_raw.rst ]; then
           # Extract version and URL from the first line (format: *version* - see release: `notes <url>`_)
@@ -138,10 +147,10 @@ jobs:
             cp .existing_idx_changelog_raw.rst .existing_idx_changelog.rst
           fi
         fi
-        
+
         # Replace the block between markers with new entry + preserved old entries
         awk 'BEGIN{emit=1}
-             /\.. xbbg:changelog-start/ { 
+             /\.. xbbg:changelog-start/ {
                print
                print ""  # Add blank line after marker
                system("cat .idx_changelog_entry.rst")
@@ -154,6 +163,7 @@ jobs:
              }
              /\.. xbbg:changelog-end/   { skip=0; print; next }
              skip!=1 { print }' docs/index.rst > docs/index.rst.tmp && mv docs/index.rst.tmp docs/index.rst
+
     - name: Commit docs index update
       if: ${{ env.ACT != 'true' }}
       run: |
@@ -167,7 +177,7 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add docs/index.rst
-        git commit -m "docs(index): update What's New and latest release for ${{ github.event.release.tag_name || inputs.tag }}"
+        git commit -m "docs(index): update What's New and latest release for ${{ steps.release_info.outputs.tag_name }}"
         # Pull with rebase to handle concurrent workflow runs, then push
         git pull --rebase origin main
         git push origin main
