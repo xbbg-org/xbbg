@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 _importing_core = False
 _core_module = None
 _sdk_info: dict | None = None
+_manual_sdk_path: "Path | None" = None
 
 
 def _get_lib_version(lib_path: "Path") -> str | None:
@@ -104,6 +105,18 @@ def get_sdk_info() -> dict:
 
     sources: list[dict] = []
 
+    # Check 0: Manually set SDK path (highest priority)
+    if _manual_sdk_path is not None:
+        manual_version = None
+        lib_path = _find_sdk_lib(_manual_sdk_path)
+        if lib_path:
+            manual_version = _get_lib_version(lib_path)
+        sources.append({
+            "name": "manual",
+            "version": manual_version,
+            "path": _manual_sdk_path,
+        })
+
     # Check 1: blpapi Python package (most common for pip users)
     try:
         import blpapi
@@ -165,6 +178,50 @@ def get_sdk_info() -> dict:
     return info
 
 
+def set_sdk_path(path: "str | Path") -> None:
+    """Manually set the Bloomberg SDK path.
+
+    This takes precedence over all auto-detected sources (blpapi_python, dapi, sdk_env).
+    The path should point to a directory containing the Bloomberg SDK shared library.
+
+    Args:
+        path: Path to the SDK directory (e.g., "C:/blpapi_cpp_3.25.11.1" or Path object)
+
+    Example:
+        >>> import xbbg
+        >>> xbbg.set_sdk_path("C:/custom/blpapi")
+        >>> xbbg.get_sdk_info()["active"]
+        'manual'
+    """
+    from pathlib import Path as PathClass
+
+    global _manual_sdk_path, _sdk_info
+
+    sdk_path = PathClass(path) if isinstance(path, str) else path
+    if not sdk_path.is_dir():
+        raise ValueError(f"SDK path does not exist or is not a directory: {sdk_path}")
+
+    lib_path = _find_sdk_lib(sdk_path)
+    if not lib_path:
+        raise ValueError(f"Could not find Bloomberg SDK library in: {sdk_path}")
+
+    _manual_sdk_path = sdk_path
+    _sdk_info = None  # Clear cached info to refresh on next get_sdk_info() call
+
+
+def clear_sdk_path() -> None:
+    """Clear the manually set SDK path and revert to auto-detection.
+
+    Example:
+        >>> import xbbg
+        >>> xbbg.set_sdk_path("C:/custom/blpapi")
+        >>> xbbg.clear_sdk_path()  # Back to auto-detection
+    """
+    global _manual_sdk_path, _sdk_info
+    _manual_sdk_path = None
+    _sdk_info = None  # Clear cached info to refresh on next get_sdk_info() call
+
+
 __all__ = [
     "_core",
     "Backend",
@@ -183,6 +240,8 @@ __all__ = [
     "set_backend",
     "get_backend",
     "get_sdk_info",
+    "set_sdk_path",
+    "clear_sdk_path",
 ]
 
 
@@ -199,6 +258,23 @@ def __getattr__(name: str):
         _importing_core = True
         try:
             import importlib
+            import os
+            import sys
+
+            # Add SDK library path to DLL search path before importing
+            sdk_lib_dir = None
+            if _manual_sdk_path is not None:
+                lib_path = _find_sdk_lib(_manual_sdk_path)
+                if lib_path:
+                    sdk_lib_dir = lib_path.parent
+
+            if sdk_lib_dir and sys.platform == "win32":
+                # Windows: add to DLL search path
+                os.add_dll_directory(str(sdk_lib_dir))
+            elif sdk_lib_dir:
+                # Linux/macOS: prepend to LD_LIBRARY_PATH for subprocess, but for
+                # current process we need ctypes.CDLL or it's too late
+                pass  # blpapi Python package handles this on Linux
 
             mod = importlib.import_module("xbbg._core")
             _core_module = mod
@@ -209,10 +285,11 @@ def __getattr__(name: str):
                     f"{e}\n\n"
                     "The xbbg native extension requires the Bloomberg C++ SDK shared library.\n"
                     "You can provide it from any of these sources:\n"
-                    "  1. Bloomberg Terminal (DAPI) - automatically available if installed\n"
-                    "  2. blpapi Python package: pip install blpapi --index-url "
+                    "  1. xbbg.set_sdk_path('/path/to/sdk') - manually set SDK path\n"
+                    "  2. Bloomberg Terminal (DAPI) - automatically available if installed\n"
+                    "  3. blpapi Python package: pip install blpapi --index-url "
                     "https://blpapi.bloomberg.com/repository/releases/python/simple/\n"
-                    "  3. Bloomberg C++ SDK: download from Bloomberg and set BLPAPI_ROOT"
+                    "  4. Bloomberg C++ SDK: download from Bloomberg and set BLPAPI_ROOT"
                 ) from e
             raise
         finally:
