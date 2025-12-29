@@ -82,10 +82,10 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Build wheels (matrix: OS) - main compilation job with caching
+  # Check (clippy) - runs once per OS to validate code
   # ════════════════════════════════════════════════════════════════════════════
-  build:
-    name: Build (${{ matrix.target }})
+  check:
+    name: Check (${{ matrix.os }})
     needs: sdk-version
     strategy:
       fail-fast: false
@@ -155,17 +155,87 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Setup Python
+  # ════════════════════════════════════════════════════════════════════════════
+  # Build wheels (matrix: OS × Python version)
+  # ════════════════════════════════════════════════════════════════════════════
+  build:
+    name: Build (Python ${{ matrix.python }}, ${{ matrix.target }})
+    needs: [sdk-version, check]
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-latest, windows-latest]
+        target: [x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc]
+        exclude:
+          # Linux target only on ubuntu
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-msvc
+          # Windows target only on windows
+          - os: windows-latest
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-${{ runner.os }}-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (Linux)
+        if: runner.os == 'Linux' && steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Download Bloomberg SDK (Windows)
+        if: runner.os == 'Windows' && steps.cache-sdk.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $sdkUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-windows.zip"
+          Invoke-WebRequest -Uri $sdkUrl -OutFile blpapi.zip
+          Expand-Archive -Path blpapi.zip -DestinationPath $HOME/blpapi
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = (Get-ChildItem $HOME/blpapi -Directory)[0].FullName
+          echo "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+
+      - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
-          # Use manylinux_2_28 (AlmaLinux 8) for modern LLVM - manylinux2014 has ancient clang
+          args: --release --out dist -i ${{ matrix.python }}
+          # Use manylinux_2_28 (AlmaLinux 8) for modern LLVM
           manylinux: "2_28"
           # Install clang and SDK inside manylinux container
           before-script-linux: |
@@ -180,7 +250,7 @@ jobs:
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.target }}
+          name: wheel-${{ matrix.target }}-py${{ matrix.python }}
           path: dist/*.whl
 
   # ════════════════════════════════════════════════════════════════════════════
@@ -353,18 +423,20 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [lint, security, build, test]
+    needs: [lint, security, check, build, test]
     if: always()
     steps:
       - name: Check required jobs
         run: |
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.security.result }}" != "success" ]] || \
+             [[ "${{ needs.check.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]]; then
             echo "❌ One or more required jobs failed"
             echo "  lint: ${{ needs.lint.result }}"
             echo "  security: ${{ needs.security.result }}"
+            echo "  check: ${{ needs.check.result }}"
             echo "  build: ${{ needs.build.result }}"
             echo "  test: ${{ needs.test.result }}"
             exit 1
