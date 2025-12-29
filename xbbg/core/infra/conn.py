@@ -20,6 +20,9 @@ class SessionManager:
 
     Thread-safe manager for Bloomberg API sessions and services.
     Replaces the previous globals()-based approach for better testability.
+
+    Supports a "default session" that can be set via ``connect()`` and will
+    be used for all subsequent API calls unless explicitly overridden.
     """
 
     _instance: Any = None
@@ -33,19 +36,65 @@ class SessionManager:
                     cls._instance = super().__new__(cls)
                     cls._instance._sessions: dict[str, blpapi.Session] = {}
                     cls._instance._services: dict[str, blpapi.Service] = {}
+                    cls._instance._default_session: blpapi.Session | None = None
         return cls._instance
 
+    def set_default_session(self, session: blpapi.Session, server_host: str = 'localhost', port: int = _PORT_) -> None:
+        """Set the default session for all subsequent API calls.
+
+        Args:
+            session: Bloomberg session to use as default.
+            server_host: Server hostname (for cache key).
+            port: Port number (for cache key).
+        """
+        self._default_session = session
+        # Also store in cache for consistency
+        con_key = f'//{server_host}:{port}'
+        self._sessions[con_key] = session
+
+    def get_default_session(self) -> blpapi.Session | None:
+        """Get the default session if set and valid.
+
+        Returns:
+            Default session or None if not set/invalid.
+        """
+        # Check if session exists and handle is still valid
+        if self._default_session is not None and getattr(self._default_session, '_Session__handle', None) is None:
+            self._default_session = None
+        return self._default_session
+
+    def clear_default_session(self) -> None:
+        """Clear the default session."""
+        self._default_session = None
+
     def get_session(self, port: int = _PORT_, **kwargs) -> blpapi.Session:
-        """Get or create a Bloomberg session for the given port.
+        """Get or create a Bloomberg session.
+
+        Session lookup priority:
+        1. If no server_host specified, use default session (if set)
+        2. Look up by server_host:port in cache
+        3. Create new session
 
         Args:
             port: Port number (default 8194).
-            **kwargs: Additional session options.
+            **kwargs: Additional session options including:
+                - server_host: Server hostname
+                - server: Alternative name for server_host
 
         Returns:
             Bloomberg session instance.
         """
-        con_key = f'//{port}'
+        server_host = kwargs.get('server_host') or kwargs.get('server', '')
+
+        # If no specific server requested, try default session first
+        if not server_host:
+            default_sess = self.get_default_session()
+            if default_sess is not None:
+                return default_sess
+            # Fall back to localhost
+            server_host = 'localhost'
+
+        con_key = f'//{server_host}:{port}'
 
         # Check if session exists and is valid
         if con_key in self._sessions:
@@ -57,16 +106,17 @@ class SessionManager:
                 return session
 
         # Create new session
-        self._sessions[con_key] = connect_bbg(port=port, **kwargs)
+        self._sessions[con_key] = connect_bbg(port=port, server_host=server_host, **kwargs)
         return self._sessions[con_key]
 
-    def remove_session(self, port: int = _PORT_) -> None:
+    def remove_session(self, port: int = _PORT_, server_host: str = 'localhost') -> None:
         """Remove a session from the manager.
 
         Args:
             port: Port number (default 8194).
+            server_host: Server hostname (default 'localhost').
         """
-        con_key = f'//{port}'
+        con_key = f'//{server_host}:{port}'
         if con_key in self._sessions:
             del self._sessions[con_key]
 
@@ -81,7 +131,8 @@ class SessionManager:
         Returns:
             Bloomberg service instance.
         """
-        serv_key = f'//{port}{service}'
+        server_host = kwargs.get('server_host') or kwargs.get('server', 'localhost')
+        serv_key = f'//{server_host}:{port}{service}'
 
         # Check if service exists and is valid
         if serv_key in self._services:
@@ -109,6 +160,9 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
     If a session object is passed via ``sess``, ``max_attempt`` and
     ``auto_restart`` are ignored.
 
+    The session created by this function is stored as the default session,
+    so all subsequent API calls (bdp, bdh, etc.) will use it automatically.
+
     Args:
         max_attempt: Number of start attempts for the session.
         auto_restart: Whether to auto-restart on disconnection.
@@ -125,9 +179,30 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
 
     Returns:
         blpapi.Session: A started Bloomberg session.
+
+    Example::
+
+        # Connect to B-Pipe server
+        blp.connect(
+            auth_method="app",
+            server_host="bpipe-server.example.com",
+            server_port=8195,
+            app_name="myapp",
+        )
+        # All subsequent calls use the B-Pipe connection
+        px = blp.bdp("SPX Index", "PX_LAST")
     """
+    server_host = kwargs.get('server_host', 'localhost')
+    server_port = kwargs.get('server_port', _PORT_)
+
     if isinstance(kwargs.get('sess'), blpapi.Session):
-        return bbg_session(sess=kwargs['sess'])
+        session = kwargs['sess']
+        # Start session if not already started
+        if not session.start():
+            raise ConnectionError('Cannot start provided Bloomberg session')
+        # Store as default session
+        _session_manager.set_default_session(session, server_host=server_host, port=server_port)
+        return session
 
     sess_opts = blpapi.SessionOptions()
     sess_opts.setNumStartAttempts(numStartAttempts=max_attempt)
@@ -159,16 +234,42 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
 
         sess_opts.setSessionIdentityOptions(authOptions=auth)
 
-    if isinstance(kwargs.get('server_host'), str):
-        sess_opts.setServerHost(serverHost=kwargs['server_host'])
+    if isinstance(server_host, str) and server_host != 'localhost':
+        sess_opts.setServerHost(serverHost=server_host)
 
-    if isinstance(kwargs.get('server_port'), int):
-        sess_opts.setServerPort(serverPort=kwargs['server_port'])
+    if isinstance(server_port, int) and server_port != _PORT_:
+        sess_opts.setServerPort(serverPort=server_port)
 
     if isinstance(kwargs.get('tls_options'), blpapi.TlsOptions):
         sess_opts.setTlsOptions(tlsOptions=kwargs['tls_options'])
 
-    return bbg_session(sess=blpapi.Session(sess_opts))
+    # Create and start the session
+    session = blpapi.Session(sess_opts)
+    if not session.start():
+        raise ConnectionError(f'Cannot connect to Bloomberg at {server_host}:{server_port}')
+
+    # Store as default session for all subsequent API calls
+    _session_manager.set_default_session(session, server_host=server_host, port=server_port)
+    logger.debug('Set default Bloomberg session: %s:%d', server_host, server_port)
+
+    return session
+
+
+def disconnect() -> None:
+    """Clear the default Bloomberg session.
+
+    Call this to reset the connection state, allowing subsequent API calls
+    to create a new connection (either to localhost or via a new ``connect()`` call).
+
+    Example::
+
+        blp.connect(server_host="bpipe-server", server_port=8195, ...)
+        px = blp.bdp("SPX Index", "PX_LAST")  # Uses B-Pipe
+        blp.disconnect()
+        px = blp.bdp("SPX Index", "PX_LAST")  # Creates new localhost connection
+    """
+    _session_manager.clear_default_session()
+    logger.debug('Cleared default Bloomberg session')
 
 
 def connect_bbg(**kwargs) -> blpapi.Session:

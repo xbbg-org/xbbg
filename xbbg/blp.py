@@ -25,7 +25,7 @@ from xbbg.api.reference import (
     lookupSecurity,
 )
 from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
-from xbbg.core.infra.conn import connect
+from xbbg.core.infra.conn import connect, disconnect
 from xbbg.markets import resolvers as _res
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ active_cdx = _res.active_cdx
 __all__ = [
     '__version__',
     'connect',
+    'disconnect',
     'bdp',
     'bds',
     'abdp',
