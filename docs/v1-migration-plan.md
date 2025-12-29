@@ -1,0 +1,366 @@
+# xbbg v1.0 Migration Plan
+
+## Overview
+
+This document outlines the plan to migrate xbbg from pandas-only output to a
+backend-agnostic architecture using Arrow internally and narwhals for output
+conversion.
+
+## Goals
+
+1. **Internal refactor**: Use Arrow as the internal data format
+2. **Multi-backend support**: Return pandas, polars, arrow, or narwhals
+3. **Multiple formats**: Support semi-long (default), long, and wide (pandas only)
+4. **Backward compatibility**: Current behavior preserved with explicit options
+5. **Smooth migration**: Warnings guide users to new defaults
+
+## Release Timeline
+
+| Version | Milestone |
+|---------|-----------|
+| 0.11    | Add options, refactor internals to Arrow, no warnings |
+| 0.12    | Add deprecation warnings for implicit defaults |
+| 1.0     | Flip defaults to `backend='narwhals'`, `format='semi-long'` |
+
+---
+
+## Phase 1: v0.11 — Foundation
+
+### 1.1 Dependencies
+
+- [x] Remove unused dependencies (pytest, python-stdnum from runtime)
+- [x] Replace pytz with stdlib datetime.timezone
+- [ ] Add narwhals as dependency
+- [ ] Keep pyarrow (already present)
+
+### 1.2 Add Configuration System
+
+Create `xbbg/options.py`:
+
+```python
+class Options:
+    """Global xbbg configuration."""
+
+    def __init__(self):
+        self._backend = 'pandas'      # default for 0.x
+        self._format = 'wide'         # default for 0.x
+
+    @property
+    def backend(self):
+        return self._backend
+
+    @backend.setter
+    def backend(self, value):
+        valid = ('pandas', 'polars', 'arrow', 'narwhals')
+        if value not in valid:
+            raise ValueError(f"backend must be one of {valid}")
+        self._backend = value
+
+    @property
+    def format(self):
+        return self._format
+
+    @format.setter
+    def format(self, value):
+        valid = ('wide', 'semi-long', 'long')
+        if value not in valid:
+            raise ValueError(f"format must be one of {valid}")
+        self._format = value
+
+options = Options()
+```
+
+### 1.3 Add Warning Infrastructure
+
+Create `xbbg/deprecation.py`:
+
+```python
+import warnings
+
+class XbbgFutureWarning(FutureWarning):
+    """Warnings for xbbg 1.0 migration."""
+    pass
+
+_warned_defaults = False
+
+def warn_defaults_changing():
+    """Warn once per session about changing defaults."""
+    global _warned_defaults
+    if _warned_defaults:
+        return
+    _warned_defaults = True
+    warnings.warn(
+        "xbbg 1.0 will change defaults: backend='narwhals', format='semi-long'. "
+        "Current: backend='pandas', format='wide'. "
+        "Set explicitly to silence this warning. "
+        "See https://github.com/alpha-xone/xbbg/issues/166",
+        XbbgFutureWarning,
+        stacklevel=4  # adjust based on call depth
+    )
+```
+
+### 1.4 Add Output Conversion Layer
+
+Create `xbbg/io/convert.py`:
+
+```python
+import narwhals as nw
+import pyarrow as pa
+
+def to_output(
+    arrow_table: pa.Table,
+    backend: str = 'pandas',
+    format: str = 'semi-long',
+    ticker_col: str = 'ticker',
+    date_col: str = 'date',
+    field_cols: list[str] | None = None,
+) -> Any:
+    """Convert Arrow table to requested backend and format.
+
+    Args:
+        arrow_table: Source data as PyArrow Table
+        backend: Output backend ('pandas', 'polars', 'arrow', 'narwhals')
+        format: Output format ('semi-long', 'long', 'wide')
+        ticker_col: Name of ticker column
+        date_col: Name of date column
+        field_cols: Field column names (for pivoting)
+
+    Returns:
+        DataFrame in requested backend and format
+    """
+    df = nw.from_native(arrow_table)
+
+    # Apply format transformation
+    if format == 'long':
+        # Unpivot field columns to long format
+        df = df.unpivot(
+            on=field_cols,
+            index=[ticker_col, date_col],
+            variable_name='field',
+            value_name='value'
+        )
+    elif format == 'wide' and backend == 'pandas':
+        # Wide with MultiIndex (pandas only)
+        pdf = df.to_pandas()
+        return _apply_multiindex(pdf, ticker_col, date_col, field_cols)
+    elif format == 'wide' and backend != 'pandas':
+        raise ValueError("format='wide' requires backend='pandas'")
+    # format == 'semi-long': no transformation needed
+
+    # Convert to requested backend
+    if backend == 'pandas':
+        return df.to_pandas()
+    elif backend == 'polars':
+        return df.to_polars()
+    elif backend == 'arrow':
+        return nw.to_native(df)
+    elif backend == 'narwhals':
+        return df
+
+    raise ValueError(f"Unknown backend: {backend}")
+
+
+def _apply_multiindex(df, ticker_col, date_col, field_cols):
+    """Convert semi-long pandas DataFrame to wide with MultiIndex columns."""
+    import pandas as pd
+
+    # Pivot: date as index, (ticker, field) as MultiIndex columns
+    result = df.pivot(index=date_col, columns=ticker_col, values=field_cols)
+
+    # Reorder levels to (ticker, field)
+    if isinstance(result.columns, pd.MultiIndex):
+        result = result.swaplevel(axis=1).sort_index(axis=1)
+
+    return result
+```
+
+### 1.5 Refactor API Functions
+
+Modify each API function to:
+1. Accept `backend` and `format` parameters
+2. Build Arrow table internally
+3. Use `to_output()` for conversion
+
+Example for `bdh()`:
+
+```python
+def bdh(
+    tickers,
+    flds,
+    start_date=None,
+    end_date=None,
+    # ... existing params ...
+    backend: str | None = None,
+    format: str | None = None,
+) -> pd.DataFrame | pl.DataFrame | pa.Table | nw.DataFrame:
+    """Bloomberg historical data.
+
+    Args:
+        # ... existing args ...
+        backend: Output backend. One of 'pandas', 'polars', 'arrow', 'narwhals'.
+                 Default: 'pandas' (will change to 'narwhals' in v1.0)
+        format: Output format. One of 'semi-long', 'long', 'wide'.
+                Default: 'wide' (will change to 'semi-long' in v1.0)
+
+    Returns:
+        DataFrame in requested backend and format.
+    """
+    from xbbg import options
+    from xbbg.io.convert import to_output
+
+    # Use global defaults if not specified
+    backend = backend or options.backend
+    format = format or options.format
+
+    # ... existing Bloomberg fetch logic ...
+
+    # Build Arrow table from response
+    arrow_table = _build_arrow_table(response_data, tickers, flds, dates)
+
+    # Convert to output format
+    return to_output(
+        arrow_table,
+        backend=backend,
+        format=format,
+        ticker_col='ticker',
+        date_col='date',
+        field_cols=flds,
+    )
+```
+
+### 1.6 Functions to Update
+
+| Function | Current Output | Notes |
+|----------|----------------|-------|
+| `bdp()` | DataFrame (simple) | Simpler, may not need format option |
+| `bdh()` | DataFrame + MultiIndex | Full backend/format support |
+| `bds()` | DataFrame | May vary by field |
+| `bdib()` | DataFrame + MultiIndex | Full backend/format support |
+| `bdtick()` | DataFrame | Time series |
+| `bql()` | DataFrame | BQL queries |
+
+### 1.7 Testing
+
+- [ ] Unit tests for `to_output()` with all backend/format combinations
+- [ ] Regression tests: verify current output matches new output with `backend='pandas', format='wide'`
+- [ ] Test each API function with new parameters
+- [ ] Test global options
+
+---
+
+## Phase 2: v0.12 — Warnings
+
+### 2.1 Enable Warnings
+
+Modify API functions to warn when backend/format not explicitly set:
+
+```python
+def bdh(..., backend=None, format=None):
+    from xbbg.deprecation import warn_defaults_changing
+
+    # Warn if using implicit defaults
+    if backend is None or format is None:
+        warn_defaults_changing()
+
+    backend = backend or options.backend
+    format = format or options.format
+    # ...
+```
+
+### 2.2 Documentation
+
+- [ ] Update README with migration guide
+- [ ] Update docstrings with deprecation notices
+- [ ] Add examples showing explicit backend/format usage
+- [ ] Document how to silence warnings
+
+---
+
+## Phase 3: v1.0 — New Defaults
+
+### 3.1 Flip Defaults
+
+In `xbbg/options.py`:
+
+```python
+def __init__(self):
+    self._backend = 'narwhals'    # NEW default
+    self._format = 'semi-long'    # NEW default
+```
+
+### 3.2 Remove Warnings
+
+- Remove deprecation warnings (no longer needed)
+- Keep `XbbgFutureWarning` class for future use
+
+### 3.3 Update Documentation
+
+- Update all examples to show new default output
+- Remove migration notices
+
+---
+
+## Output Format Reference
+
+### Semi-long (default in 1.0)
+```
+│ ticker         │ date       │ PX_LAST │ VOLUME    │
+│ AAPL US Equity │ 2024-01-02 │ 185.5   │ 3825044   │
+│ MSFT US Equity │ 2024-01-02 │ 372.2   │ 2194832   │
+```
+
+### Long
+```
+│ ticker         │ date       │ field   │ value     │
+│ AAPL US Equity │ 2024-01-02 │ PX_LAST │ 185.5     │
+│ AAPL US Equity │ 2024-01-02 │ VOLUME  │ 3825044   │
+```
+
+### Wide (pandas only)
+```
+                 │ AAPL US Equity      │ MSFT US Equity      │
+                 │ PX_LAST │ VOLUME    │ PX_LAST │ VOLUME    │
+date             │         │           │         │           │
+2024-01-02       │ 185.5   │ 3825044   │ 372.2   │ 2194832   │
+```
+
+---
+
+## Backend Compatibility Matrix
+
+| Backend | semi-long | long | wide |
+|---------|-----------|------|------|
+| pandas | ✅ | ✅ | ✅ (MultiIndex) |
+| polars | ✅ | ✅ | ❌ |
+| arrow | ✅ | ✅ | ❌ |
+| narwhals | ✅ | ✅ | ❌ |
+
+---
+
+## Migration Checklist
+
+### v0.11
+- [ ] Remove unused deps (pytest, python-stdnum, pytz)
+- [ ] Add narwhals dependency
+- [ ] Create `xbbg/options.py`
+- [ ] Create `xbbg/deprecation.py`
+- [ ] Create `xbbg/io/convert.py`
+- [ ] Refactor `bdh()` to use Arrow internally
+- [ ] Refactor `bdib()` to use Arrow internally
+- [ ] Refactor `bdp()` to use Arrow internally
+- [ ] Refactor `bds()` to use Arrow internally
+- [ ] Add backend/format parameters to all API functions
+- [ ] Write conversion tests
+- [ ] Write regression tests
+- [ ] Update type hints
+
+### v0.12
+- [ ] Enable deprecation warnings
+- [ ] Write migration guide
+- [ ] Update documentation
+
+### v1.0
+- [ ] Flip defaults
+- [ ] Remove warnings
+- [ ] Final documentation update
+- [ ] Release notes
