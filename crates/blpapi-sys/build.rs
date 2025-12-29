@@ -24,11 +24,19 @@ fn main() {
         panic!("Features 'static' and 'dynamic' are mutually exclusive");
     }
 
-    // Determine library base name
+    // Determine library base name based on target platform and architecture
     let lib_name = env::var("BLPAPI_LINK_LIB_NAME").ok().unwrap_or_else(|| {
-        if cfg!(target_os = "windows") {
-            "blpapi3_64".to_string()
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
+        if target_os == "windows" {
+            if target_arch == "x86" {
+                "blpapi3_32".to_string()
+            } else {
+                "blpapi3_64".to_string()
+            }
         } else {
+            // Linux uses blpapi3 (symlinked from blpapi3_64)
             "blpapi3".to_string()
         }
     });
@@ -110,26 +118,32 @@ fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {
 }
 
 fn derive_include_lib(root: &Path) -> Result<(PathBuf, PathBuf), String> {
+    let inc = root.join("include");
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
     // Try common layouts:
     // <root>/include and <root>/lib
-    let inc1 = root.join("include");
     let lib1 = root.join("lib");
-    if inc1.is_dir() && lib1.is_dir() {
-        return Ok((inc1, lib1));
+    if inc.is_dir() && lib1.is_dir() {
+        return Ok((inc, lib1));
     }
-    // Windows often puts libs under lib/win64
-    let lib2 = root.join("lib").join("win64");
-    if inc1.is_dir() && lib2.is_dir() {
-        return Ok((inc1, lib2));
+
+    // Windows: check architecture-specific lib directories
+    let win_lib_subdir = if target_arch == "x86" { "win32" } else { "win64" };
+    let lib2 = root.join("lib").join(win_lib_subdir);
+    if inc.is_dir() && lib2.is_dir() {
+        return Ok((inc, lib2));
     }
+
     // Fallback: try capitalized Include/Lib (rare)
     let inc3 = root.join("Include");
     let lib3 = root.join("Lib");
     if inc3.is_dir() && lib3.is_dir() {
         return Ok((inc3, lib3));
     }
+
     Err(format!(
-        "Could not derive include/lib under {}. Expected include/ and lib/ (or lib/win64/).",
+        "Could not derive include/lib under {}. Expected include/ and lib/ (or lib/{win_lib_subdir}/).",
         root.display()
     ))
 }

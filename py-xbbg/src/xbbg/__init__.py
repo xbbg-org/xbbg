@@ -23,7 +23,7 @@ _manual_sdk_path: Path | None = None
 def _get_lib_version(lib_path: Path) -> str | None:
     """Extract version from a shared library using lief.
 
-    Works cross-platform for PE (Windows) and ELF (Linux) binaries.
+    Supports PE (Windows) and ELF (Linux) binaries.
     """
     try:
         import lief
@@ -69,7 +69,7 @@ def _find_sdk_lib(sdk_path: Path) -> Path | None:
 
     if sys.platform == "win32":
         candidates = ["blpapi3_64.dll", "blpapi3_32.dll", "lib/blpapi3_64.dll", "lib/blpapi3_32.dll"]
-    else:
+    else:  # Linux
         candidates = ["libblpapi3_64.so", "libblpapi3.so", "lib/libblpapi3_64.so", "lib/libblpapi3.so"]
 
     for candidate in candidates:
@@ -140,7 +140,7 @@ def get_sdk_info() -> dict:
             Path(r"C:\blp\DAPI"),
             Path(os.path.expandvars(r"%LOCALAPPDATA%\Bloomberg\DAPI")),
         ]
-    else:
+    else:  # Linux
         dapi_paths = [
             Path.home() / "blp" / "DAPI",
             Path("/opt/bloomberg/DAPI"),
@@ -285,10 +285,9 @@ def __getattr__(name: str):
             if sdk_lib_dir and sys.platform == "win32":
                 # Windows: add to DLL search path
                 os.add_dll_directory(str(sdk_lib_dir))
-            elif sdk_lib_dir:
-                # Linux/macOS: prepend to LD_LIBRARY_PATH for subprocess, but for
-                # current process we need ctypes.CDLL or it's too late
-                pass  # blpapi Python package handles this on Linux
+            # Linux: LD_LIBRARY_PATH must be set before process starts,
+            # so manual SDK path on Linux requires setting BLPAPI_ROOT env var
+            # or installing blpapi Python package which bundles the library
 
             mod = importlib.import_module("xbbg._core")
             _core_module = mod
@@ -298,12 +297,13 @@ def __getattr__(name: str):
                 raise ImportError(
                     f"{e}\n\n"
                     "The xbbg native extension requires the Bloomberg C++ SDK shared library.\n"
-                    "You can provide it from any of these sources:\n"
-                    "  1. xbbg.set_sdk_path('/path/to/sdk') - manually set SDK path\n"
-                    "  2. Bloomberg Terminal (DAPI) - automatically available if installed\n"
-                    "  3. blpapi Python package: pip install blpapi --index-url "
+                    "Supported platforms: Linux x64, Windows x64/x86\n\n"
+                    "You can provide the SDK from any of these sources:\n"
+                    "  1. blpapi Python package: pip install blpapi --index-url "
                     "https://blpapi.bloomberg.com/repository/releases/python/simple/\n"
-                    "  4. Bloomberg C++ SDK: download from Bloomberg and set BLPAPI_ROOT"
+                    "  2. Bloomberg Terminal (DAPI) - automatically detected if installed\n"
+                    "  3. Bloomberg C++ SDK: set BLPAPI_ROOT environment variable\n"
+                    "  4. xbbg.set_sdk_path('/path/to/sdk') - manually set SDK path (Windows only)"
                 ) from e
             raise
         finally:

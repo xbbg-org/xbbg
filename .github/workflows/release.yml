@@ -32,7 +32,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Build wheels for all platforms
+  # Build wheels for supported platforms (Linux x64, Windows x64/x86)
   # ════════════════════════════════════════════════════════════════════════════
   build:
     name: Build (${{ matrix.target }})
@@ -44,28 +44,12 @@ jobs:
           # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            sdk-platform: linux
-            sdk-ext: tar.gz
-          # Linux aarch64
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            sdk-platform: linux
-            sdk-ext: tar.gz
           # Windows x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            sdk-platform: windows
-            sdk-ext: zip
-          # macOS ARM64 (Apple Silicon)
-          - os: macos-14
-            target: aarch64-apple-darwin
-            sdk-platform: macos
-            sdk-ext: tar.gz
-          # macOS x64 (Intel)
-          - os: macos-15
-            target: x86_64-apple-darwin
-            sdk-platform: macos
-            sdk-ext: tar.gz
+          # Windows x86 (32-bit)
+          - os: windows-latest
+            target: i686-pc-windows-msvc
 
     runs-on: ${{ matrix.os }}
     env:
@@ -82,15 +66,16 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Download Bloomberg SDK (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Download Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-${{ matrix.sdk-platform }}.${{ matrix.sdk-ext }}" \
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Download Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
@@ -112,7 +97,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           args: --release --out dist
-          manylinux: auto
+          manylinux: "2_28"
 
       - name: Upload wheel
         uses: actions/upload-artifact@v6
