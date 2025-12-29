@@ -6,6 +6,7 @@ powered by a high-performance Rust backend.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 # Lazy import of the Rust module to avoid import errors when it's not built
@@ -16,10 +17,10 @@ if TYPE_CHECKING:
 _importing_core = False
 _core_module = None
 _sdk_info: dict | None = None
-_manual_sdk_path: "Path | None" = None
+_manual_sdk_path: Path | None = None
 
 
-def _get_lib_version(lib_path: "Path") -> str | None:
+def _get_lib_version(lib_path: Path) -> str | None:
     """Extract version from a shared library using lief.
 
     Works cross-platform for PE (Windows) and ELF (Linux) binaries.
@@ -62,7 +63,7 @@ def _get_lib_version(lib_path: "Path") -> str | None:
     return None
 
 
-def _find_sdk_lib(sdk_path: "Path") -> "Path | None":
+def _find_sdk_lib(sdk_path: Path) -> Path | None:
     """Find the blpapi DLL/SO in an SDK directory."""
     import sys
 
@@ -97,7 +98,6 @@ def get_sdk_info() -> dict:
     """
     import os
     import sys
-    from pathlib import Path
 
     global _sdk_info
     if _sdk_info is not None:
@@ -111,22 +111,26 @@ def get_sdk_info() -> dict:
         lib_path = _find_sdk_lib(_manual_sdk_path)
         if lib_path:
             manual_version = _get_lib_version(lib_path)
-        sources.append({
-            "name": "manual",
-            "version": manual_version,
-            "path": _manual_sdk_path,
-        })
+        sources.append(
+            {
+                "name": "manual",
+                "version": manual_version,
+                "path": _manual_sdk_path,
+            }
+        )
 
     # Check 1: blpapi Python package (most common for pip users)
     try:
         import blpapi
 
         blpapi_file = getattr(blpapi, "__file__", None)
-        sources.append({
-            "name": "blpapi_python",
-            "version": getattr(blpapi, "__version__", None),
-            "path": Path(blpapi_file) if blpapi_file else None,
-        })
+        sources.append(
+            {
+                "name": "blpapi_python",
+                "version": getattr(blpapi, "__version__", None),
+                "path": Path(blpapi_file) if blpapi_file else None,
+            }
+        )
     except ImportError:
         pass
 
@@ -148,11 +152,13 @@ def get_sdk_info() -> dict:
             lib_path = _find_sdk_lib(dapi_path)
             if lib_path:
                 dapi_version = _get_lib_version(lib_path)
-            sources.append({
-                "name": "dapi",
-                "version": dapi_version,
-                "path": dapi_path,
-            })
+            sources.append(
+                {
+                    "name": "dapi",
+                    "version": dapi_version,
+                    "path": dapi_path,
+                }
+            )
             break  # Only add first found DAPI path
 
     # Check 3: BLPAPI_ROOT environment variable
@@ -164,11 +170,13 @@ def get_sdk_info() -> dict:
             lib_path = _find_sdk_lib(sdk_path)
             if lib_path:
                 sdk_version = _get_lib_version(lib_path)
-            sources.append({
-                "name": "sdk_env",
-                "version": sdk_version,
-                "path": sdk_path,
-            })
+            sources.append(
+                {
+                    "name": "sdk_env",
+                    "version": sdk_version,
+                    "path": sdk_path,
+                }
+            )
 
     info = {
         "sources": sources,
@@ -178,7 +186,7 @@ def get_sdk_info() -> dict:
     return info
 
 
-def set_sdk_path(path: "str | Path") -> None:
+def set_sdk_path(path: str | Path) -> None:
     """Manually set the Bloomberg SDK path.
 
     This takes precedence over all auto-detected sources (blpapi_python, dapi, sdk_env).

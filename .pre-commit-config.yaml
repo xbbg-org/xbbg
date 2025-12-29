@@ -16,7 +16,7 @@ repos:
     hooks:
       - id: ruff
         name: ruff
-        entry: uv run ruff check py-xbbg/src py-xbbg/tests
+        entry: uvx ruff check py-xbbg/src py-xbbg/tests
         language: system
         types_or: [python]
         files: ^(py-xbbg/src/|py-xbbg/tests/)
@@ -24,7 +24,7 @@ repos:
 
       - id: ruff-format
         name: ruff-format
-        entry: uv run ruff format py-xbbg/src py-xbbg/tests
+        entry: uvx ruff format --check py-xbbg/src py-xbbg/tests
         language: system
         types_or: [python]
         files: ^(py-xbbg/src/|py-xbbg/tests/)

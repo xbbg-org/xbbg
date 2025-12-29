@@ -130,6 +130,7 @@ filterwarnings = [
 [dependency-groups]
 dev = [
     "maturin>=1.10.0",
+    "pre-commit>=4.5.1",
     "pytest>=8.4.2",
-    "ruff>=0.14.3",
+    "ruff>=0.14.10",
 ]
