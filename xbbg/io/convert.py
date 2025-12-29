@@ -1,11 +1,10 @@
-"""
-Output conversion layer for xbbg.
+"""Output conversion layer for xbbg.
 
 This module provides functions to convert Arrow tables to various backends
 and output formats (LONG, SEMI_LONG, WIDE).
 """
 
-from typing import Any, List
+from typing import Any
 
 import narwhals as nw
 import pandas as pd
@@ -15,8 +14,7 @@ from xbbg.backend import Backend, Format
 
 
 def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
-    """
-    Convert a narwhals DataFrame to the requested backend.
+    """Convert a narwhals DataFrame to the requested backend.
 
     Parameters
     ----------
@@ -25,12 +23,12 @@ def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
     backend : Backend
         The target backend to convert to.
 
-    Returns
+    Returns:
     -------
     Any
         The DataFrame in the requested backend format.
 
-    Raises
+    Raises:
     ------
     ValueError
         If an unsupported backend is specified.
@@ -59,10 +57,9 @@ def _apply_multiindex(
     df: nw.DataFrame,
     ticker_col: str,
     date_col: str,
-    field_cols: List[str],
+    field_cols: list[str],
 ) -> Any:
-    """
-    Pivot a narwhals DataFrame to pandas with MultiIndex columns (ticker, field).
+    """Pivot a narwhals DataFrame to pandas with MultiIndex columns (ticker, field).
 
     This function is used for WIDE format output with pandas backend.
 
@@ -77,7 +74,7 @@ def _apply_multiindex(
     field_cols : List[str]
         List of field column names to pivot.
 
-    Returns
+    Returns:
     -------
     pd.DataFrame
         A pandas DataFrame with MultiIndex columns (ticker, field) and
@@ -103,8 +100,7 @@ def _apply_multiindex(
         # Return empty DataFrame with proper structure
         return pd.DataFrame()
 
-    result = pd.concat(frames, axis=1)
-    return result
+    return pd.concat(frames, axis=1)
 
 
 def to_output(
@@ -113,10 +109,9 @@ def to_output(
     format: Format,
     ticker_col: str,
     date_col: str,
-    field_cols: List[str],
+    field_cols: list[str],
 ) -> Any:
-    """
-    Convert an Arrow table to the requested backend and format.
+    """Convert an Arrow table to the requested backend and format.
 
     This is the main conversion function that applies format transformation
     and backend conversion.
@@ -136,12 +131,12 @@ def to_output(
     field_cols : List[str]
         List of field column names.
 
-    Returns
+    Returns:
     -------
     Any
         The converted DataFrame in the requested backend and format.
 
-    Raises
+    Raises:
     ------
     ValueError
         If an unsupported format is specified.
@@ -187,24 +182,23 @@ def to_output(
             # For WIDE format, apply MultiIndex for pandas
             if backend == Backend.PANDAS:
                 return _apply_multiindex(nw_frame, ticker_col, date_col, field_cols)
-            else:
-                # For non-pandas backends, pivot to wide format
-                # First unpivot, then pivot by ticker
-                long_frame = nw_frame.unpivot(
-                    on=field_cols,
-                    index=[ticker_col, date_col],
-                    variable_name="field",
-                    value_name="value",
-                )
-                # Create combined ticker_field column and pivot
-                wide_frame = long_frame.with_columns(
-                    (nw.col(ticker_col) + "_" + nw.col("field")).alias("ticker_field")
-                ).pivot(
-                    on="ticker_field",
-                    index=date_col,
-                    values="value",
-                )
-                return _convert_backend(wide_frame, backend)
+            # For non-pandas backends, pivot to wide format
+            # First unpivot, then pivot by ticker
+            long_frame = nw_frame.unpivot(
+                on=field_cols,
+                index=[ticker_col, date_col],
+                variable_name="field",
+                value_name="value",
+            )
+            # Create combined ticker_field column and pivot
+            wide_frame = long_frame.with_columns(
+                (nw.col(ticker_col) + "_" + nw.col("field")).alias("ticker_field")
+            ).pivot(
+                on="ticker_field",
+                index=date_col,
+                values="value",
+            )
+            return _convert_backend(wide_frame, backend)
 
         case _:
             raise ValueError(f"Unsupported format: {format}")

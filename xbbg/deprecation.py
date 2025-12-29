@@ -15,8 +15,7 @@ _warned_defaults: bool = False
 
 
 def warn_defaults_changing() -> None:
-    """
-    Warn that default values are changing in version 1.0.
+    """Warn that default values are changing in version 1.0.
 
     This function only warns once per session to avoid spamming the user.
     """

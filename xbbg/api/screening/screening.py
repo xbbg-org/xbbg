@@ -33,6 +33,8 @@ def beqs(
         asof: as of date
         typ: GLOBAL/B (Bloomberg) or PRIVATE/C (Custom, default)
         group: group name if screen is organized into groups
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         timeout: Timeout in milliseconds for waiting between events (default: 2000ms).
             Increase for complex screens that may have longer gaps between events.
         max_timeouts: Maximum number of timeout events allowed before giving up
@@ -96,6 +98,8 @@ def bsrch(
             "frequency": "DAILY", "target_start_date": "2021-01-01",
             "target_end_date": "2024-12-31", "location_time": "false",
             "fields": "WIND_SPEED|TEMPERATURE|..."}
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         timeout: Timeout in milliseconds for waiting between events (default: 2000ms).
         max_timeouts: Maximum number of timeout events allowed (default: 50).
         **kwargs: Additional options forwarded to session and logging.
@@ -168,6 +172,8 @@ def bql(
             BQL API. If you need cached/live mode, check Bloomberg documentation
             for the correct syntax or use query-level options.
         overrides: Optional list of (field, value) overrides for the BQL request.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Session and logging options.
 
     Returns:
@@ -312,6 +318,8 @@ def etf_holdings(
         fields: Optional list of additional fields to retrieve. Default fields are
             id_isin, weights, and id().position. If provided, these will be added to
             the default fields.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Additional options passed to the underlying BQL query (e.g., params, overrides).
 
     Returns:

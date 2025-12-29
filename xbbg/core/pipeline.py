@@ -28,7 +28,6 @@ from xbbg.core.domain.contracts import (
 )
 from xbbg.core.infra import conn
 from xbbg.core.utils import utils as utils_module
-from xbbg.utils import pipeline as pipeline_utils
 
 logger = logging.getLogger(__name__)
 
@@ -232,9 +231,9 @@ class BloombergPipeline(BaseContextAware):
             return transformed
 
         # Step 9: Convert to requested backend/format
+        from xbbg.deprecation import warn_defaults_changing
         from xbbg.io.convert import to_output
         from xbbg.options import get_backend, get_format
-        from xbbg.deprecation import warn_defaults_changing
 
         backend = request.backend if request.backend is not None else get_backend()
         format_ = request.format if request.format is not None else get_format()
@@ -243,12 +242,8 @@ class BloombergPipeline(BaseContextAware):
         if request.backend is None or request.format is None:
             warn_defaults_changing()
 
-        # Get Arrow table from transformed data
-        if isinstance(transformed, pa.Table):
-            arrow_table = transformed
-        else:
-            # Fallback for pandas DataFrame (during transition)
-            arrow_table = pa.Table.from_pandas(transformed)
+        # Get Arrow table from transformed data (fallback for pandas during transition)
+        arrow_table = transformed if isinstance(transformed, pa.Table) else pa.Table.from_pandas(transformed)
 
         result = to_output(
             arrow_table,
@@ -395,9 +390,7 @@ class BloombergPipeline(BaseContextAware):
         if not events:
             return None
 
-        res = pa.Table.from_pylist(events)
-
-        return res
+        return pa.Table.from_pylist(events)
 
     def _persist_cache(
         self,

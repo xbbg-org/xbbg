@@ -1,5 +1,4 @@
-"""
-Backend and Format enums for xbbg v1 migration.
+"""Backend and Format enums for xbbg v1 migration.
 
 This module provides enums for selecting the data processing backend
 and output format, matching the Rust v1 branch API for compatibility.
@@ -9,8 +8,7 @@ from enum import Enum
 
 
 class Backend(str, Enum):
-    """
-    Enum for selecting the data processing backend.
+    """Enum for selecting the data processing backend.
 
     The backend determines which library is used for data manipulation
     and storage. Each backend has different performance characteristics
@@ -46,8 +44,7 @@ class Backend(str, Enum):
 
 
 class Format(str, Enum):
-    """
-    Enum for selecting the output data format.
+    """Enum for selecting the output data format.
 
     The format determines how the data is structured in the resulting
     DataFrame. Different formats are suited for different analysis tasks.

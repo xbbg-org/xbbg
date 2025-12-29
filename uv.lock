@@ -2217,6 +2217,7 @@ dev = [
     { name = "blpapi" },
     { name = "coverage" },
     { name = "pytest-cov" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -2247,6 +2248,7 @@ dev = [
     { name = "blpapi", index = "https://blpapi.bloomberg.com/repository/releases/python/simple/" },
     { name = "coverage", specifier = ">=7.11.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "ruff", specifier = ">=0.14.3" },
 ]
 
 [[package]]

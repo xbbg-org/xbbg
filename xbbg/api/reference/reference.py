@@ -32,6 +32,8 @@ def bdp(
     Args:
         tickers: Single ticker or list of tickers.
         flds: Single field or list of fields to query.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -82,6 +84,8 @@ def bds(
         tickers: Single ticker or list of tickers.
         flds: Field name.
         use_port: Whether to use `PortfolioDataRequest` instead of `ReferenceDataRequest`.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Other overrides for query.
 
     Returns:
@@ -131,6 +135,8 @@ async def abdp(
     Args:
         tickers: Single ticker or list of tickers.
         flds: Single field or list of fields to query.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -168,6 +174,8 @@ async def abds(
         tickers: Single ticker or list of tickers.
         flds: Field name.
         use_port: Whether to use `PortfolioDataRequest` instead of `ReferenceDataRequest`.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Other overrides for query.
 
     Returns:

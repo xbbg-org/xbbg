@@ -153,4 +153,5 @@ dev = [
     "blpapi",
     "coverage>=7.11.0",
     "pytest-cov>=7.0.0",
+    "ruff>=0.14.3",
 ]
