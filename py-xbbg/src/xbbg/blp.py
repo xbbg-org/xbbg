@@ -12,10 +12,10 @@ API Design:
 from __future__ import annotations
 
 import asyncio
-import logging
-import warnings
 from enum import Enum
+import logging
 from typing import TYPE_CHECKING
+import warnings
 
 import narwhals as nw
 import pyarrow as pa
@@ -227,38 +227,32 @@ def _convert_backend(
         DataFrame/LazyFrame in the requested backend format
     """
     # Resolve effective backend
-    if backend is not None:
-        if isinstance(backend, str):
-            effective = Backend(backend)
-        else:
-            effective = backend
-    else:
-        effective = _default_backend
+    effective = (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
 
     if effective == Backend.PANDAS:
         return nw_df.to_pandas()
-    elif effective == Backend.POLARS:
+    if effective == Backend.POLARS:
         return nw_df.to_native()
-    elif effective == Backend.POLARS_LAZY:
+    if effective == Backend.POLARS_LAZY:
         # Convert to polars LazyFrame
         return nw_df.to_native().lazy()
-    elif effective == Backend.PYARROW:
+    if effective == Backend.PYARROW:
         # narwhals doesn't have direct to_arrow, go through polars or pandas
         try:
-            import polars as pl
+            # polars import needed to check if available for to_arrow()
+            import polars as _  # noqa: F401
 
             return nw_df.to_native().to_arrow()
         except ImportError:
             return pa.Table.from_pandas(nw_df.to_pandas())
-    elif effective == Backend.NARWHALS_LAZY:
+    if effective == Backend.NARWHALS_LAZY:
         # Return narwhals LazyFrame (backed by polars)
         return nw_df.lazy()
-    elif effective == Backend.DUCKDB:
+    if effective == Backend.DUCKDB:
         # Convert to DuckDB relation via narwhals lazy with duckdb backend
         return nw_df.lazy(backend="duckdb")
-    else:
-        # Default: return narwhals DataFrame
-        return nw_df
+    # Default: return narwhals DataFrame
+    return nw_df
 
 
 def _handle_wide_deprecation(wide: bool | None, kwargs: dict) -> bool:
@@ -624,9 +618,7 @@ def bdh(
         df = bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
         df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
     """
-    return asyncio.run(
-        abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, **kwargs)
-    )
+    return asyncio.run(abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, **kwargs))
 
 
 def bds(
@@ -735,6 +727,4 @@ def bdtick(
         df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
         df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
     """
-    return asyncio.run(
-        abdtick(ticker, start_datetime, end_datetime, backend=backend, **kwargs)
-    )
+    return asyncio.run(abdtick(ticker, start_datetime, end_datetime, backend=backend, **kwargs))
