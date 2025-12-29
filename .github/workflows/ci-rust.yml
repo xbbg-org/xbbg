@@ -291,13 +291,24 @@ jobs:
   # ════════════════════════════════════════════════════════════════════════════
   kani:
     name: Kani Verification
+    needs: sdk-version
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Install system dependencies
         run: sudo apt update && sudo apt install -y libclang-dev
+
+      - name: Download Bloomberg SDK
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+          ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
 
       - name: Setup Kani
         uses: model-checking/kani-github-action@v1
