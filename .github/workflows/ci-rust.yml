@@ -108,15 +108,16 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Download Bloomberg SDK (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Download Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-${{ matrix.sdk-platform }}.${{ matrix.sdk-ext }}" \
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
+          # SDK has Linux/ instead of lib/, create symlink for build.rs
+          ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Download Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
