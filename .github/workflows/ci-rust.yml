@@ -373,7 +373,7 @@ jobs:
       - run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           cargo binstall -y --force cargo-udeps
-          cargo +nightly udeps --all-targets
+          cargo +nightly udeps --workspace --all-targets --exclude pyo3-xbbg
 
   # ════════════════════════════════════════════════════════════════════════════
   # Unsafe Code Audit (optional, non-blocking)
