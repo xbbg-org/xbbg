@@ -53,10 +53,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Python lint
-        run: uv run ruff check .
+        run: uvx ruff check .
 
       - name: Python format check
-        run: uv run ruff format --check .
+        run: uvx ruff format --check .
 
   # ════════════════════════════════════════════════════════════════════════════
   # Build wheels (matrix: OS)
@@ -78,16 +78,15 @@ jobs:
             target: x86_64-pc-windows-msvc
             sdk-platform: windows
             sdk-ext: zip
-          # macOS ARM64 (Apple Silicon)
-          - os: macos-14
-            target: aarch64-apple-darwin
-            sdk-platform: macos
-            sdk-ext: tar.gz
-          # macOS x64 (Intel)
-          - os: macos-15
-            target: x86_64-apple-darwin
-            sdk-platform: macos
-            sdk-ext: tar.gz
+          # NOTE: macOS builds disabled - C++ SDK not publicly available
+          # - os: macos-14
+          #   target: aarch64-apple-darwin
+          #   sdk-platform: macos
+          #   sdk-ext: tar.gz
+          # - os: macos-15
+          #   target: x86_64-apple-darwin
+          #   sdk-platform: macos
+          #   sdk-ext: tar.gz
 
     runs-on: ${{ matrix.os }}
     env:
@@ -158,7 +157,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-14]
+        os: [ubuntu-latest, windows-latest]
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     runs-on: ${{ matrix.os }}
