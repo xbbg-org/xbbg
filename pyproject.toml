@@ -23,6 +23,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+  "lief>=0.17",
   "narwhals>=1.30",
   "numpy>=2.2.6",
   "pandas>=2.0",
