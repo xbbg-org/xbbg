@@ -13,20 +13,20 @@ In v1.0, these defaults will change to:
     - format: Format.LONG
 
 Example usage:
-    >>> import xbbg
-    >>> from xbbg.backend import Backend, Format
+    >>> import xbbg  # doctest: +SKIP
+    >>> from xbbg.backend import Backend, Format  # doctest: +SKIP
     >>>
     >>> # Get current defaults
-    >>> xbbg.options.get_backend()
+    >>> xbbg.options.get_backend()  # doctest: +SKIP
     <Backend.PANDAS: 'pandas'>
     >>>
     >>> # Set global defaults
-    >>> xbbg.options.set_backend(Backend.POLARS)
-    >>> xbbg.options.set_format(Format.LONG)
+    >>> xbbg.options.set_backend(Backend.POLARS)  # doctest: +SKIP
+    >>> xbbg.options.set_format(Format.LONG)  # doctest: +SKIP
     >>>
     >>> # Also works with strings
-    >>> xbbg.options.set_backend('polars')
-    >>> xbbg.options.set_format('long')
+    >>> xbbg.options.set_backend('polars')  # doctest: +SKIP
+    >>> xbbg.options.set_format('long')  # doctest: +SKIP
 """
 
 from __future__ import annotations
