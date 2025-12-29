@@ -204,11 +204,15 @@ class BloombergPipeline(BaseContextAware):
 
         # Step 6: Fetch from Bloomberg
         raw_data = self._fetch_from_bloomberg(request, session_window)
-        # Ensure raw_data is always a DataFrame (not None) for transformer
-        if raw_data is None:
-            raw_data = pd.DataFrame()
-        if raw_data.empty:
+        # Check for empty data (handle both Arrow and pandas)
+        is_empty = (
+            raw_data is None
+            or (isinstance(raw_data, pa.Table) and raw_data.num_rows == 0)
+            or (isinstance(raw_data, pd.DataFrame) and raw_data.empty)
+        )
+        if is_empty:
             logger.debug('No data returned from Bloomberg for %s', request.ticker)
+            raw_data = pa.table({})  # Empty Arrow table for transformer
 
         # Step 7: Transform response
         # Transformer should handle empty data and return appropriate structure

@@ -8,6 +8,7 @@ and output formats (LONG, SEMI_LONG, WIDE).
 from typing import Any, List
 
 import narwhals as nw
+import pandas as pd
 import pyarrow as pa
 
 from xbbg.backend import Backend, Format
@@ -145,8 +146,27 @@ def to_output(
     ValueError
         If an unsupported format is specified.
     """
+    # Handle empty table
+    if arrow_table.num_rows == 0:
+        if backend == Backend.PANDAS:
+            return pd.DataFrame()
+        return nw.from_native(pa.table({})).to_native()
+
     # Wrap arrow_table with narwhals
     nw_frame = nw.from_native(arrow_table)
+    columns = nw_frame.columns
+
+    # Check if expected columns exist for format transformation
+    # If not, skip format transformation and just convert backend
+    has_structure_cols = ticker_col in columns and date_col in columns
+    if not has_structure_cols:
+        # Data doesn't have expected structure (e.g., BQL results)
+        # Just convert to requested backend without format transformation
+        return _convert_backend(nw_frame, backend)
+
+    # Infer field columns if not provided
+    if field_cols is None:
+        field_cols = [c for c in columns if c not in (ticker_col, date_col)]
 
     match format:
         case Format.LONG:

@@ -137,7 +137,7 @@ addopts = "-ra"
 filterwarnings = [
   "error::DeprecationWarning",
   "error::PendingDeprecationWarning",
-  "error::FutureWarning",
+  # FutureWarning filter handled in conftest.py to allow XbbgFutureWarning
 ]
 markers = [
   "live_endpoint: marks tests as live Bloomberg endpoint tests (requires --run-xbbg-live to run)",

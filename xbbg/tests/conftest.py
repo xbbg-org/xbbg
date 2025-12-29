@@ -1,7 +1,10 @@
 import logging
 import sys
+import warnings
 
 import pytest
+
+from xbbg.deprecation import XbbgFutureWarning
 
 
 def pytest_addoption(parser):
@@ -26,6 +29,10 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Register custom markers and configure pytest."""
+    # Handle FutureWarning filtering (last-added filter is checked first)
+    warnings.filterwarnings('error', category=FutureWarning)
+    warnings.filterwarnings('ignore', category=XbbgFutureWarning)
+
     # Register custom markers
     config.addinivalue_line(
         "markers",
