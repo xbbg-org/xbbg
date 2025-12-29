@@ -14,6 +14,7 @@ mod pump_b;
 mod pump_c;
 pub mod state;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -41,76 +42,114 @@ pub enum OverflowPolicy {
     Block,
 }
 
+/// Extractor type hint for Arrow conversion.
+///
+/// Tells the pump which Arrow schema/extractor to use for the response.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ExtractorType {
+    /// Reference data: [ticker, field, value, ...]
+    #[default]
+    RefData,
+    /// Historical data: [ticker, date, field, value, ...]
+    HistData,
+    /// Bulk data: [ticker, field, row_idx, col1, col2, ...]
+    BulkData,
+    /// Intraday bars: [ticker, time, open, high, low, close, volume, ...]
+    IntradayBar,
+    /// Intraday ticks: [ticker, time, type, value, size, ...]
+    IntradayTick,
+    /// Generic flattener: [path, type, value_str, value_num, value_date]
+    Generic,
+    /// Raw JSON output: [json]
+    RawJson,
+}
+
+impl ExtractorType {
+    /// Parse extractor type from string (from Python).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "refdata" => Some(Self::RefData),
+            "histdata" => Some(Self::HistData),
+            "bulk" => Some(Self::BulkData),
+            "intraday_bar" => Some(Self::IntradayBar),
+            "intraday_tick" => Some(Self::IntradayTick),
+            "generic" => Some(Self::Generic),
+            "raw_json" => Some(Self::RawJson),
+            _ => None,
+        }
+    }
+}
+
+/// Generic request parameters from Python.
+///
+/// This unified struct holds all possible Bloomberg request parameters.
+/// Not all fields are used for all request types.
+#[derive(Clone, Debug, Default)]
+pub struct RequestParams {
+    /// Bloomberg service URI (e.g., "//blp/refdata")
+    pub service: String,
+    /// Request operation name (e.g., "ReferenceDataRequest")
+    pub operation: String,
+    /// Extractor type hint for Arrow conversion
+    pub extractor: ExtractorType,
+    /// Multiple securities (for bdp/bdh)
+    pub securities: Option<Vec<String>>,
+    /// Single security (for intraday)
+    pub security: Option<String>,
+    /// Fields to retrieve
+    pub fields: Option<Vec<String>>,
+    /// Field overrides
+    pub overrides: Option<Vec<(String, String)>>,
+    /// Start date (YYYYMMDD for bdh)
+    pub start_date: Option<String>,
+    /// End date (YYYYMMDD for bdh)
+    pub end_date: Option<String>,
+    /// Start datetime (ISO for intraday)
+    pub start_datetime: Option<String>,
+    /// End datetime (ISO for intraday)
+    pub end_datetime: Option<String>,
+    /// Event type (TRADE, BID, ASK for intraday)
+    pub event_type: Option<String>,
+    /// Bar interval in minutes (for bdib)
+    pub interval: Option<u32>,
+    /// Additional Bloomberg options
+    pub options: Option<Vec<(String, String)>>,
+    /// Manual field type overrides (for future type resolution)
+    pub field_types: Option<HashMap<String, String>>,
+}
+
+impl RequestParams {
+    /// Determine which lane should handle this request based on operation.
+    pub fn lane(&self) -> Lane {
+        match self.operation.as_str() {
+            "IntradayBarRequest" | "IntradayTickRequest" => Lane::C,
+            _ => Lane::B,
+        }
+    }
+}
+
+/// Lane designation for request routing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lane {
+    /// Lane A: Subscriptions
+    A,
+    /// Lane B: Bulk requests (bdp/bdh/bds)
+    B,
+    /// Lane C: Intraday requests (bdib/bdtick)
+    C,
+}
+
 /// Commands sent to the Engine from the public API.
 pub enum Command {
-    // ─── Lane B: Bulk Requests ───────────────────────────────────────────────
-    /// Reference data request (bdp)
-    Bdp {
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        overrides: Vec<(String, String)>,
-        format: OutputFormat,
+    // ─── Generic Request (unified) ───────────────────────────────────────────
+    /// Generic Bloomberg request (routes based on params.operation)
+    Request {
+        params: RequestParams,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
     },
-    /// Historical data request (bdh)
-    Bdh {
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        start_date: String,
-        end_date: String,
-        options: Vec<(String, String)>,
-        reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
-    },
-    /// Bulk data request (bds)
-    Bds {
-        ticker: String,
-        field: String,
-        overrides: Vec<(String, String)>,
-        reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
-    },
-
-    // ─── Lane C: Intraday Requests ────────────────────────────────────────────
-    /// Intraday bar request (bdib)
-    Bdib {
-        ticker: String,
-        event_type: String,
-        interval: u32,
-        start_datetime: String,
-        end_datetime: String,
-        reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
-    },
-    /// Intraday tick request (bdtick)
-    Bdtick {
-        ticker: String,
-        start_datetime: String,
-        end_datetime: String,
-        reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
-    },
-
-    // ─── Streaming Variants ───────────────────────────────────────────────────
-    /// Streaming historical data request
-    BdhStream {
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        start_date: String,
-        end_date: String,
-        options: Vec<(String, String)>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
-    },
-    /// Streaming intraday bar request
-    BdibStream {
-        ticker: String,
-        event_type: String,
-        interval: u32,
-        start_datetime: String,
-        end_datetime: String,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
-    },
-    /// Streaming intraday tick request
-    BdtickStream {
-        ticker: String,
-        start_datetime: String,
-        end_datetime: String,
+    /// Streaming generic request
+    RequestStream {
+        params: RequestParams,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     },
 
@@ -257,210 +296,61 @@ impl Engine {
         })
     }
 
-    /// Reference data (bdp) - routes to Lane B.
-    /// Uses Long format (one row per ticker-field pair) by default.
-    pub async fn bdp(
-        &self,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        overrides: Vec<(String, String)>,
-    ) -> Result<RecordBatch, BlpAsyncError> {
-        self.bdp_with_format(tickers, fields, overrides, OutputFormat::Long)
-            .await
-    }
+    // ─── Generic Request API ─────────────────────────────────────────────────
 
-    /// Reference data (bdp) with format selection - routes to Lane B.
-    pub async fn bdp_with_format(
-        &self,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        overrides: Vec<(String, String)>,
-        format: OutputFormat,
-    ) -> Result<RecordBatch, BlpAsyncError> {
+    /// Generic Bloomberg request - routes based on operation type.
+    ///
+    /// This is the primary API for all Bloomberg requests. The operation
+    /// determines which lane handles the request:
+    /// - IntradayBarRequest, IntradayTickRequest → Lane C
+    /// - All other requests → Lane B
+    pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
         let (tx, rx) = oneshot::channel();
-        self.cmd_b
-            .send(Command::Bdp {
-                tickers,
-                fields,
-                overrides,
-                format,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
+        let lane = params.lane();
+
+        let cmd = Command::Request { params, reply: tx };
+
+        match lane {
+            Lane::B => self.cmd_b.send(cmd).await,
+            Lane::C => self.cmd_c.send(cmd).await,
+            Lane::A => {
+                return Err(BlpAsyncError::Internal(
+                    "Lane A is for subscriptions, use subscribe() instead".into(),
+                ))
+            }
+        }
+        .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
+
         rx.await
             .map_err(|_| BlpAsyncError::Internal("reply dropped".into()))?
             .map_err(|e| BlpAsyncError::Internal(e.to_string()))
     }
 
-    /// Historical data (bdh) - routes to Lane B.
-    pub async fn bdh(
+    /// Streaming generic request - routes based on operation type.
+    pub async fn request_stream(
         &self,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        start_date: String,
-        end_date: String,
-        options: Vec<(String, String)>,
-    ) -> Result<RecordBatch, BlpAsyncError> {
-        let (tx, rx) = oneshot::channel();
-        self.cmd_b
-            .send(Command::Bdh {
-                tickers,
-                fields,
-                start_date,
-                end_date,
-                options,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
-        rx.await
-            .map_err(|_| BlpAsyncError::Internal("reply dropped".into()))?
-            .map_err(|e| BlpAsyncError::Internal(e.to_string()))
-    }
-
-    /// Bulk data (bds) - routes to Lane B.
-    pub async fn bds(
-        &self,
-        ticker: String,
-        field: String,
-        overrides: Vec<(String, String)>,
-    ) -> Result<RecordBatch, BlpAsyncError> {
-        let (tx, rx) = oneshot::channel();
-        self.cmd_b
-            .send(Command::Bds {
-                ticker,
-                field,
-                overrides,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
-        rx.await
-            .map_err(|_| BlpAsyncError::Internal("reply dropped".into()))?
-            .map_err(|e| BlpAsyncError::Internal(e.to_string()))
-    }
-
-    /// Intraday bars (bdib) - routes to Lane C.
-    pub async fn bdib(
-        &self,
-        ticker: String,
-        event_type: String,
-        interval: u32,
-        start_datetime: String,
-        end_datetime: String,
-    ) -> Result<RecordBatch, BlpAsyncError> {
-        let (tx, rx) = oneshot::channel();
-        self.cmd_c
-            .send(Command::Bdib {
-                ticker,
-                event_type,
-                interval,
-                start_datetime,
-                end_datetime,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
-        rx.await
-            .map_err(|_| BlpAsyncError::Internal("reply dropped".into()))?
-            .map_err(|e| BlpAsyncError::Internal(e.to_string()))
-    }
-
-    /// Intraday ticks (bdtick) - routes to Lane C.
-    pub async fn bdtick(
-        &self,
-        ticker: String,
-        start_datetime: String,
-        end_datetime: String,
-    ) -> Result<RecordBatch, BlpAsyncError> {
-        let (tx, rx) = oneshot::channel();
-        self.cmd_c
-            .send(Command::Bdtick {
-                ticker,
-                start_datetime,
-                end_datetime,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
-        rx.await
-            .map_err(|_| BlpAsyncError::Internal("reply dropped".into()))?
-            .map_err(|e| BlpAsyncError::Internal(e.to_string()))
-    }
-
-    // ─── Streaming Variants ───────────────────────────────────────────────────
-
-    /// Streaming historical data (bdh_stream) - routes to Lane B.
-    /// Returns a receiver that yields RecordBatch chunks as they arrive.
-    pub async fn bdh_stream(
-        &self,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        start_date: String,
-        end_date: String,
-        options: Vec<(String, String)>,
+        params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
         let (tx, rx) = mpsc::channel(256);
-        self.cmd_b
-            .send(Command::BdhStream {
-                tickers,
-                fields,
-                start_date,
-                end_date,
-                options,
-                stream: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
+        let lane = params.lane();
+
+        let cmd = Command::RequestStream { params, stream: tx };
+
+        match lane {
+            Lane::B => self.cmd_b.send(cmd).await,
+            Lane::C => self.cmd_c.send(cmd).await,
+            Lane::A => {
+                return Err(BlpAsyncError::Internal(
+                    "Lane A is for subscriptions, use subscribe() instead".into(),
+                ))
+            }
+        }
+        .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
+
         Ok(rx)
     }
 
-    /// Streaming intraday bars (bdib_stream) - routes to Lane C.
-    /// Returns a receiver that yields RecordBatch chunks as they arrive.
-    pub async fn bdib_stream(
-        &self,
-        ticker: String,
-        event_type: String,
-        interval: u32,
-        start_datetime: String,
-        end_datetime: String,
-    ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
-        let (tx, rx) = mpsc::channel(256);
-        self.cmd_c
-            .send(Command::BdibStream {
-                ticker,
-                event_type,
-                interval,
-                start_datetime,
-                end_datetime,
-                stream: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
-        Ok(rx)
-    }
-
-    /// Streaming intraday ticks (bdtick_stream) - routes to Lane C.
-    /// Returns a receiver that yields RecordBatch chunks as they arrive.
-    pub async fn bdtick_stream(
-        &self,
-        ticker: String,
-        start_datetime: String,
-        end_datetime: String,
-    ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
-        let (tx, rx) = mpsc::channel(256);
-        self.cmd_c
-            .send(Command::BdtickStream {
-                ticker,
-                start_datetime,
-                end_datetime,
-                stream: tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
-        Ok(rx)
-    }
+    // ─── Subscriptions ───────────────────────────────────────────────────────
 
     /// Subscribe to real-time data - routes to Lane A.
     pub async fn subscribe(
@@ -488,6 +378,8 @@ impl Engine {
             .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
         Ok(())
     }
+
+    // ─── Admin ───────────────────────────────────────────────────────────────
 
     /// Graceful shutdown of all sessions.
     pub async fn shutdown(self) -> Result<(), BlpAsyncError> {

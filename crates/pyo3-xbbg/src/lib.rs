@@ -1,7 +1,7 @@
 //! PyO3 bindings for xbbg Bloomberg engine.
 //!
 //! This module provides Python bindings for the Rust xbbg Engine,
-//! exposing async (abdp, abdh, abds, abdib, abdtick) and sync variants.
+//! exposing a generic `request()` method that accepts parameters from Python.
 //!
 //! # GIL Handling
 //!
@@ -10,13 +10,15 @@
 //! - GIL is only acquired via `Python::attach()` for final Arrow conversion
 //! - `py.detach()` releases GIL during blocking `Engine::start()`
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use pyo3_async_runtimes::tokio::future_into_py;
 
-use xbbg_async::engine::{Engine, EngineConfig, OutputFormat};
+use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
 
 /// Python wrapper for the xbbg Engine.
 #[pyclass]
@@ -49,136 +51,150 @@ impl PyEngine {
     }
 
     // =========================================================================
-    // Async API - returns Python coroutines
+    // Generic Request API
     // =========================================================================
 
-    /// Async reference data request (abdp).
+    /// Generic async Bloomberg request.
     ///
-    /// Returns a coroutine that resolves to a PyArrow RecordBatch.
-    #[pyo3(signature = (tickers, fields, overrides=None, wide=false))]
-    fn abdp<'py>(
+    /// Accepts a dictionary of parameters and returns a PyArrow RecordBatch.
+    ///
+    /// Required keys:
+    /// - service: Bloomberg service URI (e.g., "//blp/refdata")
+    /// - operation: Request operation name (e.g., "ReferenceDataRequest")
+    /// - extractor: Extractor type hint (e.g., "refdata", "histdata", "intraday_bar")
+    ///
+    /// Optional keys (depend on request type):
+    /// - securities: List of security identifiers
+    /// - security: Single security identifier
+    /// - fields: List of field names
+    /// - overrides: List of (name, value) tuples
+    /// - start_date, end_date: For historical requests
+    /// - start_datetime, end_datetime: For intraday requests
+    /// - event_type: For intraday bars (TRADE, BID, ASK)
+    /// - interval: Bar interval in minutes
+    /// - options: Additional Bloomberg options
+    #[pyo3(signature = (params))]
+    fn request<'py>(
         &self,
         py: Python<'py>,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        overrides: Option<Vec<(String, String)>>,
-        wide: bool,
+        params: &Bound<'py, PyDict>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
-        let overrides = overrides.unwrap_or_default();
-        let format = if wide {
-            OutputFormat::Wide
-        } else {
-            OutputFormat::Long
-        };
+
+        // Extract and convert params to Rust struct
+        let rust_params = dict_to_request_params(params)?;
 
         future_into_py(py, async move {
             let batch = engine
-                .bdp_with_format(tickers, fields, overrides, format)
+                .request(rust_params)
                 .await
-                .map_err(|e| PyRuntimeError::new_err(format!("abdp failed: {e}")))?;
+                .map_err(|e| PyRuntimeError::new_err(format!("request failed: {e}")))?;
 
             Python::attach(|py| record_batch_to_pyarrow(py, batch))
         })
     }
+}
 
-    /// Async historical data request (abdh).
-    ///
-    /// Returns a coroutine that resolves to a PyArrow RecordBatch.
-    #[pyo3(signature = (tickers, fields, start_date, end_date, options=None))]
-    fn abdh<'py>(
-        &self,
-        py: Python<'py>,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        start_date: String,
-        end_date: String,
-        options: Option<Vec<(String, String)>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let engine = self.engine.clone();
-        let options = options.unwrap_or_default();
+/// Convert a Python dictionary to Rust RequestParams.
+fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
+    // Required fields
+    let service: String = dict
+        .get_item("service")?
+        .ok_or_else(|| PyRuntimeError::new_err("missing required field: service"))?
+        .extract()?;
 
-        future_into_py(py, async move {
-            let batch = engine
-                .bdh(tickers, fields, start_date, end_date, options)
-                .await
-                .map_err(|e| PyRuntimeError::new_err(format!("abdh failed: {e}")))?;
+    let operation: String = dict
+        .get_item("operation")?
+        .ok_or_else(|| PyRuntimeError::new_err("missing required field: operation"))?
+        .extract()?;
 
-            Python::attach(|py| record_batch_to_pyarrow(py, batch))
-        })
-    }
+    let extractor_str: String = dict
+        .get_item("extractor")?
+        .ok_or_else(|| PyRuntimeError::new_err("missing required field: extractor"))?
+        .extract()?;
 
-    /// Async bulk data request (abds).
-    ///
-    /// Returns a coroutine that resolves to a PyArrow RecordBatch.
-    #[pyo3(signature = (ticker, field, overrides=None))]
-    fn abds<'py>(
-        &self,
-        py: Python<'py>,
-        ticker: String,
-        field: String,
-        overrides: Option<Vec<(String, String)>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let engine = self.engine.clone();
-        let overrides = overrides.unwrap_or_default();
+    let extractor = ExtractorType::parse(&extractor_str).ok_or_else(|| {
+        PyRuntimeError::new_err(format!("invalid extractor type: {}", extractor_str))
+    })?;
 
-        future_into_py(py, async move {
-            let batch = engine
-                .bds(ticker, field, overrides)
-                .await
-                .map_err(|e| PyRuntimeError::new_err(format!("abds failed: {e}")))?;
+    // Optional fields
+    let securities: Option<Vec<String>> = dict
+        .get_item("securities")?
+        .map(|v| v.extract())
+        .transpose()?;
 
-            Python::attach(|py| record_batch_to_pyarrow(py, batch))
-        })
-    }
+    let security: Option<String> = dict
+        .get_item("security")?
+        .map(|v| v.extract())
+        .transpose()?;
 
-    /// Async intraday bar request (abdib).
-    ///
-    /// Returns a coroutine that resolves to a PyArrow RecordBatch.
-    #[pyo3(signature = (ticker, event_type, interval, start_datetime, end_datetime))]
-    fn abdib<'py>(
-        &self,
-        py: Python<'py>,
-        ticker: String,
-        event_type: String,
-        interval: u32,
-        start_datetime: String,
-        end_datetime: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let engine = self.engine.clone();
+    let fields: Option<Vec<String>> = dict
+        .get_item("fields")?
+        .map(|v| v.extract())
+        .transpose()?;
 
-        future_into_py(py, async move {
-            let batch = engine
-                .bdib(ticker, event_type, interval, start_datetime, end_datetime)
-                .await
-                .map_err(|e| PyRuntimeError::new_err(format!("abdib failed: {e}")))?;
+    let overrides: Option<Vec<(String, String)>> = dict
+        .get_item("overrides")?
+        .map(|v| v.extract())
+        .transpose()?;
 
-            Python::attach(|py| record_batch_to_pyarrow(py, batch))
-        })
-    }
+    let start_date: Option<String> = dict
+        .get_item("start_date")?
+        .map(|v| v.extract())
+        .transpose()?;
 
-    /// Async intraday tick request (abdtick).
-    ///
-    /// Returns a coroutine that resolves to a PyArrow RecordBatch.
-    #[pyo3(signature = (ticker, start_datetime, end_datetime))]
-    fn abdtick<'py>(
-        &self,
-        py: Python<'py>,
-        ticker: String,
-        start_datetime: String,
-        end_datetime: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let engine = self.engine.clone();
+    let end_date: Option<String> = dict
+        .get_item("end_date")?
+        .map(|v| v.extract())
+        .transpose()?;
 
-        future_into_py(py, async move {
-            let batch = engine
-                .bdtick(ticker, start_datetime, end_datetime)
-                .await
-                .map_err(|e| PyRuntimeError::new_err(format!("abdtick failed: {e}")))?;
+    let start_datetime: Option<String> = dict
+        .get_item("start_datetime")?
+        .map(|v| v.extract())
+        .transpose()?;
 
-            Python::attach(|py| record_batch_to_pyarrow(py, batch))
-        })
-    }
+    let end_datetime: Option<String> = dict
+        .get_item("end_datetime")?
+        .map(|v| v.extract())
+        .transpose()?;
+
+    let event_type: Option<String> = dict
+        .get_item("event_type")?
+        .map(|v| v.extract())
+        .transpose()?;
+
+    let interval: Option<u32> = dict
+        .get_item("interval")?
+        .map(|v| v.extract())
+        .transpose()?;
+
+    let options: Option<Vec<(String, String)>> = dict
+        .get_item("options")?
+        .map(|v| v.extract())
+        .transpose()?;
+
+    let field_types: Option<HashMap<String, String>> = dict
+        .get_item("field_types")?
+        .map(|v| v.extract())
+        .transpose()?;
+
+    Ok(RequestParams {
+        service,
+        operation,
+        extractor,
+        securities,
+        security,
+        fields,
+        overrides,
+        start_date,
+        end_date,
+        start_datetime,
+        end_datetime,
+        event_type,
+        interval,
+        options,
+        field_types,
+    })
 }
 
 /// Convert Arrow RecordBatch to PyArrow RecordBatch using zero-copy FFI.

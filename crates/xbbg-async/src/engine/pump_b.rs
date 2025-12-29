@@ -17,7 +17,7 @@ use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, Ses
 use super::state::{
     BulkDataState, HistDataState, HistDataStreamState, OutputFormat, RefDataState, RequestState,
 };
-use super::{Command, EngineConfig};
+use super::{Command, EngineConfig, ExtractorType, RequestParams};
 
 /// Lane B pump state.
 struct PumpB {
@@ -87,42 +87,11 @@ impl PumpB {
 
     fn handle_command(&mut self, cmd: Command) -> Result<(), BlpError> {
         match cmd {
-            Command::Bdp {
-                tickers,
-                fields,
-                overrides,
-                format,
-                reply,
-            } => {
-                self.send_bdp(tickers, fields, overrides, format, reply)?;
+            Command::Request { params, reply } => {
+                self.send_request(params, reply)?;
             }
-            Command::Bdh {
-                tickers,
-                fields,
-                start_date,
-                end_date,
-                options,
-                reply,
-            } => {
-                self.send_bdh(tickers, fields, start_date, end_date, options, reply)?;
-            }
-            Command::Bds {
-                ticker,
-                field,
-                overrides,
-                reply,
-            } => {
-                self.send_bds(ticker, field, overrides, reply)?;
-            }
-            Command::BdhStream {
-                tickers,
-                fields,
-                start_date,
-                end_date,
-                options,
-                stream,
-            } => {
-                self.send_bdh_stream(tickers, fields, start_date, end_date, options, stream)?;
+            Command::RequestStream { params, stream } => {
+                self.send_request_stream(params, stream)?;
             }
             _ => {
                 // Lane A/C commands shouldn't arrive here
@@ -141,121 +110,138 @@ impl PumpB {
         Ok(())
     }
 
-    fn send_bdp(
+    /// Unified request handler - routes to correct state based on extractor type.
+    fn send_request(
         &mut self,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        overrides: Vec<(String, String)>,
-        format: OutputFormat,
+        params: RequestParams,
         reply: oneshot::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
     ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
+        self.ensure_service(&params.service)?;
 
-        // Allocate state with specified format
-        let state = RefDataState::with_format(fields.clone(), format, reply);
-        let key = self.requests.insert(RequestState::RefData(state));
+        // Create state based on extractor type
+        let fields = params.fields.clone().unwrap_or_default();
+        let field_types = params.field_types.clone();
+        let state = match params.extractor {
+            ExtractorType::RefData => {
+                RequestState::RefData(RefDataState::with_format(
+                    fields.clone(),
+                    OutputFormat::Long,
+                    field_types,
+                    reply,
+                ))
+            }
+            ExtractorType::HistData => {
+                RequestState::HistData(HistDataState::with_types(
+                    fields.clone(),
+                    field_types.clone(),
+                    reply,
+                ))
+            }
+            ExtractorType::BulkData => {
+                let field = fields.first().cloned().unwrap_or_default();
+                RequestState::BulkData(BulkDataState::new(field, reply))
+            }
+            _ => {
+                // TODO: Add Generic and RawJson extractors
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("Unsupported extractor type for Lane B: {:?}", params.extractor),
+                });
+            }
+        };
+
+        let key = self.requests.insert(state);
         let cid = CorrelationId::U64(key as u64);
 
-        // Build request using builder pattern
-        let service = self.services.get("//blp/refdata").unwrap();
-        let mut builder = RequestBuilder::new()
-            .securities(tickers.clone())
-            .fields(fields);
-        for (name, value) in overrides {
-            builder = builder.r#override(&name, value);
+        // Build request from params
+        let service = self.services.get(&params.service).unwrap();
+        let request = self.build_request_from_params(service, &params)?;
+
+        self.session.send_request(&request, None, Some(&cid))?;
+        tracing::debug!(
+            key = key,
+            service = %params.service,
+            operation = %params.operation,
+            "request sent"
+        );
+        Ok(())
+    }
+
+    /// Unified streaming request handler.
+    fn send_request_stream(
+        &mut self,
+        params: RequestParams,
+        stream: mpsc::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
+    ) -> Result<(), BlpError> {
+        self.ensure_service(&params.service)?;
+
+        // Create streaming state based on extractor type
+        let fields = params.fields.clone().unwrap_or_default();
+        let state = match params.extractor {
+            ExtractorType::HistData => {
+                RequestState::HistDataStream(HistDataStreamState::new(fields.clone(), stream))
+            }
+            _ => {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("Streaming not supported for extractor: {:?}", params.extractor),
+                });
+            }
+        };
+
+        let key = self.requests.insert(state);
+        let cid = CorrelationId::U64(key as u64);
+
+        // Build request from params
+        let service = self.services.get(&params.service).unwrap();
+        let request = self.build_request_from_params(service, &params)?;
+
+        self.session.send_request(&request, None, Some(&cid))?;
+        tracing::debug!(
+            key = key,
+            service = %params.service,
+            operation = %params.operation,
+            "stream request sent"
+        );
+        Ok(())
+    }
+
+    /// Build a Bloomberg request from generic RequestParams.
+    fn build_request_from_params(
+        &self,
+        service: &Service,
+        params: &RequestParams,
+    ) -> Result<xbbg_core::Request, BlpError> {
+        let mut builder = RequestBuilder::new();
+
+        // Set securities (multi or single)
+        if let Some(ref securities) = params.securities {
+            builder = builder.securities(securities.clone());
         }
-        let request = builder.build(service, "ReferenceDataRequest")?;
-
-        self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, tickers = ?tickers, "bdp request sent");
-        Ok(())
-    }
-
-    fn send_bdh(
-        &mut self,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        start_date: String,
-        end_date: String,
-        _options: Vec<(String, String)>,
-        reply: oneshot::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
-    ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
-
-        // Allocate state
-        let state = HistDataState::new(fields.clone(), reply);
-        let key = self.requests.insert(RequestState::HistData(state));
-        let cid = CorrelationId::U64(key as u64);
-
-        let service = self.services.get("//blp/refdata").unwrap();
-        let request = RequestBuilder::new()
-            .securities(tickers.clone())
-            .fields(fields)
-            .start_date(&start_date)
-            .end_date(&end_date)
-            .build(service, "HistoricalDataRequest")?;
-
-        self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, tickers = ?tickers, "bdh request sent");
-        Ok(())
-    }
-
-    fn send_bdh_stream(
-        &mut self,
-        tickers: Vec<String>,
-        fields: Vec<String>,
-        start_date: String,
-        end_date: String,
-        _options: Vec<(String, String)>,
-        stream: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
-    ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
-
-        // Allocate streaming state
-        let state = HistDataStreamState::new(fields.clone(), stream);
-        let key = self.requests.insert(RequestState::HistDataStream(state));
-        let cid = CorrelationId::U64(key as u64);
-
-        let service = self.services.get("//blp/refdata").unwrap();
-        let request = RequestBuilder::new()
-            .securities(tickers.clone())
-            .fields(fields)
-            .start_date(&start_date)
-            .end_date(&end_date)
-            .build(service, "HistoricalDataRequest")?;
-
-        self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, tickers = ?tickers, "bdh_stream request sent");
-        Ok(())
-    }
-
-    fn send_bds(
-        &mut self,
-        ticker: String,
-        field: String,
-        overrides: Vec<(String, String)>,
-        reply: oneshot::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
-    ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
-
-        // Allocate state
-        let state = BulkDataState::new(field.clone(), reply);
-        let key = self.requests.insert(RequestState::BulkData(state));
-        let cid = CorrelationId::U64(key as u64);
-
-        // Build request
-        let service = self.services.get("//blp/refdata").unwrap();
-        let mut builder = RequestBuilder::new()
-            .securities(vec![ticker.clone()])
-            .fields(vec![field.clone()]);
-        for (name, value) in overrides {
-            builder = builder.r#override(&name, value);
+        if let Some(ref security) = params.security {
+            builder = builder.securities(vec![security.clone()]);
         }
-        let request = builder.build(service, "ReferenceDataRequest")?;
 
-        self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, ticker = %ticker, field = %field, "bds request sent");
-        Ok(())
+        // Set fields
+        if let Some(ref fields) = params.fields {
+            builder = builder.fields(fields.clone());
+        }
+
+        // Set date range (for historical)
+        if let Some(ref start) = params.start_date {
+            builder = builder.start_date(start);
+        }
+        if let Some(ref end) = params.end_date {
+            builder = builder.end_date(end);
+        }
+
+        // Set overrides
+        if let Some(ref overrides) = params.overrides {
+            for (name, value) in overrides {
+                builder = builder.r#override(name, value.clone());
+            }
+        }
+
+        // Build with the operation name
+        builder.build(service, &params.operation)
     }
 
     fn dispatch_event(&mut self, ev: xbbg_core::Event) {

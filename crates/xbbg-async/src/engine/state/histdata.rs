@@ -1,14 +1,16 @@
 //! Historical data (bdh) state with Arrow builders.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow::array::{Date32Builder, Float64Builder, StringBuilder};
+use arrow::array::{Date32Builder, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
 use tracing::trace;
 
 use super::json_schema;
+use super::typed_builder::{ArrowType, TypedBuilder};
 use xbbg_core::{BlpError, MessageRef};
 
 /// State for a historical data request (bdh).
@@ -19,16 +21,40 @@ pub struct HistDataState {
     ticker_builder: StringBuilder,
     /// Date builder (days since epoch)
     date_builder: Date32Builder,
-    /// Value builders (one per field)
-    field_builders: Vec<Float64Builder>,
+    /// Value builders (one per field, typed based on field_types)
+    field_builders: Vec<TypedBuilder>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
 
 impl HistDataState {
-    /// Create a new histdata state.
+    /// Create a new histdata state with default Float64 types for all fields.
     pub fn new(fields: Vec<String>, reply: oneshot::Sender<Result<RecordBatch, BlpError>>) -> Self {
-        let field_builders = fields.iter().map(|_| Float64Builder::new()).collect();
+        Self::with_types(fields, None, reply)
+    }
+
+    /// Create a new histdata state with optional field type overrides.
+    pub fn with_types(
+        fields: Vec<String>,
+        field_types: Option<HashMap<String, String>>,
+        reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
+    ) -> Self {
+        // Convert string types to ArrowType, defaulting to Float64 for historical data
+        let arrow_types: HashMap<String, ArrowType> = field_types
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| (k, ArrowType::parse(&v)))
+            .collect();
+
+        // Create typed builders for each field
+        let field_builders = fields
+            .iter()
+            .map(|f| {
+                // Default to Float64 for historical data (prices, volumes are numeric)
+                let arrow_type = arrow_types.get(f).cloned().unwrap_or(ArrowType::Float64);
+                TypedBuilder::new(&arrow_type)
+            })
+            .collect();
 
         Self {
             field_strings: fields,
@@ -87,17 +113,10 @@ impl HistDataState {
                 self.date_builder.append_null();
             }
 
-            // Get each field value
+            // Get each field value using typed builders
             for (j, field_str) in self.field_strings.iter().enumerate() {
-                if let Some(value) = row.fields.get(field_str.as_str()) {
-                    if let Some(f) = value.as_f64() {
-                        self.field_builders[j].append_value(f);
-                    } else {
-                        self.field_builders[j].append_null();
-                    }
-                } else {
-                    self.field_builders[j].append_null();
-                }
+                let value = row.fields.get(field_str.as_str());
+                self.field_builders[j].append_json_value(value);
             }
         }
     }
@@ -106,26 +125,24 @@ impl HistDataState {
     fn build_batch_inner(&mut self) -> Result<RecordBatch, BlpError> {
         let ticker_array = self.ticker_builder.finish();
         let date_array = self.date_builder.finish();
-        let field_arrays: Vec<_> = self
-            .field_builders
-            .iter_mut()
-            .map(|b| Arc::new(b.finish()) as _)
-            .collect();
 
-        // Build schema
+        // Build schema with typed columns
         let mut fields = vec![
             Field::new("ticker", DataType::Utf8, false),
             Field::new("date", DataType::Date32, true),
         ];
-        for name in &self.field_strings {
-            fields.push(Field::new(name.as_str(), DataType::Float64, true));
+        for (i, name) in self.field_strings.iter().enumerate() {
+            let data_type = self.field_builders[i].data_type();
+            fields.push(Field::new(name.as_str(), data_type, true));
         }
         let schema = Arc::new(Schema::new(fields));
 
         // Build columns
         let mut columns: Vec<Arc<dyn arrow::array::Array>> =
             vec![Arc::new(ticker_array), Arc::new(date_array)];
-        columns.extend(field_arrays);
+        for builder in &mut self.field_builders {
+            columns.push(builder.finish());
+        }
 
         RecordBatch::try_new(schema, columns).map_err(|e| BlpError::Internal {
             detail: format!("build RecordBatch: {e}"),

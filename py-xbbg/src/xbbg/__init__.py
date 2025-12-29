@@ -295,6 +295,9 @@ __all__ = [
     "__version__",
     "_core",
     "Backend",
+    # Generic API (power users)
+    "arequest",
+    "request",
     # Sync API
     "bdp",
     "bds",
@@ -307,11 +310,34 @@ __all__ = [
     "abdh",
     "abdib",
     "abdtick",
+    # Config
     "set_backend",
     "get_backend",
     "get_sdk_info",
     "set_sdk_path",
     "clear_sdk_path",
+    # Field type cache
+    "FieldTypeCache",
+    "FieldInfo",
+    "resolve_field_types",
+    "aresolve_field_types",
+    "cache_field_types",
+    "get_field_info",
+    "clear_field_cache",
+    # Service definitions
+    "Service",
+    "Operation",
+    "OutputMode",
+    "RequestParams",
+    # Exceptions
+    "BlpError",
+    "BlpSessionError",
+    "BlpRequestError",
+    "BlpSecurityError",
+    "BlpFieldError",
+    "BlpValidationError",
+    "BlpTimeoutError",
+    "BlpInternalError",
 ]
 
 
@@ -358,8 +384,11 @@ def __getattr__(name: str):
             raise
         finally:
             _importing_core = False
+    # blp module exports
     if name in (
         "Backend",
+        "arequest",
+        "request",
         "bdp",
         "bds",
         "bdh",
@@ -372,10 +401,41 @@ def __getattr__(name: str):
         "abdtick",
         "set_backend",
         "get_backend",
+        "Service",
+        "Operation",
+        "OutputMode",
+        "RequestParams",
     ):
         from . import blp
 
         return getattr(blp, name)
+    # Exception exports
+    if name in (
+        "BlpError",
+        "BlpSessionError",
+        "BlpRequestError",
+        "BlpSecurityError",
+        "BlpFieldError",
+        "BlpValidationError",
+        "BlpTimeoutError",
+        "BlpInternalError",
+    ):
+        from . import exceptions
+
+        return getattr(exceptions, name)
+    # Field cache exports
+    if name in (
+        "FieldTypeCache",
+        "FieldInfo",
+        "resolve_field_types",
+        "aresolve_field_types",
+        "cache_field_types",
+        "get_field_info",
+        "clear_field_cache",
+    ):
+        from . import field_cache
+
+        return getattr(field_cache, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

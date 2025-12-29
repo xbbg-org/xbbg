@@ -10,6 +10,7 @@ mod intradaytick_stream;
 pub mod json_schema;
 mod refdata;
 mod subscription;
+pub mod typed_builder;
 
 pub use bulkdata::BulkDataState;
 pub use histdata::HistDataState;

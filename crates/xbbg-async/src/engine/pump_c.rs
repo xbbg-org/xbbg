@@ -21,7 +21,7 @@ use super::state::{
     IntradayBarState, IntradayBarStreamState, IntradayRequestState, IntradayTickState,
     IntradayTickStreamState,
 };
-use super::{Command, EngineConfig};
+use super::{Command, EngineConfig, ExtractorType, RequestParams};
 
 /// Lane C pump state.
 struct PumpC {
@@ -91,55 +91,11 @@ impl PumpC {
 
     fn handle_command(&mut self, cmd: Command) -> Result<(), BlpError> {
         match cmd {
-            Command::Bdib {
-                ticker,
-                event_type,
-                interval,
-                start_datetime,
-                end_datetime,
-                reply,
-            } => {
-                self.send_bdib(
-                    ticker,
-                    event_type,
-                    interval,
-                    start_datetime,
-                    end_datetime,
-                    reply,
-                )?;
+            Command::Request { params, reply } => {
+                self.send_request(params, reply)?;
             }
-            Command::Bdtick {
-                ticker,
-                start_datetime,
-                end_datetime,
-                reply,
-            } => {
-                self.send_bdtick(ticker, start_datetime, end_datetime, reply)?;
-            }
-            Command::BdibStream {
-                ticker,
-                event_type,
-                interval,
-                start_datetime,
-                end_datetime,
-                stream,
-            } => {
-                self.send_bdib_stream(
-                    ticker,
-                    event_type,
-                    interval,
-                    start_datetime,
-                    end_datetime,
-                    stream,
-                )?;
-            }
-            Command::BdtickStream {
-                ticker,
-                start_datetime,
-                end_datetime,
-                stream,
-            } => {
-                self.send_bdtick_stream(ticker, start_datetime, end_datetime, stream)?;
+            Command::RequestStream { params, stream } => {
+                self.send_request_stream(params, stream)?;
             }
             _ => {
                 // Lane A/B commands shouldn't arrive here
@@ -158,122 +114,132 @@ impl PumpC {
         Ok(())
     }
 
-    fn send_bdib(
+    /// Unified request handler - routes to correct state based on extractor type.
+    fn send_request(
         &mut self,
-        ticker: String,
-        event_type: String,
-        interval: u32,
-        start_datetime: String,
-        end_datetime: String,
+        params: RequestParams,
         reply: oneshot::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
     ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
+        self.ensure_service(&params.service)?;
 
-        // Allocate state
-        let state = IntradayBarState::new(ticker.clone(), event_type.clone(), interval, reply);
-        let key = self.requests.insert(IntradayRequestState::Bar(state));
+        // Get ticker from security field
+        let ticker = params.security.clone().unwrap_or_default();
+        let event_type = params.event_type.clone().unwrap_or_else(|| "TRADE".to_string());
+        let interval = params.interval.unwrap_or(1);
+
+        // Create state based on extractor type
+        let state = match params.extractor {
+            ExtractorType::IntradayBar => {
+                IntradayRequestState::Bar(IntradayBarState::new(
+                    ticker.clone(),
+                    event_type.clone(),
+                    interval,
+                    reply,
+                ))
+            }
+            ExtractorType::IntradayTick => {
+                IntradayRequestState::Tick(IntradayTickState::new(ticker.clone(), reply))
+            }
+            _ => {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("Unsupported extractor type for Lane C: {:?}", params.extractor),
+                });
+            }
+        };
+
+        let key = self.requests.insert(state);
         let cid = CorrelationId::U64(key as u64);
 
-        // Build request
-        let service = self.services.get("//blp/refdata").unwrap();
-        let request = RequestBuilder::new()
-            .security(&ticker)
-            .event_type(&event_type)
-            .interval(interval)
-            .start_datetime(&start_datetime)
-            .end_datetime(&end_datetime)
-            .build(service, "IntradayBarRequest")?;
+        // Build request from params
+        let service = self.services.get(&params.service).unwrap();
+        let request = self.build_request_from_params(service, &params)?;
 
         self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, ticker = %ticker, event_type = %event_type, interval = interval, "bdib request sent");
+        tracing::debug!(
+            key = key,
+            service = %params.service,
+            operation = %params.operation,
+            ticker = %ticker,
+            "request sent"
+        );
         Ok(())
     }
 
-    fn send_bdtick(
+    /// Unified streaming request handler.
+    fn send_request_stream(
         &mut self,
-        ticker: String,
-        start_datetime: String,
-        end_datetime: String,
-        reply: oneshot::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
+        params: RequestParams,
+        stream: mpsc::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
     ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
+        self.ensure_service(&params.service)?;
 
-        // Allocate state
-        let state = IntradayTickState::new(ticker.clone(), reply);
-        let key = self.requests.insert(IntradayRequestState::Tick(state));
+        // Get ticker from security field
+        let ticker = params.security.clone().unwrap_or_default();
+
+        // Create streaming state based on extractor type
+        let state = match params.extractor {
+            ExtractorType::IntradayBar => {
+                IntradayRequestState::BarStream(IntradayBarStreamState::new(ticker.clone(), stream))
+            }
+            ExtractorType::IntradayTick => {
+                IntradayRequestState::TickStream(IntradayTickStreamState::new(ticker.clone(), stream))
+            }
+            _ => {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("Streaming not supported for extractor: {:?}", params.extractor),
+                });
+            }
+        };
+
+        let key = self.requests.insert(state);
         let cid = CorrelationId::U64(key as u64);
 
-        // Build request
-        let service = self.services.get("//blp/refdata").unwrap();
-        let request = RequestBuilder::new()
-            .security(&ticker)
-            .start_datetime(&start_datetime)
-            .end_datetime(&end_datetime)
-            .build(service, "IntradayTickRequest")?;
+        // Build request from params
+        let service = self.services.get(&params.service).unwrap();
+        let request = self.build_request_from_params(service, &params)?;
 
         self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, ticker = %ticker, "bdtick request sent");
+        tracing::debug!(
+            key = key,
+            service = %params.service,
+            operation = %params.operation,
+            ticker = %ticker,
+            "stream request sent"
+        );
         Ok(())
     }
 
-    fn send_bdib_stream(
-        &mut self,
-        ticker: String,
-        event_type: String,
-        interval: u32,
-        start_datetime: String,
-        end_datetime: String,
-        stream: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
-    ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
+    /// Build a Bloomberg request from generic RequestParams.
+    fn build_request_from_params(
+        &self,
+        service: &Service,
+        params: &RequestParams,
+    ) -> Result<xbbg_core::Request, BlpError> {
+        let mut builder = RequestBuilder::new();
 
-        // Allocate streaming state
-        let state = IntradayBarStreamState::new(ticker.clone(), stream);
-        let key = self.requests.insert(IntradayRequestState::BarStream(state));
-        let cid = CorrelationId::U64(key as u64);
+        // Set security (single for intraday)
+        if let Some(ref security) = params.security {
+            builder = builder.security(security);
+        }
 
-        // Build request
-        let service = self.services.get("//blp/refdata").unwrap();
-        let request = RequestBuilder::new()
-            .security(&ticker)
-            .event_type(&event_type)
-            .interval(interval)
-            .start_datetime(&start_datetime)
-            .end_datetime(&end_datetime)
-            .build(service, "IntradayBarRequest")?;
+        // Set datetime range
+        if let Some(ref start) = params.start_datetime {
+            builder = builder.start_datetime(start);
+        }
+        if let Some(ref end) = params.end_datetime {
+            builder = builder.end_datetime(end);
+        }
 
-        self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, ticker = %ticker, "bdib_stream request sent");
-        Ok(())
-    }
+        // Set event type and interval (for bars)
+        if let Some(ref event_type) = params.event_type {
+            builder = builder.event_type(event_type);
+        }
+        if let Some(interval) = params.interval {
+            builder = builder.interval(interval);
+        }
 
-    fn send_bdtick_stream(
-        &mut self,
-        ticker: String,
-        start_datetime: String,
-        end_datetime: String,
-        stream: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
-    ) -> Result<(), BlpError> {
-        self.ensure_service("//blp/refdata")?;
-
-        // Allocate streaming state
-        let state = IntradayTickStreamState::new(ticker.clone(), stream);
-        let key = self
-            .requests
-            .insert(IntradayRequestState::TickStream(state));
-        let cid = CorrelationId::U64(key as u64);
-
-        // Build request
-        let service = self.services.get("//blp/refdata").unwrap();
-        let request = RequestBuilder::new()
-            .security(&ticker)
-            .start_datetime(&start_datetime)
-            .end_datetime(&end_datetime)
-            .build(service, "IntradayTickRequest")?;
-
-        self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(key = key, ticker = %ticker, "bdtick_stream request sent");
-        Ok(())
+        // Build with the operation name
+        builder.build(service, &params.operation)
     }
 
     fn dispatch_event(&mut self, ev: xbbg_core::Event) {

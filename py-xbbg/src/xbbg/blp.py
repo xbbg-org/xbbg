@@ -6,6 +6,7 @@ with support for multiple DataFrame backends via narwhals.
 API Design:
 - Async-first: Core implementation uses async/await (abdp, abdh, etc.)
 - Sync wrappers: Convenience functions (bdp, bdh, etc.) wrap async with asyncio.run()
+- Generic API: arequest() and request() for power users and arbitrary Bloomberg requests
 - Users can use either style based on their needs
 """
 
@@ -15,11 +16,18 @@ import asyncio
 from datetime import datetime, timedelta
 from enum import Enum
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 import warnings
 
 import narwhals as nw
 import pyarrow as pa
+
+from xbbg.services import (
+    Operation,
+    OutputMode,
+    RequestParams,
+    Service,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -51,7 +59,10 @@ class Backend(str, Enum):
 
 __all__ = [
     "Backend",
-    # Async API (primary)
+    # Generic API (power users)
+    "arequest",
+    "request",
+    # Async API (typed convenience)
     "abdp",
     "abdh",
     "abds",
@@ -66,6 +77,11 @@ __all__ = [
     # Config
     "set_backend",
     "get_backend",
+    # Re-exports from services
+    "Service",
+    "Operation",
+    "OutputMode",
+    "RequestParams",
 ]
 
 # Backend configuration
@@ -279,7 +295,193 @@ def _handle_wide_deprecation(wide: bool | None, kwargs: dict) -> bool:
 
 
 # =============================================================================
-# Async API - Primary Implementation
+# Generic API - Power Users
+# =============================================================================
+
+
+async def arequest(
+    service: str | Service,
+    operation: str | Operation,
+    *,
+    securities: str | Sequence[str] | None = None,
+    security: str | None = None,
+    fields: str | Sequence[str] | None = None,
+    overrides: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    start_datetime: str | None = None,
+    end_datetime: str | None = None,
+    event_type: str | None = None,
+    interval: int | None = None,
+    options: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
+    field_types: dict[str, str] | None = None,
+    output: OutputMode | str = OutputMode.ARROW,
+    backend: Backend | str | None = None,
+):
+    """Async generic Bloomberg request.
+
+    This is the low-level API for power users who need to:
+    - Send requests to arbitrary Bloomberg services
+    - Use operations not covered by the typed convenience functions
+    - Get raw JSON responses for debugging
+
+    For common use cases, prefer the typed functions: abdp, abdh, abds, abdib, abdtick.
+
+    Args:
+        service: Bloomberg service URI (e.g., Service.REFDATA or "//blp/refdata").
+        operation: Request operation name (e.g., Operation.REFERENCE_DATA).
+        securities: List of security identifiers (for multi-security requests).
+        security: Single security identifier (for intraday requests).
+        fields: List of field names to retrieve.
+        overrides: Field overrides as dict or list of (name, value) tuples.
+        start_date: Start date for historical requests (YYYYMMDD format).
+        end_date: End date for historical requests (YYYYMMDD format).
+        start_datetime: Start datetime for intraday requests (ISO format).
+        end_datetime: End datetime for intraday requests (ISO format).
+        event_type: Event type for intraday bars (TRADE, BID, ASK, etc.).
+        interval: Bar interval in minutes for intraday bars.
+        options: Additional Bloomberg options as dict or list of (key, value) tuples.
+        field_types: Manual type overrides for fields (for future type resolution).
+        output: Output format: OutputMode.ARROW (default) or OutputMode.JSON.
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        DataFrame/Table in the requested format.
+
+    Example::
+
+        # Query field metadata (//blp/apiflds service)
+        df = await arequest(
+            Service.APIFLDS,
+            Operation.FIELD_INFO,
+            fields=['PX_LAST', 'VOLUME'],
+        )
+
+        # Get raw JSON for debugging
+        json_table = await arequest(
+            Service.REFDATA,
+            Operation.REFERENCE_DATA,
+            securities=['AAPL US Equity'],
+            fields=['PX_LAST'],
+            output=OutputMode.JSON,
+        )
+
+        # Custom Bloomberg request (power user)
+        df = await arequest(
+            "//blp/refdata",
+            "ReferenceDataRequest",
+            securities=['AAPL US Equity'],
+            fields=['PX_LAST'],
+        )
+    """
+    # Normalize inputs
+    securities_list: list[str] | None = None
+    if securities is not None:
+        securities_list = [securities] if isinstance(securities, str) else list(securities)
+
+    fields_list: list[str] | None = None
+    if fields is not None:
+        fields_list = [fields] if isinstance(fields, str) else list(fields)
+
+    overrides_list: list[tuple[str, str]] | None = None
+    if overrides is not None:
+        overrides_list = [(k, str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
+
+    options_list: list[tuple[str, str]] | None = None
+    if options is not None:
+        options_list = [(k, str(v)) for k, v in options.items()] if isinstance(options, dict) else list(options)
+
+    # Build and validate params
+    params = RequestParams(
+        service=service,
+        operation=operation,
+        securities=securities_list,
+        security=security,
+        fields=fields_list,
+        overrides=overrides_list,
+        start_date=start_date,
+        end_date=end_date,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+        event_type=event_type,
+        interval=interval,
+        options=options_list,
+        field_types=field_types,
+        output=OutputMode(output) if isinstance(output, str) else output,
+    )
+    params.validate()
+
+    # Get engine and send request
+    engine = _get_engine()
+    params_dict = params.to_dict()
+
+    # Call the generic request method on the engine
+    # Note: This requires the Rust engine to have a `request` method
+    table = await engine.request(params_dict)
+
+    # Convert to requested backend
+    nw_df = nw.from_native(table)
+    return _convert_backend(nw_df, backend)
+
+
+def request(
+    service: str | Service,
+    operation: str | Operation,
+    *,
+    securities: str | Sequence[str] | None = None,
+    security: str | None = None,
+    fields: str | Sequence[str] | None = None,
+    overrides: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    start_datetime: str | None = None,
+    end_datetime: str | None = None,
+    event_type: str | None = None,
+    interval: int | None = None,
+    options: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
+    field_types: dict[str, str] | None = None,
+    output: OutputMode | str = OutputMode.ARROW,
+    backend: Backend | str | None = None,
+):
+    """Generic Bloomberg request (sync wrapper).
+
+    Sync wrapper around arequest(). For async usage, use arequest() directly.
+
+    See arequest() for full documentation.
+
+    Example::
+
+        # Query field metadata
+        df = request(
+            Service.APIFLDS,
+            Operation.FIELD_INFO,
+            fields=['PX_LAST', 'VOLUME'],
+        )
+    """
+    return asyncio.run(
+        arequest(
+            service,
+            operation,
+            securities=securities,
+            security=security,
+            fields=fields,
+            overrides=overrides,
+            start_date=start_date,
+            end_date=end_date,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            event_type=event_type,
+            interval=interval,
+            options=options,
+            field_types=field_types,
+            output=output,
+            backend=backend,
+        )
+    )
+
+
+# =============================================================================
+# Async API - Typed Convenience Functions
 # =============================================================================
 
 

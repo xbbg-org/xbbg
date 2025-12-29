@@ -1,5 +1,6 @@
 //! Reference data (bdp) state with Arrow builders.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow::array::StringBuilder;
@@ -9,6 +10,7 @@ use tokio::sync::oneshot;
 use tracing::trace;
 
 use super::json_schema;
+use super::typed_builder::{ArrowType, TypedBuilder};
 use xbbg_core::{BlpError, MessageRef};
 
 /// Output format for reference data.
@@ -25,16 +27,20 @@ pub enum OutputFormat {
 pub struct RefDataState {
     /// Field names as strings
     field_strings: Vec<String>,
+    /// Field types mapping (field name -> arrow type string)
+    /// Currently used for Wide format; reserved for Long format typed output
+    #[allow(dead_code)]
+    field_types: HashMap<String, ArrowType>,
     /// Output format
     format: OutputFormat,
     /// Ticker builder (used in both formats)
     ticker_builder: StringBuilder,
     /// Field name builder (Long format only)
     field_builder: StringBuilder,
-    /// Value builder (Long format only)
+    /// Value builder (Long format only, used when no type info)
     value_builder: StringBuilder,
-    /// Per-field builders (Wide format only)
-    wide_field_builders: Vec<StringBuilder>,
+    /// Typed per-field builders (Wide format with type info)
+    wide_typed_builders: Vec<TypedBuilder>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -42,28 +48,44 @@ pub struct RefDataState {
 impl RefDataState {
     /// Create a new refdata state with Long format (default).
     pub fn new(fields: Vec<String>, reply: oneshot::Sender<Result<RecordBatch, BlpError>>) -> Self {
-        Self::with_format(fields, OutputFormat::Long, reply)
+        Self::with_format(fields, OutputFormat::Long, None, reply)
     }
 
     /// Create a new refdata state with specified format.
     pub fn with_format(
         fields: Vec<String>,
         format: OutputFormat,
+        field_types: Option<HashMap<String, String>>,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
     ) -> Self {
-        let wide_field_builders = if format == OutputFormat::Wide {
-            fields.iter().map(|_| StringBuilder::new()).collect()
+        // Convert string types to ArrowType
+        let arrow_types: HashMap<String, ArrowType> = field_types
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| (k, ArrowType::parse(&v)))
+            .collect();
+
+        // Create typed builders for Wide format
+        let wide_typed_builders = if format == OutputFormat::Wide {
+            fields
+                .iter()
+                .map(|f| {
+                    let arrow_type = arrow_types.get(f).cloned().unwrap_or(ArrowType::String);
+                    TypedBuilder::new(&arrow_type)
+                })
+                .collect()
         } else {
             Vec::new()
         };
 
         Self {
             field_strings: fields,
+            field_types: arrow_types,
             format,
             ticker_builder: StringBuilder::new(),
             field_builder: StringBuilder::new(),
             value_builder: StringBuilder::new(),
-            wide_field_builders,
+            wide_typed_builders,
             reply,
         }
     }
@@ -124,15 +146,8 @@ impl RefDataState {
                     self.ticker_builder.append_value(ticker);
 
                     for (i, field_str) in self.field_strings.iter().enumerate() {
-                        if let Some(value) = sec.field_data.get(field_str.as_str()) {
-                            if let Some(s) = value.as_string() {
-                                self.wide_field_builders[i].append_value(&s);
-                            } else {
-                                self.wide_field_builders[i].append_null();
-                            }
-                        } else {
-                            self.wide_field_builders[i].append_null();
-                        }
+                        let value = sec.field_data.get(field_str.as_str());
+                        self.wide_typed_builders[i].append_json_value(value);
                     }
                 }
             }
@@ -172,21 +187,22 @@ impl RefDataState {
         })
     }
 
-    /// Build Wide format RecordBatch.
+    /// Build Wide format RecordBatch with typed columns.
     fn build_wide_batch(&mut self) -> Result<RecordBatch, BlpError> {
         let ticker_array = self.ticker_builder.finish();
 
-        // Build schema: ticker + one column per field
+        // Build schema: ticker + one typed column per field
         let mut fields = vec![Field::new("ticker", DataType::Utf8, false)];
-        for name in &self.field_strings {
-            fields.push(Field::new(name.as_str(), DataType::Utf8, true));
+        for (i, name) in self.field_strings.iter().enumerate() {
+            let data_type = self.wide_typed_builders[i].data_type();
+            fields.push(Field::new(name.as_str(), data_type, true));
         }
         let schema = Arc::new(Schema::new(fields));
 
         // Build columns
         let mut columns: Vec<Arc<dyn arrow::array::Array>> = vec![Arc::new(ticker_array)];
-        for builder in &mut self.wide_field_builders {
-            columns.push(Arc::new(builder.finish()));
+        for builder in &mut self.wide_typed_builders {
+            columns.push(builder.finish());
         }
 
         RecordBatch::try_new(schema, columns).map_err(|e| BlpError::Internal {
