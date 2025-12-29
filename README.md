@@ -1,10 +1,10 @@
-# xbbg
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png" alt="xbbg" width="120">
 </p>
 
-An intuitive Bloomberg API for Python — now powered by Rust.
+<p align="center">
+  An intuitive Bloomberg API for Python — now powered by Rust.
+</p>
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
