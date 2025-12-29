@@ -166,6 +166,15 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist
           manylinux: auto
+          # Install clang and SDK inside manylinux container (uses yum, not apt)
+          before-script-linux: |
+            yum install -y clang-devel
+            mkdir -p /opt/blpapi
+            curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-linux.tar.gz" \
+              | tar -xz -C /opt/blpapi --strip-components=1
+            ln -sf /opt/blpapi/Linux /opt/blpapi/lib
+            ln -sf /opt/blpapi/lib/libblpapi3_64.so /opt/blpapi/lib/libblpapi3.so
+          docker-options: -e BLPAPI_ROOT=/opt/blpapi -e LIBRARY_PATH=/opt/blpapi/lib
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
