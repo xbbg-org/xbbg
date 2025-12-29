@@ -17,7 +17,6 @@ schema-debug = []
 
 [dependencies]
 thiserror = "2.0"
-tracing = { version = "0.1", features = ["log"] }
 blpapi-sys = { path = "../blpapi-sys" }
 anyhow = "1.0"
 once_cell = "1.19"
