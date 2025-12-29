@@ -77,15 +77,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-
       - name: cargo-audit
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions-rust-lang/audit@v1
 
       - name: cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v2
