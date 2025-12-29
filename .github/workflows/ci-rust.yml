@@ -327,10 +327,10 @@ jobs:
           fail_ci_if_error: false
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Static Analysis (optional, non-blocking)
+  # Unused Dependencies (optional, non-blocking)
   # ════════════════════════════════════════════════════════════════════════════
-  analysis:
-    name: Static Analysis
+  udeps:
+    name: Unused Deps
     needs: sdk-version
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -338,8 +338,6 @@ jobs:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for semver-checks baseline
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libclang-dev
@@ -347,8 +345,7 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable, nightly
-          components: rust-src
+          toolchain: nightly
           rustflags: ""
 
       - name: Cache Bloomberg SDK
@@ -372,36 +369,119 @@ jobs:
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y cargo-udeps && cargo +nightly udeps --all-targets
 
-      - name: Install analysis tools
-        run: cargo binstall -y cargo-udeps cargo-geiger cargo-semver-checks
+  # ════════════════════════════════════════════════════════════════════════════
+  # Unsafe Code Audit (optional, non-blocking)
+  # ════════════════════════════════════════════════════════════════════════════
+  geiger:
+    name: Unsafe Audit
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Unused dependencies
-        run: cargo +nightly udeps --all-targets 2>&1 || true
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
 
-      - name: Unsafe code audit
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Run cargo-geiger
+        run: |
+          cargo binstall -y cargo-geiger
           for crate in blpapi-sys xbbg-core xbbg-async pyo3-xbbg; do
             echo "=== $crate ==="
-            cargo geiger -p $crate 2>&1 || true
+            cargo geiger --manifest-path crates/$crate/Cargo.toml
           done
 
-      - name: Semver compatibility check
+  # ════════════════════════════════════════════════════════════════════════════
+  # Semver Compatibility (optional, non-blocking)
+  # ════════════════════════════════════════════════════════════════════════════
+  semver:
+    name: Semver Check
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for baseline
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
-          # Compare against main branch (or skip if on main with no previous tag)
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Run cargo-semver-checks
+        run: |
+          cargo binstall -y cargo-semver-checks
           if git rev-parse origin/main >/dev/null 2>&1; then
-            cargo semver-checks --baseline-rev origin/main 2>&1 || true
+            cargo semver-checks --baseline-rev origin/main
           else
-            echo "Skipping semver-checks: no baseline available"
+            echo "Skipping: no baseline available"
           fi
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Kani verification (optional, non-blocking)
+  # Kani Verification (optional, non-blocking)
   # ════════════════════════════════════════════════════════════════════════════
   kani:
-    name: Kani Verification
+    name: Kani
     needs: sdk-version
     runs-on: ubuntu-latest
     continue-on-error: true
