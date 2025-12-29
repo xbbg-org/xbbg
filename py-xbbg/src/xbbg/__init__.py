@@ -235,28 +235,32 @@ def _add_sdk_to_dll_search_path() -> None:
 
     This must be called before importing the native extension (_core).
     Checks all SDK sources: manual path, blpapi package, DAPI, BLPAPI_ROOT.
+
+    All operations are wrapped in try/except to handle permission errors
+    gracefully (e.g., no admin access, restricted folders).
     """
     import os
     from pathlib import Path
 
     added_dirs: set[str] = set()
 
-    def add_if_exists(sdk_path: Path | None) -> None:
+    def try_add_dir(sdk_path: Path | None) -> None:
+        """Try to add SDK library directory to DLL search path. Silently fails on errors."""
         if sdk_path is None:
             return
-        lib_path = _find_sdk_lib(sdk_path)
-        if lib_path:
-            lib_dir = str(lib_path.parent)
-            if lib_dir not in added_dirs:
-                try:
+        try:
+            lib_path = _find_sdk_lib(sdk_path)
+            if lib_path:
+                lib_dir = str(lib_path.parent)
+                if lib_dir not in added_dirs:
                     os.add_dll_directory(lib_dir)
                     added_dirs.add(lib_dir)
-                except OSError:
-                    pass  # Directory doesn't exist or can't be added
+        except (OSError, PermissionError, ValueError):
+            pass  # Can't access directory or add to DLL search path
 
     # 1. Manual SDK path (highest priority)
     if _manual_sdk_path is not None:
-        add_if_exists(_manual_sdk_path)
+        try_add_dir(_manual_sdk_path)
 
     # 2. blpapi Python package
     try:
@@ -264,24 +268,27 @@ def _add_sdk_to_dll_search_path() -> None:
 
         blpapi_file = getattr(blpapi, "__file__", None)
         if blpapi_file:
-            add_if_exists(Path(blpapi_file).parent)
-    except ImportError:
+            try_add_dir(Path(blpapi_file).parent)
+    except (ImportError, OSError):
         pass
 
-    # 3. DAPI (Bloomberg Terminal)
+    # 3. DAPI (Bloomberg Terminal) - typically already in PATH but add as fallback
     dapi_paths = [
         Path(r"C:\blp\DAPI"),
         Path(os.path.expandvars(r"%LOCALAPPDATA%\Bloomberg\DAPI")),
     ]
     for dapi_path in dapi_paths:
-        if dapi_path.is_dir():
-            add_if_exists(dapi_path)
-            break
+        try:
+            if dapi_path.is_dir():
+                try_add_dir(dapi_path)
+                break
+        except (OSError, PermissionError):
+            continue  # Can't access this path, try next
 
     # 4. BLPAPI_ROOT environment variable
     blpapi_root = os.environ.get("BLPAPI_ROOT")
     if blpapi_root:
-        add_if_exists(Path(blpapi_root))
+        try_add_dir(Path(blpapi_root))
 
 
 __all__ = [
