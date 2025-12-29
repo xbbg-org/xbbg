@@ -129,7 +129,11 @@ fn derive_include_lib(root: &Path) -> Result<(PathBuf, PathBuf), String> {
     }
 
     // Windows: check architecture-specific lib directories
-    let win_lib_subdir = if target_arch == "x86" { "win32" } else { "win64" };
+    let win_lib_subdir = if target_arch == "x86" {
+        "win32"
+    } else {
+        "win64"
+    };
     let lib2 = root.join("lib").join(win_lib_subdir);
     if inc.is_dir() && lib2.is_dir() {
         return Ok((inc, lib2));
