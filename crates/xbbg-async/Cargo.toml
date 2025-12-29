@@ -26,6 +26,11 @@ chrono = "0.4"
 default = []
 live = []
 
+# cargo-udeps false positives (tracing macros not detected)
+[package.metadata.cargo-udeps.ignore]
+normal = ["tracing"]
+development = ["tracing-subscriber"]
+
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 blpapi-sys = { path = "../blpapi-sys" }
