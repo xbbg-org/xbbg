@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.10.2 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.2))
+Latest release: xbbg==0.10.3 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.3))
 <!-- xbbg:latest-release-end -->
 
 ## Overview
@@ -828,6 +828,11 @@ uv run pytest --doctest-modules -q
 ## What's New
 
 <!-- xbbg:changelog-start -->
+
+_0.10.3_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.3)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.2...v0.10.3
+
 
 _0.10.2_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.2)
 
