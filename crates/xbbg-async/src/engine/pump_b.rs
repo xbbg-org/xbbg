@@ -15,7 +15,8 @@ use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, SessionOptions};
 
 use super::state::{
-    BulkDataState, HistDataState, HistDataStreamState, OutputFormat, RefDataState, RequestState,
+    BulkDataState, GenericState, HistDataState, HistDataStreamState, OutputFormat, RawJsonState,
+    RefDataState, RequestState,
 };
 use super::{Command, EngineConfig, ExtractorType, RequestParams};
 
@@ -137,11 +138,13 @@ impl PumpB {
                 let field = fields.first().cloned().unwrap_or_default();
                 RequestState::BulkData(BulkDataState::new(field, reply))
             }
-            _ => {
-                // TODO: Add Generic and RawJson extractors
+            ExtractorType::Generic => RequestState::Generic(GenericState::new(reply)),
+            ExtractorType::RawJson => RequestState::RawJson(RawJsonState::new(reply)),
+            ExtractorType::IntradayBar | ExtractorType::IntradayTick => {
+                // These should go to Lane C
                 return Err(BlpError::InvalidArgument {
                     detail: format!(
-                        "Unsupported extractor type for Lane B: {:?}",
+                        "Extractor {:?} should use Lane C (intraday requests)",
                         params.extractor
                     ),
                 });

@@ -1,6 +1,7 @@
 //! Request and subscription state types with Arrow builders.
 
 mod bulkdata;
+mod generic;
 mod histdata;
 mod histdata_stream;
 mod intradaybar;
@@ -8,17 +9,20 @@ mod intradaybar_stream;
 mod intradaytick;
 mod intradaytick_stream;
 pub mod json_schema;
+mod raw_json;
 mod refdata;
 mod subscription;
 pub mod typed_builder;
 
 pub use bulkdata::BulkDataState;
+pub use generic::GenericState;
 pub use histdata::HistDataState;
 pub use histdata_stream::HistDataStreamState;
 pub use intradaybar::IntradayBarState;
 pub use intradaybar_stream::IntradayBarStreamState;
 pub use intradaytick::IntradayTickState;
 pub use intradaytick_stream::IntradayTickStreamState;
+pub use raw_json::RawJsonState;
 pub use refdata::{OutputFormat, RefDataState};
 pub use subscription::SubscriptionState;
 
@@ -30,6 +34,8 @@ pub enum RequestState {
     HistData(HistDataState),
     BulkData(BulkDataState),
     HistDataStream(HistDataStreamState),
+    Generic(GenericState),
+    RawJson(RawJsonState),
 }
 
 /// Unified request state for Lane C (intraday requests).
@@ -49,6 +55,8 @@ impl RequestState {
             RequestState::HistData(s) => s.on_partial(msg),
             RequestState::BulkData(s) => s.on_partial(msg),
             RequestState::HistDataStream(s) => s.on_partial(msg),
+            RequestState::Generic(s) => s.on_partial(msg),
+            RequestState::RawJson(s) => s.on_partial(msg),
         }
     }
 
@@ -59,6 +67,8 @@ impl RequestState {
             RequestState::HistData(s) => s.finish(msg),
             RequestState::BulkData(s) => s.finish(msg),
             RequestState::HistDataStream(s) => s.finish(msg),
+            RequestState::Generic(s) => s.finish(msg),
+            RequestState::RawJson(s) => s.finish(msg),
         }
     }
 
@@ -75,6 +85,12 @@ impl RequestState {
                 let _ = s.reply.send(Err(error));
             }
             RequestState::HistDataStream(s) => s.fail(error),
+            RequestState::Generic(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            RequestState::RawJson(s) => {
+                let _ = s.reply.send(Err(error));
+            }
         }
     }
 }

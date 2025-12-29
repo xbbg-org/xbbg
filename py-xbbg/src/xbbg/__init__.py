@@ -329,6 +329,7 @@ __all__ = [
     "Operation",
     "OutputMode",
     "RequestParams",
+    "ExtractorHint",
     # Exceptions
     "BlpError",
     "BlpSessionError",
@@ -405,6 +406,7 @@ def __getattr__(name: str):
         "Operation",
         "OutputMode",
         "RequestParams",
+        "ExtractorHint",
     ):
         from . import blp
 

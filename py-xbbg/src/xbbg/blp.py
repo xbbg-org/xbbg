@@ -23,6 +23,7 @@ import narwhals as nw
 import pyarrow as pa
 
 from xbbg.services import (
+    ExtractorHint,
     Operation,
     OutputMode,
     RequestParams,
@@ -82,6 +83,7 @@ __all__ = [
     "Operation",
     "OutputMode",
     "RequestParams",
+    "ExtractorHint",
 ]
 
 # Backend configuration
@@ -316,6 +318,7 @@ async def arequest(
     options: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
     field_types: dict[str, str] | None = None,
     output: OutputMode | str = OutputMode.ARROW,
+    extractor: ExtractorHint | str | None = None,
     backend: Backend | str | None = None,
 ):
     """Async generic Bloomberg request.
@@ -343,6 +346,8 @@ async def arequest(
         options: Additional Bloomberg options as dict or list of (key, value) tuples.
         field_types: Manual type overrides for fields (for future type resolution).
         output: Output format: OutputMode.ARROW (default) or OutputMode.JSON.
+        extractor: Override the auto-detected extractor. Use ExtractorHint.BULK for
+            bulk data fields. If None, auto-detected from operation.
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -391,6 +396,11 @@ async def arequest(
     if options is not None:
         options_list = [(k, str(v)) for k, v in options.items()] if isinstance(options, dict) else list(options)
 
+    # Normalize extractor hint
+    extractor_hint: ExtractorHint | None = None
+    if extractor is not None:
+        extractor_hint = ExtractorHint(extractor) if isinstance(extractor, str) else extractor
+
     # Build and validate params
     params = RequestParams(
         service=service,
@@ -408,6 +418,7 @@ async def arequest(
         options=options_list,
         field_types=field_types,
         output=OutputMode(output) if isinstance(output, str) else output,
+        extractor=extractor_hint,
     )
     params.validate()
 
@@ -441,6 +452,7 @@ def request(
     options: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
     field_types: dict[str, str] | None = None,
     output: OutputMode | str = OutputMode.ARROW,
+    extractor: ExtractorHint | str | None = None,
     backend: Backend | str | None = None,
 ):
     """Generic Bloomberg request (sync wrapper).
@@ -475,6 +487,7 @@ def request(
             options=options,
             field_types=field_types,
             output=output,
+            extractor=extractor,
             backend=backend,
         )
     )
@@ -518,17 +531,20 @@ async def abdp(
             abdp('MSFT US Equity', 'PX_LAST'),
         )
     """
-    engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
     overrides = _extract_overrides(kwargs)
     want_wide = _handle_wide_deprecation(wide, kwargs)
 
-    # Await the async Rust call
-    table = await engine.abdp(ticker_list, field_list, overrides, False)
-
-    # Wrap in narwhals
-    nw_df = nw.from_native(table)
+    # Use generic arequest with ReferenceDataRequest
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.REFERENCE_DATA,
+        securities=ticker_list,
+        fields=field_list,
+        overrides=overrides if overrides else None,
+        backend=None,  # Get narwhals DataFrame, we'll convert below
+    )
 
     # Handle deprecated wide format
     if want_wide:
@@ -575,7 +591,6 @@ async def abdh(
             abdh('MSFT US Equity', 'PX_LAST'),
         )
     """
-    engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
     want_wide = _handle_wide_deprecation(wide, kwargs)
@@ -588,8 +603,8 @@ async def abdh(
     else:
         s_dt = _fmt_date(start_date, "%Y%m%d")
 
-    # Extract options
-    options = []
+    # Build options list
+    options: list[tuple[str, str]] = []
     adjust = kwargs.pop("adjust", None)
     if adjust:
         if adjust == "all":
@@ -604,13 +619,21 @@ async def abdh(
         elif adjust == "-":
             pass  # No adjustments
 
-    # Add any remaining overrides as options
+    # Add any remaining kwargs as overrides
     overrides = _extract_overrides(kwargs)
-    options.extend(overrides)
 
-    # Await the async Rust call
-    table = await engine.abdh(ticker_list, field_list, s_dt, e_dt, options)
-    nw_df = nw.from_native(table)
+    # Use generic arequest with HistoricalDataRequest
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.HISTORICAL_DATA,
+        securities=ticker_list,
+        fields=field_list,
+        start_date=s_dt,
+        end_date=e_dt,
+        overrides=overrides if overrides else None,
+        options=options if options else None,
+        backend=None,  # Get narwhals DataFrame, we'll convert below
+    )
 
     # Handle deprecated wide format
     if want_wide:
@@ -642,24 +665,20 @@ async def abds(
         df = await abds('AAPL US Equity', 'DVD_Hist_All')
         df = await abds('SPX Index', 'INDX_MEMBERS', backend='polars')
     """
-    engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
     overrides = _extract_overrides(kwargs)
 
-    # Process each ticker
-    tables = []
-    for ticker in ticker_list:
-        table = await engine.abds(ticker, flds, overrides)
-        tables.append(table)
-
-    if not tables:
-        # Return empty narwhals DataFrame
-        empty = pa.table({"ticker": [], "field": [], "value": []})
-        return _convert_backend(nw.from_native(empty), backend)
-
-    # Concatenate tables
-    combined = pa.concat_tables(tables)
-    nw_df = nw.from_native(combined)
+    # Use generic arequest with ReferenceDataRequest but BULK extractor
+    # BDS uses the same Bloomberg operation as BDP, but returns multi-row results
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.REFERENCE_DATA,
+        securities=ticker_list,
+        fields=[flds],  # BDS takes a single field
+        overrides=overrides if overrides else None,
+        extractor=ExtractorHint.BULK,  # Use bulk extractor for multi-row results
+        backend=None,  # Get narwhals DataFrame, we'll convert below
+    )
 
     return _convert_backend(nw_df, backend)
 
@@ -698,8 +717,6 @@ async def abdib(
         df = await abdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
                   end_datetime='2024-12-01 16:00', interval=5, backend='polars')
     """
-    engine = _get_engine()
-
     # Determine datetime range
     if start_datetime is not None and end_datetime is not None:
         s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
@@ -712,8 +729,17 @@ async def abdib(
     else:
         raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
-    table = await engine.abdib(ticker, typ, interval, s_dt, e_dt)
-    nw_df = nw.from_native(table)
+    # Use generic arequest with IntradayBarRequest
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.INTRADAY_BAR,
+        security=ticker,
+        event_type=typ,
+        interval=interval,
+        start_datetime=s_dt,
+        end_datetime=e_dt,
+        backend=None,  # Get narwhals DataFrame, we'll convert below
+    )
 
     return _convert_backend(nw_df, backend)
 
@@ -743,13 +769,18 @@ async def abdtick(
         df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
         df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
     """
-    engine = _get_engine()
-
     s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
     e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
 
-    table = await engine.abdtick(ticker, s_dt, e_dt)
-    nw_df = nw.from_native(table)
+    # Use generic arequest with IntradayTickRequest
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.INTRADAY_TICK,
+        security=ticker,
+        start_datetime=s_dt,
+        end_datetime=e_dt,
+        backend=None,  # Get narwhals DataFrame, we'll convert below
+    )
 
     return _convert_backend(nw_df, backend)
 
