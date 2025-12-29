@@ -297,151 +297,165 @@ def _apply_multiindex(
     return result
 ```
 
-### 1.5 Async-First API (matching Rust v1 pattern)
+### 1.5 Lower-Level Refactor (Arrow-First)
 
-The Rust v1 branch uses async-first design where sync functions wrap async:
+Instead of modifying each API function individually, we modify the pipeline layer.
+All API functions automatically inherit backend/format support.
 
-```python
-# Async core (returns Arrow, does the real work)
-async def abdp(tickers, flds, ..., backend=None, format=None) -> Any:
-    """Async Bloomberg reference data."""
-    # ... fetch from Bloomberg ...
-    arrow_table = _build_arrow_table(response)
-    return to_output(arrow_table, backend=backend, format=format)
-
-async def abdh(tickers, flds, ..., backend=None, format=None) -> Any:
-    """Async Bloomberg historical data."""
-    ...
-
-async def abds(tickers, flds, ..., backend=None, format=None) -> Any:
-    """Async Bloomberg bulk data."""
-    ...
-
-async def abdib(ticker, dt, ..., backend=None, format=None) -> Any:
-    """Async Bloomberg intraday bars."""
-    ...
-
-
-# Sync wrappers (for backward compatibility)
-def bdp(tickers, flds, ..., backend=None, format=None) -> Any:
-    """Bloomberg reference data (sync wrapper).
-
-    For async usage, use abdp() instead.
-    """
-    import asyncio
-    return asyncio.run(abdp(tickers, flds, ..., backend=backend, format=format))
-
-def bdh(tickers, flds, ..., backend=None, format=None) -> Any:
-    """Bloomberg historical data (sync wrapper)."""
-    import asyncio
-    return asyncio.run(abdh(tickers, flds, ..., backend=backend, format=format))
+**Data flow:**
+```
+Bloomberg events → Arrow Table → narwhals transform → to_output()
 ```
 
-**Benefits:**
-- Consistent with Rust v1 branch API
-- Users get async support for free
-- Enables concurrent Bloomberg requests
-- Sync API preserved for backward compatibility
+#### Step 1: Add backend/format to DataRequest
 
-### 1.6 Refactor API Functions
-
-Modify each API function to:
-1. Accept `backend` and `format` parameters
-2. Build Arrow table internally
-3. Use `to_output()` for conversion
-
-Example for `bdh()`:
+`xbbg/core/domain/contracts.py`:
 
 ```python
-def bdh(
-    tickers,
-    flds,
-    start_date=None,
-    end_date=None,
-    # ... existing params ...
-    backend: str | None = None,
-    format: str | None = None,
-) -> pd.DataFrame | pl.DataFrame | pa.Table | nw.DataFrame:
-    """Bloomberg historical data.
+from xbbg.backend import Backend, Format
 
-    Args:
-        # ... existing args ...
-        backend: Output backend. One of 'pandas', 'polars', 'arrow', 'narwhals'.
-                 Default: 'pandas' (will change to 'narwhals' in v1.0)
-        format: Output format. One of 'semi-long', 'long', 'wide'.
-                Default: 'wide' (will change to 'semi-long' in v1.0)
+@dataclass(frozen=True)
+class DataRequest:
+    # ... existing fields ...
+    ticker: str
+    dt: str | pd.Timestamp
+    # ... etc ...
 
-    Returns:
-        DataFrame in requested backend and format.
-    """
-    from xbbg import options
+    # NEW: Output configuration
+    backend: Backend | None = None
+    format: Format | None = None
+```
+
+#### Step 2: Build Arrow in _fetch_from_bloomberg()
+
+`xbbg/core/pipeline.py:350-358`:
+
+```python
+def _fetch_from_bloomberg(self, request, session_window) -> pa.Table | None:
+    """Fetch data from Bloomberg, return as Arrow Table."""
+    # ... existing request building ...
+
+    # Collect events into lists (columnar)
+    events = list(process.rec_events(
+        func=self.config.process_func,
+        event_queue=handle['event_queue'],
+        timeout=timeout,
+        max_timeouts=max_timeouts,
+        **ctx_kwargs,
+    ))
+
+    if not events:
+        return None
+
+    # Build Arrow Table directly from dicts
+    return pa.Table.from_pylist(events)
+```
+
+#### Step 3: Refactor Transformers to use narwhals
+
+`xbbg/core/pipeline.py` - ResponseTransformerStrategy:
+
+```python
+class ResponseTransformerStrategy(Protocol):
+    """Strategy for transforming Bloomberg responses."""
+
+    def transform(
+        self,
+        raw_data: pa.Table,              # Changed from pd.DataFrame
+        request: DataRequest,
+        exchange_info: pd.Series,
+        session_window: SessionWindow,
+    ) -> nw.DataFrame:                    # Returns narwhals
+        ...
+```
+
+Example transformer (HistoricalTransformer):
+
+```python
+class HistoricalTransformer:
+    def transform(self, raw_data, request, exchange_info, session_window):
+        import narwhals as nw
+
+        df = nw.from_native(raw_data)
+
+        # Sort by date
+        df = df.sort('date')
+
+        # Return in semi-long format (ticker, date, field1, field2, ...)
+        return df
+```
+
+#### Step 4: Convert to output in BloombergPipeline.run()
+
+`xbbg/core/pipeline.py:139-229`:
+
+```python
+def run(self, request: DataRequest) -> Any:
+    # ... existing steps 1-7 ...
+
+    # Step 8: Transform response (now returns narwhals DataFrame)
+    transformed = self.config.transformer.transform(
+        raw_data, request, resolver_result.exchange_info, session_window
+    )
+
+    # Step 9: Convert to requested backend/format
     from xbbg.io.convert import to_output
+    from xbbg.options import get_backend, get_format
+    from xbbg.deprecation import warn_defaults_changing
 
-    # Use global defaults if not specified
-    backend = backend or options.backend
-    format = format or options.format
+    backend = request.backend or get_backend()
+    format = request.format or get_format()
 
-    # ... existing Bloomberg fetch logic ...
+    # Warn if using implicit defaults
+    if request.backend is None or request.format is None:
+        warn_defaults_changing()
 
-    # Build Arrow table from response
-    arrow_table = _build_arrow_table(response_data, tickers, flds, dates)
-
-    # Convert to output format
-    return to_output(
-        arrow_table,
+    result = to_output(
+        nw.to_native(transformed),  # Get Arrow table
         backend=backend,
         format=format,
         ticker_col='ticker',
         date_col='date',
-        field_cols=flds,
+        field_cols=self._get_field_cols(request),
     )
+
+    # Step 10: Persist cache (cache in Arrow format)
+    if request.cache_policy.enabled:
+        self._persist_cache(transformed, request, session_window)
+
+    return result
 ```
 
-### 1.7 Functions to Update
+#### Step 5: Update API functions to pass backend/format
 
-#### Reference Data (`xbbg/api/reference/`)
-| Async | Sync | Notes |
-|-------|------|-------|
-| `abdp()` | `bdp()` | Reference data (point-in-time) |
-| `abds()` | `bds()` | Bulk data (multi-row) |
-| - | `fieldInfo()` | Field metadata (simple, may not need backend) |
-| - | `fieldSearch()` | Field search (simple) |
-| - | `lookupSecurity()` | Security lookup |
-| - | `getPortfolio()` | Portfolio holdings |
-| - | `getBlpapiVersion()` | Version info (no DataFrame) |
+Each API function just needs to add `backend` and `format` parameters and pass them through:
 
-#### Historical Data (`xbbg/api/historical/`)
-| Async | Sync | Notes |
-|-------|------|-------|
-| `abdh()` | `bdh()` | Historical time series |
-| `adividend()` | `dividend()` | Dividend history |
-| `aearning()` | `earning()` | Earnings history |
-| `aturnover()` | `turnover()` | Turnover data |
+```python
+def bdh(tickers, flds, ..., backend=None, format=None):
+    # ... existing logic to build DataRequest ...
+    request = RequestBuilder(...).with_output(backend, format).build()
+    return pipeline.run(request)
+```
 
-#### Intraday Data (`xbbg/api/intraday/`)
-| Async | Sync | Notes |
-|-------|------|-------|
-| `abdib()` | `bdib()` | Intraday bars |
-| `abdtick()` | `bdtick()` | Tick data |
+### 1.6 Files to Modify
 
-#### Screening (`xbbg/api/screening/`)
-| Async | Sync | Notes |
-|-------|------|-------|
-| `abeqs()` | `beqs()` | Equity screening |
-| `absrch()` | `bsrch()` | Security search |
-| `abql()` | `bql()` | BQL queries |
-| `aetf_holdings()` | `etf_holdings()` | ETF holdings |
+| File | Changes |
+|------|---------|
+| `xbbg/core/domain/contracts.py` | Add `backend`, `format` to DataRequest |
+| `xbbg/core/pipeline.py:350` | Build Arrow instead of pandas |
+| `xbbg/core/pipeline.py:218` | Add to_output() conversion |
+| `xbbg/core/pipeline.py:458+` | Refactor transformers to use narwhals |
+| `xbbg/api/*` | Add `backend`, `format` params (pass-through only) |
 
-#### Realtime (`xbbg/api/realtime/`)
-| Async | Sync | Notes |
-|-------|------|-------|
-| - | `live()` | Live data (streaming, different pattern) |
-| - | `subscribe()` | Subscriptions (streaming) |
+### 1.7 Benefits of Lower-Level Approach
 
-#### Helpers (`xbbg/api/helpers.py`)
-| Function | Notes |
-|----------|-------|
-| `adjust_ccy()` | Currency adjustment (operates on existing DataFrames) |
+| Benefit | Description |
+|---------|-------------|
+| Single change point | Modify pipeline once, all APIs inherit |
+| Arrow-native | No pandas→Arrow conversion overhead |
+| Consistent | Same transformation logic for all endpoints |
+| Testable | Test pipeline once, not each API function |
+| Cache compatible | Cache stores Arrow (parquet), no conversion needed |
 
 ### 1.8 Testing
 
