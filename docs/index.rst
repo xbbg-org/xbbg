@@ -146,6 +146,11 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.10.2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.10.2>`__
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.1...v0.10.2
+
+
 *0.10.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.10.1>`__
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.0...v0.10.1
