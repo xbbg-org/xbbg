@@ -8,7 +8,6 @@ env.local
 
 # Cargo / Rust
 .cargo/config.toml
-Cargo.lock
 build_rust.bat
 
 # PyO3/maturin generated files
