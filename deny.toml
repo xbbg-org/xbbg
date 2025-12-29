@@ -23,6 +23,8 @@ ignore = []
 # ════════════════════════════════════════════════════════════════════════════
 [licenses]
 version = 2
+# Suppress warnings for allowed licenses not currently in use
+unused-allowed-license = "allow"
 allow = [
     "MIT",
     "Apache-2.0",
