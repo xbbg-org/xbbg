@@ -300,7 +300,8 @@ jobs:
 
       - name: Install wheel and test dependencies
         run: |
-          uv pip install --system --no-index --find-links dist xbbg
+          # Install wheel directly (dependencies resolved from PyPI)
+          uv pip install --system dist/*.whl
           uv pip install --system pytest pytest-cov
 
       - name: Copy tests to temp directory
