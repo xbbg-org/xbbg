@@ -288,19 +288,18 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Download wheels
+      - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          pattern: wheel-*
+          name: wheel-${{ matrix.os == 'ubuntu-latest' && 'x86_64-unknown-linux-gnu' || 'x86_64-pc-windows-msvc' }}-py${{ matrix.python }}
           path: dist
-          merge-multiple: true
 
       - name: Install blpapi from Bloomberg
         run: uv pip install --system --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
 
       - name: Install wheel and test dependencies
         run: |
-          # Install wheel directly (dependencies resolved from PyPI)
+          # Install the specific wheel for this Python version
           uv pip install --system dist/*.whl
           uv pip install --system pytest pytest-cov
 
