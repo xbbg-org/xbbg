@@ -293,12 +293,21 @@ jobs:
           uv pip install --system --find-links dist xbbg
           uv pip install --system pytest pytest-cov
 
+      - name: Copy tests to temp directory
+        # Run from temp dir to avoid importing local source instead of installed package
+        run: |
+          mkdir -p "${{ runner.temp }}/test-run"
+          cp -r py-xbbg/tests "${{ runner.temp }}/test-run/"
+        shell: bash
+
       - name: Run tests
-        run: pytest py-xbbg/tests -v
+        working-directory: ${{ runner.temp }}/test-run
+        run: pytest tests -v
 
       - name: Run tests with coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
-        run: pytest py-xbbg/tests --cov=xbbg --cov-report=xml -v
+        working-directory: ${{ runner.temp }}/test-run
+        run: pytest tests --cov=xbbg --cov-report=xml -v
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
