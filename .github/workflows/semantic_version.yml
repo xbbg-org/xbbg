@@ -140,15 +140,6 @@ jobs:
         make_latest: ${{ inputs.pre_release == 'none' || inputs.pre_release == '' }}
         draft: false
 
-  # Upload to PyPI
-  pypi-upload:
-    needs: bump-version
-    if: inputs.create_release == true
-    uses: ./.github/workflows/pypi_upload.yml
-    with:
-      tag: ${{ needs.bump-version.outputs.tag }}
-    secrets: inherit
-
   # Attach release assets (wheel and tarball)
   release-assets:
     needs: bump-version
@@ -185,7 +176,7 @@ jobs:
 
   # Summary job
   summary:
-    needs: [bump-version, pypi-upload, release-assets, update-readme, update-index, publish-docs]
+    needs: [bump-version, release-assets, update-readme, update-index, publish-docs]
     if: always() && inputs.create_release == true
     runs-on: ubuntu-latest
 
@@ -202,8 +193,10 @@ jobs:
         echo "### Job Results" >> $GITHUB_STEP_SUMMARY
         echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| PyPI Upload | ${{ needs.pypi-upload.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Release Assets | ${{ needs.release-assets.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Update README | ${{ needs.update-readme.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Update index.rst | ${{ needs.update-index.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Publish Docs | ${{ needs.publish-docs.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Manual Step Required" >> $GITHUB_STEP_SUMMARY
+        echo "Run **pypi_upload.yml** manually to publish to PyPI (required for trusted publisher attestation)." >> $GITHUB_STEP_SUMMARY

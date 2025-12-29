@@ -1,12 +1,6 @@
 name: Upload Python Package
 
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: 'Release tag to publish'
-        required: true
-        type: string
   release:
     types: [published]
   workflow_dispatch:
@@ -22,7 +16,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
       - name: Determine target release tag
         id: target_tag
@@ -30,10 +24,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Use input tag if provided (from workflow_call)
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
+          if [ "${{ github.event_name }}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
           elif [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
