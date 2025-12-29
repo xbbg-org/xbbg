@@ -16,7 +16,7 @@ env:
 
 jobs:
   # ════════════════════════════════════════════════════════════════════════════
-  # Detect latest Bloomberg SDK version
+  # Detect latest Bloomberg SDK version (runs first, others depend on it)
   # ════════════════════════════════════════════════════════════════════════════
   sdk-version:
     name: Detect SDK Version
@@ -33,22 +33,22 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Lint (fast, no SDK needed)
+  # Lint (fast, no SDK needed, no caching needed)
   # ════════════════════════════════════════════════════════════════════════════
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
-          cache: false  # No compilation in lint job
+          cache: false
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v4
 
       - name: Rust format check
         run: cargo fmt --all -- --check
@@ -66,26 +66,23 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          cache: false  # No compilation in security job
+          cache: false
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: Security audit
-        run: cargo audit
-
-      - name: Dependency policy check
-        uses: EmbarkStudios/cargo-deny-action@v2
+      - name: cargo-audit
+        uses: rustsec/audit-check@v2
         with:
-          command: check
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Build wheels (matrix: OS)
+  # Build wheels (matrix: OS) - main compilation job with caching
   # ════════════════════════════════════════════════════════════════════════════
   build:
     name: Build (${{ matrix.target }})
@@ -94,81 +91,72 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            sdk-platform: linux
-            sdk-ext: tar.gz
-          # Windows x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            sdk-platform: windows
-            sdk-ext: zip
-          # NOTE: macOS builds disabled - C++ SDK not publicly available
-          # - os: macos-14
-          #   target: aarch64-apple-darwin
-          #   sdk-platform: macos
-          #   sdk-ext: tar.gz
-          # - os: macos-15
-          #   target: x86_64-apple-darwin
-          #   sdk-platform: macos
-          #   sdk-ext: tar.gz
 
     runs-on: ${{ matrix.os }}
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt update && sudo apt install -y libclang-dev
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
           components: clippy
-          rustflags: ""  # Don't override RUSTFLAGS, let clippy use -D warnings
+          rustflags: ""
+
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-${{ runner.os }}-${{ env.BLPAPI_VERSION }}
 
       - name: Download Bloomberg SDK (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/blpapi"
           curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
-          # SDK has Linux/ instead of lib/, create symlink for build.rs
-          ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          # Create libblpapi3.so symlink (SDK has libblpapi3_64.so)
-          ln -s "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # SDK has Linux/ instead of lib/, create symlinks
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Download Bloomberg SDK (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.cache-sdk.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $sdkUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-windows.zip"
           Invoke-WebRequest -Uri $sdkUrl -OutFile blpapi.zip
-          Expand-Archive -Path blpapi.zip -DestinationPath C:\blpapi
-          $sdkPath = (Get-ChildItem C:\blpapi -Directory)[0].FullName
+          Expand-Archive -Path blpapi.zip -DestinationPath $HOME/blpapi
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = (Get-ChildItem $HOME/blpapi -Directory)[0].FullName
           echo "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
 
       - name: Cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-        # Note: Rust tests require Bloomberg terminal connection, skipped in CI
-
-      - name: Install cargo-geiger
-        if: runner.os == 'Linux'
-        run: cargo install cargo-geiger --locked
-
-      - name: Unsafe code audit
-        if: runner.os == 'Linux'
-        run: cargo geiger --all-features --all-targets || true
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -180,7 +168,7 @@ jobs:
           manylinux: auto
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: wheel-${{ matrix.target }}
           path: dist/*.whl
@@ -199,19 +187,19 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Setup Python ${{ matrix.python }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v4
 
       - name: Download wheels
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           pattern: wheel-*
           path: dist
@@ -231,25 +219,26 @@ jobs:
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v4
         with:
           files: coverage.xml
           fail_ci_if_error: false
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Static Analysis (requires SDK)
+  # Static Analysis (optional, non-blocking)
   # ════════════════════════════════════════════════════════════════════════════
   analysis:
     name: Static Analysis
     needs: sdk-version
     runs-on: ubuntu-latest
+    continue-on-error: true
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
-        run: sudo apt update && sudo apt install -y libclang-dev
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -258,36 +247,54 @@ jobs:
           components: rust-src
           rustflags: ""
 
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
       - name: Download Bloomberg SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/blpapi"
           curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
-          ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -s "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+
+      - name: Setup Bloomberg SDK
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
-      - name: Install cargo-udeps
-        run: cargo install cargo-udeps --locked
+      - name: Cache cargo tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-tools-${{ runner.os }}-udeps-geiger-lockbud-semver
 
-      - name: Check unused dependencies
+      - name: Install analysis tools
+        run: |
+          command -v cargo-udeps || cargo install cargo-udeps --locked
+          command -v cargo-geiger || cargo install cargo-geiger --locked
+          command -v cargo-semver-checks || cargo install cargo-semver-checks --locked
+          command -v cargo-lockbud || cargo install lockbud --locked || true
+
+      - name: Unused dependencies
         run: cargo +nightly udeps --all-targets 2>&1 || true
 
-      - name: Install lockbud
-        run: cargo install lockbud --locked || true
+      - name: Unsafe code audit
+        run: cargo geiger --all-features --all-targets 2>&1 || true
 
       - name: Deadlock detection
         run: cargo lockbud -k deadlock 2>&1 || true
 
-      - name: Install cargo-semver-checks
-        run: cargo install cargo-semver-checks --locked
-
-      - name: SemVer check
+      - name: SemVer compatibility
         run: cargo semver-checks check-release 2>&1 || true
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Kani verification (unsafe code model checking)
+  # Kani verification (optional, non-blocking)
   # ════════════════════════════════════════════════════════════════════════════
   kani:
     name: Kani Verification
@@ -297,27 +304,38 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
-        run: sudo apt update && sudo apt install -y libclang-dev
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
 
       - name: Download Bloomberg SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/blpapi"
           curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
-          ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -s "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+
+      - name: Setup Bloomberg SDK
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
 
-      - name: Setup Kani
+      - name: Run Kani
         uses: model-checking/kani-github-action@v1
         with:
-          args: --workspace --exclude blpapi-sys --exclude pyo3-xbbg 2>&1 || true
+          args: --workspace --exclude blpapi-sys --exclude pyo3-xbbg
 
   # ════════════════════════════════════════════════════════════════════════════
-  # CI Status (aggregation gate)
+  # CI Status (required gate for merging)
   # ════════════════════════════════════════════════════════════════════════════
   ci-status:
     name: CI Status
@@ -325,13 +343,17 @@ jobs:
     needs: [lint, security, build, test]
     if: always()
     steps:
-      - name: Check all jobs passed
+      - name: Check required jobs
         run: |
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.security.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]]; then
-            echo "One or more jobs failed"
+            echo "❌ One or more required jobs failed"
+            echo "  lint: ${{ needs.lint.result }}"
+            echo "  security: ${{ needs.security.result }}"
+            echo "  build: ${{ needs.build.result }}"
+            echo "  test: ${{ needs.test.result }}"
             exit 1
           fi
-          echo "All CI checks passed!"
+          echo "✅ All CI checks passed!"
