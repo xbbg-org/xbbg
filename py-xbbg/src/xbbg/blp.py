@@ -12,6 +12,7 @@ API Design:
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 from enum import Enum
 import logging
 from typing import TYPE_CHECKING
@@ -198,17 +199,21 @@ def _extract_overrides(kwargs: dict) -> list[tuple[str, str]]:
 
 def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
     """Format date to string."""
-    import pandas as pd
-
     if dt is None:
-        return pd.Timestamp.now().strftime(fmt)
+        return datetime.now().strftime(fmt)
     if isinstance(dt, str):
         if dt.lower() == "today":
-            return pd.Timestamp.now().strftime(fmt)
+            return datetime.now().strftime(fmt)
         # Try to parse and reformat
         try:
-            return pd.Timestamp(dt).strftime(fmt)
+            return datetime.fromisoformat(dt).strftime(fmt)
         except (ValueError, TypeError):
+            # Try common formats
+            for parse_fmt in ("%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"):
+                try:
+                    return datetime.strptime(dt, parse_fmt).strftime(fmt)
+                except ValueError:
+                    continue
             return dt
     return dt.strftime(fmt)
 
@@ -368,8 +373,6 @@ async def abdh(
             abdh('MSFT US Equity', 'PX_LAST'),
         )
     """
-    import pandas as pd
-
     engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
@@ -378,7 +381,8 @@ async def abdh(
     # Handle dates
     e_dt = _fmt_date(end_date, "%Y%m%d")
     if start_date is None:
-        s_dt = (pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)).strftime("%Y%m%d")
+        end_dt_parsed = datetime.strptime(e_dt, "%Y%m%d")
+        s_dt = (end_dt_parsed - timedelta(weeks=8)).strftime("%Y%m%d")
     else:
         s_dt = _fmt_date(start_date, "%Y%m%d")
 
@@ -492,17 +496,15 @@ async def abdib(
         df = await abdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
                   end_datetime='2024-12-01 16:00', interval=5, backend='polars')
     """
-    import pandas as pd
-
     engine = _get_engine()
 
     # Determine datetime range
     if start_datetime is not None and end_datetime is not None:
-        s_dt = pd.Timestamp(start_datetime).isoformat()
-        e_dt = pd.Timestamp(end_datetime).isoformat()
+        s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
+        e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
     elif dt is not None:
         # Single day request - use full day
-        cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
+        cur_dt = datetime.fromisoformat(dt.replace(" ", "T")).strftime("%Y-%m-%d")
         s_dt = f"{cur_dt}T00:00:00"
         e_dt = f"{cur_dt}T23:59:59"
     else:
@@ -539,12 +541,10 @@ async def abdtick(
         df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
         df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
     """
-    import pandas as pd
-
     engine = _get_engine()
 
-    s_dt = pd.Timestamp(start_datetime).isoformat()
-    e_dt = pd.Timestamp(end_datetime).isoformat()
+    s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
+    e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
 
     table = await engine.abdtick(ticker, s_dt, e_dt)
     nw_df = nw.from_native(table)
