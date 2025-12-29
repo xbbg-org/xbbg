@@ -76,7 +76,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/audit@v1
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y cargo-audit && cargo audit
 
   # ════════════════════════════════════════════════════════════════════════════
   # Security - cargo-deny (licenses, bans, sources)
@@ -86,7 +87,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y cargo-deny && cargo deny check
 
   # ════════════════════════════════════════════════════════════════════════════
   # Check (clippy) - runs once per OS to validate code
