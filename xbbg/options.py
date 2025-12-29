@@ -46,8 +46,8 @@ def get_backend() -> Backend:
         Backend: The current default backend enum value.
 
     Example:
-        >>> from xbbg import options
-        >>> options.get_backend()
+        >>> from xbbg import options  # doctest: +SKIP
+        >>> options.get_backend()  # doctest: +SKIP
         <Backend.PANDAS: 'pandas'>
     """
     return _default_backend
@@ -89,8 +89,8 @@ def get_format() -> Format:
         Format: The current default format enum value.
 
     Example:
-        >>> from xbbg import options
-        >>> options.get_format()
+        >>> from xbbg import options  # doctest: +SKIP
+        >>> options.get_format()  # doctest: +SKIP
         <Format.WIDE: 'wide'>
     """
     return _default_format

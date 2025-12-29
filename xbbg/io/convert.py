@@ -33,24 +33,22 @@ def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
     ValueError
         If an unsupported backend is specified.
     """
-    match backend:
-        case Backend.NARWHALS:
-            return nw_frame
-        case Backend.PANDAS:
-            return nw_frame.to_pandas()
-        case Backend.POLARS:
-            return nw_frame.to_native()
-        case Backend.POLARS_LAZY:
-            return nw_frame.to_native().lazy()
-        case Backend.PYARROW:
-            return nw_frame.to_arrow()
-        case Backend.DUCKDB:
-            import duckdb
+    if backend == Backend.NARWHALS:
+        return nw_frame
+    if backend == Backend.PANDAS:
+        return nw_frame.to_pandas()
+    if backend == Backend.POLARS:
+        return nw_frame.to_native()
+    if backend == Backend.POLARS_LAZY:
+        return nw_frame.to_native().lazy()
+    if backend == Backend.PYARROW:
+        return nw_frame.to_arrow()
+    if backend == Backend.DUCKDB:
+        import duckdb
 
-            arrow_table = nw_frame.to_arrow()
-            return duckdb.from_arrow(arrow_table)
-        case _:
-            raise ValueError(f"Unsupported backend: {backend}")
+        arrow_table = nw_frame.to_arrow()
+        return duckdb.from_arrow(arrow_table)
+    raise ValueError(f"Unsupported backend: {backend}")
 
 
 def _apply_multiindex(
@@ -163,42 +161,40 @@ def to_output(
     if field_cols is None:
         field_cols = [c for c in columns if c not in (ticker_col, date_col)]
 
-    match format:
-        case Format.LONG:
-            # Unpivot field columns to long format
-            nw_frame = nw_frame.unpivot(
-                on=field_cols,
-                index=[ticker_col, date_col],
-                variable_name="field",
-                value_name="value",
-            )
-            return _convert_backend(nw_frame, backend)
+    if format == Format.LONG:
+        # Unpivot field columns to long format
+        nw_frame = nw_frame.unpivot(
+            on=field_cols,
+            index=[ticker_col, date_col],
+            variable_name="field",
+            value_name="value",
+        )
+        return _convert_backend(nw_frame, backend)
 
-        case Format.SEMI_LONG:
-            # Passthrough - no transformation needed
-            return _convert_backend(nw_frame, backend)
+    if format == Format.SEMI_LONG:
+        # Passthrough - no transformation needed
+        return _convert_backend(nw_frame, backend)
 
-        case Format.WIDE:
-            # For WIDE format, apply MultiIndex for pandas
-            if backend == Backend.PANDAS:
-                return _apply_multiindex(nw_frame, ticker_col, date_col, field_cols)
-            # For non-pandas backends, pivot to wide format
-            # First unpivot, then pivot by ticker
-            long_frame = nw_frame.unpivot(
-                on=field_cols,
-                index=[ticker_col, date_col],
-                variable_name="field",
-                value_name="value",
-            )
-            # Create combined ticker_field column and pivot
-            wide_frame = long_frame.with_columns(
-                (nw.col(ticker_col) + "_" + nw.col("field")).alias("ticker_field")
-            ).pivot(
-                on="ticker_field",
-                index=date_col,
-                values="value",
-            )
-            return _convert_backend(wide_frame, backend)
+    if format == Format.WIDE:
+        # For WIDE format, apply MultiIndex for pandas
+        if backend == Backend.PANDAS:
+            return _apply_multiindex(nw_frame, ticker_col, date_col, field_cols)
+        # For non-pandas backends, pivot to wide format
+        # First unpivot, then pivot by ticker
+        long_frame = nw_frame.unpivot(
+            on=field_cols,
+            index=[ticker_col, date_col],
+            variable_name="field",
+            value_name="value",
+        )
+        # Create combined ticker_field column and pivot
+        wide_frame = long_frame.with_columns(
+            (nw.col(ticker_col) + "_" + nw.col("field")).alias("ticker_field")
+        ).pivot(
+            on="ticker_field",
+            index=date_col,
+            values="value",
+        )
+        return _convert_backend(wide_frame, backend)
 
-        case _:
-            raise ValueError(f"Unsupported format: {format}")
+    raise ValueError(f"Unsupported format: {format}")
