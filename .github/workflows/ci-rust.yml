@@ -370,7 +370,10 @@ jobs:
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - uses: cargo-bins/cargo-binstall@main
-      - run: cargo binstall -y cargo-udeps && cargo +nightly udeps --all-targets
+      - run: |
+          cargo binstall -y cargo-udeps
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo +nightly udeps --all-targets
 
   # ════════════════════════════════════════════════════════════════════════════
   # Unsafe Code Audit (optional, non-blocking)
@@ -418,6 +421,7 @@ jobs:
       - name: Run cargo-geiger
         run: |
           cargo binstall -y cargo-geiger
+          export PATH="$HOME/.cargo/bin:$PATH"
           for crate in blpapi-sys xbbg-core xbbg-async pyo3-xbbg; do
             echo "=== $crate ==="
             cargo geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml"
@@ -471,6 +475,7 @@ jobs:
       - name: Run cargo-semver-checks
         run: |
           cargo binstall -y cargo-semver-checks
+          export PATH="$HOME/.cargo/bin:$PATH"
           # Check if Rust crates directory exists in main branch
           if git show origin/main:crates/xbbg-core/Cargo.toml >/dev/null 2>&1; then
             cargo semver-checks --baseline-rev origin/main
