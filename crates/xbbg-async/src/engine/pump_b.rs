@@ -122,21 +122,17 @@ impl PumpB {
         let fields = params.fields.clone().unwrap_or_default();
         let field_types = params.field_types.clone();
         let state = match params.extractor {
-            ExtractorType::RefData => {
-                RequestState::RefData(RefDataState::with_format(
-                    fields.clone(),
-                    OutputFormat::Long,
-                    field_types,
-                    reply,
-                ))
-            }
-            ExtractorType::HistData => {
-                RequestState::HistData(HistDataState::with_types(
-                    fields.clone(),
-                    field_types.clone(),
-                    reply,
-                ))
-            }
+            ExtractorType::RefData => RequestState::RefData(RefDataState::with_format(
+                fields.clone(),
+                OutputFormat::Long,
+                field_types,
+                reply,
+            )),
+            ExtractorType::HistData => RequestState::HistData(HistDataState::with_types(
+                fields.clone(),
+                field_types.clone(),
+                reply,
+            )),
             ExtractorType::BulkData => {
                 let field = fields.first().cloned().unwrap_or_default();
                 RequestState::BulkData(BulkDataState::new(field, reply))
@@ -144,7 +140,10 @@ impl PumpB {
             _ => {
                 // TODO: Add Generic and RawJson extractors
                 return Err(BlpError::InvalidArgument {
-                    detail: format!("Unsupported extractor type for Lane B: {:?}", params.extractor),
+                    detail: format!(
+                        "Unsupported extractor type for Lane B: {:?}",
+                        params.extractor
+                    ),
                 });
             }
         };
@@ -182,7 +181,10 @@ impl PumpB {
             }
             _ => {
                 return Err(BlpError::InvalidArgument {
-                    detail: format!("Streaming not supported for extractor: {:?}", params.extractor),
+                    detail: format!(
+                        "Streaming not supported for extractor: {:?}",
+                        params.extractor
+                    ),
                 });
             }
         };

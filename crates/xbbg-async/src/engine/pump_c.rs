@@ -124,25 +124,29 @@ impl PumpC {
 
         // Get ticker from security field
         let ticker = params.security.clone().unwrap_or_default();
-        let event_type = params.event_type.clone().unwrap_or_else(|| "TRADE".to_string());
+        let event_type = params
+            .event_type
+            .clone()
+            .unwrap_or_else(|| "TRADE".to_string());
         let interval = params.interval.unwrap_or(1);
 
         // Create state based on extractor type
         let state = match params.extractor {
-            ExtractorType::IntradayBar => {
-                IntradayRequestState::Bar(IntradayBarState::new(
-                    ticker.clone(),
-                    event_type.clone(),
-                    interval,
-                    reply,
-                ))
-            }
+            ExtractorType::IntradayBar => IntradayRequestState::Bar(IntradayBarState::new(
+                ticker.clone(),
+                event_type.clone(),
+                interval,
+                reply,
+            )),
             ExtractorType::IntradayTick => {
                 IntradayRequestState::Tick(IntradayTickState::new(ticker.clone(), reply))
             }
             _ => {
                 return Err(BlpError::InvalidArgument {
-                    detail: format!("Unsupported extractor type for Lane C: {:?}", params.extractor),
+                    detail: format!(
+                        "Unsupported extractor type for Lane C: {:?}",
+                        params.extractor
+                    ),
                 });
             }
         };
@@ -181,12 +185,15 @@ impl PumpC {
             ExtractorType::IntradayBar => {
                 IntradayRequestState::BarStream(IntradayBarStreamState::new(ticker.clone(), stream))
             }
-            ExtractorType::IntradayTick => {
-                IntradayRequestState::TickStream(IntradayTickStreamState::new(ticker.clone(), stream))
-            }
+            ExtractorType::IntradayTick => IntradayRequestState::TickStream(
+                IntradayTickStreamState::new(ticker.clone(), stream),
+            ),
             _ => {
                 return Err(BlpError::InvalidArgument {
-                    detail: format!("Streaming not supported for extractor: {:?}", params.extractor),
+                    detail: format!(
+                        "Streaming not supported for extractor: {:?}",
+                        params.extractor
+                    ),
                 });
             }
         };

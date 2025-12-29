@@ -128,10 +128,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
-    let fields: Option<Vec<String>> = dict
-        .get_item("fields")?
-        .map(|v| v.extract())
-        .transpose()?;
+    let fields: Option<Vec<String>> = dict.get_item("fields")?.map(|v| v.extract()).transpose()?;
 
     let overrides: Option<Vec<(String, String)>> = dict
         .get_item("overrides")?
@@ -168,10 +165,8 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
-    let options: Option<Vec<(String, String)>> = dict
-        .get_item("options")?
-        .map(|v| v.extract())
-        .transpose()?;
+    let options: Option<Vec<(String, String)>> =
+        dict.get_item("options")?.map(|v| v.extract()).transpose()?;
 
     let field_types: Option<HashMap<String, String>> = dict
         .get_item("field_types")?
