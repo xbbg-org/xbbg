@@ -1,6 +1,7 @@
 name: Publish Docs (Read the Docs)
 
 on:
+  workflow_call:
   release:
     types: [published]
   workflow_dispatch:

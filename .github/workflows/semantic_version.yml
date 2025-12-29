@@ -44,6 +44,10 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    outputs:
+      tag: ${{ steps.new_version.outputs.tag }}
+      new_version: ${{ steps.new_version.outputs.new_version }}
+      current_version: ${{ steps.current_version.outputs.current }}
 
     steps:
     - uses: actions/checkout@v5
@@ -136,18 +140,70 @@ jobs:
         make_latest: ${{ inputs.pre_release == 'none' || inputs.pre_release == '' }}
         draft: false
 
+  # Upload to PyPI
+  pypi-upload:
+    needs: bump-version
+    if: inputs.create_release == true
+    uses: ./.github/workflows/pypi_upload.yml
+    with:
+      tag: ${{ needs.bump-version.outputs.tag }}
+    secrets: inherit
+
+  # Attach release assets (wheel and tarball)
+  release-assets:
+    needs: bump-version
+    if: inputs.create_release == true
+    uses: ./.github/workflows/release_assets.yml
+    with:
+      tag: ${{ needs.bump-version.outputs.tag }}
+    secrets: inherit
+
+  # Update README changelog
+  update-readme:
+    needs: bump-version
+    if: inputs.create_release == true
+    uses: ./.github/workflows/update_readme_on_release.yml
+    with:
+      tag: ${{ needs.bump-version.outputs.tag }}
+    secrets: inherit
+
+  # Update docs/index.rst changelog (runs after README to avoid conflicts)
+  update-index:
+    needs: [bump-version, update-readme]
+    if: inputs.create_release == true
+    uses: ./.github/workflows/update_index_on_release.yml
+    with:
+      tag: ${{ needs.bump-version.outputs.tag }}
+    secrets: inherit
+
+  # Trigger Read the Docs build
+  publish-docs:
+    needs: [bump-version, update-index]
+    if: inputs.create_release == true
+    uses: ./.github/workflows/publish_docs.yml
+    secrets: inherit
+
+  # Summary job
+  summary:
+    needs: [bump-version, pypi-upload, release-assets, update-readme, update-index, publish-docs]
+    if: always() && inputs.create_release == true
+    runs-on: ubuntu-latest
+
+    steps:
     - name: Output summary
       run: |
         echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **Previous version**: ${{ steps.current_version.outputs.current }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **New version**: ${{ steps.new_version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Tag**: ${{ steps.new_version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Previous version**: ${{ needs.bump-version.outputs.current_version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **New version**: ${{ needs.bump-version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tag**: ${{ needs.bump-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Type**: ${{ inputs.bump_type }}${{ inputs.pre_release != 'none' && inputs.pre_release != '' && format(' ({0})', inputs.pre_release) || '' }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "The following workflows will be triggered automatically by the release event:" >> $GITHUB_STEP_SUMMARY
-        echo "1. **pypi_upload.yml** - Build and upload to PyPI" >> $GITHUB_STEP_SUMMARY
-        echo "2. **release_assets.yml** - Attach wheel/tarball to release" >> $GITHUB_STEP_SUMMARY
-        echo "3. **update_readme_on_release.yml** - Update README.md changelog" >> $GITHUB_STEP_SUMMARY
-        echo "4. **update_index_on_release.yml** - Update docs/index.rst" >> $GITHUB_STEP_SUMMARY
-        echo "5. **publish_docs.yml** - Trigger Read the Docs build" >> $GITHUB_STEP_SUMMARY
+        echo "### Job Results" >> $GITHUB_STEP_SUMMARY
+        echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| PyPI Upload | ${{ needs.pypi-upload.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Release Assets | ${{ needs.release-assets.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Update README | ${{ needs.update-readme.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Update index.rst | ${{ needs.update-index.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Publish Docs | ${{ needs.publish-docs.result }} |" >> $GITHUB_STEP_SUMMARY

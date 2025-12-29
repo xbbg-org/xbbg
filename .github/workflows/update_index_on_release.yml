@@ -1,6 +1,12 @@
 name: Update Sphinx index.rst on Release
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag name'
+        required: true
+        type: string
   release:
     types: [published]
   workflow_dispatch:
@@ -30,22 +36,14 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        TAG="${{ github.event.release.tag_name || inputs.tag }}"
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          RELEASE_INFO=$(gh api repos/${{ github.repository }}/releases/tags/$TAG)
-          echo "release_url=$(echo "$RELEASE_INFO" | jq -r '.html_url')" >> $GITHUB_OUTPUT
-          echo "release_body<<EOF" >> $GITHUB_OUTPUT
-          echo "$(echo "$RELEASE_INFO" | jq -r '.body')" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "published_at=$(echo "$RELEASE_INFO" | jq -r '.published_at')" >> $GITHUB_OUTPUT
-        else
-          echo "release_url=${{ github.event.release.html_url }}" >> $GITHUB_OUTPUT
-          echo "release_body<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ github.event.release.body }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "published_at=${{ github.event.release.published_at }}" >> $GITHUB_OUTPUT
-        fi
+        TAG="${{ inputs.tag || github.event.release.tag_name }}"
+        RELEASE_INFO=$(gh api repos/${{ github.repository }}/releases/tags/$TAG)
         echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+        echo "release_url=$(echo "$RELEASE_INFO" | jq -r '.html_url')" >> $GITHUB_OUTPUT
+        echo "release_body<<EOF" >> $GITHUB_OUTPUT
+        echo "$(echo "$RELEASE_INFO" | jq -r '.body')" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "published_at=$(echo "$RELEASE_INFO" | jq -r '.published_at')" >> $GITHUB_OUTPUT
 
     - name: Update latest release line in docs/index.rst
       env:
@@ -54,7 +52,6 @@ jobs:
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
-        # Remove v prefix (backward compatible with xbbg== prefix)
         VERSION="${VERSION#v}"
         VERSION="${VERSION#xbbg==}"
         NEW_LINE="Latest release: xbbg==${VERSION} (release: \`notes <${RELEASE_URL}>\`_)"
@@ -73,23 +70,15 @@ jobs:
       run: |
         set -euo pipefail
         VERSION="$TAG_NAME"
-        # Remove v prefix (backward compatible with xbbg== prefix)
         VERSION="${VERSION#v}"
         VERSION="${VERSION#xbbg==}"
-        # Prepare RST changelog entry from the release body (use anonymous link __ to avoid duplicate targets)
         printf "*%s* - see release: \`notes <%s>\`__\n\n%s\n" "$VERSION" "$RELEASE_URL" "$RELEASE_BODY" > .idx_changelog_entry_raw.rst
-        # Normalize bullets to dash
         sed -E 's/^\* /- /' .idx_changelog_entry_raw.rst > .idx_changelog_entry_temp.rst
-        # Clean up the body: remove duplicate "Full Changelog" lines and excessive blank lines
-        # Extract header (first 2 lines: version line + blank line)
         head -n 2 .idx_changelog_entry_temp.rst > .idx_changelog_header.rst
-        # Extract body (everything after header)
         tail -n +3 .idx_changelog_entry_temp.rst > .idx_changelog_body.rst
-        # Process body: remove duplicate "Full Changelog" lines and excessive blank lines
         awk '
           BEGIN { seen_changelog=0; prev_empty=0; has_content=0 }
           {
-            # Track if we have seen a "Full Changelog" line
             if ($0 ~ /Full Changelog/) {
               if (!seen_changelog) {
                 lines[++n] = $0
@@ -99,7 +88,6 @@ jobs:
               prev_empty=0
               next
             }
-            # Handle blank lines - only keep single consecutive blanks
             if ($0 ~ /^\s*$/) {
               if (prev_empty == 0 && has_content) {
                 lines[++n] = $0
@@ -112,47 +100,37 @@ jobs:
             }
           }
           END {
-            # Remove trailing empty lines
             while (n > 0 && lines[n] ~ /^\s*$/) n--
             for (i=1; i<=n; i++) print lines[i]
           }
         ' .idx_changelog_body.rst > .idx_changelog_body_clean.rst
-        # Rebuild changelog entry
         cat .idx_changelog_header.rst .idx_changelog_body_clean.rst > .idx_changelog_entry.rst
-        # Ensure blank line before list items
         awk 'BEGIN{prev_empty=1} {
           if ($0 ~ /^-/ && prev_empty==0) { print "" }
           print; prev_empty = ($0 ~ /^\s*$/) ? 1 : 0
         }' .idx_changelog_entry.rst > .idx_changelog_entry2.rst && mv .idx_changelog_entry2.rst .idx_changelog_entry.rst
-        # Convert markdown links to RST format
         sed -E 's/\[([^\]]+)\]\(([^)]+)\)/`\1 <\2>`_/g' .idx_changelog_entry.rst > .idx_changelog_entry_final.rst && mv .idx_changelog_entry_final.rst .idx_changelog_entry.rst
-        # Extract existing changelog entries between markers (if any) and reformat them
         awk '/\.. xbbg:changelog-start/,/\.. xbbg:changelog-end/ {
           if ($0 ~ /\.. xbbg:changelog-start/) next
           if ($0 ~ /\.. xbbg:changelog-end/) next
           print
         }' docs/index.rst > .existing_idx_changelog_raw.rst
 
-        # Reformat preserved entries to simple format: extract version and release URL
         if [ -s .existing_idx_changelog_raw.rst ]; then
-          # Extract version and URL from the first line (format: *version* - see release: `notes <url>`_)
           VERSION_LINE=$(head -n 1 .existing_idx_changelog_raw.rst)
           if echo "$VERSION_LINE" | grep -qE '^\*[^*]+\* - see release:'; then
-            # Extract version (between asterisks) and URL (between < and >)
             PRESERVED_VERSION=$(echo "$VERSION_LINE" | sed -E 's/^\*([^*]+)\*.*/\1/')
             PRESERVED_URL=$(echo "$VERSION_LINE" | sed -E 's/.*`notes <([^>]+)>`__.*/\1/')
             printf "*%s* - see release: \`notes <%s>\`__\n" "$PRESERVED_VERSION" "$PRESERVED_URL" > .existing_idx_changelog.rst
           else
-            # Fallback: keep as-is if format doesn't match
             cp .existing_idx_changelog_raw.rst .existing_idx_changelog.rst
           fi
         fi
 
-        # Replace the block between markers with new entry + preserved old entries
         awk 'BEGIN{emit=1}
              /\.. xbbg:changelog-start/ {
                print
-               print ""  # Add blank line after marker
+               print ""
                system("cat .idx_changelog_entry.rst")
                if (system("test -s .existing_idx_changelog.rst") == 0) {
                  print ""
@@ -168,7 +146,6 @@ jobs:
       if: ${{ env.ACT != 'true' }}
       run: |
         set -euo pipefail
-        # Ensure we're on main branch
         git checkout main || git checkout -B main
         if git diff --quiet; then
           echo "No docs changes to commit"
@@ -178,6 +155,5 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add docs/index.rst
         git commit -m "docs(index): update What's New and latest release for ${{ steps.release_info.outputs.tag_name }}"
-        # Pull with rebase to handle concurrent workflow runs, then push
         git pull --rebase origin main
         git push origin main

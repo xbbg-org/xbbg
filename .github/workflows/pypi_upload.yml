@@ -1,6 +1,12 @@
 name: Upload Python Package
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to publish'
+        required: true
+        type: string
   release:
     types: [published]
   workflow_dispatch:
@@ -16,7 +22,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ inputs.tag || github.event.release.tag_name || github.ref }}
 
       - name: Determine target release tag
         id: target_tag
@@ -24,23 +30,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          EVENT="${{ github.event_name }}"
-          if [ "$EVENT" = "release" ]; then
+          # Use input tag if provided (from workflow_call)
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
           elif [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-          elif [ "$EVENT" = "workflow_dispatch" ]; then
-            if [ -z "${GITHUB_TOKEN:-}" ]; then
-              echo "GITHUB_TOKEN is required to lookup the latest release" >&2
-              exit 1
-            fi
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG=$(curl -fsSL \
                     -H "Authorization: Bearer $GITHUB_TOKEN" \
                     -H "Accept: application/vnd.github+json" \
                     "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
                   | jq -r '.tag_name // empty')
             if [ -z "$TAG" ]; then
-              echo "Latest release lookup returned empty tag; falling back to latest stable tag." >&2
               TAG=$(git tag --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
             fi
           else
@@ -67,24 +70,11 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-      - name: Verify target tag exists on origin
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          set -euo pipefail
-          TAG='${{ steps.target_tag.outputs.tag }}'
-          if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
-            echo "Confirmed tag $TAG exists on origin."
-          else
-            echo "Tag $TAG not found on origin; cannot publish. Exiting." >&2
-            exit 1
-          fi
-
       - name: Checkout target tag
-        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           TAG='${{ steps.target_tag.outputs.tag }}'
-          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG" || true
           git checkout "refs/tags/$TAG"
 
       - name: Set up Python 3.11
