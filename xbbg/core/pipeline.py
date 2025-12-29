@@ -231,12 +231,19 @@ class BloombergPipeline(BaseContextAware):
             return transformed
 
         # Step 9: Convert to requested backend/format
+        from xbbg.backend import Backend, Format
         from xbbg.deprecation import warn_defaults_changing
         from xbbg.io.convert import to_output
         from xbbg.options import get_backend, get_format
 
         backend = request.backend if request.backend is not None else get_backend()
         format_ = request.format if request.format is not None else get_format()
+
+        # Ensure backend and format are enum values (not strings)
+        if isinstance(backend, str):
+            backend = Backend(backend)
+        if isinstance(format_, str):
+            format_ = Format(format_)
 
         # Warn if using implicit defaults
         if request.backend is None or request.format is None:

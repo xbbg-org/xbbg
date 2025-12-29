@@ -33,17 +33,24 @@ def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
     ValueError
         If an unsupported backend is specified.
     """
-    if backend == Backend.NARWHALS:
+    # Ensure backend is an enum (handle string values)
+    if isinstance(backend, str):
+        backend = Backend(backend)
+
+    # Use value comparison for robustness across different import contexts
+    backend_value = backend.value if isinstance(backend, Backend) else backend
+
+    if backend_value == "narwhals":
         return nw_frame
-    if backend == Backend.PANDAS:
+    if backend_value == "pandas":
         return nw_frame.to_pandas()
-    if backend == Backend.POLARS:
+    if backend_value == "polars":
         return nw_frame.to_native()
-    if backend == Backend.POLARS_LAZY:
+    if backend_value == "polars_lazy":
         return nw_frame.to_native().lazy()
-    if backend == Backend.PYARROW:
+    if backend_value == "pyarrow":
         return nw_frame.to_arrow()
-    if backend == Backend.DUCKDB:
+    if backend_value == "duckdb":
         import duckdb
 
         arrow_table = nw_frame.to_arrow()
