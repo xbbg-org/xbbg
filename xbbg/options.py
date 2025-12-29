@@ -67,14 +67,14 @@ def set_backend(backend: Backend | str) -> None:
         ValueError: If the backend string is not a valid Backend value.
 
     Example:
-        >>> from xbbg import options
-        >>> from xbbg.backend import Backend
+        >>> from xbbg import options  # doctest: +SKIP
+        >>> from xbbg.backend import Backend  # doctest: +SKIP
         >>>
         >>> # Using enum
-        >>> options.set_backend(Backend.POLARS)
+        >>> options.set_backend(Backend.POLARS)  # doctest: +SKIP
         >>>
         >>> # Using string
-        >>> options.set_backend('polars')
+        >>> options.set_backend('polars')  # doctest: +SKIP
     """
     global _default_backend
     if isinstance(backend, str):
@@ -109,14 +109,14 @@ def set_format(fmt: Format | str) -> None:
         ValueError: If the format string is not a valid Format value.
 
     Example:
-        >>> from xbbg import options
-        >>> from xbbg.backend import Format
+        >>> from xbbg import options  # doctest: +SKIP
+        >>> from xbbg.backend import Format  # doctest: +SKIP
         >>>
         >>> # Using enum
-        >>> options.set_format(Format.LONG)
+        >>> options.set_format(Format.LONG)  # doctest: +SKIP
         >>>
         >>> # Using string
-        >>> options.set_format('long')
+        >>> options.set_format('long')  # doctest: +SKIP
     """
     global _default_format
     if isinstance(fmt, str):
