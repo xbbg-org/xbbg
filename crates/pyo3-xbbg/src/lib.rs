@@ -2,6 +2,13 @@
 //!
 //! This module provides Python bindings for the Rust xbbg Engine,
 //! exposing async (abdp, abdh, abds, abdib, abdtick) and sync variants.
+//!
+//! # GIL Handling
+//!
+//! The async API releases the GIL during Bloomberg SDK operations:
+//! - `future_into_py` schedules work on tokio (no GIL held)
+//! - GIL is only acquired via `Python::attach()` for final Arrow conversion
+//! - `py.detach()` releases GIL during blocking `Engine::start()`
 
 use std::sync::Arc;
 
@@ -175,6 +182,8 @@ impl PyEngine {
 }
 
 /// Convert Arrow RecordBatch to PyArrow RecordBatch using zero-copy FFI.
+///
+/// Uses Arrow's C Data Interface via ToPyArrow for zero-copy conversion.
 fn record_batch_to_pyarrow(
     py: Python<'_>,
     batch: arrow::record_batch::RecordBatch,
@@ -196,6 +205,19 @@ fn version() -> String {
 #[pymodule]
 #[pyo3(name = "_core")]
 fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Initialize tokio runtime for pyo3-async-runtimes
+    // This creates a multi-threaded runtime that handles async Bloomberg operations
+    // The runtime is leaked to create a &'static reference as required by the API
+    let runtime = Box::leak(Box::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime"),
+    ));
+    pyo3_async_runtimes::tokio::init_with_runtime(runtime)
+        .map_err(|_| PyRuntimeError::new_err("Failed to init tokio runtime"))?;
+
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_class::<PyEngine>()?;
