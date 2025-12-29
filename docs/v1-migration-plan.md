@@ -6,6 +6,10 @@ This document outlines the plan to migrate xbbg from pandas-only output to a
 backend-agnostic architecture using Arrow internally and narwhals for output
 conversion.
 
+**Important**: This plan must be compatible with the Rust v1 branch API, which
+already implements backend selection. The pure Python version should mirror
+that API so users have a consistent experience.
+
 ## Goals
 
 1. **Internal refactor**: Use Arrow as the internal data format
@@ -13,6 +17,36 @@ conversion.
 3. **Multiple formats**: Support semi-long (default), long, and wide (pandas only)
 4. **Backward compatibility**: Current behavior preserved with explicit options
 5. **Smooth migration**: Warnings guide users to new defaults
+6. **API compatibility**: Match the Rust v1 branch backend API
+
+## Rust v1 Branch Reference
+
+The Rust branch (py-xbbg/src/xbbg/blp.py) already implements:
+
+```python
+class Backend(str, Enum):
+    NARWHALS = "narwhals"       # Default in v1
+    PANDAS = "pandas"
+    POLARS = "polars"
+    POLARS_LAZY = "polars_lazy"
+    PYARROW = "pyarrow"
+    DUCKDB = "duckdb"
+
+# Global default
+set_backend(Backend.POLARS)
+
+# Per-call override
+df = bdp('AAPL US Equity', 'PX_LAST', backend=Backend.PANDAS)
+```
+
+**Data flow in Rust v1:**
+```
+User call → PyEngine.abdp() returns PyArrow Table
+         → narwhals wraps it
+         → _convert_backend() converts to requested format
+```
+
+We need to mirror this in pure Python so the API is identical.
 
 ## Release Timeline
 
@@ -20,7 +54,7 @@ conversion.
 |---------|-----------|
 | 0.11    | Add options, refactor internals to Arrow, no warnings |
 | 0.12    | Add deprecation warnings for implicit defaults |
-| 1.0     | Flip defaults to `backend='narwhals'`, `format='semi-long'` |
+| 1.0     | Flip defaults to `backend=Backend.NARWHALS`, `format='semi-long'` |
 
 ---
 
@@ -33,41 +67,77 @@ conversion.
 - [ ] Add narwhals as dependency
 - [ ] Keep pyarrow (already present)
 
-### 1.2 Add Configuration System
+### 1.2 Add Backend Enum (matching Rust v1)
+
+Create `xbbg/backend.py`:
+
+```python
+from enum import Enum
+
+class Backend(str, Enum):
+    """DataFrame backend for xbbg output.
+
+    Matches the Rust v1 branch API for compatibility.
+    """
+    NARWHALS = "narwhals"
+    PANDAS = "pandas"
+    POLARS = "polars"
+    POLARS_LAZY = "polars_lazy"
+    PYARROW = "pyarrow"
+    DUCKDB = "duckdb"
+
+class Format(str, Enum):
+    """Output format for xbbg data."""
+    SEMI_LONG = "semi-long"   # Default in v1: ticker, date, field1, field2, ...
+    LONG = "long"             # Tidy: ticker, date, field, value
+    WIDE = "wide"             # Pandas only: MultiIndex columns (ticker, field)
+```
+
+### 1.3 Add Configuration System (matching Rust v1 API)
 
 Create `xbbg/options.py`:
 
 ```python
-class Options:
-    """Global xbbg configuration."""
+from xbbg.backend import Backend, Format
 
-    def __init__(self):
-        self._backend = 'pandas'      # default for 0.x
-        self._format = 'wide'         # default for 0.x
+# Module-level state (matching Rust v1 pattern)
+_default_backend: Backend = Backend.PANDAS  # 0.x default, will flip to NARWHALS in 1.0
+_default_format: Format = Format.WIDE       # 0.x default, will flip to SEMI_LONG in 1.0
 
-    @property
-    def backend(self):
-        return self._backend
+def get_backend() -> Backend:
+    """Get the current default backend."""
+    return _default_backend
 
-    @backend.setter
-    def backend(self, value):
-        valid = ('pandas', 'polars', 'arrow', 'narwhals')
-        if value not in valid:
-            raise ValueError(f"backend must be one of {valid}")
-        self._backend = value
+def set_backend(backend: Backend | str) -> None:
+    """Set the global default backend.
 
-    @property
-    def format(self):
-        return self._format
+    Args:
+        backend: Backend enum or string ('pandas', 'polars', etc.)
 
-    @format.setter
-    def format(self, value):
-        valid = ('wide', 'semi-long', 'long')
-        if value not in valid:
-            raise ValueError(f"format must be one of {valid}")
-        self._format = value
+    Example:
+        >>> import xbbg
+        >>> xbbg.set_backend(Backend.POLARS)
+        >>> xbbg.set_backend('polars')  # Also works
+    """
+    global _default_backend
+    if isinstance(backend, str):
+        backend = Backend(backend)
+    _default_backend = backend
 
-options = Options()
+def get_format() -> Format:
+    """Get the current default format."""
+    return _default_format
+
+def set_format(fmt: Format | str) -> None:
+    """Set the global default output format.
+
+    Args:
+        fmt: Format enum or string ('semi-long', 'long', 'wide')
+    """
+    global _default_format
+    if isinstance(fmt, str):
+        fmt = Format(fmt)
+    _default_format = fmt
 ```
 
 ### 1.3 Add Warning Infrastructure
@@ -99,28 +169,78 @@ def warn_defaults_changing():
     )
 ```
 
-### 1.4 Add Output Conversion Layer
+### 1.4 Add Output Conversion Layer (matching Rust v1 pattern)
 
 Create `xbbg/io/convert.py`:
 
+This mirrors the `_convert_backend()` function from the Rust v1 branch.
+
 ```python
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 import narwhals as nw
 import pyarrow as pa
 
+from xbbg.backend import Backend, Format
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+
+
+def _convert_backend(
+    nw_frame: nw.DataFrame,
+    backend: Backend,
+) -> Any:
+    """Convert narwhals DataFrame to requested backend.
+
+    Mirrors the Rust v1 branch _convert_backend() function.
+
+    Args:
+        nw_frame: narwhals DataFrame (wrapping Arrow table)
+        backend: Target backend
+
+    Returns:
+        DataFrame in requested backend format
+    """
+    match backend:
+        case Backend.NARWHALS:
+            return nw_frame
+        case Backend.PANDAS:
+            return nw_frame.to_pandas()
+        case Backend.POLARS:
+            return nw_frame.to_polars()
+        case Backend.POLARS_LAZY:
+            return nw_frame.to_polars().lazy()
+        case Backend.PYARROW:
+            return nw.to_native(nw_frame)
+        case Backend.DUCKDB:
+            import duckdb
+            arrow_table = nw.to_native(nw_frame)
+            return duckdb.from_arrow(arrow_table)
+        case _:
+            raise ValueError(f"Unknown backend: {backend}")
+
+
 def to_output(
     arrow_table: pa.Table,
-    backend: str = 'pandas',
-    format: str = 'semi-long',
+    backend: Backend = Backend.PANDAS,
+    format: Format = Format.SEMI_LONG,
     ticker_col: str = 'ticker',
     date_col: str = 'date',
     field_cols: list[str] | None = None,
 ) -> Any:
     """Convert Arrow table to requested backend and format.
 
+    Data flow (matching Rust v1):
+        PyArrow Table → narwhals → format transform → _convert_backend()
+
     Args:
         arrow_table: Source data as PyArrow Table
-        backend: Output backend ('pandas', 'polars', 'arrow', 'narwhals')
-        format: Output format ('semi-long', 'long', 'wide')
+        backend: Target backend (Backend enum)
+        format: Output format (Format enum)
         ticker_col: Name of ticker column
         date_col: Name of date column
         field_cols: Field column names (for pivoting)
@@ -128,10 +248,11 @@ def to_output(
     Returns:
         DataFrame in requested backend and format
     """
+    # Wrap in narwhals (same as Rust v1 pattern)
     df = nw.from_native(arrow_table)
 
     # Apply format transformation
-    if format == 'long':
+    if format == Format.LONG:
         # Unpivot field columns to long format
         df = df.unpivot(
             on=field_cols,
@@ -139,29 +260,28 @@ def to_output(
             variable_name='field',
             value_name='value'
         )
-    elif format == 'wide' and backend == 'pandas':
+    elif format == Format.WIDE:
+        if backend != Backend.PANDAS:
+            raise ValueError("format='wide' requires backend='pandas' (MultiIndex not supported elsewhere)")
         # Wide with MultiIndex (pandas only)
         pdf = df.to_pandas()
         return _apply_multiindex(pdf, ticker_col, date_col, field_cols)
-    elif format == 'wide' and backend != 'pandas':
-        raise ValueError("format='wide' requires backend='pandas'")
-    # format == 'semi-long': no transformation needed
+    # Format.SEMI_LONG: no transformation needed (this is what Arrow naturally produces)
 
     # Convert to requested backend
-    if backend == 'pandas':
-        return df.to_pandas()
-    elif backend == 'polars':
-        return df.to_polars()
-    elif backend == 'arrow':
-        return nw.to_native(df)
-    elif backend == 'narwhals':
-        return df
-
-    raise ValueError(f"Unknown backend: {backend}")
+    return _convert_backend(df, backend)
 
 
-def _apply_multiindex(df, ticker_col, date_col, field_cols):
-    """Convert semi-long pandas DataFrame to wide with MultiIndex columns."""
+def _apply_multiindex(
+    df: pd.DataFrame,
+    ticker_col: str,
+    date_col: str,
+    field_cols: list[str] | None,
+) -> pd.DataFrame:
+    """Convert semi-long pandas DataFrame to wide with MultiIndex columns.
+
+    This preserves backward compatibility with current xbbg output format.
+    """
     import pandas as pd
 
     # Pivot: date as index, (ticker, field) as MultiIndex columns
