@@ -298,6 +298,7 @@ jobs:
         run: uv pip install --system --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
 
       - name: Install wheel and test dependencies
+        shell: bash
         run: |
           # Install the specific wheel for this Python version
           uv pip install --system dist/*.whl
