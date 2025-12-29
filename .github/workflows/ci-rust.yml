@@ -382,7 +382,11 @@ jobs:
         run: cargo +nightly udeps --all-targets 2>&1 || true
 
       - name: Unsafe code audit
-        run: cargo geiger --all-features --all-targets 2>&1 || true
+        run: |
+          for crate in blpapi-sys xbbg-core xbbg-async pyo3-xbbg; do
+            echo "=== $crate ==="
+            cargo geiger -p $crate 2>&1 || true
+          done
 
       - name: Semver compatibility check
         run: |
