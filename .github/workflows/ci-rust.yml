@@ -363,17 +363,12 @@ jobs:
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
-      - name: Cache cargo tools
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: cargo-tools-${{ runner.os }}-udeps-geiger-semver
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
 
       - name: Install analysis tools
         run: |
-          command -v cargo-udeps || cargo install cargo-udeps --locked
-          command -v cargo-geiger || cargo install cargo-geiger --locked
-          command -v cargo-semver-checks || cargo install cargo-semver-checks --locked
+          cargo binstall -y cargo-udeps cargo-geiger cargo-semver-checks
 
       - name: Unused dependencies
         run: cargo +nightly udeps --all-targets 2>&1 || true
