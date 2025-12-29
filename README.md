@@ -1,6 +1,8 @@
 # xbbg
 
-<img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png" alt="xbbg" width="200">
+<p align="center">
+  <img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png" alt="xbbg" width="120">
+</p>
 
 An intuitive Bloomberg API for Python — now powered by Rust.
 
