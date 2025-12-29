@@ -230,6 +230,60 @@ def clear_sdk_path() -> None:
     _sdk_info = None  # Clear cached info to refresh on next get_sdk_info() call
 
 
+def _add_sdk_to_dll_search_path() -> None:
+    """Add all detected SDK library paths to Windows DLL search path.
+
+    This must be called before importing the native extension (_core).
+    Checks all SDK sources: manual path, blpapi package, DAPI, BLPAPI_ROOT.
+    """
+    import os
+    from pathlib import Path
+
+    added_dirs: set[str] = set()
+
+    def add_if_exists(sdk_path: Path | None) -> None:
+        if sdk_path is None:
+            return
+        lib_path = _find_sdk_lib(sdk_path)
+        if lib_path:
+            lib_dir = str(lib_path.parent)
+            if lib_dir not in added_dirs:
+                try:
+                    os.add_dll_directory(lib_dir)
+                    added_dirs.add(lib_dir)
+                except OSError:
+                    pass  # Directory doesn't exist or can't be added
+
+    # 1. Manual SDK path (highest priority)
+    if _manual_sdk_path is not None:
+        add_if_exists(_manual_sdk_path)
+
+    # 2. blpapi Python package
+    try:
+        import blpapi
+
+        blpapi_file = getattr(blpapi, "__file__", None)
+        if blpapi_file:
+            add_if_exists(Path(blpapi_file).parent)
+    except ImportError:
+        pass
+
+    # 3. DAPI (Bloomberg Terminal)
+    dapi_paths = [
+        Path(r"C:\blp\DAPI"),
+        Path(os.path.expandvars(r"%LOCALAPPDATA%\Bloomberg\DAPI")),
+    ]
+    for dapi_path in dapi_paths:
+        if dapi_path.is_dir():
+            add_if_exists(dapi_path)
+            break
+
+    # 4. BLPAPI_ROOT environment variable
+    blpapi_root = os.environ.get("BLPAPI_ROOT")
+    if blpapi_root:
+        add_if_exists(Path(blpapi_root))
+
+
 __all__ = [
     "__version__",
     "_core",
@@ -272,22 +326,11 @@ def __getattr__(name: str):
         _importing_core = True
         try:
             import importlib
-            import os
             import sys
 
-            # Add SDK library path to DLL search path before importing
-            sdk_lib_dir = None
-            if _manual_sdk_path is not None:
-                lib_path = _find_sdk_lib(_manual_sdk_path)
-                if lib_path:
-                    sdk_lib_dir = lib_path.parent
-
-            if sdk_lib_dir and sys.platform == "win32":
-                # Windows: add to DLL search path
-                os.add_dll_directory(str(sdk_lib_dir))
-            # Linux: LD_LIBRARY_PATH must be set before process starts,
-            # so manual SDK path on Linux requires setting BLPAPI_ROOT env var
-            # or installing blpapi Python package which bundles the library
+            # Add all detected SDK library paths to DLL search path before importing
+            if sys.platform == "win32":
+                _add_sdk_to_dll_search_path()
 
             mod = importlib.import_module("xbbg._core")
             _core_module = mod
