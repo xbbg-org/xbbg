@@ -62,6 +62,10 @@ See [Jupyter notebook examples](https://colab.research.google.com/drive/1YVVS5Ai
 - Bloomberg official Python API:
 
 ```cmd
+# Using uv (recommended)
+uv pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
+
+# Or using pip
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
@@ -70,6 +74,10 @@ pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/
 ## Installation
 
 ```cmd
+# Using uv (recommended)
+uv pip install xbbg
+
+# Or using pip
 pip install xbbg
 ```
 

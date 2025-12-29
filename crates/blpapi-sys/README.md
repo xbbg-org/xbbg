@@ -27,7 +27,8 @@ Build requires SDK headers and the import library. The runtime DLL/so/dylib is n
 - Dev: set `XBBG_DEV_SDK_ROOT` to the SDK root; then build the workspace.
 - CI build: set `BLPAPI_ROOT` or `BLPAPI_INCLUDE_DIR`/`BLPAPI_LIB_DIR` (these can be loaded via your `.env` loader before invoking Cargo).
 - CI runtime/tests: install the official `blpapi` Python package and add its binary directory to the loader path before importing your extension.
-  - `pip install --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi`
+  - `uv pip install --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi`
+  - Or: `pip install --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi`
   - Windows (Py>=3.8): `os.add_dll_directory(<package_dir>)`
   - Linux/macOS: add the package directory to `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`
 
