@@ -11,7 +11,9 @@ from dataclasses import dataclass
 import logging
 from typing import Any, Protocol
 
+import narwhals as nw
 import pandas as pd
+import pyarrow as pa
 
 from xbbg.core import process
 from xbbg.core.domain.context import split_kwargs
@@ -56,21 +58,21 @@ class ResponseTransformerStrategy(Protocol):
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
+    ) -> pa.Table:
         """Transform raw Bloomberg response.
 
         Args:
-            raw_data: Raw DataFrame from Bloomberg.
+            raw_data: Arrow table from Bloomberg.
             request: Original data request.
             exchange_info: Exchange information.
             session_window: Session window.
 
         Returns:
-            Transformed DataFrame.
+            Transformed Arrow table.
         """
         ...
 
@@ -136,14 +138,14 @@ class BloombergPipeline(BaseContextAware):
             else (config.default_cache_adapter() if config.default_cache_adapter else None)
         )
 
-    def run(self, request: DataRequest) -> pd.DataFrame:
+    def run(self, request: DataRequest) -> Any:
         """Execute the pipeline (Template Method).
 
         Args:
             request: Data request to process.
 
         Returns:
-            DataFrame with requested data.
+            Data in requested backend/format.
         """
         # Step 1: Prepare context
         ctx = self._prepare_context(request)
@@ -208,11 +210,7 @@ class BloombergPipeline(BaseContextAware):
         if raw_data.empty:
             logger.debug('No data returned from Bloomberg for %s', request.ticker)
 
-        # Step 7: Handle raw flag
-        if request.context and request.context.raw:
-            return raw_data
-
-        # Step 8: Transform response
+        # Step 7: Transform response
         # Transformer should handle empty data and return appropriate structure
         # (e.g., MultiIndex for historical data to support operations like .xs())
         transformed = self.config.transformer.transform(
@@ -222,11 +220,46 @@ class BloombergPipeline(BaseContextAware):
         # Some transformers (like HistoricalTransformer) return empty DataFrames with
         # proper MultiIndex structure that downstream code expects
 
-        # Step 9: Persist cache
-        if request.cache_policy.enabled:
-            self._persist_cache(transformed, request, session_window)
+        # Step 8: Handle raw flag - return before format conversion
+        if request.context and request.context.raw:
+            # For raw data, convert Arrow to pandas for backward compatibility
+            if isinstance(transformed, pa.Table):
+                return transformed.to_pandas()
+            return transformed
 
-        return transformed
+        # Step 9: Convert to requested backend/format
+        from xbbg.io.convert import to_output
+        from xbbg.options import get_backend, get_format
+        from xbbg.deprecation import warn_defaults_changing
+
+        backend = request.backend if request.backend is not None else get_backend()
+        format_ = request.format if request.format is not None else get_format()
+
+        # Warn if using implicit defaults
+        if request.backend is None or request.format is None:
+            warn_defaults_changing()
+
+        # Get Arrow table from transformed data
+        if isinstance(transformed, pa.Table):
+            arrow_table = transformed
+        else:
+            # Fallback for pandas DataFrame (during transition)
+            arrow_table = pa.Table.from_pandas(transformed)
+
+        result = to_output(
+            arrow_table,
+            backend=backend,
+            format=format_,
+            ticker_col='ticker',
+            date_col='date',
+            field_cols=None,  # Will be inferred from columns
+        )
+
+        # Step 10: Persist cache
+        if request.cache_policy.enabled:
+            self._persist_cache(result, request, session_window)
+
+        return result
 
     def _resolve_market(self, request: DataRequest) -> ResolverResult:
         """Resolve market using resolver chain."""
@@ -338,7 +371,7 @@ class BloombergPipeline(BaseContextAware):
         self,
         request: DataRequest,
         session_window: SessionWindow,
-    ) -> pd.DataFrame | None:
+    ) -> pa.Table | None:
         """Fetch data from Bloomberg using configured strategy."""
         blp_request, ctx_kwargs = self.config.request_builder.build_request(request, session_window)
 
@@ -347,18 +380,18 @@ class BloombergPipeline(BaseContextAware):
 
         handle = conn.send_request(request=blp_request, service=self.config.service, **ctx_kwargs)
 
-        res = pd.DataFrame(
-            process.rec_events(
-                func=self.config.process_func,
-                event_queue=handle['event_queue'],
-                timeout=timeout,
-                max_timeouts=max_timeouts,
-                **ctx_kwargs,
-            )
-        )
+        events = list(process.rec_events(
+            func=self.config.process_func,
+            event_queue=handle['event_queue'],
+            timeout=timeout,
+            max_timeouts=max_timeouts,
+            **ctx_kwargs,
+        ))
 
-        if res.empty:
+        if not events:
             return None
+
+        res = pa.Table.from_pylist(events)
 
         return res
 
@@ -456,53 +489,82 @@ class ReferenceRequestBuilder:
 
 
 class ReferenceTransformer:
-    """Strategy for transforming Bloomberg reference data responses."""
+    """Strategy for transforming Bloomberg reference data responses to Arrow format."""
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
-        """Transform reference data response."""
-        if raw_data.empty:
-            return pd.DataFrame()
+    ) -> pa.Table:
+        """Transform reference data response.
 
-        if utils_module.check_empty_result(raw_data, ['ticker', 'field']):
-            return pd.DataFrame()
+        Args:
+            raw_data: Arrow table with columns: ticker, field, value
+            request: Data request containing context and options
+            exchange_info: Exchange information (unused in Arrow path)
+            session_window: Session window (unused in Arrow path)
 
+        Returns:
+            Arrow table sorted by ticker with standardized column names
+        """
+        # Handle empty table
+        if raw_data.num_rows == 0:
+            return pa.table({})
+
+        # Wrap with narwhals for transformations
+        df = nw.from_native(raw_data, eager_only=True)
+
+        # Check for empty result (all values null in required columns)
+        required_cols = ['ticker', 'field']
+        for col in required_cols:
+            if col not in df.columns:
+                return pa.table({})
+
+        # Get column name mappings from context
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
-        col_maps = ctx_kwargs.get('col_maps')
+        col_maps = ctx_kwargs.get('col_maps', {}) or {}
 
-        # Get original ticker order from request
+        # Get original ticker order from request for sorting
         original_tickers = request.request_opts.get('tickers', [request.ticker])
-        # Normalize to iterable of tickers while preserving duplicates and order
         original_tickers = utils_module.normalize_tickers(original_tickers)
-        # Convert to list explicitly in case normalize_tickers returned a tuple or other iterable
         if original_tickers is None:
             original_tickers = []
         elif not isinstance(original_tickers, list):
             original_tickers = list(original_tickers)
 
-        # Transform the data
-        result = (
-            raw_data
-            .set_index(['ticker', 'field'])
-            .unstack(level=1)
-            .rename_axis(index=None, columns=[None, None])
-            .droplevel(axis=1, level=0)
-            .loc[:, raw_data.field.unique()]
-            .pipe(pipeline_utils.standard_cols, col_maps=col_maps)
+        # Create ticker order mapping for sorting
+        ticker_order = {t: i for i, t in enumerate(original_tickers)}
+
+        # Add sort order column based on original ticker order
+        # Tickers not in original list get a high order value
+        max_order = len(original_tickers)
+        df = df.with_columns(
+            nw.col('ticker').replace_strict(
+                ticker_order,
+                default=max_order,
+            ).alias('_ticker_order')
         )
 
-        # Preserve original ticker order by reindexing
-        # Only include tickers that exist in the result
-        available_tickers = [t for t in original_tickers if t in result.index]
-        if available_tickers:
-            result = result.reindex(available_tickers)
+        # Sort by ticker order to preserve original request order
+        df = df.sort('_ticker_order', '_ticker_order')
 
-        return result
+        # Drop the temporary sort column
+        df = df.drop('_ticker_order')
+
+        # Standardize column names to snake_case
+        def standardize_col_name(name: str) -> str:
+            if name in col_maps:
+                return col_maps[name]
+            return name.lower().replace(' ', '_').replace('-', '_')
+
+        # Rename columns
+        rename_map = {col: standardize_col_name(col) for col in df.columns}
+        df = df.rename(rename_map)
+
+        # Convert back to Arrow table
+        return nw.to_native(df)
 
 
 # Historical Data Strategies
@@ -558,39 +620,42 @@ class HistoricalRequestBuilder:
 
 
 class HistoricalTransformer:
-    """Strategy for transforming Bloomberg historical data responses."""
+    """Strategy for transforming Bloomberg historical data responses.
+
+    Returns data in semi-long format (ticker, date, field1, field2, ...).
+    MultiIndex creation is handled by to_output() if format='wide' and backend='pandas'.
+    """
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
-        """Transform historical data response."""
-        tickers = request.request_opts.get('tickers', [request.ticker])
-        flds = request.request_opts.get('flds', ['Last_Price'])
+    ) -> pa.Table:
+        """Transform historical data response.
 
-        # Normalize to lists
-        ticker_list = utils_module.flatten(tickers)
-        fld_list = utils_module.flatten(flds)
+        Args:
+            raw_data: Arrow table with columns: ticker, date, field1, field2, ...
+            request: Data request containing tickers and fields.
+            exchange_info: Exchange information (unused in Arrow path).
+            session_window: Session window (unused in Arrow path).
 
-        # If empty or missing required columns, return empty DataFrame with proper MultiIndex structure
-        if raw_data.empty or utils_module.check_empty_result(raw_data, ['ticker', 'date']):
-            # Create empty DataFrame with proper MultiIndex columns (ticker, field)
-            # This ensures operations like .xs('Last_Price', axis=1, level=1) work correctly
-            multi_index = pd.MultiIndex.from_product([ticker_list, fld_list], names=[None, None])
-            return pd.DataFrame(index=pd.DatetimeIndex([]), columns=multi_index)
+        Returns:
+            Arrow table in semi-long format, sorted by ticker and date.
+        """
+        # Handle empty table
+        if raw_data.num_rows == 0:
+            return raw_data
 
-        return (
-            raw_data
-            .set_index(['ticker', 'date'])
-            .unstack(level=0)
-            .rename_axis(index=None, columns=[None, None])
-            .swaplevel(0, 1, axis=1)
-            .reindex(columns=ticker_list, level=0)
-            .reindex(columns=fld_list, level=1)
-        )
+        # Wrap with narwhals for transformations
+        df = nw.from_native(raw_data, eager_only=True)
+
+        # Sort by ticker and date for consistent output
+        df = df.sort('ticker', 'date')
+
+        # Return as Arrow table
+        return nw.to_native(df)
 
 
 # Intraday Data Strategies
@@ -692,36 +757,47 @@ class IntradayTransformer:
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
-        """Transform intraday bar data response."""
-        if raw_data.empty or 'time' not in raw_data:
-            return pd.DataFrame()
+    ) -> pa.Table:
+        """Transform intraday bar data response.
 
-        tz = exchange_info.get('tz', 'UTC') if not exchange_info.empty else 'UTC'
+        Args:
+            raw_data: Arrow table with intraday bar data.
+            request: Data request with ticker and other metadata.
+            exchange_info: Exchange information including timezone.
+            session_window: Session window for filtering (single-day requests).
 
-        data = (
-            raw_data
-            .set_index('time')
-            .rename_axis(index=None)
-            .rename(columns={'numEvents': 'num_trds'})
-            .tz_localize('UTC')
-            .tz_convert(tz)
-            .pipe(pipeline_utils.add_ticker, ticker=request.ticker)
-        )
+        Returns:
+            Arrow table in semi-long format (ticker, time, field1, field2, ...).
+        """
+        # Wrap Arrow table with narwhals
+        df = nw.from_native(raw_data, eager_only=True)
 
-        # For multi-day requests, return all data without session filtering
-        if request.is_multi_day():
-            return data
+        # Check for empty data or missing time column
+        if df.shape[0] == 0 or 'time' not in df.columns:
+            # Return empty Arrow table with expected schema
+            return pa.table({'ticker': [], 'time': []})
 
-        # Filter by session window for single-day requests
-        if session_window.is_valid():
-            return data.loc[session_window.start_time:session_window.end_time]
+        # Rename numEvents to num_trds for consistency
+        if 'numEvents' in df.columns:
+            df = df.rename({'numEvents': 'num_trds'})
 
-        return data
+        # Add ticker column for semi-long format
+        df = df.with_columns(nw.lit(request.ticker).alias('ticker'))
+
+        # Sort by time column
+        df = df.sort('time')
+
+        # Reorder columns to have ticker first, then time, then other fields
+        cols = df.columns
+        other_cols = [c for c in cols if c not in ('ticker', 'time')]
+        df = df.select(['ticker', 'time'] + other_cols)
+
+        # Return as Arrow table
+        return nw.to_native(df)
 
 
 # Block Data Strategies
@@ -772,28 +848,19 @@ class BlockDataTransformer:
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
+    ) -> pa.Table:
         """Transform block data response."""
-        if raw_data.empty:
-            return pd.DataFrame()
+        if raw_data.num_rows == 0:
+            return pa.table({})
 
-        if utils_module.check_empty_result(raw_data, ['ticker', 'field']):
-            return pd.DataFrame()
+        df = nw.from_native(raw_data, eager_only=True)
 
-        ctx_kwargs = request.context.to_kwargs() if request.context else {}
-        col_maps = ctx_kwargs.get('col_maps')
-
-        return (
-            raw_data
-            .set_index(['ticker', 'field'])
-            .droplevel(axis=0, level=1)
-            .rename_axis(index=None)
-            .pipe(pipeline_utils.standard_cols, col_maps=col_maps)
-        )
+        # Block data is already in a good format, just wrap and return
+        return nw.to_native(df)
 
 
 # Screening & Query Strategies
@@ -844,25 +911,59 @@ class BeqsTransformer:
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
-        """Transform BEQS response."""
-        if raw_data.empty:
-            return pd.DataFrame()
+    ) -> pa.Table:
+        """Transform BEQS response.
 
-        cols = raw_data.field.unique()
-        return (
-            raw_data
-            .set_index(['ticker', 'field'])
-            .unstack(level=1)
-            .rename_axis(index=None, columns=[None, None])
-            .droplevel(axis=1, level=0)
-            .loc[:, cols]
-            .pipe(pipeline_utils.standard_cols)
-        )
+        Args:
+            raw_data: Arrow table with columns: ticker, field, value
+            request: Data request (unused).
+            exchange_info: Exchange information (unused).
+            session_window: Session window (unused).
+
+        Returns:
+            Arrow table with tickers as rows and fields as columns.
+        """
+        # Handle empty table
+        if raw_data.num_rows == 0:
+            return pa.table({})
+
+        # Wrap with narwhals for transformations
+        df = nw.from_native(raw_data, eager_only=True)
+
+        # Check for required columns
+        if 'ticker' not in df.columns or 'field' not in df.columns:
+            return pa.table({})
+
+        # Get unique fields to preserve column order
+        field_col = df.select('field').to_native()
+        if hasattr(field_col, 'to_pandas'):
+            fields = field_col.to_pandas()['field'].unique().tolist()
+        else:
+            fields = list(set(field_col['field'].to_list()))
+
+        # Pivot: ticker as index, field as columns, value as values
+        # Convert to pandas for pivot operation (narwhals has limited pivot support)
+        df_pd = nw.to_native(df).to_pandas()
+
+        # Perform pivot
+        pivoted = df_pd.pivot(index='ticker', columns='field', values='value')
+        pivoted = pivoted.reset_index()
+
+        # Reorder columns to match original field order
+        cols = ['ticker'] + [f for f in fields if f in pivoted.columns]
+        pivoted = pivoted[cols]
+
+        # Standardize column names
+        pivoted.columns = [
+            str(c).lower().replace(' ', '_').replace('-', '_')
+            for c in pivoted.columns
+        ]
+
+        return pa.Table.from_pandas(pivoted, preserve_index=False)
 
 
 class BsrchRequestBuilder:
@@ -908,12 +1009,23 @@ class BsrchTransformer:
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
-        """Transform BSRCH response."""
+    ) -> pa.Table:
+        """Transform BSRCH response.
+
+        Args:
+            raw_data: Arrow table with search results.
+            request: Data request (unused).
+            exchange_info: Exchange information (unused).
+            session_window: Session window (unused).
+
+        Returns:
+            Arrow table (pass-through, no transformation needed).
+        """
+        # BSRCH returns data in a good format already, just pass through
         return raw_data
 
 
@@ -954,34 +1066,50 @@ class BqlTransformer:
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
-        """Transform BQL response."""
-        if raw_data.empty:
+    ) -> pa.Table:
+        """Transform BQL response.
+
+        Args:
+            raw_data: Arrow table with BQL query results.
+            request: Data request (unused).
+            exchange_info: Exchange information (unused).
+            session_window: Session window (unused).
+
+        Returns:
+            Arrow table with date columns auto-converted.
+        """
+        # Handle empty table
+        if raw_data.num_rows == 0:
             return raw_data
 
-        # Auto-convert date columns (vectorized approach)
+        # Wrap with narwhals for transformations
+        df = nw.from_native(raw_data, eager_only=True)
+
+        # Auto-convert date columns
         # Identify potential date columns by name
         date_cols = [
-            col for col in raw_data.columns
+            col for col in df.columns
             if any(keyword in str(col).lower() for keyword in ['date', 'dt', 'time'])
         ]
 
         if not date_cols:
-            return raw_data
+            return nw.to_native(df)
+
+        # For date conversion, use pandas (narwhals has limited datetime parsing)
+        df_pd = nw.to_native(df).to_pandas()
 
         # Process each potential date column
         for col in date_cols:
             # Only attempt conversion for object/string columns
-            if raw_data[col].dtype != 'object':
+            if df_pd[col].dtype != 'object':
                 continue
 
             # Check if column contains date-like strings
-            # Sample a few non-null values to determine if conversion is needed
-            non_null_values = raw_data[col].dropna()
+            non_null_values = df_pd[col].dropna()
             if non_null_values.empty:
                 continue
 
@@ -1000,9 +1128,9 @@ class BqlTransformer:
                 from contextlib import suppress
                 # Attempt vectorized conversion
                 with suppress(ValueError, TypeError):
-                    raw_data[col] = pd.to_datetime(raw_data[col], errors='coerce', infer_datetime_format=True)
+                    df_pd[col] = pd.to_datetime(df_pd[col], errors='coerce')
 
-        return raw_data
+        return pa.Table.from_pandas(df_pd, preserve_index=False)
 
 
 # ============================================================================
@@ -1030,6 +1158,8 @@ class RequestBuilder:
         self._cache_policy = CachePolicy()
         self._request_opts: dict = {}
         self._override_kwargs: dict = {}
+        self._backend: str | None = None
+        self._format: str | None = None
 
     def ticker(self, ticker: str) -> RequestBuilder:
         """Set ticker."""
@@ -1083,6 +1213,20 @@ class RequestBuilder:
         self._override_kwargs.update(kwargs)
         return self
 
+    def with_output(self, backend: str, format: str) -> RequestBuilder:
+        """Set output backend and format.
+
+        Args:
+            backend: Output backend (e.g., 'pandas', 'polars').
+            format: Output format (e.g., 'dataframe', 'series').
+
+        Returns:
+            Self for method chaining.
+        """
+        self._backend = backend
+        self._format = format
+        return self
+
     def build(self) -> DataRequest:
         """Build DataRequest from builder state.
 
@@ -1110,6 +1254,8 @@ class RequestBuilder:
             cache_policy=self._cache_policy,
             request_opts=self._request_opts,
             override_kwargs=self._override_kwargs,
+            backend=self._backend,
+            format=self._format,
         )
 
     @classmethod
@@ -1121,6 +1267,8 @@ class RequestBuilder:
         typ: str = 'TRADE',
         start_datetime=None,
         end_datetime=None,
+        backend: str | None = None,
+        format: str | None = None,
         **kwargs,
     ) -> DataRequest:
         """Build from legacy function signature.
@@ -1132,6 +1280,8 @@ class RequestBuilder:
             typ: Event type.
             start_datetime: Optional explicit start datetime for multi-day requests.
             end_datetime: Optional explicit end datetime for multi-day requests.
+            backend: Backend for data processing (e.g., 'pandas', 'polars').
+            format: Output format for the data (e.g., 'long', 'wide').
             **kwargs: Legacy kwargs (will be split).
 
         Returns:
@@ -1158,6 +1308,10 @@ class RequestBuilder:
         # Merge remaining request_opts and override_kwargs
         builder.request_opts(**split.request_opts)
         builder.override_kwargs(**split.override_like)
+
+        # Set output backend and format if provided
+        if backend is not None or format is not None:
+            builder.with_output(backend, format)
 
         return builder.build()
 

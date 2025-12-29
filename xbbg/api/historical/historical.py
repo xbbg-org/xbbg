@@ -12,6 +12,7 @@ import pandas as pd
 
 from xbbg import const
 from xbbg.api.reference import bds
+from xbbg.backend import Backend, Format
 from xbbg.core import process
 from xbbg.core.utils import utils
 
@@ -26,6 +27,8 @@ def bdh(
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp = 'today',
     adjust: str | None = None,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg historical data.
@@ -41,6 +44,8 @@ def bdh(
             - `split`: Adjust for splits and ignore all dividends
             - `all` == `dvd|split`: Adjust for all
             - None: Bloomberg default OR use kwargs
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
@@ -79,6 +84,7 @@ def bdh(
             adjust=adjust,
         )
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -246,6 +252,8 @@ async def abdh(
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp = 'today',
     adjust: str | None = None,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Async Bloomberg historical data.
@@ -264,6 +272,8 @@ async def abdh(
             - `split`: Adjust for splits and ignore all dividends
             - `all` == `dvd|split`: Adjust for all
             - None: Bloomberg default OR use kwargs
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
@@ -287,6 +297,8 @@ async def abdh(
         start_date=start_date,
         end_date=end_date,
         adjust=adjust,
+        backend=backend,
+        format=format,
         **kwargs,
     )
 

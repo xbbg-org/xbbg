@@ -11,6 +11,7 @@ import logging
 
 import pandas as pd
 
+from xbbg.backend import Backend, Format
 from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,9 @@ __all__ = ['bdp', 'bds', 'abdp', 'abds']
 def bdp(
     tickers: str | list[str],
     flds: str | list[str],
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg reference data.
@@ -54,6 +58,7 @@ def bdp(
         .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
         .request_opts(tickers=ticker_list, flds=fld_list)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -66,6 +71,9 @@ def bds(
     tickers: str | list[str],
     flds: str,
     use_port: bool = False,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg block data.
@@ -96,6 +104,7 @@ def bds(
             .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
             .request_opts(fld=flds, use_port=use_port)
             .override_kwargs(**split.override_like)
+            .with_output(backend, format)
             .build()
         )
 
@@ -109,6 +118,9 @@ def bds(
 async def abdp(
     tickers: str | list[str],
     flds: str | list[str],
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Async Bloomberg reference data.
@@ -135,13 +147,16 @@ async def abdp(
         >>> #     blp.abdp('MSFT US Equity', ['PX_LAST']),
         >>> # )
     """
-    return await asyncio.to_thread(bdp, tickers=tickers, flds=flds, **kwargs)
+    return await asyncio.to_thread(bdp, tickers=tickers, flds=flds, backend=backend, format=format, **kwargs)
 
 
 async def abds(
     tickers: str | list[str],
     flds: str,
     use_port: bool = False,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Async Bloomberg block data.
@@ -169,5 +184,5 @@ async def abds(
         >>> #     blp.abds('MSFT US Equity', 'DVD_Hist_All'),
         >>> # )
     """
-    return await asyncio.to_thread(bds, tickers=tickers, flds=flds, use_port=use_port, **kwargs)
+    return await asyncio.to_thread(bds, tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs)
 

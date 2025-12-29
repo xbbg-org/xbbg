@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import pandas as pd
 
+from xbbg.backend import Backend, Format
+
 if TYPE_CHECKING:
     from xbbg.core.domain.context import BloombergContext
 
@@ -95,6 +97,8 @@ class DataRequest:
         cache_policy: Cache policy configuration.
         request_opts: Request-specific options (not Bloomberg overrides).
         override_kwargs: Bloomberg field overrides and element options.
+        backend: Backend for data processing (e.g., pandas, polars).
+        format: Output format for the data.
     """
     ticker: str
     dt: str | pd.Timestamp
@@ -108,6 +112,8 @@ class DataRequest:
     cache_policy: CachePolicy = field(default_factory=CachePolicy)
     request_opts: dict[str, Any] = field(default_factory=dict)
     override_kwargs: dict[str, Any] = field(default_factory=dict)
+    backend: Backend | None = None
+    format: Format | None = None
 
     def to_date_string(self) -> str:
         """Convert dt to YYYY-MM-DD string."""

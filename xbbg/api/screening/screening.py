@@ -9,6 +9,8 @@ import logging
 
 import pandas as pd
 
+from xbbg.backend import Backend, Format
+
 logger = logging.getLogger(__name__)
 
 __all__ = ['beqs', 'bsrch', 'bql', 'etf_holdings']
@@ -19,6 +21,9 @@ def beqs(
     asof: str | pd.Timestamp | None = None,
     typ: str = 'PRIVATE',
     group: str = 'General',
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg equity screening.
@@ -55,6 +60,7 @@ def beqs(
         .cache_policy(enabled=False)  # BEQS typically not cached
         .request_opts(screen=screen, asof=asof, typ=typ, group=group)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -64,12 +70,19 @@ def beqs(
 
     # Handle retry logic
     if result.empty and trial == 0:
-        return beqs(screen=screen, asof=asof, typ=typ, group=group, trial=1, **kwargs)
+        return beqs(screen=screen, asof=asof, typ=typ, group=group, backend=backend, format=format, trial=1, **kwargs)
 
     return result
 
 
-def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
+def bsrch(
+    domain: str,
+    overrides: dict | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
     """Bloomberg SRCH (Search) queries - equivalent to Excel =@BSRCH function.
 
     Executes Bloomberg search queries using the Excel service (exrsvc).
@@ -125,6 +138,7 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
         .cache_policy(enabled=False)  # BSRCH typically not cached
         .request_opts(domain=domain, overrides=overrides)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -133,7 +147,15 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
     return pipeline.run(request)
 
 
-def bql(query: str, params: dict | None = None, overrides: list[tuple[str, object]] | None = None, **kwargs) -> pd.DataFrame:
+def bql(
+    query: str,
+    params: dict | None = None,
+    overrides: list[tuple[str, object]] | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
     r"""Execute a BQL (Bloomberg Query Language) request.
 
     Args:
@@ -263,6 +285,7 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
         .cache_policy(enabled=False)  # BQL typically not cached
         .request_opts(query=query, params=params, overrides=overrides)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -274,6 +297,9 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
 def etf_holdings(
     etf_ticker: str,
     fields: list[str] | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Get ETF holdings using Bloomberg Query Language (BQL).
@@ -327,7 +353,7 @@ def etf_holdings(
     logger.debug(f"ETF holdings BQL query: {bql_query}")
 
     # Execute BQL query
-    res = bql(query=bql_query, **kwargs)
+    res = bql(query=bql_query, backend=backend, format=format, **kwargs)
 
     if res.empty:
         return res

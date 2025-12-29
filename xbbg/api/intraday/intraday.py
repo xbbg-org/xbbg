@@ -10,6 +10,7 @@ import logging
 import pandas as pd
 
 from xbbg import const
+from xbbg.backend import Backend, Format
 from xbbg.core import process
 from xbbg.core.infra import conn
 from xbbg.core.process import DEFAULT_TZ
@@ -343,6 +344,8 @@ def bdib(
     typ='TRADE',
     start_datetime=None,
     end_datetime=None,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg intraday bar data.
@@ -363,6 +366,10 @@ def bdib(
         end_datetime: explicit end datetime for multi-day requests (e.g., '2025-01-05 16:00:00').
             When provided with start_datetime, bypasses session-based time resolution.
             Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
+        backend: Backend for data processing (e.g., Backend.PANDAS, Backend.POLARS).
+            If None, uses the default backend.
+        format: Output format for the data (e.g., Format.LONG, Format.WIDE).
+            If None, uses the default format.
         **kwargs:
             interval: bar interval in minutes (default: 1). For sub-minute intervals,
                 set ``intervalHasSeconds=True`` and specify seconds (e.g., interval=10
@@ -411,6 +418,8 @@ def bdib(
         typ=typ,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
+        backend=backend,
+        format=format,
         **kwargs,
     )
 
@@ -468,6 +477,8 @@ def bdtick(
     session: str = 'allday',
     time_range: tuple[str, str] | list[str] | None = None,
     types: str | list[str] | None = None,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg tick data.
@@ -484,6 +495,10 @@ def bdtick(
         types: Single event type or list of event types. One or more of:
             TRADE, AT_TRADE, BID, ASK, MID_PRICE, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK.
             Defaults to ['TRADE'].
+        backend: Backend for data processing (e.g., Backend.PANDAS, Backend.POLARS).
+            If None, uses the default backend.
+        format: Output format for the data (e.g., Format.LONG, Format.WIDE).
+            If None, uses the default format.
         **kwargs: Additional options forwarded to helpers (e.g., logging).
 
     Returns:
