@@ -2,14 +2,20 @@
 
 This module provides the xbbg-compatible API using the Rust backend,
 with support for multiple DataFrame backends via narwhals.
+
+API Design:
+- Async-first: Core implementation uses async/await (abdp, abdh, etc.)
+- Sync wrappers: Convenience functions (bdp, bdh, etc.) wrap async with asyncio.run()
+- Users can use either style based on their needs
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import narwhals as nw
 import pyarrow as pa
@@ -44,11 +50,19 @@ class Backend(str, Enum):
 
 __all__ = [
     "Backend",
+    # Async API (primary)
+    "abdp",
+    "abdh",
+    "abds",
+    "abdib",
+    "abdtick",
+    # Sync API (wrappers)
     "bdp",
-    "bds",
     "bdh",
+    "bds",
     "bdib",
     "bdtick",
+    # Config
     "set_backend",
     "get_backend",
 ]
@@ -259,13 +273,18 @@ def _handle_wide_deprecation(wide: bool | None, kwargs: dict) -> bool:
             "Use df.pivot(on='field', index=['ticker', 'date'], values='value') "
             "to convert to wide format.",
             DeprecationWarning,
-            stacklevel=3,
+            stacklevel=4,
         )
         return True
     return False
 
 
-def bdp(
+# =============================================================================
+# Async API - Primary Implementation
+# =============================================================================
+
+
+async def abdp(
     tickers: str | Sequence[str],
     flds: str | Sequence[str] | None = None,
     *,
@@ -273,7 +292,7 @@ def bdp(
     wide: bool | None = None,
     **kwargs,
 ):
-    """Bloomberg reference data (BDP).
+    """Async Bloomberg reference data (BDP).
 
     Args:
         tickers: Single ticker or list of tickers.
@@ -289,12 +308,14 @@ def bdp(
 
     Example::
 
-        df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
-        df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
+        # Async usage
+        df = await abdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
 
-        # Lazy evaluation
-        lf = bdp('AAPL US Equity', 'PX_LAST', backend='polars_lazy')
-        df = lf.collect()
+        # Concurrent requests
+        dfs = await asyncio.gather(
+            abdp('AAPL US Equity', 'PX_LAST'),
+            abdp('MSFT US Equity', 'PX_LAST'),
+        )
     """
     engine = _get_engine()
     ticker_list = _normalize_tickers(tickers)
@@ -302,8 +323,8 @@ def bdp(
     overrides = _extract_overrides(kwargs)
     want_wide = _handle_wide_deprecation(wide, kwargs)
 
-    # Always request long format from Rust
-    table = engine.bdp(ticker_list, field_list, overrides, False)
+    # Await the async Rust call
+    table = await engine.abdp(ticker_list, field_list, overrides, False)
 
     # Wrap in narwhals
     nw_df = nw.from_native(table)
@@ -315,52 +336,7 @@ def bdp(
     return _convert_backend(nw_df, backend)
 
 
-def bds(
-    tickers: str | Sequence[str],
-    flds: str,
-    *,
-    backend: Backend | str | None = None,
-    **kwargs,
-):
-    """Bloomberg bulk data (BDS).
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Single field name (bulk fields return multiple rows).
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Bloomberg overrides and infrastructure options.
-
-    Returns:
-        DataFrame with bulk data, multiple rows per ticker.
-
-    Example::
-
-        df = bds('AAPL US Equity', 'DVD_Hist_All')
-        df = bds('SPX Index', 'INDX_MEMBERS', backend='polars')
-    """
-    engine = _get_engine()
-    ticker_list = _normalize_tickers(tickers)
-    overrides = _extract_overrides(kwargs)
-
-    # Process each ticker
-    tables = []
-    for ticker in ticker_list:
-        table = engine.bds(ticker, flds, overrides)
-        tables.append(table)
-
-    if not tables:
-        # Return empty narwhals DataFrame
-        empty = pa.table({"ticker": [], "field": [], "value": []})
-        return _convert_backend(nw.from_native(empty), backend)
-
-    # Concatenate tables
-    combined = pa.concat_tables(tables)
-    nw_df = nw.from_native(combined)
-
-    return _convert_backend(nw_df, backend)
-
-
-def bdh(
+async def abdh(
     tickers: str | Sequence[str],
     flds: str | Sequence[str] | None = None,
     start_date: str | None = None,
@@ -370,7 +346,7 @@ def bdh(
     wide: bool | None = None,
     **kwargs,
 ):
-    """Bloomberg historical data (BDH).
+    """Async Bloomberg historical data (BDH).
 
     Args:
         tickers: Single ticker or list of tickers.
@@ -389,12 +365,14 @@ def bdh(
 
     Example::
 
-        df = bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
-        df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
+        # Async usage
+        df = await abdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
 
-        # Lazy evaluation for deferred computation
-        lf = bdh('AAPL US Equity', 'PX_LAST', backend='polars_lazy')
-        df = lf.filter(pl.col('value') > 100).collect()
+        # Concurrent requests
+        dfs = await asyncio.gather(
+            abdh('AAPL US Equity', 'PX_LAST'),
+            abdh('MSFT US Equity', 'PX_LAST'),
+        )
     """
     import pandas as pd
 
@@ -430,7 +408,8 @@ def bdh(
     overrides = _extract_overrides(kwargs)
     options.extend(overrides)
 
-    table = engine.bdh(ticker_list, field_list, s_dt, e_dt, options)
+    # Await the async Rust call
+    table = await engine.abdh(ticker_list, field_list, s_dt, e_dt, options)
     nw_df = nw.from_native(table)
 
     # Handle deprecated wide format
@@ -440,7 +419,52 @@ def bdh(
     return _convert_backend(nw_df, backend)
 
 
-def bdib(
+async def abds(
+    tickers: str | Sequence[str],
+    flds: str,
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+):
+    """Async Bloomberg bulk data (BDS).
+
+    Args:
+        tickers: Single ticker or list of tickers.
+        flds: Single field name (bulk fields return multiple rows).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Bloomberg overrides and infrastructure options.
+
+    Returns:
+        DataFrame with bulk data, multiple rows per ticker.
+
+    Example::
+
+        df = await abds('AAPL US Equity', 'DVD_Hist_All')
+        df = await abds('SPX Index', 'INDX_MEMBERS', backend='polars')
+    """
+    engine = _get_engine()
+    ticker_list = _normalize_tickers(tickers)
+    overrides = _extract_overrides(kwargs)
+
+    # Process each ticker
+    tables = []
+    for ticker in ticker_list:
+        table = await engine.abds(ticker, flds, overrides)
+        tables.append(table)
+
+    if not tables:
+        # Return empty narwhals DataFrame
+        empty = pa.table({"ticker": [], "field": [], "value": []})
+        return _convert_backend(nw.from_native(empty), backend)
+
+    # Concatenate tables
+    combined = pa.concat_tables(tables)
+    nw_df = nw.from_native(combined)
+
+    return _convert_backend(nw_df, backend)
+
+
+async def abdib(
     ticker: str,
     dt: str | None = None,
     session: str = "allday",
@@ -452,7 +476,7 @@ def bdib(
     backend: Backend | str | None = None,
     **kwargs,
 ):
-    """Bloomberg intraday bar data (BDIB).
+    """Async Bloomberg intraday bar data (BDIB).
 
     Args:
         ticker: Ticker name.
@@ -470,8 +494,8 @@ def bdib(
 
     Example::
 
-        df = bdib('AAPL US Equity', dt='2024-12-01')
-        df = bdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
+        df = await abdib('AAPL US Equity', dt='2024-12-01')
+        df = await abdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
                   end_datetime='2024-12-01 16:00', interval=5, backend='polars')
     """
     import pandas as pd
@@ -490,10 +514,198 @@ def bdib(
     else:
         raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
-    table = engine.bdib(ticker, typ, interval, s_dt, e_dt)
+    table = await engine.abdib(ticker, typ, interval, s_dt, e_dt)
     nw_df = nw.from_native(table)
 
     return _convert_backend(nw_df, backend)
+
+
+async def abdtick(
+    ticker: str,
+    start_datetime: str,
+    end_datetime: str,
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+):
+    """Async Bloomberg tick data (BDTICK).
+
+    Args:
+        ticker: Ticker name.
+        start_datetime: Start datetime.
+        end_datetime: End datetime.
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional options.
+
+    Returns:
+        DataFrame with tick data.
+
+    Example::
+
+        df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
+        df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
+    """
+    import pandas as pd
+
+    engine = _get_engine()
+
+    s_dt = pd.Timestamp(start_datetime).isoformat()
+    e_dt = pd.Timestamp(end_datetime).isoformat()
+
+    table = await engine.abdtick(ticker, s_dt, e_dt)
+    nw_df = nw.from_native(table)
+
+    return _convert_backend(nw_df, backend)
+
+
+# =============================================================================
+# Sync API - Convenience Wrappers
+# =============================================================================
+
+
+def bdp(
+    tickers: str | Sequence[str],
+    flds: str | Sequence[str] | None = None,
+    *,
+    backend: Backend | str | None = None,
+    wide: bool | None = None,
+    **kwargs,
+):
+    """Bloomberg reference data (BDP).
+
+    Sync wrapper around abdp(). For async usage, use abdp() directly.
+
+    Args:
+        tickers: Single ticker or list of tickers.
+        flds: Single field or list of fields to query.
+        backend: DataFrame backend to return. If None, uses global default.
+        wide: DEPRECATED. Use df.pivot() for wide format.
+        **kwargs: Bloomberg overrides and infrastructure options.
+
+    Returns:
+        DataFrame in long format with columns: ticker, field, value
+
+    Example::
+
+        df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+        df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
+    """
+    return asyncio.run(abdp(tickers, flds, backend=backend, wide=wide, **kwargs))
+
+
+def bdh(
+    tickers: str | Sequence[str],
+    flds: str | Sequence[str] | None = None,
+    start_date: str | None = None,
+    end_date: str = "today",
+    *,
+    backend: Backend | str | None = None,
+    wide: bool | None = None,
+    **kwargs,
+):
+    """Bloomberg historical data (BDH).
+
+    Sync wrapper around abdh(). For async usage, use abdh() directly.
+
+    Args:
+        tickers: Single ticker or list of tickers.
+        flds: Single field or list of fields. Defaults to ['PX_LAST'].
+        start_date: Start date. Defaults to 8 weeks before end_date.
+        end_date: End date. Defaults to 'today'.
+        backend: DataFrame backend to return. If None, uses global default.
+        wide: DEPRECATED. Use df.pivot() for wide format.
+        **kwargs: Additional overrides and infrastructure options.
+
+    Returns:
+        DataFrame in long format with columns: ticker, date, field, value
+
+    Example::
+
+        df = bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
+        df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
+    """
+    return asyncio.run(
+        abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, **kwargs)
+    )
+
+
+def bds(
+    tickers: str | Sequence[str],
+    flds: str,
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+):
+    """Bloomberg bulk data (BDS).
+
+    Sync wrapper around abds(). For async usage, use abds() directly.
+
+    Args:
+        tickers: Single ticker or list of tickers.
+        flds: Single field name (bulk fields return multiple rows).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Bloomberg overrides and infrastructure options.
+
+    Returns:
+        DataFrame with bulk data, multiple rows per ticker.
+
+    Example::
+
+        df = bds('AAPL US Equity', 'DVD_Hist_All')
+        df = bds('SPX Index', 'INDX_MEMBERS', backend='polars')
+    """
+    return asyncio.run(abds(tickers, flds, backend=backend, **kwargs))
+
+
+def bdib(
+    ticker: str,
+    dt: str | None = None,
+    session: str = "allday",
+    typ: str = "TRADE",
+    *,
+    start_datetime: str | None = None,
+    end_datetime: str | None = None,
+    interval: int = 1,
+    backend: Backend | str | None = None,
+    **kwargs,
+):
+    """Bloomberg intraday bar data (BDIB).
+
+    Sync wrapper around abdib(). For async usage, use abdib() directly.
+
+    Args:
+        ticker: Ticker name.
+        dt: Date to download (for single-day requests).
+        session: Trading session name.
+        typ: Event type (TRADE, BID, ASK, etc.).
+        start_datetime: Explicit start datetime for multi-day requests.
+        end_datetime: Explicit end datetime for multi-day requests.
+        interval: Bar interval in minutes (default: 1).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional options.
+
+    Returns:
+        DataFrame with intraday bar data.
+
+    Example::
+
+        df = bdib('AAPL US Equity', dt='2024-12-01')
+        df = bdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
+                  end_datetime='2024-12-01 16:00', interval=5, backend='polars')
+    """
+    return asyncio.run(
+        abdib(
+            ticker,
+            dt,
+            session,
+            typ,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            interval=interval,
+            backend=backend,
+            **kwargs,
+        )
+    )
 
 
 def bdtick(
@@ -505,6 +717,8 @@ def bdtick(
     **kwargs,
 ):
     """Bloomberg tick data (BDTICK).
+
+    Sync wrapper around abdtick(). For async usage, use abdtick() directly.
 
     Args:
         ticker: Ticker name.
@@ -521,14 +735,6 @@ def bdtick(
         df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
         df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
     """
-    import pandas as pd
-
-    engine = _get_engine()
-
-    s_dt = pd.Timestamp(start_datetime).isoformat()
-    e_dt = pd.Timestamp(end_datetime).isoformat()
-
-    table = engine.bdtick(ticker, s_dt, e_dt)
-    nw_df = nw.from_native(table)
-
-    return _convert_backend(nw_df, backend)
+    return asyncio.run(
+        abdtick(ticker, start_datetime, end_datetime, backend=backend, **kwargs)
+    )

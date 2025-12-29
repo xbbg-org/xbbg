@@ -15,11 +15,18 @@ if TYPE_CHECKING:
 __all__ = [
     "_core",
     "Backend",
+    # Sync API
     "bdp",
     "bds",
     "bdh",
     "bdib",
     "bdtick",
+    # Async API
+    "abdp",
+    "abds",
+    "abdh",
+    "abdib",
+    "abdtick",
     "set_backend",
     "get_backend",
 ]
@@ -31,7 +38,21 @@ def __getattr__(name: str):
         from . import _core as mod
 
         return mod
-    if name in ("Backend", "bdp", "bds", "bdh", "bdib", "bdtick", "set_backend", "get_backend"):
+    if name in (
+        "Backend",
+        "bdp",
+        "bds",
+        "bdh",
+        "bdib",
+        "bdtick",
+        "abdp",
+        "abds",
+        "abdh",
+        "abdib",
+        "abdtick",
+        "set_backend",
+        "get_backend",
+    ):
         from . import blp
 
         return getattr(blp, name)
