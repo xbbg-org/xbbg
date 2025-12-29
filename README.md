@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.10.0 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.0))
+Latest release: xbbg==0.10.1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.1))
 <!-- xbbg:latest-release-end -->
 
 ## Overview
@@ -828,6 +828,15 @@ uv run pytest --doctest-modules -q
 ## What's New
 
 <!-- xbbg:changelog-start -->
+
+_0.10.1_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.1)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.0...v0.10.1
+
+## What's Changed
+
+- fix: persist blp.connect() session for subsequent API calls by @kj55-dev in https://github.com/alpha-xone/xbbg/pull/165
+
 
 _0.10.0_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.10.0)
 
