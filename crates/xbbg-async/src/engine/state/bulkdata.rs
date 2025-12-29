@@ -1,12 +1,15 @@
 //! Bulk data (bds) state with Arrow builders.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use arrow::array::StringBuilder;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
+use tracing::trace;
 
+use super::json_schema::{self, JsonValue};
 use xbbg_core::{BlpError, MessageRef};
 
 /// State for a bulk data request (bds).
@@ -49,63 +52,56 @@ impl BulkDataState {
         let _ = self.reply.send(result);
     }
 
-    /// Process a BulkDataResponse message.
+    /// Process a BulkDataResponse message using JSON bulk extraction.
     fn process_message(&mut self, msg: &MessageRef) {
-        let elem = msg.elements();
-
-        // Get securityData array
-        let Some(security_data) = elem.get_element("securityData") else {
+        let Some(json_str) = msg.to_json() else {
+            trace!("toJson not available, message skipped");
             return;
         };
 
-        let num_securities = security_data.num_values();
-        for i in 0..num_securities {
-            let Some(sec_elem) = security_data.get_value_as_element(i) else {
+        let mut json_bytes = json_str.into_bytes();
+
+        let Ok(resp) = json_schema::parser::parse_bulkdata(&mut json_bytes) else {
+            trace!("JSON parsing failed, message skipped");
+            return;
+        };
+
+        for sec in &resp.security_data {
+            let ticker = sec.security.as_ref();
+
+            // Get the bulk field array from fieldData
+            let Some(bulk_value) = sec.field_data.get(self.field_string.as_str()) else {
                 continue;
             };
 
-            // Get security name
-            let ticker = sec_elem
-                .get_element("security")
-                .and_then(|e| e.get_value_as_string(0))
-                .unwrap_or_default();
-
-            // Get fieldData
-            let Some(field_data) = sec_elem.get_element("fieldData") else {
+            // bulk_value should be an array of objects
+            let JsonValue::Array(rows) = bulk_value else {
                 continue;
             };
 
-            // Get the bulk field (array of rows)
-            let Some(bulk_array) = field_data.get_element(&self.field_string) else {
-                continue;
-            };
-
-            let num_rows = bulk_array.num_values();
-            for j in 0..num_rows {
-                let Some(row_elem) = bulk_array.get_value_as_element(j) else {
+            for row in rows {
+                let JsonValue::Object(row_obj) = row else {
                     continue;
                 };
 
-                self.ticker_builder.append_value(&ticker);
+                self.ticker_builder.append_value(ticker);
 
                 // Discover sub-fields on first row
                 if self.subfield_names.is_empty() {
-                    let num_elements = row_elem.num_elements();
-                    for k in 0..num_elements {
-                        if let Some(sub_elem) = row_elem.get_element_at(k) {
-                            if let Some(name) = sub_elem.name_string() {
-                                self.subfield_names.push(name);
-                                self.subfield_builders.push(StringBuilder::new());
-                            }
-                        }
+                    for key in row_obj.keys() {
+                        self.subfield_names.push(key.to_string());
+                        self.subfield_builders.push(StringBuilder::new());
                     }
                 }
 
                 // Extract sub-field values
                 for (k, subfield_name) in self.subfield_names.iter().enumerate() {
-                    if let Some(sub_elem) = row_elem.get_element(subfield_name) {
-                        let value = sub_elem.get_value_as_string(0).unwrap_or_default();
-                        self.subfield_builders[k].append_value(&value);
+                    if let Some(value) = row_obj.get(&Cow::Borrowed(subfield_name.as_str())) {
+                        if let Some(s) = value.as_string() {
+                            self.subfield_builders[k].append_value(&s);
+                        } else {
+                            self.subfield_builders[k].append_null();
+                        }
                     } else {
                         self.subfield_builders[k].append_null();
                     }

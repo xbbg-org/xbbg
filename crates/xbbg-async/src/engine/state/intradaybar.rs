@@ -5,8 +5,11 @@ use std::sync::Arc;
 use arrow::array::{Float64Builder, Int32Builder, StringBuilder, TimestampMicrosecondBuilder};
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
+use chrono::{DateTime, Utc};
 use tokio::sync::oneshot;
+use tracing::trace;
 
+use super::json_schema;
 use xbbg_core::{BlpError, MessageRef};
 
 /// State for an intraday bar request (bdib).
@@ -84,33 +87,30 @@ impl IntradayBarState {
         let _ = self.reply.send(result);
     }
 
-    /// Process an IntradayBarResponse message.
+    /// Process an IntradayBarResponse message using JSON bulk extraction.
+    ///
+    /// Uses Bloomberg SDK's native toJson (SDK 3.25.11+) for single-FFI-call extraction,
+    /// then parses with simd-json for high-performance zero-copy deserialization.
     fn process_message(&mut self, msg: &MessageRef) {
-        let elem = msg.elements();
-
-        // Get barData
-        let Some(bar_data) = elem.get_element("barData") else {
+        let Some(json_str) = msg.to_json() else {
+            trace!("toJson not available, message skipped");
             return;
         };
 
-        // Get barTickData array
-        let Some(bar_tick_data) = bar_data.get_element("barTickData") else {
+        // simd-json requires mutable bytes for in-place parsing (zero-copy)
+        let mut json_bytes = json_str.into_bytes();
+
+        let Ok(resp) = json_schema::parser::parse_intraday_bar(&mut json_bytes) else {
+            trace!("JSON parsing failed, message skipped");
             return;
         };
 
-        let num_bars = bar_tick_data.num_values();
-        for i in 0..num_bars {
-            let Some(bar_elem) = bar_tick_data.get_value_as_element(i) else {
-                continue;
-            };
-
+        for bar in &resp.bar_data.bar_tick_data {
             self.ticker_builder.append_value(&self.ticker);
 
-            // Get time
-            if let Some(time_elem) = bar_elem.get_element("time") {
-                if let Ok(Some(dt)) = time_elem.get_value_as_datetime(0) {
-                    // Convert to microseconds since epoch
-                    let micros = dt.timestamp_micros();
+            // Parse time string to microseconds since epoch
+            if let Some(time_str) = &bar.time {
+                if let Some(micros) = parse_datetime_to_micros(time_str.as_ref()) {
                     self.time_builder.append_value(micros);
                 } else {
                     self.time_builder.append_null();
@@ -119,43 +119,19 @@ impl IntradayBarState {
                 self.time_builder.append_null();
             }
 
-            // Get OHLC values
-            self.append_float64_value(&bar_elem, "open");
-            self.append_float64_value(&bar_elem, "high");
-            self.append_float64_value(&bar_elem, "low");
-            self.append_float64_value(&bar_elem, "close");
-            self.append_float64_value(&bar_elem, "volume");
+            // Get OHLC values (direct access from typed struct)
+            append_opt_f64(&mut self.open_builder, bar.open);
+            append_opt_f64(&mut self.high_builder, bar.high);
+            append_opt_f64(&mut self.low_builder, bar.low);
+            append_opt_f64(&mut self.close_builder, bar.close);
+            append_opt_f64(&mut self.volume_builder, bar.volume);
 
             // Get numEvents
-            if let Some(num_events_elem) = bar_elem.get_element("numEvents") {
-                if let Some(val) = num_events_elem.get_value_as_int64(0) {
-                    self.num_events_builder.append_value(val as i32);
-                } else {
-                    self.num_events_builder.append_null();
-                }
+            if let Some(n) = bar.num_events {
+                self.num_events_builder.append_value(n as i32);
             } else {
                 self.num_events_builder.append_null();
             }
-        }
-    }
-
-    fn append_float64_value(&mut self, elem: &xbbg_core::ElementRef, field: &str) {
-        let value = elem
-            .get_element(field)
-            .and_then(|e| e.get_value_as_float64(0));
-
-        let builder = match field {
-            "open" => &mut self.open_builder,
-            "high" => &mut self.high_builder,
-            "low" => &mut self.low_builder,
-            "close" => &mut self.close_builder,
-            "volume" => &mut self.volume_builder,
-            _ => return,
-        };
-
-        match value {
-            Some(v) => builder.append_value(v),
-            None => builder.append_null(),
         }
     }
 
@@ -199,5 +175,30 @@ impl IntradayBarState {
         RecordBatch::try_new(schema, columns).map_err(|e| BlpError::Internal {
             detail: format!("build RecordBatch: {e}"),
         })
+    }
+}
+
+/// Parse an ISO datetime string to microseconds since epoch.
+fn parse_datetime_to_micros(dt_str: &str) -> Option<i64> {
+    // Try RFC3339 format first
+    if let Ok(dt) = DateTime::parse_from_rfc3339(dt_str) {
+        return Some(dt.with_timezone(&Utc).timestamp_micros());
+    }
+    // Try ISO format without timezone (assume UTC)
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S") {
+        return Some(dt.and_utc().timestamp_micros());
+    }
+    // Try with milliseconds
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S%.3f") {
+        return Some(dt.and_utc().timestamp_micros());
+    }
+    None
+}
+
+/// Helper to append an optional f64 to a Float64Builder.
+fn append_opt_f64(builder: &mut Float64Builder, value: Option<f64>) {
+    match value {
+        Some(v) => builder.append_value(v),
+        None => builder.append_null(),
     }
 }

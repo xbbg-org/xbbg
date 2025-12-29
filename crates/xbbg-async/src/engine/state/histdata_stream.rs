@@ -8,8 +8,11 @@ use std::sync::Arc;
 use arrow::array::{Date32Builder, Float64Builder, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
+use chrono::NaiveDate;
 use tokio::sync::mpsc;
+use tracing::trace;
 
+use super::json_schema;
 use xbbg_core::{BlpError, MessageRef};
 
 /// Streaming state for a historical data request (bdh).
@@ -53,24 +56,23 @@ impl HistDataStreamState {
         let _ = self.stream.try_send(Err(error));
     }
 
-    /// Process a HistoricalDataResponse message and return a RecordBatch.
+    /// Process a HistoricalDataResponse message using JSON bulk extraction.
     fn process_message(&mut self, msg: &MessageRef) -> Option<RecordBatch> {
-        let elem = msg.elements();
+        let Some(json_str) = msg.to_json() else {
+            trace!("toJson not available, message skipped");
+            return None;
+        };
 
-        // Get securityData
-        let security_data = elem.get_element("securityData")?;
+        let mut json_bytes = json_str.into_bytes();
 
-        // Historical data has a single security per message
-        let ticker = security_data
-            .get_element("security")
-            .and_then(|e| e.get_value_as_string(0))
-            .unwrap_or_default();
+        let Ok(resp) = json_schema::parser::parse_histdata(&mut json_bytes) else {
+            trace!("JSON parsing failed, message skipped");
+            return None;
+        };
 
-        // Get fieldData array
-        let field_data = security_data.get_element("fieldData")?;
+        let ticker = resp.security_data.security.as_ref();
 
-        let num_rows = field_data.num_values();
-        if num_rows == 0 {
+        if resp.security_data.field_data.is_empty() {
             return None;
         }
 
@@ -83,15 +85,12 @@ impl HistDataStreamState {
             .map(|_| Float64Builder::new())
             .collect();
 
-        for i in 0..num_rows {
-            let row_elem = field_data.get_value_as_element(i)?;
+        for row in &resp.security_data.field_data {
+            ticker_builder.append_value(ticker);
 
-            ticker_builder.append_value(&ticker);
-
-            // Get date
-            if let Some(date_elem) = row_elem.get_element("date") {
-                if let Ok(Some(dt)) = date_elem.get_value_as_datetime(0) {
-                    let days = (dt.timestamp() / 86400) as i32;
+            // Parse date string to days since epoch
+            if let Some(date_str) = &row.date {
+                if let Some(days) = parse_date_to_days(date_str.as_ref()) {
                     date_builder.append_value(days);
                 } else {
                     date_builder.append_null();
@@ -102,9 +101,9 @@ impl HistDataStreamState {
 
             // Get each field value
             for (j, field_str) in self.field_strings.iter().enumerate() {
-                if let Some(field_elem) = row_elem.get_element(field_str) {
-                    if let Some(val) = field_elem.get_value_as_float64(0) {
-                        field_builders[j].append_value(val);
+                if let Some(value) = row.fields.get(field_str.as_str()) {
+                    if let Some(f) = value.as_f64() {
+                        field_builders[j].append_value(f);
                     } else {
                         field_builders[j].append_null();
                     }
@@ -139,5 +138,21 @@ impl HistDataStreamState {
         columns.extend(field_arrays);
 
         RecordBatch::try_new(schema.clone(), columns).ok()
+    }
+}
+
+/// Parse a date string (YYYY-MM-DD) to days since Unix epoch.
+fn parse_date_to_days(date_str: &str) -> Option<i32> {
+    let parts: Vec<&str> = date_str.split('-').collect();
+    if parts.len() >= 3 {
+        let year: i32 = parts[0].parse().ok()?;
+        let month: u32 = parts[1].parse().ok()?;
+        let day: u32 = parts[2].parse().ok()?;
+
+        let date = NaiveDate::from_ymd_opt(year, month, day)?;
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)?;
+        Some(date.signed_duration_since(epoch).num_days() as i32)
+    } else {
+        None
     }
 }

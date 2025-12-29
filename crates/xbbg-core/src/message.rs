@@ -137,6 +137,16 @@ impl MessageRef {
             out
         }
     }
+
+    /// Serialize the message payload to JSON using the Bloomberg SDK's native toJson.
+    ///
+    /// This is significantly faster than iterating over elements individually
+    /// because it makes a single FFI call and the SDK serializes internally.
+    ///
+    /// Returns `None` if the toJson function is not available (SDK < 3.25.11).
+    pub fn to_json(&self) -> Option<String> {
+        self.elements().to_json()
+    }
 }
 
 #[allow(dead_code)]

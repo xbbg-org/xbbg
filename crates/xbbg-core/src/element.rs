@@ -193,4 +193,44 @@ impl ElementRef {
     pub(crate) fn as_raw(&self) -> *mut blpapi_sys::blpapi_Element_t {
         self.ptr
     }
+
+    /// Serialize this element to JSON using the Bloomberg SDK's native toJson.
+    ///
+    /// This is significantly faster than iterating over elements individually
+    /// because it makes a single FFI call and the SDK serializes internally.
+    ///
+    /// Returns `None` if the function fails.
+    pub fn to_json(&self) -> Option<String> {
+        // Callback that appends to a String buffer
+        unsafe extern "C" fn json_writer(
+            data: *const core::ffi::c_char,
+            length: core::ffi::c_int,
+            stream: *mut core::ffi::c_void,
+        ) -> core::ffi::c_int {
+            if stream.is_null() || data.is_null() || length <= 0 {
+                return 0;
+            }
+            let buf = &mut *(stream as *mut String);
+            let slice = std::slice::from_raw_parts(data as *const u8, length as usize);
+            if let Ok(s) = std::str::from_utf8(slice) {
+                buf.push_str(s);
+            }
+            0
+        }
+
+        let mut output = String::new();
+        let rc = unsafe {
+            blpapi_sys::blpapi_Element_toJson(
+                self.ptr as *const _,
+                Some(json_writer),
+                &mut output as *mut String as *mut core::ffi::c_void,
+            )
+        };
+
+        if rc == 0 {
+            Some(output)
+        } else {
+            None
+        }
+    }
 }

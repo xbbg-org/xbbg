@@ -5,8 +5,11 @@ use std::sync::Arc;
 use arrow::array::{Float64Builder, Int64Builder, StringBuilder, TimestampMicrosecondBuilder};
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
+use chrono::{DateTime, Utc};
 use tokio::sync::oneshot;
+use tracing::trace;
 
+use super::json_schema;
 use xbbg_core::{BlpError, MessageRef};
 
 /// State for an intraday tick request (bdtick).
@@ -57,32 +60,26 @@ impl IntradayTickState {
         let _ = self.reply.send(result);
     }
 
-    /// Process an IntradayTickResponse message.
+    /// Process an IntradayTickResponse message using JSON bulk extraction.
     fn process_message(&mut self, msg: &MessageRef) {
-        let elem = msg.elements();
-
-        // Get tickData
-        let Some(tick_data) = elem.get_element("tickData") else {
+        let Some(json_str) = msg.to_json() else {
+            trace!("toJson not available, message skipped");
             return;
         };
 
-        // Get tickData array (nested)
-        let Some(tick_data_array) = tick_data.get_element("tickData") else {
+        let mut json_bytes = json_str.into_bytes();
+
+        let Ok(resp) = json_schema::parser::parse_intraday_tick(&mut json_bytes) else {
+            trace!("JSON parsing failed, message skipped");
             return;
         };
 
-        let num_ticks = tick_data_array.num_values();
-        for i in 0..num_ticks {
-            let Some(tick_elem) = tick_data_array.get_value_as_element(i) else {
-                continue;
-            };
-
+        for tick in &resp.tick_data.tick_data {
             self.ticker_builder.append_value(&self.ticker);
 
-            // Get time
-            if let Some(time_elem) = tick_elem.get_element("time") {
-                if let Ok(Some(dt)) = time_elem.get_value_as_datetime(0) {
-                    let micros = dt.timestamp_micros();
+            // Parse time string to microseconds
+            if let Some(time_str) = &tick.time {
+                if let Some(micros) = parse_datetime_to_micros(time_str.as_ref()) {
                     self.time_builder.append_value(micros);
                 } else {
                     self.time_builder.append_null();
@@ -91,49 +88,29 @@ impl IntradayTickState {
                 self.time_builder.append_null();
             }
 
-            // Get type
-            if let Some(type_elem) = tick_elem.get_element("type") {
-                if let Some(val) = type_elem.get_value_as_string(0) {
-                    self.type_builder.append_value(&val);
-                } else {
-                    self.type_builder.append_null();
-                }
+            // Type
+            if let Some(t) = &tick.tick_type {
+                self.type_builder.append_value(t.as_ref());
             } else {
                 self.type_builder.append_null();
             }
 
-            // Get value (price)
-            if let Some(value_elem) = tick_elem.get_element("value") {
-                if let Some(val) = value_elem.get_value_as_float64(0) {
-                    self.value_builder.append_value(val);
-                } else {
-                    self.value_builder.append_null();
-                }
+            // Value
+            if let Some(v) = tick.value {
+                self.value_builder.append_value(v);
             } else {
                 self.value_builder.append_null();
             }
 
-            // Get size
-            if let Some(size_elem) = tick_elem.get_element("size") {
-                if let Some(val) = size_elem.get_value_as_int64(0) {
-                    self.size_builder.append_value(val);
-                } else {
-                    self.size_builder.append_null();
-                }
+            // Size
+            if let Some(s) = tick.size {
+                self.size_builder.append_value(s);
             } else {
                 self.size_builder.append_null();
             }
 
-            // Get conditionCodes
-            if let Some(cc_elem) = tick_elem.get_element("conditionCodes") {
-                if let Some(val) = cc_elem.get_value_as_string(0) {
-                    self.condition_codes_builder.append_value(&val);
-                } else {
-                    self.condition_codes_builder.append_null();
-                }
-            } else {
-                self.condition_codes_builder.append_null();
-            }
+            // Condition codes (not in base schema, append null)
+            self.condition_codes_builder.append_null();
         }
     }
 
@@ -172,4 +149,18 @@ impl IntradayTickState {
             detail: format!("build RecordBatch: {e}"),
         })
     }
+}
+
+/// Parse an ISO datetime string to microseconds since epoch.
+fn parse_datetime_to_micros(dt_str: &str) -> Option<i64> {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(dt_str) {
+        return Some(dt.with_timezone(&Utc).timestamp_micros());
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S") {
+        return Some(dt.and_utc().timestamp_micros());
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S%.3f") {
+        return Some(dt.and_utc().timestamp_micros());
+    }
+    None
 }

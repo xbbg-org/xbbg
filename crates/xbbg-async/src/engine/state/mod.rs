@@ -7,6 +7,7 @@ mod intradaybar;
 mod intradaybar_stream;
 mod intradaytick;
 mod intradaytick_stream;
+pub mod json_schema;
 mod refdata;
 mod subscription;
 

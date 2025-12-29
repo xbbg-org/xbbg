@@ -97,6 +97,146 @@ impl SessionOptions {
         Ok(self)
     }
 
+    // ========== Performance Tuning Options ==========
+
+    /// Set the maximum number of events that can be queued.
+    ///
+    /// Larger queue sizes can improve throughput but increase memory usage.
+    /// Default is typically 10000. For high-volume use cases, consider 65536+.
+    pub fn set_max_event_queue_size(&mut self, size: usize) -> &mut Self {
+        unsafe {
+            blpapi_sys::blpapi_SessionOptions_setMaxEventQueueSize(self.ptr, size);
+        }
+        self
+    }
+
+    /// Get the current maximum event queue size.
+    pub fn max_event_queue_size(&self) -> usize {
+        unsafe { blpapi_sys::blpapi_SessionOptions_maxEventQueueSize(self.ptr) }
+    }
+
+    /// Set the high watermark for slow consumer warnings (0.0 to 1.0).
+    ///
+    /// When queue usage exceeds this fraction, slow consumer warnings are generated.
+    /// Default is typically 0.75.
+    pub fn set_slow_consumer_warning_hi_watermark(
+        &mut self,
+        hi_watermark: f32,
+    ) -> Result<&mut Self> {
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setSlowConsumerWarningHiWaterMark(
+                self.ptr,
+                hi_watermark,
+            )
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("slow consumer hi watermark invalid: rc={rc}"),
+            });
+        }
+        Ok(self)
+    }
+
+    /// Set the low watermark for slow consumer warnings (0.0 to 1.0).
+    ///
+    /// When queue usage drops below this fraction after being above hi watermark,
+    /// the slow consumer state is cleared. Default is typically 0.5.
+    pub fn set_slow_consumer_warning_lo_watermark(
+        &mut self,
+        lo_watermark: f32,
+    ) -> Result<&mut Self> {
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark(
+                self.ptr,
+                lo_watermark,
+            )
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("slow consumer lo watermark invalid: rc={rc}"),
+            });
+        }
+        Ok(self)
+    }
+
+    /// Enable or disable keep-alive messages.
+    ///
+    /// Keep-alive helps detect dead connections. Enabled by default.
+    pub fn set_keep_alive_enabled(&mut self, enabled: bool) -> Result<&mut Self> {
+        let rc =
+            unsafe { blpapi_sys::blpapi_SessionOptions_setKeepAliveEnabled(self.ptr, enabled as i32) };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("keep alive enabled invalid: rc={rc}"),
+            });
+        }
+        Ok(self)
+    }
+
+    /// Set the keep-alive inactivity time in milliseconds.
+    ///
+    /// Time of inactivity before sending keep-alive. Default is typically 20000ms.
+    pub fn set_keep_alive_inactivity_time_ms(&mut self, time_ms: i32) -> Result<&mut Self> {
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setDefaultKeepAliveInactivityTime(self.ptr, time_ms)
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("keep alive inactivity time invalid: rc={rc}"),
+            });
+        }
+        Ok(self)
+    }
+
+    /// Set the keep-alive response timeout in milliseconds.
+    ///
+    /// Time to wait for keep-alive response. Default is typically 5000ms.
+    pub fn set_keep_alive_response_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout(
+                self.ptr,
+                timeout_ms,
+            )
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("keep alive response timeout invalid: rc={rc}"),
+            });
+        }
+        Ok(self)
+    }
+
+    /// Disable bandwidth save mode.
+    ///
+    /// When disabled, the API uses more bandwidth but may have lower latency.
+    /// This is useful for high-frequency data scenarios.
+    pub fn set_bandwidth_save_mode_disabled(&mut self, disabled: bool) -> Result<&mut Self> {
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setBandwidthSaveModeDisabled(self.ptr, disabled as i32)
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("bandwidth save mode disabled invalid: rc={rc}"),
+            });
+        }
+        Ok(self)
+    }
+
+    /// Set the flush published events timeout in milliseconds.
+    ///
+    /// Controls how long to wait when flushing events. Default is typically 2000ms.
+    pub fn set_flush_published_events_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
+        let rc = unsafe {
+            blpapi_sys::blpapi_SessionOptions_setFlushPublishedEventsTimeout(self.ptr, timeout_ms)
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("flush published events timeout invalid: rc={rc}"),
+            });
+        }
+        Ok(self)
+    }
+
     pub(crate) fn as_raw(&self) -> *mut blpapi_sys::blpapi_SessionOptions_t {
         self.ptr
     }

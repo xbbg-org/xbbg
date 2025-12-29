@@ -40,6 +40,11 @@ impl PumpC {
         opts.set_server_host(&config.server_host)?;
         opts.set_server_port(config.server_port);
 
+        // Apply performance tuning options
+        opts.set_max_event_queue_size(config.max_event_queue_size);
+        // Disable bandwidth save mode for lower latency (only if available)
+        let _ = opts.set_bandwidth_save_mode_disabled(true);
+
         let session = Session::new(&opts)?;
         session.start()?;
 

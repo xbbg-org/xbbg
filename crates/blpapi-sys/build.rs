@@ -53,7 +53,7 @@ fn main() {
         .clang_arg(format!("-I{}", include_dir.display()))
         .allowlist_function("^blpapi_.*")
         .allowlist_type("^blpapi_.*")
-        .allowlist_var("^(BLPAPI_.*|BLPAPI_SDK_VERSION.*)")
+        .allowlist_var("^(BLPAPI_.*|BLPAPI_SDK_VERSION.*|g_blpapi.*)")
         .ctypes_prefix("cty")
         .use_core()
         .layout_tests(false)

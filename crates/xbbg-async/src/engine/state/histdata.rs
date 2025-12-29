@@ -6,7 +6,9 @@ use arrow::array::{Date32Builder, Float64Builder, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
+use tracing::trace;
 
+use super::json_schema;
 use xbbg_core::{BlpError, MessageRef};
 
 /// State for a historical data request (bdh).
@@ -51,39 +53,32 @@ impl HistDataState {
         let _ = self.reply.send(result);
     }
 
-    /// Process a HistoricalDataResponse message.
+    /// Process a HistoricalDataResponse message using JSON bulk extraction.
+    ///
+    /// Uses Bloomberg SDK's native toJson (SDK 3.25.11+) for single-FFI-call extraction,
+    /// then parses with simd-json for high-performance zero-copy deserialization.
     fn process_message(&mut self, msg: &MessageRef) {
-        let elem = msg.elements();
-
-        // Get securityData
-        let Some(security_data) = elem.get_element("securityData") else {
+        let Some(json_str) = msg.to_json() else {
+            trace!("toJson not available, message skipped");
             return;
         };
 
-        // Historical data has a single security per message
-        let ticker = security_data
-            .get_element("security")
-            .and_then(|e| e.get_value_as_string(0))
-            .unwrap_or_default();
+        // simd-json requires mutable bytes for in-place parsing (zero-copy)
+        let mut json_bytes = json_str.into_bytes();
 
-        // Get fieldData array
-        let Some(field_data) = security_data.get_element("fieldData") else {
+        let Ok(resp) = json_schema::parser::parse_histdata(&mut json_bytes) else {
+            trace!("JSON parsing failed, message skipped");
             return;
         };
 
-        let num_rows = field_data.num_values();
-        for i in 0..num_rows {
-            let Some(row_elem) = field_data.get_value_as_element(i) else {
-                continue;
-            };
+        let ticker = resp.security_data.security.as_ref();
 
-            self.ticker_builder.append_value(&ticker);
+        for row in &resp.security_data.field_data {
+            self.ticker_builder.append_value(ticker);
 
-            // Get date
-            if let Some(date_elem) = row_elem.get_element("date") {
-                if let Ok(Some(dt)) = date_elem.get_value_as_datetime(0) {
-                    // Convert to days since epoch
-                    let days = (dt.timestamp() / 86400) as i32;
+            // Parse date string to days since epoch
+            if let Some(date_str) = &row.date {
+                if let Some(days) = parse_date_to_days(date_str.as_ref()) {
                     self.date_builder.append_value(days);
                 } else {
                     self.date_builder.append_null();
@@ -94,9 +89,9 @@ impl HistDataState {
 
             // Get each field value
             for (j, field_str) in self.field_strings.iter().enumerate() {
-                if let Some(field_elem) = row_elem.get_element(field_str) {
-                    if let Some(val) = field_elem.get_value_as_float64(0) {
-                        self.field_builders[j].append_value(val);
+                if let Some(value) = row.fields.get(field_str.as_str()) {
+                    if let Some(f) = value.as_f64() {
+                        self.field_builders[j].append_value(f);
                     } else {
                         self.field_builders[j].append_null();
                     }
@@ -135,5 +130,23 @@ impl HistDataState {
         RecordBatch::try_new(schema, columns).map_err(|e| BlpError::Internal {
             detail: format!("build RecordBatch: {e}"),
         })
+    }
+}
+
+/// Parse a date string (YYYY-MM-DD) to days since Unix epoch.
+fn parse_date_to_days(date_str: &str) -> Option<i32> {
+    // Try parsing ISO date format (YYYY-MM-DD)
+    let parts: Vec<&str> = date_str.split('-').collect();
+    if parts.len() >= 3 {
+        let year: i32 = parts[0].parse().ok()?;
+        let month: u32 = parts[1].parse().ok()?;
+        let day: u32 = parts[2].parse().ok()?;
+
+        use chrono::NaiveDate;
+        let date = NaiveDate::from_ymd_opt(year, month, day)?;
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)?;
+        Some(date.signed_duration_since(epoch).num_days() as i32)
+    } else {
+        None
     }
 }

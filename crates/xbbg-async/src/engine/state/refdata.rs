@@ -6,7 +6,9 @@ use arrow::array::StringBuilder;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
+use tracing::trace;
 
+use super::json_schema;
 use xbbg_core::{BlpError, MessageRef};
 
 /// Output format for reference data.
@@ -80,68 +82,59 @@ impl RefDataState {
         let _ = self.reply.send(result);
     }
 
-    /// Process a ReferenceDataResponse message.
+    /// Process a ReferenceDataResponse message using JSON bulk extraction.
+    ///
+    /// Uses Bloomberg SDK's native toJson (SDK 3.25.11+) for single-FFI-call extraction,
+    /// then parses with simd-json for high-performance zero-copy deserialization.
     fn process_message(&mut self, msg: &MessageRef) {
-        let elem = msg.elements();
-
-        // Get securityData array
-        let Some(security_data) = elem.get_element("securityData") else {
+        let Some(json_str) = msg.to_json() else {
+            trace!("toJson not available, message skipped");
             return;
         };
 
-        let num_securities = security_data.num_values();
-        for i in 0..num_securities {
-            let Some(sec_elem) = security_data.get_value_as_element(i) else {
-                continue;
-            };
+        // simd-json requires mutable bytes for in-place parsing (zero-copy)
+        let mut json_bytes = json_str.into_bytes();
 
-            // Get security name
-            let ticker = sec_elem
-                .get_element("security")
-                .and_then(|e| e.get_value_as_string(0))
-                .unwrap_or_default();
+        let Ok(resp) = json_schema::parser::parse_refdata(&mut json_bytes) else {
+            trace!("JSON parsing failed, message skipped");
+            return;
+        };
 
-            // Get fieldData
-            let Some(field_data) = sec_elem.get_element("fieldData") else {
-                continue;
-            };
+        for sec in &resp.security_data {
+            let ticker = sec.security.as_ref();
 
             match self.format {
                 OutputFormat::Long => {
-                    self.process_long_format(&ticker, &field_data);
+                    for field_str in self.field_strings.clone() {
+                        self.ticker_builder.append_value(ticker);
+                        self.field_builder.append_value(&field_str);
+
+                        if let Some(value) = sec.field_data.get(field_str.as_str()) {
+                            if let Some(s) = value.as_string() {
+                                self.value_builder.append_value(&s);
+                            } else {
+                                self.value_builder.append_null();
+                            }
+                        } else {
+                            self.value_builder.append_null();
+                        }
+                    }
                 }
                 OutputFormat::Wide => {
-                    self.process_wide_format(&ticker, &field_data);
+                    self.ticker_builder.append_value(ticker);
+
+                    for (i, field_str) in self.field_strings.iter().enumerate() {
+                        if let Some(value) = sec.field_data.get(field_str.as_str()) {
+                            if let Some(s) = value.as_string() {
+                                self.wide_field_builders[i].append_value(&s);
+                            } else {
+                                self.wide_field_builders[i].append_null();
+                            }
+                        } else {
+                            self.wide_field_builders[i].append_null();
+                        }
+                    }
                 }
-            }
-        }
-    }
-
-    /// Process security data in Long format (one row per ticker-field pair).
-    fn process_long_format(&mut self, ticker: &str, field_data: &xbbg_core::ElementRef) {
-        for field_str in self.field_strings.clone() {
-            self.ticker_builder.append_value(ticker);
-            self.field_builder.append_value(&field_str);
-
-            if let Some(field_elem) = field_data.get_element(&field_str) {
-                let value = field_elem.get_value_as_string(0).unwrap_or_default();
-                self.value_builder.append_value(&value);
-            } else {
-                self.value_builder.append_null();
-            }
-        }
-    }
-
-    /// Process security data in Wide format (one row per ticker).
-    fn process_wide_format(&mut self, ticker: &str, field_data: &xbbg_core::ElementRef) {
-        self.ticker_builder.append_value(ticker);
-
-        for (i, field_str) in self.field_strings.iter().enumerate() {
-            if let Some(field_elem) = field_data.get_element(field_str) {
-                let value = field_elem.get_value_as_string(0).unwrap_or_default();
-                self.wide_field_builders[i].append_value(&value);
-            } else {
-                self.wide_field_builders[i].append_null();
             }
         }
     }

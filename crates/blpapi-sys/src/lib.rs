@@ -23,3 +23,6 @@ extern "C" {
         out: *mut *const core::ffi::c_void,
     ) -> i32;
 }
+
+// All SDK functions including blpapi_Element_toJson are directly exported from
+// the DLL and available via bindgen-generated FFI bindings (SDK 3.25.11+).
