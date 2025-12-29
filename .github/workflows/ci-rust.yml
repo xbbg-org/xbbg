@@ -290,7 +290,7 @@ jobs:
 
       - name: Install wheel and test dependencies
         run: |
-          uv pip install --system --find-links dist xbbg
+          uv pip install --system --no-index --find-links dist xbbg
           uv pip install --system pytest pytest-cov
 
       - name: Copy tests to temp directory
