@@ -59,6 +59,29 @@ jobs:
         run: uvx ruff format --check .
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Security audit (no SDK needed)
+  # ════════════════════════════════════════════════════════════════════════════
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Security audit
+        run: cargo audit
+
+      - name: Dependency policy check
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Build wheels (matrix: OS)
   # ════════════════════════════════════════════════════════════════════════════
   build:
@@ -135,6 +158,14 @@ jobs:
       - name: Cargo test
         run: cargo test --workspace --lib
 
+      - name: Install cargo-geiger
+        if: runner.os == 'Linux'
+        run: cargo install cargo-geiger --locked
+
+      - name: Unsafe code audit
+        if: runner.os == 'Linux'
+        run: cargo geiger --all-features --all-targets || true
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -205,17 +236,86 @@ jobs:
           fail_ci_if_error: false
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Static Analysis (requires SDK)
+  # ════════════════════════════════════════════════════════════════════════════
+  analysis:
+    name: Static Analysis
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: sudo apt update && sudo apt install -y libclang-dev
+
+      - name: Setup Rust (nightly for udeps)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download Bloomberg SDK
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+          ln -s "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
+
+      - name: Check unused dependencies
+        run: cargo +nightly udeps --all-targets 2>&1 || true
+
+      - name: Install lockbud
+        run: cargo install lockbud --locked || true
+
+      - name: Deadlock detection
+        run: cargo lockbud -k deadlock 2>&1 || true
+
+      - name: Install cargo-semver-checks
+        run: cargo install cargo-semver-checks --locked
+
+      - name: SemVer check
+        run: cargo semver-checks check-release 2>&1 || true
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Kani verification (unsafe code model checking)
+  # ════════════════════════════════════════════════════════════════════════════
+  kani:
+    name: Kani Verification
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Kani
+        uses: model-checking/kani-github-action@v1
+        with:
+          args: --workspace --exclude blpapi-sys --exclude pyo3-xbbg 2>&1 || true
+
+  # ════════════════════════════════════════════════════════════════════════════
   # CI Status (aggregation gate)
   # ════════════════════════════════════════════════════════════════════════════
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [lint, build, test]
+    needs: [lint, security, build, test]
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]]; then
             echo "One or more jobs failed"
