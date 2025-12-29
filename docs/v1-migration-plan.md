@@ -399,14 +399,49 @@ def bdh(
 
 ### 1.7 Functions to Update
 
-| Async | Sync | Current Output | Notes |
-|-------|------|----------------|-------|
-| `abdp()` | `bdp()` | DataFrame (simple) | Reference data |
-| `abdh()` | `bdh()` | DataFrame + MultiIndex | Historical data |
-| `abds()` | `bds()` | DataFrame | Bulk data |
-| `abdib()` | `bdib()` | DataFrame + MultiIndex | Intraday bars |
-| `abdtick()` | `bdtick()` | DataFrame | Tick data |
-| `abql()` | `bql()` | DataFrame | BQL queries |
+#### Reference Data (`xbbg/api/reference/`)
+| Async | Sync | Notes |
+|-------|------|-------|
+| `abdp()` | `bdp()` | Reference data (point-in-time) |
+| `abds()` | `bds()` | Bulk data (multi-row) |
+| - | `fieldInfo()` | Field metadata (simple, may not need backend) |
+| - | `fieldSearch()` | Field search (simple) |
+| - | `lookupSecurity()` | Security lookup |
+| - | `getPortfolio()` | Portfolio holdings |
+| - | `getBlpapiVersion()` | Version info (no DataFrame) |
+
+#### Historical Data (`xbbg/api/historical/`)
+| Async | Sync | Notes |
+|-------|------|-------|
+| `abdh()` | `bdh()` | Historical time series |
+| `adividend()` | `dividend()` | Dividend history |
+| `aearning()` | `earning()` | Earnings history |
+| `aturnover()` | `turnover()` | Turnover data |
+
+#### Intraday Data (`xbbg/api/intraday/`)
+| Async | Sync | Notes |
+|-------|------|-------|
+| `abdib()` | `bdib()` | Intraday bars |
+| `abdtick()` | `bdtick()` | Tick data |
+
+#### Screening (`xbbg/api/screening/`)
+| Async | Sync | Notes |
+|-------|------|-------|
+| `abeqs()` | `beqs()` | Equity screening |
+| `absrch()` | `bsrch()` | Security search |
+| `abql()` | `bql()` | BQL queries |
+| `aetf_holdings()` | `etf_holdings()` | ETF holdings |
+
+#### Realtime (`xbbg/api/realtime/`)
+| Async | Sync | Notes |
+|-------|------|-------|
+| - | `live()` | Live data (streaming, different pattern) |
+| - | `subscribe()` | Subscriptions (streaming) |
+
+#### Helpers (`xbbg/api/helpers.py`)
+| Function | Notes |
+|----------|-------|
+| `adjust_ccy()` | Currency adjustment (operates on existing DataFrames) |
 
 ### 1.8 Testing
 
