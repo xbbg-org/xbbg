@@ -19,7 +19,7 @@ See the [1.0.0 Milestone](https://github.com/alpha-xone/xbbg/milestone/1) for pr
 ### What's New
 
 - **Rust-Powered Backend** — Up to 10x faster data retrieval with Arrow integration and async I/O
-- **Multi-Backend Support** — Use pandas, Polars, or PyArrow via [Narwhals](https://github.com/narwhals-dev/narwhals)
+- **Multi-Engine Support** — Use pandas, Polars, or PyArrow via [Narwhals](https://github.com/narwhals-dev/narwhals)
 - **Async-First API** — Native async/await support with sync wrappers
 - **Zero-Copy Data Transfer** — Arrow C Data Interface between Rust and Python
 
