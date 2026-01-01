@@ -62,6 +62,8 @@ pub enum ExtractorType {
     Generic,
     /// Raw JSON output: [json]
     RawJson,
+    /// Field info: [field, type, description, category]
+    FieldInfo,
 }
 
 impl ExtractorType {
@@ -75,6 +77,7 @@ impl ExtractorType {
             "intraday_tick" => Some(Self::IntradayTick),
             "generic" => Some(Self::Generic),
             "raw_json" => Some(Self::RawJson),
+            "fieldinfo" => Some(Self::FieldInfo),
             _ => None,
         }
     }
@@ -116,6 +119,10 @@ pub struct RequestParams {
     pub options: Option<Vec<(String, String)>>,
     /// Manual field type overrides (for future type resolution)
     pub field_types: Option<HashMap<String, String>>,
+    /// Search spec for FieldSearchRequest (//blp/apiflds)
+    pub search_spec: Option<String>,
+    /// Field IDs for FieldInfoRequest (//blp/apiflds)
+    pub field_ids: Option<Vec<String>>,
 }
 
 impl RequestParams {
@@ -323,7 +330,7 @@ impl Engine {
 
         rx.await
             .map_err(|_| BlpAsyncError::Internal("reply dropped".into()))?
-            .map_err(|e| BlpAsyncError::Internal(e.to_string()))
+            .map_err(BlpAsyncError::from)
     }
 
     /// Streaming generic request - routes based on operation type.
@@ -377,6 +384,100 @@ impl Engine {
             .await
             .map_err(|_| BlpAsyncError::Internal("engine shutdown".into()))?;
         Ok(())
+    }
+
+    // ─── Field Type Resolution ──────────────────────────────────────────────
+
+    /// Resolve field types for a list of fields.
+    ///
+    /// This queries //blp/apiflds for any fields not already in the cache,
+    /// updates the cache, and returns a HashMap of field -> arrow_type_string.
+    ///
+    /// The resolution hierarchy is:
+    /// 1. Manual overrides (passed in)
+    /// 2. Physical cache (~/.xbbg/field_cache.parquet)
+    /// 3. API query (//blp/apiflds FieldInfoRequest)
+    /// 4. Defaults (based on request type)
+    pub async fn resolve_field_types(
+        &self,
+        fields: &[String],
+        manual_overrides: Option<&HashMap<String, String>>,
+        default_type: &str,
+    ) -> Result<HashMap<String, String>, BlpAsyncError> {
+        use crate::field_cache::global_resolver;
+
+        let resolver = global_resolver();
+
+        // Find fields not in cache (and not manually overridden)
+        let uncached: Vec<String> = fields
+            .iter()
+            .filter(|f| {
+                // Skip if manually overridden
+                if let Some(overrides) = manual_overrides {
+                    if overrides.contains_key(*f) || overrides.contains_key(&f.to_uppercase()) {
+                        return false;
+                    }
+                }
+                // Check if in cache
+                resolver.get(f).is_none()
+            })
+            .cloned()
+            .collect();
+
+        // Query //blp/apiflds for uncached fields
+        if !uncached.is_empty() {
+            tracing::debug!(fields = ?uncached, "Querying //blp/apiflds for field types");
+
+            let params = RequestParams {
+                service: "//blp/apiflds".to_string(),
+                operation: "FieldInfoRequest".to_string(),
+                extractor: ExtractorType::FieldInfo,
+                field_ids: Some(uncached.clone()),
+                ..Default::default()
+            };
+
+            match self.request(params).await {
+                Ok(batch) => {
+                    // Update cache from response
+                    resolver.insert_from_response(&batch);
+
+                    // Save cache to disk (async, don't block)
+                    let resolver_clone = resolver.clone();
+                    self.rt.spawn(async move {
+                        if let Err(e) = resolver_clone.save_to_disk() {
+                            tracing::warn!(error = %e, "Failed to save field cache");
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to query field types, using defaults");
+                }
+            }
+        }
+
+        // Now resolve all types using the updated cache
+        Ok(resolver.resolve_types(fields, manual_overrides, default_type))
+    }
+
+    /// Pre-populate the field type cache for a list of fields.
+    pub async fn cache_field_types(&self, fields: &[String]) -> Result<(), BlpAsyncError> {
+        let _ = self.resolve_field_types(fields, None, "string").await?;
+        Ok(())
+    }
+
+    /// Get field info from cache (doesn't query API).
+    pub fn get_field_info(&self, field: &str) -> Option<crate::field_cache::FieldInfo> {
+        crate::field_cache::global_resolver().get(field)
+    }
+
+    /// Clear the field type cache.
+    pub fn clear_field_cache(&self) {
+        crate::field_cache::global_resolver().clear();
+    }
+
+    /// Save the field type cache to disk.
+    pub fn save_field_cache(&self) -> Result<(), String> {
+        crate::field_cache::global_resolver().save_to_disk()
     }
 
     // ─── Admin ───────────────────────────────────────────────────────────────

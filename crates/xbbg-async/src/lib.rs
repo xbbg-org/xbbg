@@ -4,6 +4,7 @@
 mod config;
 mod dispatcher;
 mod errors;
+pub mod field_cache;
 mod requests;
 mod router;
 mod subscriptions;

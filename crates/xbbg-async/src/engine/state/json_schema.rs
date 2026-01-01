@@ -176,6 +176,45 @@ pub struct ErrorInfo<'a> {
     pub message: Option<Cow<'a, str>>,
 }
 
+/// Field info response (from //blp/apiflds FieldInfoRequest).
+/// Structure: { fieldData: [ { fieldInfo: { id, mnemonic, description, datatype, ftype, ... } } ] }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldInfoResponse<'a> {
+    #[serde(borrow, default)]
+    pub field_data: Vec<FieldDataItem<'a>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldDataItem<'a> {
+    #[serde(borrow)]
+    pub field_info: FieldInfoData<'a>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldInfoData<'a> {
+    /// Field ID (e.g., "DS002")
+    #[serde(borrow, default)]
+    pub id: Option<Cow<'a, str>>,
+    /// Field mnemonic (e.g., "PX_LAST")
+    #[serde(borrow, default)]
+    pub mnemonic: Option<Cow<'a, str>>,
+    /// Field description
+    #[serde(borrow, default)]
+    pub description: Option<Cow<'a, str>>,
+    /// Data type (e.g., "Double", "String", "Date")
+    #[serde(borrow, default)]
+    pub datatype: Option<Cow<'a, str>>,
+    /// Field type (e.g., "Price", "Character")
+    #[serde(borrow, default)]
+    pub ftype: Option<Cow<'a, str>>,
+    /// Category names
+    #[serde(borrow, default)]
+    pub category_name: Option<Vec<Cow<'a, str>>>,
+}
+
 /// Generic JSON value that can be borrowed.
 /// Bloomberg API returns heterogeneous types for field values.
 #[derive(Debug, Clone, Deserialize)]
@@ -259,6 +298,11 @@ pub mod parser {
     pub fn parse_intraday_tick(
         json: &mut [u8],
     ) -> Result<IntradayTickResponse<'_>, simd_json::Error> {
+        simd_json::from_slice(json)
+    }
+
+    /// Parse a field info response from JSON bytes.
+    pub fn parse_field_info(json: &mut [u8]) -> Result<FieldInfoResponse<'_>, simd_json::Error> {
         simd_json::from_slice(json)
     }
 }

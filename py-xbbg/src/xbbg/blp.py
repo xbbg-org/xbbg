@@ -19,7 +19,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 import warnings
 
-import narwhals as nw
+import narwhals.stable.v1 as nw
 import pyarrow as pa
 
 from xbbg.services import (
@@ -147,9 +147,11 @@ def _get_engine():
     """Get or create the shared engine instance."""
     global _engine
     if _engine is None:
+        logger.debug("Creating new PyEngine instance")
         from . import _core
 
         _engine = _core.PyEngine()
+        logger.info("PyEngine connected to Bloomberg")
     return _engine
 
 
@@ -421,16 +423,25 @@ async def arequest(
         extractor=extractor_hint,
     )
     params.validate()
+    logger.debug(
+        "Request validated: service=%s operation=%s securities=%s fields=%s",
+        params.service,
+        params.operation,
+        securities_list,
+        fields_list,
+    )
 
     # Get engine and send request
     engine = _get_engine()
     params_dict = params.to_dict()
 
     # Call the generic request method on the engine
-    # Note: This requires the Rust engine to have a `request` method
-    table = await engine.request(params_dict)
+    logger.debug("Sending request to Rust engine")
+    batch = await engine.request(params_dict)
+    logger.debug("Received response: %d rows", batch.num_rows)
 
-    # Convert to requested backend
+    # Convert RecordBatch to Table for narwhals native support (zero-copy)
+    table = pa.Table.from_batches([batch])
     nw_df = nw.from_native(table)
     return _convert_backend(nw_df, backend)
 
@@ -504,6 +515,7 @@ async def abdp(
     *,
     backend: Backend | str | None = None,
     wide: bool | None = None,
+    field_types: dict[str, str] | None = None,
     **kwargs,
 ):
     """Async Bloomberg reference data (BDP).
@@ -514,6 +526,8 @@ async def abdp(
         backend: DataFrame backend to return. If None, uses global default.
             Supports lazy backends: 'polars_lazy', 'narwhals_lazy', 'duckdb'.
         wide: DEPRECATED. Use df.pivot() for wide format.
+        field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
+            If None, types are auto-resolved from Bloomberg field metadata.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -536,6 +550,16 @@ async def abdp(
     overrides = _extract_overrides(kwargs)
     want_wide = _handle_wide_deprecation(wide, kwargs)
 
+    logger.debug("abdp: tickers=%s fields=%s", ticker_list, field_list)
+
+    # Resolve field types if not manually provided
+    engine = _get_engine()
+    resolved_types = await engine.resolve_field_types(
+        field_list,
+        field_types,  # Manual overrides take precedence
+        "string",  # Default type for BDP
+    )
+
     # Use generic arequest with ReferenceDataRequest
     nw_df = await arequest(
         service=Service.REFDATA,
@@ -543,8 +567,11 @@ async def abdp(
         securities=ticker_list,
         fields=field_list,
         overrides=overrides if overrides else None,
+        field_types=resolved_types,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
+
+    logger.debug("abdp: received %d rows", len(nw_df))
 
     # Handle deprecated wide format
     if want_wide:
@@ -561,6 +588,7 @@ async def abdh(
     *,
     backend: Backend | str | None = None,
     wide: bool | None = None,
+    field_types: dict[str, str] | None = None,
     **kwargs,
 ):
     """Async Bloomberg historical data (BDH).
@@ -573,6 +601,8 @@ async def abdh(
         backend: DataFrame backend to return. If None, uses global default.
             Supports lazy backends: 'polars_lazy', 'narwhals_lazy', 'duckdb'.
         wide: DEPRECATED. Use df.pivot() for wide format.
+        field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
+            If None, types are auto-resolved from Bloomberg field metadata.
         **kwargs: Additional overrides and infrastructure options.
             adjust: Adjustment type ('all', 'dvd', 'split', '-', None).
 
@@ -622,6 +652,16 @@ async def abdh(
     # Add any remaining kwargs as overrides
     overrides = _extract_overrides(kwargs)
 
+    logger.debug("abdh: tickers=%s fields=%s start=%s end=%s", ticker_list, field_list, s_dt, e_dt)
+
+    # Resolve field types if not manually provided
+    engine = _get_engine()
+    resolved_types = await engine.resolve_field_types(
+        field_list,
+        field_types,  # Manual overrides take precedence
+        "float64",  # Default type for BDH
+    )
+
     # Use generic arequest with HistoricalDataRequest
     nw_df = await arequest(
         service=Service.REFDATA,
@@ -632,8 +672,11 @@ async def abdh(
         end_date=e_dt,
         overrides=overrides if overrides else None,
         options=options if options else None,
+        field_types=resolved_types,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
+
+    logger.debug("abdh: received %d rows", len(nw_df))
 
     # Handle deprecated wide format
     if want_wide:
@@ -668,6 +711,8 @@ async def abds(
     ticker_list = _normalize_tickers(tickers)
     overrides = _extract_overrides(kwargs)
 
+    logger.debug("abds: tickers=%s field=%s", ticker_list, flds)
+
     # Use generic arequest with ReferenceDataRequest but BULK extractor
     # BDS uses the same Bloomberg operation as BDP, but returns multi-row results
     nw_df = await arequest(
@@ -679,6 +724,8 @@ async def abds(
         extractor=ExtractorHint.BULK,  # Use bulk extractor for multi-row results
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
+
+    logger.debug("abds: received %d rows", len(nw_df))
 
     return _convert_backend(nw_df, backend)
 
@@ -729,6 +776,8 @@ async def abdib(
     else:
         raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
+    logger.debug("abdib: ticker=%s interval=%d start=%s end=%s", ticker, interval, s_dt, e_dt)
+
     # Use generic arequest with IntradayBarRequest
     nw_df = await arequest(
         service=Service.REFDATA,
@@ -740,6 +789,8 @@ async def abdib(
         end_datetime=e_dt,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
+
+    logger.debug("abdib: received %d bars", len(nw_df))
 
     return _convert_backend(nw_df, backend)
 
@@ -772,6 +823,8 @@ async def abdtick(
     s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
     e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
 
+    logger.debug("abdtick: ticker=%s start=%s end=%s", ticker, s_dt, e_dt)
+
     # Use generic arequest with IntradayTickRequest
     nw_df = await arequest(
         service=Service.REFDATA,
@@ -781,6 +834,8 @@ async def abdtick(
         end_datetime=e_dt,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
+
+    logger.debug("abdtick: received %d ticks", len(nw_df))
 
     return _convert_backend(nw_df, backend)
 
@@ -796,6 +851,7 @@ def bdp(
     *,
     backend: Backend | str | None = None,
     wide: bool | None = None,
+    field_types: dict[str, str] | None = None,
     **kwargs,
 ):
     """Bloomberg reference data (BDP).
@@ -807,6 +863,7 @@ def bdp(
         flds: Single field or list of fields to query.
         backend: DataFrame backend to return. If None, uses global default.
         wide: DEPRECATED. Use df.pivot() for wide format.
+        field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -817,7 +874,7 @@ def bdp(
         df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
         df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
     """
-    return asyncio.run(abdp(tickers, flds, backend=backend, wide=wide, **kwargs))
+    return asyncio.run(abdp(tickers, flds, backend=backend, wide=wide, field_types=field_types, **kwargs))
 
 
 def bdh(
@@ -828,6 +885,7 @@ def bdh(
     *,
     backend: Backend | str | None = None,
     wide: bool | None = None,
+    field_types: dict[str, str] | None = None,
     **kwargs,
 ):
     """Bloomberg historical data (BDH).
@@ -841,6 +899,7 @@ def bdh(
         end_date: End date. Defaults to 'today'.
         backend: DataFrame backend to return. If None, uses global default.
         wide: DEPRECATED. Use df.pivot() for wide format.
+        field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
@@ -851,7 +910,9 @@ def bdh(
         df = bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
         df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
     """
-    return asyncio.run(abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, **kwargs))
+    return asyncio.run(
+        abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, field_types=field_types, **kwargs)
+    )
 
 
 def bds(

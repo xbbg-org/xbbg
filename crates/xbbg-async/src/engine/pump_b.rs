@@ -15,8 +15,8 @@ use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, SessionOptions};
 
 use super::state::{
-    BulkDataState, GenericState, HistDataState, HistDataStreamState, OutputFormat, RawJsonState,
-    RefDataState, RequestState,
+    BulkDataState, FieldInfoState, GenericState, HistDataState, HistDataStreamState, OutputFormat,
+    RawJsonState, RefDataState, RequestState,
 };
 use super::{Command, EngineConfig, ExtractorType, RequestParams};
 
@@ -29,6 +29,8 @@ struct PumpB {
     config: EngineConfig,
     /// Cached services
     services: HashMap<String, Service>,
+    /// Send times for round-trip measurement
+    send_times: HashMap<usize, std::time::Instant>,
 }
 
 impl PumpB {
@@ -51,6 +53,7 @@ impl PumpB {
             cmd_rx,
             config,
             services: HashMap::new(),
+            send_times: HashMap::new(),
         })
     }
 
@@ -117,7 +120,9 @@ impl PumpB {
         params: RequestParams,
         reply: oneshot::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
     ) -> Result<(), BlpError> {
+        let t0 = std::time::Instant::now();
         self.ensure_service(&params.service)?;
+        tracing::info!(elapsed_us = t0.elapsed().as_micros(), "ensure_service");
 
         // Create state based on extractor type
         let fields = params.fields.clone().unwrap_or_default();
@@ -140,6 +145,7 @@ impl PumpB {
             }
             ExtractorType::Generic => RequestState::Generic(GenericState::new(reply)),
             ExtractorType::RawJson => RequestState::RawJson(RawJsonState::new(reply)),
+            ExtractorType::FieldInfo => RequestState::FieldInfo(FieldInfoState::new(reply)),
             ExtractorType::IntradayBar | ExtractorType::IntradayTick => {
                 // These should go to Lane C
                 return Err(BlpError::InvalidArgument {
@@ -155,16 +161,15 @@ impl PumpB {
         let cid = CorrelationId::U64(key as u64);
 
         // Build request from params
+        let t1 = std::time::Instant::now();
         let service = self.services.get(&params.service).unwrap();
         let request = self.build_request_from_params(service, &params)?;
+        tracing::info!(elapsed_us = t1.elapsed().as_micros(), "build_request");
 
+        let t2 = std::time::Instant::now();
         self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(
-            key = key,
-            service = %params.service,
-            operation = %params.operation,
-            "request sent"
-        );
+        self.send_times.insert(key, t2);
+        tracing::info!(elapsed_us = t2.elapsed().as_micros(), key = key, "send_request");
         Ok(())
     }
 
@@ -245,6 +250,14 @@ impl PumpB {
             }
         }
 
+        // Set apiflds parameters
+        if let Some(ref search_spec) = params.search_spec {
+            builder = builder.search_spec(search_spec);
+        }
+        if let Some(ref field_ids) = params.field_ids {
+            builder = builder.field_ids(field_ids.clone());
+        }
+
         // Build with the operation name
         builder.build(service, &params.operation)
     }
@@ -289,17 +302,25 @@ impl PumpB {
     }
 
     fn handle_response(&mut self, msg: &xbbg_core::MessageRef) {
+        let t_recv = std::time::Instant::now();
         // Multi-correlator aware
         let n = msg.num_correlation_ids();
         for i in 0..n {
             if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
                 if self.requests.contains(key as usize) {
+                    // Log Bloomberg round-trip time
+                    if let Some(t_send) = self.send_times.remove(&(key as usize)) {
+                        let rtt_ms = t_send.elapsed().as_micros() as f64 / 1000.0;
+                        tracing::info!(rtt_ms = rtt_ms, key = key, "bloomberg_roundtrip");
+                    }
                     let state = self.requests.remove(key as usize);
+                    let t = std::time::Instant::now();
                     state.finish_and_reply(msg);
-                    tracing::debug!(key = key, "response completed");
+                    tracing::info!(elapsed_us = t.elapsed().as_micros(), key = key, "finish_and_reply");
                 }
             }
         }
+        let _ = t_recv; // suppress unused warning
     }
 
     fn handle_request_status(&mut self, msg: &xbbg_core::MessageRef) {

@@ -54,6 +54,10 @@ pub struct RequestBuilder {
     start_date: Option<String>,
     /// End date (for HistoricalDataRequest)
     end_date: Option<String>,
+    /// Search spec for FieldSearchRequest (//blp/apiflds)
+    search_spec: Option<String>,
+    /// Field IDs for FieldInfoRequest (//blp/apiflds)
+    field_ids: Vec<String>,
 }
 
 impl Default for RequestBuilder {
@@ -77,6 +81,8 @@ impl RequestBuilder {
             end_datetime: None,
             start_date: None,
             end_date: None,
+            search_spec: None,
+            field_ids: Vec::new(),
         }
     }
 
@@ -142,6 +148,18 @@ impl RequestBuilder {
         self
     }
 
+    /// Set the search spec for FieldSearchRequest (//blp/apiflds)
+    pub fn search_spec(mut self, spec: &str) -> Self {
+        self.search_spec = Some(spec.to_string());
+        self
+    }
+
+    /// Set the field IDs for FieldInfoRequest (//blp/apiflds)
+    pub fn field_ids(mut self, ids: Vec<String>) -> Self {
+        self.field_ids = ids;
+        self
+    }
+
     pub fn build(self, service: &Service, operation: &str) -> Result<Request> {
         let request = service.create_request(operation)?;
 
@@ -157,6 +175,12 @@ impl RequestBuilder {
                 }
                 "HistoricalDataRequest" => {
                     self.build_historical_data(root_el)?;
+                }
+                "FieldInfoRequest" => {
+                    self.build_field_info(root_el)?;
+                }
+                "FieldSearchRequest" => {
+                    self.build_field_search(root_el)?;
                 }
                 _ => {
                     // ReferenceDataRequest or similar
@@ -535,6 +559,82 @@ impl RequestBuilder {
                 });
             }
         }
+
+        Ok(())
+    }
+
+    /// Build FieldInfoRequest for //blp/apiflds service.
+    /// Uses "id" array for field IDs (per SDK example).
+    unsafe fn build_field_info(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
+        if self.field_ids.is_empty() {
+            return Err(BlpError::InvalidArgument {
+                detail: "FieldInfoRequest requires at least one field ID".into(),
+            });
+        }
+
+        // Get the "id" element (array of field IDs)
+        let mut el_ids: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+        let k_id = CString::new("id").unwrap();
+        let rc = blpapi_sys::blpapi_Element_getElement(
+            root_el,
+            &mut el_ids,
+            k_id.as_ptr(),
+            std::ptr::null(),
+        );
+        if rc != 0 || el_ids.is_null() {
+            return Err(BlpError::Internal {
+                detail: format!("getElement('id') rc={rc}"),
+            });
+        }
+
+        // Append each field ID
+        for field_id in &self.field_ids {
+            let c_id = CString::new(field_id.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setValueString(
+                el_ids,
+                c_id.as_ptr(),
+                blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("append field id failed rc={rc}"),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Build FieldSearchRequest for //blp/apiflds service.
+    /// Uses "searchSpec" string (per SDK example).
+    unsafe fn build_field_search(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
+        let search_spec = self.search_spec.as_ref().ok_or_else(|| BlpError::InvalidArgument {
+            detail: "FieldSearchRequest requires a search_spec".into(),
+        })?;
+
+        // Set searchSpec
+        let k = CString::new("searchSpec").unwrap();
+        let v = CString::new(search_spec.as_str()).unwrap();
+        let rc = blpapi_sys::blpapi_Element_setElementString(
+            root_el,
+            k.as_ptr(),
+            std::ptr::null(),
+            v.as_ptr(),
+        );
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("set searchSpec failed rc={rc}"),
+            });
+        }
+
+        // Set returnFieldDocumentation = true (useful default)
+        let k_doc = CString::new("returnFieldDocumentation").unwrap();
+        blpapi_sys::blpapi_Element_setElementBool(
+            root_el,
+            k_doc.as_ptr(),
+            std::ptr::null(),
+            1, // true
+        );
 
         Ok(())
     }

@@ -1,6 +1,7 @@
 //! Request and subscription state types with Arrow builders.
 
 mod bulkdata;
+mod fieldinfo;
 mod generic;
 mod histdata;
 mod histdata_stream;
@@ -15,6 +16,7 @@ mod subscription;
 pub mod typed_builder;
 
 pub use bulkdata::BulkDataState;
+pub use fieldinfo::FieldInfoState;
 pub use generic::GenericState;
 pub use histdata::HistDataState;
 pub use histdata_stream::HistDataStreamState;
@@ -36,6 +38,7 @@ pub enum RequestState {
     HistDataStream(HistDataStreamState),
     Generic(GenericState),
     RawJson(RawJsonState),
+    FieldInfo(FieldInfoState),
 }
 
 /// Unified request state for Lane C (intraday requests).
@@ -57,6 +60,7 @@ impl RequestState {
             RequestState::HistDataStream(s) => s.on_partial(msg),
             RequestState::Generic(s) => s.on_partial(msg),
             RequestState::RawJson(s) => s.on_partial(msg),
+            RequestState::FieldInfo(s) => s.on_partial(msg),
         }
     }
 
@@ -69,6 +73,7 @@ impl RequestState {
             RequestState::HistDataStream(s) => s.finish(msg),
             RequestState::Generic(s) => s.finish(msg),
             RequestState::RawJson(s) => s.finish(msg),
+            RequestState::FieldInfo(s) => s.finish(msg),
         }
     }
 
@@ -89,6 +94,9 @@ impl RequestState {
                 let _ = s.reply.send(Err(error));
             }
             RequestState::RawJson(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            RequestState::FieldInfo(s) => {
                 let _ = s.reply.send(Err(error));
             }
         }
