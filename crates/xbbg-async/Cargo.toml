@@ -18,11 +18,10 @@ ahash = "0.8"
 slab = "0.4"
 arrow = "57.1.0"
 arrow-json = "57.1.0"
-parquet = { version = "57.1.0", features = ["arrow"] }
 simd-json = "0.17"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 chrono = "0.4"
-dirs = "6.0"
 
 [features]
 default = []

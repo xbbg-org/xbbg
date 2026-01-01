@@ -2,19 +2,19 @@
 //!
 //! Provides automatic field type resolution using a hierarchy:
 //! 1. Manual Override (from Python)
-//! 2. Physical Cache (~/.xbbg/field_cache.parquet)
+//! 2. Physical Cache (~/.xbbg/field_cache.json)
 //! 3. API Query (//blp/apiflds service)
 //! 4. Defaults (bdp=String, bdh=Float64)
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use arrow::array::{Array, ArrayRef, RecordBatch, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-use parquet::arrow::ArrowWriter;
+use arrow::array::{Array, RecordBatch, StringArray};
+use arrow::datatypes::DataType;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 /// Bloomberg field type as returned by //blp/apiflds.
@@ -91,11 +91,13 @@ impl BlpFieldType {
 }
 
 /// Cached field information.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FieldInfo {
     pub field_id: String,
     pub arrow_type: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
     pub category: String,
 }
 
@@ -110,7 +112,7 @@ pub struct FieldTypeResolver {
 }
 
 impl FieldTypeResolver {
-    /// Create a new resolver with default cache path (~/.xbbg/field_cache.parquet).
+    /// Create a new resolver with default cache path (~/.xbbg/field_cache.json).
     pub fn new() -> Self {
         let cache_path = Self::default_cache_path();
         Self {
@@ -131,10 +133,15 @@ impl FieldTypeResolver {
 
     /// Get the default cache path.
     fn default_cache_path() -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
+        // Use standard home directory detection
+        #[cfg(windows)]
+        let home = std::env::var("USERPROFILE").ok().map(PathBuf::from);
+        #[cfg(not(windows))]
+        let home = std::env::var("HOME").ok().map(PathBuf::from);
+
+        home.unwrap_or_else(|| PathBuf::from("."))
             .join(".xbbg")
-            .join("field_cache.parquet")
+            .join("field_cache.json")
     }
 
     /// Ensure cache is loaded from disk.
@@ -146,7 +153,7 @@ impl FieldTypeResolver {
         }
     }
 
-    /// Load cache from Parquet file.
+    /// Load cache from JSON file.
     fn load_from_disk(&self) {
         if !self.cache_path.exists() {
             debug!(path = %self.cache_path.display(), "Cache file does not exist");
@@ -161,80 +168,25 @@ impl FieldTypeResolver {
             }
         };
 
-        let reader = match ParquetRecordBatchReaderBuilder::try_new(file) {
-            Ok(builder) => match builder.build() {
-                Ok(r) => r,
-                Err(e) => {
-                    warn!(error = %e, "Failed to build Parquet reader");
-                    return;
-                }
-            },
+        let reader = BufReader::new(file);
+        let entries: Vec<FieldInfo> = match serde_json::from_reader(reader) {
+            Ok(v) => v,
             Err(e) => {
-                warn!(error = %e, "Failed to create Parquet reader");
+                warn!(error = %e, "Failed to parse cache file");
                 return;
             }
         };
 
         let mut cache = self.cache.write().unwrap();
-        let mut count = 0;
-
-        for batch_result in reader {
-            let batch = match batch_result {
-                Ok(b) => b,
-                Err(e) => {
-                    warn!(error = %e, "Failed to read batch");
-                    continue;
-                }
-            };
-
-            // Extract columns
-            let field_col = batch
-                .column_by_name("field")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-            let type_col = batch
-                .column_by_name("type")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-            let desc_col = batch
-                .column_by_name("description")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-            let cat_col = batch
-                .column_by_name("category")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-
-            if let (Some(fields), Some(types)) = (field_col, type_col) {
-                for i in 0..batch.num_rows() {
-                    if fields.is_null(i) || types.is_null(i) {
-                        continue;
-                    }
-                    let field_id = fields.value(i).to_uppercase();
-                    let arrow_type = types.value(i).to_string();
-                    let description = desc_col
-                        .and_then(|c| if c.is_null(i) { None } else { Some(c.value(i)) })
-                        .unwrap_or("")
-                        .to_string();
-                    let category = cat_col
-                        .and_then(|c| if c.is_null(i) { None } else { Some(c.value(i)) })
-                        .unwrap_or("")
-                        .to_string();
-
-                    cache.insert(
-                        field_id.clone(),
-                        FieldInfo {
-                            field_id,
-                            arrow_type,
-                            description,
-                            category,
-                        },
-                    );
-                    count += 1;
-                }
-            }
+        for info in entries {
+            let key = info.field_id.to_uppercase();
+            cache.insert(key, info);
         }
 
-        info!(count = count, path = %self.cache_path.display(), "Loaded field cache");
+        info!(count = cache.len(), path = %self.cache_path.display(), "Loaded field cache");
     }
 
-    /// Save cache to Parquet file.
+    /// Save cache to JSON file.
     pub fn save_to_disk(&self) -> Result<(), String> {
         self.ensure_loaded();
 
@@ -249,50 +201,15 @@ impl FieldTypeResolver {
             return Ok(());
         }
 
-        // Build arrays
-        let mut fields: Vec<&str> = Vec::with_capacity(cache.len());
-        let mut types: Vec<&str> = Vec::with_capacity(cache.len());
-        let mut descriptions: Vec<&str> = Vec::with_capacity(cache.len());
-        let mut categories: Vec<&str> = Vec::with_capacity(cache.len());
+        // Collect entries
+        let entries: Vec<&FieldInfo> = cache.values().collect();
 
-        for info in cache.values() {
-            fields.push(&info.field_id);
-            types.push(&info.arrow_type);
-            descriptions.push(&info.description);
-            categories.push(&info.category);
-        }
+        let file = fs::File::create(&self.cache_path)
+            .map_err(|e| format!("Failed to create file: {e}"))?;
+        let writer = BufWriter::new(file);
 
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("field", DataType::Utf8, false),
-            Field::new("type", DataType::Utf8, false),
-            Field::new("description", DataType::Utf8, true),
-            Field::new("category", DataType::Utf8, true),
-        ]));
-
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(StringArray::from(fields)) as ArrayRef,
-                Arc::new(StringArray::from(types)) as ArrayRef,
-                Arc::new(StringArray::from(descriptions)) as ArrayRef,
-                Arc::new(StringArray::from(categories)) as ArrayRef,
-            ],
-        )
-        .map_err(|e| format!("Failed to create batch: {e}"))?;
-
-        let file =
-            fs::File::create(&self.cache_path).map_err(|e| format!("Failed to create file: {e}"))?;
-
-        let mut writer = ArrowWriter::try_new(file, schema, None)
-            .map_err(|e| format!("Failed to create writer: {e}"))?;
-
-        writer
-            .write(&batch)
-            .map_err(|e| format!("Failed to write batch: {e}"))?;
-
-        writer
-            .close()
-            .map_err(|e| format!("Failed to close writer: {e}"))?;
+        serde_json::to_writer_pretty(writer, &entries)
+            .map_err(|e| format!("Failed to write JSON: {e}"))?;
 
         info!(count = cache.len(), path = %self.cache_path.display(), "Saved field cache");
         Ok(())
