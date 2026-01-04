@@ -124,20 +124,41 @@ class ExtractorHint(str, Enum):
     """Field info extractor: [field, type, description, category]"""
 
 
-class LongMode(str, Enum):
-    """Long format output mode for reference data (bdp).
+class Format(str, Enum):
+    """Output format for reference data (bdp/bdh).
 
-    Controls how values are represented in the Arrow output.
+    Controls the shape and typing of the output DataFrame.
     """
 
-    STRING = "string"
-    """All values as strings (default, backwards-compatible)."""
+    LONG = "long"
+    """Long format with all values as strings (default, backwards-compatible).
 
-    WITH_METADATA = "metadata"
-    """String values with dtype column containing Arrow type name."""
+    Columns: ticker, field, value
+    """
 
-    TYPED = "typed"
-    """Multi-value columns: value_f64, value_i64, value_str, value_bool, value_date, value_ts."""
+    LONG_TYPED = "long_typed"
+    """Long format with typed value columns.
+
+    Columns: ticker, field, value_f64, value_i64, value_str, value_bool, value_date, value_ts
+    Each row populates one value column based on the field's data type.
+    """
+
+    LONG_WITH_METADATA = "long_metadata"
+    """Long format with string values and dtype metadata column.
+
+    Columns: ticker, field, value, dtype
+    The dtype column contains the Arrow type name (float64, int64, string, etc.)
+    """
+
+    WIDE = "wide"
+    """Wide format with fields as columns (DEPRECATED).
+
+    Use df.pivot(on='field', index='ticker', values='value') instead.
+    """
+
+
+# Backwards compatibility alias
+LongMode = Format
 
 
 # Mapping from Operation to default ExtractorHint
@@ -185,7 +206,7 @@ class RequestParams:
         field_types: Manual type overrides for fields (for issue #168).
         output: Output format (arrow or json).
         extractor: Override the auto-detected extractor hint.
-        long_mode: Long format output mode (String, WithMetadata, Typed).
+        format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
     """
 
     service: str | Service
@@ -204,7 +225,7 @@ class RequestParams:
     field_types: dict[str, str] | None = None
     output: OutputMode = OutputMode.ARROW
     extractor: ExtractorHint | None = None
-    long_mode: LongMode | None = None
+    format: Format | None = None
 
     # Computed fields (set during validation)
     _resolved_extractor: ExtractorHint = field(default=ExtractorHint.GENERIC, init=False, repr=False)
@@ -339,7 +360,9 @@ class RequestParams:
             result["options"] = list(self.options)
         if self.field_types is not None:
             result["field_types"] = self.field_types
-        if self.long_mode is not None:
-            result["long_mode"] = self.long_mode.value if isinstance(self.long_mode, LongMode) else self.long_mode
+        if self.format is not None:
+            # Pass format value to Rust (handles LONG, LONG_TYPED, LONG_WITH_METADATA)
+            # WIDE is handled in Python layer via pivot
+            result["format"] = self.format.value if isinstance(self.format, Format) else self.format
 
         return result

@@ -30,8 +30,8 @@ pub use snapshot::handle::SnapshotTemplateHandle;
 pub use snapshot::manager::SnapshotTemplateManager;
 pub use subscriptions::SubscriptionHandle;
 
-// New two-session Engine
-pub use engine::{Command, Engine, EngineConfig, SlabKey};
+// New worker pool Engine
+pub use engine::{Engine, EngineConfig, SlabKey};
 
 pub struct AsyncSession {
     core: Arc<Session>,

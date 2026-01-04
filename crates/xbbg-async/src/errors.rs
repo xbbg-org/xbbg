@@ -8,8 +8,18 @@ pub enum BlpAsyncError {
     #[error(transparent)]
     Blp(#[from] BlpError),
 
+    /// Bloomberg error (explicit, not From trait)
+    #[error("bloomberg error: {0}")]
+    BlpError(BlpError),
+
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("configuration error: {detail}")]
+    ConfigError { detail: String },
+
+    #[error("channel closed")]
+    ChannelClosed,
 
     #[error("stream full")]
     StreamFull,

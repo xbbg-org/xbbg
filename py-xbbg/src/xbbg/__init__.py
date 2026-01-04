@@ -295,6 +295,7 @@ __all__ = [
     "__version__",
     "_core",
     "Backend",
+    "EngineConfig",
     # Generic API (power users)
     "arequest",
     "request",
@@ -311,6 +312,7 @@ __all__ = [
     "abdib",
     "abdtick",
     # Config
+    "configure",
     "set_backend",
     "get_backend",
     "get_sdk_info",
@@ -388,6 +390,7 @@ def __getattr__(name: str):
     # blp module exports
     if name in (
         "Backend",
+        "EngineConfig",
         "arequest",
         "request",
         "bdp",
@@ -400,6 +403,7 @@ def __getattr__(name: str):
         "abdh",
         "abdib",
         "abdtick",
+        "configure",
         "set_backend",
         "get_backend",
         "Service",

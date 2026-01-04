@@ -154,9 +154,17 @@ fn blp_async_error_to_pyerr(e: BlpAsyncError) -> PyErr {
     match e {
         // Route structured BlpError through the full exception mapper
         BlpAsyncError::Blp(blp_err) => blp_error_to_pyerr(blp_err),
+        // Explicit BlpError (not From trait)
+        BlpAsyncError::BlpError(blp_err) => blp_error_to_pyerr(blp_err),
 
         BlpAsyncError::Internal(msg) => BlpInternalError::new_err(msg),
 
+        BlpAsyncError::ConfigError { detail } => {
+            BlpValidationError::new_err(format!("Configuration error: {}", detail))
+        }
+        BlpAsyncError::ChannelClosed => {
+            BlpInternalError::new_err("Channel closed unexpectedly")
+        }
         BlpAsyncError::StreamFull => {
             BlpInternalError::new_err("Stream buffer full - consumer too slow")
         }
@@ -191,6 +199,60 @@ fn format_error_msg(
     }
 }
 
+/// Python configuration for the xbbg Engine.
+///
+/// All settings have sensible defaults - you only need to specify what you want to change.
+#[pyclass]
+#[derive(Clone)]
+pub struct PyEngineConfig {
+    /// Bloomberg server host (default: "localhost")
+    #[pyo3(get, set)]
+    pub host: String,
+    /// Bloomberg server port (default: 8194)
+    #[pyo3(get, set)]
+    pub port: u16,
+    /// Number of pre-warmed request workers (default: 2)
+    #[pyo3(get, set)]
+    pub request_pool_size: usize,
+    /// Number of pre-warmed subscription sessions (default: 4)
+    #[pyo3(get, set)]
+    pub subscription_pool_size: usize,
+}
+
+#[pymethods]
+impl PyEngineConfig {
+    /// Create a new configuration with defaults.
+    #[new]
+    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4))]
+    fn new(host: &str, port: u16, request_pool_size: usize, subscription_pool_size: usize) -> Self {
+        Self {
+            host: host.to_string(),
+            port,
+            request_pool_size,
+            subscription_pool_size,
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={})",
+            self.host, self.port, self.request_pool_size, self.subscription_pool_size
+        )
+    }
+}
+
+impl From<&PyEngineConfig> for EngineConfig {
+    fn from(py_config: &PyEngineConfig) -> Self {
+        EngineConfig {
+            server_host: py_config.host.clone(),
+            server_port: py_config.port,
+            request_pool_size: py_config.request_pool_size,
+            subscription_pool_size: py_config.subscription_pool_size,
+            ..Default::default()
+        }
+    }
+}
+
 /// Python wrapper for the xbbg Engine.
 #[pyclass]
 struct PyEngine {
@@ -199,9 +261,10 @@ struct PyEngine {
 
 #[pymethods]
 impl PyEngine {
-    /// Create a new Engine with optional configuration.
+    /// Create a new Engine with optional host/port configuration.
     ///
     /// This blocks while connecting to Bloomberg. GIL is released during connection.
+    /// For more configuration options, use `Engine.with_config()`.
     #[new]
     #[pyo3(signature = (host="localhost", port=8194))]
     fn new(py: Python<'_>, host: &str, port: u16) -> PyResult<Self> {
@@ -216,6 +279,47 @@ impl PyEngine {
         // Release GIL during blocking Engine::start()
         let engine = py
             .detach(|| Engine::start(config))
+            .map_err(|e| {
+                warn!(error = %e, "PyEngine: connection failed");
+                blp_async_error_to_pyerr(e)
+            })?;
+
+        info!("PyEngine: connected successfully");
+
+        Ok(Self {
+            engine: Arc::new(engine),
+        })
+    }
+
+    /// Create a new Engine with full configuration.
+    ///
+    /// This blocks while connecting to Bloomberg. GIL is released during connection.
+    ///
+    /// Example:
+    /// ```python
+    /// config = EngineConfig(
+    ///     host="localhost",
+    ///     port=8194,
+    ///     request_pool_size=4,
+    ///     subscription_pool_size=8,
+    /// )
+    /// engine = Engine.with_config(config)
+    /// ```
+    #[staticmethod]
+    fn with_config(py: Python<'_>, config: &PyEngineConfig) -> PyResult<Self> {
+        info!(
+            host = %config.host,
+            port = config.port,
+            request_pool_size = config.request_pool_size,
+            subscription_pool_size = config.subscription_pool_size,
+            "PyEngine: connecting with custom config"
+        );
+
+        let rust_config: EngineConfig = config.into();
+
+        // Release GIL during blocking Engine::start()
+        let engine = py
+            .detach(|| Engine::start(rust_config))
             .map_err(|e| {
                 warn!(error = %e, "PyEngine: connection failed");
                 blp_async_error_to_pyerr(e)
@@ -429,8 +533,8 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
-    let long_mode: Option<String> = dict
-        .get_item("long_mode")?
+    let format: Option<String> = dict
+        .get_item("format")?
         .map(|v| v.extract())
         .transpose()?;
 
@@ -452,7 +556,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         field_types,
         search_spec,
         field_ids,
-        long_mode,
+        format,
     })
 }
 
@@ -506,6 +610,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", pkg_version)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_class::<PyEngine>()?;
+    m.add_class::<PyEngineConfig>()?;
 
     // Register exception classes for use from Python
     m.add("BlpError", _py.get_type::<BlpErrorBase>())?;

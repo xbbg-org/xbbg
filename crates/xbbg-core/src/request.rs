@@ -560,6 +560,35 @@ impl RequestBuilder {
             }
         }
 
+        // eventTypes (array) - required for IntradayTickRequest
+        // Get the eventTypes element
+        let mut el_event_types: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+        let k_event_types = CString::new("eventTypes").unwrap();
+        let rc = blpapi_sys::blpapi_Element_getElement(
+            root_el,
+            &mut el_event_types,
+            k_event_types.as_ptr(),
+            std::ptr::null(),
+        );
+        if rc != 0 || el_event_types.is_null() {
+            return Err(BlpError::Internal {
+                detail: format!("getElement('eventTypes') rc={rc}"),
+            });
+        }
+        // Use provided event_type or default to TRADE
+        let event_type = self.event_type.as_deref().unwrap_or("TRADE");
+        let v = CString::new(event_type).unwrap();
+        let rc = blpapi_sys::blpapi_Element_setValueString(
+            el_event_types,
+            v.as_ptr(),
+            blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+        );
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("append eventType failed rc={rc}"),
+            });
+        }
+
         Ok(())
     }
 

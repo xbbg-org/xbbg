@@ -13,6 +13,7 @@ API Design:
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 import logging
@@ -24,7 +25,7 @@ import pyarrow as pa
 
 from xbbg.services import (
     ExtractorHint,
-    LongMode,
+    Format,
     Operation,
     OutputMode,
     RequestParams,
@@ -61,6 +62,7 @@ class Backend(str, Enum):
 
 __all__ = [
     "Backend",
+    "EngineConfig",
     # Generic API (power users)
     "arequest",
     "request",
@@ -77,6 +79,7 @@ __all__ = [
     "bdib",
     "bdtick",
     # Config
+    "configure",
     "set_backend",
     "get_backend",
     # Re-exports from services
@@ -87,11 +90,122 @@ __all__ = [
     "ExtractorHint",
 ]
 
+
+@dataclass
+class EngineConfig:
+    """Configuration for the xbbg Engine.
+
+    All settings have sensible defaults - you only need to specify what you want to change.
+
+    Attributes:
+        host: Bloomberg server host (default: "localhost")
+        port: Bloomberg server port (default: 8194)
+        request_pool_size: Number of pre-warmed request workers (default: 2)
+        subscription_pool_size: Number of pre-warmed subscription sessions (default: 4)
+
+    Example::
+
+        from xbbg import configure, EngineConfig
+
+        # Configure before first request
+        configure(EngineConfig(
+            request_pool_size=4,
+            subscription_pool_size=8,
+        ))
+
+        # Or use configure() with keyword arguments
+        configure(request_pool_size=4, subscription_pool_size=8)
+    """
+
+    host: str = "localhost"
+    port: int = 8194
+    request_pool_size: int = 2
+    subscription_pool_size: int = 4
+
+
 # Backend configuration
 _default_backend: Backend | None = None
 
+# Engine configuration (set before first use)
+_config: EngineConfig | None = None
+
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
+
+
+def configure(
+    config: EngineConfig | None = None,
+    *,
+    host: str | None = None,
+    port: int | None = None,
+    request_pool_size: int | None = None,
+    subscription_pool_size: int | None = None,
+) -> None:
+    """Configure the xbbg engine before first use.
+
+    This function must be called before any Bloomberg request is made.
+    If called after the engine has started, a RuntimeError is raised.
+
+    Can be called with either an EngineConfig object or keyword arguments.
+
+    Args:
+        config: An EngineConfig object with all settings.
+        host: Bloomberg server host (default: "localhost")
+        port: Bloomberg server port (default: 8194)
+        request_pool_size: Number of pre-warmed request workers (default: 2)
+        subscription_pool_size: Number of pre-warmed subscription sessions (default: 4)
+
+    Raises:
+        RuntimeError: If called after the engine has already started.
+
+    Example::
+
+        import xbbg
+
+        # Option 1: Using keyword arguments
+        xbbg.configure(request_pool_size=4, subscription_pool_size=8)
+
+        # Option 2: Using EngineConfig object
+        from xbbg import EngineConfig
+        xbbg.configure(EngineConfig(request_pool_size=4))
+
+        # Now make requests - configuration takes effect
+        df = xbbg.bdp("AAPL US Equity", "PX_LAST")
+    """
+    global _config, _engine
+
+    if _engine is not None:
+        raise RuntimeError(
+            "Cannot configure after engine has started. "
+            "Call xbbg.configure() before any Bloomberg request."
+        )
+
+    if config is not None:
+        # Use the provided config, optionally overriding with kwargs
+        _config = EngineConfig(
+            host=host if host is not None else config.host,
+            port=port if port is not None else config.port,
+            request_pool_size=request_pool_size if request_pool_size is not None else config.request_pool_size,
+            subscription_pool_size=subscription_pool_size
+            if subscription_pool_size is not None
+            else config.subscription_pool_size,
+        )
+    else:
+        # Build config from kwargs, using defaults for unspecified values
+        _config = EngineConfig(
+            host=host if host is not None else "localhost",
+            port=port if port is not None else 8194,
+            request_pool_size=request_pool_size if request_pool_size is not None else 2,
+            subscription_pool_size=subscription_pool_size if subscription_pool_size is not None else 4,
+        )
+
+    logger.info(
+        "Engine configured: host=%s port=%d request_pool=%d subscription_pool=%d",
+        _config.host,
+        _config.port,
+        _config.request_pool_size,
+        _config.subscription_pool_size,
+    )
 
 
 def set_backend(backend: Backend | str | None) -> None:
@@ -148,10 +262,28 @@ def _get_engine():
     """Get or create the shared engine instance."""
     global _engine
     if _engine is None:
-        logger.debug("Creating new PyEngine instance")
         from . import _core
 
-        _engine = _core.PyEngine()
+        if _config is not None:
+            # Use user-provided configuration
+            logger.debug(
+                "Creating PyEngine with config: host=%s port=%d request_pool=%d subscription_pool=%d",
+                _config.host,
+                _config.port,
+                _config.request_pool_size,
+                _config.subscription_pool_size,
+            )
+            py_config = _core.PyEngineConfig(
+                host=_config.host,
+                port=_config.port,
+                request_pool_size=_config.request_pool_size,
+                subscription_pool_size=_config.subscription_pool_size,
+            )
+            _engine = _core.PyEngine.with_config(py_config)
+        else:
+            # Use defaults
+            logger.debug("Creating new PyEngine instance with default config")
+            _engine = _core.PyEngine()
         logger.info("PyEngine connected to Bloomberg")
     return _engine
 
@@ -205,7 +337,6 @@ def _extract_overrides(kwargs: dict) -> list[tuple[str, str]]:
         "interval",
         "typ",
         "adjust",
-        "wide",
         "backend",
     }
 
@@ -281,22 +412,6 @@ def _convert_backend(
     return nw_df
 
 
-def _handle_wide_deprecation(wide: bool | None, kwargs: dict) -> bool:
-    """Handle the deprecated wide parameter.
-
-    Returns True if wide format was requested (with warning).
-    """
-    if wide is True:
-        warnings.warn(
-            "wide=True is deprecated and will be removed in v2.0. "
-            "Data is now returned in long format by default. "
-            "Use df.pivot(on='field', index=['ticker', 'date'], values='value') "
-            "to convert to wide format.",
-            DeprecationWarning,
-            stacklevel=4,
-        )
-        return True
-    return False
 
 
 # =============================================================================
@@ -322,7 +437,7 @@ async def arequest(
     field_types: dict[str, str] | None = None,
     output: OutputMode | str = OutputMode.ARROW,
     extractor: ExtractorHint | str | None = None,
-    long_mode: LongMode | str | None = None,
+    format: Format | str | None = None,
     backend: Backend | str | None = None,
 ):
     """Async generic Bloomberg request.
@@ -405,10 +520,10 @@ async def arequest(
     if extractor is not None:
         extractor_hint = ExtractorHint(extractor) if isinstance(extractor, str) else extractor
 
-    # Normalize long_mode
-    long_mode_hint: LongMode | None = None
-    if long_mode is not None:
-        long_mode_hint = LongMode(long_mode) if isinstance(long_mode, str) else long_mode
+    # Normalize format
+    format_hint: Format | None = None
+    if format is not None:
+        format_hint = Format(format) if isinstance(format, str) else format
 
     # Build and validate params
     params = RequestParams(
@@ -428,7 +543,7 @@ async def arequest(
         field_types=field_types,
         output=OutputMode(output) if isinstance(output, str) else output,
         extractor=extractor_hint,
-        long_mode=long_mode_hint,
+        format=format_hint,
     )
     params.validate()
     logger.debug(
@@ -522,9 +637,8 @@ async def abdp(
     flds: str | Sequence[str] | None = None,
     *,
     backend: Backend | str | None = None,
-    wide: bool | None = None,
+    format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
-    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Async Bloomberg reference data (BDP).
@@ -534,13 +648,13 @@ async def abdp(
         flds: Single field or list of fields to query.
         backend: DataFrame backend to return. If None, uses global default.
             Supports lazy backends: 'polars_lazy', 'narwhals_lazy', 'duckdb'.
-        wide: DEPRECATED. Use df.pivot() for wide format.
+        format: Output format. Options:
+            - Format.LONG (default): ticker, field, value (strings)
+            - Format.LONG_TYPED: ticker, field, value_f64, value_i64, etc.
+            - Format.LONG_WITH_METADATA: ticker, field, value, dtype
+            - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
-        long_mode: Output mode for Long format values. Options:
-            - LongMode.STRING (default): All values as strings
-            - LongMode.WITH_METADATA: String values with dtype column
-            - LongMode.TYPED: Multi-value columns (value_f64, value_i64, etc.)
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -561,7 +675,22 @@ async def abdp(
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
     overrides = _extract_overrides(kwargs)
-    want_wide = _handle_wide_deprecation(wide, kwargs)
+
+    # Normalize format
+    fmt = Format(format) if isinstance(format, str) else format
+
+    # Handle deprecated WIDE format
+    want_wide = fmt == Format.WIDE if fmt else False
+    if want_wide:
+        warnings.warn(
+            "Format.WIDE is deprecated and will be removed in v2.0. "
+            "Use format=Format.LONG (default) and then call "
+            "df.pivot(on='field', index='ticker', values='value') "
+            "to convert to wide format.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        fmt = None  # Use default long format, then pivot
 
     logger.debug("abdp: tickers=%s fields=%s", ticker_list, field_list)
 
@@ -581,7 +710,7 @@ async def abdp(
         fields=field_list,
         overrides=overrides if overrides else None,
         field_types=resolved_types,
-        long_mode=long_mode,
+        format=fmt,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
 
@@ -601,9 +730,8 @@ async def abdh(
     end_date: str = "today",
     *,
     backend: Backend | str | None = None,
-    wide: bool | None = None,
+    format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
-    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Async Bloomberg historical data (BDH).
@@ -615,13 +743,13 @@ async def abdh(
         end_date: End date. Defaults to 'today'.
         backend: DataFrame backend to return. If None, uses global default.
             Supports lazy backends: 'polars_lazy', 'narwhals_lazy', 'duckdb'.
-        wide: DEPRECATED. Use df.pivot() for wide format.
+        format: Output format. Options:
+            - Format.LONG (default): ticker, date, field, value (strings)
+            - Format.LONG_TYPED: ticker, date, field, value_f64, value_i64, etc.
+            - Format.LONG_WITH_METADATA: ticker, date, field, value, dtype
+            - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
-        long_mode: Output mode for Long format values. Options:
-            - LongMode.STRING (default): All values as strings
-            - LongMode.WITH_METADATA: String values with dtype column
-            - LongMode.TYPED: Multi-value columns (value_f64, value_i64, etc.)
         **kwargs: Additional overrides and infrastructure options.
             adjust: Adjustment type ('all', 'dvd', 'split', '-', None).
 
@@ -642,7 +770,22 @@ async def abdh(
     """
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
-    want_wide = _handle_wide_deprecation(wide, kwargs)
+
+    # Normalize format
+    fmt = Format(format) if isinstance(format, str) else format
+
+    # Handle deprecated WIDE format
+    want_wide = fmt == Format.WIDE if fmt else False
+    if want_wide:
+        warnings.warn(
+            "Format.WIDE is deprecated and will be removed in v2.0. "
+            "Use format=Format.LONG (default) and then call "
+            "df.pivot(on='field', index=['ticker', 'date'], values='value') "
+            "to convert to wide format.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        fmt = None  # Use default long format, then pivot
 
     # Handle dates
     e_dt = _fmt_date(end_date, "%Y%m%d")
@@ -692,7 +835,7 @@ async def abdh(
         overrides=overrides if overrides else None,
         options=options if options else None,
         field_types=resolved_types,
-        long_mode=long_mode,
+        format=fmt,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
 
@@ -870,9 +1013,8 @@ def bdp(
     flds: str | Sequence[str] | None = None,
     *,
     backend: Backend | str | None = None,
-    wide: bool | None = None,
+    format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
-    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Bloomberg reference data (BDP).
@@ -883,9 +1025,8 @@ def bdp(
         tickers: Single ticker or list of tickers.
         flds: Single field or list of fields to query.
         backend: DataFrame backend to return. If None, uses global default.
-        wide: DEPRECATED. Use df.pivot() for wide format.
+        format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
-        long_mode: Output mode for Long format values (STRING, WITH_METADATA, TYPED).
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -896,7 +1037,7 @@ def bdp(
         df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
         df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
     """
-    return asyncio.run(abdp(tickers, flds, backend=backend, wide=wide, field_types=field_types, long_mode=long_mode, **kwargs))
+    return asyncio.run(abdp(tickers, flds, backend=backend, format=format, field_types=field_types, **kwargs))
 
 
 def bdh(
@@ -906,9 +1047,8 @@ def bdh(
     end_date: str = "today",
     *,
     backend: Backend | str | None = None,
-    wide: bool | None = None,
+    format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
-    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Bloomberg historical data (BDH).
@@ -921,9 +1061,8 @@ def bdh(
         start_date: Start date. Defaults to 8 weeks before end_date.
         end_date: End date. Defaults to 'today'.
         backend: DataFrame backend to return. If None, uses global default.
-        wide: DEPRECATED. Use df.pivot() for wide format.
+        format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
-        long_mode: Output mode for Long format values (STRING, WITH_METADATA, TYPED).
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
@@ -935,7 +1074,7 @@ def bdh(
         df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
     """
     return asyncio.run(
-        abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, field_types=field_types, long_mode=long_mode, **kwargs)
+        abdh(tickers, flds, start_date, end_date, backend=backend, format=format, field_types=field_types, **kwargs)
     )
 
 
