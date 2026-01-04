@@ -524,6 +524,7 @@ async def abdp(
     backend: Backend | str | None = None,
     wide: bool | None = None,
     field_types: dict[str, str] | None = None,
+    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Async Bloomberg reference data (BDP).
@@ -536,6 +537,10 @@ async def abdp(
         wide: DEPRECATED. Use df.pivot() for wide format.
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
+        long_mode: Output mode for Long format values. Options:
+            - LongMode.STRING (default): All values as strings
+            - LongMode.WITH_METADATA: String values with dtype column
+            - LongMode.TYPED: Multi-value columns (value_f64, value_i64, etc.)
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -576,6 +581,7 @@ async def abdp(
         fields=field_list,
         overrides=overrides if overrides else None,
         field_types=resolved_types,
+        long_mode=long_mode,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
 
@@ -597,6 +603,7 @@ async def abdh(
     backend: Backend | str | None = None,
     wide: bool | None = None,
     field_types: dict[str, str] | None = None,
+    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Async Bloomberg historical data (BDH).
@@ -611,6 +618,10 @@ async def abdh(
         wide: DEPRECATED. Use df.pivot() for wide format.
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
+        long_mode: Output mode for Long format values. Options:
+            - LongMode.STRING (default): All values as strings
+            - LongMode.WITH_METADATA: String values with dtype column
+            - LongMode.TYPED: Multi-value columns (value_f64, value_i64, etc.)
         **kwargs: Additional overrides and infrastructure options.
             adjust: Adjustment type ('all', 'dvd', 'split', '-', None).
 
@@ -681,6 +692,7 @@ async def abdh(
         overrides=overrides if overrides else None,
         options=options if options else None,
         field_types=resolved_types,
+        long_mode=long_mode,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
 
@@ -860,6 +872,7 @@ def bdp(
     backend: Backend | str | None = None,
     wide: bool | None = None,
     field_types: dict[str, str] | None = None,
+    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Bloomberg reference data (BDP).
@@ -872,6 +885,7 @@ def bdp(
         backend: DataFrame backend to return. If None, uses global default.
         wide: DEPRECATED. Use df.pivot() for wide format.
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
+        long_mode: Output mode for Long format values (STRING, WITH_METADATA, TYPED).
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -882,7 +896,7 @@ def bdp(
         df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
         df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
     """
-    return asyncio.run(abdp(tickers, flds, backend=backend, wide=wide, field_types=field_types, **kwargs))
+    return asyncio.run(abdp(tickers, flds, backend=backend, wide=wide, field_types=field_types, long_mode=long_mode, **kwargs))
 
 
 def bdh(
@@ -894,6 +908,7 @@ def bdh(
     backend: Backend | str | None = None,
     wide: bool | None = None,
     field_types: dict[str, str] | None = None,
+    long_mode: LongMode | str | None = None,
     **kwargs,
 ):
     """Bloomberg historical data (BDH).
@@ -908,6 +923,7 @@ def bdh(
         backend: DataFrame backend to return. If None, uses global default.
         wide: DEPRECATED. Use df.pivot() for wide format.
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
+        long_mode: Output mode for Long format values (STRING, WITH_METADATA, TYPED).
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
@@ -919,7 +935,7 @@ def bdh(
         df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
     """
     return asyncio.run(
-        abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, field_types=field_types, **kwargs)
+        abdh(tickers, flds, start_date, end_date, backend=backend, wide=wide, field_types=field_types, long_mode=long_mode, **kwargs)
     )
 
 
