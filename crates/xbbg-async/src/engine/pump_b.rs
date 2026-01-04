@@ -15,8 +15,8 @@ use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, SessionOptions};
 
 use super::state::{
-    BulkDataState, FieldInfoState, GenericState, HistDataState, HistDataStreamState, OutputFormat,
-    RawJsonState, RefDataState, RequestState,
+    BulkDataState, FieldInfoState, GenericState, HistDataState, HistDataStreamState, LongMode,
+    OutputFormat, RawJsonState, RefDataState, RequestState,
 };
 use super::{Command, EngineConfig, ExtractorType, RequestParams};
 
@@ -128,12 +128,24 @@ impl PumpB {
         let fields = params.fields.clone().unwrap_or_default();
         let field_types = params.field_types.clone();
         let state = match params.extractor {
-            ExtractorType::RefData => RequestState::RefData(RefDataState::with_format(
-                fields.clone(),
-                OutputFormat::Long,
-                field_types,
-                reply,
-            )),
+            ExtractorType::RefData => {
+                let long_mode = params
+                    .long_mode
+                    .as_deref()
+                    .map(|s| match s {
+                        "metadata" | "with_metadata" => LongMode::WithMetadata,
+                        "typed" => LongMode::Typed,
+                        _ => LongMode::String,
+                    })
+                    .unwrap_or(LongMode::String);
+                RequestState::RefData(RefDataState::with_format(
+                    fields.clone(),
+                    OutputFormat::Long,
+                    long_mode,
+                    field_types,
+                    reply,
+                ))
+            }
             ExtractorType::HistData => RequestState::HistData(HistDataState::with_types(
                 fields.clone(),
                 field_types.clone(),

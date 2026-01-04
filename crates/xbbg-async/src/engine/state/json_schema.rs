@@ -264,6 +264,69 @@ impl<'a> JsonValue<'a> {
             _ => None,
         }
     }
+
+    /// Get as bool.
+    ///
+    /// Handles Bloomberg's encoding where boolean fields are returned as:
+    /// - 89 = 'Y' (ASCII) = true
+    /// - 78 = 'N' (ASCII) = false
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            JsonValue::Bool(b) => Some(*b),
+            JsonValue::Int(i) => match *i {
+                89 => Some(true),  // 'Y' ASCII
+                78 => Some(false), // 'N' ASCII
+                _ => Some(*i != 0),
+            },
+            JsonValue::String(s) => s.parse().ok(),
+            _ => None,
+        }
+    }
+
+    /// Check if this value is a Bloomberg boolean (78='N' or 89='Y').
+    pub fn is_bloomberg_bool(&self) -> bool {
+        matches!(self, JsonValue::Int(78 | 89))
+    }
+
+    /// Infer the Arrow dtype from the JSON value type.
+    pub fn infer_dtype(&self) -> &'static str {
+        match self {
+            JsonValue::Null => "null",
+            JsonValue::Bool(_) => "bool",
+            JsonValue::Int(78 | 89) => "bool", // Bloomberg Y/N encoding
+            JsonValue::Int(_) => "int64",
+            JsonValue::Float(_) => "float64",
+            JsonValue::String(s) => {
+                // Try to detect date/timestamp strings
+                let s = s.as_ref();
+                let bytes = s.as_bytes();
+                
+                // Check for date pattern: YYYY-MM-DD (exactly 10 chars)
+                let is_date_prefix = s.len() >= 10
+                    && bytes.get(4) == Some(&b'-')
+                    && bytes.get(7) == Some(&b'-')
+                    && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+                    && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+                    && bytes[8..10].iter().all(|b| b.is_ascii_digit());
+                
+                if is_date_prefix {
+                    if s.len() == 10 {
+                        // Pure date: YYYY-MM-DD
+                        "date32"
+                    } else if s.len() > 10 && bytes.get(10) == Some(&b'T') {
+                        // ISO timestamp: YYYY-MM-DDTHH:MM:SS...
+                        "timestamp"
+                    } else {
+                        "string"
+                    }
+                } else {
+                    "string"
+                }
+            }
+            JsonValue::Array(_) => "string", // Arrays become strings
+            JsonValue::Object(_) => "string", // Objects become strings
+        }
+    }
 }
 
 /// Parse JSON using simd-json with borrowing.

@@ -123,6 +123,8 @@ pub struct RequestParams {
     pub search_spec: Option<String>,
     /// Field IDs for FieldInfoRequest (//blp/apiflds)
     pub field_ids: Option<Vec<String>>,
+    /// Long format output mode (String, WithMetadata, Typed)
+    pub long_mode: Option<String>,
 }
 
 impl RequestParams {

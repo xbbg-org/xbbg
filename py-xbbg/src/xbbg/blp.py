@@ -24,6 +24,7 @@ import pyarrow as pa
 
 from xbbg.services import (
     ExtractorHint,
+    LongMode,
     Operation,
     OutputMode,
     RequestParams,
@@ -321,6 +322,7 @@ async def arequest(
     field_types: dict[str, str] | None = None,
     output: OutputMode | str = OutputMode.ARROW,
     extractor: ExtractorHint | str | None = None,
+    long_mode: LongMode | str | None = None,
     backend: Backend | str | None = None,
 ):
     """Async generic Bloomberg request.
@@ -403,6 +405,11 @@ async def arequest(
     if extractor is not None:
         extractor_hint = ExtractorHint(extractor) if isinstance(extractor, str) else extractor
 
+    # Normalize long_mode
+    long_mode_hint: LongMode | None = None
+    if long_mode is not None:
+        long_mode_hint = LongMode(long_mode) if isinstance(long_mode, str) else long_mode
+
     # Build and validate params
     params = RequestParams(
         service=service,
@@ -421,6 +428,7 @@ async def arequest(
         field_types=field_types,
         output=OutputMode(output) if isinstance(output, str) else output,
         extractor=extractor_hint,
+        long_mode=long_mode_hint,
     )
     params.validate()
     logger.debug(

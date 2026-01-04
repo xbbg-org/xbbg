@@ -429,6 +429,11 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
+    let long_mode: Option<String> = dict
+        .get_item("long_mode")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     Ok(RequestParams {
         service,
         operation,
@@ -447,6 +452,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         field_types,
         search_spec,
         field_ids,
+        long_mode,
     })
 }
 

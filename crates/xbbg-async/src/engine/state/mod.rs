@@ -25,7 +25,7 @@ pub use intradaybar_stream::IntradayBarStreamState;
 pub use intradaytick::IntradayTickState;
 pub use intradaytick_stream::IntradayTickStreamState;
 pub use raw_json::RawJsonState;
-pub use refdata::{OutputFormat, RefDataState};
+pub use refdata::{LongMode, OutputFormat, RefDataState};
 pub use subscription::SubscriptionState;
 
 use xbbg_core::{BlpError, MessageRef};

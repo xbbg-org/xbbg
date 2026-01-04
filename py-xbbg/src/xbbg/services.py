@@ -120,6 +120,25 @@ class ExtractorHint(str, Enum):
     RAW_JSON = "raw_json"
     """Raw JSON output: [json]"""
 
+    FIELD_INFO = "fieldinfo"
+    """Field info extractor: [field, type, description, category]"""
+
+
+class LongMode(str, Enum):
+    """Long format output mode for reference data (bdp).
+
+    Controls how values are represented in the Arrow output.
+    """
+
+    STRING = "string"
+    """All values as strings (default, backwards-compatible)."""
+
+    WITH_METADATA = "metadata"
+    """String values with dtype column containing Arrow type name."""
+
+    TYPED = "typed"
+    """Multi-value columns: value_f64, value_i64, value_str, value_bool, value_date, value_ts."""
+
 
 # Mapping from Operation to default ExtractorHint
 _OPERATION_TO_EXTRACTOR: dict[str, ExtractorHint] = {
@@ -127,7 +146,7 @@ _OPERATION_TO_EXTRACTOR: dict[str, ExtractorHint] = {
     Operation.HISTORICAL_DATA.value: ExtractorHint.HISTDATA,
     Operation.INTRADAY_BAR.value: ExtractorHint.INTRADAY_BAR,
     Operation.INTRADAY_TICK.value: ExtractorHint.INTRADAY_TICK,
-    Operation.FIELD_INFO.value: ExtractorHint.GENERIC,
+    Operation.FIELD_INFO.value: ExtractorHint.FIELD_INFO,
     Operation.FIELD_SEARCH.value: ExtractorHint.GENERIC,
 }
 
@@ -166,6 +185,7 @@ class RequestParams:
         field_types: Manual type overrides for fields (for issue #168).
         output: Output format (arrow or json).
         extractor: Override the auto-detected extractor hint.
+        long_mode: Long format output mode (String, WithMetadata, Typed).
     """
 
     service: str | Service
@@ -184,6 +204,7 @@ class RequestParams:
     field_types: dict[str, str] | None = None
     output: OutputMode = OutputMode.ARROW
     extractor: ExtractorHint | None = None
+    long_mode: LongMode | None = None
 
     # Computed fields (set during validation)
     _resolved_extractor: ExtractorHint = field(default=ExtractorHint.GENERIC, init=False, repr=False)
@@ -295,7 +316,11 @@ class RequestParams:
         if self.security is not None:
             result["security"] = self.security
         if self.fields is not None:
-            result["fields"] = list(self.fields)
+            # FieldInfoRequest uses "id" array in Bloomberg API, mapped to field_ids in Rust
+            if self.operation == Operation.FIELD_INFO.value:
+                result["field_ids"] = list(self.fields)
+            else:
+                result["fields"] = list(self.fields)
         if self.overrides is not None:
             result["overrides"] = list(self.overrides)
         if self.start_date is not None:
@@ -314,5 +339,7 @@ class RequestParams:
             result["options"] = list(self.options)
         if self.field_types is not None:
             result["field_types"] = self.field_types
+        if self.long_mode is not None:
+            result["long_mode"] = self.long_mode.value if isinstance(self.long_mode, LongMode) else self.long_mode
 
         return result
