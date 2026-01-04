@@ -245,26 +245,43 @@ impl Engine {
     /// Subscribe to real-time data.
     ///
     /// Claims a dedicated session from the pool for this subscription.
-    /// The session is returned to the pool when the SubscriptionHandle is dropped.
+    /// Returns a `SubscriptionStream` that provides:
+    /// - Async iteration over incoming data
+    /// - Dynamic add/remove of tickers
+    /// - Explicit unsubscribe with optional drain
+    ///
+    /// The session is returned to the pool when the stream is dropped.
     pub async fn subscribe(
         &self,
         topics: Vec<String>,
         fields: Vec<String>,
-    ) -> Result<(mpsc::Receiver<RecordBatch>, SubscriptionHandle<'_>), BlpAsyncError> {
+    ) -> Result<SubscriptionStream, BlpAsyncError> {
         let (tx, rx) = mpsc::channel(self.config.subscription_stream_capacity);
 
-        // Claim a session from the pool
+        // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
         let claim = self.subscription_pool.claim()?;
 
         // Start the subscription
-        let keys = claim.subscribe(topics, fields, tx).await?;
+        let keys = claim.subscribe(topics.clone(), fields.clone(), tx.clone()).await?;
 
-        let handle = SubscriptionHandle {
+        // Build topic -> key mapping
+        let topic_to_key: std::collections::HashMap<String, SlabKey> = topics
+            .iter()
+            .cloned()
+            .zip(keys.iter().cloned())
+            .collect();
+
+        let stream = SubscriptionStream {
+            rx,
+            tx,
             claim: Some(claim),
             keys,
+            topics,
+            fields,
+            topic_to_key,
         };
 
-        Ok((rx, handle))
+        Ok(stream)
     }
 
     // ─── Field Type Resolution ──────────────────────────────────────────────
@@ -377,67 +394,183 @@ impl Engine {
     }
 }
 
-/// Handle for managing a subscription.
+/// Stream for receiving real-time market data with dynamic subscription control.
 ///
-/// Releases the session back to the pool on drop.
-pub struct SubscriptionHandle<'a> {
-    claim: Option<SessionClaim<'a>>,
+/// Provides async iteration over incoming data and methods to dynamically
+/// add/remove tickers while the subscription is active.
+///
+/// The underlying session is released back to the pool on drop.
+pub struct SubscriptionStream {
+    /// Receiver for incoming data batches.
+    rx: mpsc::Receiver<RecordBatch>,
+    /// Sender for adding new topics (shares channel with existing subs).
+    tx: mpsc::Sender<RecordBatch>,
+    /// Session claim (released on drop).
+    claim: Option<SessionClaim>,
+    /// Current slab keys for all subscribed topics.
     keys: Vec<SlabKey>,
+    /// Currently subscribed topics.
+    topics: Vec<String>,
+    /// Subscribed fields.
+    fields: Vec<String>,
+    /// Mapping from topic to its slab key for removal.
+    topic_to_key: std::collections::HashMap<String, SlabKey>,
 }
 
-impl<'a> SubscriptionHandle<'a> {
-    /// Explicitly unsubscribe and release the session.
-    pub async fn unsubscribe(mut self) -> Result<(), BlpAsyncError> {
-        if let Some(claim) = self.claim.take() {
-            claim.unsubscribe(self.keys.clone()).await?;
+impl SubscriptionStream {
+    /// Receive the next batch of data.
+    ///
+    /// Returns None when the subscription is closed.
+    pub async fn next(&mut self) -> Option<RecordBatch> {
+        self.rx.recv().await
+    }
+
+    /// Try to receive data without blocking.
+    pub fn try_next(&mut self) -> Option<RecordBatch> {
+        self.rx.try_recv().ok()
+    }
+
+    /// Add tickers to the subscription dynamically.
+    ///
+    /// New tickers will start receiving data on the same stream.
+    pub async fn add(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
+        let claim = self.claim.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
+            detail: "subscription already closed".to_string(),
+        })?;
+
+        // Filter out already subscribed topics
+        let new_topics: Vec<String> = topics
+            .into_iter()
+            .filter(|t| !self.topic_to_key.contains_key(t))
+            .collect();
+
+        if new_topics.is_empty() {
+            return Ok(());
         }
+
+        tracing::debug!(topics = ?new_topics, "adding topics to subscription");
+
+        // Add new topics using the same stream sender
+        let new_keys = claim
+            .add_topics(new_topics.clone(), self.fields.clone(), self.tx.clone())
+            .await?;
+
+        // Track new topics
+        for (topic, key) in new_topics.iter().zip(new_keys.iter()) {
+            self.topic_to_key.insert(topic.clone(), *key);
+            self.topics.push(topic.clone());
+            self.keys.push(*key);
+        }
+
         Ok(())
     }
 
-    /// Get the subscription keys (for debugging).
-    pub fn keys(&self) -> &[SlabKey] {
-        &self.keys
+    /// Remove tickers from the subscription dynamically.
+    ///
+    /// Removed tickers will stop receiving data.
+    pub async fn remove(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
+        let claim = self.claim.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
+            detail: "subscription already closed".to_string(),
+        })?;
+
+        // Find keys for topics to remove
+        let mut keys_to_remove = Vec::new();
+        for topic in &topics {
+            if let Some(key) = self.topic_to_key.remove(topic) {
+                keys_to_remove.push(key);
+                self.topics.retain(|t| t != topic);
+                self.keys.retain(|k| *k != key);
+            }
+        }
+
+        if keys_to_remove.is_empty() {
+            return Ok(());
+        }
+
+        tracing::debug!(topics = ?topics, keys = ?keys_to_remove, "removing topics from subscription");
+
+        claim.unsubscribe(keys_to_remove).await
+    }
+
+    /// Get the currently subscribed topics.
+    pub fn topics(&self) -> &[String] {
+        &self.topics
+    }
+
+    /// Get the subscribed fields.
+    pub fn fields(&self) -> &[String] {
+        &self.fields
+    }
+
+    /// Check if any topics are still subscribed.
+    pub fn is_active(&self) -> bool {
+        !self.keys.is_empty() && self.claim.is_some()
+    }
+
+    /// Unsubscribe from all topics and close the stream.
+    ///
+    /// If `drain` is true, returns remaining buffered batches before closing.
+    pub async fn unsubscribe(mut self, drain: bool) -> Result<Vec<RecordBatch>, BlpAsyncError> {
+        let mut remaining = Vec::new();
+
+        if drain {
+            // Drain any remaining batches
+            while let Ok(batch) = self.rx.try_recv() {
+                remaining.push(batch);
+            }
+        }
+
+        if let Some(claim) = self.claim.take() {
+            if !self.keys.is_empty() {
+                claim.unsubscribe(self.keys.clone()).await?;
+            }
+        }
+
+        self.keys.clear();
+        self.topics.clear();
+        self.topic_to_key.clear();
+
+        Ok(remaining)
+    }
+
+    /// Close the stream without explicit unsubscribe (drop handles cleanup).
+    pub fn close(mut self) {
+        self.claim.take(); // Session returns to pool on drop
+    }
+
+    /// Destructure the stream into its component parts.
+    ///
+    /// Used by PyO3 layer to separate rx (for iteration) from claim (for add/remove)
+    /// so they can use independent locks and avoid contention.
+    ///
+    /// Consumes self without running Drop (since we're taking ownership of parts).
+    pub fn into_parts(
+        mut self,
+    ) -> (
+        mpsc::Receiver<RecordBatch>,
+        mpsc::Sender<RecordBatch>,
+        SessionClaim,
+        Vec<SlabKey>,
+        std::collections::HashMap<String, SlabKey>,
+    ) {
+        use std::mem;
+
+        // Take ownership of each field, replacing with empty/None values
+        let rx = mem::replace(&mut self.rx, mpsc::channel(1).1); // dummy receiver
+        let tx = mem::replace(&mut self.tx, mpsc::channel(1).0); // dummy sender
+        let claim = self.claim.take().expect("into_parts called on already-closed stream");
+        let keys = mem::take(&mut self.keys);
+        let topic_to_key = mem::take(&mut self.topic_to_key);
+
+        // Prevent Drop from running (we've taken ownership of everything important)
+        mem::forget(self);
+
+        (rx, tx, claim, keys, topic_to_key)
     }
 }
 
-impl<'a> Drop for SubscriptionHandle<'a> {
+impl Drop for SubscriptionStream {
     fn drop(&mut self) {
         // Session is automatically released when claim is dropped
     }
-}
-
-// ─── Legacy Command Types (kept for pump_a compatibility) ──────────────────
-
-/// Commands sent to subscription pumps.
-#[allow(dead_code)]
-pub(crate) enum Command {
-    Subscribe {
-        topics: Vec<String>,
-        fields: Vec<String>,
-        stream: mpsc::Sender<RecordBatch>,
-    },
-    Unsubscribe {
-        keys: Vec<SlabKey>,
-    },
-    Request {
-        params: RequestParams,
-        reply: tokio::sync::oneshot::Sender<Result<RecordBatch, BlpError>>,
-    },
-    RequestStream {
-        params: RequestParams,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
-    },
-    Shutdown,
-}
-
-// ─── Legacy Lane Types (deprecated) ────────────────────────────────────────
-
-/// Lane designation - deprecated, kept for compatibility.
-#[deprecated(note = "Lane routing replaced by worker pool dispatch")]
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Lane {
-    A,
-    B,
-    C,
 }

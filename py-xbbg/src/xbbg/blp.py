@@ -78,6 +78,13 @@ __all__ = [
     "bds",
     "bdib",
     "bdtick",
+    # Streaming API
+    "Tick",
+    "Subscription",
+    "asubscribe",
+    "subscribe",
+    "astream",
+    "stream",
     # Config
     "configure",
     "set_backend",
@@ -1185,3 +1192,306 @@ def bdtick(
         df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
     """
     return asyncio.run(abdtick(ticker, start_datetime, end_datetime, backend=backend, **kwargs))
+
+
+# =============================================================================
+# Streaming API - Real-time Market Data
+# =============================================================================
+
+
+@dataclass
+class Tick:
+    """Single tick data point from a subscription.
+
+    Attributes:
+        ticker: Security identifier
+        field: Bloomberg field name
+        value: Field value (type depends on field)
+        timestamp: Time the tick was received
+    """
+
+    ticker: str
+    field: str
+    value: Any
+    timestamp: datetime
+
+
+class Subscription:
+    """Subscription handle with async iteration and dynamic control.
+
+    Supports:
+    - Async iteration: `async for tick in sub`
+    - Dynamic add/remove: `await sub.add(['MSFT US Equity'])`
+    - Context manager: `async with xbbg.asubscribe(...) as sub:`
+    - Explicit unsubscribe: `await sub.unsubscribe(drain=True)`
+
+    Example::
+
+        sub = await xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE', 'BID'])
+
+        async for batch in sub:
+            # batch is pyarrow.RecordBatch
+            print(batch.to_pandas())
+
+            if should_add_msft:
+                await sub.add(['MSFT US Equity'])
+
+        await sub.unsubscribe()
+    """
+
+    def __init__(self, py_sub, raw: bool, backend: Backend | None):
+        """Initialize subscription wrapper.
+
+        Args:
+            py_sub: The underlying PySubscription from Rust
+            raw: If True, yield raw Arrow batches
+            backend: DataFrame backend for conversion (if not raw)
+        """
+        self._sub = py_sub
+        self._raw = raw
+        self._backend = backend
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> pa.RecordBatch | nw.DataFrame:
+        """Get next batch of data."""
+        batch = await self._sub.__anext__()
+
+        if self._raw:
+            return batch
+
+        # Convert to narwhals DataFrame, then to requested backend
+        table = pa.Table.from_batches([batch])
+        nw_df = nw.from_native(table)
+        return _convert_backend(nw_df, self._backend)
+
+    async def add(self, tickers: str | list[str]) -> None:
+        """Add tickers to subscription dynamically.
+
+        Args:
+            tickers: Single ticker or list of tickers to add
+        """
+        ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+        await self._sub.add(ticker_list)
+
+    async def remove(self, tickers: str | list[str]) -> None:
+        """Remove tickers from subscription dynamically.
+
+        Args:
+            tickers: Single ticker or list of tickers to remove
+        """
+        ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+        await self._sub.remove(ticker_list)
+
+    @property
+    def tickers(self) -> list[str]:
+        """Currently subscribed tickers."""
+        return self._sub.tickers
+
+    @property
+    def fields(self) -> list[str]:
+        """Subscribed fields."""
+        return self._sub.fields
+
+    @property
+    def is_active(self) -> bool:
+        """Whether the subscription is still active."""
+        return self._sub.is_active
+
+    async def unsubscribe(self, drain: bool = False) -> list[pa.RecordBatch] | None:
+        """Close subscription and optionally drain remaining data.
+
+        Args:
+            drain: If True, return any remaining buffered batches
+
+        Returns:
+            List of remaining batches if drain=True, else None
+        """
+        return await self._sub.unsubscribe(drain)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await self.unsubscribe()
+
+    def __repr__(self) -> str:
+        return repr(self._sub)
+
+
+async def asubscribe(
+    tickers: str | list[str],
+    fields: str | list[str],
+    *,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Create an async subscription to real-time market data.
+
+    This is the low-level subscription API with full control over
+    the subscription lifecycle, including dynamic add/remove.
+
+    Args:
+        tickers: Securities to subscribe to
+        fields: Fields to subscribe to (e.g., 'LAST_PRICE', 'BID', 'ASK')
+        raw: If True, yield raw Arrow RecordBatches for max performance
+        backend: DataFrame backend for batch conversion (ignored if raw=True)
+
+    Returns:
+        Subscription handle for iteration and control
+
+    Example::
+
+        # Basic usage
+        sub = await xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE', 'BID'])
+        async for batch in sub:
+            print(batch)
+        await sub.unsubscribe()
+
+        # With context manager
+        async with xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE']) as sub:
+            count = 0
+            async for batch in sub:
+                print(batch)
+                count += 1
+                if count >= 10:
+                    break
+
+        # Dynamic add/remove
+        sub = await xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE'])
+        async for batch in sub:
+            if should_add_msft:
+                await sub.add(['MSFT US Equity'])
+            if should_remove_aapl:
+                await sub.remove(['AAPL US Equity'])
+    """
+    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+    field_list = [fields] if isinstance(fields, str) else list(fields)
+
+    effective_backend = (
+        (Backend(backend) if isinstance(backend, str) else backend)
+        if backend is not None
+        else _default_backend
+    )
+
+    engine = _get_engine()
+    py_sub = await engine.subscribe(ticker_list, field_list)
+
+    return Subscription(py_sub, raw=raw, backend=effective_backend)
+
+
+def subscribe(
+    tickers: str | list[str],
+    fields: str | list[str],
+    *,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Create a subscription to real-time market data (sync version).
+
+    Note: This returns an async Subscription. Use in an async context
+    or call methods with asyncio.run().
+
+    For simple sync iteration, use stream() instead.
+
+    See asubscribe() for full documentation.
+    """
+    return asyncio.run(asubscribe(tickers, fields, raw=raw, backend=backend))
+
+
+async def astream(
+    tickers: str | list[str],
+    fields: str | list[str],
+    *,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+):
+    """High-level async streaming - simple iteration.
+
+    This is the simple API for streaming data. For dynamic add/remove,
+    use asubscribe() instead.
+
+    Args:
+        tickers: Securities to subscribe to
+        fields: Fields to subscribe to
+        raw: If True, yield raw Arrow RecordBatches
+        backend: DataFrame backend for batch conversion
+
+    Yields:
+        Batches of market data (RecordBatch or DataFrame)
+
+    Example::
+
+        async for batch in xbbg.astream(['AAPL US Equity'], ['LAST_PRICE']):
+            print(batch)
+            if done:
+                break
+    """
+    async with await asubscribe(tickers, fields, raw=raw, backend=backend) as sub:
+        async for batch in sub:
+            yield batch
+
+
+def stream(
+    tickers: str | list[str],
+    fields: str | list[str],
+    *,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+):
+    """High-level sync streaming using a background thread.
+
+    Note: This is a generator that runs the async stream in a background
+    thread. Use astream() for async contexts.
+
+    Args:
+        tickers: Securities to subscribe to
+        fields: Fields to subscribe to
+        raw: If True, yield raw Arrow RecordBatches
+        backend: DataFrame backend for batch conversion
+
+    Yields:
+        Batches of market data
+
+    Example::
+
+        for batch in xbbg.stream(['AAPL US Equity'], ['LAST_PRICE']):
+            print(batch)
+            if done:
+                break
+    """
+    import queue
+    import threading
+
+    q: queue.Queue = queue.Queue()
+    stop_event = threading.Event()
+
+    async def run_stream():
+        try:
+            async for batch in astream(tickers, fields, raw=raw, backend=backend):
+                if stop_event.is_set():
+                    break
+                q.put(batch)
+        except Exception as e:
+            q.put(e)
+        finally:
+            q.put(None)  # Sentinel
+
+    def thread_target():
+        asyncio.run(run_stream())
+
+    thread = threading.Thread(target=thread_target, daemon=True)
+    thread.start()
+
+    try:
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        stop_event.set()
+        thread.join(timeout=1.0)

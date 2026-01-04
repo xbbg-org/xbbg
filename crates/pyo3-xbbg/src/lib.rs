@@ -33,10 +33,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes::tokio::future_into_py;
+use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
@@ -443,6 +444,333 @@ impl PyEngine {
     fn save_field_cache(&self) -> PyResult<()> {
         self.engine.save_field_cache().map_err(PyRuntimeError::new_err)
     }
+
+    // =========================================================================
+    // Subscription API
+    // =========================================================================
+
+    /// Subscribe to real-time market data.
+    ///
+    /// Returns a PySubscription that supports async iteration and dynamic add/remove.
+    /// GIL is released during async operations; iteration and add/remove use separate
+    /// locks to avoid contention.
+    ///
+    /// Example:
+    /// ```python
+    /// sub = await engine.subscribe(['AAPL US Equity'], ['LAST_PRICE', 'BID', 'ASK'])
+    /// async for batch in sub:
+    ///     print(batch)
+    /// await sub.unsubscribe()
+    /// ```
+    #[pyo3(signature = (tickers, fields))]
+    fn subscribe<'py>(
+        &self,
+        py: Python<'py>,
+        tickers: Vec<String>,
+        fields: Vec<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+        let tickers_clone = tickers.clone();
+        let fields_clone = fields.clone();
+
+        debug!(
+            tickers = ?tickers,
+            fields = ?fields,
+            "PyEngine: creating subscription"
+        );
+
+        future_into_py(py, async move {
+            let stream = engine
+                .subscribe(tickers_clone.clone(), fields_clone.clone())
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            debug!("PyEngine: subscription created");
+
+            // Destructure the SubscriptionStream to separate rx from the rest
+            // This allows iteration (rx) and modification (claim) to use separate locks
+            let (rx, tx, claim, keys, topic_to_key) = stream.into_parts();
+
+            let handle = SubscriptionStreamHandle {
+                tx,
+                claim: Some(claim),
+                keys,
+                topics: tickers_clone,
+                fields: fields_clone,
+                topic_to_key,
+            };
+
+            Python::attach(|py| {
+                let py_sub = PySubscription {
+                    rx: Arc::new(Mutex::new(Some(rx))),
+                    stream: Arc::new(Mutex::new(Some(handle))),
+                };
+                Ok(Py::new(py, py_sub)?.into_any())
+            })
+        })
+    }
+}
+
+// =============================================================================
+// PySubscription - Async iterator for real-time market data
+// =============================================================================
+
+/// Python subscription handle for real-time market data.
+///
+/// Supports:
+/// - Async iteration (`async for batch in sub`)
+/// - Dynamic add/remove of tickers
+/// - Explicit unsubscribe with optional drain
+/// - Context manager (`async with`)
+///
+/// Design: Uses separate locks for rx (data receiving) vs stream (add/remove/metadata)
+/// to avoid lock contention between iterating and modifying subscriptions.
+#[pyclass]
+pub struct PySubscription {
+    /// Receiver for incoming data - separate lock so iteration doesn't block add/remove
+    rx: Arc<Mutex<Option<tokio::sync::mpsc::Receiver<arrow::record_batch::RecordBatch>>>>,
+    /// Stream handle for metadata and modification operations
+    stream: Arc<Mutex<Option<SubscriptionStreamHandle>>>,
+}
+
+/// Internal handle for subscription metadata and operations (without the receiver)
+struct SubscriptionStreamHandle {
+    tx: tokio::sync::mpsc::Sender<arrow::record_batch::RecordBatch>,
+    claim: Option<xbbg_async::engine::SessionClaim>,
+    keys: Vec<usize>,
+    topics: Vec<String>,
+    fields: Vec<String>,
+    topic_to_key: std::collections::HashMap<String, usize>,
+}
+
+#[pymethods]
+impl PySubscription {
+    /// Async iterator protocol.
+    fn __aiter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Get next batch of data.
+    /// Only locks the rx, not the stream - so add/remove can run concurrently.
+    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let rx = self.rx.clone();
+
+        future_into_py(py, async move {
+            let batch = {
+                let mut guard = rx.lock().await;
+                let rx_ref = guard.as_mut().ok_or_else(|| {
+                    PyStopAsyncIteration::new_err("subscription closed")
+                })?;
+                rx_ref.recv().await
+            };
+
+            match batch {
+                Some(batch) => Python::attach(|py| record_batch_to_pyarrow(py, batch)),
+                None => Err(PyStopAsyncIteration::new_err("subscription ended")),
+            }
+        })
+    }
+
+    /// Add tickers to the subscription dynamically.
+    /// Only locks the stream handle, not rx - so iteration can continue.
+    #[pyo3(signature = (tickers))]
+    fn add<'py>(&self, py: Python<'py>, tickers: Vec<String>) -> PyResult<Bound<'py, PyAny>> {
+        let stream = self.stream.clone();
+
+        debug!(tickers = ?tickers, "PySubscription: adding tickers");
+
+        future_into_py(py, async move {
+            let mut guard = stream.lock().await;
+            let handle = guard.as_mut().ok_or_else(|| {
+                PyRuntimeError::new_err("subscription closed")
+            })?;
+
+            // Filter out already subscribed topics
+            let new_topics: Vec<String> = tickers
+                .into_iter()
+                .filter(|t| !handle.topic_to_key.contains_key(t))
+                .collect();
+
+            if new_topics.is_empty() {
+                return Ok(());
+            }
+
+            let claim = handle.claim.as_ref().ok_or_else(|| {
+                PyRuntimeError::new_err("subscription already closed")
+            })?;
+
+            // Add new topics using the same stream sender
+            let new_keys = claim
+                .add_topics(new_topics.clone(), handle.fields.clone(), handle.tx.clone())
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            // Track new topics
+            for (topic, key) in new_topics.iter().zip(new_keys.iter()) {
+                handle.topic_to_key.insert(topic.clone(), *key);
+                handle.topics.push(topic.clone());
+                handle.keys.push(*key);
+            }
+
+            Ok(())
+        })
+    }
+
+    /// Remove tickers from the subscription dynamically.
+    /// Only locks the stream handle, not rx - so iteration can continue.
+    #[pyo3(signature = (tickers))]
+    fn remove<'py>(&self, py: Python<'py>, tickers: Vec<String>) -> PyResult<Bound<'py, PyAny>> {
+        let stream = self.stream.clone();
+
+        debug!(tickers = ?tickers, "PySubscription: removing tickers");
+
+        future_into_py(py, async move {
+            let mut guard = stream.lock().await;
+            let handle = guard.as_mut().ok_or_else(|| {
+                PyRuntimeError::new_err("subscription closed")
+            })?;
+
+            // Find keys for topics to remove
+            let mut keys_to_remove = Vec::new();
+            for topic in &tickers {
+                if let Some(key) = handle.topic_to_key.remove(topic) {
+                    keys_to_remove.push(key);
+                    handle.topics.retain(|t| t != topic);
+                    handle.keys.retain(|k| *k != key);
+                }
+            }
+
+            if keys_to_remove.is_empty() {
+                return Ok(());
+            }
+
+            let claim = handle.claim.as_ref().ok_or_else(|| {
+                PyRuntimeError::new_err("subscription already closed")
+            })?;
+
+            claim.unsubscribe(keys_to_remove).await.map_err(blp_async_error_to_pyerr)?;
+            Ok(())
+        })
+    }
+
+    /// Get the currently subscribed tickers.
+    #[getter]
+    fn tickers(&self) -> Vec<String> {
+        let guard = self.stream.blocking_lock();
+        match guard.as_ref() {
+            Some(handle) => handle.topics.clone(),
+            None => vec![],
+        }
+    }
+
+    /// Get the subscribed fields.
+    #[getter]
+    fn fields(&self) -> Vec<String> {
+        let guard = self.stream.blocking_lock();
+        match guard.as_ref() {
+            Some(handle) => handle.fields.clone(),
+            None => vec![],
+        }
+    }
+
+    /// Check if the subscription is still active.
+    #[getter]
+    fn is_active(&self) -> bool {
+        let guard = self.stream.blocking_lock();
+        match guard.as_ref() {
+            Some(handle) => !handle.keys.is_empty() && handle.claim.is_some(),
+            None => false,
+        }
+    }
+
+    /// Unsubscribe and close the stream.
+    ///
+    /// If drain=True, returns remaining buffered batches before closing.
+    #[pyo3(signature = (drain = false))]
+    fn unsubscribe<'py>(&self, py: Python<'py>, drain: bool) -> PyResult<Bound<'py, PyAny>> {
+        let stream_arc = self.stream.clone();
+        let rx_arc = self.rx.clone();
+
+        debug!(drain = drain, "PySubscription: unsubscribing");
+
+        future_into_py(py, async move {
+            // Take both the stream handle and rx
+            let handle = {
+                let mut guard = stream_arc.lock().await;
+                guard.take()
+            };
+            let rx = {
+                let mut guard = rx_arc.lock().await;
+                guard.take()
+            };
+
+            let mut remaining = Vec::new();
+
+            // Drain remaining batches if requested
+            if drain {
+                if let Some(mut rx) = rx {
+                    while let Ok(batch) = rx.try_recv() {
+                        remaining.push(batch);
+                    }
+                }
+            }
+
+            // Unsubscribe from Bloomberg
+            if let Some(mut h) = handle {
+                if let Some(claim) = h.claim.take() {
+                    if !h.keys.is_empty() {
+                        let _ = claim.unsubscribe(h.keys.clone()).await;
+                    }
+                    // claim is dropped here, returning session to pool
+                }
+            }
+
+            if !remaining.is_empty() {
+                Python::attach(|py| {
+                    let list = pyo3::types::PyList::empty(py);
+                    for batch in remaining {
+                        let py_batch = record_batch_to_pyarrow(py, batch)?;
+                        list.append(py_batch)?;
+                    }
+                    Ok(list.into_any().unbind())
+                })
+            } else {
+                Python::attach(|py| Ok(py.None()))
+            }
+        })
+    }
+
+    /// Context manager entry.
+    fn __aenter__<'py>(slf: PyRef<'py, Self>) -> PyRef<'py, Self> {
+        slf
+    }
+
+    /// Context manager exit - unsubscribes automatically.
+    #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
+    fn __aexit__<'py>(
+        &self,
+        py: Python<'py>,
+        _exc_type: Option<Bound<'py, PyAny>>,
+        _exc_val: Option<Bound<'py, PyAny>>,
+        _exc_tb: Option<Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.unsubscribe(py, false)
+    }
+
+    fn __repr__(&self) -> String {
+        let guard = self.stream.blocking_lock();
+        match guard.as_ref() {
+            Some(handle) => {
+                format!(
+                    "Subscription(tickers={:?}, fields={:?}, active={})",
+                    handle.topics,
+                    handle.fields,
+                    !handle.keys.is_empty() && handle.claim.is_some()
+                )
+            }
+            None => "Subscription(closed)".to_string(),
+        }
+    }
 }
 
 /// Convert a Python dictionary to Rust RequestParams.
@@ -611,6 +939,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_class::<PyEngine>()?;
     m.add_class::<PyEngineConfig>()?;
+    m.add_class::<PySubscription>()?;
 
     // Register exception classes for use from Python
     m.add("BlpError", _py.get_type::<BlpErrorBase>())?;

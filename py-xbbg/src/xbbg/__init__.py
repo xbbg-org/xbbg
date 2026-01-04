@@ -311,6 +311,13 @@ __all__ = [
     "abdh",
     "abdib",
     "abdtick",
+    # Streaming API
+    "Tick",
+    "Subscription",
+    "asubscribe",
+    "subscribe",
+    "astream",
+    "stream",
     # Config
     "configure",
     "set_backend",
@@ -403,6 +410,14 @@ def __getattr__(name: str):
         "abdh",
         "abdib",
         "abdtick",
+        # Streaming API
+        "Tick",
+        "Subscription",
+        "asubscribe",
+        "subscribe",
+        "astream",
+        "stream",
+        # Config
         "configure",
         "set_backend",
         "get_backend",

@@ -29,6 +29,14 @@ pub enum SubscriptionCommand {
         /// Reply with slab keys for later unsubscribe.
         reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
     },
+    /// Add topics to an existing subscription (uses same stream sender).
+    AddTopics {
+        topics: Vec<String>,
+        fields: Vec<String>,
+        stream: mpsc::Sender<RecordBatch>,
+        /// Reply with new slab keys.
+        reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
+    },
     /// Stop subscriptions by key.
     Unsubscribe { keys: Vec<SlabKey> },
     /// Shutdown the worker.
@@ -90,6 +98,16 @@ impl SubscriptionWorker {
                         stream,
                         reply,
                     }) => {
+                        let keys = self.subscribe(topics, fields, stream);
+                        let _ = reply.send(keys);
+                    }
+                    Ok(SubscriptionCommand::AddTopics {
+                        topics,
+                        fields,
+                        stream,
+                        reply,
+                    }) => {
+                        // AddTopics uses the same logic as Subscribe
                         let keys = self.subscribe(topics, fields, stream);
                         let _ = reply.send(keys);
                     }
@@ -365,7 +383,9 @@ impl SubscriptionSessionPool {
     ///
     /// If the pool is exhausted, creates a new session dynamically with a warning.
     /// Returns a SessionClaim that releases the session back to the pool on drop.
-    pub fn claim(&self) -> Result<SessionClaim<'_>, BlpAsyncError> {
+    ///
+    /// Takes `Arc<Self>` to allow `SessionClaim` to have a `'static` lifetime.
+    pub fn claim(self: &Arc<Self>) -> Result<SessionClaim, BlpAsyncError> {
         let handle = {
             let mut available = self.available.lock();
             if let Some(handle) = available.pop() {
@@ -396,7 +416,7 @@ impl SubscriptionSessionPool {
 
         Ok(SessionClaim {
             handle: Some(handle),
-            pool: self,
+            pool: Arc::clone(self),
         })
     }
 
@@ -435,12 +455,13 @@ impl Drop for SubscriptionSessionPool {
 /// Handle to a claimed session.
 ///
 /// Releases the session back to the pool on drop.
-pub struct SessionClaim<'a> {
+/// Uses `Arc` internally for `'static` lifetime (required for PyO3).
+pub struct SessionClaim {
     handle: Option<SubscriptionWorkerHandle>,
-    pool: &'a SubscriptionSessionPool,
+    pool: Arc<SubscriptionSessionPool>,
 }
 
-impl<'a> SessionClaim<'a> {
+impl SessionClaim {
     /// Subscribe to topics on this session.
     pub async fn subscribe(
         &self,
@@ -457,6 +478,33 @@ impl<'a> SessionClaim<'a> {
         handle
             .cmd_tx
             .send(SubscriptionCommand::Subscribe {
+                topics,
+                fields,
+                stream,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+
+        reply_rx.await.map_err(|_| BlpAsyncError::ChannelClosed)
+    }
+
+    /// Add topics to an existing subscription.
+    pub async fn add_topics(
+        &self,
+        topics: Vec<String>,
+        fields: Vec<String>,
+        stream: mpsc::Sender<RecordBatch>,
+    ) -> Result<Vec<SlabKey>, BlpAsyncError> {
+        let handle = self.handle.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
+            detail: "session already released".to_string(),
+        })?;
+
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
+        handle
+            .cmd_tx
+            .send(SubscriptionCommand::AddTopics {
                 topics,
                 fields,
                 stream,
@@ -489,7 +537,7 @@ impl<'a> SessionClaim<'a> {
     }
 }
 
-impl<'a> Drop for SessionClaim<'a> {
+impl Drop for SessionClaim {
     fn drop(&mut self) {
         if let Some(handle) = self.handle.take() {
             self.pool.release(handle);
