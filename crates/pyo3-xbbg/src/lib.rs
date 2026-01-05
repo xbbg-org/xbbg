@@ -687,7 +687,7 @@ impl PyEngine {
 
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
-            let (rx, tx, claim, keys, topic_to_key) = stream.into_parts();
+            let (rx, tx, claim, keys, topic_to_key, service, options) = stream.into_parts();
 
             let handle = SubscriptionStreamHandle {
                 tx,
@@ -696,6 +696,88 @@ impl PyEngine {
                 topics: tickers_clone,
                 fields: fields_clone,
                 topic_to_key,
+                service,
+                options,
+            };
+
+            Python::attach(|py| {
+                let py_sub = PySubscription {
+                    rx: Arc::new(Mutex::new(Some(rx))),
+                    stream: Arc::new(Mutex::new(Some(handle))),
+                };
+                Ok(Py::new(py, py_sub)?.into_any())
+            })
+        })
+    }
+
+    /// Subscribe to real-time data with custom service and options.
+    ///
+    /// This is the generic subscription method for services like //blp/mktvwap.
+    ///
+    /// Args:
+    ///     service: Bloomberg service URI (e.g., "//blp/mktvwap")
+    ///     tickers: List of securities to subscribe to
+    ///     fields: List of fields to subscribe to
+    ///     options: List of subscription options (e.g., ["VWAP_START_TIME=09:30"])
+    ///
+    /// Example:
+    /// ```python
+    /// sub = await engine.subscribe_with_options(
+    ///     '//blp/mktvwap',
+    ///     ['AAPL US Equity'],
+    ///     ['RT_PX_VWAP', 'RT_VWAP_VOLUME'],
+    ///     ['VWAP_START_TIME=09:30', 'VWAP_END_TIME=16:00']
+    /// )
+    /// async for batch in sub:
+    ///     print(batch)
+    /// ```
+    #[pyo3(signature = (service, tickers, fields, options=None))]
+    fn subscribe_with_options<'py>(
+        &self,
+        py: Python<'py>,
+        service: String,
+        tickers: Vec<String>,
+        fields: Vec<String>,
+        options: Option<Vec<String>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+        let tickers_clone = tickers.clone();
+        let fields_clone = fields.clone();
+        let options_clone = options.clone().unwrap_or_default();
+        let service_clone = service.clone();
+
+        debug!(
+            service = %service,
+            tickers = ?tickers,
+            fields = ?fields,
+            options = ?options,
+            "PyEngine: creating subscription with options"
+        );
+
+        future_into_py(py, async move {
+            let stream = engine
+                .subscribe_with_options(
+                    service_clone.clone(),
+                    tickers_clone.clone(),
+                    fields_clone.clone(),
+                    options_clone.clone(),
+                )
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            debug!("PyEngine: subscription with options created");
+
+            let (rx, tx, claim, keys, topic_to_key, service, options) = stream.into_parts();
+
+            let handle = SubscriptionStreamHandle {
+                tx,
+                claim: Some(claim),
+                keys,
+                topics: tickers_clone,
+                fields: fields_clone,
+                topic_to_key,
+                service,
+                options,
             };
 
             Python::attach(|py| {
@@ -739,6 +821,8 @@ struct SubscriptionStreamHandle {
     topics: Vec<String>,
     fields: Vec<String>,
     topic_to_key: std::collections::HashMap<String, usize>,
+    service: String,
+    options: Vec<String>,
 }
 
 #[pymethods]
@@ -800,7 +884,13 @@ impl PySubscription {
 
             // Add new topics using the same stream sender
             let new_keys = claim
-                .add_topics(new_topics.clone(), handle.fields.clone(), handle.tx.clone())
+                .add_topics(
+                    handle.service.clone(),
+                    new_topics.clone(),
+                    handle.fields.clone(),
+                    handle.options.clone(),
+                    handle.tx.clone(),
+                )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
 

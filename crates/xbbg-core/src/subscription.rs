@@ -22,6 +22,19 @@ impl SubscriptionList {
     }
 
     pub fn add(&mut self, topic: &str, fields: &[&str], cid: Option<&CorrelationId>) -> Result<()> {
+        self.add_with_options(topic, fields, &[], cid)
+    }
+
+    /// Add a subscription with options (e.g., for VWAP start/end times).
+    ///
+    /// Options are key=value strings like "VWAP_START_TIME=09:30" or "interval=5".
+    pub fn add_with_options(
+        &mut self,
+        topic: &str,
+        fields: &[&str],
+        options: &[&str],
+        cid: Option<&CorrelationId>,
+    ) -> Result<()> {
         let ctopic = CString::new(topic).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid topic: {e}"),
         })?;
@@ -33,7 +46,16 @@ impl SubscriptionList {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        let options_c: Vec<CString> = options
+            .iter()
+            .map(|s| {
+                CString::new(*s).map_err(|e| BlpError::InvalidArgument {
+                    detail: format!("invalid option: {e}"),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         let mut fields_ptrs: Vec<*const i8> = fields_c.iter().map(|c| c.as_ptr()).collect();
+        let mut options_ptrs: Vec<*const i8> = options_c.iter().map(|c| c.as_ptr()).collect();
         let mut cid_raw = match cid {
             Some(c) => c.to_ffi(),
             None => CorrelationId::to_ffi_autogen(),
@@ -43,7 +65,11 @@ impl SubscriptionList {
         } else {
             fields_ptrs.as_mut_ptr()
         };
-        let options_ptr_raw: *mut *const i8 = std::ptr::null_mut();
+        let options_ptr_raw: *mut *const i8 = if options_ptrs.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            options_ptrs.as_mut_ptr()
+        };
         let rc = unsafe {
             blpapi_sys::blpapi_SubscriptionList_add(
                 self.ptr,
@@ -52,7 +78,7 @@ impl SubscriptionList {
                 fields_ptr_raw,
                 options_ptr_raw,
                 fields_ptrs.len(),
-                0,
+                options_ptrs.len(),
             )
         };
         if rc != 0 {

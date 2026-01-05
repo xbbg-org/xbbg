@@ -23,16 +23,24 @@ use super::{BlpAsyncError, EngineConfig, SlabKey};
 pub enum SubscriptionCommand {
     /// Start a subscription.
     Subscribe {
+        /// Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap")
+        service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        /// Subscription options (e.g., ["VWAP_START_TIME=09:30"])
+        options: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
         /// Reply with slab keys for later unsubscribe.
         reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
     },
     /// Add topics to an existing subscription (uses same stream sender).
     AddTopics {
+        /// Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap")
+        service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        /// Subscription options
+        options: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
         /// Reply with new slab keys.
         reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
@@ -50,6 +58,8 @@ struct SubscriptionWorker {
     subs: Slab<SubscriptionState>,
     cmd_rx: mpsc::Receiver<SubscriptionCommand>,
     config: Arc<EngineConfig>,
+    /// Services that have been opened on this session.
+    open_services: std::collections::HashSet<String>,
 }
 
 impl SubscriptionWorker {
@@ -67,8 +77,10 @@ impl SubscriptionWorker {
         let session = Session::new(&opts)?;
         session.start()?;
 
-        // Pre-open the mktdata service
+        // Pre-open the mktdata service (most common)
         session.open_service("//blp/mktdata")?;
+        let mut open_services = std::collections::HashSet::new();
+        open_services.insert("//blp/mktdata".to_string());
 
         tracing::info!(worker_id = id, "subscription worker pre-warmed");
 
@@ -78,7 +90,18 @@ impl SubscriptionWorker {
             subs: Slab::new(),
             cmd_rx,
             config,
+            open_services,
         })
+    }
+
+    /// Ensure a service is open, opening it on demand if needed.
+    fn ensure_service(&mut self, service: &str) -> Result<(), BlpError> {
+        if !self.open_services.contains(service) {
+            tracing::info!(worker_id = self.id, service = service, "opening service on demand");
+            self.session.open_service(service)?;
+            self.open_services.insert(service.to_string());
+        }
+        Ok(())
     }
 
     fn run(&mut self) -> Result<(), BlpError> {
@@ -93,22 +116,38 @@ impl SubscriptionWorker {
                         return Ok(());
                     }
                     Ok(SubscriptionCommand::Subscribe {
+                        service,
                         topics,
                         fields,
+                        options,
                         stream,
                         reply,
                     }) => {
-                        let keys = self.subscribe(topics, fields, stream);
+                        // Ensure service is open
+                        if let Err(e) = self.ensure_service(&service) {
+                            tracing::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
+                            let _ = reply.send(vec![]);
+                            continue;
+                        }
+                        let keys = self.subscribe(topics, fields, options, stream);
                         let _ = reply.send(keys);
                     }
                     Ok(SubscriptionCommand::AddTopics {
+                        service,
                         topics,
                         fields,
+                        options,
                         stream,
                         reply,
                     }) => {
+                        // Ensure service is open
+                        if let Err(e) = self.ensure_service(&service) {
+                            tracing::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
+                            let _ = reply.send(vec![]);
+                            continue;
+                        }
                         // AddTopics uses the same logic as Subscribe
-                        let keys = self.subscribe(topics, fields, stream);
+                        let keys = self.subscribe(topics, fields, options, stream);
                         let _ = reply.send(keys);
                     }
                     Ok(SubscriptionCommand::Unsubscribe { keys }) => {
@@ -134,6 +173,7 @@ impl SubscriptionWorker {
         &mut self,
         topics: Vec<String>,
         fields: Vec<String>,
+        options: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
     ) -> Vec<SlabKey> {
         let mut sub_list = match SubscriptionList::new() {
@@ -145,6 +185,7 @@ impl SubscriptionWorker {
         };
 
         let field_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
+        let option_refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
         let mut keys = Vec::with_capacity(topics.len());
 
         for topic in &topics {
@@ -159,7 +200,7 @@ impl SubscriptionWorker {
             keys.push(key);
 
             let cid = CorrelationId::U64(key as u64);
-            if let Err(e) = sub_list.add(topic, &field_refs, Some(&cid)) {
+            if let Err(e) = sub_list.add_with_options(topic, &field_refs, &option_refs, Some(&cid)) {
                 tracing::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
             }
 
@@ -463,10 +504,19 @@ pub struct SessionClaim {
 
 impl SessionClaim {
     /// Subscribe to topics on this session.
+    ///
+    /// # Arguments
+    /// * `service` - Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap")
+    /// * `topics` - Securities to subscribe to
+    /// * `fields` - Fields to subscribe to
+    /// * `options` - Subscription options (e.g., ["VWAP_START_TIME=09:30"])
+    /// * `stream` - Channel to send data batches to
     pub async fn subscribe(
         &self,
+        service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        options: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
         let handle = self
@@ -481,8 +531,10 @@ impl SessionClaim {
         handle
             .cmd_tx
             .send(SubscriptionCommand::Subscribe {
+                service,
                 topics,
                 fields,
+                options,
                 stream,
                 reply: reply_tx,
             })
@@ -495,8 +547,10 @@ impl SessionClaim {
     /// Add topics to an existing subscription.
     pub async fn add_topics(
         &self,
+        service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        options: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
         let handle = self
@@ -511,8 +565,10 @@ impl SessionClaim {
         handle
             .cmd_tx
             .send(SubscriptionCommand::AddTopics {
+                service,
                 topics,
                 fields,
+                options,
                 stream,
                 reply: reply_tx,
             })

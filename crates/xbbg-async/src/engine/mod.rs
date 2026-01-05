@@ -295,7 +295,7 @@ impl Engine {
 
     // ─── Subscriptions ───────────────────────────────────────────────────────
 
-    /// Subscribe to real-time data.
+    /// Subscribe to real-time market data (//blp/mktdata).
     ///
     /// Claims a dedicated session from the pool for this subscription.
     /// Returns a `SubscriptionStream` that provides:
@@ -309,6 +309,32 @@ impl Engine {
         topics: Vec<String>,
         fields: Vec<String>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
+        self.subscribe_with_options(
+            "//blp/mktdata".to_string(),
+            topics,
+            fields,
+            vec![],
+        )
+        .await
+    }
+
+    /// Subscribe to real-time data with custom service and options.
+    ///
+    /// This is the generic subscription method that supports different services
+    /// (e.g., //blp/mktdata, //blp/mktvwap) and subscription options.
+    ///
+    /// # Arguments
+    /// * `service` - Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap")
+    /// * `topics` - Securities to subscribe to
+    /// * `fields` - Fields to subscribe to
+    /// * `options` - Subscription options (e.g., ["VWAP_START_TIME=09:30"])
+    pub async fn subscribe_with_options(
+        &self,
+        service: String,
+        topics: Vec<String>,
+        fields: Vec<String>,
+        options: Vec<String>,
+    ) -> Result<SubscriptionStream, BlpAsyncError> {
         let (tx, rx) = mpsc::channel(self.config.subscription_stream_capacity);
 
         // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
@@ -316,7 +342,13 @@ impl Engine {
 
         // Start the subscription
         let keys = claim
-            .subscribe(topics.clone(), fields.clone(), tx.clone())
+            .subscribe(
+                service.clone(),
+                topics.clone(),
+                fields.clone(),
+                options.clone(),
+                tx.clone(),
+            )
             .await?;
 
         // Build topic -> key mapping
@@ -331,6 +363,8 @@ impl Engine {
             topics,
             fields,
             topic_to_key,
+            service,
+            options,
         };
 
         Ok(stream)
@@ -678,6 +712,10 @@ pub struct SubscriptionStream {
     fields: Vec<String>,
     /// Mapping from topic to its slab key for removal.
     topic_to_key: std::collections::HashMap<String, SlabKey>,
+    /// Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap").
+    service: String,
+    /// Subscription options.
+    options: Vec<String>,
 }
 
 impl SubscriptionStream {
@@ -718,7 +756,13 @@ impl SubscriptionStream {
 
         // Add new topics using the same stream sender
         let new_keys = claim
-            .add_topics(new_topics.clone(), self.fields.clone(), self.tx.clone())
+            .add_topics(
+                self.service.clone(),
+                new_topics.clone(),
+                self.fields.clone(),
+                self.options.clone(),
+                self.tx.clone(),
+            )
             .await?;
 
         // Track new topics
@@ -822,6 +866,8 @@ impl SubscriptionStream {
         SessionClaim,
         Vec<SlabKey>,
         std::collections::HashMap<String, SlabKey>,
+        String,       // service
+        Vec<String>,  // options
     ) {
         use std::mem;
 
@@ -834,11 +880,13 @@ impl SubscriptionStream {
             .expect("into_parts called on already-closed stream");
         let keys = mem::take(&mut self.keys);
         let topic_to_key = mem::take(&mut self.topic_to_key);
+        let service = mem::take(&mut self.service);
+        let options = mem::take(&mut self.options);
 
         // Prevent Drop from running (we've taken ownership of everything important)
         mem::forget(self);
 
-        (rx, tx, claim, keys, topic_to_key)
+        (rx, tx, claim, keys, topic_to_key, service, options)
     }
 }
 

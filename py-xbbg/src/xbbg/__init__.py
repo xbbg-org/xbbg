@@ -324,6 +324,9 @@ __all__ = [
     "subscribe",
     "astream",
     "stream",
+    # VWAP Streaming
+    "avwap",
+    "vwap",
     # Config
     "configure",
     "set_backend",
@@ -448,6 +451,9 @@ def __getattr__(name: str):
         "subscribe",
         "astream",
         "stream",
+        # VWAP Streaming
+        "avwap",
+        "vwap",
         # Config
         "configure",
         "set_backend",

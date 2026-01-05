@@ -92,6 +92,9 @@ __all__ = [
     "subscribe",
     "astream",
     "stream",
+    # VWAP Streaming
+    "avwap",
+    "vwap",
     # Config
     "configure",
     "set_backend",
@@ -1513,6 +1516,112 @@ def stream(
     finally:
         stop_event.set()
         thread.join(timeout=1.0)
+
+
+# =============================================================================
+# VWAP Streaming API - Real-time Volume Weighted Average Price
+# =============================================================================
+
+
+async def avwap(
+    tickers: str | list[str],
+    fields: str | list[str] | None = None,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to real-time VWAP data (//blp/mktvwap).
+
+    Provides streaming Volume Weighted Average Price calculations.
+
+    Args:
+        tickers: Securities to subscribe to
+        fields: Fields to subscribe to (default: RT_PX_VWAP, RT_VWAP_VOLUME)
+        start_time: VWAP calculation start time (e.g., "09:30")
+        end_time: VWAP calculation end time (e.g., "16:00")
+        raw: If True, yield raw Arrow RecordBatches for max performance
+        backend: DataFrame backend for batch conversion (ignored if raw=True)
+
+    Returns:
+        Subscription handle for iteration and control
+
+    Example::
+
+        # Basic usage - subscribe to VWAP
+        sub = await xbbg.avwap(['AAPL US Equity'])
+        async for batch in sub:
+            print(batch)
+        await sub.unsubscribe()
+
+        # With custom time window
+        sub = await xbbg.avwap(
+            ['AAPL US Equity', 'MSFT US Equity'],
+            start_time='09:30',
+            end_time='16:00'
+        )
+
+        # With specific fields
+        sub = await xbbg.avwap(
+            'AAPL US Equity',
+            ['RT_PX_VWAP', 'RT_VWAP_VOLUME', 'RT_VWAP_TURNOVER']
+        )
+    """
+    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+
+    # Default fields if not provided
+    if fields is None:
+        field_list = ["RT_PX_VWAP", "RT_VWAP_VOLUME"]
+    else:
+        field_list = [fields] if isinstance(fields, str) else list(fields)
+
+    # Build subscription options
+    options: list[str] = []
+    if start_time:
+        options.append(f"VWAP_START_TIME={start_time}")
+    if end_time:
+        options.append(f"VWAP_END_TIME={end_time}")
+
+    effective_backend = (
+        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
+    )
+
+    engine = _get_engine()
+    py_sub = await engine.subscribe_with_options(
+        "//blp/mktvwap",
+        ticker_list,
+        field_list,
+        options if options else None,
+    )
+
+    return Subscription(py_sub, raw=raw, backend=effective_backend)
+
+
+def vwap(
+    tickers: str | list[str],
+    fields: str | list[str] | None = None,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to real-time VWAP data (sync version).
+
+    Note: This returns an async Subscription. Use in an async context
+    or call methods with asyncio.run().
+
+    See avwap() for full documentation.
+    """
+    return asyncio.run(avwap(
+        tickers,
+        fields,
+        start_time=start_time,
+        end_time=end_time,
+        raw=raw,
+        backend=backend,
+    ))
 
 
 # =============================================================================
