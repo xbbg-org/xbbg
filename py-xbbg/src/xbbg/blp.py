@@ -2110,6 +2110,12 @@ def generate_ta_stubs(output_dir: str | None = None) -> str:
     py_path = output_path / "ta_studies.py"
     py_path.write_text("\n".join(lines))
 
+    # Configure IDE
+    from .schema import configure_ide_stubs
+
+    ide_msg = configure_ide_stubs(output_path)
+    print(ide_msg)
+
     return str(stub_path)
 
 

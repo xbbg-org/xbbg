@@ -371,6 +371,7 @@ __all__ = [
     "list_valid_elements",
     "alist_valid_elements",
     "generate_stubs",
+    "configure_ide_stubs",
     "ServiceSchema",
     "OperationSchema",
     # Exceptions
@@ -524,6 +525,7 @@ def __getattr__(name: str):
         "list_valid_elements",
         "alist_valid_elements",
         "generate_stubs",
+        "configure_ide_stubs",
         "ServiceSchema",
         "OperationSchema",
         "ElementInfo",
