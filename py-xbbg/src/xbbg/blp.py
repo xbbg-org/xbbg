@@ -951,23 +951,28 @@ async def abdib(
         typ: Event type (TRADE, BID, ASK, etc.).
         start_datetime: Explicit start datetime for multi-day requests.
         end_datetime: Explicit end datetime for multi-day requests.
-        interval: Bar interval in minutes (default: 1).
+        interval: Bar interval in minutes (default: 1), or seconds if intervalHasSeconds=True.
         backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional options.
+        **kwargs: Additional Bloomberg options (e.g., intervalHasSeconds, gapFillInitialBar).
 
     Returns:
         DataFrame with intraday bar data.
 
     Example::
 
+        # 1-minute bars (default)
         df = await abdib("AAPL US Equity", dt="2024-12-01")
+
+        # 5-minute bars with explicit datetime range
         df = await abdib(
             "AAPL US Equity",
             start_datetime="2024-12-01 09:30",
             end_datetime="2024-12-01 16:00",
             interval=5,
-            backend="polars",
         )
+
+        # 10-second bars
+        df = await abdib("AAPL US Equity", dt="2024-12-01", interval=10, intervalHasSeconds=True)
     """
     # Determine datetime range
     if start_datetime is not None and end_datetime is not None:
@@ -993,6 +998,7 @@ async def abdib(
         start_datetime=s_dt,
         end_datetime=e_dt,
         backend=None,  # Get narwhals DataFrame, we'll convert below
+        **kwargs,
     )
 
     logger.debug("abdib: received %d bars", len(nw_df))
@@ -1038,6 +1044,7 @@ async def abdtick(
         start_datetime=s_dt,
         end_datetime=e_dt,
         backend=None,  # Get narwhals DataFrame, we'll convert below
+        **kwargs,
     )
 
     logger.debug("abdtick: received %d ticks", len(nw_df))
