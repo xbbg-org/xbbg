@@ -342,6 +342,9 @@ class RequestParams:
             # FieldInfoRequest uses "id" array in Bloomberg API, mapped to field_ids in Rust
             if self.operation == Operation.FIELD_INFO.value:
                 result["field_ids"] = list(self.fields)
+            # FieldSearchRequest uses search_spec (single string)
+            elif self.operation == Operation.FIELD_SEARCH.value:
+                result["search_spec"] = self.fields[0] if self.fields else ""
             else:
                 result["fields"] = list(self.fields)
         if self.overrides is not None:
