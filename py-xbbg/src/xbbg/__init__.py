@@ -307,6 +307,7 @@ __all__ = [
     "bdtick",
     "bql",
     "bsrch",
+    "bfld",
     # Async API
     "abdp",
     "abds",
@@ -315,6 +316,7 @@ __all__ = [
     "abdtick",
     "abql",
     "absrch",
+    "abfld",
     # Streaming API
     "Tick",
     "Subscription",
@@ -411,6 +413,7 @@ def __getattr__(name: str):
         "bdtick",
         "bql",
         "bsrch",
+        "bfld",
         "abdp",
         "abds",
         "abdh",
@@ -418,6 +421,7 @@ def __getattr__(name: str):
         "abdtick",
         "abql",
         "absrch",
+        "abfld",
         # Streaming API
         "Tick",
         "Subscription",
