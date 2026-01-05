@@ -132,6 +132,18 @@ pub struct RequestParams {
     pub format: Option<String>,
 }
 
+/// Validation mode for request validation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ValidationMode {
+    /// Error on invalid requests (default)
+    #[default]
+    Strict,
+    /// Warn but still send request
+    Lenient,
+    /// Skip validation entirely
+    Disabled,
+}
+
 /// Configuration for the Engine.
 #[derive(Clone)]
 pub struct EngineConfig {
@@ -155,6 +167,8 @@ pub struct EngineConfig {
     pub subscription_pool_size: usize,
     /// Services to pre-warm on request workers
     pub warmup_services: Vec<String>,
+    /// Validation mode for requests (default: Strict)
+    pub validation_mode: ValidationMode,
 }
 
 impl Default for EngineConfig {
@@ -173,6 +187,7 @@ impl Default for EngineConfig {
                 "//blp/refdata".to_string(),
                 "//blp/apiflds".to_string(),
             ],
+            validation_mode: ValidationMode::default(),
         }
     }
 }
@@ -378,7 +393,9 @@ impl Engine {
     ///
     /// First checks disk cache. If not cached, introspects the service
     /// via a worker and caches the result.
-    pub async fn get_schema(&self, service: &str) -> Result<SerializedSchema, BlpAsyncError> {
+    ///
+    /// Returns an `Arc<SerializedSchema>` for efficient sharing.
+    pub async fn get_schema(&self, service: &str) -> Result<Arc<SerializedSchema>, BlpAsyncError> {
         let cache = global_schema_cache();
 
         // Check cache first
@@ -398,7 +415,10 @@ impl Engine {
             .put(&schema)
             .map_err(|e| BlpAsyncError::Internal(format!("cache schema: {e}")))?;
 
-        Ok(schema)
+        // Return from cache to get Arc version
+        cache
+            .get(service)
+            .ok_or_else(|| BlpAsyncError::Internal("schema not found after caching".to_string()))
     }
 
     /// Get a specific operation schema.
@@ -424,7 +444,9 @@ impl Engine {
     }
 
     /// Get cached schema without introspection (returns None if not cached).
-    pub fn get_cached_schema(&self, service: &str) -> Option<SerializedSchema> {
+    ///
+    /// Returns an `Arc<SerializedSchema>` for efficient sharing.
+    pub fn get_cached_schema(&self, service: &str) -> Option<Arc<SerializedSchema>> {
         global_schema_cache().get(service)
     }
 
@@ -444,6 +466,80 @@ impl Engine {
     }
 
     // ─── Schema Validation ───────────────────────────────────────────────────
+
+    /// Validate request elements against the cached schema.
+    ///
+    /// Behavior depends on `validation_mode`:
+    /// - `Disabled`: Always returns Ok, no validation performed
+    /// - `Lenient`: Logs warnings but returns Ok
+    /// - `Strict`: Returns Err on validation failure
+    ///
+    /// Uses the global schema cache for validation (pure in-memory, no disk I/O).
+    /// If no schema is cached for the service, validation is skipped.
+    pub fn validate_request_if_enabled(
+        &self,
+        service: &str,
+        operation: &str,
+        element_names: &[&str],
+    ) -> Result<(), BlpAsyncError> {
+        match self.config.validation_mode {
+            ValidationMode::Disabled => Ok(()),
+            ValidationMode::Lenient => {
+                if let Err(e) = global_schema_cache().validate_request(service, operation, element_names) {
+                    tracing::warn!(
+                        service = service,
+                        operation = operation,
+                        error = %e,
+                        "Request validation warning (lenient mode)"
+                    );
+                }
+                Ok(())
+            }
+            ValidationMode::Strict => {
+                global_schema_cache()
+                    .validate_request(service, operation, element_names)
+                    .map_err(BlpAsyncError::BlpError)
+            }
+        }
+    }
+
+    /// Validate an enum value against the cached schema.
+    ///
+    /// Behavior depends on `validation_mode`.
+    pub fn validate_enum_if_enabled(
+        &self,
+        service: &str,
+        operation: &str,
+        element: &str,
+        value: &str,
+    ) -> Result<(), BlpAsyncError> {
+        match self.config.validation_mode {
+            ValidationMode::Disabled => Ok(()),
+            ValidationMode::Lenient => {
+                if let Err(e) = global_schema_cache().validate_enum(service, operation, element, value) {
+                    tracing::warn!(
+                        service = service,
+                        operation = operation,
+                        element = element,
+                        value = value,
+                        error = %e,
+                        "Enum validation warning (lenient mode)"
+                    );
+                }
+                Ok(())
+            }
+            ValidationMode::Strict => {
+                global_schema_cache()
+                    .validate_enum(service, operation, element, value)
+                    .map_err(BlpAsyncError::BlpError)
+            }
+        }
+    }
+
+    /// Get the current validation mode.
+    pub fn validation_mode(&self) -> ValidationMode {
+        self.config.validation_mode
+    }
 
     /// Validate that an operation exists in the schema.
     pub async fn validate_operation(

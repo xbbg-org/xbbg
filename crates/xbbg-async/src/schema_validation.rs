@@ -196,6 +196,7 @@ pub struct ElementInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xbbg_core::schema::SerializedOperation;
 
     fn create_test_schema() -> SerializedSchema {
         SerializedSchema {

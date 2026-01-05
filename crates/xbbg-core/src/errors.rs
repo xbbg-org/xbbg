@@ -84,6 +84,12 @@ pub enum BlpError {
 
     #[error("unsupported schema construct at {element}: {detail}")]
     SchemaUnsupported { element: String, detail: String },
+
+    #[error("request validation failed: {message}")]
+    Validation {
+        message: String,
+        errors: Vec<crate::schema::ValidationError>,
+    },
 }
 
 impl BlpError {

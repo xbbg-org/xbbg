@@ -11,18 +11,26 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use tracing::{debug, info, warn};
-use xbbg_core::schema::{SerializedOperation, SerializedSchema};
-use xbbg_core::Service;
+use xbbg_core::schema::{RequestValidator, SerializedOperation, SerializedSchema};
+use xbbg_core::{BlpError, Service};
 
 /// Schema cache manager.
 ///
 /// Handles loading/saving service schemas from disk and memory caching.
+/// Schemas are loaded once and kept in memory for the lifetime of the cache.
+///
+/// # Performance
+///
+/// - **First access**: Loads from disk (or introspects if not cached)
+/// - **Subsequent access**: Pure in-memory lookup
+/// - **Validation**: In-memory only, no disk I/O
 pub struct SchemaCache {
     /// In-memory cache (service_uri -> schema)
-    cache: RwLock<HashMap<String, SerializedSchema>>,
+    /// Using Arc for efficient sharing with validators
+    cache: RwLock<HashMap<String, Arc<SerializedSchema>>>,
     /// Base directory for cache files
     cache_dir: PathBuf,
 }
@@ -66,13 +74,14 @@ impl SchemaCache {
     /// Get a cached schema for a service.
     ///
     /// First checks in-memory cache, then disk cache.
-    pub fn get(&self, service_uri: &str) -> Option<SerializedSchema> {
+    /// Returns an Arc for efficient sharing.
+    pub fn get(&self, service_uri: &str) -> Option<Arc<SerializedSchema>> {
         // Check in-memory cache first
         {
             let cache = self.cache.read().unwrap();
             if let Some(schema) = cache.get(service_uri) {
                 debug!(service = service_uri, "Schema cache hit (memory)");
-                return Some(schema.clone());
+                return Some(Arc::clone(schema));
             }
         }
 
@@ -102,10 +111,12 @@ impl SchemaCache {
 
         info!(service = service_uri, path = %path.display(), "Loaded schema from disk cache");
 
+        let schema = Arc::new(schema);
+
         // Store in memory cache
         {
             let mut cache = self.cache.write().unwrap();
-            cache.insert(service_uri.to_string(), schema.clone());
+            cache.insert(service_uri.to_string(), Arc::clone(&schema));
         }
 
         Some(schema)
@@ -133,7 +144,7 @@ impl SchemaCache {
         // Update memory cache
         {
             let mut cache = self.cache.write().unwrap();
-            cache.insert(service_uri.to_string(), schema.clone());
+            cache.insert(service_uri.to_string(), Arc::new(schema.clone()));
         }
 
         Ok(())
@@ -143,7 +154,7 @@ impl SchemaCache {
     ///
     /// If cached, returns the cached schema. Otherwise, introspects the service
     /// and caches the result.
-    pub fn get_or_introspect(&self, service: &Service) -> Result<SerializedSchema, String> {
+    pub fn get_or_introspect(&self, service: &Service) -> Result<Arc<SerializedSchema>, String> {
         let service_uri = service.name();
 
         // Check cache first
@@ -158,7 +169,119 @@ impl SchemaCache {
         // Cache it
         self.put(&schema)?;
 
-        Ok(schema)
+        // Return the Arc version from cache
+        self.get(service_uri)
+            .ok_or_else(|| "Schema not found after caching".to_string())
+    }
+
+    // ========== Validation Methods ==========
+
+    /// Validate request elements against cached schema.
+    ///
+    /// Returns Ok(()) if valid, or Err with validation errors.
+    /// If no schema is cached for the service, returns Ok(()) (validation skipped).
+    pub fn validate_request(
+        &self,
+        service_uri: &str,
+        operation: &str,
+        element_names: &[&str],
+    ) -> Result<(), BlpError> {
+        let Some(schema) = self.get(service_uri) else {
+            // No schema cached, skip validation
+            debug!(service = service_uri, "No schema cached, skipping validation");
+            return Ok(());
+        };
+
+        let validator = RequestValidator::new(&schema);
+
+        // Validate operation exists
+        if let Err(err) = validator.validate_operation(operation) {
+            return Err(BlpError::Validation {
+                message: err.to_string(),
+                errors: vec![err],
+            });
+        }
+
+        // Validate element names
+        let errors = validator.validate_elements(operation, element_names);
+        if !errors.is_empty() {
+            let message = errors
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(BlpError::Validation { message, errors });
+        }
+
+        Ok(())
+    }
+
+    /// Validate an enum value against cached schema.
+    ///
+    /// Returns Ok(()) if valid or if validation cannot be performed.
+    pub fn validate_enum(
+        &self,
+        service_uri: &str,
+        operation: &str,
+        element: &str,
+        value: &str,
+    ) -> Result<(), BlpError> {
+        let Some(schema) = self.get(service_uri) else {
+            return Ok(());
+        };
+
+        let validator = RequestValidator::new(&schema);
+
+        if let Err(err) = validator.validate_enum_value(operation, element, value) {
+            return Err(BlpError::Validation {
+                message: err.to_string(),
+                errors: vec![err],
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Get valid enum values for an element.
+    pub fn get_enum_values(
+        &self,
+        service_uri: &str,
+        operation: &str,
+        element: &str,
+    ) -> Option<Vec<String>> {
+        let schema = self.get(service_uri)?;
+        let validator = RequestValidator::new(&schema);
+        validator.get_enum_values(operation, element)
+    }
+
+    /// Get valid element names for an operation.
+    pub fn get_valid_elements(&self, service_uri: &str, operation: &str) -> Option<Vec<String>> {
+        let schema = self.get(service_uri)?;
+        let validator = RequestValidator::new(&schema);
+        validator.list_valid_elements(operation)
+    }
+
+    /// Suggest a correction for a potentially misspelled element.
+    pub fn suggest_element(
+        &self,
+        service_uri: &str,
+        operation: &str,
+        typo: &str,
+    ) -> Option<String> {
+        let schema = self.get(service_uri)?;
+        let validator = RequestValidator::new(&schema);
+        validator.suggest_element(operation, typo)
+    }
+
+    /// Preload schemas for common services.
+    ///
+    /// Call this at engine startup for faster first requests.
+    pub fn preload_from_disk(&self) {
+        for service in ["//blp/refdata", "//blp/apiflds", "//blp/instruments"] {
+            if self.get(service).is_some() {
+                debug!(service, "Preloaded schema from disk");
+            }
+        }
     }
 
     /// Get an operation schema by name.

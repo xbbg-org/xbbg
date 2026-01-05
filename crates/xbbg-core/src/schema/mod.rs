@@ -2,7 +2,12 @@ use crate::errors::{BlpError, Result};
 use crate::name::Name;
 
 pub mod serialize;
+pub mod types;
+pub mod validation;
+
 pub use serialize::{SerializedElement, SerializedOperation, SerializedSchema};
+pub use types::BlpType;
+pub use validation::{RequestValidator, ValidationError, ValidationErrorKind};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DataType {

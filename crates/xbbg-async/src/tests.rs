@@ -31,6 +31,7 @@ fn test_engine_config_custom_values() {
         subscription_flush_threshold: 200,
         subscription_stream_capacity: 2048,
         overflow_policy: OverflowPolicy::Block,
+        ..Default::default()
     };
 
     assert_eq!(config.server_host, "bloomberg.example.com");

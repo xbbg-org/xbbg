@@ -41,7 +41,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
-use xbbg_async::BlpAsyncError;
+use xbbg_async::{BlpAsyncError, ValidationMode};
 use xbbg_core::BlpError;
 
 // =============================================================================
@@ -147,6 +147,25 @@ fn blp_error_to_pyerr(e: BlpError) -> PyErr {
             "Unsupported schema construct at {}: {}",
             element, detail
         )),
+        BlpError::Validation { message, errors } => {
+            // Build detailed error message with suggestions
+            let details: Vec<String> = errors
+                .iter()
+                .map(|e| {
+                    if let Some(ref suggestion) = e.suggestion {
+                        format!("{} (did you mean '{}'?)", e, suggestion)
+                    } else {
+                        e.to_string()
+                    }
+                })
+                .collect();
+            let msg = if details.is_empty() {
+                message
+            } else {
+                format!("{}: {}", message, details.join("; "))
+            };
+            BlpValidationError::new_err(msg)
+        }
     }
 }
 
@@ -218,37 +237,61 @@ pub struct PyEngineConfig {
     /// Number of pre-warmed subscription sessions (default: 4)
     #[pyo3(get, set)]
     pub subscription_pool_size: usize,
+    /// Validation mode: "strict" (default), "lenient", or "disabled"
+    #[pyo3(get, set)]
+    pub validation_mode: String,
 }
 
 #[pymethods]
 impl PyEngineConfig {
     /// Create a new configuration with defaults.
     #[new]
-    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4))]
-    fn new(host: &str, port: u16, request_pool_size: usize, subscription_pool_size: usize) -> Self {
+    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4, validation_mode="strict"))]
+    fn new(
+        host: &str,
+        port: u16,
+        request_pool_size: usize,
+        subscription_pool_size: usize,
+        validation_mode: &str,
+    ) -> Self {
         Self {
             host: host.to_string(),
             port,
             request_pool_size,
             subscription_pool_size,
+            validation_mode: validation_mode.to_string(),
         }
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={})",
-            self.host, self.port, self.request_pool_size, self.subscription_pool_size
+            "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, validation_mode='{}')",
+            self.host, self.port, self.request_pool_size, self.subscription_pool_size, self.validation_mode
         )
     }
 }
 
 impl From<&PyEngineConfig> for EngineConfig {
     fn from(py_config: &PyEngineConfig) -> Self {
+        let validation_mode = match py_config.validation_mode.to_lowercase().as_str() {
+            "strict" => ValidationMode::Strict,
+            "lenient" => ValidationMode::Lenient,
+            "disabled" | "off" | "none" => ValidationMode::Disabled,
+            _ => {
+                warn!(
+                    mode = %py_config.validation_mode,
+                    "Unknown validation mode, using strict"
+                );
+                ValidationMode::Strict
+            }
+        };
+
         EngineConfig {
             server_host: py_config.host.clone(),
             server_port: py_config.port,
             request_pool_size: py_config.request_pool_size,
             subscription_pool_size: py_config.subscription_pool_size,
+            validation_mode,
             ..Default::default()
         }
     }
@@ -463,8 +506,8 @@ impl PyEngine {
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
 
-            // Convert to JSON string for Python
-            let json = serde_json::to_string(&schema)
+            // Convert to JSON string for Python (dereference Arc)
+            let json = serde_json::to_string(&*schema)
                 .map_err(|e| PyRuntimeError::new_err(format!("serialize schema: {e}")))?;
 
             Python::attach(|py| Ok(json.into_pyobject(py)?.into_any().unbind()))
@@ -524,7 +567,7 @@ impl PyEngine {
     fn get_cached_schema(&self, service: &str) -> Option<String> {
         self.engine
             .get_cached_schema(service)
-            .map(|s| serde_json::to_string(&s).ok())
+            .map(|s| serde_json::to_string(&*s).ok())
             .flatten()
     }
 

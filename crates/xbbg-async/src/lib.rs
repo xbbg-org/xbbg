@@ -33,7 +33,7 @@ pub use snapshot::manager::SnapshotTemplateManager;
 pub use subscriptions::SubscriptionHandle;
 
 // New worker pool Engine
-pub use engine::{Engine, EngineConfig, SlabKey};
+pub use engine::{Engine, EngineConfig, SlabKey, ValidationMode};
 
 pub struct AsyncSession {
     core: Arc<Session>,

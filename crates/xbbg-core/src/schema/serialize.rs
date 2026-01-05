@@ -58,6 +58,34 @@ pub struct SerializedElement {
 }
 
 impl SerializedElement {
+    /// Find a direct child element by name.
+    pub fn get_child(&self, name: &str) -> Option<&SerializedElement> {
+        self.children.iter().find(|c| c.name == name)
+    }
+
+    /// Find an element by name recursively (searches all descendants).
+    pub fn find_element(&self, name: &str) -> Option<&SerializedElement> {
+        if self.name == name {
+            return Some(self);
+        }
+        for child in &self.children {
+            if let Some(found) = child.find_element(name) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Check if this element is an enumeration type.
+    pub fn is_enum(&self) -> bool {
+        self.enum_values.is_some() || self.data_type == "Enumeration"
+    }
+
+    /// Get the BlpType for this element.
+    pub fn blp_type(&self) -> super::types::BlpType {
+        super::types::BlpType::from_datatype_name(&self.data_type)
+    }
+
     /// Create a SerializedElement from a SchemaElementDefinition.
     pub fn from_definition(def: &SchemaElementDefinition, max_depth: usize) -> Self {
         let data_type = def.data_type();
