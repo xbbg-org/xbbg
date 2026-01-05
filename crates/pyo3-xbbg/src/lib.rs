@@ -234,19 +234,23 @@ pub struct PyEngineConfig {
     /// Validation mode: "strict" (default), "lenient", or "disabled"
     #[pyo3(get, set)]
     pub validation_mode: String,
+    /// Number of ticks to buffer before flushing to Python (default: 1)
+    #[pyo3(get, set)]
+    pub subscription_flush_threshold: usize,
 }
 
 #[pymethods]
 impl PyEngineConfig {
     /// Create a new configuration with defaults.
     #[new]
-    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4, validation_mode="strict"))]
+    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4, validation_mode="strict", subscription_flush_threshold=1))]
     fn new(
         host: &str,
         port: u16,
         request_pool_size: usize,
         subscription_pool_size: usize,
         validation_mode: &str,
+        subscription_flush_threshold: usize,
     ) -> Self {
         Self {
             host: host.to_string(),
@@ -254,13 +258,14 @@ impl PyEngineConfig {
             request_pool_size,
             subscription_pool_size,
             validation_mode: validation_mode.to_string(),
+            subscription_flush_threshold,
         }
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, validation_mode='{}')",
-            self.host, self.port, self.request_pool_size, self.subscription_pool_size, self.validation_mode
+            "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, validation_mode='{}', subscription_flush_threshold={})",
+            self.host, self.port, self.request_pool_size, self.subscription_pool_size, self.validation_mode, self.subscription_flush_threshold
         )
     }
 }
@@ -286,6 +291,7 @@ impl From<&PyEngineConfig> for EngineConfig {
             request_pool_size: py_config.request_pool_size,
             subscription_pool_size: py_config.subscription_pool_size,
             validation_mode,
+            subscription_flush_threshold: py_config.subscription_flush_threshold,
             ..Default::default()
         }
     }

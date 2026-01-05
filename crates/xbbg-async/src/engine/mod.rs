@@ -178,7 +178,7 @@ impl Default for EngineConfig {
             server_port: 8194,
             max_event_queue_size: 10_000,
             command_queue_size: 256,
-            subscription_flush_threshold: 1000,
+            subscription_flush_threshold: 1,
             subscription_stream_capacity: 256,
             overflow_policy: OverflowPolicy::default(),
             request_pool_size: 2,
