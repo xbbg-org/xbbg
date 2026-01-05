@@ -262,6 +262,21 @@ impl RequestWorker {
         if !self.services.contains_key(name) {
             self.session.open_service(name)?;
             let svc = self.session.get_service(name)?;
+
+            // Cache schema on first service open (for validation)
+            let cache = crate::schema_cache::global_schema_cache();
+            if cache.get(name).is_none() {
+                tracing::info!(
+                    worker_id = self.id,
+                    service = name,
+                    "caching service schema"
+                );
+                let schema = SerializedSchema::from_service(&svc);
+                if let Err(e) = cache.put(&schema) {
+                    tracing::warn!(error = %e, "failed to cache schema");
+                }
+            }
+
             self.services.insert(name.to_string(), svc);
         }
         Ok(())

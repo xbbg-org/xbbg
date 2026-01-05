@@ -248,7 +248,41 @@ impl Engine {
     ///
     /// All request types are handled by the same pool of workers.
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
+        // Validate request if enabled
+        self.validate_params(&params)?;
+
         self.request_pool.request(params).await
+    }
+
+    /// Validate request parameters against cached schema.
+    fn validate_params(&self, params: &RequestParams) -> Result<(), BlpAsyncError> {
+        // Collect element names from options and elements
+        let mut element_names: Vec<&str> = Vec::new();
+
+        if let Some(ref opts) = params.options {
+            for (key, _) in opts {
+                element_names.push(key.as_str());
+            }
+        }
+        if let Some(ref elems) = params.elements {
+            for (key, _) in elems {
+                element_names.push(key.as_str());
+            }
+        }
+
+        // Validate element names if any
+        if !element_names.is_empty() {
+            self.validate_request_if_enabled(&params.service, &params.operation, &element_names)?;
+        }
+
+        // Validate enum values in options
+        if let Some(ref opts) = params.options {
+            for (key, value) in opts {
+                self.validate_enum_if_enabled(&params.service, &params.operation, key, value)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Streaming generic request - dispatches to worker pool.

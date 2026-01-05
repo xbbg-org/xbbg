@@ -229,25 +229,25 @@ def list_valid_elements(service: str, operation: str) -> list[str] | None:
 # Cache management
 def list_cached_schemas() -> list[str]:
     """List all cached service URIs."""
-    from .blp import _get_engine_sync
+    from .blp import _get_engine
 
-    engine = _get_engine_sync()
+    engine = _get_engine()
     return engine.list_cached_schemas()
 
 
 def invalidate_schema(service: str) -> None:
     """Invalidate a cached schema."""
-    from .blp import _get_engine_sync
+    from .blp import _get_engine
 
-    engine = _get_engine_sync()
+    engine = _get_engine()
     engine.invalidate_schema(service)
 
 
 def clear_schema_cache() -> None:
     """Clear all cached schemas."""
-    from .blp import _get_engine_sync
+    from .blp import _get_engine
 
-    engine = _get_engine_sync()
+    engine = _get_engine()
     engine.clear_schema_cache()
 
 
