@@ -74,6 +74,7 @@ __all__ = [
     "abdib",
     "abdtick",
     "abql",
+    "absrch",
     # Sync API (wrappers)
     "bdp",
     "bdh",
@@ -81,6 +82,7 @@ __all__ = [
     "bdib",
     "bdtick",
     "bql",
+    "bsrch",
     # Streaming API
     "Tick",
     "Subscription",
@@ -1668,3 +1670,142 @@ def bql(
         df = bql("get(px_last, pe_ratio) for(members('SPX Index')) with(pe_ratio > 20)")
     """
     return asyncio.run(abql(expression, backend=backend))
+
+
+# =============================================================================
+# BSRCH API - Bloomberg Search
+# =============================================================================
+
+
+def _parse_bsrch_response(raw_json: str) -> nw.DataFrame:
+    """Parse bsrch JSON response into a DataFrame.
+
+    Bsrch responses have this structure:
+    {
+        "NumOfFields": 3,
+        "NumOfRecords": 10,
+        "ColumnTitles": ["Ticker", "Name", "Price"],
+        "DataRecords": [
+            {"DataFields": ["AAPL US Equity", "Apple Inc", "150.00"]},
+            ...
+        ],
+        "ReachMax": false,
+        "Error": "",
+        "SequenceNumber": 0
+    }
+    """
+    data = json.loads(raw_json)
+    if isinstance(data, str):
+        data = json.loads(data)
+
+    # Check for errors
+    error = data.get("Error", "")
+    if error:
+        logger.warning("bsrch returned error: %s", error)
+
+    column_titles = data.get("ColumnTitles", [])
+    data_records = data.get("DataRecords", [])
+
+    if not column_titles or not data_records:
+        # Return empty DataFrame with no columns
+        return nw.from_native(pa.table({}))
+
+    # Build columns dict
+    columns: dict[str, list] = {col: [] for col in column_titles}
+
+    for record in data_records:
+        fields = record.get("DataFields", [])
+        for i, col in enumerate(column_titles):
+            if i < len(fields):
+                columns[col].append(fields[i])
+            else:
+                columns[col].append(None)
+
+    # Convert to Arrow table
+    arrow_arrays = {col: pa.array(values) for col, values in columns.items()}
+    table = pa.table(arrow_arrays)
+    return nw.from_native(table)
+
+
+async def absrch(
+    domain: str,
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Async Bloomberg Search (BSRCH) request.
+
+    BSRCH executes saved Bloomberg searches and returns matching securities.
+
+    Args:
+        domain: The saved search domain/name (e.g., "FI:SOVR", "COMDTY:PRECIOUS").
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional search parameters passed as request elements.
+
+    Returns:
+        DataFrame with columns from the saved search results.
+
+    Example::
+
+        # Sovereign bonds
+        df = await absrch("FI:SOVR")
+
+        # With additional parameters
+        df = await absrch("COMDTY:WEATHER", LOCATION="NYC", MODEL="GFS")
+    """
+    logger.debug("absrch: domain=%s kwargs=%s", domain, kwargs)
+
+    # Build overrides dict with Domain and any extra parameters
+    overrides: dict[str, str] = {"Domain": domain}
+    for key, value in kwargs.items():
+        overrides[key] = str(value)
+
+    # Send bsrch request via arequest
+    raw_df = await arequest(
+        service="//blp/exrsvc",
+        operation="ExcelGetGridRequest",
+        overrides=overrides,
+        extractor=ExtractorHint.RAW_JSON,
+        backend=None,
+    )
+
+    # Extract raw JSON from the response
+    raw_json = raw_df.to_native().to_pylist()[0]["json"]
+
+    # Parse and convert to DataFrame
+    nw_df = _parse_bsrch_response(raw_json)
+
+    logger.debug("absrch: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
+
+    return _convert_backend(nw_df, backend)
+
+
+def bsrch(
+    domain: str,
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Bloomberg Search (BSRCH) request.
+
+    Sync wrapper around absrch(). For async usage, use absrch() directly.
+
+    BSRCH executes saved Bloomberg searches and returns matching securities.
+
+    Args:
+        domain: The saved search domain/name (e.g., "FI:SOVR", "COMDTY:PRECIOUS").
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional search parameters passed as request elements.
+
+    Returns:
+        DataFrame with columns from the saved search results.
+
+    Example::
+
+        # Sovereign bonds
+        df = bsrch("FI:SOVR")
+
+        # With additional parameters
+        df = bsrch("COMDTY:WEATHER", LOCATION="NYC", MODEL="GFS")
+    """
+    return asyncio.run(absrch(domain, backend=backend, **kwargs))
