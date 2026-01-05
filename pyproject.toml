@@ -70,44 +70,64 @@ exclude = [
   "backfill_changelog.py",
 ]
 
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
 [tool.ruff.lint]
 select = [
-  "E",   # pycodestyle errors
-  "W",   # pycodestyle warnings
-  "F",   # pyflakes
-  "I",   # isort
-  "D",   # pydocstyle
-  "UP",  # pyupgrade
-  "B",   # flake8-bugbear
-  "C4",  # flake8-comprehensions
-  "SIM", # flake8-simplify
-  "RET", # flake8-return
-  "ISC", # implicit string concatenation
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "D",    # pydocstyle
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "SIM",  # flake8-simplify
+  "RET",  # flake8-return
+  "FA",   # flake8-future-annotations
+  "TCH",  # flake8-type-checking
+  "PERF", # perflint
+  "RUF",  # ruff-specific rules
+  "PIE",  # flake8-pie
+  "PT",   # flake8-pytest-style
 ]
 ignore = [
-  "E701", # multiple statements on one line (colon)
-  "E501", # line too long
-  "D104", # Missing docstring in public package
-  "D105", # Missing docstring in magic method
-  "D107", # Missing docstring in __init__
+  "E501",   # line too long (handled by formatter)
+  "D104",   # missing docstring in public package
+  "D105",   # missing docstring in magic method
+  "D107",   # missing docstring in __init__
+  "RET504", # unnecessary assign before return
+  "RET505", # unnecessary else after return
+  "SIM108", # use ternary instead of if-else (readability)
+  "RUF022", # unsorted __all__ (we organize by category)
+  "PERF203", # try-except in loop (intentional for date parsing)
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"py-xbbg/src/xbbg/__init__.py" = ["F401", "E402"]
+"py-xbbg/src/xbbg/**/__init__.py" = ["F401"]
+"py-xbbg/tests/**" = ["D", "PT"]
 "xbbg/__init__.py" = ["F401"]
 "xbbg/**/__init__.py" = ["F401"]
 "xbbg/tests/**" = ["D"]
-"py-xbbg/tests/**" = ["D"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]
 combine-as-imports = true
 force-sort-within-sections = true
+required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 12
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 
 
 

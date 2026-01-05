@@ -18,13 +18,9 @@ from __future__ import annotations
 class BlpError(Exception):
     """Base exception for all Bloomberg API errors."""
 
-    pass
-
 
 class BlpSessionError(BlpError):
     """Session lifecycle errors (start, connect, service open)."""
-
-    pass
 
 
 class BlpRequestError(BlpError):
@@ -56,13 +52,9 @@ class BlpRequestError(BlpError):
 class BlpSecurityError(BlpRequestError):
     """Invalid or inaccessible security identifier."""
 
-    pass
-
 
 class BlpFieldError(BlpRequestError):
     """Invalid or inaccessible field."""
-
-    pass
 
 
 class BlpValidationError(BlpError):
@@ -131,13 +123,9 @@ class BlpValidationError(BlpError):
 class BlpTimeoutError(BlpError):
     """Request timeout."""
 
-    pass
-
 
 class BlpInternalError(BlpError):
     """Internal errors (should not happen in normal operation).
 
     If you encounter this error, please report it as a bug.
     """
-
-    pass

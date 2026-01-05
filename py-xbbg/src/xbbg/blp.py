@@ -134,10 +134,12 @@ class EngineConfig:
         from xbbg import configure, EngineConfig
 
         # Configure before first request
-        configure(EngineConfig(
-            request_pool_size=4,
-            subscription_pool_size=8,
-        ))
+        configure(
+            EngineConfig(
+                request_pool_size=4,
+                subscription_pool_size=8,
+            )
+        )
 
         # Or use configure() with keyword arguments
         configure(request_pool_size=4, subscription_pool_size=8)
@@ -193,6 +195,7 @@ def configure(
 
         # Option 2: Using EngineConfig object
         from xbbg import EngineConfig
+
         xbbg.configure(EngineConfig(request_pool_size=4))
 
         # Now make requests - configuration takes effect
@@ -502,15 +505,15 @@ async def arequest(
         df = await arequest(
             Service.APIFLDS,
             Operation.FIELD_INFO,
-            fields=['PX_LAST', 'VOLUME'],
+            fields=["PX_LAST", "VOLUME"],
         )
 
         # Get raw JSON for debugging
         json_table = await arequest(
             Service.REFDATA,
             Operation.REFERENCE_DATA,
-            securities=['AAPL US Equity'],
-            fields=['PX_LAST'],
+            securities=["AAPL US Equity"],
+            fields=["PX_LAST"],
             output=OutputMode.JSON,
         )
 
@@ -518,8 +521,8 @@ async def arequest(
         df = await arequest(
             "//blp/refdata",
             "ReferenceDataRequest",
-            securities=['AAPL US Equity'],
-            fields=['PX_LAST'],
+            securities=["AAPL US Equity"],
+            fields=["PX_LAST"],
         )
     """
     # Normalize inputs
@@ -635,7 +638,7 @@ def request(
         df = request(
             Service.APIFLDS,
             Operation.FIELD_INFO,
-            fields=['PX_LAST', 'VOLUME'],
+            fields=["PX_LAST", "VOLUME"],
         )
     """
     return asyncio.run(
@@ -698,12 +701,12 @@ async def abdp(
     Example::
 
         # Async usage
-        df = await abdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+        df = await abdp("AAPL US Equity", ["PX_LAST", "VOLUME"])
 
         # Concurrent requests
         dfs = await asyncio.gather(
-            abdp('AAPL US Equity', 'PX_LAST'),
-            abdp('MSFT US Equity', 'PX_LAST'),
+            abdp("AAPL US Equity", "PX_LAST"),
+            abdp("MSFT US Equity", "PX_LAST"),
         )
     """
     ticker_list = _normalize_tickers(tickers)
@@ -794,12 +797,12 @@ async def abdh(
     Example::
 
         # Async usage
-        df = await abdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
+        df = await abdh("AAPL US Equity", "PX_LAST", start_date="2024-01-01")
 
         # Concurrent requests
         dfs = await asyncio.gather(
-            abdh('AAPL US Equity', 'PX_LAST'),
-            abdh('MSFT US Equity', 'PX_LAST'),
+            abdh("AAPL US Equity", "PX_LAST"),
+            abdh("MSFT US Equity", "PX_LAST"),
         )
     """
     ticker_list = _normalize_tickers(tickers)
@@ -902,8 +905,8 @@ async def abds(
 
     Example::
 
-        df = await abds('AAPL US Equity', 'DVD_Hist_All')
-        df = await abds('SPX Index', 'INDX_MEMBERS', backend='polars')
+        df = await abds("AAPL US Equity", "DVD_Hist_All")
+        df = await abds("SPX Index", "INDX_MEMBERS", backend="polars")
     """
     ticker_list = _normalize_tickers(tickers)
     overrides = _extract_overrides(kwargs)
@@ -957,9 +960,14 @@ async def abdib(
 
     Example::
 
-        df = await abdib('AAPL US Equity', dt='2024-12-01')
-        df = await abdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
-                  end_datetime='2024-12-01 16:00', interval=5, backend='polars')
+        df = await abdib("AAPL US Equity", dt="2024-12-01")
+        df = await abdib(
+            "AAPL US Equity",
+            start_datetime="2024-12-01 09:30",
+            end_datetime="2024-12-01 16:00",
+            interval=5,
+            backend="polars",
+        )
     """
     # Determine datetime range
     if start_datetime is not None and end_datetime is not None:
@@ -1014,8 +1022,8 @@ async def abdtick(
 
     Example::
 
-        df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
-        df = await abdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
+        df = await abdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00")
+        df = await abdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", backend="polars")
     """
     s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
     e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
@@ -1068,8 +1076,8 @@ def bdp(
 
     Example::
 
-        df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
-        df = bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST', backend='polars')
+        df = bdp("AAPL US Equity", ["PX_LAST", "VOLUME"])
+        df = bdp(["AAPL US Equity", "MSFT US Equity"], "PX_LAST", backend="polars")
     """
     return asyncio.run(abdp(tickers, flds, backend=backend, format=format, field_types=field_types, **kwargs))
 
@@ -1104,8 +1112,8 @@ def bdh(
 
     Example::
 
-        df = bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
-        df = bdh(['AAPL', 'MSFT'], ['PX_LAST', 'VOLUME'], backend='polars')
+        df = bdh("AAPL US Equity", "PX_LAST", start_date="2024-01-01")
+        df = bdh(["AAPL", "MSFT"], ["PX_LAST", "VOLUME"], backend="polars")
     """
     return asyncio.run(
         abdh(tickers, flds, start_date, end_date, backend=backend, format=format, field_types=field_types, **kwargs)
@@ -1134,8 +1142,8 @@ def bds(
 
     Example::
 
-        df = bds('AAPL US Equity', 'DVD_Hist_All')
-        df = bds('SPX Index', 'INDX_MEMBERS', backend='polars')
+        df = bds("AAPL US Equity", "DVD_Hist_All")
+        df = bds("SPX Index", "INDX_MEMBERS", backend="polars")
     """
     return asyncio.run(abds(tickers, flds, backend=backend, **kwargs))
 
@@ -1172,9 +1180,14 @@ def bdib(
 
     Example::
 
-        df = bdib('AAPL US Equity', dt='2024-12-01')
-        df = bdib('AAPL US Equity', start_datetime='2024-12-01 09:30',
-                  end_datetime='2024-12-01 16:00', interval=5, backend='polars')
+        df = bdib("AAPL US Equity", dt="2024-12-01")
+        df = bdib(
+            "AAPL US Equity",
+            start_datetime="2024-12-01 09:30",
+            end_datetime="2024-12-01 16:00",
+            interval=5,
+            backend="polars",
+        )
     """
     return asyncio.run(
         abdib(
@@ -1215,8 +1228,8 @@ def bdtick(
 
     Example::
 
-        df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00')
-        df = bdtick('AAPL US Equity', '2024-12-01 09:30', '2024-12-01 10:00', backend='polars')
+        df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00")
+        df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", backend="polars")
     """
     return asyncio.run(abdtick(ticker, start_datetime, end_datetime, backend=backend, **kwargs))
 
@@ -1254,14 +1267,14 @@ class Subscription:
 
     Example::
 
-        sub = await xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE', 'BID'])
+        sub = await xbbg.asubscribe(["AAPL US Equity"], ["LAST_PRICE", "BID"])
 
         async for batch in sub:
             # batch is pyarrow.RecordBatch
             print(batch.to_pandas())
 
             if should_add_msft:
-                await sub.add(['MSFT US Equity'])
+                await sub.add(["MSFT US Equity"])
 
         await sub.unsubscribe()
     """
@@ -1371,13 +1384,13 @@ async def asubscribe(
     Example::
 
         # Basic usage
-        sub = await xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE', 'BID'])
+        sub = await xbbg.asubscribe(["AAPL US Equity"], ["LAST_PRICE", "BID"])
         async for batch in sub:
             print(batch)
         await sub.unsubscribe()
 
         # With context manager
-        async with xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE']) as sub:
+        async with xbbg.asubscribe(["AAPL US Equity"], ["LAST_PRICE"]) as sub:
             count = 0
             async for batch in sub:
                 print(batch)
@@ -1386,12 +1399,12 @@ async def asubscribe(
                     break
 
         # Dynamic add/remove
-        sub = await xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE'])
+        sub = await xbbg.asubscribe(["AAPL US Equity"], ["LAST_PRICE"])
         async for batch in sub:
             if should_add_msft:
-                await sub.add(['MSFT US Equity'])
+                await sub.add(["MSFT US Equity"])
             if should_remove_aapl:
-                await sub.remove(['AAPL US Equity'])
+                await sub.remove(["AAPL US Equity"])
     """
     ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
     field_list = [fields] if isinstance(fields, str) else list(fields)
@@ -1448,7 +1461,7 @@ async def astream(
 
     Example::
 
-        async for batch in xbbg.astream(['AAPL US Equity'], ['LAST_PRICE']):
+        async for batch in xbbg.astream(["AAPL US Equity"], ["LAST_PRICE"]):
             print(batch)
             if done:
                 break
@@ -1481,7 +1494,7 @@ def stream(
 
     Example::
 
-        for batch in xbbg.stream(['AAPL US Equity'], ['LAST_PRICE']):
+        for batch in xbbg.stream(["AAPL US Equity"], ["LAST_PRICE"]):
             print(batch)
             if done:
                 break
@@ -1554,23 +1567,16 @@ async def avwap(
     Example::
 
         # Basic usage - subscribe to VWAP
-        sub = await xbbg.avwap(['AAPL US Equity'])
+        sub = await xbbg.avwap(["AAPL US Equity"])
         async for batch in sub:
             print(batch)
         await sub.unsubscribe()
 
         # With custom time window
-        sub = await xbbg.avwap(
-            ['AAPL US Equity', 'MSFT US Equity'],
-            start_time='09:30',
-            end_time='16:00'
-        )
+        sub = await xbbg.avwap(["AAPL US Equity", "MSFT US Equity"], start_time="09:30", end_time="16:00")
 
         # With specific fields
-        sub = await xbbg.avwap(
-            'AAPL US Equity',
-            ['RT_PX_VWAP', 'RT_VWAP_VOLUME', 'RT_VWAP_TURNOVER']
-        )
+        sub = await xbbg.avwap("AAPL US Equity", ["RT_PX_VWAP", "RT_VWAP_VOLUME", "RT_VWAP_TURNOVER"])
     """
     ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
 
@@ -1618,14 +1624,16 @@ def vwap(
 
     See avwap() for full documentation.
     """
-    return asyncio.run(avwap(
-        tickers,
-        fields,
-        start_time=start_time,
-        end_time=end_time,
-        raw=raw,
-        backend=backend,
-    ))
+    return asyncio.run(
+        avwap(
+            tickers,
+            fields,
+            start_time=start_time,
+            end_time=end_time,
+            raw=raw,
+            backend=backend,
+        )
+    )
 
 
 # =============================================================================
@@ -1843,25 +1851,22 @@ async def abta(
     Example::
 
         # Simple Moving Average with 20-day period
-        df = await xbbg.abta('AAPL US Equity', 'sma', period=20)
+        df = await xbbg.abta("AAPL US Equity", "sma", period=20)
 
         # RSI with 14-day period
-        df = await xbbg.abta('AAPL US Equity', 'rsi', period=14)
+        df = await xbbg.abta("AAPL US Equity", "rsi", period=14)
 
         # MACD with custom parameters
-        df = await xbbg.abta('AAPL US Equity', 'macd',
-                             maPeriod1=12, maPeriod2=26, sigPeriod=9)
+        df = await xbbg.abta("AAPL US Equity", "macd", maPeriod1=12, maPeriod2=26, sigPeriod=9)
 
         # Bollinger Bands with 20-day period and 2 std devs
-        df = await xbbg.abta('AAPL US Equity', 'boll',
-                             period=20, upperBand=2.0, lowerBand=2.0)
+        df = await xbbg.abta("AAPL US Equity", "boll", period=20, upperBand=2.0, lowerBand=2.0)
 
         # Intraday RSI with 60-minute bars
-        df = await xbbg.abta('AAPL US Equity', 'rsi',
-                             periodicity='INTRADAY', interval=60)
+        df = await xbbg.abta("AAPL US Equity", "rsi", periodicity="INTRADAY", interval=60)
 
         # Multiple securities (sends concurrent requests)
-        df = await xbbg.abta(['AAPL US Equity', 'MSFT US Equity'], 'rsi')
+        df = await xbbg.abta(["AAPL US Equity", "MSFT US Equity"], "rsi")
     """
     import json
     import warnings
@@ -1896,7 +1901,7 @@ async def abta(
 
     # Filter successful results and warn about failures
     batches: list[pa.RecordBatch] = []
-    for ticker, result in zip(ticker_list, results):
+    for ticker, result in zip(ticker_list, results, strict=True):
         if isinstance(result, Exception):
             warnings.warn(f"Failed to fetch TA data for {ticker}: {result}", stacklevel=2)
         else:
@@ -1951,7 +1956,7 @@ def ta_studies() -> list[str]:
     # Return unique study short names
     seen = set()
     result = []
-    for name in _TA_STUDIES.keys():
+    for name in _TA_STUDIES:
         if name not in seen:
             seen.add(name)
             result.append(name)

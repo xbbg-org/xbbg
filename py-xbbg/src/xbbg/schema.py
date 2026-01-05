@@ -343,10 +343,7 @@ def configure_ide_stubs(
                 # Complex case - don't modify
                 return None
             else:
-                new_content = content.replace(
-                    "[tool.pyright]",
-                    f'[tool.pyright]\nextraPaths = ["{stubs_str}"]'
-                )
+                new_content = content.replace("[tool.pyright]", f'[tool.pyright]\nextraPaths = ["{stubs_str}"]')
                 pyproject.write_text(new_content)
                 return f"Configured pyproject.toml: added {stubs_str} to [tool.pyright].extraPaths"
         except Exception:
@@ -379,10 +376,7 @@ def configure_ide_stubs(
                 # Complex case - don't modify
                 return None
             elif "[environment]" in content:
-                new_content = content.replace(
-                    "[environment]",
-                    f'[environment]\nextra-paths = ["{stubs_str}"]'
-                )
+                new_content = content.replace("[environment]", f'[environment]\nextra-paths = ["{stubs_str}"]')
                 ty_config.write_text(new_content)
                 return f"Configured ty.toml: added {stubs_str} to [environment].extra-paths"
             else:
@@ -423,17 +417,13 @@ def configure_ide_stubs(
                 return None
             elif "[tool.ty.environment]" in content:
                 new_content = content.replace(
-                    "[tool.ty.environment]",
-                    f'[tool.ty.environment]\nextra-paths = ["{stubs_str}"]'
+                    "[tool.ty.environment]", f'[tool.ty.environment]\nextra-paths = ["{stubs_str}"]'
                 )
                 pyproject.write_text(new_content)
                 return f"Configured pyproject.toml: added {stubs_str} to [tool.ty.environment].extra-paths"
             elif "[tool.ty]" in content:
                 # Add environment.extra-paths inline
-                new_content = content.replace(
-                    "[tool.ty]",
-                    f'[tool.ty]\nenvironment.extra-paths = ["{stubs_str}"]'
-                )
+                new_content = content.replace("[tool.ty]", f'[tool.ty]\nenvironment.extra-paths = ["{stubs_str}"]')
                 pyproject.write_text(new_content)
                 return f"Configured pyproject.toml: added {stubs_str} to [tool.ty].environment.extra-paths"
             else:
@@ -468,7 +458,13 @@ def configure_ide_stubs(
             return f"Unknown IDE: {ide}. Use 'vscode', 'pyright', 'pyproject', or 'ty'"
 
     # Auto-detect: try each in order
-    for configure_fn in [_configure_vscode, _configure_pyright, _configure_ty, _configure_pyproject_pyright, _configure_pyproject_ty]:
+    for configure_fn in [
+        _configure_vscode,
+        _configure_pyright,
+        _configure_ty,
+        _configure_pyproject_pyright,
+        _configure_pyproject_ty,
+    ]:
         result = configure_fn()
         if result:
             return result
