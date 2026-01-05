@@ -486,6 +486,7 @@ async def arequest(
         output: Output format: OutputMode.ARROW (default) or OutputMode.JSON.
         extractor: Override the auto-detected extractor. Use ExtractorHint.BULK for
             bulk data fields. If None, auto-detected from operation.
+        format: Output format hint for result structure.
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:

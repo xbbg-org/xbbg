@@ -362,9 +362,7 @@ fn fuzzy_match(input: &str, candidates: &[String]) -> Option<String> {
 
         // Only suggest if distance is small relative to string length
         let max_distance = (input.len() / 3).max(2);
-        if distance <= max_distance
-            && (best_match.is_none() || distance < best_match.unwrap().0)
-        {
+        if distance <= max_distance && (best_match.is_none() || distance < best_match.unwrap().0) {
             best_match = Some((distance, candidate));
         }
     }

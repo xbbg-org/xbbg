@@ -67,6 +67,7 @@ exclude = [
   "dist",
   "venv",
   ".venv",
+  "backfill_changelog.py",
 ]
 
 [tool.ruff.lint]
@@ -87,6 +88,7 @@ ignore = [
   "E701", # multiple statements on one line (colon)
   "E501", # line too long
   "D104", # Missing docstring in public package
+  "D105", # Missing docstring in magic method
   "D107", # Missing docstring in __init__
 ]
 

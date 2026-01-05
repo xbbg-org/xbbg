@@ -269,10 +269,7 @@ def generate_stubs(
     schema = get_schema(service)
 
     # Determine output path
-    if output_dir is None:
-        output_dir = PathClass.home() / ".xbbg" / "stubs"
-    else:
-        output_dir = PathClass(output_dir)
+    output_dir = PathClass.home() / ".xbbg" / "stubs" if output_dir is None else PathClass(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate stub content
