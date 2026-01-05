@@ -194,30 +194,35 @@ async def alist_valid_elements(service: str, operation: str) -> list[str] | None
 def get_schema(service: str) -> ServiceSchema:
     """Get schema for a service (sync wrapper)."""
     import asyncio
+
     return asyncio.get_event_loop().run_until_complete(aget_schema(service))
 
 
 def get_operation(service: str, operation: str) -> OperationSchema:
     """Get schema for a specific operation (sync wrapper)."""
     import asyncio
+
     return asyncio.get_event_loop().run_until_complete(aget_operation(service, operation))
 
 
 def list_operations(service: str) -> list[str]:
     """List all operations for a service (sync wrapper)."""
     import asyncio
+
     return asyncio.get_event_loop().run_until_complete(alist_operations(service))
 
 
 def get_enum_values(service: str, operation: str, element: str) -> list[str] | None:
     """Get valid enum values for an element (sync wrapper)."""
     import asyncio
+
     return asyncio.get_event_loop().run_until_complete(aget_enum_values(service, operation, element))
 
 
 def list_valid_elements(service: str, operation: str) -> list[str] | None:
     """List all valid element names for an operation (sync wrapper)."""
     import asyncio
+
     return asyncio.get_event_loop().run_until_complete(alist_valid_elements(service, operation))
 
 

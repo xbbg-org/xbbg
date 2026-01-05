@@ -195,8 +195,7 @@ def configure(
 
     if _engine is not None:
         raise RuntimeError(
-            "Cannot configure after engine has started. "
-            "Call xbbg.configure() before any Bloomberg request."
+            "Cannot configure after engine has started. Call xbbg.configure() before any Bloomberg request."
         )
 
     if config is not None:
@@ -431,8 +430,6 @@ def _convert_backend(
     return nw_df
 
 
-
-
 # =============================================================================
 # Generic API - Power Users
 # =============================================================================
@@ -530,7 +527,9 @@ async def arequest(
     overrides_list: list[tuple[str, str]] | None = None
     elements_list: list[tuple[str, str]] | None = None
     if overrides is not None:
-        override_tuples = [(k, str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
+        override_tuples = (
+            [(k, str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
+        )
         # For BQL and bsrch services, pass overrides as generic elements (not Bloomberg field overrides)
         service_str = service.value if isinstance(service, Service) else service
         if service_str in ("//blp/bqlsvc", "//blp/exrsvc"):
@@ -1391,9 +1390,7 @@ async def asubscribe(
     field_list = [fields] if isinstance(fields, str) else list(fields)
 
     effective_backend = (
-        (Backend(backend) if isinstance(backend, str) else backend)
-        if backend is not None
-        else _default_backend
+        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
     )
 
     engine = _get_engine()
