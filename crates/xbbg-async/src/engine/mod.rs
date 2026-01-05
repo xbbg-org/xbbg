@@ -183,10 +183,7 @@ impl Default for EngineConfig {
             overflow_policy: OverflowPolicy::default(),
             request_pool_size: 2,
             subscription_pool_size: 4,
-            warmup_services: vec![
-                "//blp/refdata".to_string(),
-                "//blp/apiflds".to_string(),
-            ],
+            warmup_services: vec!["//blp/refdata".to_string(), "//blp/apiflds".to_string()],
             validation_mode: ValidationMode::default(),
         }
     }
@@ -230,8 +227,10 @@ impl Engine {
         let request_pool = RequestWorkerPool::new(config.request_pool_size, config.clone())?;
 
         // Create subscription session pool
-        let subscription_pool =
-            Arc::new(SubscriptionSessionPool::new(config.subscription_pool_size, config.clone())?);
+        let subscription_pool = Arc::new(SubscriptionSessionPool::new(
+            config.subscription_pool_size,
+            config.clone(),
+        )?);
 
         tracing::info!("Engine started with worker pools");
 
@@ -282,14 +281,13 @@ impl Engine {
         let claim = self.subscription_pool.claim()?;
 
         // Start the subscription
-        let keys = claim.subscribe(topics.clone(), fields.clone(), tx.clone()).await?;
+        let keys = claim
+            .subscribe(topics.clone(), fields.clone(), tx.clone())
+            .await?;
 
         // Build topic -> key mapping
-        let topic_to_key: std::collections::HashMap<String, SlabKey> = topics
-            .iter()
-            .cloned()
-            .zip(keys.iter().cloned())
-            .collect();
+        let topic_to_key: std::collections::HashMap<String, SlabKey> =
+            topics.iter().cloned().zip(keys.iter().cloned()).collect();
 
         let stream = SubscriptionStream {
             rx,
@@ -428,13 +426,12 @@ impl Engine {
         operation: &str,
     ) -> Result<SerializedOperation, BlpAsyncError> {
         let schema = self.get_schema(service).await?;
-        schema
-            .get_operation(operation)
-            .cloned()
-            .ok_or_else(|| BlpAsyncError::BlpError(BlpError::SchemaOperationNotFound {
+        schema.get_operation(operation).cloned().ok_or_else(|| {
+            BlpAsyncError::BlpError(BlpError::SchemaOperationNotFound {
                 service: service.to_string(),
                 operation: operation.to_string(),
-            }))
+            })
+        })
     }
 
     /// List all operations for a service.
@@ -485,7 +482,9 @@ impl Engine {
         match self.config.validation_mode {
             ValidationMode::Disabled => Ok(()),
             ValidationMode::Lenient => {
-                if let Err(e) = global_schema_cache().validate_request(service, operation, element_names) {
+                if let Err(e) =
+                    global_schema_cache().validate_request(service, operation, element_names)
+                {
                     tracing::warn!(
                         service = service,
                         operation = operation,
@@ -495,11 +494,9 @@ impl Engine {
                 }
                 Ok(())
             }
-            ValidationMode::Strict => {
-                global_schema_cache()
-                    .validate_request(service, operation, element_names)
-                    .map_err(BlpAsyncError::BlpError)
-            }
+            ValidationMode::Strict => global_schema_cache()
+                .validate_request(service, operation, element_names)
+                .map_err(BlpAsyncError::BlpError),
         }
     }
 
@@ -516,7 +513,9 @@ impl Engine {
         match self.config.validation_mode {
             ValidationMode::Disabled => Ok(()),
             ValidationMode::Lenient => {
-                if let Err(e) = global_schema_cache().validate_enum(service, operation, element, value) {
+                if let Err(e) =
+                    global_schema_cache().validate_enum(service, operation, element, value)
+                {
                     tracing::warn!(
                         service = service,
                         operation = operation,
@@ -528,11 +527,9 @@ impl Engine {
                 }
                 Ok(())
             }
-            ValidationMode::Strict => {
-                global_schema_cache()
-                    .validate_enum(service, operation, element, value)
-                    .map_err(BlpAsyncError::BlpError)
-            }
+            ValidationMode::Strict => global_schema_cache()
+                .validate_enum(service, operation, element, value)
+                .map_err(BlpAsyncError::BlpError),
         }
     }
 
@@ -666,9 +663,12 @@ impl SubscriptionStream {
     ///
     /// New tickers will start receiving data on the same stream.
     pub async fn add(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
-        let claim = self.claim.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
-            detail: "subscription already closed".to_string(),
-        })?;
+        let claim = self
+            .claim
+            .as_ref()
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "subscription already closed".to_string(),
+            })?;
 
         // Filter out already subscribed topics
         let new_topics: Vec<String> = topics
@@ -701,9 +701,12 @@ impl SubscriptionStream {
     ///
     /// Removed tickers will stop receiving data.
     pub async fn remove(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
-        let claim = self.claim.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
-            detail: "subscription already closed".to_string(),
-        })?;
+        let claim = self
+            .claim
+            .as_ref()
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "subscription already closed".to_string(),
+            })?;
 
         // Find keys for topics to remove
         let mut keys_to_remove = Vec::new();
@@ -776,6 +779,7 @@ impl SubscriptionStream {
     /// so they can use independent locks and avoid contention.
     ///
     /// Consumes self without running Drop (since we're taking ownership of parts).
+    #[allow(clippy::type_complexity)]
     pub fn into_parts(
         mut self,
     ) -> (
@@ -790,7 +794,10 @@ impl SubscriptionStream {
         // Take ownership of each field, replacing with empty/None values
         let rx = mem::replace(&mut self.rx, mpsc::channel(1).1); // dummy receiver
         let tx = mem::replace(&mut self.tx, mpsc::channel(1).0); // dummy sender
-        let claim = self.claim.take().expect("into_parts called on already-closed stream");
+        let claim = self
+            .claim
+            .take()
+            .expect("into_parts called on already-closed stream");
         let keys = mem::take(&mut self.keys);
         let topic_to_key = mem::take(&mut self.topic_to_key);
 

@@ -171,7 +171,11 @@ fn test_blp_async_error_from_blp_error_session_start() {
 
     // Error message should contain the original error info
     let msg = async_err.to_string();
-    assert!(msg.contains("session start"), "Expected 'session start' in: {}", msg);
+    assert!(
+        msg.contains("session start"),
+        "Expected 'session start' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -186,7 +190,11 @@ fn test_blp_async_error_from_blp_error_open_service() {
 
     assert!(matches!(async_err, BlpAsyncError::Blp(_)));
     let msg = async_err.to_string();
-    assert!(msg.contains("open service"), "Expected 'open service' in: {}", msg);
+    assert!(
+        msg.contains("open service"),
+        "Expected 'open service' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -204,7 +212,11 @@ fn test_blp_async_error_from_blp_error_request_failure() {
 
     assert!(matches!(async_err, BlpAsyncError::Blp(_)));
     let msg = async_err.to_string();
-    assert!(msg.contains("request failed"), "Expected 'request failed' in: {}", msg);
+    assert!(
+        msg.contains("request failed"),
+        "Expected 'request failed' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -217,7 +229,11 @@ fn test_blp_async_error_from_blp_error_invalid_argument() {
 
     assert!(matches!(async_err, BlpAsyncError::Blp(_)));
     let msg = async_err.to_string();
-    assert!(msg.contains("invalid argument"), "Expected 'invalid argument' in: {}", msg);
+    assert!(
+        msg.contains("invalid argument"),
+        "Expected 'invalid argument' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -228,7 +244,11 @@ fn test_blp_async_error_from_blp_error_timeout() {
 
     assert!(matches!(async_err, BlpAsyncError::Blp(_)));
     let msg = async_err.to_string();
-    assert!(msg.contains("timed out"), "Expected 'timed out' in: {}", msg);
+    assert!(
+        msg.contains("timed out"),
+        "Expected 'timed out' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -241,7 +261,11 @@ fn test_blp_async_error_from_blp_error_internal() {
 
     assert!(matches!(async_err, BlpAsyncError::Blp(_)));
     let msg = async_err.to_string();
-    assert!(msg.contains("internal error"), "Expected 'internal error' in: {}", msg);
+    assert!(
+        msg.contains("internal error"),
+        "Expected 'internal error' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -249,7 +273,11 @@ fn test_blp_async_error_internal_variant() {
     let async_err = BlpAsyncError::Internal("engine shutdown".to_string());
 
     let msg = async_err.to_string();
-    assert!(msg.contains("engine shutdown"), "Expected 'engine shutdown' in: {}", msg);
+    assert!(
+        msg.contains("engine shutdown"),
+        "Expected 'engine shutdown' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -257,7 +285,11 @@ fn test_blp_async_error_stream_full() {
     let async_err = BlpAsyncError::StreamFull;
 
     let msg = async_err.to_string();
-    assert!(msg.contains("stream full"), "Expected 'stream full' in: {}", msg);
+    assert!(
+        msg.contains("stream full"),
+        "Expected 'stream full' in: {}",
+        msg
+    );
 }
 
 #[test]
@@ -265,7 +297,11 @@ fn test_blp_async_error_cancelled() {
     let async_err = BlpAsyncError::Cancelled;
 
     let msg = async_err.to_string();
-    assert!(msg.contains("cancelled"), "Expected 'cancelled' in: {}", msg);
+    assert!(
+        msg.contains("cancelled"),
+        "Expected 'cancelled' in: {}",
+        msg
+    );
 }
 
 #[test]

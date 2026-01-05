@@ -25,8 +25,8 @@ use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, Ses
 
 use super::state::{
     BulkDataState, FieldInfoState, GenericState, HistDataState, HistDataStreamState,
-    IntradayBarState, IntradayBarStreamState, IntradayTickState, IntradayTickStreamState,
-    LongMode, OutputFormat, RawJsonState, RefDataState,
+    IntradayBarState, IntradayBarStreamState, IntradayTickState, IntradayTickStreamState, LongMode,
+    OutputFormat, RawJsonState, RefDataState,
 };
 use super::{EngineConfig, ExtractorType, RequestParams};
 
@@ -393,9 +393,9 @@ impl RequestWorker {
             ExtractorType::IntradayBar => {
                 UnifiedRequestState::IntradayBarStream(IntradayBarStreamState::new(ticker, stream))
             }
-            ExtractorType::IntradayTick => {
-                UnifiedRequestState::IntradayTickStream(IntradayTickStreamState::new(ticker, stream))
-            }
+            ExtractorType::IntradayTick => UnifiedRequestState::IntradayTickStream(
+                IntradayTickStreamState::new(ticker, stream),
+            ),
             _ => {
                 return Err(BlpError::InvalidArgument {
                     detail: format!(
@@ -623,16 +623,14 @@ impl WorkerHandle {
         let config_clone = config.clone();
         let thread = thread::Builder::new()
             .name(format!("xbbg-worker-{}", id))
-            .spawn(move || {
-                match RequestWorker::new(id, config_clone, cmd_rx) {
-                    Ok(mut worker) => {
-                        if let Err(e) = worker.run() {
-                            tracing::error!(worker_id = id, error = %e, "worker error");
-                        }
+            .spawn(move || match RequestWorker::new(id, config_clone, cmd_rx) {
+                Ok(mut worker) => {
+                    if let Err(e) = worker.run() {
+                        tracing::error!(worker_id = id, error = %e, "worker error");
                     }
-                    Err(e) => {
-                        tracing::error!(worker_id = id, error = %e, "worker creation failed");
-                    }
+                }
+                Err(e) => {
+                    tracing::error!(worker_id = id, error = %e, "worker creation failed");
                 }
             })
             .map_err(|e| BlpError::Internal {

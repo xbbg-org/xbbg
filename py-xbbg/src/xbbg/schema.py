@@ -20,8 +20,8 @@ Example:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any
 
@@ -118,7 +118,6 @@ async def aget_schema(service: str) -> ServiceSchema:
     Returns:
         ServiceSchema object with operations and element definitions.
     """
-    from . import _core
     from .blp import _get_engine
 
     engine = await _get_engine()
@@ -136,7 +135,6 @@ async def aget_operation(service: str, operation: str) -> OperationSchema:
     Returns:
         OperationSchema object with request/response definitions.
     """
-    from . import _core
     from .blp import _get_engine
 
     engine = await _get_engine()
@@ -265,7 +263,6 @@ def generate_stubs(
     Returns:
         Path to the generated stub file.
     """
-    import json
     from pathlib import Path as PathClass
 
     # Get schema

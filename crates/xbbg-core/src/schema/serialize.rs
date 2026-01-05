@@ -237,6 +237,9 @@ mod tests {
         let parsed: SerializedElement = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.name, "test");
-        assert_eq!(parsed.enum_values, Some(vec!["A".to_string(), "B".to_string()]));
+        assert_eq!(
+            parsed.enum_values,
+            Some(vec!["A".to_string(), "B".to_string()])
+        );
     }
 }

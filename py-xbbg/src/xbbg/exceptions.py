@@ -99,7 +99,7 @@ class BlpValidationError(BlpError):
         self.valid_values = valid_values
 
     @classmethod
-    def from_rust_error(cls, message: str) -> "BlpValidationError":
+    def from_rust_error(cls, message: str) -> BlpValidationError:
         """Parse a Rust validation error message.
 
         Extracts element name and suggestion from formatted error messages.

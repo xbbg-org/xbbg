@@ -188,7 +188,10 @@ impl SchemaCache {
     ) -> Result<(), BlpError> {
         let Some(schema) = self.get(service_uri) else {
             // No schema cached, skip validation
-            debug!(service = service_uri, "No schema cached, skipping validation");
+            debug!(
+                service = service_uri,
+                "No schema cached, skipping validation"
+            );
             return Ok(());
         };
 
@@ -326,7 +329,7 @@ impl SchemaCache {
             if let Ok(entries) = fs::read_dir(&self.cache_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.extension().map_or(false, |ext| ext == "json") {
+                    if path.extension().is_some_and(|ext| ext == "json") {
                         let _ = fs::remove_file(&path);
                     }
                 }
@@ -346,7 +349,7 @@ impl SchemaCache {
         if let Ok(entries) = fs::read_dir(&self.cache_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "json") {
+                if path.extension().is_some_and(|ext| ext == "json") {
                     if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
                         services.push(format!("//blp/{name}"));
                     }
@@ -368,7 +371,7 @@ impl SchemaCache {
             if let Ok(entries) = fs::read_dir(&self.cache_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.extension().map_or(false, |ext| ext == "json") {
+                    if path.extension().is_some_and(|ext| ext == "json") {
                         disk_count += 1;
                         if let Ok(meta) = path.metadata() {
                             total_size += meta.len();

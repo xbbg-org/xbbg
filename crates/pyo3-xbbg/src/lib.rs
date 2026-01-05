@@ -129,9 +129,9 @@ fn blp_error_to_pyerr(e: BlpError) -> PyErr {
         BlpError::Internal { detail } => {
             BlpInternalError::new_err(format!("Internal error: {}", detail))
         }
-        BlpError::SchemaOperationNotFound { service, operation } => BlpValidationError::new_err(
-            format!("Operation not found: {}::{}", service, operation),
-        ),
+        BlpError::SchemaOperationNotFound { service, operation } => {
+            BlpValidationError::new_err(format!("Operation not found: {}::{}", service, operation))
+        }
         BlpError::SchemaElementNotFound { parent, name } => {
             BlpValidationError::new_err(format!("Schema element not found: {}.{}", parent, name))
         }
@@ -182,9 +182,7 @@ fn blp_async_error_to_pyerr(e: BlpAsyncError) -> PyErr {
         BlpAsyncError::ConfigError { detail } => {
             BlpValidationError::new_err(format!("Configuration error: {}", detail))
         }
-        BlpAsyncError::ChannelClosed => {
-            BlpInternalError::new_err("Channel closed unexpectedly")
-        }
+        BlpAsyncError::ChannelClosed => BlpInternalError::new_err("Channel closed unexpectedly"),
         BlpAsyncError::StreamFull => {
             BlpInternalError::new_err("Stream buffer full - consumer too slow")
         }
@@ -194,11 +192,7 @@ fn blp_async_error_to_pyerr(e: BlpAsyncError) -> PyErr {
 }
 
 /// Helper to format error messages with optional label and source.
-fn format_error_msg(
-    base: &str,
-    label: Option<&str>,
-    source: Option<&anyhow::Error>,
-) -> String {
+fn format_error_msg(base: &str, label: Option<&str>, source: Option<&anyhow::Error>) -> String {
     let mut msg = base.to_string();
     if let Some(l) = label {
         if !msg.is_empty() {
@@ -312,7 +306,11 @@ impl PyEngine {
     #[new]
     #[pyo3(signature = (host="localhost", port=8194))]
     fn new(py: Python<'_>, host: &str, port: u16) -> PyResult<Self> {
-        info!(host = host, port = port, "PyEngine: connecting to Bloomberg");
+        info!(
+            host = host,
+            port = port,
+            "PyEngine: connecting to Bloomberg"
+        );
 
         let config = EngineConfig {
             server_host: host.to_string(),
@@ -321,12 +319,10 @@ impl PyEngine {
         };
 
         // Release GIL during blocking Engine::start()
-        let engine = py
-            .detach(|| Engine::start(config))
-            .map_err(|e| {
-                warn!(error = %e, "PyEngine: connection failed");
-                blp_async_error_to_pyerr(e)
-            })?;
+        let engine = py.detach(|| Engine::start(config)).map_err(|e| {
+            warn!(error = %e, "PyEngine: connection failed");
+            blp_async_error_to_pyerr(e)
+        })?;
 
         info!("PyEngine: connected successfully");
 
@@ -362,12 +358,10 @@ impl PyEngine {
         let rust_config: EngineConfig = config.into();
 
         // Release GIL during blocking Engine::start()
-        let engine = py
-            .detach(|| Engine::start(rust_config))
-            .map_err(|e| {
-                warn!(error = %e, "PyEngine: connection failed");
-                blp_async_error_to_pyerr(e)
-            })?;
+        let engine = py.detach(|| Engine::start(rust_config)).map_err(|e| {
+            warn!(error = %e, "PyEngine: connection failed");
+            blp_async_error_to_pyerr(e)
+        })?;
 
         info!("PyEngine: connected successfully");
 
@@ -420,13 +414,10 @@ impl PyEngine {
         );
 
         future_into_py(py, async move {
-            let batch = engine
-                .request(rust_params)
-                .await
-                .map_err(|e| {
-                    warn!(error = %e, "PyEngine: request failed");
-                    blp_async_error_to_pyerr(e)
-                })?;
+            let batch = engine.request(rust_params).await.map_err(|e| {
+                warn!(error = %e, "PyEngine: request failed");
+                blp_async_error_to_pyerr(e)
+            })?;
 
             debug!(num_rows = batch.num_rows(), "PyEngine: request completed");
 
@@ -485,7 +476,9 @@ impl PyEngine {
 
     /// Save the field type cache to disk.
     fn save_field_cache(&self) -> PyResult<()> {
-        self.engine.save_field_cache().map_err(PyRuntimeError::new_err)
+        self.engine
+            .save_field_cache()
+            .map_err(PyRuntimeError::new_err)
     }
 
     // =========================================================================
@@ -567,8 +560,7 @@ impl PyEngine {
     fn get_cached_schema(&self, service: &str) -> Option<String> {
         self.engine
             .get_cached_schema(service)
-            .map(|s| serde_json::to_string(&*s).ok())
-            .flatten()
+            .and_then(|s| serde_json::to_string(&*s).ok())
     }
 
     /// Invalidate a cached schema.
@@ -609,14 +601,12 @@ impl PyEngine {
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
 
-            Python::attach(|py| {
-                match values {
-                    Some(v) => {
-                        let list = pyo3::types::PyList::new(py, v)?;
-                        Ok(list.into_any().unbind())
-                    }
-                    None => Ok(py.None()),
+            Python::attach(|py| match values {
+                Some(v) => {
+                    let list = pyo3::types::PyList::new(py, v)?;
+                    Ok(list.into_any().unbind())
                 }
+                None => Ok(py.None()),
             })
         })
     }
@@ -637,14 +627,12 @@ impl PyEngine {
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
 
-            Python::attach(|py| {
-                match elements {
-                    Some(v) => {
-                        let list = pyo3::types::PyList::new(py, v)?;
-                        Ok(list.into_any().unbind())
-                    }
-                    None => Ok(py.None()),
+            Python::attach(|py| match elements {
+                Some(v) => {
+                    let list = pyo3::types::PyList::new(py, v)?;
+                    Ok(list.into_any().unbind())
                 }
+                None => Ok(py.None()),
             })
         })
     }
@@ -762,9 +750,9 @@ impl PySubscription {
         future_into_py(py, async move {
             let batch = {
                 let mut guard = rx.lock().await;
-                let rx_ref = guard.as_mut().ok_or_else(|| {
-                    PyStopAsyncIteration::new_err("subscription closed")
-                })?;
+                let rx_ref = guard
+                    .as_mut()
+                    .ok_or_else(|| PyStopAsyncIteration::new_err("subscription closed"))?;
                 rx_ref.recv().await
             };
 
@@ -785,9 +773,9 @@ impl PySubscription {
 
         future_into_py(py, async move {
             let mut guard = stream.lock().await;
-            let handle = guard.as_mut().ok_or_else(|| {
-                PyRuntimeError::new_err("subscription closed")
-            })?;
+            let handle = guard
+                .as_mut()
+                .ok_or_else(|| PyRuntimeError::new_err("subscription closed"))?;
 
             // Filter out already subscribed topics
             let new_topics: Vec<String> = tickers
@@ -799,9 +787,10 @@ impl PySubscription {
                 return Ok(());
             }
 
-            let claim = handle.claim.as_ref().ok_or_else(|| {
-                PyRuntimeError::new_err("subscription already closed")
-            })?;
+            let claim = handle
+                .claim
+                .as_ref()
+                .ok_or_else(|| PyRuntimeError::new_err("subscription already closed"))?;
 
             // Add new topics using the same stream sender
             let new_keys = claim
@@ -830,9 +819,9 @@ impl PySubscription {
 
         future_into_py(py, async move {
             let mut guard = stream.lock().await;
-            let handle = guard.as_mut().ok_or_else(|| {
-                PyRuntimeError::new_err("subscription closed")
-            })?;
+            let handle = guard
+                .as_mut()
+                .ok_or_else(|| PyRuntimeError::new_err("subscription closed"))?;
 
             // Find keys for topics to remove
             let mut keys_to_remove = Vec::new();
@@ -848,11 +837,15 @@ impl PySubscription {
                 return Ok(());
             }
 
-            let claim = handle.claim.as_ref().ok_or_else(|| {
-                PyRuntimeError::new_err("subscription already closed")
-            })?;
+            let claim = handle
+                .claim
+                .as_ref()
+                .ok_or_else(|| PyRuntimeError::new_err("subscription already closed"))?;
 
-            claim.unsubscribe(keys_to_remove).await.map_err(blp_async_error_to_pyerr)?;
+            claim
+                .unsubscribe(keys_to_remove)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
             Ok(())
         })
     }
@@ -1070,10 +1063,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
-    let format: Option<String> = dict
-        .get_item("format")?
-        .map(|v| v.extract())
-        .transpose()?;
+    let format: Option<String> = dict.get_item("format")?.map(|v| v.extract()).transpose()?;
 
     Ok(RequestParams {
         service,

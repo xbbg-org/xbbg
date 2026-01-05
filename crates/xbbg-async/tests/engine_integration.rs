@@ -324,7 +324,10 @@ async fn test_bdh_multiple_tickers() {
         if let Some(arr) = col.as_any().downcast_ref::<StringArray>() {
             let unique: std::collections::HashSet<_> =
                 (0..arr.len()).filter_map(|i| arr.value(i).into()).collect();
-            assert!(unique.len() >= 1, "Should have data for at least one ticker");
+            assert!(
+                unique.len() >= 1,
+                "Should have data for at least one ticker"
+            );
         }
     }
 
@@ -503,7 +506,10 @@ async fn test_generic_with_overrides() {
         ..Default::default()
     };
 
-    let batch = engine.request(params).await.expect("generic request with overrides");
+    let batch = engine
+        .request(params)
+        .await
+        .expect("generic request with overrides");
 
     print_batch_summary("Generic with overrides", &batch);
     assert!(batch.num_rows() >= 1, "Should have data");
@@ -570,7 +576,10 @@ async fn test_raw_json_intraday_bar() {
         ..Default::default()
     };
 
-    let batch = engine.request(params).await.expect("raw json intraday request");
+    let batch = engine
+        .request(params)
+        .await
+        .expect("raw json intraday request");
 
     print_batch_summary("Raw JSON (Intraday Bar)", &batch);
 

@@ -129,7 +129,8 @@ mod live_tests {
 
         println!("Request: {:?}", req);
 
-        let batch = execute_intraday_bars_arrow(&session, &req).expect("execute_intraday_bars_arrow");
+        let batch =
+            execute_intraday_bars_arrow(&session, &req).expect("execute_intraday_bars_arrow");
 
         println!(
             "Result: {} rows, {} columns",
@@ -151,7 +152,7 @@ mod live_tests {
     fn test_field_search_low_level() {
         use crate::arrow::execute_field_search_arrow;
         use crate::requests::FieldSearchRequest;
-        
+
         let session = create_session();
 
         let req = FieldSearchRequest::new("last price");
@@ -168,17 +169,22 @@ mod live_tests {
         for field in batch.schema().fields() {
             println!("  - {} ({:?})", field.name(), field.data_type());
         }
-        
+
         // Print first few rows
         use arrow::array::{Array, StringArray};
         if batch.num_rows() > 0 {
-            let field_ids = batch.column(0).as_any().downcast_ref::<StringArray>().unwrap();
-            let field_names = batch.column(1).as_any().downcast_ref::<StringArray>().unwrap();
+            let field_ids = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let field_names = batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
             for i in 0..batch.num_rows().min(5) {
-                println!("  {} -> {}", 
-                    field_ids.value(i),
-                    field_names.value(i)
-                );
+                println!("  {} -> {}", field_ids.value(i), field_names.value(i));
             }
         }
     }
@@ -194,7 +200,11 @@ mod live_tests {
         let batch = execute_field_search_arrow(&session, &req).expect("field search");
 
         use arrow::array::{Array, StringArray};
-        let field_types = batch.column(2).as_any().downcast_ref::<StringArray>().unwrap();
+        let field_types = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
 
         let mut unique_types: HashSet<String> = HashSet::new();
         for i in 0..batch.num_rows() {
@@ -212,8 +222,16 @@ mod live_tests {
 
         // Show sample of each type
         println!("\n=== Sample Fields by Type ===");
-        let field_names = batch.column(1).as_any().downcast_ref::<StringArray>().unwrap();
-        let descriptions = batch.column(3).as_any().downcast_ref::<StringArray>().unwrap();
+        let field_names = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let descriptions = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
 
         let mut seen_types: HashSet<String> = HashSet::new();
         for i in 0..batch.num_rows() {
@@ -221,8 +239,16 @@ mod live_tests {
                 let ftype = field_types.value(i).to_string();
                 if !seen_types.contains(&ftype) {
                     seen_types.insert(ftype.clone());
-                    let name = if field_names.is_null(i) { "?" } else { field_names.value(i) };
-                    let desc = if descriptions.is_null(i) { "" } else { descriptions.value(i) };
+                    let name = if field_names.is_null(i) {
+                        "?"
+                    } else {
+                        field_names.value(i)
+                    };
+                    let desc = if descriptions.is_null(i) {
+                        ""
+                    } else {
+                        descriptions.value(i)
+                    };
                     println!("  {:12} -> {:30} ({})", ftype, name, desc);
                 }
             }
@@ -332,7 +358,9 @@ mod live_tests {
         // 4. Measure send_request
         let cid = CorrelationId::next();
         let t = Instant::now();
-        session.send_request(&request, None, Some(&cid)).expect("send_request");
+        session
+            .send_request(&request, None, Some(&cid))
+            .expect("send_request");
         let send_time = t.elapsed();
         println!("send_request: {:?}", send_time);
 

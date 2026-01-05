@@ -45,7 +45,11 @@ impl ValidationError {
     }
 
     /// Create an invalid enum value error.
-    pub fn invalid_enum(element: impl Into<String>, valid: Vec<String>, got: impl Into<String>) -> Self {
+    pub fn invalid_enum(
+        element: impl Into<String>,
+        valid: Vec<String>,
+        got: impl Into<String>,
+    ) -> Self {
         Self {
             element: element.into(),
             kind: ValidationErrorKind::InvalidEnumValue {
@@ -57,7 +61,11 @@ impl ValidationError {
     }
 
     /// Create a type mismatch error.
-    pub fn type_mismatch(element: impl Into<String>, expected: BlpType, found: impl Into<String>) -> Self {
+    pub fn type_mismatch(
+        element: impl Into<String>,
+        expected: BlpType,
+        found: impl Into<String>,
+    ) -> Self {
         Self {
             element: element.into(),
             kind: ValidationErrorKind::TypeMismatch {
@@ -181,9 +189,17 @@ impl<'a> RequestValidator<'a> {
     }
 
     /// Validate that an operation exists.
-    pub fn validate_operation(&self, operation: &str) -> Result<&SerializedOperation, ValidationError> {
+    pub fn validate_operation(
+        &self,
+        operation: &str,
+    ) -> Result<&SerializedOperation, ValidationError> {
         self.schema.get_operation(operation).ok_or_else(|| {
-            let available: Vec<String> = self.schema.operations.iter().map(|o| o.name.clone()).collect();
+            let available: Vec<String> = self
+                .schema
+                .operations
+                .iter()
+                .map(|o| o.name.clone())
+                .collect();
             let suggestion = fuzzy_match(operation, &available);
             let mut err = ValidationError::operation_not_found(operation, available);
             if let Some(s) = suggestion {
@@ -196,15 +212,28 @@ impl<'a> RequestValidator<'a> {
     /// Validate request element names.
     ///
     /// Returns a list of validation errors (empty if all valid).
-    pub fn validate_elements(&self, operation: &str, element_names: &[&str]) -> Vec<ValidationError> {
+    pub fn validate_elements(
+        &self,
+        operation: &str,
+        element_names: &[&str],
+    ) -> Vec<ValidationError> {
         let Some(op) = self.schema.get_operation(operation) else {
             return vec![ValidationError::operation_not_found(
                 operation,
-                self.schema.operations.iter().map(|o| o.name.clone()).collect(),
+                self.schema
+                    .operations
+                    .iter()
+                    .map(|o| o.name.clone())
+                    .collect(),
             )];
         };
 
-        let valid_elements: HashSet<&str> = op.request.children.iter().map(|e| e.name.as_str()).collect();
+        let valid_elements: HashSet<&str> = op
+            .request
+            .children
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
         let available: Vec<String> = op.request.children.iter().map(|e| e.name.clone()).collect();
 
         let mut errors = Vec::new();
@@ -228,7 +257,11 @@ impl<'a> RequestValidator<'a> {
         let Some(op) = self.schema.get_operation(operation) else {
             return vec![ValidationError::operation_not_found(
                 operation,
-                self.schema.operations.iter().map(|o| o.name.clone()).collect(),
+                self.schema
+                    .operations
+                    .iter()
+                    .map(|o| o.name.clone())
+                    .collect(),
             )];
         };
 
@@ -237,7 +270,10 @@ impl<'a> RequestValidator<'a> {
 
         for elem in &op.request.children {
             if !elem.is_optional && !provided_set.contains(elem.name.as_str()) {
-                errors.push(ValidationError::required_missing(&elem.name, &elem.description));
+                errors.push(ValidationError::required_missing(
+                    &elem.name,
+                    &elem.description,
+                ));
             }
         }
 
@@ -326,10 +362,10 @@ fn fuzzy_match(input: &str, candidates: &[String]) -> Option<String> {
 
         // Only suggest if distance is small relative to string length
         let max_distance = (input.len() / 3).max(2);
-        if distance <= max_distance {
-            if best_match.is_none() || distance < best_match.unwrap().0 {
-                best_match = Some((distance, candidate));
-            }
+        if distance <= max_distance
+            && (best_match.is_none() || distance < best_match.unwrap().0)
+        {
+            best_match = Some((distance, candidate));
         }
     }
 
@@ -337,6 +373,7 @@ fn fuzzy_match(input: &str, candidates: &[String]) -> Option<String> {
 }
 
 /// Simple Levenshtein edit distance.
+#[allow(clippy::needless_range_loop)]
 fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
@@ -353,8 +390,8 @@ fn edit_distance(a: &str, b: &str) -> usize {
 
     let mut dp = vec![vec![0; n + 1]; m + 1];
 
-    for i in 0..=m {
-        dp[i][0] = i;
+    for (i, row) in dp.iter_mut().enumerate() {
+        row[0] = i;
     }
     for j in 0..=n {
         dp[0][j] = j;
@@ -487,7 +524,8 @@ mod tests {
             .is_ok());
 
         // Invalid enum value with suggestion
-        let result = validator.validate_enum_value("ReferenceDataRequest", "periodicitySelection", "DAILYY");
+        let result =
+            validator.validate_enum_value("ReferenceDataRequest", "periodicitySelection", "DAILYY");
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.suggestion.is_some());
@@ -502,8 +540,14 @@ mod tests {
             "periodicitySelection".to_string(),
         ];
 
-        assert_eq!(fuzzy_match("securites", &candidates), Some("securities".to_string()));
-        assert_eq!(fuzzy_match("feilds", &candidates), Some("fields".to_string()));
+        assert_eq!(
+            fuzzy_match("securites", &candidates),
+            Some("securities".to_string())
+        );
+        assert_eq!(
+            fuzzy_match("feilds", &candidates),
+            Some("fields".to_string())
+        );
         assert_eq!(
             fuzzy_match("periodictySelection", &candidates),
             Some("periodicitySelection".to_string())

@@ -207,10 +207,7 @@ impl RequestBuilder {
 
     /// Build a generic request by setting arbitrary elements.
     /// Used for services like BQL (//blp/bqlsvc) and bsrch (//blp/exrsvc).
-    unsafe fn build_generic(
-        &self,
-        root_el: *mut blpapi_sys::blpapi_Element_t,
-    ) -> Result<()> {
+    unsafe fn build_generic(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
         // Set each element as a string on the request
         for (name, value) in &self.elements {
             let c_name = CString::new(name.as_str()).unwrap();
@@ -676,9 +673,12 @@ impl RequestBuilder {
     /// Build FieldSearchRequest for //blp/apiflds service.
     /// Uses "searchSpec" string (per SDK example).
     unsafe fn build_field_search(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
-        let search_spec = self.search_spec.as_ref().ok_or_else(|| BlpError::InvalidArgument {
-            detail: "FieldSearchRequest requires a search_spec".into(),
-        })?;
+        let search_spec = self
+            .search_spec
+            .as_ref()
+            .ok_or_else(|| BlpError::InvalidArgument {
+                detail: "FieldSearchRequest requires a search_spec".into(),
+            })?;
 
         // Set searchSpec
         let k = CString::new("searchSpec").unwrap();

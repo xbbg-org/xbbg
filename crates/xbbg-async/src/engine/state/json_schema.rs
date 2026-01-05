@@ -300,7 +300,7 @@ impl<'a> JsonValue<'a> {
                 // Try to detect date/timestamp strings
                 let s = s.as_ref();
                 let bytes = s.as_bytes();
-                
+
                 // Check for date pattern: YYYY-MM-DD (exactly 10 chars)
                 let is_date_prefix = s.len() >= 10
                     && bytes.get(4) == Some(&b'-')
@@ -308,7 +308,7 @@ impl<'a> JsonValue<'a> {
                     && bytes[0..4].iter().all(|b| b.is_ascii_digit())
                     && bytes[5..7].iter().all(|b| b.is_ascii_digit())
                     && bytes[8..10].iter().all(|b| b.is_ascii_digit());
-                
+
                 if is_date_prefix {
                     if s.len() == 10 {
                         // Pure date: YYYY-MM-DD

@@ -1994,22 +1994,21 @@ async def abschema(
             "request": _element_to_dict(op_schema.request),
             "responses": [_element_to_dict(r) for r in op_schema.responses],
         }
-    else:
-        svc_schema = await schema.aget_schema(service_uri)
-        return {
-            "service": svc_schema.service,
-            "description": svc_schema.description,
-            "operations": [
-                {
-                    "name": op.name,
-                    "description": op.description,
-                    "request": _element_to_dict(op.request),
-                    "responses": [_element_to_dict(r) for r in op.responses],
-                }
-                for op in svc_schema.operations
-            ],
-            "cached_at": svc_schema.cached_at,
-        }
+    svc_schema = await schema.aget_schema(service_uri)
+    return {
+        "service": svc_schema.service,
+        "description": svc_schema.description,
+        "operations": [
+            {
+                "name": op.name,
+                "description": op.description,
+                "request": _element_to_dict(op.request),
+                "responses": [_element_to_dict(r) for r in op.responses],
+            }
+            for op in svc_schema.operations
+        ],
+        "cached_at": svc_schema.cached_at,
+    }
 
 
 def bschema(

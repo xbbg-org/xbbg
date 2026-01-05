@@ -46,13 +46,26 @@ impl ValidationResult {
 #[derive(Debug, Clone)]
 pub enum ValidationError {
     /// Operation not found in service schema
-    OperationNotFound { operation: String, available: Vec<String> },
+    OperationNotFound {
+        operation: String,
+        available: Vec<String>,
+    },
     /// Required element is missing
-    RequiredElementMissing { element: String, description: String },
+    RequiredElementMissing {
+        element: String,
+        description: String,
+    },
     /// Unknown element name
-    UnknownElement { element: String, available: Vec<String> },
+    UnknownElement {
+        element: String,
+        available: Vec<String>,
+    },
     /// Type mismatch
-    TypeMismatch { element: String, expected: String, found: String },
+    TypeMismatch {
+        element: String,
+        expected: String,
+        found: String,
+    },
 }
 
 /// Validation warning (non-fatal).
@@ -81,26 +94,37 @@ impl<'a> RequestValidator<'a> {
         } else {
             ValidationResult::with_error(ValidationError::OperationNotFound {
                 operation: operation.to_string(),
-                available: self.schema.operations.iter().map(|o| o.name.clone()).collect(),
+                available: self
+                    .schema
+                    .operations
+                    .iter()
+                    .map(|o| o.name.clone())
+                    .collect(),
             })
         }
     }
 
     /// Validate request element names against the schema.
-    pub fn validate_elements(
-        &self,
-        operation: &str,
-        elements: &[&str],
-    ) -> ValidationResult {
+    pub fn validate_elements(&self, operation: &str, elements: &[&str]) -> ValidationResult {
         let Some(op) = self.schema.get_operation(operation) else {
             return ValidationResult::with_error(ValidationError::OperationNotFound {
                 operation: operation.to_string(),
-                available: self.schema.operations.iter().map(|o| o.name.clone()).collect(),
+                available: self
+                    .schema
+                    .operations
+                    .iter()
+                    .map(|o| o.name.clone())
+                    .collect(),
             });
         };
 
         let mut result = ValidationResult::ok();
-        let valid_elements: HashSet<_> = op.request.children.iter().map(|e| e.name.as_str()).collect();
+        let valid_elements: HashSet<_> = op
+            .request
+            .children
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
 
         for elem in elements {
             if !valid_elements.contains(*elem) {
@@ -114,15 +138,16 @@ impl<'a> RequestValidator<'a> {
     }
 
     /// Validate that all required elements are present.
-    pub fn validate_required(
-        &self,
-        operation: &str,
-        provided: &[&str],
-    ) -> ValidationResult {
+    pub fn validate_required(&self, operation: &str, provided: &[&str]) -> ValidationResult {
         let Some(op) = self.schema.get_operation(operation) else {
             return ValidationResult::with_error(ValidationError::OperationNotFound {
                 operation: operation.to_string(),
-                available: self.schema.operations.iter().map(|o| o.name.clone()).collect(),
+                available: self
+                    .schema
+                    .operations
+                    .iter()
+                    .map(|o| o.name.clone())
+                    .collect(),
             });
         };
 
@@ -241,7 +266,11 @@ mod tests {
                             type_name: "PeriodicitySelection".to_string(),
                             is_array: false,
                             is_optional: true,
-                            enum_values: Some(vec!["DAILY".to_string(), "WEEKLY".to_string(), "MONTHLY".to_string()]),
+                            enum_values: Some(vec![
+                                "DAILY".to_string(),
+                                "WEEKLY".to_string(),
+                                "MONTHLY".to_string(),
+                            ]),
                             children: Vec::new(),
                         },
                     ],

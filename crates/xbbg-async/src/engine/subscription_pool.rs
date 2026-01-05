@@ -469,9 +469,12 @@ impl SessionClaim {
         fields: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
-        let handle = self.handle.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
-            detail: "session already released".to_string(),
-        })?;
+        let handle = self
+            .handle
+            .as_ref()
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "session already released".to_string(),
+            })?;
 
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
@@ -496,9 +499,12 @@ impl SessionClaim {
         fields: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
-        let handle = self.handle.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
-            detail: "session already released".to_string(),
-        })?;
+        let handle = self
+            .handle
+            .as_ref()
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "session already released".to_string(),
+            })?;
 
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
@@ -518,9 +524,12 @@ impl SessionClaim {
 
     /// Unsubscribe from topics on this session.
     pub async fn unsubscribe(&self, keys: Vec<SlabKey>) -> Result<(), BlpAsyncError> {
-        let handle = self.handle.as_ref().ok_or_else(|| BlpAsyncError::ConfigError {
-            detail: "session already released".to_string(),
-        })?;
+        let handle = self
+            .handle
+            .as_ref()
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "session already released".to_string(),
+            })?;
 
         handle
             .cmd_tx

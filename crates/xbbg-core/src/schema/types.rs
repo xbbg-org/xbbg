@@ -124,7 +124,9 @@ impl BlpType {
             BlpType::Date => ArrowDataType::Date32,
             BlpType::Time => ArrowDataType::Time64(TimeUnit::Nanosecond),
             BlpType::Decimal => ArrowDataType::Float64, // Decimal as f64
-            BlpType::Datetime => ArrowDataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
+            BlpType::Datetime => {
+                ArrowDataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into()))
+            }
             BlpType::Enumeration => ArrowDataType::Utf8,
             BlpType::Sequence => ArrowDataType::Utf8, // JSON representation
             BlpType::Choice => ArrowDataType::Utf8,   // JSON representation

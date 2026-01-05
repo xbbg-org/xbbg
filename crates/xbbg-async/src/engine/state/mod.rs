@@ -31,6 +31,7 @@ pub use subscription::SubscriptionState;
 use xbbg_core::{BlpError, MessageRef};
 
 /// Unified request state for Lane B (bulk requests).
+#[allow(clippy::large_enum_variant)]
 pub enum RequestState {
     RefData(RefDataState),
     HistData(HistDataState),

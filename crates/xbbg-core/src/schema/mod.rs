@@ -194,8 +194,7 @@ impl SchemaElementDefinition {
 
         let mut values = Vec::with_capacity(num_constants);
         for i in 0..num_constants {
-            let constant =
-                unsafe { blpapi_sys::blpapi_ConstantList_getConstantAt(const_list, i) };
+            let constant = unsafe { blpapi_sys::blpapi_ConstantList_getConstantAt(const_list, i) };
             if constant.is_null() {
                 continue;
             }
