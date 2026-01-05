@@ -5,6 +5,7 @@ This package contains the main Bloomberg API functions organized into logical mo
 - historical: Historical data (BDH, dividends, earnings, turnover)
 - intraday: Intraday bars and tick data
 - screening: Screening and query functions (BEQS, BSRCH, BQL)
+- technical: Technical analysis (BTA)
 - realtime: Real-time subscriptions and live data
 - helpers: Shared utility functions (currency conversion, etc.)
 """
@@ -26,30 +27,33 @@ from xbbg.api.reference import (
     lookupSecurity,
 )
 from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
+from xbbg.api.technical import bta, bta_studies, refresh_studies
 
 __all__ = [
-    'bdp',
-    'bds',
-    'abdp',
-    'abds',
-    'bdh',
-    'abdh',
-    'bdib',
-    'bdtick',
-    'earning',
-    'dividend',
-    'beqs',
-    'bsrch',
-    'live',
-    'subscribe',
-    'adjust_ccy',
-    'turnover',
-    'bql',
-    'etf_holdings',
-    'fieldInfo',
-    'fieldSearch',
-    'lookupSecurity',
-    'getPortfolio',
-    'getBlpapiVersion',
+    "bdp",
+    "bds",
+    "abdp",
+    "abds",
+    "bdh",
+    "abdh",
+    "bdib",
+    "bdtick",
+    "earning",
+    "dividend",
+    "beqs",
+    "bsrch",
+    "bta",
+    "bta_studies",
+    "refresh_studies",
+    "live",
+    "subscribe",
+    "adjust_ccy",
+    "turnover",
+    "bql",
+    "etf_holdings",
+    "fieldInfo",
+    "fieldSearch",
+    "lookupSecurity",
+    "getPortfolio",
+    "getBlpapiVersion",
 ]
-

@@ -156,10 +156,10 @@ class BloombergPipeline(BaseContextAware):
             if not resolver_result.success:
                 if self.config.needs_session:
                     # Intraday endpoints need market resolution for session windows
-                    logger.warning('Market resolution failed for %s', request.ticker)
+                    logger.warning("Market resolution failed for %s", request.ticker)
                     return pd.DataFrame()
                 # Endpoints with resolvers but no session requirement can proceed without exchange info
-                logger.debug('Market resolution failed for %s, proceeding without exchange info', request.ticker)
+                logger.debug("Market resolution failed for %s, proceeding without exchange info", request.ticker)
                 resolver_result = ResolverResult(
                     resolved_ticker=request.ticker,
                     exchange_info=pd.Series(dtype=object),
@@ -174,15 +174,20 @@ class BloombergPipeline(BaseContextAware):
                 resolved_ticker=request.ticker,
                 exchange_info=pd.Series(dtype=object),
                 success=True,
-                resolver_name='None',
+                resolver_name="None",
             )
 
         # Step 3: Resolve session window (if needed)
         session_window = self._resolve_session(request, resolver_result.exchange_info)
         # Skip session validation for multi-day requests (they use explicit datetime range)
-        if self.config.needs_session and not request.is_multi_day() and session_window.session_name and not session_window.is_valid():
+        if (
+            self.config.needs_session
+            and not request.is_multi_day()
+            and session_window.session_name
+            and not session_window.is_valid()
+        ):
             logger.warning(
-                'Session resolution failed for %s / %s / %s',
+                "Session resolution failed for %s / %s / %s",
                 request.ticker,
                 request.dt,
                 request.session,
@@ -193,7 +198,7 @@ class BloombergPipeline(BaseContextAware):
         if request.cache_policy.enabled and not request.cache_policy.reload:
             cached_data = self._read_cache(request, session_window)
             if cached_data is not None and not cached_data.empty:
-                logger.debug('Cache hit for %s / %s', request.ticker, request.to_date_string())
+                logger.debug("Cache hit for %s / %s", request.ticker, request.to_date_string())
                 return cached_data
 
         # Step 5: Validate before fetch
@@ -206,7 +211,7 @@ class BloombergPipeline(BaseContextAware):
         if raw_data is None:
             raw_data = pd.DataFrame()
         if raw_data.empty:
-            logger.debug('No data returned from Bloomberg for %s', request.ticker)
+            logger.debug("No data returned from Bloomberg for %s", request.ticker)
 
         # Step 7: Handle raw flag
         if request.context and request.context.raw:
@@ -241,7 +246,7 @@ class BloombergPipeline(BaseContextAware):
             resolved_ticker=request.ticker,
             exchange_info=pd.Series(dtype=object),
             success=False,
-            resolver_name='None',
+            resolver_name="None",
         )
 
     def _resolve_session(
@@ -254,19 +259,19 @@ class BloombergPipeline(BaseContextAware):
             return SessionWindow(
                 start_time=None,
                 end_time=None,
-                session_name='',
-                timezone='UTC',
+                session_name="",
+                timezone="UTC",
             )
 
         # For multi-day requests with explicit datetime range, skip session resolution
         # The IntradayRequestBuilder will use the explicit datetime range directly
         if request.is_multi_day():
             # Determine timezone from exchange_info or default to UTC
-            tz = exchange_info.get('tz', 'UTC') if not exchange_info.empty else 'UTC'
+            tz = exchange_info.get("tz", "UTC") if not exchange_info.empty else "UTC"
             return SessionWindow(
                 start_time=None,  # Not used for multi-day
-                end_time=None,    # Not used for multi-day
-                session_name='',  # No session filtering for multi-day
+                end_time=None,  # Not used for multi-day
+                session_name="",  # No session filtering for multi-day
                 timezone=tz,
             )
 
@@ -275,17 +280,17 @@ class BloombergPipeline(BaseContextAware):
         from xbbg.core.utils.timezone import get_tz
 
         if exchange_info.empty:
-            cur_dt = pd.Timestamp(request.dt).strftime('%Y-%m-%d')
-            tz = 'UTC'
+            cur_dt = pd.Timestamp(request.dt).strftime("%Y-%m-%d")
+            tz = "UTC"
             return SessionWindow(
-                start_time=f'{cur_dt}T00:00:00',
-                end_time=f'{cur_dt}T23:59:59',
+                start_time=f"{cur_dt}T00:00:00",
+                end_time=f"{cur_dt}T23:59:59",
                 session_name=request.session,
                 timezone=tz,
             )
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
-        tz = exchange_info.get('tz', 'UTC')
+        tz = exchange_info.get("tz", "UTC")
         try:
             dest_tz = get_tz(tz)
         except Exception:
@@ -309,7 +314,7 @@ class BloombergPipeline(BaseContextAware):
                     timezone=dest_tz,
                 )
         except Exception as e:
-            logger.debug('Session resolution failed: %s', e)
+            logger.debug("Session resolution failed: %s", e)
 
         # Fallback: invalid session
         return SessionWindow(
@@ -342,15 +347,15 @@ class BloombergPipeline(BaseContextAware):
         """Fetch data from Bloomberg using configured strategy."""
         blp_request, ctx_kwargs = self.config.request_builder.build_request(request, session_window)
 
-        timeout = self.config.timeout or ctx_kwargs.get('timeout', 500)
-        max_timeouts = self.config.max_timeouts or ctx_kwargs.get('max_timeouts', 20)
+        timeout = self.config.timeout or ctx_kwargs.get("timeout", 500)
+        max_timeouts = self.config.max_timeouts or ctx_kwargs.get("max_timeouts", 20)
 
         handle = conn.send_request(request=blp_request, service=self.config.service, **ctx_kwargs)
 
         res = pd.DataFrame(
             process.rec_events(
                 func=self.config.process_func,
-                event_queue=handle['event_queue'],
+                event_queue=handle["event_queue"],
                 timeout=timeout,
                 max_timeouts=max_timeouts,
                 **ctx_kwargs,
@@ -429,8 +434,8 @@ class ReferenceRequestBuilder:
         session_window: SessionWindow,
     ) -> tuple[Any, dict[str, Any]]:
         """Build reference data request."""
-        tickers = request.request_opts.get('tickers', [request.ticker])
-        flds = request.request_opts.get('flds', [])
+        tickers = request.request_opts.get("tickers", [request.ticker])
+        flds = request.request_opts.get("flds", [])
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         all_kwargs = {**ctx_kwargs, **request.override_kwargs}
@@ -439,15 +444,15 @@ class ReferenceRequestBuilder:
         flds = utils_module.normalize_flds(flds)
 
         blp_request = process.create_request(
-            service='//blp/refdata',
-            request='ReferenceDataRequest',
+            service="//blp/refdata",
+            request="ReferenceDataRequest",
             **all_kwargs,
         )
         process.init_request(request=blp_request, tickers=tickers, flds=flds, **all_kwargs)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                'Sending Bloomberg reference data request for %d ticker(s), %d field(s)',
+                "Sending Bloomberg reference data request for %d ticker(s), %d field(s)",
                 len(tickers),
                 len(flds),
             )
@@ -469,14 +474,14 @@ class ReferenceTransformer:
         if raw_data.empty:
             return pd.DataFrame()
 
-        if utils_module.check_empty_result(raw_data, ['ticker', 'field']):
+        if utils_module.check_empty_result(raw_data, ["ticker", "field"]):
             return pd.DataFrame()
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
-        col_maps = ctx_kwargs.get('col_maps')
+        col_maps = ctx_kwargs.get("col_maps")
 
         # Get original ticker order from request
-        original_tickers = request.request_opts.get('tickers', [request.ticker])
+        original_tickers = request.request_opts.get("tickers", [request.ticker])
         # Normalize to iterable of tickers while preserving duplicates and order
         original_tickers = utils_module.normalize_tickers(original_tickers)
         # Convert to list explicitly in case normalize_tickers returned a tuple or other iterable
@@ -487,8 +492,7 @@ class ReferenceTransformer:
 
         # Transform the data
         result = (
-            raw_data
-            .set_index(['ticker', 'field'])
+            raw_data.set_index(["ticker", "field"])
             .unstack(level=1)
             .rename_axis(index=None, columns=[None, None])
             .droplevel(axis=1, level=0)
@@ -518,23 +522,23 @@ class HistoricalRequestBuilder:
         session_window: SessionWindow,
     ) -> tuple[Any, dict[str, Any]]:
         """Build historical data request."""
-        tickers = request.request_opts.get('tickers', [request.ticker])
-        flds = request.request_opts.get('flds', ['Last_Price'])
-        start_date = request.request_opts.get('start_date')
-        end_date = request.request_opts.get('end_date', 'today')
-        adjust = request.request_opts.get('adjust')
+        tickers = request.request_opts.get("tickers", [request.ticker])
+        flds = request.request_opts.get("flds", ["Last_Price"])
+        start_date = request.request_opts.get("start_date")
+        end_date = request.request_opts.get("end_date", "today")
+        adjust = request.request_opts.get("adjust")
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         all_kwargs = {**ctx_kwargs, **request.override_kwargs}
 
-        e_dt = utils_module.fmt_dt(end_date, fmt='%Y%m%d')
+        e_dt = utils_module.fmt_dt(end_date, fmt="%Y%m%d")
         if start_date is None:
             start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
-        s_dt = utils_module.fmt_dt(start_date, fmt='%Y%m%d')
+        s_dt = utils_module.fmt_dt(start_date, fmt="%Y%m%d")
 
         blp_request = process.create_request(
-            service='//blp/refdata',
-            request='HistoricalDataRequest',
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
             **all_kwargs,
         )
         process.init_request(
@@ -549,7 +553,7 @@ class HistoricalRequestBuilder:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                'Sending Bloomberg historical data request for %d ticker(s), %d field(s)',
+                "Sending Bloomberg historical data request for %d ticker(s), %d field(s)",
                 len(tickers),
                 len(flds),
             )
@@ -568,23 +572,22 @@ class HistoricalTransformer:
         session_window: SessionWindow,
     ) -> pd.DataFrame:
         """Transform historical data response."""
-        tickers = request.request_opts.get('tickers', [request.ticker])
-        flds = request.request_opts.get('flds', ['Last_Price'])
+        tickers = request.request_opts.get("tickers", [request.ticker])
+        flds = request.request_opts.get("flds", ["Last_Price"])
 
         # Normalize to lists
         ticker_list = utils_module.flatten(tickers)
         fld_list = utils_module.flatten(flds)
 
         # If empty or missing required columns, return empty DataFrame with proper MultiIndex structure
-        if raw_data.empty or utils_module.check_empty_result(raw_data, ['ticker', 'date']):
+        if raw_data.empty or utils_module.check_empty_result(raw_data, ["ticker", "date"]):
             # Create empty DataFrame with proper MultiIndex columns (ticker, field)
             # This ensures operations like .xs('Last_Price', axis=1, level=1) work correctly
             multi_index = pd.MultiIndex.from_product([ticker_list, fld_list], names=[None, None])
             return pd.DataFrame(index=pd.DatetimeIndex([]), columns=multi_index)
 
         return (
-            raw_data
-            .set_index(['ticker', 'date'])
+            raw_data.set_index(["ticker", "date"])
             .unstack(level=0)
             .rename_axis(index=None, columns=[None, None])
             .swaplevel(0, 1, axis=1)
@@ -612,19 +615,19 @@ class IntradayRequestBuilder:
         # Check if this is a multi-day request with explicit datetime range
         if request.is_multi_day():
             # Use explicit datetime range - convert to UTC ISO format
-            time_fmt = '%Y-%m-%dT%H:%M:%S'
+            time_fmt = "%Y-%m-%dT%H:%M:%S"
             start_ts = pd.Timestamp(request.start_datetime)
             end_ts = pd.Timestamp(request.end_datetime)
 
             # If timestamps are timezone-aware, convert to UTC
             # If timezone-naive, assume they are already in UTC
             if start_ts.tzinfo is not None:
-                start_dt = start_ts.tz_convert('UTC').strftime(time_fmt)
+                start_dt = start_ts.tz_convert("UTC").strftime(time_fmt)
             else:
                 start_dt = start_ts.strftime(time_fmt)
 
             if end_ts.tzinfo is not None:
-                end_dt = end_ts.tz_convert('UTC').strftime(time_fmt)
+                end_dt = end_ts.tz_convert("UTC").strftime(time_fmt)
             else:
                 end_dt = end_ts.strftime(time_fmt)
         else:
@@ -633,13 +636,14 @@ class IntradayRequestBuilder:
             end_dt = session_window.end_time
 
             if not start_dt or not end_dt:
-                raise ValueError('Invalid session window for Bloomberg request')
+                raise ValueError("Invalid session window for Bloomberg request")
 
             # Convert session window times from exchange timezone to UTC
             # Session window times are timezone-naive strings in the exchange timezone,
             # but Bloomberg expects UTC times
             if session_window.timezone:
                 from xbbg.markets import convert_session_times_to_utc
+
                 start_dt, end_dt = convert_session_times_to_utc(
                     start_time=start_dt,
                     end_time=end_dt,
@@ -647,30 +651,28 @@ class IntradayRequestBuilder:
                 )
             else:
                 # No timezone info - assume UTC (fallback)
-                logger.warning(
-                    'Session window has no timezone info, assuming UTC for Bloomberg request'
-                )
+                logger.warning("Session window has no timezone info, assuming UTC for Bloomberg request")
 
         settings = [
-            ('security', request.ticker),
-            ('eventType', request.event_type),
-            ('interval', request.interval),
-            ('startDateTime', start_dt),
-            ('endDateTime', end_dt),
+            ("security", request.ticker),
+            ("eventType", request.event_type),
+            ("interval", request.interval),
+            ("startDateTime", start_dt),
+            ("endDateTime", end_dt),
         ]
         if request.interval_has_seconds:
-            settings.append(('intervalHasSeconds', True))
+            settings.append(("intervalHasSeconds", True))
 
         blp_request = process.create_request(
-            service='//blp/refdata',
-            request='IntradayBarRequest',
+            service="//blp/refdata",
+            request="IntradayBarRequest",
             settings=settings,
             **all_kwargs,
         )
 
         if request.is_multi_day():
             logger.debug(
-                'Sending Bloomberg intraday bar data request for %s / %s to %s / %s',
+                "Sending Bloomberg intraday bar data request for %s / %s to %s / %s",
                 request.ticker,
                 start_dt,
                 end_dt,
@@ -678,7 +680,7 @@ class IntradayRequestBuilder:
             )
         else:
             logger.debug(
-                'Sending Bloomberg intraday bar data request for %s / %s / %s',
+                "Sending Bloomberg intraday bar data request for %s / %s / %s",
                 request.ticker,
                 request.to_date_string(),
                 request.event_type,
@@ -698,17 +700,16 @@ class IntradayTransformer:
         session_window: SessionWindow,
     ) -> pd.DataFrame:
         """Transform intraday bar data response."""
-        if raw_data.empty or 'time' not in raw_data:
+        if raw_data.empty or "time" not in raw_data:
             return pd.DataFrame()
 
-        tz = exchange_info.get('tz', 'UTC') if not exchange_info.empty else 'UTC'
+        tz = exchange_info.get("tz", "UTC") if not exchange_info.empty else "UTC"
 
         data = (
-            raw_data
-            .set_index('time')
+            raw_data.set_index("time")
             .rename_axis(index=None)
-            .rename(columns={'numEvents': 'num_trds'})
-            .tz_localize('UTC')
+            .rename(columns={"numEvents": "num_trds"})
+            .tz_localize("UTC")
             .tz_convert(tz)
             .pipe(pipeline_utils.add_ticker, ticker=request.ticker)
         )
@@ -719,7 +720,7 @@ class IntradayTransformer:
 
         # Filter by session window for single-day requests
         if session_window.is_valid():
-            return data.loc[session_window.start_time:session_window.end_time]
+            return data.loc[session_window.start_time : session_window.end_time]
 
         return data
 
@@ -738,31 +739,28 @@ class BlockDataRequestBuilder:
     ) -> tuple[Any, dict[str, Any]]:
         """Build block data request."""
         ticker = request.ticker
-        fld = request.request_opts.get('fld', '')
-        use_port = request.request_opts.get('use_port', False)
+        fld = request.request_opts.get("fld", "")
+        use_port = request.request_opts.get("use_port", False)
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         # Exclude request-specific options (fld, use_port) from kwargs passed to create_request
         # These are not Bloomberg overrides and should not be added to the request
-        request_specific_opts = {'fld', 'use_port'}
-        filtered_request_opts = {
-            k: v for k, v in request.request_opts.items()
-            if k not in request_specific_opts
-        }
+        request_specific_opts = {"fld", "use_port"}
+        filtered_request_opts = {k: v for k, v in request.request_opts.items() if k not in request_specific_opts}
         all_kwargs = {**ctx_kwargs, **request.override_kwargs, **filtered_request_opts}
 
         # Set has_date if not already set
-        if 'has_date' not in all_kwargs:
-            all_kwargs['has_date'] = True
+        if "has_date" not in all_kwargs:
+            all_kwargs["has_date"] = True
 
         blp_request = process.create_request(
-            service='//blp/refdata',
-            request='PortfolioDataRequest' if use_port else 'ReferenceDataRequest',
+            service="//blp/refdata",
+            request="PortfolioDataRequest" if use_port else "ReferenceDataRequest",
             **all_kwargs,
         )
         process.init_request(request=blp_request, tickers=ticker, flds=fld, **all_kwargs)
 
-        logger.debug('Sending Bloomberg block data request for ticker: %s, field: %s', ticker, fld)
+        logger.debug("Sending Bloomberg block data request for ticker: %s, field: %s", ticker, fld)
 
         return blp_request, ctx_kwargs
 
@@ -781,15 +779,14 @@ class BlockDataTransformer:
         if raw_data.empty:
             return pd.DataFrame()
 
-        if utils_module.check_empty_result(raw_data, ['ticker', 'field']):
+        if utils_module.check_empty_result(raw_data, ["ticker", "field"]):
             return pd.DataFrame()
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
-        col_maps = ctx_kwargs.get('col_maps')
+        col_maps = ctx_kwargs.get("col_maps")
 
         return (
-            raw_data
-            .set_index(['ticker', 'field'])
+            raw_data.set_index(["ticker", "field"])
             .droplevel(axis=0, level=1)
             .rename_axis(index=None)
             .pipe(pipeline_utils.standard_cols, col_maps=col_maps)
@@ -809,28 +806,28 @@ class BeqsRequestBuilder:
         session_window: SessionWindow,
     ) -> tuple[Any, dict[str, Any]]:
         """Build BEQS request."""
-        screen = request.request_opts.get('screen', '')
-        asof = request.request_opts.get('asof')
-        typ = request.request_opts.get('typ', 'PRIVATE')
-        group = request.request_opts.get('group', 'General')
+        screen = request.request_opts.get("screen", "")
+        asof = request.request_opts.get("asof")
+        typ = request.request_opts.get("typ", "PRIVATE")
+        group = request.request_opts.get("group", "General")
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         all_kwargs = {**ctx_kwargs, **request.override_kwargs, **request.request_opts}
 
         blp_request = process.create_request(
-            service='//blp/refdata',
-            request='BeqsRequest',
+            service="//blp/refdata",
+            request="BeqsRequest",
             settings=[
-                ('screenName', screen),
-                ('screenType', 'GLOBAL' if typ[0].upper() in ['G', 'B'] else 'PRIVATE'),
-                ('Group', group),
+                ("screenName", screen),
+                ("screenType", "GLOBAL" if typ[0].upper() in ["G", "B"] else "PRIVATE"),
+                ("Group", group),
             ],
-            ovrds=[('PiTDate', utils_module.fmt_dt(asof, '%Y%m%d'))] if asof else [],
+            ovrds=[("PiTDate", utils_module.fmt_dt(asof, "%Y%m%d"))] if asof else [],
             **all_kwargs,
         )
 
         logger.debug(
-            'Sending Bloomberg Equity Screening (BEQS) request for screen: %s, type: %s, group: %s',
+            "Sending Bloomberg Equity Screening (BEQS) request for screen: %s, type: %s, group: %s",
             screen,
             typ,
             group,
@@ -855,8 +852,7 @@ class BeqsTransformer:
 
         cols = raw_data.field.unique()
         return (
-            raw_data
-            .set_index(['ticker', 'field'])
+            raw_data.set_index(["ticker", "field"])
             .unstack(level=1)
             .rename_axis(index=None, columns=[None, None])
             .droplevel(axis=1, level=0)
@@ -876,29 +872,29 @@ class BsrchRequestBuilder:
         """Build BSRCH request."""
         from xbbg.core.infra.blpapi_wrapper import blpapi
 
-        domain = request.request_opts.get('domain', '')
-        overrides = request.request_opts.get('overrides')
+        domain = request.request_opts.get("domain", "")
+        overrides = request.request_opts.get("overrides")
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
 
         # Create request using exrsvc service
-        exr_service = conn.bbg_service(service='//blp/exrsvc', **ctx_kwargs)
-        blp_request = exr_service.createRequest('ExcelGetGridRequest')
+        exr_service = conn.bbg_service(service="//blp/exrsvc", **ctx_kwargs)
+        blp_request = exr_service.createRequest("ExcelGetGridRequest")
 
         # Set Domain element
-        blp_request.getElement(blpapi.Name('Domain')).setValue(domain)
+        blp_request.getElement(blpapi.Name("Domain")).setValue(domain)
 
         # Add overrides if provided
         if overrides:
-            overrides_elem = blp_request.getElement(blpapi.Name('Overrides'))
+            overrides_elem = blp_request.getElement(blpapi.Name("Overrides"))
             for name, value in overrides.items():
                 override_item = overrides_elem.appendElement()
-                override_item.setElement(blpapi.Name('name'), name)
-                override_item.setElement(blpapi.Name('value'), str(value))
+                override_item.setElement(blpapi.Name("name"), name)
+                override_item.setElement(blpapi.Name("value"), str(value))
 
         if logger.isEnabledFor(logging.DEBUG):
-            override_info = f' with {len(overrides)} override(s)' if overrides else ''
-            logger.debug('Sending Bloomberg SRCH request for domain: %s%s', domain, override_info)
+            override_info = f" with {len(overrides)} override(s)" if overrides else ""
+            logger.debug("Sending Bloomberg SRCH request for domain: %s%s", domain, override_info)
 
         return blp_request, ctx_kwargs
 
@@ -926,25 +922,25 @@ class BqlRequestBuilder:
         session_window: SessionWindow,
     ) -> tuple[Any, dict[str, Any]]:
         """Build BQL request."""
-        query = request.request_opts.get('query', '')
-        params = request.request_opts.get('params')
-        overrides = request.request_opts.get('overrides')
+        query = request.request_opts.get("query", "")
+        params = request.request_opts.get("params")
+        overrides = request.request_opts.get("overrides")
 
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
 
-        settings = [('expression', query)]
+        settings = [("expression", query)]
         if params:
             settings.extend([(str(k), v) for k, v in params.items()])
 
         blp_request = process.create_request(
-            service='//blp/bqlsvc',
-            request='sendQuery',
+            service="//blp/bqlsvc",
+            request="sendQuery",
             settings=settings,
             ovrds=overrides or [],
             **ctx_kwargs,
         )
 
-        logger.debug('Sending Bloomberg Query Language (BQL) request')
+        logger.debug("Sending Bloomberg Query Language (BQL) request")
 
         return blp_request, ctx_kwargs
 
@@ -966,8 +962,7 @@ class BqlTransformer:
         # Auto-convert date columns (vectorized approach)
         # Identify potential date columns by name
         date_cols = [
-            col for col in raw_data.columns
-            if any(keyword in str(col).lower() for keyword in ['date', 'dt', 'time'])
+            col for col in raw_data.columns if any(keyword in str(col).lower() for keyword in ["date", "dt", "time"])
         ]
 
         if not date_cols:
@@ -976,7 +971,7 @@ class BqlTransformer:
         # Process each potential date column
         for col in date_cols:
             # Only attempt conversion for object/string columns
-            if raw_data[col].dtype != 'object':
+            if raw_data[col].dtype != "object":
                 continue
 
             # Check if column contains date-like strings
@@ -990,17 +985,17 @@ class BqlTransformer:
             sample = non_null_values.head(sample_size)
 
             # Check if sample contains date-like strings
-            date_like_patterns = ['-', '/', 'T', ':']
+            date_like_patterns = ["-", "/", "T", ":"]
             has_date_patterns = any(
-                isinstance(val, str) and any(pattern in val for pattern in date_like_patterns)
-                for val in sample
+                isinstance(val, str) and any(pattern in val for pattern in date_like_patterns) for val in sample
             )
 
             if has_date_patterns:
                 from contextlib import suppress
+
                 # Attempt vectorized conversion
                 with suppress(ValueError, TypeError):
-                    raw_data[col] = pd.to_datetime(raw_data[col], errors='coerce', infer_datetime_format=True)
+                    raw_data[col] = pd.to_datetime(raw_data[col], errors="coerce", infer_datetime_format=True)
 
         return raw_data
 
@@ -1020,8 +1015,8 @@ class RequestBuilder:
         """Initialize builder."""
         self._ticker: str | None = None
         self._dt = None
-        self._session: str = 'allday'
-        self._event_type: str = 'TRADE'
+        self._session: str = "allday"
+        self._event_type: str = "TRADE"
         self._interval: int = 1
         self._interval_has_seconds: bool = False
         self._start_datetime = None
@@ -1093,9 +1088,9 @@ class RequestBuilder:
             ValueError: If required fields are missing.
         """
         if self._ticker is None:
-            raise ValueError('ticker is required')
+            raise ValueError("ticker is required")
         if self._dt is None:
-            raise ValueError('dt is required')
+            raise ValueError("dt is required")
 
         return DataRequest(
             ticker=self._ticker,
@@ -1117,8 +1112,8 @@ class RequestBuilder:
         cls,
         ticker: str,
         dt,
-        session: str = 'allday',
-        typ: str = 'TRADE',
+        session: str = "allday",
+        typ: str = "TRADE",
         start_datetime=None,
         end_datetime=None,
         **kwargs,
@@ -1147,8 +1142,8 @@ class RequestBuilder:
         )
 
         # Extract interval and intervalHasSeconds from request_opts
-        interval = split.request_opts.get('interval', 1)
-        interval_has_seconds = split.request_opts.get('intervalHasSeconds', False)
+        interval = split.request_opts.get("interval", 1)
+        interval_has_seconds = split.request_opts.get("intervalHasSeconds", False)
         builder.interval(interval, interval_has_seconds)
 
         # Set datetime range if provided
@@ -1170,8 +1165,8 @@ class RequestBuilder:
 def reference_pipeline_config() -> PipelineConfig:
     """Create pipeline config for Bloomberg reference data (BDP)."""
     return PipelineConfig(
-        service='//blp/refdata',
-        request_type='ReferenceDataRequest',
+        service="//blp/refdata",
+        request_type="ReferenceDataRequest",
         process_func=process.process_ref,
         request_builder=ReferenceRequestBuilder(),
         transformer=ReferenceTransformer(),
@@ -1183,8 +1178,8 @@ def reference_pipeline_config() -> PipelineConfig:
 def historical_pipeline_config() -> PipelineConfig:
     """Create pipeline config for Bloomberg historical data (BDH)."""
     return PipelineConfig(
-        service='//blp/refdata',
-        request_type='HistoricalDataRequest',
+        service="//blp/refdata",
+        request_type="HistoricalDataRequest",
         process_func=process.process_hist,
         request_builder=HistoricalRequestBuilder(),
         transformer=HistoricalTransformer(),
@@ -1199,8 +1194,8 @@ def intraday_pipeline_config() -> PipelineConfig:
     from xbbg.markets.resolver_chain import create_default_resolver_chain
 
     return PipelineConfig(
-        service='//blp/refdata',
-        request_type='IntradayBarRequest',
+        service="//blp/refdata",
+        request_type="IntradayBarRequest",
         process_func=process.process_bar,
         request_builder=IntradayRequestBuilder(),
         transformer=IntradayTransformer(),
@@ -1213,8 +1208,8 @@ def intraday_pipeline_config() -> PipelineConfig:
 def block_data_pipeline_config() -> PipelineConfig:
     """Create pipeline config for Bloomberg block data (BDS)."""
     return PipelineConfig(
-        service='//blp/refdata',
-        request_type='ReferenceDataRequest',
+        service="//blp/refdata",
+        request_type="ReferenceDataRequest",
         process_func=process.process_ref,
         request_builder=BlockDataRequestBuilder(),
         transformer=BlockDataTransformer(),
@@ -1226,8 +1221,8 @@ def block_data_pipeline_config() -> PipelineConfig:
 def beqs_pipeline_config() -> PipelineConfig:
     """Create pipeline config for Bloomberg Equity Screening (BEQS)."""
     return PipelineConfig(
-        service='//blp/refdata',
-        request_type='BeqsRequest',
+        service="//blp/refdata",
+        request_type="BeqsRequest",
         process_func=process.process_ref,
         request_builder=BeqsRequestBuilder(),
         transformer=BeqsTransformer(),
@@ -1241,8 +1236,8 @@ def beqs_pipeline_config() -> PipelineConfig:
 def bsrch_pipeline_config() -> PipelineConfig:
     """Create pipeline config for Bloomberg SRCH (Search) queries."""
     return PipelineConfig(
-        service='//blp/exrsvc',
-        request_type='ExcelGetGridRequest',
+        service="//blp/exrsvc",
+        request_type="ExcelGetGridRequest",
         process_func=process.process_bsrch,
         request_builder=BsrchRequestBuilder(),
         transformer=BsrchTransformer(),
@@ -1256,11 +1251,125 @@ def bsrch_pipeline_config() -> PipelineConfig:
 def bql_pipeline_config() -> PipelineConfig:
     """Create pipeline config for Bloomberg Query Language (BQL)."""
     return PipelineConfig(
-        service='//blp/bqlsvc',
-        request_type='sendQuery',
+        service="//blp/bqlsvc",
+        request_type="sendQuery",
         process_func=process.process_bql,
         request_builder=BqlRequestBuilder(),
         transformer=BqlTransformer(),
+        needs_session=False,
+        default_resolvers=lambda: [],
+    )
+
+
+class BtaRequestBuilder:
+    """Strategy for building Bloomberg Technical Analysis (TASVC) requests."""
+
+    def build_request(
+        self,
+        request: DataRequest,
+        session_window: SessionWindow,
+    ) -> tuple[Any, dict[str, Any]]:
+        """Build TASVC studyRequest.
+
+        The TASVC request has a nested structure:
+        studyRequest = {
+            priceSource = {
+                securityName = "IBM US Equity"
+                dataRange = {
+                    historical = {
+                        startDate, endDate, periodicitySelection, ...
+                    }
+                }
+            }
+            studyAttributes = {
+                <studyType>StudyAttributes = {
+                    period, priceSourceClose, ...
+                }
+            }
+        }
+        """
+        ctx_kwargs = request.context.to_kwargs() if request.context else {}
+
+        # Get request options
+        opts = request.request_opts
+        study = opts.get("study", "SMA")
+        study_attribute = opts.get("study_attribute", "smavgStudyAttributes")
+        study_params = opts.get("study_params", {})
+        start_date = opts.get("start_date")
+        end_date = opts.get("end_date")
+        periodicity = opts.get("periodicity", "DAILY")
+
+        # Format dates
+        if start_date:
+            start_date = pd.Timestamp(start_date).strftime("%Y%m%d")
+        else:
+            # Default to 1 year ago
+            start_date = (pd.Timestamp("today") - pd.Timedelta(days=365)).strftime("%Y%m%d")
+
+        end_date = pd.Timestamp(end_date).strftime("%Y%m%d") if end_date else pd.Timestamp("today").strftime("%Y%m%d")
+
+        # Get service and create request
+        service = conn.bbg_service(service="//blp/tasvc", **ctx_kwargs)
+        blp_request = service.createRequest("studyRequest")
+
+        # Set up priceSource
+        price_source = blp_request.getElement("priceSource")
+        price_source.setElement("securityName", request.ticker)
+
+        # Set up dataRange.historical
+        data_range = price_source.getElement("dataRange")
+        historical = data_range.getElement("historical")
+        historical.setElement("startDate", start_date)
+        historical.setElement("endDate", end_date)
+        historical.setElement("periodicitySelection", periodicity)
+
+        # Set up studyAttributes
+        study_attrs = blp_request.getElement("studyAttributes")
+        study_elem = study_attrs.getElement(study_attribute)
+
+        for param_name, param_value in study_params.items():
+            study_elem.setElement(param_name, param_value)
+
+        logger.debug(f"Sending TASVC studyRequest for {request.ticker} with {study} study")
+
+        return blp_request, ctx_kwargs
+
+
+class BtaTransformer:
+    """Strategy for transforming Bloomberg TASVC responses."""
+
+    def transform(
+        self,
+        raw_data: pd.DataFrame,
+        request: DataRequest,
+        exchange_info: pd.Series,
+        session_window: SessionWindow,
+    ) -> pd.DataFrame:
+        """Transform TASVC response to DataFrame with date index."""
+        if raw_data.empty:
+            return raw_data
+
+        # The raw_data should already have date and study value columns
+        # Set date as index if present
+        if "date" in raw_data.columns:
+            raw_data["date"] = pd.to_datetime(raw_data["date"])
+            raw_data = raw_data.set_index("date")
+            raw_data.index.name = None
+
+        # Add ticker as column name prefix if we want multi-ticker support later
+        # For now, keep columns as-is (e.g., 'SMAVG', 'RSI', etc.)
+
+        return raw_data
+
+
+def bta_pipeline_config() -> PipelineConfig:
+    """Create pipeline config for Bloomberg Technical Analysis (TASVC)."""
+    return PipelineConfig(
+        service="//blp/tasvc",
+        request_type="studyRequest",
+        process_func=process.process_tasvc,
+        request_builder=BtaRequestBuilder(),
+        transformer=BtaTransformer(),
         needs_session=False,
         default_resolvers=lambda: [],
     )
