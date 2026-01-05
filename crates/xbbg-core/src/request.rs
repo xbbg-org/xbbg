@@ -39,6 +39,8 @@ pub struct RequestBuilder {
     securities: Vec<String>,
     fields: Vec<String>,
     overrides: Vec<(String, String)>,
+    /// Generic request elements (for BQL expression, bsrch domain, etc.)
+    elements: Vec<(String, String)>,
     label: Option<String>,
     /// Single security (for intraday requests)
     single_security: Option<String>,
@@ -73,6 +75,7 @@ impl RequestBuilder {
             securities: Vec::new(),
             fields: Vec::new(),
             overrides: Vec::new(),
+            elements: Vec::new(),
             label: None,
             single_security: None,
             event_type: None,
@@ -104,6 +107,12 @@ impl RequestBuilder {
 
     pub fn r#override(mut self, name: &str, value: impl ToString) -> Self {
         self.overrides.push((name.to_string(), value.to_string()));
+        self
+    }
+
+    /// Set a generic request element (for BQL expression, bsrch domain, etc.)
+    pub fn element(mut self, name: &str, value: impl ToString) -> Self {
+        self.elements.push((name.to_string(), value.to_string()));
         self
     }
 
@@ -183,12 +192,42 @@ impl RequestBuilder {
                     self.build_field_search(root_el)?;
                 }
                 _ => {
-                    // ReferenceDataRequest or similar
-                    self.build_reference_data(root_el)?;
+                    // For unknown operations, if we have elements, use generic build
+                    // Otherwise fall back to reference data style
+                    if !self.elements.is_empty() {
+                        self.build_generic(root_el)?;
+                    } else {
+                        self.build_reference_data(root_el)?;
+                    }
                 }
             }
         }
         Ok(request)
+    }
+
+    /// Build a generic request by setting arbitrary elements.
+    /// Used for services like BQL (//blp/bqlsvc) and bsrch (//blp/exrsvc).
+    unsafe fn build_generic(
+        &self,
+        root_el: *mut blpapi_sys::blpapi_Element_t,
+    ) -> Result<()> {
+        // Set each element as a string on the request
+        for (name, value) in &self.elements {
+            let c_name = CString::new(name.as_str()).unwrap();
+            let c_value = CString::new(value.as_str()).unwrap();
+            let rc = blpapi_sys::blpapi_Element_setElementString(
+                root_el,
+                c_name.as_ptr(),
+                std::ptr::null(),
+                c_value.as_ptr(),
+            );
+            if rc != 0 {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("failed to set element '{}': rc={}", name, rc),
+                });
+            }
+        }
+        Ok(())
     }
 
     unsafe fn build_reference_data(

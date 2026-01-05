@@ -454,10 +454,17 @@ impl RequestWorker {
             builder = builder.interval(interval);
         }
 
-        // Set overrides
+        // Set overrides (Bloomberg field override format)
         if let Some(ref overrides) = params.overrides {
             for (name, value) in overrides {
                 builder = builder.r#override(name, value.clone());
+            }
+        }
+
+        // Set generic elements (for BQL, bsrch, etc.)
+        if let Some(ref elements) = params.elements {
+            for (name, value) in elements {
+                builder = builder.element(name, value.clone());
             }
         }
 

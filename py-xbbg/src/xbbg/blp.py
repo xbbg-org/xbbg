@@ -16,6 +16,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 import warnings
@@ -72,12 +73,14 @@ __all__ = [
     "abds",
     "abdib",
     "abdtick",
+    "abql",
     # Sync API (wrappers)
     "bdp",
     "bdh",
     "bds",
     "bdib",
     "bdtick",
+    "bql",
     # Streaming API
     "Tick",
     "Subscription",
@@ -515,8 +518,15 @@ async def arequest(
         fields_list = [fields] if isinstance(fields, str) else list(fields)
 
     overrides_list: list[tuple[str, str]] | None = None
+    elements_list: list[tuple[str, str]] | None = None
     if overrides is not None:
-        overrides_list = [(k, str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
+        override_tuples = [(k, str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
+        # For BQL and bsrch services, pass overrides as generic elements (not Bloomberg field overrides)
+        service_str = service.value if isinstance(service, Service) else service
+        if service_str in ("//blp/bqlsvc", "//blp/exrsvc"):
+            elements_list = override_tuples
+        else:
+            overrides_list = override_tuples
 
     options_list: list[tuple[str, str]] | None = None
     if options is not None:
@@ -540,6 +550,7 @@ async def arequest(
         security=security,
         fields=fields_list,
         overrides=overrides_list,
+        elements=elements_list,
         start_date=start_date,
         end_date=end_date,
         start_datetime=start_datetime,
@@ -1495,3 +1506,165 @@ def stream(
     finally:
         stop_event.set()
         thread.join(timeout=1.0)
+
+
+# =============================================================================
+# BQL API - Bloomberg Query Language
+# =============================================================================
+
+
+def _parse_bql_response(raw_json: str) -> nw.DataFrame:
+    """Parse BQL JSON response into a DataFrame.
+
+    BQL responses have this structure:
+    {
+        "results": {
+            "field1": {
+                "idColumn": {"name": "ID", "type": "STRING", "values": [...]},
+                "valuesColumn": {"type": "DOUBLE", "values": [...]},
+                "secondaryColumns": [{"name": "...", "type": "...", "values": [...]}]
+            },
+            "field2": {...}
+        }
+    }
+
+    All arrays are index-aligned, so we zip them together.
+    All fields share the same idColumn (the universe/ticker list).
+    """
+    # BQL returns double-encoded JSON
+    data = json.loads(json.loads(raw_json))
+
+    results = data.get("results", {})
+    if not results:
+        # Return empty DataFrame
+        return nw.from_native(pa.table({"id": pa.array([], type=pa.string())}))
+
+    # Get field names and data
+    field_names = list(results.keys())
+    if not field_names:
+        return nw.from_native(pa.table({"id": pa.array([], type=pa.string())}))
+
+    # All fields share the same idColumn, use first field to get it
+    first_field = results[field_names[0]]
+    id_col = first_field["idColumn"]
+    ids = id_col["values"]
+
+    # Build columns dict starting with id
+    columns: dict[str, list] = {"id": ids}
+
+    # Add each field's values
+    for field_name in field_names:
+        field_data = results[field_name]
+        values = field_data["valuesColumn"]["values"]
+        columns[field_name] = values
+
+        # Add secondary columns if present (prefixed with field name)
+        sec_cols = field_data.get("secondaryColumns", [])
+        for sec_col in sec_cols:
+            col_name = f"{field_name}_{sec_col['name']}"
+            columns[col_name] = sec_col["values"]
+
+    # Convert to Arrow table (narwhals-compatible)
+    # Let pyarrow infer types from the Python values
+    arrow_arrays = {}
+    for col_name, values in columns.items():
+        arrow_arrays[col_name] = pa.array(values)
+
+    table = pa.table(arrow_arrays)
+    return nw.from_native(table)
+
+
+async def abql(
+    expression: str,
+    *,
+    backend: Backend | str | None = None,
+) -> nw.DataFrame:
+    """Async Bloomberg Query Language (BQL) request.
+
+    BQL is Bloomberg's powerful query language for financial analytics.
+    It allows you to query data across universes of securities with
+    complex filters, calculations, and time series operations.
+
+    Args:
+        expression: BQL expression string.
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        DataFrame with columns: id, <field1>, <field2>, ...
+        Where 'id' is the security identifier from the BQL universe.
+
+    Example::
+
+        # Get price for a single security
+        df = await abql("get(px_last) for('AAPL US Equity')")
+
+        # Get multiple fields
+        df = await abql("get(px_last, volume) for('AAPL US Equity')")
+
+        # Holdings of an ETF
+        df = await abql("get(id_isin, weights) for(holdings('SPY US Equity'))")
+
+        # Index members
+        df = await abql("get(px_last) for(members('SPX Index'))")
+
+        # With filters
+        df = await abql("get(px_last, pe_ratio) for(members('SPX Index')) with(pe_ratio > 20)")
+
+        # Time series
+        df = await abql("get(px_last) for('AAPL US Equity') with(dates=range(-5d, 0d))")
+    """
+    logger.debug("abql: expression=%s", expression)
+
+    # Send BQL request via arequest
+    raw_df = await arequest(
+        service="//blp/bqlsvc",
+        operation="sendQuery",
+        overrides={"expression": expression},
+        extractor=ExtractorHint.RAW_JSON,
+        backend=None,  # Get narwhals to extract raw JSON
+    )
+
+    # Extract raw JSON from the response
+    raw_json = raw_df.to_native().to_pylist()[0]["json"]
+
+    # Parse and convert to DataFrame
+    nw_df = _parse_bql_response(raw_json)
+
+    logger.debug("abql: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
+
+    return _convert_backend(nw_df, backend)
+
+
+def bql(
+    expression: str,
+    *,
+    backend: Backend | str | None = None,
+) -> nw.DataFrame:
+    """Bloomberg Query Language (BQL) request.
+
+    Sync wrapper around abql(). For async usage, use abql() directly.
+
+    BQL is Bloomberg's powerful query language for financial analytics.
+    It allows you to query data across universes of securities with
+    complex filters, calculations, and time series operations.
+
+    Args:
+        expression: BQL expression string.
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        DataFrame with columns: id, <field1>, <field2>, ...
+        Where 'id' is the security identifier from the BQL universe.
+
+    Example::
+
+        # Get price for a single security
+        df = bql("get(px_last) for('AAPL US Equity')")
+
+        # Holdings of an ETF
+        df = bql("get(id_isin, weights) for(holdings('SPY US Equity'))")
+
+        # Index members with filter
+        df = bql("get(px_last, pe_ratio) for(members('SPX Index')) with(pe_ratio > 20)")
+    """
+    return asyncio.run(abql(expression, backend=backend))

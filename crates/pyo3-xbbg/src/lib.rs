@@ -813,6 +813,11 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
+    let elements: Option<Vec<(String, String)>> = dict
+        .get_item("elements")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     let start_date: Option<String> = dict
         .get_item("start_date")?
         .map(|v| v.extract())
@@ -874,6 +879,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         security,
         fields,
         overrides,
+        elements,
         start_date,
         end_date,
         start_datetime,

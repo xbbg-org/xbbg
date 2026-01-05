@@ -101,8 +101,10 @@ pub struct RequestParams {
     pub security: Option<String>,
     /// Fields to retrieve
     pub fields: Option<Vec<String>>,
-    /// Field overrides
+    /// Field overrides (for standard Bloomberg override format)
     pub overrides: Option<Vec<(String, String)>>,
+    /// Generic request elements (for BQL expression, bsrch domain, etc.)
+    pub elements: Option<Vec<(String, String)>>,
     /// Start date (YYYYMMDD for bdh)
     pub start_date: Option<String>,
     /// End date (YYYYMMDD for bdh)
