@@ -1819,41 +1819,39 @@ def bsrch(
 
 
 async def abfld(
-    query: str,
+    fields: str | Sequence[str],
     *,
     backend: Backend | str | None = None,
 ) -> nw.DataFrame:
-    """Async Bloomberg Field Search (BFLD) request.
+    """Async Bloomberg Field Info (BFLD) request.
 
-    Search for Bloomberg field names by keyword. Useful for discovering
-    available fields when you're not sure of the exact field name.
+    Get metadata about specific Bloomberg fields including description,
+    data type, and category.
 
     Args:
-        query: Search query (e.g., "price", "dividend", "earnings").
+        fields: Field name or list of field names (e.g., "PX_LAST", ["PX_LAST", "VOLUME"]).
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
-        DataFrame with columns: id, mnemonic, description, datatype, category, etc.
+        DataFrame with columns: field, datatype, description, category, etc.
 
     Example::
 
-        # Search for price-related fields
-        df = await abfld("last price")
+        # Get info for a single field
+        df = await abfld("PX_LAST")
 
-        # Search for dividend fields
-        df = await abfld("dividend yield")
-
-        # Search for volume fields
-        df = await abfld("volume")
+        # Get info for multiple fields
+        df = await abfld(["PX_LAST", "VOLUME", "NAME"])
     """
-    logger.debug("abfld: query=%s", query)
+    field_list = [fields] if isinstance(fields, str) else list(fields)
+    logger.debug("abfld: fields=%s", field_list)
 
-    # Send field search request via arequest
-    # The //blp/apiflds service uses FieldSearchRequest with search_spec
+    # Send field info request via arequest
+    # The //blp/apiflds service uses FieldInfoRequest with field_ids
     nw_df = await arequest(
         service=Service.APIFLDS,
-        operation=Operation.FIELD_SEARCH,
-        fields=[query],  # search_spec is passed via fields
+        operation=Operation.FIELD_INFO,
+        fields=field_list,
         backend=None,
     )
 
@@ -1863,30 +1861,30 @@ async def abfld(
 
 
 def bfld(
-    query: str,
+    fields: str | Sequence[str],
     *,
     backend: Backend | str | None = None,
 ) -> nw.DataFrame:
-    """Bloomberg Field Search (BFLD) request.
+    """Bloomberg Field Info (BFLD) request.
 
     Sync wrapper around abfld(). For async usage, use abfld() directly.
 
-    Search for Bloomberg field names by keyword. Useful for discovering
-    available fields when you're not sure of the exact field name.
+    Get metadata about specific Bloomberg fields including description,
+    data type, and category.
 
     Args:
-        query: Search query (e.g., "price", "dividend", "earnings").
+        fields: Field name or list of field names (e.g., "PX_LAST", ["PX_LAST", "VOLUME"]).
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
-        DataFrame with columns: id, mnemonic, description, datatype, category, etc.
+        DataFrame with columns: field, datatype, description, category, etc.
 
     Example::
 
-        # Search for price-related fields
-        df = bfld("last price")
+        # Get info for a single field
+        df = bfld("PX_LAST")
 
-        # Search for dividend fields
-        df = bfld("dividend yield")
+        # Get info for multiple fields
+        df = bfld(["PX_LAST", "VOLUME", "NAME"])
     """
-    return asyncio.run(abfld(query, backend=backend))
+    return asyncio.run(abfld(fields, backend=backend))
