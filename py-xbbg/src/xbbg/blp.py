@@ -102,6 +102,11 @@ __all__ = [
     "OutputMode",
     "RequestParams",
     "ExtractorHint",
+    # Schema introspection
+    "abops",
+    "bops",
+    "abschema",
+    "bschema",
 ]
 
 
@@ -1888,3 +1893,167 @@ def bfld(
         df = bfld(["PX_LAST", "VOLUME", "NAME"])
     """
     return asyncio.run(abfld(fields, backend=backend))
+
+
+# ─── Schema Introspection API ────────────────────────────────────────────────
+
+
+async def abops(service: str | Service = Service.REFDATA) -> list[str]:
+    """List available operations for a Bloomberg service (async).
+
+    Args:
+        service: Service URI or Service enum (default: //blp/refdata)
+
+    Returns:
+        List of operation names.
+
+    Example::
+
+        >>> ops = await abops()
+        >>> print(ops)
+        ['ReferenceDataRequest', 'HistoricalDataRequest', ...]
+
+        >>> ops = await abops("//blp/instruments")
+        >>> print(ops)
+        ['InstrumentListRequest', ...]
+    """
+    from . import schema
+
+    service_uri = service.value if isinstance(service, Service) else service
+    return await schema.alist_operations(service_uri)
+
+
+def bops(service: str | Service = Service.REFDATA) -> list[str]:
+    """List available operations for a Bloomberg service.
+
+    Sync wrapper around abops(). For async usage, use abops() directly.
+
+    Args:
+        service: Service URI or Service enum (default: //blp/refdata)
+
+    Returns:
+        List of operation names.
+
+    Example::
+
+        >>> bops()
+        ['ReferenceDataRequest', 'HistoricalDataRequest', ...]
+
+        >>> bops("//blp/instruments")
+        ['InstrumentListRequest', ...]
+    """
+    return asyncio.run(abops(service))
+
+
+async def abschema(
+    service: str | Service = Service.REFDATA,
+    operation: str | Operation | None = None,
+) -> dict:
+    """Get Bloomberg service or operation schema (async).
+
+    Returns introspected schema with element definitions, types, and enum values.
+    Schemas are cached locally (~/.xbbg/schemas/) for fast subsequent access.
+
+    Args:
+        service: Service URI or Service enum (default: //blp/refdata)
+        operation: Optional operation name. If None, returns full service schema.
+
+    Returns:
+        Dictionary with schema information:
+        - If operation is None: Full service schema with all operations
+        - If operation is specified: Just that operation's request/response schema
+
+    Example::
+
+        >>> # Get full service schema
+        >>> schema = await abschema()
+        >>> print(schema['operations'][0]['name'])
+        'ReferenceDataRequest'
+
+        >>> # Get specific operation schema
+        >>> op_schema = await abschema(operation="ReferenceDataRequest")
+        >>> print(op_schema['request']['children'][0]['name'])
+        'securities'
+
+        >>> # Get enum values for an element
+        >>> op = await abschema(operation="HistoricalDataRequest")
+        >>> for child in op['request']['children']:
+        ...     if child.get('enum_values'):
+        ...         print(f"{child['name']}: {child['enum_values']}")
+    """
+    from . import schema
+
+    service_uri = service.value if isinstance(service, Service) else service
+
+    if operation is not None:
+        op_name = operation.value if isinstance(operation, Operation) else operation
+        op_schema = await schema.aget_operation(service_uri, op_name)
+        return {
+            "name": op_schema.name,
+            "description": op_schema.description,
+            "request": _element_to_dict(op_schema.request),
+            "responses": [_element_to_dict(r) for r in op_schema.responses],
+        }
+    else:
+        svc_schema = await schema.aget_schema(service_uri)
+        return {
+            "service": svc_schema.service,
+            "description": svc_schema.description,
+            "operations": [
+                {
+                    "name": op.name,
+                    "description": op.description,
+                    "request": _element_to_dict(op.request),
+                    "responses": [_element_to_dict(r) for r in op.responses],
+                }
+                for op in svc_schema.operations
+            ],
+            "cached_at": svc_schema.cached_at,
+        }
+
+
+def bschema(
+    service: str | Service = Service.REFDATA,
+    operation: str | Operation | None = None,
+) -> dict:
+    """Get Bloomberg service or operation schema.
+
+    Sync wrapper around abschema(). For async usage, use abschema() directly.
+
+    Returns introspected schema with element definitions, types, and enum values.
+    Schemas are cached locally (~/.xbbg/schemas/) for fast subsequent access.
+
+    Args:
+        service: Service URI or Service enum (default: //blp/refdata)
+        operation: Optional operation name. If None, returns full service schema.
+
+    Returns:
+        Dictionary with schema information.
+
+    Example::
+
+        >>> # List operations
+        >>> schema = bschema()
+        >>> [op['name'] for op in schema['operations']]
+        ['ReferenceDataRequest', 'HistoricalDataRequest', ...]
+
+        >>> # Get operation details
+        >>> op = bschema(operation="ReferenceDataRequest")
+        >>> [c['name'] for c in op['request']['children']]
+        ['securities', 'fields', 'overrides', ...]
+    """
+    return asyncio.run(abschema(service, operation))
+
+
+def _element_to_dict(elem) -> dict:
+    """Convert ElementInfo to dictionary."""
+    return {
+        "name": elem.name,
+        "description": elem.description,
+        "data_type": elem.data_type,
+        "type_name": elem.type_name,
+        "is_array": elem.is_array,
+        "is_optional": elem.is_optional,
+        "enum_values": elem.enum_values,
+        "children": [_element_to_dict(c) for c in elem.children],
+    }

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use arrow::record_batch::RecordBatch;
 use tokio::sync::{mpsc, oneshot};
 
+use xbbg_core::schema::SerializedSchema;
 use xbbg_core::BlpError;
 
 use super::worker::{WorkerCommand, WorkerHandle};
@@ -109,6 +110,29 @@ impl RequestWorkerPool {
     /// Get the number of workers in the pool.
     pub fn size(&self) -> usize {
         self.workers.len()
+    }
+
+    /// Introspect a service schema via worker.
+    pub async fn introspect_schema(
+        &self,
+        service: String,
+    ) -> Result<SerializedSchema, BlpAsyncError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        let worker = self.next_worker();
+        worker
+            .cmd_tx
+            .send(WorkerCommand::SchemaIntrospect {
+                service,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+
+        reply_rx
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?
+            .map_err(BlpAsyncError::BlpError)
     }
 
     /// Graceful shutdown of all workers.

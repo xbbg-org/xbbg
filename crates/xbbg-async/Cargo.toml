@@ -36,3 +36,4 @@ development = ["tracing-subscriber"]
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 blpapi-sys = { path = "../blpapi-sys" }
+tempfile = "3.15"

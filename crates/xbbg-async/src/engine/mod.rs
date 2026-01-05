@@ -18,9 +18,12 @@ use std::sync::Arc;
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
 
+use xbbg_core::schema::{SerializedOperation, SerializedSchema};
 use xbbg_core::BlpError;
 
 use crate::errors::BlpAsyncError;
+use crate::schema_cache::global_schema_cache;
+use crate::schema_validation::{ElementInfo, RequestValidator, ValidationResult};
 
 pub use request_pool::RequestWorkerPool;
 pub use state::{OutputFormat, RequestState, SubscriptionState};
@@ -367,6 +370,137 @@ impl Engine {
     /// Save the field type cache to disk.
     pub fn save_field_cache(&self) -> Result<(), String> {
         crate::field_cache::global_resolver().save_to_disk()
+    }
+
+    // ─── Schema Cache ──────────────────────────────────────────────────────
+
+    /// Get service schema (from cache or introspect).
+    ///
+    /// First checks disk cache. If not cached, introspects the service
+    /// via a worker and caches the result.
+    pub async fn get_schema(&self, service: &str) -> Result<SerializedSchema, BlpAsyncError> {
+        let cache = global_schema_cache();
+
+        // Check cache first
+        if let Some(schema) = cache.get(service) {
+            return Ok(schema);
+        }
+
+        // Introspect via worker
+        tracing::info!(service = service, "schema not cached, introspecting");
+        let schema = self
+            .request_pool
+            .introspect_schema(service.to_string())
+            .await?;
+
+        // Cache it
+        cache
+            .put(&schema)
+            .map_err(|e| BlpAsyncError::Internal(format!("cache schema: {e}")))?;
+
+        Ok(schema)
+    }
+
+    /// Get a specific operation schema.
+    pub async fn get_operation(
+        &self,
+        service: &str,
+        operation: &str,
+    ) -> Result<SerializedOperation, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        schema
+            .get_operation(operation)
+            .cloned()
+            .ok_or_else(|| BlpAsyncError::BlpError(BlpError::SchemaOperationNotFound {
+                service: service.to_string(),
+                operation: operation.to_string(),
+            }))
+    }
+
+    /// List all operations for a service.
+    pub async fn list_operations(&self, service: &str) -> Result<Vec<String>, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        Ok(schema.operations.iter().map(|op| op.name.clone()).collect())
+    }
+
+    /// Get cached schema without introspection (returns None if not cached).
+    pub fn get_cached_schema(&self, service: &str) -> Option<SerializedSchema> {
+        global_schema_cache().get(service)
+    }
+
+    /// Invalidate a cached schema.
+    pub fn invalidate_schema(&self, service: &str) {
+        global_schema_cache().invalidate(service);
+    }
+
+    /// Clear all cached schemas.
+    pub fn clear_schema_cache(&self) {
+        global_schema_cache().clear();
+    }
+
+    /// List all cached service URIs.
+    pub fn list_cached_schemas(&self) -> Vec<String> {
+        global_schema_cache().list_cached()
+    }
+
+    // ─── Schema Validation ───────────────────────────────────────────────────
+
+    /// Validate that an operation exists in the schema.
+    pub async fn validate_operation(
+        &self,
+        service: &str,
+        operation: &str,
+    ) -> Result<ValidationResult, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        let validator = RequestValidator::new(&schema);
+        Ok(validator.validate_operation(operation))
+    }
+
+    /// Validate request elements against the schema.
+    pub async fn validate_elements(
+        &self,
+        service: &str,
+        operation: &str,
+        elements: &[&str],
+    ) -> Result<ValidationResult, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        let validator = RequestValidator::new(&schema);
+        Ok(validator.validate_elements(operation, elements))
+    }
+
+    /// Get valid enum values for an element.
+    pub async fn get_enum_values(
+        &self,
+        service: &str,
+        operation: &str,
+        element: &str,
+    ) -> Result<Option<Vec<String>>, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        let validator = RequestValidator::new(&schema);
+        Ok(validator.get_enum_values(operation, element))
+    }
+
+    /// Get element info for autocomplete/IDE support.
+    pub async fn get_element_info(
+        &self,
+        service: &str,
+        operation: &str,
+        element: &str,
+    ) -> Result<Option<ElementInfo>, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        let validator = RequestValidator::new(&schema);
+        Ok(validator.get_element_info(operation, element))
+    }
+
+    /// List all valid element names for an operation.
+    pub async fn list_valid_elements(
+        &self,
+        service: &str,
+        operation: &str,
+    ) -> Result<Option<Vec<String>>, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        let validator = RequestValidator::new(&schema);
+        Ok(validator.list_valid_elements(operation))
     }
 
     // ─── Pool Info ──────────────────────────────────────────────────────────

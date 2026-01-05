@@ -328,6 +328,11 @@ __all__ = [
     "configure",
     "set_backend",
     "get_backend",
+    # Schema introspection (user-facing)
+    "bops",
+    "abops",
+    "bschema",
+    "abschema",
     "get_sdk_info",
     "set_sdk_path",
     "clear_sdk_path",
@@ -345,6 +350,20 @@ __all__ = [
     "OutputMode",
     "RequestParams",
     "ExtractorHint",
+    # Schema introspection
+    "get_schema",
+    "aget_schema",
+    "get_operation",
+    "aget_operation",
+    "list_operations",
+    "alist_operations",
+    "get_enum_values",
+    "aget_enum_values",
+    "list_valid_elements",
+    "alist_valid_elements",
+    "generate_stubs",
+    "ServiceSchema",
+    "OperationSchema",
     # Exceptions
     "BlpError",
     "BlpSessionError",
@@ -438,6 +457,11 @@ def __getattr__(name: str):
         "OutputMode",
         "RequestParams",
         "ExtractorHint",
+        # Schema introspection
+        "bops",
+        "abops",
+        "bschema",
+        "abschema",
     ):
         from . import blp
 
@@ -469,6 +493,26 @@ def __getattr__(name: str):
         from . import field_cache
 
         return getattr(field_cache, name)
+    # Schema exports
+    if name in (
+        "get_schema",
+        "aget_schema",
+        "get_operation",
+        "aget_operation",
+        "list_operations",
+        "alist_operations",
+        "get_enum_values",
+        "aget_enum_values",
+        "list_valid_elements",
+        "alist_valid_elements",
+        "generate_stubs",
+        "ServiceSchema",
+        "OperationSchema",
+        "ElementInfo",
+    ):
+        from . import schema
+
+        return getattr(schema, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

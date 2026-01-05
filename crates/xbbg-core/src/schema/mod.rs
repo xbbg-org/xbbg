@@ -1,6 +1,9 @@
 use crate::errors::{BlpError, Result};
 use crate::name::Name;
 
+pub mod serialize;
+pub use serialize::{SerializedElement, SerializedOperation, SerializedSchema};
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DataType {
     Bool,
@@ -150,6 +153,69 @@ impl SchemaElementDefinition {
         } else {
             Self::from_raw(out).ok()
         }
+    }
+
+    /// Check if this element's type is an enumeration.
+    pub fn is_enumeration(&self) -> bool {
+        let type_ptr = unsafe { blpapi_sys::blpapi_SchemaElementDefinition_type(self.ptr) };
+        if type_ptr.is_null() {
+            return false;
+        }
+        unsafe { blpapi_sys::blpapi_SchemaTypeDefinition_isEnumerationType(type_ptr) != 0 }
+    }
+
+    /// Get the enumeration values for this element.
+    /// Returns an empty vector if this is not an enumeration type.
+    pub fn enumeration_values(&self) -> Vec<String> {
+        let type_ptr = unsafe { blpapi_sys::blpapi_SchemaElementDefinition_type(self.ptr) };
+        if type_ptr.is_null() {
+            return Vec::new();
+        }
+
+        // Check if it's an enumeration type
+        if unsafe { blpapi_sys::blpapi_SchemaTypeDefinition_isEnumerationType(type_ptr) } == 0 {
+            return Vec::new();
+        }
+
+        // Get the constant list
+        let const_list = unsafe { blpapi_sys::blpapi_SchemaTypeDefinition_enumeration(type_ptr) };
+        if const_list.is_null() {
+            return Vec::new();
+        }
+
+        // Get number of constants
+        let num_constants =
+            unsafe { blpapi_sys::blpapi_ConstantList_numConstants(const_list) as usize };
+
+        let mut values = Vec::with_capacity(num_constants);
+        for i in 0..num_constants {
+            let constant =
+                unsafe { blpapi_sys::blpapi_ConstantList_getConstantAt(const_list, i) };
+            if constant.is_null() {
+                continue;
+            }
+
+            let name_ptr = unsafe { blpapi_sys::blpapi_Constant_name(constant) };
+            if !name_ptr.is_null() {
+                let name = Name::from_raw(name_ptr);
+                values.push(name.to_string());
+            }
+        }
+
+        values
+    }
+
+    /// Get the type name of this element.
+    pub fn type_name(&self) -> String {
+        let type_ptr = unsafe { blpapi_sys::blpapi_SchemaElementDefinition_type(self.ptr) };
+        if type_ptr.is_null() {
+            return String::new();
+        }
+        let name_ptr = unsafe { blpapi_sys::blpapi_SchemaTypeDefinition_name(type_ptr) };
+        if name_ptr.is_null() {
+            return String::new();
+        }
+        Name::from_raw(name_ptr).to_string()
     }
 }
 

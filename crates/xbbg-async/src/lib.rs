@@ -7,6 +7,8 @@ mod errors;
 pub mod field_cache;
 mod requests;
 mod router;
+pub mod schema_cache;
+pub mod schema_validation;
 mod subscriptions;
 mod snapshot {
     pub mod handle;

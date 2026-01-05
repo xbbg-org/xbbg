@@ -446,6 +446,167 @@ impl PyEngine {
     }
 
     // =========================================================================
+    // Schema Cache API
+    // =========================================================================
+
+    /// Get service schema (from cache or introspect).
+    ///
+    /// Returns a dictionary with schema information including operations.
+    /// First checks disk cache; if not cached, introspects the service.
+    #[pyo3(signature = (service))]
+    fn get_schema<'py>(&self, py: Python<'py>, service: String) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+
+        future_into_py(py, async move {
+            let schema = engine
+                .get_schema(&service)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            // Convert to JSON string for Python
+            let json = serde_json::to_string(&schema)
+                .map_err(|e| PyRuntimeError::new_err(format!("serialize schema: {e}")))?;
+
+            Python::attach(|py| Ok(json.into_pyobject(py)?.into_any().unbind()))
+        })
+    }
+
+    /// Get a specific operation schema.
+    ///
+    /// Returns operation details including request/response element definitions.
+    #[pyo3(signature = (service, operation))]
+    fn get_operation<'py>(
+        &self,
+        py: Python<'py>,
+        service: String,
+        operation: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+
+        future_into_py(py, async move {
+            let op = engine
+                .get_operation(&service, &operation)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            let json = serde_json::to_string(&op)
+                .map_err(|e| PyRuntimeError::new_err(format!("serialize operation: {e}")))?;
+
+            Python::attach(|py| Ok(json.into_pyobject(py)?.into_any().unbind()))
+        })
+    }
+
+    /// List all operations for a service.
+    #[pyo3(signature = (service))]
+    fn list_operations<'py>(
+        &self,
+        py: Python<'py>,
+        service: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+
+        future_into_py(py, async move {
+            let ops = engine
+                .list_operations(&service)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            Python::attach(|py| {
+                let list = pyo3::types::PyList::new(py, ops)?;
+                Ok(list.into_any().unbind())
+            })
+        })
+    }
+
+    /// Get cached schema without introspection.
+    ///
+    /// Returns None if the schema is not cached.
+    fn get_cached_schema(&self, service: &str) -> Option<String> {
+        self.engine
+            .get_cached_schema(service)
+            .map(|s| serde_json::to_string(&s).ok())
+            .flatten()
+    }
+
+    /// Invalidate a cached schema.
+    fn invalidate_schema(&self, service: &str) {
+        self.engine.invalidate_schema(service);
+    }
+
+    /// Clear all cached schemas.
+    fn clear_schema_cache(&self) {
+        self.engine.clear_schema_cache();
+    }
+
+    /// List all cached service URIs.
+    fn list_cached_schemas(&self) -> Vec<String> {
+        self.engine.list_cached_schemas()
+    }
+
+    // =========================================================================
+    // Schema Validation API
+    // =========================================================================
+
+    /// Get valid enum values for an element.
+    ///
+    /// Returns a list of valid enum values, or None if the element is not an enum.
+    #[pyo3(signature = (service, operation, element))]
+    fn get_enum_values<'py>(
+        &self,
+        py: Python<'py>,
+        service: String,
+        operation: String,
+        element: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+
+        future_into_py(py, async move {
+            let values = engine
+                .get_enum_values(&service, &operation, &element)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            Python::attach(|py| {
+                match values {
+                    Some(v) => {
+                        let list = pyo3::types::PyList::new(py, v)?;
+                        Ok(list.into_any().unbind())
+                    }
+                    None => Ok(py.None()),
+                }
+            })
+        })
+    }
+
+    /// List all valid element names for an operation.
+    #[pyo3(signature = (service, operation))]
+    fn list_valid_elements<'py>(
+        &self,
+        py: Python<'py>,
+        service: String,
+        operation: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+
+        future_into_py(py, async move {
+            let elements = engine
+                .list_valid_elements(&service, &operation)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            Python::attach(|py| {
+                match elements {
+                    Some(v) => {
+                        let list = pyo3::types::PyList::new(py, v)?;
+                        Ok(list.into_any().unbind())
+                    }
+                    None => Ok(py.None()),
+                }
+            })
+        })
+    }
+
+    // =========================================================================
     // Subscription API
     // =========================================================================
 

@@ -19,6 +19,7 @@ use arrow::record_batch::RecordBatch;
 use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
+use xbbg_core::schema::SerializedSchema;
 use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, SessionOptions};
 
@@ -40,6 +41,11 @@ pub enum WorkerCommand {
     RequestStream {
         params: RequestParams,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+    },
+    /// Introspect a service schema.
+    SchemaIntrospect {
+        service: String,
+        reply: oneshot::Sender<Result<SerializedSchema, BlpError>>,
     },
     /// Shutdown the worker gracefully.
     Shutdown,
@@ -232,6 +238,10 @@ impl RequestWorker {
                             tracing::error!(worker_id = self.id, error = %e, "stream request error");
                         }
                     }
+                    Ok(WorkerCommand::SchemaIntrospect { service, reply }) => {
+                        let result = self.introspect_schema(&service);
+                        let _ = reply.send(result);
+                    }
                     Err(mpsc::error::TryRecvError::Empty) => break,
                     Err(mpsc::error::TryRecvError::Disconnected) => {
                         tracing::info!(worker_id = self.id, "command channel closed");
@@ -255,6 +265,18 @@ impl RequestWorker {
             self.services.insert(name.to_string(), svc);
         }
         Ok(())
+    }
+
+    /// Introspect a service schema and return serialized form.
+    fn introspect_schema(&mut self, service_name: &str) -> Result<SerializedSchema, BlpError> {
+        self.ensure_service(service_name)?;
+        let service = self.services.get(service_name).unwrap();
+        tracing::info!(
+            worker_id = self.id,
+            service = service_name,
+            "introspecting service schema"
+        );
+        Ok(SerializedSchema::from_service(service))
     }
 
     /// Unified request handler - routes to correct state based on extractor type.
