@@ -108,6 +108,8 @@ pub struct RequestParams {
     pub overrides: Option<Vec<(String, String)>>,
     /// Generic request elements (for BQL expression, bsrch domain, etc.)
     pub elements: Option<Vec<(String, String)>>,
+    /// JSON request body for complex nested structures (e.g., tasvc studyRequest)
+    pub json_elements: Option<String>,
     /// Start date (YYYYMMDD for bdh)
     pub start_date: Option<String>,
     /// End date (YYYYMMDD for bdh)

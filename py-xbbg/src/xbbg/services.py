@@ -197,6 +197,7 @@ class RequestParams:
         fields: List of field names to retrieve.
         overrides: List of (field, value) tuples for field overrides.
         elements: List of (name, value) tuples for generic request elements (BQL, bsrch).
+        json_elements: JSON string for complex nested request structures (tasvc).
         start_date: Start date for historical requests (YYYYMMDD format).
         end_date: End date for historical requests (YYYYMMDD format).
         start_datetime: Start datetime for intraday requests (ISO format).
@@ -217,6 +218,7 @@ class RequestParams:
     fields: Sequence[str] | None = None
     overrides: Sequence[tuple[str, str]] | None = None
     elements: Sequence[tuple[str, str]] | None = None
+    json_elements: str | None = None
     start_date: str | None = None
     end_date: str | None = None
     start_datetime: str | None = None
@@ -351,6 +353,8 @@ class RequestParams:
             result["overrides"] = list(self.overrides)
         if self.elements is not None:
             result["elements"] = list(self.elements)
+        if self.json_elements is not None:
+            result["json_elements"] = self.json_elements
         if self.start_date is not None:
             result["start_date"] = self.start_date
         if self.end_date is not None:

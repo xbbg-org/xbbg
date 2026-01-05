@@ -327,6 +327,12 @@ __all__ = [
     # VWAP Streaming
     "avwap",
     "vwap",
+    # Technical Analysis
+    "abta",
+    "bta",
+    "ta_studies",
+    "ta_study_params",
+    "generate_ta_stubs",
     # Config
     "configure",
     "set_backend",
@@ -454,6 +460,12 @@ def __getattr__(name: str):
         # VWAP Streaming
         "avwap",
         "vwap",
+        # Technical Analysis
+        "abta",
+        "bta",
+        "ta_studies",
+        "ta_study_params",
+        "generate_ta_stubs",
         # Config
         "configure",
         "set_backend",

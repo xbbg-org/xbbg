@@ -1,5 +1,6 @@
 use crate::errors::{BlpError, Result};
 use crate::service::Service;
+use serde_json::Value as JsonValue;
 use std::ffi::CString;
 
 pub struct Request {
@@ -41,6 +42,8 @@ pub struct RequestBuilder {
     overrides: Vec<(String, String)>,
     /// Generic request elements (for BQL expression, bsrch domain, etc.)
     elements: Vec<(String, String)>,
+    /// JSON request body for complex nested structures (e.g., tasvc studyRequest)
+    json_elements: Option<String>,
     label: Option<String>,
     /// Single security (for intraday requests)
     single_security: Option<String>,
@@ -76,6 +79,7 @@ impl RequestBuilder {
             fields: Vec::new(),
             overrides: Vec::new(),
             elements: Vec::new(),
+            json_elements: None,
             label: None,
             single_security: None,
             event_type: None,
@@ -113,6 +117,13 @@ impl RequestBuilder {
     /// Set a generic request element (for BQL expression, bsrch domain, etc.)
     pub fn element(mut self, name: &str, value: impl ToString) -> Self {
         self.elements.push((name.to_string(), value.to_string()));
+        self
+    }
+
+    /// Set JSON elements for complex nested structures (e.g., tasvc studyRequest).
+    /// The JSON string will be parsed and applied to the request.
+    pub fn json_elements(mut self, json: &str) -> Self {
+        self.json_elements = Some(json.to_string());
         self
     }
 
@@ -192,9 +203,13 @@ impl RequestBuilder {
                     self.build_field_search(root_el)?;
                 }
                 _ => {
-                    // For unknown operations, if we have elements, use generic build
-                    // Otherwise fall back to reference data style
-                    if !self.elements.is_empty() {
+                    // For unknown operations:
+                    // 1. If we have json_elements, use JSON build for complex nested structures
+                    // 2. If we have elements, use generic build for flat key-value pairs
+                    // 3. Otherwise fall back to reference data style
+                    if self.json_elements.is_some() {
+                        self.build_from_json(root_el)?;
+                    } else if !self.elements.is_empty() {
                         self.build_generic(root_el)?;
                     } else {
                         self.build_reference_data(root_el)?;
@@ -703,6 +718,191 @@ impl RequestBuilder {
             std::ptr::null(),
             1, // true
         );
+
+        Ok(())
+    }
+
+    /// Build a request from a JSON object with complex nested structures.
+    /// Used for services like tasvc (//blp/tasvc) that require nested elements.
+    unsafe fn build_from_json(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
+        let json_str = self.json_elements.as_ref().ok_or_else(|| BlpError::InvalidArgument {
+            detail: "json_elements is required for JSON build".into(),
+        })?;
+
+        let json: JsonValue = serde_json::from_str(json_str).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid JSON: {e}"),
+        })?;
+
+        if let JsonValue::Object(map) = json {
+            for (key, value) in map {
+                Self::set_element_from_json(root_el, &key, &value)?;
+            }
+        } else {
+            return Err(BlpError::InvalidArgument {
+                detail: "json_elements must be a JSON object".into(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Recursively set an element from a JSON value.
+    unsafe fn set_element_from_json(
+        parent: *mut blpapi_sys::blpapi_Element_t,
+        name: &str,
+        value: &JsonValue,
+    ) -> Result<()> {
+        let c_name = CString::new(name).map_err(|_| BlpError::InvalidArgument {
+            detail: format!("invalid element name: {name}"),
+        })?;
+
+        match value {
+            JsonValue::Null => {
+                // Skip null values
+            }
+            JsonValue::Bool(b) => {
+                let rc = blpapi_sys::blpapi_Element_setElementBool(
+                    parent,
+                    c_name.as_ptr(),
+                    std::ptr::null(),
+                    if *b { 1 } else { 0 },
+                );
+                if rc != 0 {
+                    return Err(BlpError::InvalidArgument {
+                        detail: format!("failed to set bool element '{name}': rc={rc}"),
+                    });
+                }
+            }
+            JsonValue::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    let rc = blpapi_sys::blpapi_Element_setElementInt64(
+                        parent,
+                        c_name.as_ptr(),
+                        std::ptr::null(),
+                        i,
+                    );
+                    if rc != 0 {
+                        return Err(BlpError::InvalidArgument {
+                            detail: format!("failed to set int64 element '{name}': rc={rc}"),
+                        });
+                    }
+                } else if let Some(f) = n.as_f64() {
+                    let rc = blpapi_sys::blpapi_Element_setElementFloat64(
+                        parent,
+                        c_name.as_ptr(),
+                        std::ptr::null(),
+                        f,
+                    );
+                    if rc != 0 {
+                        return Err(BlpError::InvalidArgument {
+                            detail: format!("failed to set float element '{name}': rc={rc}"),
+                        });
+                    }
+                }
+            }
+            JsonValue::String(s) => {
+                let c_value = CString::new(s.as_str()).map_err(|_| BlpError::InvalidArgument {
+                    detail: format!("invalid string value for '{name}'"),
+                })?;
+                let rc = blpapi_sys::blpapi_Element_setElementString(
+                    parent,
+                    c_name.as_ptr(),
+                    std::ptr::null(),
+                    c_value.as_ptr(),
+                );
+                if rc != 0 {
+                    return Err(BlpError::InvalidArgument {
+                        detail: format!("failed to set string element '{name}': rc={rc}"),
+                    });
+                }
+            }
+            JsonValue::Array(arr) => {
+                // Get the array element
+                let mut el_arr: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+                let rc = blpapi_sys::blpapi_Element_getElement(
+                    parent,
+                    &mut el_arr,
+                    c_name.as_ptr(),
+                    std::ptr::null(),
+                );
+                if rc != 0 || el_arr.is_null() {
+                    return Err(BlpError::InvalidArgument {
+                        detail: format!("failed to get array element '{name}': rc={rc}"),
+                    });
+                }
+
+                for item in arr {
+                    match item {
+                        JsonValue::String(s) => {
+                            let c_val = CString::new(s.as_str()).unwrap();
+                            let rc = blpapi_sys::blpapi_Element_setValueString(
+                                el_arr,
+                                c_val.as_ptr(),
+                                blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+                            );
+                            if rc != 0 {
+                                return Err(BlpError::InvalidArgument {
+                                    detail: format!("failed to append string to array '{name}': rc={rc}"),
+                                });
+                            }
+                        }
+                        JsonValue::Object(_) => {
+                            // Append a new element to the sequence
+                            let mut seq_el: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+                            let rc = blpapi_sys::blpapi_Element_appendElement(el_arr, &mut seq_el);
+                            if rc != 0 || seq_el.is_null() {
+                                return Err(BlpError::InvalidArgument {
+                                    detail: format!("failed to append element to sequence '{name}': rc={rc}"),
+                                });
+                            }
+                            // Recursively set the object's fields
+                            if let JsonValue::Object(obj) = item {
+                                for (k, v) in obj {
+                                    Self::set_element_from_json(seq_el, k, v)?;
+                                }
+                            }
+                        }
+                        _ => {
+                            // For other types in arrays, convert to string
+                            let s = item.to_string();
+                            let c_val = CString::new(s.as_str()).unwrap();
+                            let rc = blpapi_sys::blpapi_Element_setValueString(
+                                el_arr,
+                                c_val.as_ptr(),
+                                blpapi_sys::BLPAPI_ELEMENT_INDEX_END as usize,
+                            );
+                            if rc != 0 {
+                                return Err(BlpError::InvalidArgument {
+                                    detail: format!("failed to append value to array '{name}': rc={rc}"),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            JsonValue::Object(_) => {
+                // Get or create the nested element
+                let mut el_obj: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+                let rc = blpapi_sys::blpapi_Element_getElement(
+                    parent,
+                    &mut el_obj,
+                    c_name.as_ptr(),
+                    std::ptr::null(),
+                );
+                if rc != 0 || el_obj.is_null() {
+                    return Err(BlpError::InvalidArgument {
+                        detail: format!("failed to get nested element '{name}': rc={rc}"),
+                    });
+                }
+
+                // Recursively set the object's fields
+                if let JsonValue::Object(obj) = value {
+                    for (k, v) in obj {
+                        Self::set_element_from_json(el_obj, k, v)?;
+                    }
+                }
+            }
+        }
 
         Ok(())
     }

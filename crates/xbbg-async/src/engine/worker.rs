@@ -505,6 +505,11 @@ impl RequestWorker {
             }
         }
 
+        // Set JSON elements (for complex nested structures like tasvc)
+        if let Some(ref json) = params.json_elements {
+            builder = builder.json_elements(json);
+        }
+
         // Set apiflds parameters
         if let Some(ref search_spec) = params.search_spec {
             builder = builder.search_spec(search_spec);

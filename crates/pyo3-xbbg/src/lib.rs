@@ -1161,6 +1161,11 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
 
     let format: Option<String> = dict.get_item("format")?.map(|v| v.extract()).transpose()?;
 
+    let json_elements: Option<String> = dict
+        .get_item("json_elements")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     Ok(RequestParams {
         service,
         operation,
@@ -1170,6 +1175,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         fields,
         overrides,
         elements,
+        json_elements,
         start_date,
         end_date,
         start_datetime,
