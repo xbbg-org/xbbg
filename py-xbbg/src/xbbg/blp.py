@@ -332,18 +332,63 @@ def _normalize_fields(fields: str | Sequence[str] | None) -> list[str]:
     return list(fields)
 
 
-def _extract_overrides(kwargs: dict) -> list[tuple[str, str]]:
-    """Extract Bloomberg overrides from kwargs.
+# Cache for valid request elements per (service, operation)
+_VALID_ELEMENTS_CACHE: dict[tuple[str, str], set[str]] = {}
 
-    Overrides can be passed as:
-    - Individual kwargs (e.g., GICS_SECTOR_NAME='Energy')
-    - An 'overrides' dict
 
-    Returns list of (name, value) tuples.
+async def _aget_valid_elements(service: str, operation: str) -> set[str]:
+    """Get valid request element names from schema cache (async).
+
+    Returns cached set of valid element names for the operation.
+    Falls back to empty set if schema not available.
     """
-    overrides = []
+    cache_key = (service, operation)
+    if cache_key in _VALID_ELEMENTS_CACHE:
+        return _VALID_ELEMENTS_CACHE[cache_key]
 
-    # Check for explicit overrides dict
+    try:
+        engine = _get_engine()
+        elements = await engine.list_valid_elements(service, operation)
+        valid = set(elements) if elements else set()
+        _VALID_ELEMENTS_CACHE[cache_key] = valid
+        return valid
+    except Exception:
+        # Schema not available, return empty set
+        return set()
+
+
+async def _aroute_kwargs(
+    service: str | Service,
+    operation: str | Operation,
+    kwargs: dict,
+) -> tuple[list[tuple[str, Any]], list[tuple[str, str]]]:
+    """Route kwargs to elements or overrides using schema introspection (async).
+
+    Uses the Bloomberg schema to determine if a kwarg is:
+    1. A valid request element (e.g., intervalHasSeconds, periodicitySelection)
+    2. A Bloomberg field override (UPPERCASE names like GICS_SECTOR_NAME)
+
+    Args:
+        service: Bloomberg service URI
+        operation: Request operation name
+        kwargs: User-provided kwargs (will be modified in place)
+
+    Returns:
+        Tuple of (elements, overrides) where:
+        - elements: List of (name, value) for valid request elements
+        - overrides: List of (name, value) for Bloomberg field overrides
+    """
+    # Normalize service/operation to strings
+    svc = service.value if isinstance(service, Service) else service
+    op = operation.value if isinstance(operation, Operation) else operation
+
+    # Get valid elements from schema
+    valid_elements = await _aget_valid_elements(svc, op)
+
+    elements: list[tuple[str, Any]] = []
+    overrides: list[tuple[str, str]] = []
+
+    # Handle explicit overrides dict first
     if "overrides" in kwargs:
         ovrd = kwargs.pop("overrides")
         if isinstance(ovrd, dict):
@@ -351,30 +396,29 @@ def _extract_overrides(kwargs: dict) -> list[tuple[str, str]]:
         elif isinstance(ovrd, list):
             overrides.extend((str(k), str(v)) for k, v in ovrd)
 
-    # Known infrastructure keys to skip
-    infra_keys = {
-        "cache",
-        "reload",
-        "raw",
-        "timeout",
-        "host",
-        "port",
-        "log",
-        "batch",
-        "session",
-        "interval",
-        "typ",
-        "adjust",
-        "backend",
-    }
-
-    # Treat remaining kwargs as potential overrides
+    # Route remaining kwargs
     for key in list(kwargs.keys()):
-        if key not in infra_keys:
-            val = kwargs.pop(key)
-            overrides.append((key, str(val)))
+        value = kwargs.pop(key)
 
-    return overrides
+        if key in valid_elements:
+            # Schema-recognized request element
+            elements.append((key, value))
+        elif key.isupper() or (len(key) > 2 and key[0].isupper() and "_" in key):
+            # Looks like a Bloomberg field override (UPPERCASE or Mixed_Case_Field)
+            overrides.append((key, str(value)))
+        elif valid_elements:
+            # Schema available but key not recognized - warn and pass as element
+            warnings.warn(
+                f"Unknown parameter '{key}' for {op} - passing to Bloomberg. "
+                f"Valid elements: {sorted(valid_elements)[:10]}{'...' if len(valid_elements) > 10 else ''}",
+                stacklevel=4,
+            )
+            elements.append((key, value))
+        else:
+            # No schema available - pass as element (Bloomberg will validate)
+            elements.append((key, value))
+
+    return elements, overrides
 
 
 def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
@@ -453,6 +497,7 @@ async def arequest(
     security: str | None = None,
     fields: str | Sequence[str] | None = None,
     overrides: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
+    elements: Sequence[tuple[str, Any]] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     start_datetime: str | None = None,
@@ -482,6 +527,8 @@ async def arequest(
         security: Single security identifier (for intraday requests).
         fields: List of field names to retrieve.
         overrides: Field overrides as dict or list of (name, value) tuples.
+        elements: Additional request elements as list of (name, value) tuples.
+            Used for schema-driven parameters like intervalHasSeconds, periodicitySelection.
         start_date: Start date for historical requests (YYYYMMDD format).
         end_date: End date for historical requests (YYYYMMDD format).
         start_datetime: Start datetime for intraday requests (ISO format).
@@ -535,7 +582,12 @@ async def arequest(
         fields_list = [fields] if isinstance(fields, str) else list(fields)
 
     overrides_list: list[tuple[str, str]] | None = None
-    elements_list: list[tuple[str, str]] | None = None
+    elements_list: list[tuple[str, Any]] | None = None
+
+    # Handle explicit elements parameter
+    if elements is not None:
+        elements_list = list(elements)
+
     if overrides is not None:
         override_tuples = (
             [(k, str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
@@ -543,7 +595,10 @@ async def arequest(
         # For BQL and bsrch services, pass overrides as generic elements (not Bloomberg field overrides)
         service_str = service.value if isinstance(service, Service) else service
         if service_str in ("//blp/bqlsvc", "//blp/exrsvc"):
-            elements_list = override_tuples
+            if elements_list:
+                elements_list.extend(override_tuples)
+            else:
+                elements_list = override_tuples
         else:
             overrides_list = override_tuples
 
@@ -711,7 +766,9 @@ async def abdp(
     """
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
-    overrides = _extract_overrides(kwargs)
+
+    # Route kwargs to elements/overrides using schema introspection
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
 
     # Normalize format
     fmt = Format(format) if isinstance(format, str) else format
@@ -746,6 +803,7 @@ async def abdp(
         securities=ticker_list,
         fields=field_list,
         overrides=overrides if overrides else None,
+        elements=elements if elements else None,
         field_types=resolved_types,
         format=fmt,
         backend=None,  # Get narwhals DataFrame, we'll convert below
@@ -848,8 +906,8 @@ async def abdh(
         elif adjust == "-":
             pass  # No adjustments
 
-    # Add any remaining kwargs as overrides
-    overrides = _extract_overrides(kwargs)
+    # Route remaining kwargs to elements/overrides using schema introspection
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.HISTORICAL_DATA, kwargs)
 
     logger.debug("abdh: tickers=%s fields=%s start=%s end=%s", ticker_list, field_list, s_dt, e_dt)
 
@@ -870,6 +928,7 @@ async def abdh(
         start_date=s_dt,
         end_date=e_dt,
         overrides=overrides if overrides else None,
+        elements=elements if elements else None,
         options=options if options else None,
         field_types=resolved_types,
         format=fmt,
@@ -909,7 +968,9 @@ async def abds(
         df = await abds("SPX Index", "INDX_MEMBERS", backend="polars")
     """
     ticker_list = _normalize_tickers(tickers)
-    overrides = _extract_overrides(kwargs)
+
+    # Route kwargs to elements/overrides using schema introspection
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
 
     logger.debug("abds: tickers=%s field=%s", ticker_list, flds)
 
@@ -921,6 +982,7 @@ async def abds(
         securities=ticker_list,
         fields=[flds],  # BDS takes a single field
         overrides=overrides if overrides else None,
+        elements=elements if elements else None,
         extractor=ExtractorHint.BULK,  # Use bulk extractor for multi-row results
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
@@ -986,6 +1048,9 @@ async def abdib(
     else:
         raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
+    # Route kwargs to elements using schema introspection
+    elements, _overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
+
     logger.debug("abdib: ticker=%s interval=%d start=%s end=%s", ticker, interval, s_dt, e_dt)
 
     # Use generic arequest with IntradayBarRequest
@@ -997,8 +1062,8 @@ async def abdib(
         interval=interval,
         start_datetime=s_dt,
         end_datetime=e_dt,
+        elements=elements if elements else None,
         backend=None,  # Get narwhals DataFrame, we'll convert below
-        **kwargs,
     )
 
     logger.debug("abdib: received %d bars", len(nw_df))
@@ -1034,6 +1099,9 @@ async def abdtick(
     s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
     e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
 
+    # Route kwargs to elements using schema introspection
+    elements, _overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
+
     logger.debug("abdtick: ticker=%s start=%s end=%s", ticker, s_dt, e_dt)
 
     # Use generic arequest with IntradayTickRequest
@@ -1043,8 +1111,8 @@ async def abdtick(
         security=ticker,
         start_datetime=s_dt,
         end_datetime=e_dt,
+        elements=elements if elements else None,
         backend=None,  # Get narwhals DataFrame, we'll convert below
-        **kwargs,
     )
 
     logger.debug("abdtick: received %d ticks", len(nw_df))
