@@ -947,29 +947,15 @@ class BeqsTransformer:
         if "ticker" not in df.columns or "field" not in df.columns:
             return pa.table({})
 
-        # Get unique fields to preserve column order
-        field_col = df.select("field").to_native()
-        if hasattr(field_col, "to_pandas"):
-            fields = field_col.to_pandas()["field"].unique().tolist()
-        else:
-            fields = list(set(field_col["field"].to_list()))
+        # Pivot using narwhals: ticker as index, field as columns, value as values
+        pivoted = df.pivot(on="field", index="ticker", values="value")
 
-        # Pivot: ticker as index, field as columns, value as values
-        # Convert to pandas for pivot operation (narwhals has limited pivot support)
-        df_pd = nw.to_native(df).to_pandas()
+        # Standardize column names to snake_case
+        rename_map = {col: str(col).lower().replace(" ", "_").replace("-", "_") for col in pivoted.columns}
+        pivoted = pivoted.rename(rename_map)
 
-        # Perform pivot
-        pivoted = df_pd.pivot(index="ticker", columns="field", values="value")
-        pivoted = pivoted.reset_index()
-
-        # Reorder columns to match original field order
-        cols = ["ticker"] + [f for f in fields if f in pivoted.columns]
-        pivoted = pivoted[cols]
-
-        # Standardize column names
-        pivoted.columns = [str(c).lower().replace(" ", "_").replace("-", "_") for c in pivoted.columns]
-
-        return pa.Table.from_pandas(pivoted, preserve_index=False)
+        # Return as Arrow table
+        return nw.to_native(pivoted)
 
 
 class BsrchRequestBuilder:
@@ -1095,7 +1081,7 @@ class BqlTransformer:
         # Wrap with narwhals for transformations
         df = nw.from_native(raw_data, eager_only=True)
 
-        # Auto-convert date columns
+        # Auto-convert date columns by name pattern
         # Identify potential date columns by name
         date_cols = [
             col for col in df.columns if any(keyword in str(col).lower() for keyword in ["date", "dt", "time"])
@@ -1104,38 +1090,20 @@ class BqlTransformer:
         if not date_cols:
             return nw.to_native(df)
 
-        # For date conversion, use pandas (narwhals has limited datetime parsing)
-        df_pd = nw.to_native(df).to_pandas()
-
-        # Process each potential date column
+        # Process each potential date column using narwhals
         for col in date_cols:
-            # Only attempt conversion for object/string columns
-            if df_pd[col].dtype != "object":
-                continue
+            # Get the column dtype - only convert string columns
+            col_dtype = df.select(col).schema[col]
 
-            # Check if column contains date-like strings
-            non_null_values = df_pd[col].dropna()
-            if non_null_values.empty:
-                continue
-
-            # Check if values look like dates (sample-based check for efficiency)
-            sample_size = min(10, len(non_null_values))
-            sample = non_null_values.head(sample_size)
-
-            # Check if sample contains date-like strings
-            date_like_patterns = ["-", "/", "T", ":"]
-            has_date_patterns = any(
-                isinstance(val, str) and any(pattern in val for pattern in date_like_patterns) for val in sample
-            )
-
-            if has_date_patterns:
+            # Check if it's a string type (narwhals String dtype)
+            if col_dtype == nw.String:
                 from contextlib import suppress
 
-                # Attempt vectorized conversion
-                with suppress(ValueError, TypeError):
-                    df_pd[col] = pd.to_datetime(df_pd[col], errors="coerce")
+                # Attempt datetime conversion using narwhals
+                with suppress(Exception):
+                    df = df.with_columns(nw.col(col).str.to_datetime(format=None).alias(col))
 
-        return pa.Table.from_pandas(df_pd, preserve_index=False)
+        return nw.to_native(df)
 
 
 # ============================================================================
@@ -1504,26 +1472,40 @@ class BtaTransformer:
 
     def transform(
         self,
-        raw_data: pd.DataFrame,
+        raw_data: pa.Table,
         request: DataRequest,
         exchange_info: pd.Series,
         session_window: SessionWindow,
-    ) -> pd.DataFrame:
-        """Transform TASVC response to DataFrame with date index."""
-        if raw_data.empty:
-            return raw_data
+    ) -> pa.Table:
+        """Transform TASVC response to Arrow table.
 
-        # The raw_data should already have date and study value columns
-        # Set date as index if present
-        if "date" in raw_data.columns:
-            raw_data["date"] = pd.to_datetime(raw_data["date"])
-            raw_data = raw_data.set_index("date")
-            raw_data.index.name = None
+        Args:
+            raw_data: Arrow table with date and study value columns.
+            request: Data request with ticker and other metadata.
+            exchange_info: Exchange information (unused).
+            session_window: Session window (unused).
 
-        # Add ticker as column name prefix if we want multi-ticker support later
-        # For now, keep columns as-is (e.g., 'SMAVG', 'RSI', etc.)
+        Returns:
+            Arrow table with date column converted to datetime.
+        """
+        # Handle empty table
+        if raw_data.num_rows == 0:
+            return pa.table({})
 
-        return raw_data
+        # Wrap with narwhals for transformations
+        df = nw.from_native(raw_data, eager_only=True)
+
+        # Convert date column to datetime if present
+        if "date" in df.columns:
+            # Use narwhals str.to_datetime for date parsing
+            df = df.with_columns(nw.col("date").cast(nw.Datetime("us")).alias("date"))
+
+        # Sort by date for consistent output
+        if "date" in df.columns:
+            df = df.sort("date")
+
+        # Return as Arrow table
+        return nw.to_native(df)
 
 
 def bta_pipeline_config() -> PipelineConfig:
