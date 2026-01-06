@@ -1,0 +1,28 @@
+---
+title: Async Patterns
+description: Concurrent Bloomberg requests with async/await
+---
+
+# Async Patterns
+
+:::note[TODO]
+This guide needs to be written. Topics to cover:
+- Sync vs async API (bdp vs abdp)
+- asyncio.gather for concurrent requests
+- GIL release and true parallelism
+- Best practices for batching
+- Error handling in async contexts
+:::
+
+```python
+import asyncio
+import xbbg
+
+async def fetch_prices(tickers):
+    tasks = [xbbg.abdp(t, 'PX_LAST') for t in tickers]
+    return await asyncio.gather(*tasks)
+
+# Run concurrent requests
+tickers = ['AAPL US Equity', 'MSFT US Equity', 'GOOGL US Equity']
+results = asyncio.run(fetch_prices(tickers))
+```

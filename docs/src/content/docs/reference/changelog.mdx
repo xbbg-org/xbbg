@@ -1,0 +1,28 @@
+---
+title: Changelog
+description: Release notes and version history
+---
+
+# Changelog
+
+## 1.0.0 (Upcoming)
+
+### Breaking Changes
+- Default output format changed from wide to long
+- Removed pandas MultiIndex support
+- Removed legacy caching system
+
+### New Features
+- Rust backend with ~10x performance improvement
+- Multi-backend support (pandas, polars, pyarrow, duckdb)
+- Native async/await API
+- Zero-copy Arrow data transfer
+- Real-time streaming subscriptions
+- BQL (Bloomberg Query Language) support
+- Schema introspection API
+- Field type resolution with caching
+
+### Improvements
+- Worker pool architecture for concurrent requests
+- GIL release during I/O operations
+- Comprehensive exception hierarchy

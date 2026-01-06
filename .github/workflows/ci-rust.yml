@@ -69,6 +69,67 @@ jobs:
         run: uvx ruff format --check .
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Docs Build (fast, no SDK needed)
+  # ════════════════════════════════════════════════════════════════════════════
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pydoc-markdown
+        run: pip install pydoc-markdown
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: Generate API docs from docstrings
+        run: |
+          cd docs
+          mkdir -p src/content/docs/api
+          for module in blp services exceptions schema; do
+            echo "Generating $module.md..."
+            case $module in
+              blp) title="Bloomberg Data API"; desc="Core API functions for Bloomberg data" ;;
+              services) title="Services and Enums"; desc="Bloomberg service definitions" ;;
+              exceptions) title="Exceptions"; desc="Exception hierarchy" ;;
+              schema) title="Schema Introspection"; desc="Schema introspection" ;;
+            esac
+            {
+              echo "---"
+              echo "title: $title"
+              echo "description: $desc"
+              echo "---"
+              echo ""
+              pydoc-markdown -I ../py-xbbg/src -m "xbbg.$module" 2>/dev/null | grep -v "^\[WARNING" || true
+            } > "src/content/docs/api/$module.md"
+          done
+
+      - name: Build docs
+        working-directory: docs
+        run: npm run build
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-build
+          path: docs/dist
+          retention-days: 7
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Security - cargo-audit (vulnerabilities)
   # ════════════════════════════════════════════════════════════════════════════
   audit:
@@ -533,13 +594,14 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [lint-rust, lint-python, audit, deny, check, build, test]
+    needs: [lint-rust, lint-python, docs, audit, deny, check, build, test]
     if: always()
     steps:
       - name: Check required jobs
         run: |
           if [[ "${{ needs.lint-rust.result }}" != "success" ]] || \
              [[ "${{ needs.lint-python.result }}" != "success" ]] || \
+             [[ "${{ needs.docs.result }}" != "success" ]] || \
              [[ "${{ needs.audit.result }}" != "success" ]] || \
              [[ "${{ needs.deny.result }}" != "success" ]] || \
              [[ "${{ needs.check.result }}" != "success" ]] || \
@@ -548,6 +610,7 @@ jobs:
             echo "❌ One or more required jobs failed"
             echo "  lint-rust: ${{ needs.lint-rust.result }}"
             echo "  lint-python: ${{ needs.lint-python.result }}"
+            echo "  docs: ${{ needs.docs.result }}"
             echo "  audit: ${{ needs.audit.result }}"
             echo "  deny: ${{ needs.deny.result }}"
             echo "  check: ${{ needs.check.result }}"
