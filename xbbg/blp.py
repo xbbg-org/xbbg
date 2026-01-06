@@ -12,7 +12,7 @@ from xbbg import __version__
 from xbbg.api.helpers import adjust_ccy
 from xbbg.api.historical import abdh, bdh, dividend, earning, turnover
 from xbbg.api.intraday import bdib, bdtick
-from xbbg.api.realtime import live, subscribe
+from xbbg.api.realtime import live, stream, subscribe
 from xbbg.api.reference import (
     abdp,
     abds,
@@ -25,6 +25,7 @@ from xbbg.api.reference import (
     lookupSecurity,
 )
 from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
+from xbbg.api.technical import bta, bta_studies, refresh_studies
 from xbbg.core.infra.conn import connect, disconnect
 from xbbg.markets import resolvers as _res
 
@@ -37,34 +38,38 @@ cdx_ticker = _res.cdx_ticker
 active_cdx = _res.active_cdx
 
 __all__ = [
-    '__version__',
-    'connect',
-    'disconnect',
-    'bdp',
-    'bds',
-    'abdp',
-    'abds',
-    'bdh',
-    'abdh',
-    'bdib',
-    'bdtick',
-    'earning',
-    'dividend',
-    'beqs',
-    'bsrch',
-    'live',
-    'subscribe',
-    'adjust_ccy',
-    'turnover',
-    'bql',
-    'etf_holdings',
-    'fieldInfo',
-    'fieldSearch',
-    'lookupSecurity',
-    'getPortfolio',
-    'getBlpapiVersion',
-    'active_futures',
-    'fut_ticker',
-    'cdx_ticker',
-    'active_cdx',
+    "__version__",
+    "connect",
+    "disconnect",
+    "bdp",
+    "bds",
+    "abdp",
+    "abds",
+    "bdh",
+    "abdh",
+    "bdib",
+    "bdtick",
+    "earning",
+    "dividend",
+    "beqs",
+    "bsrch",
+    "bta",
+    "bta_studies",
+    "refresh_studies",
+    "live",
+    "stream",
+    "subscribe",
+    "adjust_ccy",
+    "turnover",
+    "bql",
+    "etf_holdings",
+    "fieldInfo",
+    "fieldSearch",
+    "lookupSecurity",
+    "getPortfolio",
+    "getBlpapiVersion",
+    "active_futures",
+    "fut_ticker",
+    "cdx_ticker",
+    "active_cdx",
 ]

@@ -5,7 +5,6 @@ Note: Realtime APIs are async/subscription-based and may not follow the same
 pipeline pattern as other APIs.
 """
 
-from xbbg.api.realtime.realtime import live, subscribe
+from xbbg.api.realtime.realtime import live, stream, subscribe
 
-__all__ = ['live', 'subscribe']
-
+__all__ = ["live", "stream", "subscribe"]

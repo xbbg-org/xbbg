@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from itertools import product
 import logging
 from typing import TYPE_CHECKING
+import warnings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -24,7 +25,7 @@ from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['subscribe', 'live']
+__all__ = ["subscribe", "stream", "live"]
 
 
 @contextmanager
@@ -65,22 +66,25 @@ def subscribe(
         >>> # for _ in blp.subscribe(['AAPL US Equity'], interval=10, options='fields=LAST_PRICE'): pass
     """
     tickers = utils.normalize_tickers(tickers)
-    if flds is None: flds = ['Last_Price', 'Bid', 'Ask']
+    if flds is None:
+        flds = ["Last_Price", "Bid", "Ask"]
     flds = utils.normalize_flds(flds)
 
     # Build options string from interval and options parameters
     opts_parts = []
     if interval is not None:
-        opts_parts.append(f'interval={interval}')
+        opts_parts.append(f"interval={interval}")
     if options:
         opts_parts.append(options)
-    final_options = ','.join(opts_parts) if opts_parts else None
+    final_options = ",".join(opts_parts) if opts_parts else None
 
     sub_list = conn.blpapi.SubscriptionList()
     for ticker in tickers:
         topic = utils.parse_subscription_topic(ticker)
         cid = conn.blpapi.CorrelationId(ticker)
-        logger.debug('Subscribing to Bloomberg market data: %s (correlation ID: %s) with options: %s', topic, cid, final_options)
+        logger.debug(
+            "Subscribing to Bloomberg market data: %s (correlation ID: %s) with options: %s", topic, cid, final_options
+        )
         sub_list.add(topic, flds, correlationId=cid, options=final_options)
 
     try:
@@ -90,7 +94,7 @@ def subscribe(
         conn.bbg_session(**kwargs).unsubscribe(sub_list)
 
 
-async def live(
+async def stream(
     tickers: str | list[str],
     flds: str | list[str] | None = None,
     info: str | list[str] | None = None,
@@ -116,15 +120,15 @@ async def live(
         dict: Bloomberg market data.
 
     Examples:
-        >>> # async for _ in live('SPY US Equity', info=const.LIVE_INFO): pass
+        >>> # async for _ in stream('SPY US Equity', info=const.LIVE_INFO): pass
         >>>
         >>> # Subscribe with 10-second interval
-        >>> # async for _ in live('SPY US Equity', interval=10): pass
+        >>> # async for _ in stream('SPY US Equity', interval=10): pass
     """
     evt_typs = conn.event_types()
 
     if flds is None:
-        s_flds: list[str] = ['LAST_PRICE', 'BID', 'ASK']
+        s_flds: list[str] = ["LAST_PRICE", "BID", "ASK"]
     else:
         flds = utils.normalize_flds(flds)
         s_flds = [fld.upper() for fld in flds]
@@ -137,11 +141,11 @@ async def live(
         info = list(const.LIVE_INFO)
 
     sess_opts = conn.blpapi.SessionOptions()
-    if isinstance(kwargs.get('server_host'), str):
-        sess_opts.setServerHost(kwargs['server_host'])
+    if isinstance(kwargs.get("server_host"), str):
+        sess_opts.setServerHost(kwargs["server_host"])
     else:
-        sess_opts.setServerHost('localhost')
-    sess_opts.setServerPort(int(kwargs.get('server_port') or kwargs.get('port') or 8194))
+        sess_opts.setServerHost("localhost")
+    sess_opts.setServerPort(int(kwargs.get("server_port") or kwargs.get("port") or 8194))
 
     dispatcher = conn.blpapi.EventDispatcher(2)
     outq: Queue = Queue()
@@ -155,21 +159,23 @@ async def live(
 
     sess = conn.blpapi.Session(sess_opts, handler, dispatcher)
     if not sess.start():
-        raise ConnectionError('Failed to start Bloomberg session with dispatcher')
+        raise ConnectionError("Failed to start Bloomberg session with dispatcher")
 
     # Build options string from interval and options parameters
     opts_parts = []
     if interval is not None:
-        opts_parts.append(f'interval={interval}')
+        opts_parts.append(f"interval={interval}")
     if options:
         opts_parts.append(options)
-    final_options = ','.join(opts_parts) if opts_parts else None
+    final_options = ",".join(opts_parts) if opts_parts else None
 
     sub_list = conn.blpapi.SubscriptionList()
-    for ticker in (tickers if isinstance(tickers, list) else [tickers]):
+    for ticker in tickers if isinstance(tickers, list) else [tickers]:
         topic = utils.parse_subscription_topic(ticker)
         cid = conn.blpapi.CorrelationId(ticker)
-        logger.debug('Subscribing to Bloomberg market data: %s (correlation ID: %s) with options: %s', topic, cid, final_options)
+        logger.debug(
+            "Subscribing to Bloomberg market data: %s (correlation ID: %s) with options: %s", topic, cid, final_options
+        )
         sub_list.add(topic, s_flds, correlationId=cid, options=final_options)
 
     try:
@@ -189,15 +195,47 @@ async def live(
             sess.stop()
 
 
+async def live(
+    tickers: str | list[str],
+    flds: str | list[str] | None = None,
+    info: str | list[str] | None = None,
+    max_cnt: int = 0,
+    options: str | None = None,
+    interval: int | None = None,
+    **kwargs,
+) -> AsyncIterator[dict]:
+    """Deprecated: Use stream() instead.
+
+    This function is deprecated and will be removed in v1.0.
+    Please migrate to stream() which provides the same functionality.
+    """
+    warnings.warn(
+        "live() is deprecated and will be removed in v1.0. "
+        "Use stream() instead, which provides the same functionality.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    async for item in stream(
+        tickers=tickers,
+        flds=flds,
+        info=info,
+        max_cnt=max_cnt,
+        options=options,
+        interval=interval,
+        **kwargs,
+    ):
+        yield item
+
+
 def _make_live_handler(
     evt_typs: dict[int, str],
     s_flds: list[str],
     info: list[str] | None,
     outq: Queue,
 ):
-    """Factory for the live subscription event handler.
+    """Factory for the stream subscription event handler.
 
-    Splitting this out keeps ``live`` itself simpler while preserving
+    Splitting this out keeps ``stream`` itself simpler while preserving
     the original behavior of the nested handler.
     """
 
@@ -209,11 +247,11 @@ def _make_live_handler(
                     from xbbg.core.infra import blpapi_logging
 
                     if blpapi_logging:
-                        blpapi_logging.log_event_info(event, context='live_subscription')
+                        blpapi_logging.log_event_info(event, context="live_subscription")
                 except ImportError:
                     pass
 
-            if evt_typs[event.eventType()] != 'SUBSCRIPTION_DATA':
+            if evt_typs[event.eventType()] != "SUBSCRIPTION_DATA":
                 return
 
             msg_count = 0
@@ -230,15 +268,15 @@ def _make_live_handler(
                         from xbbg.core.infra import blpapi_logging
 
                         if blpapi_logging:
-                            blpapi_logging.log_message_info(msg, context='live_subscription')
+                            blpapi_logging.log_message_info(msg, context="live_subscription")
                     except ImportError:
                         pass
 
                 outq.put(
                     {
                         **{
-                            'TICKER': msg.correlationIds()[0].value(),
-                            'FIELD': fld,
+                            "TICKER": msg.correlationIds()[0].value(),
+                            "FIELD": fld,
                         },
                         **{
                             str(elem.name()): process.elem_value(elem)
@@ -251,14 +289,13 @@ def _make_live_handler(
 
             # Log summary only if DEBUG enabled (aggregate, not per-message)
             if msg_count > 0 and logger.isEnabledFor(logging.DEBUG):
-                logger.debug('Processed %d subscription data message(s) in live handler', msg_count)
+                logger.debug("Processed %d subscription data message(s) in live handler", msg_count)
         except Exception as e:  # noqa: BLE001
             # Only log exceptions if DEBUG enabled (avoid expensive stack traces in production)
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug('Exception in live subscription handler: %s', e, exc_info=True)
+                logger.debug("Exception in live subscription handler: %s", e, exc_info=True)
             # For errors/warnings, log without stack trace unless needed
             elif logger.isEnabledFor(logging.WARNING):
-                logger.warning('Exception in live subscription handler: %s', e)
+                logger.warning("Exception in live subscription handler: %s", e)
 
     return _handler
-
