@@ -138,10 +138,8 @@ impl JsonArrowState {
                         Value::Array(arr) => arr.clone(),
                         Value::Object(inner) => {
                             // Try nested extraction (e.g., tickData.tickData)
-                            if let Some(nested) = inner.get(key) {
-                                if let Value::Array(arr) = nested {
-                                    return arr.clone();
-                                }
+                            if let Some(Value::Array(arr)) = inner.get(key) {
+                                return arr.clone();
                             }
                             // Return inner object's array values
                             for inner_val in inner.values() {
@@ -193,7 +191,7 @@ impl JsonArrowState {
 
         // Use arrow-json to infer schema and build batch
         let cursor = Cursor::new(ndjson.as_bytes());
-        let mut reader = ReaderBuilder::new(Arc::new(Schema::empty()))
+        let reader = ReaderBuilder::new(Arc::new(Schema::empty()))
             .with_batch_size(flattened.len())
             .build(cursor)
             .map_err(|e| BlpError::Internal {
@@ -202,7 +200,7 @@ impl JsonArrowState {
 
         // Read all batches and concatenate
         let mut batches = Vec::new();
-        while let Some(batch_result) = reader.next() {
+        for batch_result in reader {
             let batch = batch_result.map_err(|e| BlpError::Internal {
                 detail: format!("read JSON batch: {e}"),
             })?;
