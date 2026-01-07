@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import pandas as pd
 
+from xbbg.backend import Backend, Format
+
 if TYPE_CHECKING:
     from xbbg.core.domain.context import BloombergContext
 
@@ -28,10 +30,11 @@ class SessionWindow:
         session_name: Name of the session (e.g., 'allday', 'day', 'am').
         timezone: Target timezone for the session window.
     """
+
     start_time: str | None
     end_time: str | None
     session_name: str
-    timezone: str = 'UTC'
+    timezone: str = "UTC"
 
     def is_valid(self) -> bool:
         """Check if session window is valid (both times present)."""
@@ -49,6 +52,7 @@ class CachePolicy:
         reload: Force reload even if cache exists.
         cache_days: Number of days to keep cache valid.
     """
+
     enabled: bool = True
     reload: bool = False
     cache_days: int | None = None
@@ -66,10 +70,11 @@ class ResolverResult:
         success: Whether resolution was successful.
         resolver_name: Name of the resolver that produced this result.
     """
+
     resolved_ticker: str
     exchange_info: pd.Series = field(default_factory=pd.Series)
     success: bool = True
-    resolver_name: str = ''
+    resolver_name: str = ""
 
     def is_empty(self) -> bool:
         """Check if exchange info is empty."""
@@ -95,11 +100,14 @@ class DataRequest:
         cache_policy: Cache policy configuration.
         request_opts: Request-specific options (not Bloomberg overrides).
         override_kwargs: Bloomberg field overrides and element options.
+        backend: Backend for data processing (e.g., pandas, polars).
+        format: Output format for the data.
     """
+
     ticker: str
     dt: str | pd.Timestamp
-    session: str = 'allday'
-    event_type: str = 'TRADE'
+    session: str = "allday"
+    event_type: str = "TRADE"
     interval: int = 1
     interval_has_seconds: bool = False
     start_datetime: str | pd.Timestamp | None = None
@@ -108,10 +116,12 @@ class DataRequest:
     cache_policy: CachePolicy = field(default_factory=CachePolicy)
     request_opts: dict[str, Any] = field(default_factory=dict)
     override_kwargs: dict[str, Any] = field(default_factory=dict)
+    backend: Backend | None = None
+    format: Format | None = None
 
     def to_date_string(self) -> str:
         """Convert dt to YYYY-MM-DD string."""
-        return pd.Timestamp(self.dt).strftime('%Y-%m-%d')
+        return pd.Timestamp(self.dt).strftime("%Y-%m-%d")
 
     def is_multi_day(self) -> bool:
         """Check if this is a multi-day request (explicit datetime range)."""
@@ -207,6 +217,6 @@ class BaseContextAware:
             return ctx
 
         from xbbg.core.domain.context import split_kwargs
+
         split = split_kwargs(**kwargs)
         return split.infra
-

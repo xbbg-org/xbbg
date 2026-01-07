@@ -8,5 +8,4 @@ This package contains Bloomberg-specific configuration:
 # Import modules for easy access
 from xbbg.core.config import intervals as intervals_module, overrides as overrides_module
 
-__all__ = ['intervals_module', 'overrides_module']
-
+__all__ = ["intervals_module", "overrides_module"]

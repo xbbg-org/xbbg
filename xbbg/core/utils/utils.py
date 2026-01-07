@@ -9,7 +9,6 @@ import datetime
 from typing import Any
 
 import pandas as pd
-import pytz
 
 
 def flatten(
@@ -42,8 +41,10 @@ def flatten(
         >>> flatten(['ab', ['xy', 'zz']], maps={'xy': '0x'})
         ['ab', '0x', 'zz']
     """
-    if iterable is None: return []
-    if maps is None: maps = {}
+    if iterable is None:
+        return []
+    if maps is None:
+        maps = {}
 
     if isinstance(iterable, (str, int, float)):
         return [maps.get(iterable, iterable)]
@@ -65,7 +66,7 @@ def _to_gen_(iterable: Any) -> Any:
 
 def fmt_dt(
     dt: str | pd.Timestamp | datetime.date | Any,
-    fmt: str = '%Y-%m-%d',
+    fmt: str = "%Y-%m-%d",
 ) -> str:
     """Format date string (wrapper around pd.Timestamp.strftime).
 
@@ -86,8 +87,8 @@ def fmt_dt(
 
 
 def cur_time(
-    typ: str = 'date',
-    tz: str | pytz.BaseTzInfo | None = None,
+    typ: str = "date",
+    tz: str | datetime.tzinfo | None = None,
 ) -> datetime.date | str | pd.Timestamp:
     """Current time.
 
@@ -113,22 +114,26 @@ def cur_time(
     """
     # Use UTC by default for consistency across server locations
     if tz is None:
-        tz = 'UTC'
+        tz = "UTC"
 
-    dt = pd.Timestamp('now', tz=tz)
+    dt = pd.Timestamp("now", tz=tz)
 
-    if typ == 'date': return dt.strftime('%Y-%m-%d')
-    if typ == 'time': return dt.strftime('%Y-%m-%d %H:%M:%S')
-    if typ == 'time_path': return dt.strftime('%Y-%m-%d/%H-%M-%S')
-    if typ == 'raw': return dt
+    if typ == "date":
+        return dt.strftime("%Y-%m-%d")
+    if typ == "time":
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    if typ == "time_path":
+        return dt.strftime("%Y-%m-%d/%H-%M-%S")
+    if typ == "raw":
+        return dt
 
     return dt.date()
 
 
 def to_str(
     data: dict[str, Any],
-    fmt: str = '{key}={value}',
-    sep: str = ', ',
+    fmt: str = "{key}={value}",
+    sep: str = ", ",
     public_only: bool = True,
 ) -> str:
     """Convert dict to string.
@@ -151,12 +156,18 @@ def to_str(
         >>> to_str(test_dict, public_only=False)
         '{b=1, a=0, c=2, _d=3}'
     """
-    keys = list(filter(lambda vv: vv[0] != '_', data.keys())) if public_only else list(data.keys())
-    return '{' + sep.join([
-        to_str(data=v, fmt=fmt, sep=sep)
-        if isinstance(v, dict) else fmt.format(key=k, value=v)
-        for k, v in data.items() if k in keys
-    ]) + '}'
+    keys = list(filter(lambda vv: vv[0] != "_", data.keys())) if public_only else list(data.keys())
+    return (
+        "{"
+        + sep.join(
+            [
+                to_str(data=v, fmt=fmt, sep=sep) if isinstance(v, dict) else fmt.format(key=k, value=v)
+                for k, v in data.items()
+                if k in keys
+            ]
+        )
+        + "}"
+    )
 
 
 # Bloomberg-specific normalization helpers
@@ -208,11 +219,25 @@ def check_empty_result(res: pd.DataFrame, required_cols: list[str] | None = None
 
 # Valid Bloomberg identifier types for B-Pipe subscriptions
 # Reference: Bloomberg B-Pipe symbology enforcement (effective Dec 31, 2025)
-BPIPE_IDENTIFIER_TYPES = frozenset({
-    'ticker', 'isin', 'cusip', 'sedol', 'figi', 'bbgid',
-    'buid', 'cats', 'cins', 'common', 'naics', 'sicovam',
-    'svm', 'wpk', 'trace',
-})
+BPIPE_IDENTIFIER_TYPES = frozenset(
+    {
+        "ticker",
+        "isin",
+        "cusip",
+        "sedol",
+        "figi",
+        "bbgid",
+        "buid",
+        "cats",
+        "cins",
+        "common",
+        "naics",
+        "sicovam",
+        "svm",
+        "wpk",
+        "trace",
+    }
+)
 
 
 def parse_subscription_topic(ticker: str) -> str:
@@ -247,13 +272,13 @@ def parse_subscription_topic(ticker: str) -> str:
         '//blp/mktdata/FIGI/BBG000B9XRY4'
     """
     # Check for identifier prefix format: /type/identifier
-    if ticker.startswith('/'):
-        parts = ticker.split('/', 2)  # Split into ['', 'type', 'identifier']
+    if ticker.startswith("/"):
+        parts = ticker.split("/", 2)  # Split into ['', 'type', 'identifier']
         if len(parts) >= 3:
             id_type = parts[1].lower()
             identifier = parts[2]
             if id_type in BPIPE_IDENTIFIER_TYPES:
-                return f'//blp/mktdata/{id_type.upper()}/{identifier}'
+                return f"//blp/mktdata/{id_type.upper()}/{identifier}"
 
     # Default to TICKER for standard Bloomberg ticker format
-    return f'//blp/mktdata/TICKER/{ticker}'
+    return f"//blp/mktdata/TICKER/{ticker}"

@@ -12,20 +12,23 @@ import pandas as pd
 
 from xbbg import const
 from xbbg.api.reference import bds
+from xbbg.backend import Backend, Format
 from xbbg.core import process
 from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['bdh', 'dividend', 'earning', 'turnover', 'abdh']
+__all__ = ["bdh", "dividend", "earning", "turnover", "abdh"]
 
 
 def bdh(
     tickers: str | list[str],
     flds: str | list[str] | None = None,
     start_date: str | pd.Timestamp | None = None,
-    end_date: str | pd.Timestamp = 'today',
+    end_date: str | pd.Timestamp = "today",
     adjust: str | None = None,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg historical data.
@@ -41,6 +44,8 @@ def bdh(
             - `split`: Adjust for splits and ignore all dividends
             - `all` == `dvd|split`: Adjust for all
             - None: Bloomberg default OR use kwargs
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
@@ -58,12 +63,12 @@ def bdh(
 
     # Build request - use first ticker as primary, store all in request_opts
     if flds is None:
-        flds = ['Last_Price']
+        flds = ["Last_Price"]
 
-    e_dt = utils.fmt_dt(end_date, fmt='%Y%m%d')
+    e_dt = utils.fmt_dt(end_date, fmt="%Y%m%d")
     if start_date is None:
         start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
-    s_dt = utils.fmt_dt(start_date, fmt='%Y%m%d')
+    s_dt = utils.fmt_dt(start_date, fmt="%Y%m%d")
 
     request = (
         RequestBuilder()
@@ -79,6 +84,7 @@ def bdh(
             adjust=adjust,
         )
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -89,8 +95,8 @@ def bdh(
 
 def earning(
     ticker: str,
-    by: str = 'Geo',
-    typ: str = 'Revenue',
+    by: str = "Geo",
+    typ: str = "Revenue",
     ccy: str | None = None,
     level: int | None = None,
     **kwargs,
@@ -113,33 +119,33 @@ def earning(
     Returns:
         pd.DataFrame.
     """
-    kwargs.pop('raw', None)
-    ovrd = 'G' if by[0].upper() == 'G' else 'P'
-    new_kw = {'Product_Geo_Override': ovrd}
+    kwargs.pop("raw", None)
+    ovrd = "G" if by[0].upper() == "G" else "P"
+    new_kw = {"Product_Geo_Override": ovrd}
 
-    year = kwargs.pop('year', None)
-    periods = kwargs.pop('periods', None)
-    if year: kwargs['Eqy_Fund_Year'] = year
-    if periods: kwargs['Number_Of_Periods'] = periods
+    year = kwargs.pop("year", None)
+    periods = kwargs.pop("periods", None)
+    if year:
+        kwargs["Eqy_Fund_Year"] = year
+    if periods:
+        kwargs["Number_Of_Periods"] = periods
 
-    header = bds(tickers=ticker, flds='PG_Bulk_Header', use_port=False, **new_kw, **kwargs)
-    if ccy: kwargs['Eqy_Fund_Crncy'] = ccy
-    if level: kwargs['PG_Hierarchy_Level'] = level
-    data = bds(tickers=ticker, flds=f'PG_{typ}', use_port=False, **new_kw, **kwargs)
+    header = bds(tickers=ticker, flds="PG_Bulk_Header", use_port=False, **new_kw, **kwargs)
+    if ccy:
+        kwargs["Eqy_Fund_Crncy"] = ccy
+    if level:
+        kwargs["PG_Hierarchy_Level"] = level
+    data = bds(tickers=ticker, flds=f"PG_{typ}", use_port=False, **new_kw, **kwargs)
 
-    if data.empty or header.empty: return pd.DataFrame()
+    if data.empty or header.empty:
+        return pd.DataFrame()
     if data.shape[1] != header.shape[1]:
-        raise ValueError('Inconsistent shape of data and header')
-    data.columns = (
-        header.iloc[0]
-        .str.lower()
-        .str.replace(' ', '_')
-        .str.replace('_20', '20')
-        .tolist()
-    )
+        raise ValueError("Inconsistent shape of data and header")
+    data.columns = header.iloc[0].str.lower().str.replace(" ", "_").str.replace("_20", "20").tolist()
 
-    if 'level' not in data: raise KeyError('Cannot find [level] in data')
-    for yr in data.columns[data.columns.str.startswith('fy')]:
+    if "level" not in data:
+        raise KeyError("Cannot find [level] in data")
+    for yr in data.columns[data.columns.str.startswith("fy")]:
         process.earning_pct(data=data, yr=yr)
 
     return data
@@ -147,7 +153,7 @@ def earning(
 
 def dividend(
     tickers: str | list[str],
-    typ: str = 'all',
+    typ: str = "all",
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp | None = None,
     **kwargs,
@@ -174,29 +180,29 @@ def dividend(
     Returns:
         pd.DataFrame
     """
-    kwargs.pop('raw', None)
+    kwargs.pop("raw", None)
     tickers = utils.normalize_tickers(tickers)
-    tickers = [t for t in tickers if ('Equity' in t) and ('=' not in t)]
+    tickers = [t for t in tickers if ("Equity" in t) and ("=" not in t)]
 
     fld = const.DVD_TPYES.get(typ, typ)
 
-    if (fld == 'Eqy_DVD_Adjust_Fact') and ('Corporate_Actions_Filter' not in kwargs):
-        kwargs['Corporate_Actions_Filter'] = 'NORMAL_CASH|ABNORMAL_CASH|CAPITAL_CHANGE'
+    if (fld == "Eqy_DVD_Adjust_Fact") and ("Corporate_Actions_Filter" not in kwargs):
+        kwargs["Corporate_Actions_Filter"] = "NORMAL_CASH|ABNORMAL_CASH|CAPITAL_CHANGE"
 
     if start_date:
-        kwargs['DVD_Start_Dt'] = utils.fmt_dt(start_date, fmt='%Y%m%d')
+        kwargs["DVD_Start_Dt"] = utils.fmt_dt(start_date, fmt="%Y%m%d")
     if end_date:
-        kwargs['DVD_End_Dt'] = utils.fmt_dt(end_date, fmt='%Y%m%d')
+        kwargs["DVD_End_Dt"] = utils.fmt_dt(end_date, fmt="%Y%m%d")
 
     return bds(tickers=tickers, flds=fld, col_maps=const.DVD_COLS, **kwargs)
 
 
 def turnover(
     tickers: str | list[str],
-    flds: str = 'Turnover',
+    flds: str = "Turnover",
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp | None = None,
-    ccy: str = 'USD',
+    ccy: str = "USD",
     factor: float = 1e6,
 ) -> pd.DataFrame:
     """Currency adjusted turnover (in million).
@@ -213,30 +219,33 @@ def turnover(
         pd.DataFrame.
     """
     if end_date is None:
-        end_date = pd.bdate_range(end='today', periods=2)[0]
+        end_date = pd.bdate_range(end="today", periods=2)[0]
     if start_date is None:
-        start_date = pd.bdate_range(end=end_date, periods=2, freq='M')[0]
+        start_date = pd.bdate_range(end=end_date, periods=2, freq="M")[0]
     tickers = utils.normalize_tickers(tickers)
 
     data = bdh(tickers=tickers, flds=flds, start_date=start_date, end_date=end_date)
     cols = data.columns.get_level_values(level=0).unique()
     use_volume = pd.DataFrame()
-    if isinstance(flds, str) and (flds.lower() == 'turnover'):
+    if isinstance(flds, str) and (flds.lower() == "turnover"):
         vol_tcks = [t for t in tickers if t not in cols]
         if vol_tcks:
             vol_data = bdh(
                 tickers=vol_tcks,
-                flds=['eqy_weighted_avg_px', 'volume'],
+                flds=["eqy_weighted_avg_px", "volume"],
                 start_date=start_date,
                 end_date=end_date,
             )
             if not vol_data.empty:
                 # Calculate turnover = volume * VWAP
-                use_volume = vol_data.xs('eqy_weighted_avg_px', axis=1, level=1) * \
-                           vol_data.xs('volume', axis=1, level=1)
+                use_volume = vol_data.xs("eqy_weighted_avg_px", axis=1, level=1) * vol_data.xs(
+                    "volume", axis=1, level=1
+                )
 
-    if data.empty and use_volume.empty: return pd.DataFrame()
+    if data.empty and use_volume.empty:
+        return pd.DataFrame()
     from xbbg.api.helpers import adjust_ccy  # noqa: PLC0415
+
     return pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
 
 
@@ -244,8 +253,10 @@ async def abdh(
     tickers: str | list[str],
     flds: str | list[str] | None = None,
     start_date: str | pd.Timestamp | None = None,
-    end_date: str | pd.Timestamp = 'today',
+    end_date: str | pd.Timestamp = "today",
     adjust: str | None = None,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Async Bloomberg historical data.
@@ -264,6 +275,8 @@ async def abdh(
             - `split`: Adjust for splits and ignore all dividends
             - `all` == `dvd|split`: Adjust for all
             - None: Bloomberg default OR use kwargs
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
@@ -287,6 +300,7 @@ async def abdh(
         start_date=start_date,
         end_date=end_date,
         adjust=adjust,
+        backend=backend,
+        format=format,
         **kwargs,
     )
-

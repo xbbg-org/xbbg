@@ -5,5 +5,4 @@ This module provides Bloomberg screening and query functionality using a pipelin
 
 from xbbg.api.screening.screening import beqs, bql, bsrch, etf_holdings
 
-__all__ = ['beqs', 'bsrch', 'bql', 'etf_holdings']
-
+__all__ = ["beqs", "bsrch", "bql", "etf_holdings"]

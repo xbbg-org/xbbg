@@ -39,7 +39,7 @@ class SessionManager:
                     cls._instance._default_session: blpapi.Session | None = None
         return cls._instance
 
-    def set_default_session(self, session: blpapi.Session, server_host: str = 'localhost', port: int = _PORT_) -> None:
+    def set_default_session(self, session: blpapi.Session, server_host: str = "localhost", port: int = _PORT_) -> None:
         """Set the default session for all subsequent API calls.
 
         Args:
@@ -49,7 +49,7 @@ class SessionManager:
         """
         self._default_session = session
         # Also store in cache for consistency
-        con_key = f'//{server_host}:{port}'
+        con_key = f"//{server_host}:{port}"
         self._sessions[con_key] = session
 
     def get_default_session(self) -> blpapi.Session | None:
@@ -59,7 +59,7 @@ class SessionManager:
             Default session or None if not set/invalid.
         """
         # Check if session exists and handle is still valid
-        if self._default_session is not None and getattr(self._default_session, '_Session__handle', None) is None:
+        if self._default_session is not None and getattr(self._default_session, "_Session__handle", None) is None:
             self._default_session = None
         return self._default_session
 
@@ -84,7 +84,7 @@ class SessionManager:
         Returns:
             Bloomberg session instance.
         """
-        server_host = kwargs.get('server_host') or kwargs.get('server', '')
+        server_host = kwargs.get("server_host") or kwargs.get("server", "")
 
         # If no specific server requested, try default session first
         if not server_host:
@@ -92,15 +92,15 @@ class SessionManager:
             if default_sess is not None:
                 return default_sess
             # Fall back to localhost
-            server_host = 'localhost'
+            server_host = "localhost"
 
-        con_key = f'//{server_host}:{port}'
+        con_key = f"//{server_host}:{port}"
 
         # Check if session exists and is valid
         if con_key in self._sessions:
             session = self._sessions[con_key]
             # Check if session handle is still valid
-            if getattr(session, '_Session__handle', None) is None:
+            if getattr(session, "_Session__handle", None) is None:
                 del self._sessions[con_key]
             else:
                 return session
@@ -109,14 +109,14 @@ class SessionManager:
         self._sessions[con_key] = connect_bbg(port=port, server_host=server_host, **kwargs)
         return self._sessions[con_key]
 
-    def remove_session(self, port: int = _PORT_, server_host: str = 'localhost') -> None:
+    def remove_session(self, port: int = _PORT_, server_host: str = "localhost") -> None:
         """Remove a session from the manager.
 
         Args:
             port: Port number (default 8194).
             server_host: Server hostname (default 'localhost').
         """
-        con_key = f'//{server_host}:{port}'
+        con_key = f"//{server_host}:{port}"
         if con_key in self._sessions:
             del self._sessions[con_key]
 
@@ -131,14 +131,14 @@ class SessionManager:
         Returns:
             Bloomberg service instance.
         """
-        server_host = kwargs.get('server_host') or kwargs.get('server', 'localhost')
-        serv_key = f'//{server_host}:{port}{service}'
+        server_host = kwargs.get("server_host") or kwargs.get("server", "localhost")
+        serv_key = f"//{server_host}:{port}{service}"
 
         # Check if service exists and is valid
         if serv_key in self._services:
             svc = self._services[serv_key]
             # Check if service handle is still valid
-            if getattr(svc, '_Service__handle', None) is None:
+            if getattr(svc, "_Service__handle", None) is None:
                 del self._services[serv_key]
             else:
                 return svc
@@ -192,14 +192,14 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
         # All subsequent calls use the B-Pipe connection
         px = blp.bdp("SPX Index", "PX_LAST")
     """
-    server_host = kwargs.get('server_host', 'localhost')
-    server_port = kwargs.get('server_port', _PORT_)
+    server_host = kwargs.get("server_host", "localhost")
+    server_port = kwargs.get("server_port", _PORT_)
 
-    if isinstance(kwargs.get('sess'), blpapi.Session):
-        session = kwargs['sess']
+    if isinstance(kwargs.get("sess"), blpapi.Session):
+        session = kwargs["sess"]
         # Start session if not already started
         if not session.start():
-            raise ConnectionError('Cannot start provided Bloomberg session')
+            raise ConnectionError("Cannot start provided Bloomberg session")
         # Store as default session
         _session_manager.set_default_session(session, server_host=server_host, port=server_port)
         return session
@@ -208,49 +208,49 @@ def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
     sess_opts.setNumStartAttempts(numStartAttempts=max_attempt)
     sess_opts.setAutoRestartOnDisconnection(autoRestart=auto_restart)
 
-    if isinstance(kwargs.get('auth_method'), str):
-        auth_method = kwargs['auth_method']
+    if isinstance(kwargs.get("auth_method"), str):
+        auth_method = kwargs["auth_method"]
         auth = None
 
-        if auth_method == 'user':
+        if auth_method == "user":
             user = blpapi.AuthUser.createWithLogonName()
             auth = blpapi.AuthOptions.createWithUser(user=user)
-        elif auth_method == 'app':
-            auth = blpapi.AuthOptions.createWithApp(appName=kwargs['app_name'])
-        elif auth_method == 'userapp':
+        elif auth_method == "app":
+            auth = blpapi.AuthOptions.createWithApp(appName=kwargs["app_name"])
+        elif auth_method == "userapp":
             user = blpapi.AuthUser.createWithLogonName()
-            auth = blpapi.AuthOptions.createWithUserAndApp(user=user, appName=kwargs['app_name'])
-        elif auth_method == 'dir':
-            user = blpapi.AuthUser.createWithActiveDirectoryProperty(propertyName=kwargs['dir_property'])
+            auth = blpapi.AuthOptions.createWithUserAndApp(user=user, appName=kwargs["app_name"])
+        elif auth_method == "dir":
+            user = blpapi.AuthUser.createWithActiveDirectoryProperty(propertyName=kwargs["dir_property"])
             auth = blpapi.AuthOptions.createWithUser(user=user)
-        elif auth_method == 'manual':
-            user = blpapi.AuthUser.createWithManualOptions(userId=kwargs['user_id'], ipAddress=kwargs['ip_address'])
-            auth = blpapi.AuthOptions.createWithUserAndApp(user=user, appName=kwargs['app_name'])
+        elif auth_method == "manual":
+            user = blpapi.AuthUser.createWithManualOptions(userId=kwargs["user_id"], ipAddress=kwargs["ip_address"])
+            auth = blpapi.AuthOptions.createWithUserAndApp(user=user, appName=kwargs["app_name"])
         else:
             raise ValueError(
-                'Received invalid value for auth_method. '
-                'auth_method must be one of followings: user, app, userapp, dir, manual'
+                "Received invalid value for auth_method. "
+                "auth_method must be one of followings: user, app, userapp, dir, manual"
             )
 
         sess_opts.setSessionIdentityOptions(authOptions=auth)
 
-    if isinstance(server_host, str) and server_host != 'localhost':
+    if isinstance(server_host, str) and server_host != "localhost":
         sess_opts.setServerHost(serverHost=server_host)
 
     if isinstance(server_port, int) and server_port != _PORT_:
         sess_opts.setServerPort(serverPort=server_port)
 
-    if isinstance(kwargs.get('tls_options'), blpapi.TlsOptions):
-        sess_opts.setTlsOptions(tlsOptions=kwargs['tls_options'])
+    if isinstance(kwargs.get("tls_options"), blpapi.TlsOptions):
+        sess_opts.setTlsOptions(tlsOptions=kwargs["tls_options"])
 
     # Create and start the session
     session = blpapi.Session(sess_opts)
     if not session.start():
-        raise ConnectionError(f'Cannot connect to Bloomberg at {server_host}:{server_port}')
+        raise ConnectionError(f"Cannot connect to Bloomberg at {server_host}:{server_port}")
 
     # Store as default session for all subsequent API calls
     _session_manager.set_default_session(session, server_host=server_host, port=server_port)
-    logger.debug('Set default Bloomberg session: %s:%d', server_host, server_port)
+    logger.debug("Set default Bloomberg session: %s:%d", server_host, server_port)
 
     return session
 
@@ -269,7 +269,7 @@ def disconnect() -> None:
         px = blp.bdp("SPX Index", "PX_LAST")  # Creates new localhost connection
     """
     _session_manager.clear_default_session()
-    logger.debug('Cleared default Bloomberg session')
+    logger.debug("Cleared default Bloomberg session")
 
 
 def connect_bbg(**kwargs) -> blpapi.Session:
@@ -287,30 +287,33 @@ def connect_bbg(**kwargs) -> blpapi.Session:
     # Register blpapi logging callback if not already registered (only once)
     try:
         from xbbg.core.infra import blpapi_logging
-        if blpapi_logging and not hasattr(connect_bbg, '_blpapi_logging_registered'):
+
+        if blpapi_logging and not hasattr(connect_bbg, "_blpapi_logging_registered"):
             blpapi_logging.register_blpapi_logging_callback()
             connect_bbg._blpapi_logging_registered = True  # type: ignore[attr-defined]
     except ImportError:
         pass
 
-    if isinstance(kwargs.get('sess'), blpapi.Session):
-        session = kwargs['sess']
-        logger.debug('Reusing existing Bloomberg session: %s', session)
+    if isinstance(kwargs.get("sess"), blpapi.Session):
+        session = kwargs["sess"]
+        logger.debug("Reusing existing Bloomberg session: %s", session)
     else:
         sess_opts = blpapi.SessionOptions()
-        server_host = kwargs.get('server') or kwargs.get('server_host', 'localhost')
+        server_host = kwargs.get("server") or kwargs.get("server_host", "localhost")
         sess_opts.setServerHost(server_host)
-        sess_opts.setServerPort(kwargs.get('port', _PORT_))
+        sess_opts.setServerPort(kwargs.get("port", _PORT_))
         session = blpapi.Session(sess_opts)
 
-    server_host = kwargs.get('server') or kwargs.get('server_host', 'localhost')
-    port = kwargs.get('port', _PORT_)
-    logger.debug('Establishing connection to Bloomberg Terminal (%s:%d)', server_host, port)
+    server_host = kwargs.get("server") or kwargs.get("server_host", "localhost")
+    port = kwargs.get("port", _PORT_)
+    logger.debug("Establishing connection to Bloomberg Terminal (%s:%d)", server_host, port)
     if session.start():
-        logger.debug('Successfully connected to Bloomberg Terminal')
+        logger.debug("Successfully connected to Bloomberg Terminal")
         return session
-    logger.error('Failed to start Bloomberg session - check Terminal is running and %s:%d is accessible', server_host, port)
-    raise ConnectionError('Cannot connect to Bloomberg')
+    logger.error(
+        "Failed to start Bloomberg session - check Terminal is running and %s:%d is accessible", server_host, port
+    )
+    raise ConnectionError("Cannot connect to Bloomberg")
 
 
 def bbg_session(**kwargs) -> blpapi.Session:
@@ -328,10 +331,10 @@ def bbg_session(**kwargs) -> blpapi.Session:
         Bloomberg session instance
     """
     # If an existing session is provided, return it directly
-    if isinstance(kwargs.get('sess'), blpapi.Session):
-        return kwargs['sess']
+    if isinstance(kwargs.get("sess"), blpapi.Session):
+        return kwargs["sess"]
 
-    port = kwargs.get('port', _PORT_)
+    port = kwargs.get("port", _PORT_)
     return _session_manager.get_session(port=port, **kwargs)
 
 
@@ -348,16 +351,13 @@ def bbg_service(service: str, **kwargs) -> blpapi.Service:
     Returns:
         Bloomberg service
     """
-    port = kwargs.get('port', _PORT_)
+    port = kwargs.get("port", _PORT_)
     return _session_manager.get_service(service=service, port=port, **kwargs)
 
 
 def event_types() -> dict:
     """Bloomberg event types."""
-    return {
-        getattr(blpapi.Event, ev_typ): ev_typ
-        for ev_typ in dir(blpapi.Event) if ev_typ.isupper()
-    }
+    return {getattr(blpapi.Event, ev_typ): ev_typ for ev_typ in dir(blpapi.Event) if ev_typ.isupper()}
 
 
 def send_request(request: blpapi.Request, **kwargs):
@@ -376,28 +376,28 @@ def send_request(request: blpapi.Request, **kwargs):
     logger = logging.getLogger(__name__)
 
     # Always use per-request EventQueue and CorrelationId by default
-    event_queue = kwargs.get('event_queue') or blpapi.EventQueue()
-    correlation_id = kwargs.get('correlation_id') or blpapi.CorrelationId()
+    event_queue = kwargs.get("event_queue") or blpapi.EventQueue()
+    correlation_id = kwargs.get("correlation_id") or blpapi.CorrelationId()
 
     sess = bbg_session(**kwargs)
     try:
         # Only log request details if DEBUG enabled (avoid overhead)
         if logger.isEnabledFor(logging.DEBUG):
             # Service name is passed explicitly since Request objects don't have service() method
-            service_name = kwargs.get('service')
+            service_name = kwargs.get("service")
             if service_name:
-                logger.debug('Sending Bloomberg API request (service: %s)', service_name)
+                logger.debug("Sending Bloomberg API request (service: %s)", service_name)
             else:
-                logger.debug('Sending Bloomberg API request')
+                logger.debug("Sending Bloomberg API request")
         sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug('Bloomberg API request sent successfully')
+            logger.debug("Bloomberg API request sent successfully")
     except blpapi.InvalidStateException as e:
         # Log exception with stack trace (important error, rare)
-        logger.exception('Error sending Bloomberg request: %s', e)
+        logger.exception("Error sending Bloomberg request: %s", e)
 
         # Remove invalid session and retry
-        port = kwargs.get('port', _PORT_)
+        port = kwargs.get("port", _PORT_)
         _session_manager.remove_session(port=port)
 
         sess = bbg_session(**kwargs)

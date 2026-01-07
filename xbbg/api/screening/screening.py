@@ -9,16 +9,21 @@ import logging
 
 import pandas as pd
 
+from xbbg.backend import Backend, Format
+
 logger = logging.getLogger(__name__)
 
-__all__ = ['beqs', 'bsrch', 'bql', 'etf_holdings']
+__all__ = ["beqs", "bsrch", "bql", "etf_holdings"]
 
 
 def beqs(
     screen: str,
     asof: str | pd.Timestamp | None = None,
-    typ: str = 'PRIVATE',
-    group: str = 'General',
+    typ: str = "PRIVATE",
+    group: str = "General",
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg equity screening.
@@ -28,6 +33,8 @@ def beqs(
         asof: as of date
         typ: GLOBAL/B (Bloomberg) or PRIVATE/C (Custom, default)
         group: group name if screen is organized into groups
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         timeout: Timeout in milliseconds for waiting between events (default: 2000ms).
             Increase for complex screens that may have longer gaps between events.
         max_timeouts: Maximum number of timeout events allowed before giving up
@@ -41,7 +48,7 @@ def beqs(
     from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, beqs_pipeline_config
 
     # Preserve retry mechanism
-    trial = kwargs.get('trial', 0)
+    trial = kwargs.get("trial", 0)
 
     # Split kwargs
     split = split_kwargs(**kwargs)
@@ -49,12 +56,13 @@ def beqs(
     # Build request - use a dummy ticker since BEQS doesn't use tickers
     request = (
         RequestBuilder()
-        .ticker('DUMMY')  # BEQS doesn't use ticker, but DataRequest requires one
-        .date(asof if asof else 'today')
+        .ticker("DUMMY")  # BEQS doesn't use ticker, but DataRequest requires one
+        .date(asof if asof else "today")
         .context(split.infra)
         .cache_policy(enabled=False)  # BEQS typically not cached
         .request_opts(screen=screen, asof=asof, typ=typ, group=group)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -64,12 +72,19 @@ def beqs(
 
     # Handle retry logic
     if result.empty and trial == 0:
-        return beqs(screen=screen, asof=asof, typ=typ, group=group, trial=1, **kwargs)
+        return beqs(screen=screen, asof=asof, typ=typ, group=group, backend=backend, format=format, trial=1, **kwargs)
 
     return result
 
 
-def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
+def bsrch(
+    domain: str,
+    overrides: dict | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
     """Bloomberg SRCH (Search) queries - equivalent to Excel =@BSRCH function.
 
     Executes Bloomberg search queries using the Excel service (exrsvc).
@@ -83,6 +98,8 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
             "frequency": "DAILY", "target_start_date": "2021-01-01",
             "target_end_date": "2024-12-31", "location_time": "false",
             "fields": "WIND_SPEED|TEMPERATURE|..."}
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         timeout: Timeout in milliseconds for waiting between events (default: 2000ms).
         max_timeouts: Maximum number of timeout events allowed (default: 50).
         **kwargs: Additional options forwarded to session and logging.
@@ -119,12 +136,13 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
     # Build request
     request = (
         RequestBuilder()
-        .ticker('DUMMY')  # BSRCH doesn't use ticker
-        .date('today')
+        .ticker("DUMMY")  # BSRCH doesn't use ticker
+        .date("today")
         .context(split.infra)
         .cache_policy(enabled=False)  # BSRCH typically not cached
         .request_opts(domain=domain, overrides=overrides)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -133,7 +151,15 @@ def bsrch(domain: str, overrides: dict | None = None, **kwargs) -> pd.DataFrame:
     return pipeline.run(request)
 
 
-def bql(query: str, params: dict | None = None, overrides: list[tuple[str, object]] | None = None, **kwargs) -> pd.DataFrame:
+def bql(
+    query: str,
+    params: dict | None = None,
+    overrides: list[tuple[str, object]] | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
     r"""Execute a BQL (Bloomberg Query Language) request.
 
     Args:
@@ -146,6 +172,8 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
             BQL API. If you need cached/live mode, check Bloomberg documentation
             for the correct syntax or use query-level options.
         overrides: Optional list of (field, value) overrides for the BQL request.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Session and logging options.
 
     Returns:
@@ -257,12 +285,13 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
     # Build request
     request = (
         RequestBuilder()
-        .ticker('DUMMY')  # BQL doesn't use ticker
-        .date('today')
+        .ticker("DUMMY")  # BQL doesn't use ticker
+        .date("today")
         .context(split.infra)
         .cache_policy(enabled=False)  # BQL typically not cached
         .request_opts(query=query, params=params, overrides=overrides)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -274,6 +303,9 @@ def bql(query: str, params: dict | None = None, overrides: list[tuple[str, objec
 def etf_holdings(
     etf_ticker: str,
     fields: list[str] | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Get ETF holdings using Bloomberg Query Language (BQL).
@@ -286,6 +318,8 @@ def etf_holdings(
         fields: Optional list of additional fields to retrieve. Default fields are
             id_isin, weights, and id().position. If provided, these will be added to
             the default fields.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Additional options passed to the underlying BQL query (e.g., params, overrides).
 
     Returns:
@@ -311,33 +345,28 @@ def etf_holdings(
         >>> df = blp.etf_holdings('SPY')  # doctest: +SKIP
     """
     # Normalize ticker format - ensure it has proper suffix
-    if ' ' not in etf_ticker:
+    if " " not in etf_ticker:
         etf_ticker = f"{etf_ticker} US Equity"
 
     # Default fields
-    default_fields = ['id_isin', 'weights', 'id().position']
+    default_fields = ["id_isin", "weights", "id().position"]
 
     # Combine default fields with any additional fields
     all_fields = default_fields + [f for f in fields if f not in default_fields] if fields else default_fields
 
     # Build BQL query - format: holdings('FULL_TICKER')
-    fields_str = ', '.join(all_fields)
+    fields_str = ", ".join(all_fields)
     bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
 
     logger.debug(f"ETF holdings BQL query: {bql_query}")
 
     # Execute BQL query
-    res = bql(query=bql_query, **kwargs)
+    res = bql(query=bql_query, backend=backend, format=format, **kwargs)
 
     if res.empty:
         return res
 
     # Clean up column names
     # BQL returns 'id().position' which is awkward to access
-    rename_map = {
-        'id().position': 'position',
-        'ID': 'holding'
-    }
+    rename_map = {"id().position": "position", "ID": "holding"}
     return res.rename(columns=rename_map)
-
-

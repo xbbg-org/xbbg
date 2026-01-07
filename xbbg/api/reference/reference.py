@@ -11,16 +11,20 @@ import logging
 
 import pandas as pd
 
+from xbbg.backend import Backend, Format
 from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['bdp', 'bds', 'abdp', 'abds']
+__all__ = ["bdp", "bds", "abdp", "abds"]
 
 
 def bdp(
     tickers: str | list[str],
     flds: str | list[str],
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg reference data.
@@ -28,6 +32,8 @@ def bdp(
     Args:
         tickers: Single ticker or list of tickers.
         flds: Single field or list of fields to query.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -39,7 +45,7 @@ def bdp(
     # Normalize tickers to list
     ticker_list = utils.normalize_tickers(tickers)
     # Ensure primary_ticker is always a string (use first ticker or convert single string)
-    primary_ticker = ticker_list[0] if ticker_list else (tickers if isinstance(tickers, str) else '')
+    primary_ticker = ticker_list[0] if ticker_list else (tickers if isinstance(tickers, str) else "")
     fld_list = utils.normalize_flds(flds)
 
     # Split kwargs
@@ -49,11 +55,12 @@ def bdp(
     request = (
         RequestBuilder()
         .ticker(primary_ticker)
-        .date('today')  # Reference data doesn't use dates, but DataRequest requires one
+        .date("today")  # Reference data doesn't use dates, but DataRequest requires one
         .context(split.infra)
         .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
         .request_opts(tickers=ticker_list, flds=fld_list)
         .override_kwargs(**split.override_like)
+        .with_output(backend, format)
         .build()
     )
 
@@ -66,6 +73,9 @@ def bds(
     tickers: str | list[str],
     flds: str,
     use_port: bool = False,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Bloomberg block data.
@@ -74,6 +84,8 @@ def bds(
         tickers: Single ticker or list of tickers.
         flds: Field name.
         use_port: Whether to use `PortfolioDataRequest` instead of `ReferenceDataRequest`.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Other overrides for query.
 
     Returns:
@@ -91,11 +103,12 @@ def bds(
         request = (
             RequestBuilder()
             .ticker(ticker)
-            .date('today')
+            .date("today")
             .context(split.infra)
             .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
             .request_opts(fld=flds, use_port=use_port)
             .override_kwargs(**split.override_like)
+            .with_output(backend, format)
             .build()
         )
 
@@ -109,6 +122,9 @@ def bds(
 async def abdp(
     tickers: str | list[str],
     flds: str | list[str],
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Async Bloomberg reference data.
@@ -119,6 +135,8 @@ async def abdp(
     Args:
         tickers: Single ticker or list of tickers.
         flds: Single field or list of fields to query.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -135,13 +153,16 @@ async def abdp(
         >>> #     blp.abdp('MSFT US Equity', ['PX_LAST']),
         >>> # )
     """
-    return await asyncio.to_thread(bdp, tickers=tickers, flds=flds, **kwargs)
+    return await asyncio.to_thread(bdp, tickers=tickers, flds=flds, backend=backend, format=format, **kwargs)
 
 
 async def abds(
     tickers: str | list[str],
     flds: str,
     use_port: bool = False,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Async Bloomberg block data.
@@ -153,6 +174,8 @@ async def abds(
         tickers: Single ticker or list of tickers.
         flds: Field name.
         use_port: Whether to use `PortfolioDataRequest` instead of `ReferenceDataRequest`.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Other overrides for query.
 
     Returns:
@@ -169,5 +192,6 @@ async def abds(
         >>> #     blp.abds('MSFT US Equity', 'DVD_Hist_All'),
         >>> # )
     """
-    return await asyncio.to_thread(bds, tickers=tickers, flds=flds, use_port=use_port, **kwargs)
-
+    return await asyncio.to_thread(
+        bds, tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs
+    )

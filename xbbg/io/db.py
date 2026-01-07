@@ -10,7 +10,7 @@ import threading
 
 import pandas as pd
 
-WAL_MODE = 'PRAGMA journal_mode=WAL'
+WAL_MODE = "PRAGMA journal_mode=WAL"
 ALL_TABLES = 'SELECT name FROM sqlite_master WHERE type="table"'
 
 
@@ -20,14 +20,15 @@ class Singleton(type):
     Instances are cached by the constructor keyword arguments so that
     multiple calls with the same arguments return the same object.
     """
+
     _instances_ = {}
 
     def __call__(cls, *args, **kwargs):
         """Return a cached instance for the given constructor args."""
         # Default values for class init
-        default_keys = ['db_file', 'keep_live']
+        default_keys = ["db_file", "keep_live"]
         kw = {**dict(zip(default_keys, args, strict=False)), **kwargs}
-        kw['keep_live'] = kw.get('keep_live', False)
+        kw["keep_live"] = kw.get("keep_live", False)
 
         # Singleton instance
         key = json.dumps(kw)
@@ -77,24 +78,21 @@ class SQLite(metaclass=Singleton):
         """All tables within database."""
         keep_live = self.is_live
         res = self.con.execute(ALL_TABLES).fetchall()
-        if not keep_live: self.close()
+        if not keep_live:
+            self.close()
         return [r[0] for r in res]
 
-    def select(self, table: str, cond='', **kwargs) -> pd.DataFrame:
+    def select(self, table: str, cond="", **kwargs) -> pd.DataFrame:
         """Run a SELECT query and return a DataFrame."""
         keep_live = self.is_live
         q_str = select(table=table, cond=cond, **kwargs)
         data = self.con.execute(q_str).fetchall()
-        if not keep_live: self.close()
+        if not keep_live:
+            self.close()
         return pd.DataFrame(data, columns=self.columns(table=table))
 
     def select_recent(
-            self,
-            table: str,
-            dateperiod: str,
-            date_col: str = 'modified_date',
-            cond='',
-            **kwargs
+        self, table: str, dateperiod: str, date_col: str = "modified_date", cond="", **kwargs
     ) -> pd.DataFrame:
         """Select recent rows by a relative date period.
 
@@ -109,26 +107,19 @@ class SQLite(metaclass=Singleton):
             pd.DataFrame.
         """
         cols = self.columns(table=table)
-        if date_col not in cols: return pd.DataFrame()
-        start_dt = (
-            pd.date_range(
-                end='today', freq=dateperiod, periods=2, normalize=True,
-            )[0]
-            .strftime('%Y-%m-%d')
-        )
-        return (
-            self.select(table=table, cond=cond, **kwargs)
-            .query(f'{date_col} >= {start_dt}')
-            .reset_index(drop=True)
-        )
+        if date_col not in cols:
+            return pd.DataFrame()
+        start_dt = pd.date_range(
+            end="today",
+            freq=dateperiod,
+            periods=2,
+            normalize=True,
+        )[0].strftime("%Y-%m-%d")
+        return self.select(table=table, cond=cond, **kwargs).query(f"{date_col} >= {start_dt}").reset_index(drop=True)
 
     def columns(self, table: str):
         """Table columns."""
-        return [
-            info[1] for info in (
-                self.con.execute(f'PRAGMA table_info (`{table}`)').fetchall()
-            )
-        ]
+        return [info[1] for info in (self.con.execute(f"PRAGMA table_info (`{table}`)").fetchall())]
 
     def replace_into(self, table: str, data: pd.DataFrame | None = None, **kwargs):
         """Replace records into table.
@@ -140,24 +131,20 @@ class SQLite(metaclass=Singleton):
         """
         if isinstance(data, pd.DataFrame):
             keep_live = self.is_live
-            cols = ', '.join(f'`{v}`' for v in data.columns)
-            vals = ', '.join(['?'] * data.shape[1])
+            cols = ", ".join(f"`{v}`" for v in data.columns)
+            vals = ", ".join(["?"] * data.shape[1])
             # noinspection PyTypeChecker
-            self.con.executemany(
-                f'REPLACE INTO `{table}` ({cols}) values ({vals})',
-                data.apply(tuple, axis=1).tolist()
-            )
+            self.con.executemany(f"REPLACE INTO `{table}` ({cols}) values ({vals})", data.apply(tuple, axis=1).tolist())
         else:
-            keep_live = self.is_live or kwargs.get('_live_', False)
-            self.con.execute(replace_into(table=table, **{
-                k: v for k, v in kwargs.items() if k != '_live_'
-            }))
-        if not keep_live: self.close()
+            keep_live = self.is_live or kwargs.get("_live_", False)
+            self.con.execute(replace_into(table=table, **{k: v for k, v in kwargs.items() if k != "_live_"}))
+        if not keep_live:
+            self.close()
 
     @property
     def _con_(self) -> sqlite3.Connection | None:
         """Get thread-local connection."""
-        return getattr(self._local, 'connection', None)
+        return getattr(self._local, "connection", None)
 
     @_con_.setter
     def _con_(self, value: sqlite3.Connection | None) -> None:
@@ -217,11 +204,11 @@ class SQLite(metaclass=Singleton):
 def db_value(val) -> str:
     """Database value as in query string."""
     if isinstance(val, str):
-        return json.dumps(val.replace('\"', '').strip())
+        return json.dumps(val.replace('"', "").strip())
     return json.dumps(val, default=str)
 
 
-def select(table: str, cond='', **kwargs) -> str:
+def select(table: str, cond="", **kwargs) -> str:
     """Query string of SELECT statement.
 
     Args:
@@ -245,12 +232,9 @@ def select(table: str, cond='', **kwargs) -> str:
         >>> select('daily')
         'SELECT * FROM `daily`'
     """
-    all_cond = [cond] + [
-        f'{key}={db_value(value)}'
-        for key, value in kwargs.items()
-    ]
-    where = ' AND '.join(filter(bool, all_cond))
-    s = f'SELECT * FROM `{table}`'
+    all_cond = [cond] + [f"{key}={db_value(value)}" for key, value in kwargs.items()]
+    where = " AND ".join(filter(bool, all_cond))
+    s = f"SELECT * FROM `{table}`"
     if where:
         return f"""
             {s}
@@ -278,6 +262,6 @@ def replace_into(table: str, **kwargs) -> str:
         'VALUES ("ES1 Index", 3000)'
     """
     return f"""
-        REPLACE INTO `{table}` ({', '.join(list(kwargs.keys()))})
-        VALUES ({', '.join(map(db_value, list(kwargs.values())))})
+        REPLACE INTO `{table}` ({", ".join(list(kwargs.keys()))})
+        VALUES ({", ".join(map(db_value, list(kwargs.values())))})
     """

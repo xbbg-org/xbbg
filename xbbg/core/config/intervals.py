@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class Session:
     """Trading session time interval."""
+
     start_time: str | None
     end_time: str | None
 
@@ -36,20 +37,18 @@ def _get_standard_sessions() -> set[str]:
     """
     try:
         from xbbg.io import param  # noqa: PLC0415
-        exch = param.load_config(cat='exch')
+
+        exch = param.load_config(cat="exch")
         sessions = set()
         for idx in exch.index:
             row = exch.loc[idx]
-            if hasattr(row, 'index'):
+            if hasattr(row, "index"):
                 # Extract all keys that are not 'tz' and have list/str values (session definitions)
-                sessions.update(
-                    k for k in row.index
-                    if k != 'tz' and isinstance(row.get(k), (list, str))
-                )
+                sessions.update(k for k in row.index if k != "tz" and isinstance(row.get(k), (list, str)))
         return sessions
     except Exception:
         # Fallback to known sessions if config loading fails
-        return {'allday', 'day', 'am', 'pm', 'pre', 'post', 'night'}
+        return {"allday", "day", "am", "pm", "pre", "post", "night"}
 
 
 # Cache the standard sessions (computed once at module load)
@@ -103,7 +102,7 @@ def get_interval(ticker, session, **kwargs) -> Session:
         >>> get_interval('GBP Curncy', 'day')  # doctest: +SKIP
         Session(start_time='17:01', end_time='17:00')
     """
-    if '_' not in session:
+    if "_" not in session:
         # For bare session names (e.g., 'day', 'allday'), use exact session times
         # instead of defaulting to '_normal_0_0' which adds a 1-minute offset.
         interval = Intervals(ticker=ticker, **kwargs)
@@ -112,22 +111,22 @@ def get_interval(ticker, session, **kwargs) -> Session:
             return Session(start_time=str(ss[0]), end_time=str(ss[-1]))
 
         # Session not found - raise error with helpful message
-        available_sessions = [s for s in interval.exch.index if s != 'tz']
+        available_sessions = [s for s in interval.exch.index if s != "tz"]
         if available_sessions:
             raise ValueError(
                 f'Session "{session}" is not defined for ticker {ticker}. '
-                f'Available sessions: {", ".join(sorted(available_sessions))}. '
-                f'See xbbg/markets/exch.yml for exchange-specific session definitions.'
+                f"Available sessions: {', '.join(sorted(available_sessions))}. "
+                f"See xbbg/markets/exch.yml for exchange-specific session definitions."
             )
         raise ValueError(
             f'Session "{session}" is not defined for ticker {ticker} and no sessions found. '
-            f'Check that exchange info is correctly configured for this ticker.'
+            f"Check that exchange info is correctly configured for this ticker."
         )
     # Handle compound sessions (e.g., 'day_open_30', 'day_normal_30_20')
     interval = Intervals(ticker=ticker, **kwargs)
-    ss_info = session.split('_')
+    ss_info = session.split("_")
     if len(ss_info) < 2:
-        available_sessions = [s for s in interval.exch.index if s != 'tz']
+        available_sessions = [s for s in interval.exch.index if s != "tz"]
         raise ValueError(
             f'Invalid session format: "{session}". Expected format: "session_type_params" '
             f'(e.g., "day_open_30"). Available base sessions: {", ".join(sorted(available_sessions))}'
@@ -141,12 +140,12 @@ def get_interval(ticker, session, **kwargs) -> Session:
         return SessNA
 
     session_type = ss_info[1]
-    method_name = f'market_{session_type}'
+    method_name = f"market_{session_type}"
     if not hasattr(interval, method_name):
-        available_methods = [m.replace('market_', '') for m in dir(interval) if m.startswith('market_')]
+        available_methods = [m.replace("market_", "") for m in dir(interval) if m.startswith("market_")]
         raise ValueError(
             f'Session type "{session_type}" is not supported. '
-            f'Supported types: {", ".join(sorted(available_methods))}. '
+            f"Supported types: {', '.join(sorted(available_methods))}. "
             f'Session format: "session_type_params" (e.g., "day_open_30", "day_normal_30_20")'
         )
     ss_info.pop(1)  # Remove the session type, leaving base session and params
@@ -164,8 +163,8 @@ def shift_time(start_time, mins) -> str:
         End time in terms of HH:MM string.
     """
     s_time = pd.Timestamp(start_time)
-    e_time = s_time + np.sign(mins) * pd.Timedelta(f'00:{abs(mins)}:00')
-    return e_time.strftime('%H:%M')
+    e_time = s_time + np.sign(mins) * pd.Timedelta(f"00:{abs(mins)}:00")
+    return e_time.strftime("%H:%M")
 
 
 class Intervals:
@@ -191,7 +190,8 @@ class Intervals:
         Returns:
             Session of start_time and end_time.
         """
-        if session not in self.exch: return SessNA
+        if session not in self.exch:
+            return SessNA
         start_time = self.exch[session][0]
         return Session(start_time, shift_time(start_time, int(mins)))
 
@@ -205,7 +205,8 @@ class Intervals:
         Returns:
             Session of start_time and end_time.
         """
-        if session not in self.exch: return SessNA
+        if session not in self.exch:
+            return SessNA
         end_time = self.exch[session][-1]
         return Session(shift_time(end_time, -int(mins) + 1), end_time)
 
@@ -222,7 +223,8 @@ class Intervals:
         """
         # Logger is module-level
 
-        if session not in self.exch: return SessNA
+        if session not in self.exch:
+            return SessNA
         ss = self.exch[session]
 
         s_time = shift_time(ss[0], int(after_open) + 1)
@@ -231,7 +233,9 @@ class Intervals:
         request_cross = pd.Timestamp(s_time) >= pd.Timestamp(e_time)
         session_cross = pd.Timestamp(ss[0]) >= pd.Timestamp(ss[1])
         if request_cross and (not session_cross):
-            logger.warning('Session end time %s is earlier than start time %s, adjusting to valid range', e_time, s_time)
+            logger.warning(
+                "Session end time %s is earlier than start time %s, adjusting to valid range", e_time, s_time
+            )
             return SessNA
 
         return Session(s_time, e_time)
@@ -247,24 +251,28 @@ class Intervals:
         Returns:
             Session of start_time and end_time.
         """
-        if session not in self.exch: return SessNA
+        if session not in self.exch:
+            return SessNA
         ss = self.exch[session]
 
         same_day = ss[0] < ss[-1]
 
         from xbbg.io import param  # noqa: PLC0415
-        if not start_time: s_time = str(ss[0])
+
+        if not start_time:
+            s_time = str(ss[0])
         else:
             s_time = str(param.to_hours(int(start_time)))
-            if same_day: s_time = max(s_time, str(ss[0]))
+            if same_day:
+                s_time = max(s_time, str(ss[0]))
 
-        if not end_time: e_time = str(ss[-1])
+        if not end_time:
+            e_time = str(ss[-1])
         else:
             e_time = str(param.to_hours(int(end_time)))
-            if same_day: e_time = min(e_time, str(ss[-1]))
+            if same_day:
+                e_time = min(e_time, str(ss[-1]))
 
-        if same_day and (
-            pd.Timestamp(s_time) > pd.Timestamp(e_time)
-        ):
+        if same_day and (pd.Timestamp(s_time) > pd.Timestamp(e_time)):
             return SessNA
         return Session(start_time=s_time, end_time=e_time)

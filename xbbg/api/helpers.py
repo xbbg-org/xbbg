@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-__all__ = ['adjust_ccy']
+__all__ = ["adjust_ccy"]
 
 
-def adjust_ccy(data: pd.DataFrame, ccy: str = 'USD') -> pd.DataFrame:
+def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
     """Adjust series to a target currency.
 
     This is a general utility function that can be used with any time-series DataFrame
@@ -38,47 +38,48 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = 'USD') -> pd.DataFrame:
     from xbbg.api.historical import bdh  # noqa: PLC0415
     from xbbg.api.reference import bdp  # noqa: PLC0415
 
-    if data.empty: return pd.DataFrame()
-    if ccy.lower() == 'local': return data
+    if data.empty:
+        return pd.DataFrame()
+    if ccy.lower() == "local":
+        return data
     tickers = list(data.columns.get_level_values(level=0).unique())
     start_date = data.index[0]
     end_date = data.index[-1]
 
-    uccy = bdp(tickers=tickers, flds='crncy')
+    uccy = bdp(tickers=tickers, flds="crncy")
     if not uccy.empty:
         adj = (
-            uccy.crncy
-            .map(lambda v: {
-                'ccy': None if v.upper() == ccy else f'{ccy}{v.upper()} Curncy',
-                'factor': 100. if v[-1].islower() else 1.,
-            })
+            uccy.crncy.map(
+                lambda v: {
+                    "ccy": None if v.upper() == ccy else f"{ccy}{v.upper()} Curncy",
+                    "factor": 100.0 if v[-1].islower() else 1.0,
+                }
+            )
             .apply(pd.Series)
-            .dropna(subset=['ccy'])
+            .dropna(subset=["ccy"])
         )
-    else: adj = pd.DataFrame()
+    else:
+        adj = pd.DataFrame()
 
     if not adj.empty:
-        fx = (
-            bdh(tickers=adj.ccy.unique(), start_date=start_date, end_date=end_date)
-            .xs('Last_Price', axis=1, level=1)
-        )
-    else: fx = pd.DataFrame()
+        fx = bdh(tickers=adj.ccy.unique(), start_date=start_date, end_date=end_date).xs("Last_Price", axis=1, level=1)
+    else:
+        fx = pd.DataFrame()
 
-    return (
-        pd.concat([
+    return pd.concat(
+        [
             pd.Series(
                 (
                     data[t]
                     .dropna()
                     .prod(axis=1)
                     .div(
-                        (fx[adj.loc[t, 'ccy']] * adj.loc[t, 'factor'])
-                        if t in adj.index else 1.,
+                        (fx[adj.loc[t, "ccy"]] * adj.loc[t, "factor"]) if t in adj.index else 1.0,
                     )
                 ),
                 name=t,
             )
             for t in tickers
-        ], axis=1)
+        ],
+        axis=1,
     )
-

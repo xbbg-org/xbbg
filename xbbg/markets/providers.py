@@ -28,11 +28,13 @@ class YamlMarketInfoProvider:
     def get_exchange_info(self, ticker: str, **kwargs) -> pd.Series:
         """Get exchange info from YAML config."""
         from xbbg.markets.info import exch_info
+
         return exch_info(ticker=ticker, **kwargs)
 
     def get_market_info(self, ticker: str) -> pd.Series:
         """Get market info from YAML config."""
         from xbbg.markets.info import market_info
+
         return market_info(ticker=ticker)
 
 
@@ -46,4 +48,3 @@ def get_default_provider() -> MarketInfoProvider:
     if _default_provider is None:
         _default_provider = YamlMarketInfoProvider()
     return _default_provider
-

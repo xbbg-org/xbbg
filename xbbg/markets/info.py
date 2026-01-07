@@ -17,12 +17,12 @@ from xbbg.io import files, param
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    'exch_info',
-    'market_info',
-    'market_timing',
-    'asset_config',
-    'ccy_pair',
-    'convert_session_times_to_utc',
+    "exch_info",
+    "market_info",
+    "market_timing",
+    "asset_config",
+    "ccy_pair",
+    "convert_session_times_to_utc",
 ]
 
 
@@ -89,36 +89,34 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         >>> exch_info('TESTTCK Index')  # doctest: +SKIP
         Series([], dtype: object)
     """
-    if ref := kwargs.get('ref'):
-        return exch_info(ticker=ref, **{k: v for k, v in kwargs.items() if k != 'ref'})
+    if ref := kwargs.get("ref"):
+        return exch_info(ticker=ref, **{k: v for k, v in kwargs.items() if k != "ref"})
 
-    exch = kwargs.get('config', param.load_config(cat='exch'))
-    original = kwargs.get('original', '')
+    exch = kwargs.get("config", param.load_config(cat="exch"))
+    original = kwargs.get("original", "")
 
     # Handle empty exchange config
     if exch.empty:
         if original:
-            logger.error('Exchange information not found for ticker: %s', original)
+            logger.error("Exchange information not found for ticker: %s", original)
         return pd.Series(dtype=object)
 
     # Case 1: Use exchange directly
     if ticker in exch.index:
         info = exch.loc[ticker].dropna()
-        if info.reindex(['allday', 'tz']).dropna().size < 2:
-            logger.error(
-                f'required info (allday + tz) cannot be found in {original or ticker} ...'
-            )
+        if info.reindex(["allday", "tz"]).dropna().size < 2:
+            logger.error(f"required info (allday + tz) cannot be found in {original or ticker} ...")
             return pd.Series(dtype=object)
-        if 'day' not in info:
-            info['day'] = info['allday']
+        if "day" not in info:
+            info["day"] = info["allday"]
         return info.dropna().apply(param.to_hours)
 
     if original:
-        logger.error('Exchange information not found for ticker: %s', original)
+        logger.error("Exchange information not found for ticker: %s", original)
         return pd.Series(dtype=object)
 
     # Case 2: Use ticker to find exchange
-    if not (exch_name := market_info(ticker=ticker).get('exch', '')):
+    if not (exch_name := market_info(ticker=ticker).get("exch", "")):
         return pd.Series(dtype=object)
     return exch_info(ticker=exch_name, original=ticker, config=exch)
 
@@ -153,14 +151,14 @@ def market_info(ticker: str) -> pd.Series:
     t_info = ticker.split()
     exch_only = len(ticker) == 2
     # Allow only supported asset types; special-case certain Corp tickers
-    if (not exch_only) and (t_info[-1] not in ['Equity', 'Comdty', 'Curncy', 'Index']):
+    if (not exch_only) and (t_info[-1] not in ["Equity", "Comdty", "Curncy", "Index"]):
         # Minimal default for CDX generic CDS tickers (Corp asset)
         # Example: 'CDX IG CDSI GEN 5Y Corp' → use IndexUS session as default hours
-        if t_info[-1] == 'Corp' and len(t_info) >= 2 and t_info[0] == 'CDX':
-            return pd.Series({'exch': 'IndexUS'})
+        if t_info[-1] == "Corp" and len(t_info) >= 2 and t_info[0] == "CDX":
+            return pd.Series({"exch": "IndexUS"})
         return pd.Series(dtype=object)
 
-    a_info = asset_config(asset='Equity' if exch_only else t_info[-1])
+    a_info = asset_config(asset="Equity" if exch_only else t_info[-1])
 
     # Handle empty asset config (no config files or cache issues)
     if a_info.empty:
@@ -170,8 +168,8 @@ def market_info(ticker: str) -> pd.Series:
     #           Equity / Equity Futures           #
     # =========================================== #
 
-    if (t_info[-1] == 'Equity') or exch_only:
-        is_fut = '==' if '=' in ticker else '!='
+    if (t_info[-1] == "Equity") or exch_only:
+        is_fut = "==" if "=" in ticker else "!="
         exch_sym = ticker if exch_only else t_info[-2]
         return take_first(
             data=a_info,
@@ -182,16 +180,16 @@ def market_info(ticker: str) -> pd.Series:
     #           Currency / Commodity / Index           #
     # ================================================ #
 
-    if 'tickers' in a_info.columns and t_info[0] in a_info.tickers.values:
+    if "tickers" in a_info.columns and t_info[0] in a_info.tickers.values:
         symbol = t_info[0]
     elif t_info[0][-1].isdigit():
         end_idx = 2 if t_info[-2].isdigit() else 1
         symbol = t_info[0][:-end_idx].strip()
     else:
-        symbol = t_info[0].split('+')[0]
+        symbol = t_info[0].split("+")[0]
     # Special contracts: map any UX* Index form (e.g., UXA, UX1, UXF1UXG1) to UX root
-    if (t_info[-1] == 'Index') and symbol.startswith('UX'):
-        symbol = 'UX'
+    if (t_info[-1] == "Index") and symbol.startswith("UX"):
+        symbol = "UX"
     return take_first(data=a_info, query=f'tickers == "{symbol}"')
 
 
@@ -211,28 +209,34 @@ def asset_config(asset: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame
     """
-    cfg_files = param.config_files('assets')
+    cfg_files = param.config_files("assets")
     if not cfg_files:
         return pd.DataFrame()
-    cache_cfg = str(Path(const.PKG_PATH) / 'markets' / 'cached' / f'{asset}_cfg.parq')
-    if (last_mod := max(map(files.modified_time, cfg_files), default=0)) and \
-       files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
+    cache_cfg = str(Path(const.PKG_PATH) / "markets" / "cached" / f"{asset}_cfg.parq")
+    if (
+        (last_mod := max(map(files.modified_time, cfg_files), default=0))
+        and files.exists(cache_cfg)
+        and files.modified_time(cache_cfg) > last_mod
+    ):
         return pd.read_parquet(cache_cfg)
 
     if not cfg_files:
         return pd.DataFrame()
 
-    logger.debug('Loading asset config for %s from %s', asset, cfg_files)
+    logger.debug("Loading asset config for %s from %s", asset, cfg_files)
 
     config = (
-        pd.concat([
-            explode(
-                data=pd.DataFrame(list(param.load_yaml(cf).get(asset, []))),
-                columns=const.ASSET_INFO[asset],
-            )
-            for cf in cfg_files
-        ], sort=False)
-        .drop_duplicates(keep='last')
+        pd.concat(
+            [
+                explode(
+                    data=pd.DataFrame(list(param.load_yaml(cf).get(asset, []))),
+                    columns=const.ASSET_INFO[asset],
+                )
+                for cf in cfg_files
+            ],
+            sort=False,
+        )
+        .drop_duplicates(keep="last")
         .reset_index(drop=True)
     )
     if config.empty:
@@ -261,10 +265,11 @@ def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
     missing_cols = [col for col in columns if col not in data.columns]
     if missing_cols:
         logger.warning(
-            'Missing columns %s in DataFrame for explode. '
-            'Available columns: %s. '
-            'Returning empty DataFrame. This may indicate malformed config data.',
-            missing_cols, list(data.columns)
+            "Missing columns %s in DataFrame for explode. "
+            "Available columns: %s. "
+            "Returning empty DataFrame. This may indicate malformed config data.",
+            missing_cols,
+            list(data.columns),
         )
         return pd.DataFrame()
 
@@ -277,7 +282,7 @@ def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
     )
 
 
-def ccy_pair(local, base='USD') -> const.CurrencyPair:
+def ccy_pair(local, base="USD") -> const.CurrencyPair:
     """Currency pair info.
 
     Args:
@@ -301,33 +306,33 @@ def ccy_pair(local, base='USD') -> const.CurrencyPair:
         >>> ccy_pair(local='GBp', base='GBP')
         CurrencyPair(ticker='', factor=100.0, power=1.0)
     """
-    ccy_param = param.load_config(cat='ccy')
-    if f'{local}{base}' in ccy_param.index:
-        info = ccy_param.loc[f'{local}{base}'].dropna().to_dict()
+    ccy_param = param.load_config(cat="ccy")
+    if f"{local}{base}" in ccy_param.index:
+        info = ccy_param.loc[f"{local}{base}"].dropna().to_dict()
 
-    elif f'{base}{local}' in ccy_param.index:
-        info = ccy_param.loc[f'{base}{local}'].dropna().to_dict()
-        info['factor'] = 1. / info.get('factor', 1.)
-        info['power'] = -info.get('power', 1.)
+    elif f"{base}{local}" in ccy_param.index:
+        info = ccy_param.loc[f"{base}{local}"].dropna().to_dict()
+        info["factor"] = 1.0 / info.get("factor", 1.0)
+        info["power"] = -info.get("power", 1.0)
 
     elif base.lower() == local.lower():
-        info = {'ticker': ''}
-        info['factor'] = 1.
+        info = {"ticker": ""}
+        info["factor"] = 1.0
         if base[-1].lower() == base[-1]:
-            info['factor'] /= 100.
+            info["factor"] /= 100.0
         if local[-1].lower() == local[-1]:
-            info['factor'] *= 100.
+            info["factor"] *= 100.0
 
     else:
-        logger.error('Invalid currency pair configuration: local currency %s, base currency %s', local, base)
-        return const.CurrencyPair(ticker='', factor=1., power=1.0)
+        logger.error("Invalid currency pair configuration: local currency %s, base currency %s", local, base)
+        return const.CurrencyPair(ticker="", factor=1.0, power=1.0)
 
-    info.setdefault('factor', 1.0)
-    info.setdefault('power', 1.0)
+    info.setdefault("factor", 1.0)
+    info.setdefault("power", 1.0)
     return const.CurrencyPair(
-        ticker=info.get('ticker', ''),
-        factor=float(info['factor']),
-        power=float(info['power']),
+        ticker=info.get("ticker", ""),
+        factor=float(info["factor"]),
+        power=float(info["power"]),
     )
 
 
@@ -335,7 +340,7 @@ def convert_session_times_to_utc(
     start_time: str,
     end_time: str,
     exchange_tz: str,
-    time_fmt: str = '%Y-%m-%dT%H:%M:%S',
+    time_fmt: str = "%Y-%m-%dT%H:%M:%S",
 ) -> tuple[str, str]:
     """Convert timezone-naive session times from exchange timezone to UTC.
 
@@ -366,15 +371,15 @@ def convert_session_times_to_utc(
         ... )
         ('2025-11-14T09:30:00', '2025-11-14T10:00:00')
     """
-    if exchange_tz == 'UTC':
+    if exchange_tz == "UTC":
         return start_time, end_time
 
-    start_ts = pd.Timestamp(start_time).tz_localize(exchange_tz).tz_convert('UTC')
-    end_ts = pd.Timestamp(end_time).tz_localize(exchange_tz).tz_convert('UTC')
+    start_ts = pd.Timestamp(start_time).tz_localize(exchange_tz).tz_convert("UTC")
+    end_ts = pd.Timestamp(end_time).tz_localize(exchange_tz).tz_convert("UTC")
     return start_ts.strftime(time_fmt), end_ts.strftime(time_fmt)
 
 
-def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
+def market_timing(ticker, dt, timing="EOD", tz="local", **kwargs) -> str:
     """Market close time for ticker.
 
     Args:
@@ -404,14 +409,13 @@ def market_timing(ticker, dt, timing='EOD', tz='local', **kwargs) -> str:
         True
     """
     exch = pd.Series(exch_info(ticker=ticker, **kwargs))
-    required = {'tz', 'allday', 'day'}
+    required = {"tz", "allday", "day"}
     if not required.issubset(exch.index):
-        logger.error('Required exchange information %s not found for ticker: %s', required, ticker)
-        return ''
+        logger.error("Required exchange information %s not found for ticker: %s", required, ticker)
+        return ""
 
-    mkt_time = {'BOD': exch.day[0], 'FINISHED': exch.allday[-1]}.get(timing, exch.day[-1])
-    cur_dt = pd.Timestamp(str(dt)).strftime('%Y-%m-%d')
-    if tz == 'local':
-        return f'{cur_dt} {mkt_time}'
-    return timezone.tz_convert(f'{cur_dt} {mkt_time}', to_tz=tz, from_tz=exch.tz)
-
+    mkt_time = {"BOD": exch.day[0], "FINISHED": exch.allday[-1]}.get(timing, exch.day[-1])
+    cur_dt = pd.Timestamp(str(dt)).strftime("%Y-%m-%d")
+    if tz == "local":
+        return f"{cur_dt} {mkt_time}"
+    return timezone.tz_convert(f"{cur_dt} {mkt_time}", to_tz=tz, from_tz=exch.tz)

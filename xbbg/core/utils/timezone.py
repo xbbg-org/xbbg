@@ -4,16 +4,16 @@ Provides helpers to map tickers/shorthands to tz names and convert
 datetime-like values between timezones.
 """
 
+from datetime import timezone
 import logging
 
 import pandas as pd
-import pytz
 
 logger = logging.getLogger(__name__)
 
 # Use UTC as default timezone instead of system local time
 # This ensures consistent behavior across different server locations
-DEFAULT_TZ = pytz.UTC
+DEFAULT_TZ = timezone.utc
 
 
 def get_tz(tz) -> str:
@@ -36,7 +36,7 @@ def get_tz(tz) -> str:
     from xbbg.const import exch_info
 
     if tz is None:
-        return 'UTC'
+        return "UTC"
 
     to_tz = tz
     if isinstance(tz, str):
@@ -44,7 +44,7 @@ def get_tz(tz) -> str:
             to_tz = getattr(TimeZone, tz)
         else:
             exch = exch_info(ticker=tz)
-            if 'tz' in exch.index:
+            if "tz" in exch.index:
                 to_tz = exch.tz
 
     return to_tz
@@ -75,21 +75,21 @@ def tz_convert(dt, to_tz, from_tz=None) -> str:
     f_tz, t_tz = get_tz(from_tz), get_tz(to_tz)
 
     from_dt = pd.Timestamp(str(dt), tz=f_tz)
-    logger.debug('Converting datetime %s from timezone %s to %s', from_dt, f_tz, t_tz)
+    logger.debug("Converting datetime %s from timezone %s to %s", from_dt, f_tz, t_tz)
     return str(pd.Timestamp(str(from_dt), tz=t_tz))
 
 
 class TimeZone:
     """Python timezones."""
-    NY = 'America/New_York'
-    AU = 'Australia/Sydney'
-    JP = 'Asia/Tokyo'
-    SK = 'Asia/Seoul'
-    HK = 'Asia/Hong_Kong'
-    SH = 'Asia/Shanghai'
-    TW = 'Asia/Taipei'
-    SG = 'Asia/Singapore'
-    IN = 'Asia/Calcutta'
-    DB = 'Asia/Dubai'
-    UK = 'Europe/London'
 
+    NY = "America/New_York"
+    AU = "Australia/Sydney"
+    JP = "Asia/Tokyo"
+    SK = "Asia/Seoul"
+    HK = "Asia/Hong_Kong"
+    SH = "Asia/Shanghai"
+    TW = "Asia/Taipei"
+    SG = "Asia/Singapore"
+    IN = "Asia/Calcutta"
+    DB = "Asia/Dubai"
+    UK = "Europe/London"

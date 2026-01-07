@@ -11,12 +11,13 @@ import time
 
 import pandas as pd
 
-DATE_FMT = r'\d{4}-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])'
+DATE_FMT = r"\d{4}-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])"
 
 
 def exists(path) -> bool:
     """Check path or file exists."""
-    if not path: return False
+    if not path:
+        return False
     return Path(path).exists()
 
 
@@ -32,7 +33,8 @@ def abspath(cur_file, parent=0) -> str:
     """
     p = Path(cur_file)
     cur_path = p.parent if p.is_file() else p
-    if parent == 0: return cur_path.as_posix()
+    if parent == 0:
+        return cur_path.as_posix()
     return abspath(cur_file=cur_path.parent, parent=parent - 1)
 
 
@@ -47,10 +49,7 @@ def create_folder(path_name: str, is_file=False):
     p.mkdir(parents=True, exist_ok=True)
 
 
-def all_files(
-        path_name, keyword='', ext='', full_path=True,
-        has_date=False, date_fmt=DATE_FMT
-) -> list[str]:
+def all_files(path_name, keyword="", ext="", full_path=True, has_date=False, date_fmt=DATE_FMT) -> list[str]:
     """Search all files with criteria.
 
     Returned list will be sorted by last modified.
@@ -67,21 +66,20 @@ def all_files(
         list: All file names with criteria fulfilled.
     """
     p = Path(path_name)
-    if not p.is_dir(): return []
+    if not p.is_dir():
+        return []
 
-    keyword = f'*{keyword}*' if keyword else '*'
-    keyword += f'.{ext}' if ext else '.*'
-    r = re.compile(f'.*{date_fmt}.*')
+    keyword = f"*{keyword}*" if keyword else "*"
+    keyword += f".{ext}" if ext else ".*"
+    r = re.compile(f".*{date_fmt}.*")
     return [
         f.as_posix() if full_path else f.name
         for f in p.glob(keyword)
-        if f.is_file() and (f.name[0] != '~') and ((not has_date) or r.match(f.name))
+        if f.is_file() and (f.name[0] != "~") and ((not has_date) or r.match(f.name))
     ]
 
 
-def all_folders(
-        path_name, keyword='', has_date=False, date_fmt=DATE_FMT
-) -> list[str]:
+def all_folders(path_name, keyword="", has_date=False, date_fmt=DATE_FMT) -> list[str]:
     """Search all folders with criteria.
 
     Returned list will be sorted by last modified.
@@ -96,13 +94,14 @@ def all_folders(
         list: All folder names fulfilled criteria.
     """
     p = Path(path_name)
-    if not p.is_dir(): return []
+    if not p.is_dir():
+        return []
 
-    r = re.compile(f'.*{date_fmt}.*')
+    r = re.compile(f".*{date_fmt}.*")
     return [
         f.as_posix()
-        for f in p.glob(f'*{keyword}*' if keyword else '*')
-        if f.is_dir() and (f.name[0] != '~') and ((not has_date) or r.match(f.name))
+        for f in p.glob(f"*{keyword}*" if keyword else "*")
+        if f.is_dir() and (f.name[0] != "~") and ((not has_date) or r.match(f.name))
     ]
 
 
@@ -128,14 +127,16 @@ def filter_by_dates(files_or_folders: list, date_fmt=DATE_FMT) -> list:
     Returns:
         list
     """
-    r = re.compile(f'.*{date_fmt}.*')
-    return list(filter(
-        lambda v: r.match(Path(v).name) is not None,
-        files_or_folders,
-    ))
+    r = re.compile(f".*{date_fmt}.*")
+    return list(
+        filter(
+            lambda v: r.match(Path(v).name) is not None,
+            files_or_folders,
+        )
+    )
 
 
-def latest_file(path_name, keyword='', ext='', **kwargs) -> str:
+def latest_file(path_name, keyword="", ext="", **kwargs) -> str:
     """Latest modified file in folder.
 
     Args:
@@ -147,15 +148,14 @@ def latest_file(path_name, keyword='', ext='', **kwargs) -> str:
     Returns:
         str: Latest file name.
     """
-    files = sort_by_modified(
-        all_files(path_name=path_name, keyword=keyword, ext=ext, full_path=True)
-    )
+    files = sort_by_modified(all_files(path_name=path_name, keyword=keyword, ext=ext, full_path=True))
 
     if not files:
         import logging
+
         logger = logging.getLogger(__name__)
-        logger.debug('No files found in directory: %s', path_name)
-        return ''
+        logger.debug("No files found in directory: %s", path_name)
+        return ""
 
     return Path(files[0]).as_posix()
 

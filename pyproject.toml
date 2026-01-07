@@ -30,13 +30,11 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+  "narwhals>=2.14.0",
   "numpy>=2.2.6",
   "pandas>=2.0",
   "pandas-market-calendars>=5.1.3",
   "pyarrow>=22.0.0",
-  "pytest>=8.4.2",
-  "python-stdnum>=2.1",
-  "pytz>=2025.2",
   "ruamel.yaml>=0.18.16",
 ]
 
@@ -139,7 +137,7 @@ addopts = "-ra"
 filterwarnings = [
   "error::DeprecationWarning",
   "error::PendingDeprecationWarning",
-  "error::FutureWarning",
+  # FutureWarning filter handled in conftest.py to allow XbbgFutureWarning
 ]
 markers = [
   "live_endpoint: marks tests as live Bloomberg endpoint tests (requires --run-xbbg-live to run)",
@@ -155,4 +153,5 @@ dev = [
     "blpapi",
     "coverage>=7.11.0",
     "pytest-cov>=7.0.0",
+    "ruff>=0.14.3",
 ]

@@ -14,7 +14,7 @@ This package contains the main Bloomberg API functions organized into logical mo
 from xbbg.api.helpers import adjust_ccy
 from xbbg.api.historical import abdh, bdh, dividend, earning, turnover
 from xbbg.api.intraday import bdib, bdtick
-from xbbg.api.realtime import live, subscribe
+from xbbg.api.realtime import live, stream, subscribe
 from xbbg.api.reference import (
     abdp,
     abds,
@@ -46,6 +46,7 @@ __all__ = [
     "bta_studies",
     "refresh_studies",
     "live",
+    "stream",
     "subscribe",
     "adjust_ccy",
     "turnover",

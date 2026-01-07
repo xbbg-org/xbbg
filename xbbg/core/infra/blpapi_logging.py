@@ -53,7 +53,7 @@ def register_blpapi_logging_callback(
         True
     """
     if not is_available():
-        logger.warning('blpapi not available; cannot register logging callback')
+        logger.warning("blpapi not available; cannot register logging callback")
         return None
 
     if threshold_severity is None:
@@ -73,19 +73,17 @@ def register_blpapi_logging_callback(
             return
 
         # Map blpapi severity to Python logging level
-        python_level = _BLPAPI_TO_PYTHON_LOG_LEVEL.get(
-            severity, logging.INFO
-        )
+        python_level = _BLPAPI_TO_PYTHON_LOG_LEVEL.get(severity, logging.INFO)
 
         # Create a logger with the blpapi category as the name
         # Use parameterized string formatting for performance
-        blpapi_logger = logging.getLogger('blpapi.%s' % category)
+        blpapi_logger = logging.getLogger("blpapi.%s" % category)
 
         # Only log if the level is enabled (avoid overhead)
         if blpapi_logger.isEnabledFor(python_level):
             blpapi_logger.log(
                 python_level,
-                '[thread=%d] %s',
+                "[thread=%d] %s",
                 thread_id,
                 message,
             )
@@ -96,16 +94,16 @@ def register_blpapi_logging_callback(
             thresholdSeverity=threshold_severity,
         )
         logger.debug(
-            'Registered blpapi logging callback (threshold severity: %d)',
+            "Registered blpapi logging callback (threshold severity: %d)",
             threshold_severity,
         )
         return blpapi_log_callback
     except Exception as e:
-        logger.warning('Failed to register blpapi logging callback: %s', e)
+        logger.warning("Failed to register blpapi logging callback: %s", e)
         return None
 
 
-def log_event_info(event, context: str = '') -> None:
+def log_event_info(event, context: str = "") -> None:
     """Log information about a Bloomberg event.
 
     Performance-optimized: expensive operations are guarded by isEnabledFor checks.
@@ -129,25 +127,25 @@ def log_event_info(event, context: str = '') -> None:
         # Just log the event type and optional context.
         if context:
             logger.debug(
-                'Bloomberg event received: type=%s (%d) [%s]',
+                "Bloomberg event received: type=%s (%d) [%s]",
                 event_type_name,
                 event_type,
                 context,
             )
         else:
             logger.debug(
-                'Bloomberg event received: type=%s (%d)',
+                "Bloomberg event received: type=%s (%d)",
                 event_type_name,
                 event_type,
             )
 
         # Log additional details only for important event types (avoid redundant logs)
         if event_type == blpapi.Event.RESPONSE:
-            logger.debug('Response event received (final)')
+            logger.debug("Response event received (final)")
         elif event_type == blpapi.Event.SESSION_STATUS:
-            logger.info('Bloomberg session status event received')
+            logger.info("Bloomberg session status event received")
         elif event_type == blpapi.Event.SUBSCRIPTION_STATUS:
-            logger.debug('Subscription status event received')
+            logger.debug("Subscription status event received")
 
     except Exception:  # noqa: BLE001
         # Don't log exceptions here - avoid recursive logging issues.
@@ -158,10 +156,10 @@ def log_event_info(event, context: str = '') -> None:
 
 
 # Separate logger for verbose message-level logging (opt-in)
-_message_logger = logging.getLogger(__name__ + '.messages')
+_message_logger = logging.getLogger(__name__ + ".messages")
 
 
-def log_message_info(msg, context: str = '') -> None:
+def log_message_info(msg, context: str = "") -> None:
     """Log information about a Bloomberg message.
 
     Performance-optimized: uses opt-in logger for per-message details.
@@ -176,13 +174,13 @@ def log_message_info(msg, context: str = '') -> None:
 
     # Always check for errors (important, rare, should be logged)
     with suppress(Exception):  # noqa: BLE001
-        if msg.hasElement('responseError'):
-            error_elem = msg.getElement('responseError')
-            if error_elem.hasElement('category'):
-                category = error_elem.getElementAsString('category')
-                message = error_elem.getElementAsString('message') if error_elem.hasElement('message') else ''
+        if msg.hasElement("responseError"):
+            error_elem = msg.getElement("responseError")
+            if error_elem.hasElement("category"):
+                category = error_elem.getElementAsString("category")
+                message = error_elem.getElementAsString("message") if error_elem.hasElement("message") else ""
                 logger.warning(
-                    'Bloomberg API error: category=%s, message=%s',
+                    "Bloomberg API error: category=%s, message=%s",
                     category,
                     message,
                 )
@@ -197,11 +195,11 @@ def log_message_info(msg, context: str = '') -> None:
         correlation_ids = None
 
         # Only do expensive operations if verbose logging is enabled
-        if hasattr(msg, 'topicName'):
+        if hasattr(msg, "topicName"):
             with suppress(Exception):
                 topic = msg.topicName()
 
-        if hasattr(msg, 'correlationIds'):
+        if hasattr(msg, "correlationIds"):
             with suppress(Exception):
                 cids = msg.correlationIds()
                 if cids:
@@ -211,31 +209,31 @@ def log_message_info(msg, context: str = '') -> None:
         # Use parameterized logging
         if topic and correlation_ids:
             _message_logger.debug(
-                'Bloomberg message: type=%s, topic=%s, correlation_ids=%s%s',
+                "Bloomberg message: type=%s, topic=%s, correlation_ids=%s%s",
                 msg_type,
                 topic,
                 correlation_ids,
-                ' [%s]' % context if context else '',
+                " [%s]" % context if context else "",
             )
         elif topic:
             _message_logger.debug(
-                'Bloomberg message: type=%s, topic=%s%s',
+                "Bloomberg message: type=%s, topic=%s%s",
                 msg_type,
                 topic,
-                ' [%s]' % context if context else '',
+                " [%s]" % context if context else "",
             )
         elif correlation_ids:
             _message_logger.debug(
-                'Bloomberg message: type=%s, correlation_ids=%s%s',
+                "Bloomberg message: type=%s, correlation_ids=%s%s",
                 msg_type,
                 correlation_ids,
-                ' [%s]' % context if context else '',
+                " [%s]" % context if context else "",
             )
         else:
             _message_logger.debug(
-                'Bloomberg message: type=%s%s',
+                "Bloomberg message: type=%s%s",
                 msg_type,
-                ' [%s]' % context if context else '',
+                " [%s]" % context if context else "",
             )
 
     except Exception:  # noqa: BLE001
@@ -247,22 +245,21 @@ def log_message_info(msg, context: str = '') -> None:
 def _get_event_type_name(event_type: int) -> str:
     """Get human-readable name for event type."""
     if not is_available():
-        return f'UNKNOWN({event_type})'
+        return f"UNKNOWN({event_type})"
 
     event_type_map = {
-        blpapi.Event.SESSION_STATUS: 'SESSION_STATUS',
-        blpapi.Event.SUBSCRIPTION_STATUS: 'SUBSCRIPTION_STATUS',
-        blpapi.Event.SUBSCRIPTION_DATA: 'SUBSCRIPTION_DATA',
-        blpapi.Event.RESPONSE: 'RESPONSE',
-        blpapi.Event.PARTIAL_RESPONSE: 'PARTIAL_RESPONSE',
-        blpapi.Event.REQUEST_STATUS: 'REQUEST_STATUS',
-        blpapi.Event.TIMEOUT: 'TIMEOUT',
-        blpapi.Event.AUTHORIZATION_STATUS: 'AUTHORIZATION_STATUS',
-        blpapi.Event.RESOLUTION_STATUS: 'RESOLUTION_STATUS',
-        blpapi.Event.TOPIC_STATUS: 'TOPIC_STATUS',
-        blpapi.Event.TOKEN_STATUS: 'TOKEN_STATUS',
-        blpapi.Event.SERVICE_STATUS: 'SERVICE_STATUS',
+        blpapi.Event.SESSION_STATUS: "SESSION_STATUS",
+        blpapi.Event.SUBSCRIPTION_STATUS: "SUBSCRIPTION_STATUS",
+        blpapi.Event.SUBSCRIPTION_DATA: "SUBSCRIPTION_DATA",
+        blpapi.Event.RESPONSE: "RESPONSE",
+        blpapi.Event.PARTIAL_RESPONSE: "PARTIAL_RESPONSE",
+        blpapi.Event.REQUEST_STATUS: "REQUEST_STATUS",
+        blpapi.Event.TIMEOUT: "TIMEOUT",
+        blpapi.Event.AUTHORIZATION_STATUS: "AUTHORIZATION_STATUS",
+        blpapi.Event.RESOLUTION_STATUS: "RESOLUTION_STATUS",
+        blpapi.Event.TOPIC_STATUS: "TOPIC_STATUS",
+        blpapi.Event.TOKEN_STATUS: "TOKEN_STATUS",
+        blpapi.Event.SERVICE_STATUS: "SERVICE_STATUS",
     }
 
-    return event_type_map.get(event_type, f'UNKNOWN({event_type})')
-
+    return event_type_map.get(event_type, f"UNKNOWN({event_type})")
