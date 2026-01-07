@@ -236,15 +236,32 @@ def earning(
     if len(data_nw) == 0 or len(header_nw) == 0:
         return data
 
-    if data_nw.shape[1] != header_nw.shape[1]:
-        msg = f"Inconsistent shape: data has {data_nw.shape[1]} columns, header has {header_nw.shape[1]}"
-        raise ValueError(msg)
+    # Build column rename mapping from header
+    # Data columns like "Period X Value" map to Header columns "Period X Header"
+    # Header values become the new column names
+    header_row = dict(next(header_nw.iter_rows(named=True)))
+    rename_map: dict[str, str] = {}
 
-    # Use header row as column names
-    new_cols = header_nw.row(0) if len(header_nw) > 0 else [f"col_{i}" for i in range(data_nw.shape[1])]
-    # Clean column names
-    clean_cols = [str(c).lower().replace(" ", "_").replace("_20", "20") for c in new_cols]
-    data_nw = data_nw.rename(dict(zip(data_nw.columns, clean_cols, strict=False)))
+    for data_col in data_nw.columns:
+        if data_col == "ticker":
+            continue
+
+        # Determine the corresponding header column name
+        if data_col.endswith(" Value"):
+            # "Period X Value" -> "Period X Header"
+            header_col = data_col.replace(" Value", " Header")
+        else:
+            # "Metric Name" -> "Metric Name Header"
+            header_col = f"{data_col} Header"
+
+        # Get the header value and clean it
+        if header_col in header_row:
+            new_name = str(header_row[header_col]).lower().replace(" ", "_").replace("_20", "20")
+            rename_map[data_col] = new_name
+
+    # Apply renaming
+    if rename_map:
+        data_nw = data_nw.rename(rename_map)
 
     # Calculate percentage columns for each fiscal year
     if "level" not in data_nw.columns:
@@ -268,8 +285,19 @@ def earning(
                 except (ValueError, TypeError):
                     levels.append(None)
 
-        values = data_nw[yr].to_list()
-        pct_values = [None] * len(levels)
+        # Get fiscal year values, converting to float
+        raw_values = data_nw[yr].to_list()
+        values: list[float | None] = []
+        for val in raw_values:
+            if val is None:
+                values.append(None)
+            else:
+                try:
+                    values.append(float(val))
+                except (ValueError, TypeError):
+                    values.append(None)
+
+        pct_values: list[float | None] = [None] * len(levels)
 
         # Calculate level 1 percentage (% of total level 1)
         level_1_indices = [i for i, lvl in enumerate(levels) if lvl == 1]
