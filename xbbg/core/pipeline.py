@@ -1509,20 +1509,19 @@ class BtaTransformer:
         if raw_data.num_rows == 0:
             return pa.table({})
 
-        # Wrap with narwhals for transformations
-        df = nw.from_native(raw_data, eager_only=True)
+        # Convert to pandas for date parsing (handles timezone-aware strings)
+        df_pd = raw_data.to_pandas()
 
         # Convert date column to datetime if present
-        if "date" in df.columns:
-            # Use narwhals str.to_datetime for date parsing
-            df = df.with_columns(nw.col("date").cast(nw.Datetime("us")).alias("date"))
+        if "date" in df_pd.columns and df_pd["date"].dtype == object:
+            df_pd["date"] = pd.to_datetime(df_pd["date"], utc=True)
 
         # Sort by date for consistent output
-        if "date" in df.columns:
-            df = df.sort("date")
+        if "date" in df_pd.columns:
+            df_pd = df_pd.sort_values("date").reset_index(drop=True)
 
         # Return as Arrow table
-        return nw.to_native(df)
+        return pa.Table.from_pandas(df_pd, preserve_index=False)
 
 
 def bta_pipeline_config() -> PipelineConfig:
