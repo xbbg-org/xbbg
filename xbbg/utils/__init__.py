@@ -20,14 +20,13 @@ from xbbg.utils.pipeline import (  # noqa: F401
 )
 
 __all__ = [
-    'add_ticker',
-    'apply_fx',
-    'daily_stats',
-    'dropna',
-    'format_raw',
-    'get_series',
-    'perf',
-    'since_year',
-    'standard_cols',
+    "add_ticker",
+    "apply_fx",
+    "daily_stats",
+    "dropna",
+    "format_raw",
+    "get_series",
+    "perf",
+    "since_year",
+    "standard_cols",
 ]
-

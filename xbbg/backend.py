@@ -152,7 +152,9 @@ def configure(
             host=host if host is not None else config.host,
             port=port if port is not None else config.port,
             request_pool_size=request_pool_size if request_pool_size is not None else config.request_pool_size,
-            subscription_pool_size=subscription_pool_size if subscription_pool_size is not None else config.subscription_pool_size,
+            subscription_pool_size=subscription_pool_size
+            if subscription_pool_size is not None
+            else config.subscription_pool_size,
         )
     else:
         _config = EngineConfig(

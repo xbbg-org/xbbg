@@ -92,17 +92,19 @@ def test_iter_bql_json_rows_handles_duplicate_ids():
     import blpapi
 
     # Simulate eco_calendar response: same ID repeated for all values
-    json_payload = json.dumps({
-        "results": {
-            "eco_calendar": {
-                "idColumn": {"values": ["US Country", "US Country", "US Country"]},
-                "valuesColumn": {"values": ["GDP", "CPI", "NFP"]},
-                "secondaryColumns": [
-                    {"name": "RELEASE_DATE", "values": ["2024-01-01", "2024-01-15", "2024-01-05"]}
-                ]
+    json_payload = json.dumps(
+        {
+            "results": {
+                "eco_calendar": {
+                    "idColumn": {"values": ["US Country", "US Country", "US Country"]},
+                    "valuesColumn": {"values": ["GDP", "CPI", "NFP"]},
+                    "secondaryColumns": [
+                        {"name": "RELEASE_DATE", "values": ["2024-01-01", "2024-01-15", "2024-01-05"]}
+                    ],
+                }
             }
         }
-    })
+    )
 
     mock_elem = MagicMock()
     mock_elem.datatype.return_value = blpapi.DataType.STRING
@@ -128,16 +130,18 @@ def test_iter_bql_json_rows_handles_rows_schema():
 
     import blpapi
 
-    json_payload = json.dumps({
-        "results": {
-            "data": {
-                "rows": [
-                    {"event_name": "GDP", "country": "US"},
-                    {"event_name": "CPI", "country": "US"},
-                ]
+    json_payload = json.dumps(
+        {
+            "results": {
+                "data": {
+                    "rows": [
+                        {"event_name": "GDP", "country": "US"},
+                        {"event_name": "CPI", "country": "US"},
+                    ]
+                }
             }
         }
-    })
+    )
 
     mock_elem = MagicMock()
     mock_elem.datatype.return_value = blpapi.DataType.STRING

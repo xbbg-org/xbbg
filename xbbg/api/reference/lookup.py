@@ -16,7 +16,7 @@ from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['fieldInfo', 'fieldSearch', 'lookupSecurity', 'getPortfolio', 'getBlpapiVersion']
+__all__ = ["fieldInfo", "fieldSearch", "lookupSecurity", "getPortfolio", "getBlpapiVersion"]
 
 
 def fieldInfo(fields: str | list[str], **kwargs) -> pd.DataFrame:
@@ -43,18 +43,18 @@ def fieldInfo(fields: str | list[str], **kwargs) -> pd.DataFrame:
     session = conn_module.bbg_session(**kwargs)
 
     # Open field info service
-    service_name = '//blp/apiflds'
+    service_name = "//blp/apiflds"
     if not session.openService(service_name):
-        raise RuntimeError(f'Failed to open {service_name}')
+        raise RuntimeError(f"Failed to open {service_name}")
 
     field_info_service = session.getService(service_name)
 
     results = []
     for field in field_list:
         # Create FieldInfoRequest
-        request = field_info_service.createRequest('FieldInfoRequest')
-        request.append(blpapi.Name('id'), field)
-        request.set(blpapi.Name('returnFieldDocumentation'), False)
+        request = field_info_service.createRequest("FieldInfoRequest")
+        request.append(blpapi.Name("id"), field)
+        request.set(blpapi.Name("returnFieldDocumentation"), False)
 
         session.sendRequest(request)
 
@@ -66,31 +66,31 @@ def fieldInfo(fields: str | list[str], **kwargs) -> pd.DataFrame:
                 continue
 
             for msg in event:
-                field_data = msg.getElement(blpapi.Name('fieldData'))
+                field_data = msg.getElement(blpapi.Name("fieldData"))
 
                 if field_data.numValues() > 1:
-                    raise ValueError(f'getFieldType: too many fields returned for {field}')
+                    raise ValueError(f"getFieldType: too many fields returned for {field}")
 
                 field_elem = field_data.getValueAsElement(0)
 
-                if field_elem.hasElement(blpapi.Name('fieldError')):
-                    error_msg = field_elem.getElement(blpapi.Name('fieldError')).getElementAsString(
-                        blpapi.Name('message')
+                if field_elem.hasElement(blpapi.Name("fieldError")):
+                    error_msg = field_elem.getElement(blpapi.Name("fieldError")).getElementAsString(
+                        blpapi.Name("message")
                     )
-                    raise ValueError(f'Bad field {field}: {error_msg}')
+                    raise ValueError(f"Bad field {field}: {error_msg}")
 
                 # Extract field info
-                field_id = field_elem.getElementAsString(blpapi.Name('id'))
-                field_info_elem = field_elem.getElement(blpapi.Name('fieldInfo'))
-                mnemonic = field_info_elem.getElementAsString(blpapi.Name('mnemonic'))
-                datatype = field_info_elem.getElementAsString(blpapi.Name('datatype'))
-                ftype = field_info_elem.getElementAsString(blpapi.Name('ftype'))
+                field_id = field_elem.getElementAsString(blpapi.Name("id"))
+                field_info_elem = field_elem.getElement(blpapi.Name("fieldInfo"))
+                mnemonic = field_info_elem.getElementAsString(blpapi.Name("mnemonic"))
+                datatype = field_info_elem.getElementAsString(blpapi.Name("datatype"))
+                ftype = field_info_elem.getElementAsString(blpapi.Name("ftype"))
 
                 field_info = {
-                    'id': field_id,
-                    'mnemonic': mnemonic,
-                    'datatype': datatype,
-                    'ftype': ftype,
+                    "id": field_id,
+                    "mnemonic": mnemonic,
+                    "datatype": datatype,
+                    "ftype": ftype,
                 }
 
             if event.eventType() == blpapi.Event.RESPONSE:
@@ -125,16 +125,16 @@ def fieldSearch(searchterm: str, **kwargs) -> pd.DataFrame:
     session = conn_module.bbg_session(**kwargs)
 
     # Open field info service
-    service_name = '//blp/apiflds'
+    service_name = "//blp/apiflds"
     if not session.openService(service_name):
-        raise RuntimeError(f'Failed to open {service_name}')
+        raise RuntimeError(f"Failed to open {service_name}")
 
     field_info_service = session.getService(service_name)
 
     # Create FieldSearchRequest
-    request = field_info_service.createRequest('FieldSearchRequest')
-    request.set(blpapi.Name('searchSpec'), searchterm)
-    request.set(blpapi.Name('returnFieldDocumentation'), False)
+    request = field_info_service.createRequest("FieldSearchRequest")
+    request.set(blpapi.Name("searchSpec"), searchterm)
+    request.set(blpapi.Name("returnFieldDocumentation"), False)
 
     session.sendRequest(request)
 
@@ -149,41 +149,43 @@ def fieldSearch(searchterm: str, **kwargs) -> pd.DataFrame:
             continue
 
         for msg in event:
-            field_data = msg.getElement(blpapi.Name('fieldData'))
+            field_data = msg.getElement(blpapi.Name("fieldData"))
 
             num_elements = field_data.numValues()
             for i in range(num_elements):
                 field_elem = field_data.getValueAsElement(i)
-                field_id = field_elem.getElementAsString(blpapi.Name('id'))
+                field_id = field_elem.getElementAsString(blpapi.Name("id"))
 
-                if field_elem.hasElement(blpapi.Name('fieldInfo')):
-                    field_info = field_elem.getElement(blpapi.Name('fieldInfo'))
-                    mnemonic = field_info.getElementAsString(blpapi.Name('mnemonic'))
-                    description = field_info.getElementAsString(blpapi.Name('description'))
+                if field_elem.hasElement(blpapi.Name("fieldInfo")):
+                    field_info = field_elem.getElement(blpapi.Name("fieldInfo"))
+                    mnemonic = field_info.getElementAsString(blpapi.Name("mnemonic"))
+                    description = field_info.getElementAsString(blpapi.Name("description"))
 
                     field_ids.append(field_id)
                     mnemonics.append(mnemonic)
                     descriptions.append(description)
                 else:
                     # Field error
-                    field_error = field_elem.getElement(blpapi.Name('fieldError'))
-                    error_msg = field_error.getElementAsString(blpapi.Name('message'))
-                    raise ValueError(f'Field error for {field_id}: {error_msg}')
+                    field_error = field_elem.getElement(blpapi.Name("fieldError"))
+                    error_msg = field_error.getElementAsString(blpapi.Name("message"))
+                    raise ValueError(f"Field error for {field_id}: {error_msg}")
 
         if event.eventType() == blpapi.Event.RESPONSE:
             break
 
-    return pd.DataFrame({
-        'id': field_ids,
-        'mnemonic': mnemonics,
-        'description': descriptions,
-    })
+    return pd.DataFrame(
+        {
+            "id": field_ids,
+            "mnemonic": mnemonics,
+            "description": descriptions,
+        }
+    )
 
 
 def lookupSecurity(
     query: str,
-    yellowkey: str = 'none',
-    language: str = 'none',
+    yellowkey: str = "none",
+    language: str = "none",
     max_results: int = 20,
     verbose: bool = False,
     **kwargs,
@@ -220,58 +222,58 @@ def lookupSecurity(
     session = conn_module.bbg_session(**kwargs)
 
     # Open instruments service
-    service_name = '//blp/instruments'
+    service_name = "//blp/instruments"
     if not session.openService(service_name):
-        raise RuntimeError(f'Failed to open {service_name}')
+        raise RuntimeError(f"Failed to open {service_name}")
 
     instruments_service = session.getService(service_name)
 
     # Map yellowkey to Bloomberg format
     yellowkey_map = {
-        'none': 'YK_FILTER_NONE',
-        'cmdt': 'YK_FILTER_CMDT',
-        'eqty': 'YK_FILTER_EQTY',
-        'muni': 'YK_FILTER_MUNI',
-        'prfd': 'YK_FILTER_PRFD',
-        'clnt': 'YK_FILTER_CLNT',
-        'mmkt': 'YK_FILTER_MMKT',
-        'govt': 'YK_FILTER_GOVT',
-        'corp': 'YK_FILTER_CORP',
-        'indx': 'YK_FILTER_INDX',
-        'curr': 'YK_FILTER_CURR',
-        'mtge': 'YK_FILTER_MTGE',
+        "none": "YK_FILTER_NONE",
+        "cmdt": "YK_FILTER_CMDT",
+        "eqty": "YK_FILTER_EQTY",
+        "muni": "YK_FILTER_MUNI",
+        "prfd": "YK_FILTER_PRFD",
+        "clnt": "YK_FILTER_CLNT",
+        "mmkt": "YK_FILTER_MMKT",
+        "govt": "YK_FILTER_GOVT",
+        "corp": "YK_FILTER_CORP",
+        "indx": "YK_FILTER_INDX",
+        "curr": "YK_FILTER_CURR",
+        "mtge": "YK_FILTER_MTGE",
     }
-    yellowkey_filter = yellowkey_map.get(yellowkey.lower(), 'YK_FILTER_NONE')
+    yellowkey_filter = yellowkey_map.get(yellowkey.lower(), "YK_FILTER_NONE")
 
     # Map language to Bloomberg format
     language_map = {
-        'none': 'LANG_OVERRIDE_NONE',
-        'english': 'LANG_OVERRIDE_ENGLISH',
-        'kanji': 'LANG_OVERRIDE_KANJI',
-        'french': 'LANG_OVERRIDE_FRENCH',
-        'german': 'LANG_OVERRIDE_GERMAN',
-        'spanish': 'LANG_OVERRIDE_SPANISH',
-        'portuguese': 'LANG_OVERRIDE_PORTUGUESE',
-        'italian': 'LANG_OVERRIDE_ITALIAN',
-        'chinese_trad': 'LANG_OVERRIDE_CHINESE_TRAD',
-        'korean': 'LANG_OVERRIDE_KOREAN',
-        'chinese_simp': 'LANG_OVERRIDE_CHINESE_SIMP',
-        'russian': 'LANG_OVERRIDE_RUSSIAN',
+        "none": "LANG_OVERRIDE_NONE",
+        "english": "LANG_OVERRIDE_ENGLISH",
+        "kanji": "LANG_OVERRIDE_KANJI",
+        "french": "LANG_OVERRIDE_FRENCH",
+        "german": "LANG_OVERRIDE_GERMAN",
+        "spanish": "LANG_OVERRIDE_SPANISH",
+        "portuguese": "LANG_OVERRIDE_PORTUGUESE",
+        "italian": "LANG_OVERRIDE_ITALIAN",
+        "chinese_trad": "LANG_OVERRIDE_CHINESE_TRAD",
+        "korean": "LANG_OVERRIDE_KOREAN",
+        "chinese_simp": "LANG_OVERRIDE_CHINESE_SIMP",
+        "russian": "LANG_OVERRIDE_RUSSIAN",
     }
-    language_override = language_map.get(language.lower(), 'LANG_OVERRIDE_NONE')
+    language_override = language_map.get(language.lower(), "LANG_OVERRIDE_NONE")
 
     if max_results > 1000:
-        logger.warning('max_results may be limited to 1000 by the Bloomberg API')
+        logger.warning("max_results may be limited to 1000 by the Bloomberg API")
 
     # Create instrumentListRequest
-    request = instruments_service.createRequest('instrumentListRequest')
-    request.set(blpapi.Name('query'), query)
-    request.set(blpapi.Name('yellowKeyFilter'), yellowkey_filter)
-    request.set(blpapi.Name('languageOverride'), language_override)
-    request.set(blpapi.Name('maxResults'), max_results)
+    request = instruments_service.createRequest("instrumentListRequest")
+    request.set(blpapi.Name("query"), query)
+    request.set(blpapi.Name("yellowKeyFilter"), yellowkey_filter)
+    request.set(blpapi.Name("languageOverride"), language_override)
+    request.set(blpapi.Name("maxResults"), max_results)
 
     if verbose:
-        logger.info(f'Sending lookup request: {request}')
+        logger.info(f"Sending lookup request: {request}")
 
     session.sendRequest(request)
 
@@ -285,22 +287,24 @@ def lookupSecurity(
 
         if event.eventType() == blpapi.Event.PARTIAL_RESPONSE:
             if verbose:
-                logger.debug('Processing partial response')
+                logger.debug("Processing partial response")
             _process_lookup_event(event, securities, descriptions, verbose)
         elif event.eventType() == blpapi.Event.RESPONSE:
             if verbose:
-                logger.debug('Processing response')
+                logger.debug("Processing response")
             _process_lookup_event(event, securities, descriptions, verbose)
             done = True
         elif event.eventType() == blpapi.Event.SESSION_STATUS:
             for msg in event:
-                if msg.messageType() == blpapi.Name('SessionTerminated'):
+                if msg.messageType() == blpapi.Name("SessionTerminated"):
                     done = True
 
-    return pd.DataFrame({
-        'security': securities,
-        'description': descriptions,
-    })
+    return pd.DataFrame(
+        {
+            "security": securities,
+            "description": descriptions,
+        }
+    )
 
 
 def _process_lookup_event(
@@ -311,29 +315,28 @@ def _process_lookup_event(
 ) -> None:
     """Process lookup response event."""
     for msg in event:
-
-        if msg.hasElement(blpapi.Name('responseError')):
-            error_msg = msg.getElement(blpapi.Name('responseError'))
-            logger.error(f'REQUEST FAILED: {error_msg}')
+        if msg.hasElement(blpapi.Name("responseError")):
+            error_msg = msg.getElement(blpapi.Name("responseError"))
+            logger.error(f"REQUEST FAILED: {error_msg}")
             continue
 
         response = msg.asElement()
-        if str(response.name()) != 'InstrumentListResponse':
-            raise ValueError('Not a valid InstrumentListResponse')
+        if str(response.name()) != "InstrumentListResponse":
+            raise ValueError("Not a valid InstrumentListResponse")
 
-        results = response.getElement(blpapi.Name('results'))
+        results = response.getElement(blpapi.Name("results"))
         num_items = results.numValues()
 
         if verbose:
-            logger.debug(f'Response contains {num_items} items')
+            logger.debug(f"Response contains {num_items} items")
 
         for i in range(num_items):
             item = results.getValueAsElement(i)
-            security = item.getElementAsString(blpapi.Name('security'))
-            description = item.getElementAsString(blpapi.Name('description'))
+            security = item.getElementAsString(blpapi.Name("security"))
+            description = item.getElementAsString(blpapi.Name("description"))
 
             if verbose:
-                logger.debug(f'{security}\t\t{description}')
+                logger.debug(f"{security}\t\t{description}")
 
             securities.append(security)
             descriptions.append(description)
@@ -398,7 +401,7 @@ def getBlpapiVersion(**kwargs) -> dict[str, str]:
         >>> print(f"Header: {version['header']}, Runtime: {version['runtime']}")  # doctest: +SKIP
     """
     if not blpapi:
-        raise RuntimeError('blpapi is not available')
+        raise RuntimeError("blpapi is not available")
 
     try:
         # Try to get version info using blpapi's version functions
@@ -407,15 +410,15 @@ def getBlpapiVersion(**kwargs) -> dict[str, str]:
         runtime_version = None
 
         # Try accessing version info if available
-        if hasattr(blpapi, 'VersionInfo'):
+        if hasattr(blpapi, "VersionInfo"):
             vi_header = blpapi.VersionInfo.headerVersion()
-            header_version = f'{vi_header.majorVersion()}.{vi_header.minorVersion()}.{vi_header.patchVersion()}.{vi_header.buildVersion()}'
+            header_version = f"{vi_header.majorVersion()}.{vi_header.minorVersion()}.{vi_header.patchVersion()}.{vi_header.buildVersion()}"
 
             vi_runtime = blpapi.VersionInfo.runtimeVersion()
-            runtime_version = f'{vi_runtime.majorVersion()}.{vi_runtime.minorVersion()}.{vi_runtime.patchVersion()}.{vi_runtime.buildVersion()}'
-        elif hasattr(blpapi, '__version__'):
+            runtime_version = f"{vi_runtime.majorVersion()}.{vi_runtime.minorVersion()}.{vi_runtime.patchVersion()}.{vi_runtime.buildVersion()}"
+        elif hasattr(blpapi, "__version__"):
             # Fallback to module version if VersionInfo not available
-            header_version = getattr(blpapi, '__version__', 'unknown')
+            header_version = getattr(blpapi, "__version__", "unknown")
             runtime_version = header_version
         else:
             # Last resort: try to get version identifier
@@ -424,17 +427,16 @@ def getBlpapiVersion(**kwargs) -> dict[str, str]:
                 header_version = version_id
                 runtime_version = version_id
             except (AttributeError, Exception):
-                header_version = 'unknown'
-                runtime_version = 'unknown'
+                header_version = "unknown"
+                runtime_version = "unknown"
 
         return {
-            'header': header_version or 'unknown',
-            'runtime': runtime_version or 'unknown',
+            "header": header_version or "unknown",
+            "runtime": runtime_version or "unknown",
         }
     except Exception as e:
-        logger.warning('Could not retrieve Bloomberg API version: %s', e)
+        logger.warning("Could not retrieve Bloomberg API version: %s", e)
         return {
-            'header': 'unknown',
-            'runtime': 'unknown',
+            "header": "unknown",
+            "runtime": "unknown",
         }
-

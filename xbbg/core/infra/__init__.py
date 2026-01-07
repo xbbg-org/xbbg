@@ -8,5 +8,4 @@ This package contains low-level infrastructure:
 # Import modules for easy access
 from xbbg.core.infra import blpapi_logging as blpapi_logging_module, conn as conn_module
 
-__all__ = ['conn_module', 'blpapi_logging_module']
-
+__all__ = ["conn_module", "blpapi_logging_module"]

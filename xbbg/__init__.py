@@ -19,7 +19,6 @@ logger.setLevel(logging.WARNING)
 
 # Backend and format configuration (matching Rust v1 API)
 from xbbg.backend import Backend, EngineConfig, Format, configure  # noqa: E402, F401
-from xbbg.options import get_backend, get_format, set_backend, set_format  # noqa: E402, F401
 
 # Exception classes (v1.0 compatible)
 from xbbg.exceptions import (  # noqa: E402, F401
@@ -32,6 +31,7 @@ from xbbg.exceptions import (  # noqa: E402, F401
     BlpTimeoutError,
     BlpValidationError,
 )
+from xbbg.options import get_backend, get_format, set_backend, set_format  # noqa: E402, F401
 
 # SDK utilities (v1.0 compatible)
 from xbbg.sdk import get_sdk_info  # noqa: E402, F401

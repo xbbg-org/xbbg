@@ -13,14 +13,14 @@ from xbbg.backend import Backend, Format
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['beqs', 'bsrch', 'bql', 'etf_holdings']
+__all__ = ["beqs", "bsrch", "bql", "etf_holdings"]
 
 
 def beqs(
     screen: str,
     asof: str | pd.Timestamp | None = None,
-    typ: str = 'PRIVATE',
-    group: str = 'General',
+    typ: str = "PRIVATE",
+    group: str = "General",
     *,
     backend: Backend | None = None,
     format: Format | None = None,
@@ -48,7 +48,7 @@ def beqs(
     from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, beqs_pipeline_config
 
     # Preserve retry mechanism
-    trial = kwargs.get('trial', 0)
+    trial = kwargs.get("trial", 0)
 
     # Split kwargs
     split = split_kwargs(**kwargs)
@@ -56,8 +56,8 @@ def beqs(
     # Build request - use a dummy ticker since BEQS doesn't use tickers
     request = (
         RequestBuilder()
-        .ticker('DUMMY')  # BEQS doesn't use ticker, but DataRequest requires one
-        .date(asof if asof else 'today')
+        .ticker("DUMMY")  # BEQS doesn't use ticker, but DataRequest requires one
+        .date(asof if asof else "today")
         .context(split.infra)
         .cache_policy(enabled=False)  # BEQS typically not cached
         .request_opts(screen=screen, asof=asof, typ=typ, group=group)
@@ -136,8 +136,8 @@ def bsrch(
     # Build request
     request = (
         RequestBuilder()
-        .ticker('DUMMY')  # BSRCH doesn't use ticker
-        .date('today')
+        .ticker("DUMMY")  # BSRCH doesn't use ticker
+        .date("today")
         .context(split.infra)
         .cache_policy(enabled=False)  # BSRCH typically not cached
         .request_opts(domain=domain, overrides=overrides)
@@ -285,8 +285,8 @@ def bql(
     # Build request
     request = (
         RequestBuilder()
-        .ticker('DUMMY')  # BQL doesn't use ticker
-        .date('today')
+        .ticker("DUMMY")  # BQL doesn't use ticker
+        .date("today")
         .context(split.infra)
         .cache_policy(enabled=False)  # BQL typically not cached
         .request_opts(query=query, params=params, overrides=overrides)
@@ -345,17 +345,17 @@ def etf_holdings(
         >>> df = blp.etf_holdings('SPY')  # doctest: +SKIP
     """
     # Normalize ticker format - ensure it has proper suffix
-    if ' ' not in etf_ticker:
+    if " " not in etf_ticker:
         etf_ticker = f"{etf_ticker} US Equity"
 
     # Default fields
-    default_fields = ['id_isin', 'weights', 'id().position']
+    default_fields = ["id_isin", "weights", "id().position"]
 
     # Combine default fields with any additional fields
     all_fields = default_fields + [f for f in fields if f not in default_fields] if fields else default_fields
 
     # Build BQL query - format: holdings('FULL_TICKER')
-    fields_str = ', '.join(all_fields)
+    fields_str = ", ".join(all_fields)
     bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
 
     logger.debug(f"ETF holdings BQL query: {bql_query}")
@@ -368,10 +368,5 @@ def etf_holdings(
 
     # Clean up column names
     # BQL returns 'id().position' which is awkward to access
-    rename_map = {
-        'id().position': 'position',
-        'ID': 'holding'
-    }
+    rename_map = {"id().position": "position", "ID": "holding"}
     return res.rename(columns=rename_map)
-
-

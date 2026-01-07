@@ -17,15 +17,13 @@ _BLPAPI_AVAILABLE = False
 try:
     # Handle Windows DLL path for Python 3.8+
     ver = sys.version_info
-    if os.name == 'nt' and f'{ver.major}.{ver.minor}' == '3.8':
-        dll_path = os.environ.get('BBG_DLL', 'C:/blp/DAPI')
+    if os.name == "nt" and f"{ver.major}.{ver.minor}" == "3.8":
+        dll_path = os.environ.get("BBG_DLL", "C:/blp/DAPI")
         if Path(dll_path).exists():
             with os.add_dll_directory(dll_path):
                 import blpapi  # type: ignore[reportMissingImports]
         else:
-            raise ImportError(
-                'Please add BBG_DLL to your PATH variable'
-            )
+            raise ImportError("Please add BBG_DLL to your PATH variable")
     else:
         import blpapi  # type: ignore[reportMissingImports]
 
@@ -35,13 +33,14 @@ except (ImportError, AttributeError):
     # Try pytest importorskip as fallback (mostly for testing environments)
     try:
         import pytest  # type: ignore[reportMissingImports]
-        blpapi = pytest.importorskip('blpapi')  # type: ignore[assignment]
+
+        blpapi = pytest.importorskip("blpapi")  # type: ignore[assignment]
         _BLPAPI_AVAILABLE = True
     except (ImportError, AttributeError):
         blpapi = None  # type: ignore[assignment]
         _BLPAPI_AVAILABLE = False
 
+
 def is_available() -> bool:
     """Check if blpapi is available."""
     return _BLPAPI_AVAILABLE
-

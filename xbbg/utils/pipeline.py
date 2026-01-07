@@ -5,19 +5,19 @@ from __future__ import annotations
 import pandas as pd
 
 __all__ = [
-    'add_ticker',
-    'apply_fx',
-    'daily_stats',
-    'dropna',
-    'format_raw',
-    'get_series',
-    'perf',
-    'since_year',
-    'standard_cols',
+    "add_ticker",
+    "apply_fx",
+    "daily_stats",
+    "dropna",
+    "format_raw",
+    "get_series",
+    "perf",
+    "since_year",
+    "standard_cols",
 ]
 
 
-def get_series(data: pd.Series | pd.DataFrame, col: str = 'close') -> pd.DataFrame:
+def get_series(data: pd.Series | pd.DataFrame, col: str = "close") -> pd.DataFrame:
     """Get close column from intraday data.
 
     Args:
@@ -27,8 +27,10 @@ def get_series(data: pd.Series | pd.DataFrame, col: str = 'close') -> pd.DataFra
     Returns:
         pd.DataFrame
     """
-    if isinstance(data, pd.Series): return pd.DataFrame(data)
-    if not isinstance(data.columns, pd.MultiIndex): return data
+    if isinstance(data, pd.Series):
+        return pd.DataFrame(data)
+    if not isinstance(data.columns, pd.MultiIndex):
+        return data
     return data.xs(col, axis=1, level=1)
 
 
@@ -63,12 +65,9 @@ def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) ->
         MC FP Equity  2018-07-24  2018-12-04  2018-12-05   2018-12-06
         MC FP Equity  2018-01-25  2018-04-17  2018-04-18   2018-04-19
     """
-    if col_maps is None: col_maps = {}
-    return data.rename(
-        columns=lambda vv: col_maps.get(
-            vv, vv.lower().replace(' ', '_').replace('-', '_')
-        )
-    )
+    if col_maps is None:
+        col_maps = {}
+    return data.rename(columns=lambda vv: col_maps.get(vv, vv.lower().replace(" ", "_").replace("-", "_")))
 
 
 def apply_fx(
@@ -119,14 +118,15 @@ def apply_fx(
         2020-01-17 16:29:00+00:00         653.74
         2020-01-17 16:35:00+00:00         654.28
     """
-    if isinstance(data, pd.Series): data = pd.DataFrame(data)
+    if isinstance(data, pd.Series):
+        data = pd.DataFrame(data)
 
     if isinstance(fx, (int, float)):
-        return data.dropna(how='all').mul(fx ** power)
+        return data.dropna(how="all").mul(fx**power)
 
     add_fx = pd.concat([data, fx.pipe(get_series).iloc[:, -1]], axis=1)
     add_fx.iloc[:, -1] = add_fx.iloc[:, -1].ffill()
-    return data.mul(add_fx.iloc[:, -1].pow(power), axis=0).dropna(how='all')
+    return data.mul(add_fx.iloc[:, -1].pow(power), axis=0).dropna(how="all")
 
 
 def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
@@ -153,9 +153,11 @@ def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
         2020-01-16 00:00:00+00:00  434.0  711.16  1.11  708.6  709.6
         2020-01-17 00:00:00+00:00  437.0  721.53  1.66  717.0  719.0
     """
-    if data.empty: return pd.DataFrame()
-    if 'percentiles' not in kwargs: kwargs['percentiles'] = [.1, .25, .5, .75, .9]
-    return data.groupby(pd.Grouper(freq='D')).describe(**kwargs)
+    if data.empty:
+        return pd.DataFrame()
+    if "percentiles" not in kwargs:
+        kwargs["percentiles"] = [0.1, 0.25, 0.5, 0.75, 0.9]
+    return data.groupby(pd.Grouper(freq="D")).describe(**kwargs)
 
 
 def dropna(
@@ -171,9 +173,11 @@ def dropna(
     Returns:
         pd.Series or pd.DataFrame with NAs dropped.
     """
-    if isinstance(data, pd.Series): return data.dropna()
-    if isinstance(cols, int): cols = [cols]
-    return data.dropna(how='all', subset=data.columns[cols])
+    if isinstance(data, pd.Series):
+        return data.dropna()
+    if isinstance(cols, int):
+        cols = [cols]
+    return data.dropna(how="all", subset=data.columns[cols])
 
 
 def format_raw(data: pd.DataFrame) -> pd.DataFrame:
@@ -206,6 +210,7 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
         Dividend Type                 object
         dtype: object
     """
+
     def _to_numeric_if_possible(col: pd.Series) -> pd.Series:
         try:
             return pd.to_numeric(col)
@@ -216,11 +221,11 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
     # Preserve original semantics: consider object dtype or UPDATE_STAMP columns,
     # and only convert if the entire column parses to datetime
     dtypes = data.dtypes
-    mask = (dtypes == 'object') | (data.columns.str.contains('UPDATE_STAMP'))
+    mask = (dtypes == "object") | (data.columns.str.contains("UPDATE_STAMP"))
     cols = dtypes.index[mask]
     if len(cols) > 0:
         for col in cols:
-            parsed = pd.to_datetime(data[col], errors='coerce')
+            parsed = pd.to_datetime(data[col], errors="coerce")
             # Ensure parsed is a Series (pd.to_datetime on scalars can return Timestamp)
             if not isinstance(parsed, pd.Series):
                 parsed = pd.Series(parsed, index=data.index)
@@ -252,9 +257,7 @@ def add_ticker(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
         2018-12-28 09:33:00-05:00         249.01
         2018-12-28 09:34:00-05:00         248.86
     """
-    data.columns = pd.MultiIndex.from_product([
-        [ticker], data.head().rename(columns={'numEvents': 'num_trds'}).columns
-    ])
+    data.columns = pd.MultiIndex.from_product([[ticker], data.head().rename(columns={"numEvents": "num_trds"}).columns])
     return data
 
 
@@ -286,9 +289,7 @@ def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
         AMZN US Equity  International      1   65866.0       28.28
         AMZN US Equity            AWS      1   25655.0       11.02
     """
-    return data.loc[:, ~data.columns.str.contains(
-        '|'.join(map(str, range(year - 20, year)))
-    )]
+    return data.loc[:, ~data.columns.str.contains("|".join(map(str, range(year - 20, year))))]
 
 
 def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
@@ -317,14 +318,5 @@ def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
         4   99.0  110.0
     """
     if isinstance(data, pd.Series):
-        return (
-            data
-            .dropna()
-            .pct_change()
-            .fillna(0)
-            .add(1)
-            .cumprod()
-            .mul(100)
-        )
+        return data.dropna().pct_change().fillna(0).add(1).cumprod().mul(100)
     return data.apply(perf, axis=0)
-

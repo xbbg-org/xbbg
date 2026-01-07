@@ -6,4 +6,3 @@ This package contains internal utilities for:
 - db: SQLite database wrapper for trial tracking
 - param: YAML configuration file loading and caching
 """
-

@@ -12,6 +12,26 @@ from __future__ import annotations
 import logging
 
 from xbbg import __version__
+
+# Import implementations with underscore prefix for wrapping
+from xbbg.api.helpers import adjust_ccy as _adjust_ccy
+from xbbg.api.historical import abdh, bdh, dividend as _dividend, earning as _earning, turnover as _turnover
+from xbbg.api.intraday import bdib, bdtick
+from xbbg.api.realtime import live as _live, stream, subscribe as _subscribe
+from xbbg.api.reference import (
+    abdp,
+    abds,
+    bdp,
+    bds,
+    fieldInfo as _fieldInfo,
+    fieldSearch as _fieldSearch,
+    getBlpapiVersion as _getBlpapiVersion,
+    getPortfolio as _getPortfolio,
+    lookupSecurity as _lookupSecurity,
+)
+from xbbg.api.screening import beqs, bql, bsrch, etf_holdings as _etf_holdings
+from xbbg.api.technical import bta, bta_studies as _bta_studies, refresh_studies as _refresh_studies
+from xbbg.core.infra.conn import connect as _connect, disconnect as _disconnect
 from xbbg.deprecation import (
     warn_active_cdx,
     warn_active_futures,
@@ -34,30 +54,6 @@ from xbbg.deprecation import (
     warn_subscribe,
     warn_turnover,
 )
-
-# Import implementations with underscore prefix for wrapping
-from xbbg.api.helpers import adjust_ccy as _adjust_ccy
-from xbbg.api.historical import abdh, bdh
-from xbbg.api.historical import dividend as _dividend
-from xbbg.api.historical import earning as _earning
-from xbbg.api.historical import turnover as _turnover
-from xbbg.api.intraday import bdib, bdtick
-from xbbg.api.realtime import live as _live
-from xbbg.api.realtime import stream
-from xbbg.api.realtime import subscribe as _subscribe
-from xbbg.api.reference import abdp, abds, bdp, bds
-from xbbg.api.reference import fieldInfo as _fieldInfo
-from xbbg.api.reference import fieldSearch as _fieldSearch
-from xbbg.api.reference import getBlpapiVersion as _getBlpapiVersion
-from xbbg.api.reference import getPortfolio as _getPortfolio
-from xbbg.api.reference import lookupSecurity as _lookupSecurity
-from xbbg.api.screening import beqs, bql, bsrch
-from xbbg.api.screening import etf_holdings as _etf_holdings
-from xbbg.api.technical import bta
-from xbbg.api.technical import bta_studies as _bta_studies
-from xbbg.api.technical import refresh_studies as _refresh_studies
-from xbbg.core.infra.conn import connect as _connect
-from xbbg.core.infra.conn import disconnect as _disconnect
 from xbbg.markets import resolvers as _res
 
 logger = logging.getLogger(__name__)

@@ -10,5 +10,4 @@ This package contains supporting utilities:
 # Import trials first to avoid namespace conflicts with utils module
 from . import timezone, trials, utils
 
-__all__ = ['utils', 'timezone', 'trials']
-
+__all__ = ["utils", "timezone", "trials"]

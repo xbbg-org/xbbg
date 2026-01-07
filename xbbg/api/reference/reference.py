@@ -16,7 +16,7 @@ from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['bdp', 'bds', 'abdp', 'abds']
+__all__ = ["bdp", "bds", "abdp", "abds"]
 
 
 def bdp(
@@ -45,7 +45,7 @@ def bdp(
     # Normalize tickers to list
     ticker_list = utils.normalize_tickers(tickers)
     # Ensure primary_ticker is always a string (use first ticker or convert single string)
-    primary_ticker = ticker_list[0] if ticker_list else (tickers if isinstance(tickers, str) else '')
+    primary_ticker = ticker_list[0] if ticker_list else (tickers if isinstance(tickers, str) else "")
     fld_list = utils.normalize_flds(flds)
 
     # Split kwargs
@@ -55,7 +55,7 @@ def bdp(
     request = (
         RequestBuilder()
         .ticker(primary_ticker)
-        .date('today')  # Reference data doesn't use dates, but DataRequest requires one
+        .date("today")  # Reference data doesn't use dates, but DataRequest requires one
         .context(split.infra)
         .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
         .request_opts(tickers=ticker_list, flds=fld_list)
@@ -103,7 +103,7 @@ def bds(
         request = (
             RequestBuilder()
             .ticker(ticker)
-            .date('today')
+            .date("today")
             .context(split.infra)
             .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
             .request_opts(fld=flds, use_port=use_port)
@@ -192,5 +192,6 @@ async def abds(
         >>> #     blp.abds('MSFT US Equity', 'DVD_Hist_All'),
         >>> # )
     """
-    return await asyncio.to_thread(bds, tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs)
-
+    return await asyncio.to_thread(
+        bds, tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs
+    )

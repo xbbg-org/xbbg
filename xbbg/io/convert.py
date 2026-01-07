@@ -105,9 +105,7 @@ def _apply_multiindex(
     frames = []
     for ticker in tickers:
         ticker_data = pdf[pdf[ticker_col] == ticker].set_index(date_col)[field_cols]
-        ticker_data.columns = pd.MultiIndex.from_product(
-            [[ticker], field_cols], names=[ticker_col, "field"]
-        )
+        ticker_data.columns = pd.MultiIndex.from_product([[ticker], field_cols], names=[ticker_col, "field"])
         frames.append(ticker_data)
 
     if not frames:
@@ -206,9 +204,7 @@ def to_output(
             value_name="value",
         )
         # Create combined ticker_field column and pivot
-        wide_frame = long_frame.with_columns(
-            (nw.col(ticker_col) + "_" + nw.col("field")).alias("ticker_field")
-        ).pivot(
+        wide_frame = long_frame.with_columns((nw.col(ticker_col) + "_" + nw.col("field")).alias("ticker_field")).pivot(
             on="ticker_field",
             index=date_col,
             values="value",

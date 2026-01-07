@@ -22,19 +22,18 @@ class TestRequestBuilder:
         """Test fluent builder API."""
         builder = RequestBuilder()
         request = (
-            builder
-            .ticker('AAPL US Equity')
-            .date('2025-01-01')
-            .session('day')
-            .event_type('TRADE')
+            builder.ticker("AAPL US Equity")
+            .date("2025-01-01")
+            .session("day")
+            .event_type("TRADE")
             .interval(5)
             .cache_policy(enabled=True, reload=False)
             .build()
         )
 
-        assert request.ticker == 'AAPL US Equity'
-        assert request.session == 'day'
-        assert request.event_type == 'TRADE'
+        assert request.ticker == "AAPL US Equity"
+        assert request.session == "day"
+        assert request.event_type == "TRADE"
         assert request.interval == 5
         assert request.cache_policy.enabled is True
         assert request.cache_policy.reload is False
@@ -42,18 +41,18 @@ class TestRequestBuilder:
     def test_builder_from_legacy_kwargs(self):
         """Test building from legacy kwargs."""
         request = RequestBuilder.from_legacy_kwargs(
-            ticker='AAPL US Equity',
-            dt='2025-01-01',
-            session='day',
-            typ='TRADE',
+            ticker="AAPL US Equity",
+            dt="2025-01-01",
+            session="day",
+            typ="TRADE",
             interval=5,
             cache=True,
             reload=False,
         )
 
-        assert request.ticker == 'AAPL US Equity'
-        assert request.session == 'day'
-        assert request.event_type == 'TRADE'
+        assert request.ticker == "AAPL US Equity"
+        assert request.session == "day"
+        assert request.event_type == "TRADE"
         assert request.interval == 5
         assert request.cache_policy.enabled is True
         assert request.cache_policy.reload is False
@@ -61,15 +60,15 @@ class TestRequestBuilder:
     def test_builder_requires_ticker(self):
         """Test that builder requires ticker."""
         builder = RequestBuilder()
-        builder.date('2025-01-01')
-        with pytest.raises(ValueError, match='ticker is required'):
+        builder.date("2025-01-01")
+        with pytest.raises(ValueError, match="ticker is required"):
             builder.build()
 
     def test_builder_requires_date(self):
         """Test that builder requires date."""
         builder = RequestBuilder()
-        builder.ticker('AAPL US Equity')
-        with pytest.raises(ValueError, match='dt is required'):
+        builder.ticker("AAPL US Equity")
+        with pytest.raises(ValueError, match="dt is required"):
             builder.build()
 
 
@@ -79,27 +78,27 @@ class TestDataRequest:
     def test_data_request_immutable(self):
         """Test that DataRequest is immutable."""
         request = DataRequest(
-            ticker='AAPL US Equity',
-            dt='2025-01-01',
+            ticker="AAPL US Equity",
+            dt="2025-01-01",
         )
 
         # Should not be able to modify
         with pytest.raises(dataclasses.FrozenInstanceError):  # dataclass frozen raises FrozenInstanceError
-            request.ticker = 'MSFT US Equity'  # type: ignore
+            request.ticker = "MSFT US Equity"  # type: ignore
 
     def test_to_date_string(self):
         """Test date string conversion."""
         request = DataRequest(
-            ticker='AAPL US Equity',
-            dt='2025-01-01',
+            ticker="AAPL US Equity",
+            dt="2025-01-01",
         )
-        assert request.to_date_string() == '2025-01-01'
+        assert request.to_date_string() == "2025-01-01"
 
         request2 = DataRequest(
-            ticker='AAPL US Equity',
-            dt=pd.Timestamp('2025-01-01'),
+            ticker="AAPL US Equity",
+            dt=pd.Timestamp("2025-01-01"),
         )
-        assert request2.to_date_string() == '2025-01-01'
+        assert request2.to_date_string() == "2025-01-01"
 
 
 class TestSessionWindow:
@@ -110,16 +109,16 @@ class TestSessionWindow:
         from xbbg.core.domain.contracts import SessionWindow
 
         window = SessionWindow(
-            start_time='2025-01-01T09:30:00',
-            end_time='2025-01-01T16:00:00',
-            session_name='day',
+            start_time="2025-01-01T09:30:00",
+            end_time="2025-01-01T16:00:00",
+            session_name="day",
         )
         assert window.is_valid() is True
 
         invalid = SessionWindow(
             start_time=None,
-            end_time='2025-01-01T16:00:00',
-            session_name='day',
+            end_time="2025-01-01T16:00:00",
+            session_name="day",
         )
         assert invalid.is_valid() is False
 
@@ -148,7 +147,7 @@ class TestResolverChain:
         from xbbg.markets.resolver_chain import ExchangeYamlResolver
 
         resolver = ExchangeYamlResolver()
-        request = DataRequest(ticker='AAPL US Equity', dt='2025-01-01')
+        request = DataRequest(ticker="AAPL US Equity", dt="2025-01-01")
         assert resolver.can_resolve(request) is True
 
     def test_futures_resolver_can_resolve_futures(self):
@@ -156,10 +155,10 @@ class TestResolverChain:
         from xbbg.markets.resolver_chain import FuturesRollResolver
 
         resolver = FuturesRollResolver()
-        request = DataRequest(ticker='ES1 Index', dt='2025-01-01')
+        request = DataRequest(ticker="ES1 Index", dt="2025-01-01")
         assert resolver.can_resolve(request) is True
 
-        request2 = DataRequest(ticker='AAPL US Equity', dt='2025-01-01')
+        request2 = DataRequest(ticker="AAPL US Equity", dt="2025-01-01")
         # Should still return True (checks in resolve method)
         assert resolver.can_resolve(request2) is True
 
@@ -168,13 +167,13 @@ class TestResolverChain:
         from xbbg.markets.resolver_chain import FixedIncomeDefaultResolver
 
         resolver = FixedIncomeDefaultResolver()
-        request = DataRequest(ticker='/isin/US912810FE39', dt='2025-01-01')
+        request = DataRequest(ticker="/isin/US912810FE39", dt="2025-01-01")
         assert resolver.can_resolve(request) is True
 
-        request2 = DataRequest(ticker='US912810FE39 Govt', dt='2025-01-01')
+        request2 = DataRequest(ticker="US912810FE39 Govt", dt="2025-01-01")
         assert resolver.can_resolve(request2) is True
 
-        request3 = DataRequest(ticker='AAPL US Equity', dt='2025-01-01')
+        request3 = DataRequest(ticker="AAPL US Equity", dt="2025-01-01")
         assert resolver.can_resolve(request3) is False
 
     def test_pmc_resolver_can_resolve(self):
@@ -182,10 +181,10 @@ class TestResolverChain:
         from xbbg.markets.resolver_chain import PmcCalendarResolver
 
         resolver = PmcCalendarResolver()
-        request = DataRequest(ticker='AAPL US Equity', dt='2025-01-01', session='day')
+        request = DataRequest(ticker="AAPL US Equity", dt="2025-01-01", session="day")
         assert resolver.can_resolve(request) is True
 
-        request2 = DataRequest(ticker='AAPL US Equity', dt='2025-01-01', session='am')
+        request2 = DataRequest(ticker="AAPL US Equity", dt="2025-01-01", session="am")
         assert resolver.can_resolve(request2) is False
 
     def test_create_default_resolver_chain(self):
@@ -194,5 +193,4 @@ class TestResolverChain:
 
         chain = create_default_resolver_chain()
         assert len(chain) == 4
-        assert all(hasattr(r, 'can_resolve') and hasattr(r, 'resolve') for r in chain)
-
+        assert all(hasattr(r, "can_resolve") and hasattr(r, "resolve") for r in chain)

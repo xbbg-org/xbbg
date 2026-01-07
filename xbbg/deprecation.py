@@ -6,25 +6,25 @@ All warnings are issued once per session to avoid spamming users.
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING
+import warnings
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import TypeVar
 
-    T = TypeVar('T')
+    T = TypeVar("T")
 
 __all__ = [
-    'XbbgFutureWarning',
-    'warn_once',
-    'warn_defaults_changing',
-    'warn_function_removed',
-    'warn_function_renamed',
-    'warn_function_moved',
-    'warn_signature_changed',
-    'warn_parameter_renamed',
-    'deprecated_alias',
+    "XbbgFutureWarning",
+    "warn_once",
+    "warn_defaults_changing",
+    "warn_function_removed",
+    "warn_function_renamed",
+    "warn_function_moved",
+    "warn_signature_changed",
+    "warn_parameter_renamed",
+    "deprecated_alias",
 ]
 
 
@@ -55,7 +55,7 @@ def warn_once(key: str, message: str, stacklevel: int = 3) -> None:
 def warn_defaults_changing() -> None:
     """Warn that default values are changing in version 1.0."""
     warn_once(
-        'defaults_changing',
+        "defaults_changing",
         "xbbg defaults are changing in version 1.0: "
         "backend='narwhals' and format='long' will become the new defaults. "
         "Set backend/format explicitly to silence this warning. "
@@ -75,7 +75,7 @@ def warn_function_removed(name: str, replacement: str | None = None) -> None:
         msg = f"{name}() is removed in v1.0. {replacement}"
     else:
         msg = f"{name}() is removed in v1.0 with no direct replacement."
-    warn_once(f'removed_{name}', msg)
+    warn_once(f"removed_{name}", msg)
 
 
 def warn_function_renamed(old_name: str, new_name: str) -> None:
@@ -85,7 +85,7 @@ def warn_function_renamed(old_name: str, new_name: str) -> None:
         old_name: The old function name.
         new_name: The new function name.
     """
-    warn_once(f'renamed_{old_name}', f"{old_name}() is renamed to {new_name}() in v1.0.")
+    warn_once(f"renamed_{old_name}", f"{old_name}() is renamed to {new_name}() in v1.0.")
 
 
 def warn_function_moved(name: str, new_location: str) -> None:
@@ -96,9 +96,8 @@ def warn_function_moved(name: str, new_location: str) -> None:
         new_location: New import path (e.g., 'xbbg.ext.dividend').
     """
     warn_once(
-        f'moved_{name}',
-        f"{name}() has moved to {new_location}() in v1.0. "
-        f"Update imports: from xbbg import ext; ext.{name}(...)",
+        f"moved_{name}",
+        f"{name}() has moved to {new_location}() in v1.0. Update imports: from xbbg import ext; ext.{name}(...)",
     )
 
 
@@ -109,7 +108,7 @@ def warn_signature_changed(name: str, details: str) -> None:
         name: Name of the function.
         details: Description of the signature changes.
     """
-    warn_once(f'signature_{name}', f"{name}() signature changed in v1.0. {details}")
+    warn_once(f"signature_{name}", f"{name}() signature changed in v1.0. {details}")
 
 
 def warn_parameter_renamed(func_name: str, old_param: str, new_param: str) -> None:
@@ -121,16 +120,16 @@ def warn_parameter_renamed(func_name: str, old_param: str, new_param: str) -> No
         new_param: New parameter name.
     """
     warn_once(
-        f'param_{func_name}_{old_param}',
+        f"param_{func_name}_{old_param}",
         f"{func_name}() parameter '{old_param}' is renamed to '{new_param}' in v1.0.",
     )
 
 
 def deprecated_alias(
     old_name: str,
-    new_func: 'Callable[..., T]',
-    warning_func: 'Callable[[], None]',
-) -> 'Callable[..., T]':
+    new_func: Callable[..., T],
+    warning_func: Callable[[], None],
+) -> Callable[..., T]:
     """Create a deprecated alias that warns and delegates to the new function.
 
     Args:
@@ -159,7 +158,7 @@ def deprecated_alias(
 def warn_connect() -> None:
     """Warn about connect() removal."""
     warn_function_removed(
-        'connect',
+        "connect",
         "Engine auto-initializes in v1.0. Use xbbg.configure() for custom host/port.",
     )
 
@@ -167,7 +166,7 @@ def warn_connect() -> None:
 def warn_disconnect() -> None:
     """Warn about disconnect() removal."""
     warn_function_removed(
-        'disconnect',
+        "disconnect",
         "Engine manages connections automatically in v1.0. Remove this call.",
     )
 
@@ -175,7 +174,7 @@ def warn_disconnect() -> None:
 def warn_getBlpapiVersion() -> None:
     """Warn about getBlpapiVersion() removal."""
     warn_function_removed(
-        'getBlpapiVersion',
+        "getBlpapiVersion",
         "Use xbbg.get_sdk_info() instead, which returns all SDK sources and versions.",
     )
 
@@ -183,44 +182,43 @@ def warn_getBlpapiVersion() -> None:
 def warn_lookupSecurity() -> None:
     """Warn about lookupSecurity() removal."""
     warn_function_removed(
-        'lookupSecurity',
+        "lookupSecurity",
         "Use xbbg.blkp() instead. Note: yellowkey format changed to 'YK_FILTER_*'.",
     )
 
 
 def warn_fieldInfo() -> None:
     """Warn about fieldInfo() rename."""
-    warn_function_renamed('fieldInfo', 'bfld')
+    warn_function_renamed("fieldInfo", "bfld")
 
 
 def warn_fieldSearch() -> None:
     """Warn about fieldSearch() merge into bfld()."""
     warn_once(
-        'renamed_fieldSearch',
-        "fieldSearch() is merged into bfld() in v1.0. "
-        "Use bfld(search_spec='keyword') for field search.",
+        "renamed_fieldSearch",
+        "fieldSearch() is merged into bfld() in v1.0. Use bfld(search_spec='keyword') for field search.",
     )
 
 
 def warn_bta_studies() -> None:
     """Warn about bta_studies() rename."""
-    warn_function_renamed('bta_studies', 'ta_studies')
+    warn_function_renamed("bta_studies", "ta_studies")
 
 
 def warn_refresh_studies() -> None:
     """Warn about refresh_studies() removal."""
-    warn_function_removed('refresh_studies')
+    warn_function_removed("refresh_studies")
 
 
 def warn_getPortfolio() -> None:
     """Warn about getPortfolio() rename."""
-    warn_function_renamed('getPortfolio', 'bport')
+    warn_function_renamed("getPortfolio", "bport")
 
 
 def warn_live() -> None:
     """Warn about live() replacement."""
     warn_signature_changed(
-        'live',
+        "live",
         "Replaced by asubscribe()/stream() which return Subscription object, "
         "not async generator. Yields DataFrames instead of dicts.",
     )
@@ -229,7 +227,7 @@ def warn_live() -> None:
 def warn_subscribe() -> None:
     """Warn about subscribe() signature change."""
     warn_signature_changed(
-        'subscribe',
+        "subscribe",
         "No longer a context manager in v1.0. Returns Subscription object with "
         "dynamic add/remove support. Use stream() for simple iteration.",
     )
@@ -237,7 +235,7 @@ def warn_subscribe() -> None:
 
 def warn_beqs_typ_param() -> None:
     """Warn about beqs() 'typ' parameter rename."""
-    warn_parameter_renamed('beqs', 'typ', 'screen_type')
+    warn_parameter_renamed("beqs", "typ", "screen_type")
 
 
 # =============================================================================
@@ -247,44 +245,44 @@ def warn_beqs_typ_param() -> None:
 
 def warn_dividend() -> None:
     """Warn about dividend() move to ext module."""
-    warn_function_moved('dividend', 'xbbg.ext.dividend')
+    warn_function_moved("dividend", "xbbg.ext.dividend")
 
 
 def warn_earning() -> None:
     """Warn about earning() move to ext module."""
-    warn_function_moved('earning', 'xbbg.ext.earning')
+    warn_function_moved("earning", "xbbg.ext.earning")
 
 
 def warn_turnover() -> None:
     """Warn about turnover() move to ext module."""
-    warn_function_moved('turnover', 'xbbg.ext.turnover')
+    warn_function_moved("turnover", "xbbg.ext.turnover")
 
 
 def warn_adjust_ccy() -> None:
     """Warn about adjust_ccy() move to ext module."""
-    warn_function_moved('adjust_ccy', 'xbbg.ext.adjust_ccy')
+    warn_function_moved("adjust_ccy", "xbbg.ext.adjust_ccy")
 
 
 def warn_fut_ticker() -> None:
     """Warn about fut_ticker() move to ext module."""
-    warn_function_moved('fut_ticker', 'xbbg.ext.fut_ticker')
+    warn_function_moved("fut_ticker", "xbbg.ext.fut_ticker")
 
 
 def warn_active_futures() -> None:
     """Warn about active_futures() move to ext module."""
-    warn_function_moved('active_futures', 'xbbg.ext.active_futures')
+    warn_function_moved("active_futures", "xbbg.ext.active_futures")
 
 
 def warn_cdx_ticker() -> None:
     """Warn about cdx_ticker() move to ext module."""
-    warn_function_moved('cdx_ticker', 'xbbg.ext.cdx_ticker')
+    warn_function_moved("cdx_ticker", "xbbg.ext.cdx_ticker")
 
 
 def warn_active_cdx() -> None:
     """Warn about active_cdx() move to ext module."""
-    warn_function_moved('active_cdx', 'xbbg.ext.active_cdx')
+    warn_function_moved("active_cdx", "xbbg.ext.active_cdx")
 
 
 def warn_etf_holdings() -> None:
     """Warn about etf_holdings() move to ext module."""
-    warn_function_moved('etf_holdings', 'xbbg.ext.etf_holdings')
+    warn_function_moved("etf_holdings", "xbbg.ext.etf_holdings")
