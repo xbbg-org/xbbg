@@ -30,7 +30,7 @@ def get_sdk_info() -> dict[str, Any]:
         >>> import xbbg
         >>> info = xbbg.get_sdk_info()  # doctest: +SKIP
         >>> info['active']  # doctest: +SKIP
-        'blpapi_python' 
+        'blpapi_python'
 
     Note:
         In xbbg v1.0, this replaces getBlpapiVersion() which is deprecated.
