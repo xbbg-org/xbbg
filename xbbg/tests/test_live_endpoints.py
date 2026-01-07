@@ -1374,7 +1374,6 @@ def test_subscribe_realtime():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="fut_ticker() resolver needs valid contract dates for ES futures")
 def test_fut_ticker_resolution():
     """Test fut_ticker() futures ticker resolution with live Bloomberg data."""
     print(f"\n{'=' * 80}")
@@ -1392,7 +1391,6 @@ def test_fut_ticker_resolution():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="active_futures() resolver needs valid contract dates for ES futures")
 def test_active_futures():
     """Test active_futures() active futures selection with live Bloomberg data."""
     print(f"\n{'=' * 80}")
@@ -1410,7 +1408,6 @@ def test_active_futures():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="cdx_ticker() resolver needs rolling series configuration for CDX tickers")
 def test_cdx_ticker_resolution():
     """Test cdx_ticker() CDX ticker resolution with live Bloomberg data."""
     print(f"\n{'=' * 80}")
@@ -1430,7 +1427,6 @@ def test_cdx_ticker_resolution():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="active_cdx() resolver needs rolling series configuration for CDX tickers")
 def test_active_cdx():
     """Test active_cdx() active CDX selection with live Bloomberg data."""
     print(f"\n{'=' * 80}")
