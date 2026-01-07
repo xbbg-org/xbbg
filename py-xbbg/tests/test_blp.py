@@ -3,6 +3,8 @@
 These tests verify the Python API without requiring a Bloomberg connection.
 """
 
+from __future__ import annotations
+
 
 class TestBdp:
     """Tests for bdp (reference data) function."""

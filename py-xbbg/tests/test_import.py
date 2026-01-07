@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 def test_imports():
     """Test that the xbbg package and its Rust extension can be imported."""
     # Import from installed package (not local source)

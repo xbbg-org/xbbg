@@ -6,6 +6,8 @@ These tests verify that:
 3. Exception hierarchy allows catching by base class
 """
 
+from __future__ import annotations
+
 import pytest
 
 
