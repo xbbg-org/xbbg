@@ -949,7 +949,6 @@ def test_dividend_multiple_tickers():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="earning() helper needs update to work with LONG format output (level type comparison)")
 def test_earning_breakdowns():
     """Test earning() endpoint with live Bloomberg data."""
     print(f"\n{'=' * 80}")
@@ -976,7 +975,6 @@ def test_earning_breakdowns():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="turnover() helper needs update to work with LONG format output")
 def test_turnover():
     """Test turnover() endpoint with live Bloomberg data."""
     print(f"\n{'=' * 80}")
@@ -1034,7 +1032,6 @@ def test_turnover():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="turnover() helper needs update to work with LONG format output")
 def test_turnover_multiple_tickers():
     """Test turnover() with multiple tickers (as shown in README examples)."""
     print(f"\n{'=' * 80}")
@@ -1096,7 +1093,6 @@ def test_turnover_multiple_tickers():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="adjust_ccy() helper needs update to work with LONG format output")
 def test_adjust_ccy():
     """Test adjust_ccy() utility with live Bloomberg data."""
     print(f"\n{'=' * 80}")

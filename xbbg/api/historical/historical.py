@@ -130,12 +130,13 @@ def earning(
     if periods:
         kwargs["Number_Of_Periods"] = periods
 
-    header = bds(tickers=ticker, flds="PG_Bulk_Header", use_port=False, **new_kw, **kwargs)
+    # Use WIDE format for internal calls since this function expects ticker as index
+    header = bds(tickers=ticker, flds="PG_Bulk_Header", use_port=False, format=Format.WIDE, **new_kw, **kwargs)
     if ccy:
         kwargs["Eqy_Fund_Crncy"] = ccy
     if level:
         kwargs["PG_Hierarchy_Level"] = level
-    data = bds(tickers=ticker, flds=f"PG_{typ}", use_port=False, **new_kw, **kwargs)
+    data = bds(tickers=ticker, flds=f"PG_{typ}", use_port=False, format=Format.WIDE, **new_kw, **kwargs)
 
     if data.empty or header.empty:
         return pd.DataFrame()
@@ -145,6 +146,15 @@ def earning(
 
     if "level" not in data:
         raise KeyError("Cannot find [level] in data")
+
+    # Ensure level column is numeric (may come as string from pipeline)
+    data["level"] = pd.to_numeric(data["level"], errors="coerce").fillna(0).astype(int)
+
+    # Ensure fiscal year columns are numeric
+    for col in data.columns:
+        if col.startswith("fy") and not col.endswith("_pct"):
+            data[col] = pd.to_numeric(data[col], errors="coerce")
+
     for yr in data.columns[data.columns.str.startswith("fy")]:
         process.earning_pct(data=data, yr=yr)
 
@@ -194,7 +204,8 @@ def dividend(
     if end_date:
         kwargs["DVD_End_Dt"] = utils.fmt_dt(end_date, fmt="%Y%m%d")
 
-    return bds(tickers=tickers, flds=fld, col_maps=const.DVD_COLS, **kwargs)
+    # Use WIDE format for backward compatibility (ticker as index)
+    return bds(tickers=tickers, flds=fld, col_maps=const.DVD_COLS, format=Format.WIDE, **kwargs)
 
 
 def turnover(
@@ -224,7 +235,8 @@ def turnover(
         start_date = pd.bdate_range(end=end_date, periods=2, freq="M")[0]
     tickers = utils.normalize_tickers(tickers)
 
-    data = bdh(tickers=tickers, flds=flds, start_date=start_date, end_date=end_date)
+    # Use WIDE format for internal calls since this function expects MultiIndex columns
+    data = bdh(tickers=tickers, flds=flds, start_date=start_date, end_date=end_date, format=Format.WIDE)
     cols = data.columns.get_level_values(level=0).unique()
     use_volume = pd.DataFrame()
     if isinstance(flds, str) and (flds.lower() == "turnover"):
@@ -235,6 +247,7 @@ def turnover(
                 flds=["eqy_weighted_avg_px", "volume"],
                 start_date=start_date,
                 end_date=end_date,
+                format=Format.WIDE,
             )
             if not vol_data.empty:
                 # Calculate turnover = volume * VWAP

@@ -98,6 +98,14 @@ def _apply_multiindex(
 
     pdf = df.to_pandas()
 
+    # Convert field columns to numeric where possible (values may come as strings from pipeline)
+    for col in field_cols:
+        if col in pdf.columns:
+            try:
+                pdf[col] = pd.to_numeric(pdf[col])
+            except (ValueError, TypeError):
+                pass  # Keep original values if conversion fails
+
     # Get unique tickers
     tickers = pdf[ticker_col].unique()
 
@@ -166,9 +174,33 @@ def to_output(
     columns = nw_frame.columns
 
     # Check if expected columns exist for format transformation
-    # If not, skip format transformation and just convert backend
-    has_structure_cols = ticker_col in columns and date_col in columns
-    if not has_structure_cols:
+    has_ticker_col = ticker_col in columns
+    has_date_col = date_col in columns
+
+    # Handle reference data (BDP/BDS) which has ticker but no date column
+    if has_ticker_col and not has_date_col:
+        # Reference data case - check if it's already in long format (ticker, field, value)
+        if "field" in columns and "value" in columns:
+            if format == Format.WIDE:
+                # Pivot reference data: ticker as index, fields as columns
+                pdf = nw_frame.to_pandas()
+                pivoted = pdf.pivot(index=ticker_col, columns="field", values="value")
+                # Flatten column names if they're a simple Index
+                if isinstance(pivoted.columns, pd.Index) and not isinstance(pivoted.columns, pd.MultiIndex):
+                    pivoted.columns = pivoted.columns.tolist()
+                # Convert numeric columns to numeric types
+                for col in pivoted.columns:
+                    try:
+                        pivoted[col] = pd.to_numeric(pivoted[col])
+                    except (ValueError, TypeError):
+                        pass  # Keep original values if conversion fails
+                return pivoted
+            # For LONG/SEMI_LONG, return as-is
+            return _convert_backend(nw_frame, backend)
+        # Data has ticker but no standard field/value structure - passthrough
+        return _convert_backend(nw_frame, backend)
+
+    if not has_ticker_col or not has_date_col:
         # Data doesn't have expected structure (e.g., BQL results)
         # Just convert to requested backend without format transformation
         return _convert_backend(nw_frame, backend)

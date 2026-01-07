@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from xbbg.backend import Format
+
 __all__ = ["adjust_ccy"]
 
 
@@ -46,7 +48,8 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
     start_date = data.index[0]
     end_date = data.index[-1]
 
-    uccy = bdp(tickers=tickers, flds="crncy")
+    # Use WIDE format for internal calls since this function expects MultiIndex columns
+    uccy = bdp(tickers=tickers, flds="crncy", format=Format.WIDE)
     if not uccy.empty:
         adj = (
             uccy.crncy.map(
@@ -62,7 +65,10 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
         adj = pd.DataFrame()
 
     if not adj.empty:
-        fx = bdh(tickers=adj.ccy.unique(), start_date=start_date, end_date=end_date).xs("Last_Price", axis=1, level=1)
+        # Use WIDE format to get MultiIndex columns for .xs() access
+        fx = bdh(tickers=adj.ccy.unique(), start_date=start_date, end_date=end_date, format=Format.WIDE).xs(
+            "Last_Price", axis=1, level=1
+        )
     else:
         fx = pd.DataFrame()
 
