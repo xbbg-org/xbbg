@@ -404,7 +404,24 @@ class BloombergPipeline(BaseContextAware):
         if not events:
             return None
 
-        return pa.Table.from_pylist(events)
+        # Build Arrow table with explicit schema to handle mixed types
+        # The value column may contain floats, strings, dates, etc.
+        df = pd.DataFrame(events)
+
+        # Build schema - use string type for value column to handle mixed types
+        fields = []
+        for col in df.columns:
+            if col == "value":
+                fields.append(pa.field(col, pa.string()))
+            else:
+                fields.append(pa.field(col, pa.string()))
+        schema = pa.schema(fields)
+
+        # Convert values to strings for Arrow compatibility
+        for col in df.columns:
+            df[col] = df[col].astype(str)
+
+        return pa.Table.from_pandas(df, schema=schema, preserve_index=False)
 
     def _persist_cache(
         self,
