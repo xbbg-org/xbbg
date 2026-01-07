@@ -308,6 +308,9 @@ __all__ = [
     "bql",
     "bsrch",
     "bfld",
+    "beqs",
+    "blkp",
+    "bport",
     # Async API
     "abdp",
     "abds",
@@ -317,6 +320,9 @@ __all__ = [
     "abql",
     "absrch",
     "abfld",
+    "abeqs",
+    "ablkp",
+    "abport",
     # Streaming API
     "Tick",
     "Subscription",
@@ -383,6 +389,8 @@ __all__ = [
     "BlpValidationError",
     "BlpTimeoutError",
     "BlpInternalError",
+    # Extensions module
+    "ext",
 ]
 
 
@@ -443,6 +451,9 @@ def __getattr__(name: str):
         "bql",
         "bsrch",
         "bfld",
+        "beqs",
+        "blkp",
+        "bport",
         "abdp",
         "abds",
         "abdh",
@@ -451,6 +462,9 @@ def __getattr__(name: str):
         "abql",
         "absrch",
         "abfld",
+        "abeqs",
+        "ablkp",
+        "abport",
         # Streaming API
         "Tick",
         "Subscription",
@@ -533,6 +547,11 @@ def __getattr__(name: str):
         from . import schema
 
         return getattr(schema, name)
+    # Extensions module
+    if name == "ext":
+        from . import ext
+
+        return ext
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

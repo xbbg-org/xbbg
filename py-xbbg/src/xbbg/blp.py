@@ -76,6 +76,9 @@ __all__ = [
     "abql",
     "absrch",
     "abfld",
+    "abeqs",
+    "ablkp",
+    "abport",
     # Sync API (wrappers)
     "bdp",
     "bdh",
@@ -85,6 +88,9 @@ __all__ = [
     "bql",
     "bsrch",
     "bfld",
+    "beqs",
+    "blkp",
+    "bport",
     # Streaming API
     "Tick",
     "Subscription",
@@ -2204,67 +2210,6 @@ def generate_ta_stubs(output_dir: str | None = None) -> str:
 # =============================================================================
 
 
-def _parse_bql_response(raw_json: str) -> nw.DataFrame:
-    """Parse BQL JSON response into a DataFrame.
-
-    BQL responses have this structure:
-    {
-        "results": {
-            "field1": {
-                "idColumn": {"name": "ID", "type": "STRING", "values": [...]},
-                "valuesColumn": {"type": "DOUBLE", "values": [...]},
-                "secondaryColumns": [{"name": "...", "type": "...", "values": [...]}]
-            },
-            "field2": {...}
-        }
-    }
-
-    All arrays are index-aligned, so we zip them together.
-    All fields share the same idColumn (the universe/ticker list).
-    """
-    # BQL returns double-encoded JSON
-    data = json.loads(json.loads(raw_json))
-
-    results = data.get("results", {})
-    if not results:
-        # Return empty DataFrame
-        return nw.from_native(pa.table({"id": pa.array([], type=pa.string())}))
-
-    # Get field names and data
-    field_names = list(results.keys())
-    if not field_names:
-        return nw.from_native(pa.table({"id": pa.array([], type=pa.string())}))
-
-    # All fields share the same idColumn, use first field to get it
-    first_field = results[field_names[0]]
-    id_col = first_field["idColumn"]
-    ids = id_col["values"]
-
-    # Build columns dict starting with id
-    columns: dict[str, list] = {"id": ids}
-
-    # Add each field's values
-    for field_name in field_names:
-        field_data = results[field_name]
-        values = field_data["valuesColumn"]["values"]
-        columns[field_name] = values
-
-        # Add secondary columns if present (prefixed with field name)
-        sec_cols = field_data.get("secondaryColumns", [])
-        for sec_col in sec_cols:
-            col_name = f"{field_name}_{sec_col['name']}"
-            columns[col_name] = sec_col["values"]
-
-    # Convert to Arrow table (narwhals-compatible)
-    # Let pyarrow infer types from the Python values
-    arrow_arrays = {}
-    for col_name, values in columns.items():
-        arrow_arrays[col_name] = pa.array(values)
-
-    table = pa.table(arrow_arrays)
-    return nw.from_native(table)
-
-
 async def abql(
     expression: str,
     *,
@@ -2306,20 +2251,14 @@ async def abql(
     """
     logger.debug("abql: expression=%s", expression)
 
-    # Send BQL request via arequest
-    raw_df = await arequest(
+    # Send BQL request via arequest with BQL extractor (parsed in Rust)
+    nw_df = await arequest(
         service="//blp/bqlsvc",
         operation="sendQuery",
         overrides={"expression": expression},
-        extractor=ExtractorHint.RAW_JSON,
-        backend=None,  # Get narwhals to extract raw JSON
+        extractor=ExtractorHint.BQL,
+        backend=None,
     )
-
-    # Extract raw JSON from the response
-    raw_json = raw_df.to_native().to_pylist()[0]["json"]
-
-    # Parse and convert to DataFrame
-    nw_df = _parse_bql_response(raw_json)
 
     logger.debug("abql: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
 
@@ -2366,56 +2305,6 @@ def bql(
 # =============================================================================
 
 
-def _parse_bsrch_response(raw_json: str) -> nw.DataFrame:
-    """Parse bsrch JSON response into a DataFrame.
-
-    Bsrch responses have this structure:
-    {
-        "NumOfFields": 3,
-        "NumOfRecords": 10,
-        "ColumnTitles": ["Ticker", "Name", "Price"],
-        "DataRecords": [
-            {"DataFields": ["AAPL US Equity", "Apple Inc", "150.00"]},
-            ...
-        ],
-        "ReachMax": false,
-        "Error": "",
-        "SequenceNumber": 0
-    }
-    """
-    data = json.loads(raw_json)
-    if isinstance(data, str):
-        data = json.loads(data)
-
-    # Check for errors
-    error = data.get("Error", "")
-    if error:
-        logger.warning("bsrch returned error: %s", error)
-
-    column_titles = data.get("ColumnTitles", [])
-    data_records = data.get("DataRecords", [])
-
-    if not column_titles or not data_records:
-        # Return empty DataFrame with no columns
-        return nw.from_native(pa.table({}))
-
-    # Build columns dict
-    columns: dict[str, list] = {col: [] for col in column_titles}
-
-    for record in data_records:
-        fields = record.get("DataFields", [])
-        for i, col in enumerate(column_titles):
-            if i < len(fields):
-                columns[col].append(fields[i])
-            else:
-                columns[col].append(None)
-
-    # Convert to Arrow table
-    arrow_arrays = {col: pa.array(values) for col, values in columns.items()}
-    table = pa.table(arrow_arrays)
-    return nw.from_native(table)
-
-
 async def absrch(
     domain: str,
     *,
@@ -2449,20 +2338,14 @@ async def absrch(
     for key, value in kwargs.items():
         overrides[key] = str(value)
 
-    # Send bsrch request via arequest
-    raw_df = await arequest(
+    # Send bsrch request via arequest with BSRCH extractor (parsed in Rust)
+    nw_df = await arequest(
         service="//blp/exrsvc",
         operation="ExcelGetGridRequest",
         overrides=overrides,
-        extractor=ExtractorHint.RAW_JSON,
+        extractor=ExtractorHint.BSRCH,
         backend=None,
     )
-
-    # Extract raw JSON from the response
-    raw_json = raw_df.to_native().to_pylist()[0]["json"]
-
-    # Parse and convert to DataFrame
-    nw_df = _parse_bsrch_response(raw_json)
 
     logger.debug("absrch: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
 
@@ -2575,6 +2458,324 @@ def bfld(
         df = bfld(["PX_LAST", "VOLUME", "NAME"])
     """
     return asyncio.run(abfld(fields, backend=backend))
+
+
+# =============================================================================
+# BEQS API - Bloomberg Equity Screening
+# =============================================================================
+
+
+async def abeqs(
+    screen: str,
+    *,
+    asof: str | None = None,
+    screen_type: str = "PRIVATE",
+    group: str = "General",
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Async Bloomberg Equity Screening (BEQS) request.
+
+    Execute a saved Bloomberg equity screen and return matching securities.
+
+    Args:
+        screen: Screen name as saved in Bloomberg.
+        asof: As-of date for the screen (YYYYMMDD format).
+        screen_type: Screen type - "PRIVATE" (custom) or "GLOBAL" (Bloomberg).
+        group: Group name if screen is organized into groups.
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
+
+    Returns:
+        DataFrame with columns from the screen results (security, fieldData, etc.).
+
+    Example::
+
+        # Run a private screen
+        df = await abeqs("MyScreen")
+
+        # Run with as-of date
+        df = await abeqs("MyScreen", asof="20240101")
+
+        # Run a Bloomberg global screen
+        df = await abeqs("TOP_DECL_DVD", screen_type="GLOBAL")
+    """
+    logger.debug("abeqs: screen=%s asof=%s type=%s group=%s", screen, asof, screen_type, group)
+
+    # Build elements for BEQS request
+    elements: list[tuple[str, Any]] = [
+        ("screenName", screen),
+        ("screenType", screen_type),
+        ("Group", group),
+    ]
+
+    if asof:
+        elements.append(("asOfDate", _fmt_date(asof)))
+
+    # Add any additional kwargs as elements
+    for key, value in kwargs.items():
+        elements.append((key, value))
+
+    # Send BEQS request via arequest with JSON_ARROW extractor (parsed in Rust)
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.BEQS,
+        elements=elements,
+        extractor=ExtractorHint.JSON_ARROW,
+        backend=None,
+    )
+
+    logger.debug("abeqs: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
+
+    return _convert_backend(nw_df, backend)
+
+
+def beqs(
+    screen: str,
+    *,
+    asof: str | None = None,
+    screen_type: str = "PRIVATE",
+    group: str = "General",
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Bloomberg Equity Screening (BEQS) request.
+
+    Sync wrapper around abeqs(). For async usage, use abeqs() directly.
+
+    Execute a saved Bloomberg equity screen and return matching securities.
+
+    Args:
+        screen: Screen name as saved in Bloomberg.
+        asof: As-of date for the screen (YYYYMMDD format).
+        screen_type: Screen type - "PRIVATE" (custom) or "GLOBAL" (Bloomberg).
+        group: Group name if screen is organized into groups.
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
+
+    Returns:
+        DataFrame with columns: ticker, and any fields from the screen.
+
+    Example::
+
+        # Run a private screen
+        df = beqs("MyScreen")
+
+        # Run with as-of date
+        df = beqs("MyScreen", asof="20240101")
+
+        # Run a Bloomberg global screen
+        df = beqs("TOP_DECL_DVD", screen_type="GLOBAL")
+    """
+    return asyncio.run(
+        abeqs(screen, asof=asof, screen_type=screen_type, group=group, backend=backend, **kwargs)
+    )
+
+
+# =============================================================================
+# BLKP API - Bloomberg Security Lookup
+# =============================================================================
+
+
+async def ablkp(
+    query: str,
+    *,
+    yellowkey: str = "YK_FILTER_NONE",
+    language: str = "LANG_OVERRIDE_NONE",
+    max_results: int = 20,
+    backend: Backend | str | None = None,
+) -> nw.DataFrame:
+    """Async Bloomberg security lookup (BLKP) request.
+
+    Search for securities by company name or partial ticker.
+
+    Args:
+        query: Search query (company name or partial ticker).
+        yellowkey: Asset class filter. Common values:
+            - "YK_FILTER_NONE" (default, all asset classes)
+            - "YK_FILTER_EQTY" (equities only)
+            - "YK_FILTER_CORP" (corporate bonds)
+            - "YK_FILTER_GOVT" (government bonds)
+            - "YK_FILTER_INDX" (indices)
+            - "YK_FILTER_CURR" (currencies)
+            - "YK_FILTER_CMDT" (commodities)
+        language: Language override for results.
+        max_results: Maximum number of results (default: 20, max: 1000).
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        DataFrame with columns: security, description, and other result fields.
+
+    Example::
+
+        # Search for Apple
+        df = await ablkp("Apple")
+
+        # Search for equities only
+        df = await ablkp("NVDA", yellowkey="YK_FILTER_EQTY")
+
+        # Get more results
+        df = await ablkp("Microsoft", max_results=50)
+    """
+    logger.debug("ablkp: query=%s yellowkey=%s max_results=%d", query, yellowkey, max_results)
+
+    # Build elements for instrumentListRequest
+    elements: list[tuple[str, Any]] = [
+        ("query", query),
+        ("yellowKeyFilter", yellowkey),
+        ("languageOverride", language),
+        ("maxResults", max_results),
+    ]
+
+    # Send request via arequest with JSON_ARROW extractor (parsed in Rust)
+    nw_df = await arequest(
+        service=Service.INSTRUMENTS,
+        operation=Operation.INSTRUMENT_LIST,
+        elements=elements,
+        extractor=ExtractorHint.JSON_ARROW,
+        backend=None,
+    )
+
+    logger.debug("ablkp: received %d rows", len(nw_df))
+
+    return _convert_backend(nw_df, backend)
+
+
+def blkp(
+    query: str,
+    *,
+    yellowkey: str = "YK_FILTER_NONE",
+    language: str = "LANG_OVERRIDE_NONE",
+    max_results: int = 20,
+    backend: Backend | str | None = None,
+) -> nw.DataFrame:
+    """Bloomberg security lookup (BLKP) request.
+
+    Sync wrapper around ablkp(). For async usage, use ablkp() directly.
+
+    Search for securities by company name or partial ticker.
+
+    Args:
+        query: Search query (company name or partial ticker).
+        yellowkey: Asset class filter. Common values:
+            - "YK_FILTER_NONE" (default, all asset classes)
+            - "YK_FILTER_EQTY" (equities only)
+            - "YK_FILTER_CORP" (corporate bonds)
+            - "YK_FILTER_GOVT" (government bonds)
+            - "YK_FILTER_INDX" (indices)
+            - "YK_FILTER_CURR" (currencies)
+            - "YK_FILTER_CMDT" (commodities)
+        language: Language override for results.
+        max_results: Maximum number of results (default: 20, max: 1000).
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        DataFrame with columns: security, description.
+
+    Example::
+
+        # Search for Apple
+        df = blkp("Apple")
+
+        # Search for equities only
+        df = blkp("NVDA", yellowkey="YK_FILTER_EQTY")
+
+        # Get more results
+        df = blkp("Microsoft", max_results=50)
+    """
+    return asyncio.run(
+        ablkp(query, yellowkey=yellowkey, language=language, max_results=max_results, backend=backend)
+    )
+
+
+# =============================================================================
+# BPORT API - Bloomberg Portfolio Data
+# =============================================================================
+
+
+async def abport(
+    portfolio: str,
+    fields: str | Sequence[str],
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Async Bloomberg portfolio data (BPORT) request.
+
+    Get portfolio holdings and related data using PortfolioDataRequest.
+
+    Args:
+        portfolio: Portfolio identifier/name.
+        fields: Field name or list of fields (e.g., "PORTFOLIO_MWEIGHT").
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters/overrides.
+
+    Returns:
+        DataFrame with portfolio data.
+
+    Example::
+
+        # Get portfolio weights
+        df = await abport("MY_PORTFOLIO", "PORTFOLIO_MWEIGHT")
+
+        # Get multiple fields
+        df = await abport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
+    """
+    field_list = _normalize_fields(fields)
+    logger.debug("abport: portfolio=%s fields=%s", portfolio, field_list)
+
+    # Route kwargs to elements and overrides
+    elements, overrides = await _aroute_kwargs(
+        Service.REFDATA, Operation.PORTFOLIO_DATA, dict(kwargs)
+    )
+
+    # Send PortfolioDataRequest via arequest
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.PORTFOLIO_DATA,
+        securities=[portfolio],
+        fields=field_list,
+        elements=elements if elements else None,
+        overrides=overrides if overrides else None,
+        backend=None,
+    )
+
+    logger.debug("abport: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
+
+    return _convert_backend(nw_df, backend)
+
+
+def bport(
+    portfolio: str,
+    fields: str | Sequence[str],
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Bloomberg portfolio data (BPORT) request.
+
+    Sync wrapper around abport(). For async usage, use abport() directly.
+
+    Get portfolio holdings and related data using PortfolioDataRequest.
+
+    Args:
+        portfolio: Portfolio identifier/name.
+        fields: Field name or list of fields (e.g., "PORTFOLIO_MWEIGHT").
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters/overrides.
+
+    Returns:
+        DataFrame with portfolio data.
+
+    Example::
+
+        # Get portfolio weights
+        df = bport("MY_PORTFOLIO", "PORTFOLIO_MWEIGHT")
+
+        # Get multiple fields
+        df = bport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
+    """
+    return asyncio.run(abport(portfolio, fields, backend=backend, **kwargs))
 
 
 # ─── Schema Introspection API ────────────────────────────────────────────────

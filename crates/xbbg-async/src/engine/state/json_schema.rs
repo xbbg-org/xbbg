@@ -329,6 +329,67 @@ impl<'a> JsonValue<'a> {
     }
 }
 
+/// BQL (Bloomberg Query Language) response.
+/// Structure: { results: { field1: { idColumn, valuesColumn, secondaryColumns }, ... } }
+/// Note: BQL returns double-encoded JSON (JSON string inside JSON).
+#[derive(Debug, Deserialize)]
+pub struct BqlResponse<'a> {
+    #[serde(borrow, default)]
+    pub results: HashMap<Cow<'a, str>, BqlFieldResult<'a>>,
+}
+
+/// BQL field result with id column, values column, and optional secondary columns.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BqlFieldResult<'a> {
+    #[serde(borrow)]
+    pub id_column: BqlColumn<'a>,
+    #[serde(borrow)]
+    pub values_column: BqlColumn<'a>,
+    #[serde(borrow, default)]
+    pub secondary_columns: Vec<BqlColumn<'a>>,
+}
+
+/// BQL column with name, type, and values.
+#[derive(Debug, Deserialize)]
+pub struct BqlColumn<'a> {
+    #[serde(borrow, default)]
+    pub name: Option<Cow<'a, str>>,
+    #[serde(borrow, rename = "type")]
+    pub col_type: Cow<'a, str>,
+    #[serde(borrow)]
+    pub values: Vec<JsonValue<'a>>,
+}
+
+/// BSRCH (Bloomberg Search) response.
+/// Structure: { NumOfFields, NumOfRecords, ColumnTitles, DataRecords, ReachMax, Error, SequenceNumber }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct BsrchResponse<'a> {
+    #[serde(default)]
+    pub num_of_fields: i64,
+    #[serde(default)]
+    pub num_of_records: i64,
+    #[serde(borrow, default)]
+    pub column_titles: Vec<Cow<'a, str>>,
+    #[serde(borrow, default)]
+    pub data_records: Vec<BsrchRecord<'a>>,
+    #[serde(default)]
+    pub reach_max: bool,
+    #[serde(borrow, default)]
+    pub error: Cow<'a, str>,
+    #[serde(default)]
+    pub sequence_number: i64,
+}
+
+/// BSRCH data record with field values.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct BsrchRecord<'a> {
+    #[serde(borrow, default)]
+    pub data_fields: Vec<JsonValue<'a>>,
+}
+
 /// Parse JSON using simd-json with borrowing.
 /// Returns typed response or falls back to element-by-element extraction.
 pub mod parser {
@@ -366,6 +427,17 @@ pub mod parser {
 
     /// Parse a field info response from JSON bytes.
     pub fn parse_field_info(json: &mut [u8]) -> Result<FieldInfoResponse<'_>, simd_json::Error> {
+        simd_json::from_slice(json)
+    }
+
+    /// Parse a BQL response from JSON bytes.
+    /// Note: BQL returns double-encoded JSON, so caller must first decode the outer string.
+    pub fn parse_bql(json: &mut [u8]) -> Result<BqlResponse<'_>, simd_json::Error> {
+        simd_json::from_slice(json)
+    }
+
+    /// Parse a BSRCH response from JSON bytes.
+    pub fn parse_bsrch(json: &mut [u8]) -> Result<BsrchResponse<'_>, simd_json::Error> {
         simd_json::from_slice(json)
     }
 }

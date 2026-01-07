@@ -24,9 +24,9 @@ use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, SessionOptions};
 
 use super::state::{
-    BulkDataState, FieldInfoState, GenericState, HistDataState, HistDataStreamState,
-    IntradayBarState, IntradayBarStreamState, IntradayTickState, IntradayTickStreamState, LongMode,
-    OutputFormat, RawJsonState, RefDataState,
+    BqlState, BsrchState, BulkDataState, FieldInfoState, GenericState, HistDataState,
+    HistDataStreamState, IntradayBarState, IntradayBarStreamState, IntradayTickState,
+    IntradayTickStreamState, JsonArrowState, LongMode, OutputFormat, RawJsonState, RefDataState,
 };
 use super::{EngineConfig, ExtractorType, RequestParams};
 
@@ -61,6 +61,9 @@ pub enum UnifiedRequestState {
     HistDataStream(HistDataStreamState),
     Generic(GenericState),
     RawJson(RawJsonState),
+    JsonArrow(JsonArrowState),
+    Bql(BqlState),
+    Bsrch(BsrchState),
     FieldInfo(FieldInfoState),
     // Intraday request types (from Lane C)
     IntradayBar(IntradayBarState),
@@ -80,6 +83,9 @@ impl UnifiedRequestState {
             UnifiedRequestState::HistDataStream(s) => s.on_partial(msg),
             UnifiedRequestState::Generic(s) => s.on_partial(msg),
             UnifiedRequestState::RawJson(s) => s.on_partial(msg),
+            UnifiedRequestState::JsonArrow(s) => s.on_partial(msg),
+            UnifiedRequestState::Bql(s) => s.on_partial(msg),
+            UnifiedRequestState::Bsrch(s) => s.on_partial(msg),
             UnifiedRequestState::FieldInfo(s) => s.on_partial(msg),
             // Intraday types
             UnifiedRequestState::IntradayBar(s) => s.on_partial(msg),
@@ -99,6 +105,9 @@ impl UnifiedRequestState {
             UnifiedRequestState::HistDataStream(s) => s.finish(msg),
             UnifiedRequestState::Generic(s) => s.finish(msg),
             UnifiedRequestState::RawJson(s) => s.finish(msg),
+            UnifiedRequestState::JsonArrow(s) => s.finish(msg),
+            UnifiedRequestState::Bql(s) => s.finish(msg),
+            UnifiedRequestState::Bsrch(s) => s.finish(msg),
             UnifiedRequestState::FieldInfo(s) => s.finish(msg),
             // Intraday types
             UnifiedRequestState::IntradayBar(s) => s.finish(msg),
@@ -126,6 +135,15 @@ impl UnifiedRequestState {
                 let _ = s.reply.send(Err(error));
             }
             UnifiedRequestState::RawJson(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            UnifiedRequestState::JsonArrow(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            UnifiedRequestState::Bql(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            UnifiedRequestState::Bsrch(s) => {
                 let _ = s.reply.send(Err(error));
             }
             UnifiedRequestState::FieldInfo(s) => {
@@ -369,6 +387,9 @@ impl RequestWorker {
             }
             ExtractorType::Generic => UnifiedRequestState::Generic(GenericState::new(reply)),
             ExtractorType::RawJson => UnifiedRequestState::RawJson(RawJsonState::new(reply)),
+            ExtractorType::JsonArrow => UnifiedRequestState::JsonArrow(JsonArrowState::new(reply)),
+            ExtractorType::Bql => UnifiedRequestState::Bql(BqlState::new(reply)),
+            ExtractorType::Bsrch => UnifiedRequestState::Bsrch(BsrchState::new(reply)),
             ExtractorType::FieldInfo => UnifiedRequestState::FieldInfo(FieldInfoState::new(reply)),
             ExtractorType::IntradayBar => {
                 let ticker = params.security.clone().unwrap_or_default();

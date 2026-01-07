@@ -43,6 +43,9 @@ class Service(str, Enum):
     APIFLDS = "//blp/apiflds"
     """Field metadata service for field info and search."""
 
+    INSTRUMENTS = "//blp/instruments"
+    """Instruments service for security lookup."""
+
 
 class Operation(str, Enum):
     """Bloomberg request operation names.
@@ -70,6 +73,17 @@ class Operation(str, Enum):
 
     FIELD_SEARCH = "FieldSearchRequest"
     """Search for fields by keyword."""
+
+    # Equity screening operations (//blp/refdata)
+    BEQS = "BeqsRequest"
+    """Bloomberg Equity Screening (BEQS)."""
+
+    PORTFOLIO_DATA = "PortfolioDataRequest"
+    """Portfolio data request (bport)."""
+
+    # Instruments operations (//blp/instruments)
+    INSTRUMENT_LIST = "instrumentListRequest"
+    """Security lookup by name (blkp)."""
 
 
 class OutputMode(str, Enum):
@@ -118,7 +132,16 @@ class ExtractorHint(str, Enum):
     """Generic flattener: [path, type, value_str, value_num, value_date]"""
 
     RAW_JSON = "raw_json"
-    """Raw JSON output: [json]"""
+    """Raw JSON output: [json] - DEPRECATED, use JSON_ARROW instead."""
+
+    JSON_ARROW = "json_arrow"
+    """JSON to Arrow: Parse JSON in Rust and return Arrow columns."""
+
+    BQL = "bql"
+    """BQL: Bloomberg Query Language responses."""
+
+    BSRCH = "bsrch"
+    """BSRCH: Bloomberg Search responses."""
 
     FIELD_INFO = "fieldinfo"
     """Field info extractor: [field, type, description, category]"""

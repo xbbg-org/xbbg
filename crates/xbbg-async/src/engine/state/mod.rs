@@ -1,5 +1,7 @@
 //! Request and subscription state types with Arrow builders.
 
+mod bql;
+mod bsrch;
 mod bulkdata;
 mod fieldinfo;
 mod generic;
@@ -9,12 +11,15 @@ mod intradaybar;
 mod intradaybar_stream;
 mod intradaytick;
 mod intradaytick_stream;
+mod json_arrow;
 pub mod json_schema;
 mod raw_json;
 mod refdata;
 mod subscription;
 pub mod typed_builder;
 
+pub use bql::BqlState;
+pub use bsrch::BsrchState;
 pub use bulkdata::BulkDataState;
 pub use fieldinfo::FieldInfoState;
 pub use generic::GenericState;
@@ -24,6 +29,7 @@ pub use intradaybar::IntradayBarState;
 pub use intradaybar_stream::IntradayBarStreamState;
 pub use intradaytick::IntradayTickState;
 pub use intradaytick_stream::IntradayTickStreamState;
+pub use json_arrow::JsonArrowState;
 pub use raw_json::RawJsonState;
 pub use refdata::{LongMode, OutputFormat, RefDataState};
 pub use subscription::SubscriptionState;
@@ -39,6 +45,9 @@ pub enum RequestState {
     HistDataStream(HistDataStreamState),
     Generic(GenericState),
     RawJson(RawJsonState),
+    JsonArrow(JsonArrowState),
+    Bql(BqlState),
+    Bsrch(BsrchState),
     FieldInfo(FieldInfoState),
 }
 
@@ -61,6 +70,9 @@ impl RequestState {
             RequestState::HistDataStream(s) => s.on_partial(msg),
             RequestState::Generic(s) => s.on_partial(msg),
             RequestState::RawJson(s) => s.on_partial(msg),
+            RequestState::JsonArrow(s) => s.on_partial(msg),
+            RequestState::Bql(s) => s.on_partial(msg),
+            RequestState::Bsrch(s) => s.on_partial(msg),
             RequestState::FieldInfo(s) => s.on_partial(msg),
         }
     }
@@ -74,6 +86,9 @@ impl RequestState {
             RequestState::HistDataStream(s) => s.finish(msg),
             RequestState::Generic(s) => s.finish(msg),
             RequestState::RawJson(s) => s.finish(msg),
+            RequestState::JsonArrow(s) => s.finish(msg),
+            RequestState::Bql(s) => s.finish(msg),
+            RequestState::Bsrch(s) => s.finish(msg),
             RequestState::FieldInfo(s) => s.finish(msg),
         }
     }
@@ -95,6 +110,15 @@ impl RequestState {
                 let _ = s.reply.send(Err(error));
             }
             RequestState::RawJson(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            RequestState::JsonArrow(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            RequestState::Bql(s) => {
+                let _ = s.reply.send(Err(error));
+            }
+            RequestState::Bsrch(s) => {
                 let _ = s.reply.send(Err(error));
             }
             RequestState::FieldInfo(s) => {
