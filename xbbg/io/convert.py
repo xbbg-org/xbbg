@@ -4,6 +4,7 @@ This module provides functions to convert Arrow tables to various backends
 and output formats (LONG, SEMI_LONG, WIDE).
 """
 
+import contextlib
 from typing import Any
 
 import narwhals as nw
@@ -101,10 +102,8 @@ def _apply_multiindex(
     # Convert field columns to numeric where possible (values may come as strings from pipeline)
     for col in field_cols:
         if col in pdf.columns:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 pdf[col] = pd.to_numeric(pdf[col])
-            except (ValueError, TypeError):
-                pass  # Keep original values if conversion fails
 
     # Get unique tickers
     tickers = pdf[ticker_col].unique()
@@ -190,10 +189,8 @@ def to_output(
                     pivoted.columns = pivoted.columns.tolist()
                 # Convert numeric columns to numeric types
                 for col in pivoted.columns:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         pivoted[col] = pd.to_numeric(pivoted[col])
-                    except (ValueError, TypeError):
-                        pass  # Keep original values if conversion fails
                 return pivoted
             # For LONG/SEMI_LONG, return as-is
             return _convert_backend(nw_frame, backend)
