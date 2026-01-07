@@ -330,3 +330,86 @@ def turnover(
             return nw_df.to_native()
 
     return data
+
+
+def etf_holdings(
+    etf_ticker: str,
+    *,
+    fields: list[str] | None = None,
+    **kwargs,
+) -> IntoDataFrame:
+    """Get ETF holdings using Bloomberg Query Language (BQL).
+
+    Retrieves holdings information for an ETF including ISIN, weights, and position IDs.
+
+    Args:
+        etf_ticker: ETF ticker (e.g., 'SPY US Equity' or 'SPY'). If no suffix is provided,
+            ' US Equity' will be appended automatically.
+        fields: Optional list of additional fields to retrieve. Default fields are
+            id_isin, weights, and id().position. If provided, these will be added to
+            the default fields.
+        **kwargs: Additional options passed to the underlying BQL query.
+
+    Returns:
+        DataFrame with ETF holdings data (type depends on configured backend).
+        Columns include: holding (ticker), id_isin, weights, position, and any
+        additional requested fields.
+
+    Example::
+
+        from xbbg import ext
+
+        # Get holdings for an ETF
+        df = ext.etf_holdings("SPY US Equity")
+
+        # Get holdings with additional fields
+        df = ext.etf_holdings("SPY US Equity", fields=["name", "px_last"])
+
+        # Ticker without suffix (will append ' US Equity')
+        df = ext.etf_holdings("SPY")
+
+        # Get holdings for a non-US ETF
+        df = ext.etf_holdings("VWRL LN Equity")
+    """
+    from xbbg import bql
+
+    # Normalize ticker format - ensure it has proper suffix
+    if " " not in etf_ticker:
+        etf_ticker = f"{etf_ticker} US Equity"
+
+    # Default fields
+    default_fields = ["id_isin", "weights", "id().position"]
+
+    # Combine default fields with any additional fields
+    if fields:
+        all_fields = default_fields + [f for f in fields if f not in default_fields]
+    else:
+        all_fields = default_fields
+
+    # Build BQL query - format: get(fields) for(holdings('TICKER'))
+    fields_str = ", ".join(all_fields)
+    bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
+
+    # Execute BQL query - returns DataFrame in configured backend format
+    df = bql(query=bql_query, **kwargs)
+
+    # Convert to narwhals for manipulation
+    nw_df = nw.from_native(df)
+
+    if len(nw_df) == 0:
+        return df
+
+    # Clean up column names
+    # BQL returns 'id().position' which is awkward to access
+    rename_map = {}
+    for col in nw_df.columns:
+        if col == "id().position":
+            rename_map[col] = "position"
+        elif col == "ID":
+            rename_map[col] = "holding"
+
+    if rename_map:
+        nw_df = nw_df.rename(rename_map)
+        return nw_df.to_native()
+
+    return df

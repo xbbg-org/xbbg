@@ -55,3 +55,22 @@ DVD_COLS: dict[str, str] = {
     "Amount Per Share": "amt_ps",
     "Projected/Confirmed": "category",
 }
+
+# ETF holdings column name mappings (Bloomberg -> clean names)
+ETF_COLS: dict[str, str] = {
+    "Holding Name": "name",
+    "Holding Ticker": "ticker",
+    "Holding ISIN": "isin",
+    "Holding Sedol": "sedol",
+    "Holding CUSIP": "cusip",
+    "Shares Held": "shares",
+    "Market Value": "mkt_val",
+    "Weight": "weight",
+    "% Weight": "weight",
+    "Sector": "sector",
+    "Country": "country",
+    "Asset Class": "asset_class",
+    "Currency": "ccy",
+    "Coupon": "coupon",
+    "Maturity": "maturity",
+}
