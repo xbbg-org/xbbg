@@ -33,6 +33,62 @@ def _parse_date(dt: str | date) -> datetime:
     raise ValueError(f"Cannot parse date: {dt}")
 
 
+def _pivot_bdp_to_wide(nw_df: nw.DataFrame) -> nw.DataFrame:
+    """Pivot bdp result from long format (ticker, field, value) to wide format.
+
+    If the dataframe already has the expected columns (not in long format),
+    returns it unchanged.
+    """
+    # Check if already in wide format (has columns other than ticker/field/value)
+    if set(nw_df.columns) != {"ticker", "field", "value"}:
+        return nw_df
+
+    if len(nw_df) == 0:
+        return nw_df
+
+    # Pivot from long to wide: each unique field becomes a column
+    # Group by ticker and create dict of field -> value
+    rows_by_ticker: dict[str, dict[str, str]] = {}
+    for row in nw_df.iter_rows(named=True):
+        ticker = row["ticker"]
+        field = row["field"]
+        value = row["value"]
+        if ticker not in rows_by_ticker:
+            rows_by_ticker[ticker] = {"ticker": ticker}
+        rows_by_ticker[ticker][field] = value
+
+    # Build wide dataframe
+    if not rows_by_ticker:
+        return nw_df
+
+    # Get all unique fields for column names
+    all_fields = set()
+    for row_data in rows_by_ticker.values():
+        all_fields.update(k for k in row_data if k != "ticker")
+
+    # Create lists for each column
+    columns: dict[str, list] = {"ticker": []}
+    for field in all_fields:
+        columns[field] = []
+
+    for ticker, row_data in rows_by_ticker.items():
+        columns["ticker"].append(ticker)
+        for field in all_fields:
+            columns[field].append(row_data.get(field))
+
+    # Create new dataframe using native namespace
+    native_ns = nw.get_native_namespace(nw_df)
+    result_cols = {k: nw.new_series(k, v, native_namespace=native_ns) for k, v in columns.items()}
+
+    # Build dataframe from series
+    first_series = next(iter(result_cols.values()))
+    result_df = first_series.to_frame()
+    for _name, series in list(result_cols.items())[1:]:
+        result_df = result_df.with_columns(series)
+
+    return result_df
+
+
 def fut_ticker(
     gen_ticker: str,
     dt: str | date,
@@ -131,20 +187,35 @@ def fut_ticker(
         except Exception:
             return ""
 
-    # Convert to narwhals for manipulation
+    # Convert to narwhals and pivot from long to wide format
     nw_df = nw.from_native(fut_matu)
+    nw_df = _pivot_bdp_to_wide(nw_df)
 
     if len(nw_df) == 0 or "last_tradeable_dt" not in nw_df.columns:
         return ""
 
-    # Sort by maturity date and filter to those after dt
-    nw_df = nw_df.sort("last_tradeable_dt")
-    sub_fut = nw_df.filter(nw.col("last_tradeable_dt") > dt)
+    # Parse maturity dates and filter to those after dt
+    matu_dates = nw_df["last_tradeable_dt"].to_list()
+    tickers = nw_df["ticker"].to_list()
 
-    if len(sub_fut) == 0 or len(sub_fut) <= idx:
+    # Build list of (ticker, parsed_date) and filter/sort
+    valid_contracts: list[tuple[str, datetime]] = []
+    for ticker_val, matu_str in zip(tickers, matu_dates, strict=False):
+        if matu_str is None:
+            continue
+        try:
+            matu_dt = _parse_date(matu_str)
+            if matu_dt > dt:
+                valid_contracts.append((ticker_val, matu_dt))
+        except (ValueError, TypeError):
+            continue
+
+    if len(valid_contracts) <= idx:
         return ""
 
-    return str(sub_fut["ticker"][idx])
+    # Sort by maturity date and return the contract at idx
+    valid_contracts.sort(key=lambda x: x[1])
+    return valid_contracts[idx][0]
 
 
 def active_futures(
@@ -222,8 +293,9 @@ def active_futures(
     # Get maturity dates
     fut_tk = bdp(tickers=[fut_1, fut_2], flds="last_tradeable_dt", **kwargs)
     nw_tk = nw.from_native(fut_tk)
+    nw_tk = _pivot_bdp_to_wide(nw_tk)
 
-    if len(nw_tk) == 0:
+    if len(nw_tk) == 0 or "last_tradeable_dt" not in nw_tk.columns:
         return fut_1
 
     # If current date is before first contract's maturity month, use front month
@@ -306,6 +378,7 @@ def cdx_ticker(
         return ""
 
     nw_info = nw.from_native(info)
+    nw_info = _pivot_bdp_to_wide(nw_info)
 
     if len(nw_info) == 0 or "rolling_series" not in nw_info.columns:
         return ""
@@ -388,6 +461,7 @@ def active_cdx(
     try:
         cur_meta = bdp(cur, ["cds_first_accrual_start_date"], **kwargs)
         nw_meta = nw.from_native(cur_meta)
+        nw_meta = _pivot_bdp_to_wide(nw_meta)
         if len(nw_meta) > 0 and "cds_first_accrual_start_date" in nw_meta.columns:
             cur_start = _parse_date(nw_meta["cds_first_accrual_start_date"][0])
             if dt < cur_start:

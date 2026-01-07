@@ -547,7 +547,7 @@ def etf_holdings(
     bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
 
     # Execute BQL query - returns DataFrame in configured backend format
-    df = bql(query=bql_query, **kwargs)
+    df = bql(bql_query, **kwargs)
 
     # Convert to narwhals for manipulation
     nw_df = nw.from_native(df)
