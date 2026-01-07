@@ -122,9 +122,9 @@ END_DATE = datetime.now().date()
 START_DATE = END_DATE - timedelta(days=5)
 TEST_DATE = _get_previous_business_day(days_back=1)  # Previous business day for intraday
 
-# BDS test parameters - use 30 days instead of 90 to minimize data
+# BDS test parameters - use 120 days to capture quarterly dividends
 BDS_FIELD = "DVD_Hist_All"
-BDS_START = (END_DATE - timedelta(days=30)).strftime("%Y%m%d")
+BDS_START = (END_DATE - timedelta(days=120)).strftime("%Y%m%d")
 BDS_END = END_DATE.strftime("%Y%m%d")
 
 # BQL test query - simple and lightweight
@@ -248,11 +248,10 @@ def test_bdp_field_overrides():
 
 
 @pytest.mark.live_endpoint
-@pytest.mark.skip(reason="AAPL may not have dividends in 30-day window - extend date range or use dividend-paying ticker")
 def test_bds_bulk_data():
     """Test BDS (bulk/block data) endpoint with live Bloomberg data.
 
-    Uses minimal data by limiting to 30-day date range instead of full history.
+    Uses 120-day date range to capture quarterly dividends.
     """
     print(f"\n{'=' * 80}")
     print("Testing BDS (Bulk/Block Data)")
