@@ -97,7 +97,11 @@ impl SubscriptionWorker {
     /// Ensure a service is open, opening it on demand if needed.
     fn ensure_service(&mut self, service: &str) -> Result<(), BlpError> {
         if !self.open_services.contains(service) {
-            tracing::info!(worker_id = self.id, service = service, "opening service on demand");
+            tracing::info!(
+                worker_id = self.id,
+                service = service,
+                "opening service on demand"
+            );
             self.session.open_service(service)?;
             self.open_services.insert(service.to_string());
         }
@@ -200,7 +204,8 @@ impl SubscriptionWorker {
             keys.push(key);
 
             let cid = CorrelationId::U64(key as u64);
-            if let Err(e) = sub_list.add_with_options(topic, &field_refs, &option_refs, Some(&cid)) {
+            if let Err(e) = sub_list.add_with_options(topic, &field_refs, &option_refs, Some(&cid))
+            {
                 tracing::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
             }
 

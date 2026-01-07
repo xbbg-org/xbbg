@@ -453,8 +453,7 @@ pub fn create_empty_batch(column_name: &str) -> Result<RecordBatch, BlpError> {
         true,
     )]));
     let array: ArrayRef = Arc::new(StringArray::from(Vec::<Option<String>>::new()));
-    RecordBatch::try_new(schema, vec![array])
-        .map_err(|e| wrap_batch_error("create empty batch", e))
+    RecordBatch::try_new(schema, vec![array]).map_err(|e| wrap_batch_error("create empty batch", e))
 }
 
 // =============================================================================

@@ -415,9 +415,7 @@ def turnover(
                     if vwap_col and vol_col:
                         # Calculate turnover
                         turnover_col = f"{t}|Turnover"
-                        vol_nw = vol_nw.with_columns(
-                            (nw.col(vwap_col) * nw.col(vol_col)).alias(turnover_col)
-                        )
+                        vol_nw = vol_nw.with_columns((nw.col(vwap_col) * nw.col(vol_col)).alias(turnover_col))
 
                         # Add to main dataframe
                         if "date" in nw_df.columns and "date" in vol_nw.columns:
@@ -426,9 +424,7 @@ def turnover(
                             nw_df = nw_df.join(turnover_series, on="date", how="outer")
                         elif len(nw_df) == 0:
                             # Main df is empty, use vol_nw
-                            nw_df = vol_nw.select(
-                                ["date"] + [c for c in vol_nw.columns if "|Turnover" in c]
-                            )
+                            nw_df = vol_nw.select(["date"] + [c for c in vol_nw.columns if "|Turnover" in c])
 
                 data = nw_df.to_native()
         except Exception:

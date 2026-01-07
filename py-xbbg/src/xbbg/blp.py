@@ -2534,9 +2534,7 @@ async def abeqs(
     logger.debug("abeqs: screen=%s asof=%s type=%s group=%s", screen, asof, screen_type, group)
 
     # Route kwargs to elements and overrides using schema introspection
-    routed_elements, overrides = await _aroute_kwargs(
-        Service.REFDATA, Operation.BEQS, dict(kwargs)
-    )
+    routed_elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.BEQS, dict(kwargs))
 
     # Build elements for BEQS request (core elements first)
     elements: list[tuple[str, Any]] = [
@@ -2603,9 +2601,7 @@ def beqs(
         # Run a Bloomberg global screen
         df = beqs("TOP_DECL_DVD", screen_type="GLOBAL")
     """
-    return asyncio.run(
-        abeqs(screen, asof=asof, screen_type=screen_type, group=group, backend=backend, **kwargs)
-    )
+    return asyncio.run(abeqs(screen, asof=asof, screen_type=screen_type, group=group, backend=backend, **kwargs))
 
 
 # =============================================================================
@@ -2658,9 +2654,7 @@ async def ablkp(
     logger.debug("ablkp: query=%s yellowkey=%s max_results=%d", query, yellowkey, max_results)
 
     # Route kwargs to elements using schema introspection
-    routed_elements, _ = await _aroute_kwargs(
-        Service.INSTRUMENTS, Operation.INSTRUMENT_LIST, dict(kwargs)
-    )
+    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.INSTRUMENT_LIST, dict(kwargs))
 
     # Build elements for instrumentListRequest (core elements first)
     elements: list[tuple[str, Any]] = [
@@ -2780,9 +2774,7 @@ async def abport(
     logger.debug("abport: portfolio=%s fields=%s", portfolio, field_list)
 
     # Route kwargs to elements and overrides
-    elements, overrides = await _aroute_kwargs(
-        Service.REFDATA, Operation.PORTFOLIO_DATA, dict(kwargs)
-    )
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.PORTFOLIO_DATA, dict(kwargs))
 
     # Send PortfolioDataRequest via arequest
     nw_df = await arequest(

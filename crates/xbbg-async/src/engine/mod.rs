@@ -320,13 +320,8 @@ impl Engine {
         topics: Vec<String>,
         fields: Vec<String>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
-        self.subscribe_with_options(
-            "//blp/mktdata".to_string(),
-            topics,
-            fields,
-            vec![],
-        )
-        .await
+        self.subscribe_with_options("//blp/mktdata".to_string(), topics, fields, vec![])
+            .await
     }
 
     /// Subscribe to real-time data with custom service and options.
@@ -877,8 +872,8 @@ impl SubscriptionStream {
         SessionClaim,
         Vec<SlabKey>,
         std::collections::HashMap<String, SlabKey>,
-        String,       // service
-        Vec<String>,  // options
+        String,      // service
+        Vec<String>, // options
     ) {
         use std::mem;
 

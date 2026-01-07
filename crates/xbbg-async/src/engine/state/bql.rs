@@ -153,7 +153,8 @@ impl BqlState {
         }
 
         let schema = Arc::new(Schema::new(fields));
-        RecordBatch::try_new(schema, arrays).map_err(|e| wrap_batch_error("BQL build RecordBatch", e))
+        RecordBatch::try_new(schema, arrays)
+            .map_err(|e| wrap_batch_error("BQL build RecordBatch", e))
     }
 
     /// Build a typed Arrow array from BQL values (zero-copy for strings).

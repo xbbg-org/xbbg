@@ -725,13 +725,17 @@ impl RequestBuilder {
     /// Build a request from a JSON object with complex nested structures.
     /// Used for services like tasvc (//blp/tasvc) that require nested elements.
     unsafe fn build_from_json(&self, root_el: *mut blpapi_sys::blpapi_Element_t) -> Result<()> {
-        let json_str = self.json_elements.as_ref().ok_or_else(|| BlpError::InvalidArgument {
-            detail: "json_elements is required for JSON build".into(),
-        })?;
+        let json_str = self
+            .json_elements
+            .as_ref()
+            .ok_or_else(|| BlpError::InvalidArgument {
+                detail: "json_elements is required for JSON build".into(),
+            })?;
 
-        let json: JsonValue = serde_json::from_str(json_str).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid JSON: {e}"),
-        })?;
+        let json: JsonValue =
+            serde_json::from_str(json_str).map_err(|e| BlpError::InvalidArgument {
+                detail: format!("invalid JSON: {e}"),
+            })?;
 
         if let JsonValue::Object(map) = json {
             for (key, value) in map {
@@ -842,17 +846,22 @@ impl RequestBuilder {
                             );
                             if rc != 0 {
                                 return Err(BlpError::InvalidArgument {
-                                    detail: format!("failed to append string to array '{name}': rc={rc}"),
+                                    detail: format!(
+                                        "failed to append string to array '{name}': rc={rc}"
+                                    ),
                                 });
                             }
                         }
                         JsonValue::Object(_) => {
                             // Append a new element to the sequence
-                            let mut seq_el: *mut blpapi_sys::blpapi_Element_t = std::ptr::null_mut();
+                            let mut seq_el: *mut blpapi_sys::blpapi_Element_t =
+                                std::ptr::null_mut();
                             let rc = blpapi_sys::blpapi_Element_appendElement(el_arr, &mut seq_el);
                             if rc != 0 || seq_el.is_null() {
                                 return Err(BlpError::InvalidArgument {
-                                    detail: format!("failed to append element to sequence '{name}': rc={rc}"),
+                                    detail: format!(
+                                        "failed to append element to sequence '{name}': rc={rc}"
+                                    ),
                                 });
                             }
                             // Recursively set the object's fields
@@ -873,7 +882,9 @@ impl RequestBuilder {
                             );
                             if rc != 0 {
                                 return Err(BlpError::InvalidArgument {
-                                    detail: format!("failed to append value to array '{name}': rc={rc}"),
+                                    detail: format!(
+                                        "failed to append value to array '{name}': rc={rc}"
+                                    ),
                                 });
                             }
                         }

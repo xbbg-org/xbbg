@@ -283,10 +283,9 @@ mod tests {
         let (tx, _rx) = oneshot::channel();
         let state = JsonArrowState::with_extract_path("securityData", tx);
 
-        let json: Value = serde_json::from_str(
-            r#"{"securityData": [{"security": "AAPL", "value": 150.0}]}"#,
-        )
-        .unwrap();
+        let json: Value =
+            serde_json::from_str(r#"{"securityData": [{"security": "AAPL", "value": 150.0}]}"#)
+                .unwrap();
 
         let extracted = state.extract_at_path(&json, "securityData");
         assert_eq!(extracted.len(), 1);

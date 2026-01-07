@@ -173,9 +173,7 @@ def adjust_ccy(
                     how="left",
                 )
                 # Apply conversion: value / (fx_rate * factor)
-                result = result.with_columns(
-                    (nw.col(col) / (nw.col(f"_fx_{ticker}") * factor)).alias(col)
-                )
+                result = result.with_columns((nw.col(col) / (nw.col(f"_fx_{ticker}") * factor)).alias(col))
                 # Drop temporary FX column
                 result = result.drop(f"_fx_{ticker}")
 

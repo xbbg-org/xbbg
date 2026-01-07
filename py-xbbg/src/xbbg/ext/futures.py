@@ -58,11 +58,11 @@ def fut_ticker(
         from xbbg import ext
 
         # Get March 2024 E-mini S&P contract
-        ticker = ext.fut_ticker('ES1 Index', '2024-01-15')
+        ticker = ext.fut_ticker("ES1 Index", "2024-01-15")
         # Returns: 'ESH24 Index'
 
         # Get quarterly contract
-        ticker = ext.fut_ticker('ES1 Index', '2024-01-15', freq='Q')
+        ticker = ext.fut_ticker("ES1 Index", "2024-01-15", freq="Q")
     """
     from xbbg import bdp
 
@@ -116,7 +116,7 @@ def fut_ticker(
 
     def to_fut(month: datetime) -> str:
         month_code = FUTURES_MONTHS[month.strftime("%b")]
-        year_str = month.strftime("%y")[-1 if same_month else -2:]
+        year_str = month.strftime("%y")[-1 if same_month else -2 :]
         return f"{prefix}{month_code}{year_str} {postfix}"
 
     fut_candidates = [to_fut(m) for m in months]
@@ -174,7 +174,7 @@ def active_futures(
         from xbbg import ext
 
         # Get most active E-mini S&P contract
-        ticker = ext.active_futures('ES1 Index', '2024-01-15')
+        ticker = ext.active_futures("ES1 Index", "2024-01-15")
     """
     from xbbg import bdh, bdp
 
@@ -183,7 +183,7 @@ def active_futures(
     ticker_base = ticker.rsplit(" ", 1)[0]
 
     # Check for specific contract pattern: [prefix][month_code][1-2 digits]
-    month_code_pattern = rf'[{"".join(month_codes)}]'
+    month_code_pattern = rf"[{''.join(month_codes)}]"
     match = re.search(rf"(.+)({month_code_pattern})(\d{{1,2}})$", ticker_base)
     if match:
         _prefix, _month_char, digits = match.groups()
@@ -287,7 +287,7 @@ def cdx_ticker(
 
         from xbbg import ext
 
-        ticker = ext.cdx_ticker('CDX IG CDSI GEN 5Y Corp', '2024-01-15')
+        ticker = ext.cdx_ticker("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
     """
     from contextlib import suppress
 
@@ -359,7 +359,7 @@ def active_cdx(
 
         from xbbg import ext
 
-        ticker = ext.active_cdx('CDX IG CDSI GEN 5Y Corp', '2024-01-15')
+        ticker = ext.active_cdx("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
     """
     from xbbg import bdh, bdp
 
