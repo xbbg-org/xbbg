@@ -33,6 +33,15 @@ from xbbg.exceptions import (  # noqa: E402, F401
     BlpValidationError,
 )
 
+# SDK utilities (v1.0 compatible)
+from xbbg.sdk import get_sdk_info  # noqa: E402, F401
+
+# Service definitions (v1.0 preview)
+from xbbg.services import Operation, Service  # noqa: E402, F401
+
+# Streaming types (v1.0 preview)
+from xbbg.streaming import Subscription, Tick  # noqa: E402, F401
+
 # Backward compatibility: re-export pipeline from utils
 from xbbg.utils import pipeline  # noqa: E402, F401
 
@@ -41,6 +50,7 @@ try:
 
     __all__ = [
         "__version__",
+        # Backend and format
         "Backend",
         "EngineConfig",
         "Format",
@@ -49,6 +59,7 @@ try:
         "set_backend",
         "get_format",
         "set_format",
+        # Exceptions
         "BlpError",
         "BlpFieldError",
         "BlpInternalError",
@@ -57,12 +68,22 @@ try:
         "BlpSessionError",
         "BlpTimeoutError",
         "BlpValidationError",
+        # SDK utilities
+        "get_sdk_info",
+        # Service definitions
+        "Operation",
+        "Service",
+        # Streaming types
+        "Subscription",
+        "Tick",
+        # Other
         "blpapi_logging",
         "pipeline",
     ]
 except ImportError:
     __all__ = [
         "__version__",
+        # Backend and format
         "Backend",
         "EngineConfig",
         "Format",
@@ -71,6 +92,7 @@ except ImportError:
         "set_backend",
         "get_format",
         "set_format",
+        # Exceptions
         "BlpError",
         "BlpFieldError",
         "BlpInternalError",
@@ -79,5 +101,14 @@ except ImportError:
         "BlpSessionError",
         "BlpTimeoutError",
         "BlpValidationError",
+        # SDK utilities
+        "get_sdk_info",
+        # Service definitions
+        "Operation",
+        "Service",
+        # Streaming types
+        "Subscription",
+        "Tick",
+        # Other
         "pipeline",
     ]

@@ -65,6 +65,14 @@ class Format(str, Enum):
             - Database storage and joins
             - Plotting with libraries that expect tidy data
 
+        LONG_TYPED: Long format with typed value columns (v1.0 preview).
+            Columns: ticker, field, value_f64, value_i64, value_str, value_bool, value_date, value_ts
+            Each row populates one value column based on the field's data type.
+
+        LONG_WITH_METADATA: Long format with string values and dtype metadata column (v1.0 preview).
+            Columns: ticker, field, value, dtype
+            The dtype column contains the Arrow type name (float64, int64, string, etc.)
+
         SEMI_LONG: Semi-long format. A hybrid format where each row represents
             a single timestamp for a single security, but different fields are
             in separate columns. This provides a balance between normalization
@@ -83,6 +91,8 @@ class Format(str, Enum):
     """
 
     LONG = "long"
+    LONG_TYPED = "long_typed"
+    LONG_WITH_METADATA = "long_metadata"
     SEMI_LONG = "semi_long"
     WIDE = "wide"
 
