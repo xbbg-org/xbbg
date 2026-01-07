@@ -256,8 +256,18 @@ def earning(
     for yr in fy_cols:
         pct_col = f"{yr}_pct"
 
-        # Get level column as list for iteration
-        levels = data_nw["level"].to_list()
+        # Get level column as list for iteration, converting to int
+        raw_levels = data_nw["level"].to_list()
+        levels = []
+        for lvl in raw_levels:
+            if lvl is None:
+                levels.append(None)
+            else:
+                try:
+                    levels.append(int(lvl))
+                except (ValueError, TypeError):
+                    levels.append(None)
+
         values = data_nw[yr].to_list()
         pct_values = [None] * len(levels)
 
@@ -289,16 +299,16 @@ def earning(
                                 pct_values[j] = 100.0 * values[j] / group_sum
                 level_2_group = []
 
-        # Add percentage column
-        import polars as pl
+        # Add percentage column using narwhals (backend-agnostic)
+        native_namespace = nw.get_native_namespace(data_nw)
+        pct_series = nw.new_series(pct_col, pct_values, native_namespace=native_namespace)
 
-        pct_series = pl.Series(pct_col, pct_values)
         # Insert after the year column
         yr_idx = data_nw.columns.index(yr)
         cols_before = data_nw.columns[: yr_idx + 1]
         cols_after = data_nw.columns[yr_idx + 1 :]
 
-        data_nw = data_nw.with_columns(nw.from_native(pct_series, series_only=True))
+        data_nw = data_nw.with_columns(pct_series)
 
         # Reorder columns to place pct after year
         new_order = [*list(cols_before), pct_col, *list(cols_after)]
