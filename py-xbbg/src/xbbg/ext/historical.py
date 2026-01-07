@@ -97,6 +97,9 @@ def dividend(
     """
     from xbbg import bds
 
+    # Pop 'raw' kwarg if present (not used by bds)
+    kwargs.pop("raw", None)
+
     tickers_list = _normalize_tickers(tickers)
     # Filter to equity tickers only
     tickers_list = [t for t in tickers_list if "Equity" in t and "=" not in t]
@@ -203,6 +206,9 @@ def earning(
     """
     from xbbg import bds
 
+    # Pop 'raw' kwarg if present (not used by bds)
+    kwargs.pop("raw", None)
+
     # Determine override value
     ovrd = "G" if by[0].upper() == "G" else "P"
     base_kwargs: dict = {"Product_Geo_Override": ovrd}
@@ -240,6 +246,64 @@ def earning(
     clean_cols = [str(c).lower().replace(" ", "_").replace("_20", "20") for c in new_cols]
     data_nw = data_nw.rename(dict(zip(data_nw.columns, clean_cols, strict=False)))
 
+    # Calculate percentage columns for each fiscal year
+    if "level" not in data_nw.columns:
+        return data_nw.to_native()
+
+    # Find fiscal year columns (start with 'fy')
+    fy_cols = [c for c in data_nw.columns if c.startswith("fy") and not c.endswith("_pct")]
+
+    for yr in fy_cols:
+        pct_col = f"{yr}_pct"
+
+        # Get level column as list for iteration
+        levels = data_nw["level"].to_list()
+        values = data_nw[yr].to_list()
+        pct_values = [None] * len(levels)
+
+        # Calculate level 1 percentage (% of total level 1)
+        level_1_indices = [i for i, lvl in enumerate(levels) if lvl == 1]
+        if level_1_indices:
+            level_1_sum = sum(values[i] for i in level_1_indices if values[i] is not None)
+            if level_1_sum and level_1_sum != 0:
+                for i in level_1_indices:
+                    if values[i] is not None:
+                        pct_values[i] = 100.0 * values[i] / level_1_sum
+
+        # Calculate level 2 percentage (% of parent level 1 group)
+        # Iterate backwards to group level 2 rows by their level 1 parent
+        level_2_group: list[int] = []
+        for i in range(len(levels) - 1, -1, -1):
+            row_level = levels[i]
+            if row_level is None or row_level > 2:
+                continue
+            if row_level == 2:
+                level_2_group.append(i)
+            elif row_level == 1:
+                # Calculate percentage for this level 2 group
+                if level_2_group:
+                    group_sum = sum(values[j] for j in level_2_group if values[j] is not None)
+                    if group_sum and group_sum != 0:
+                        for j in level_2_group:
+                            if values[j] is not None:
+                                pct_values[j] = 100.0 * values[j] / group_sum
+                level_2_group = []
+
+        # Add percentage column
+        import polars as pl
+
+        pct_series = pl.Series(pct_col, pct_values)
+        # Insert after the year column
+        yr_idx = data_nw.columns.index(yr)
+        cols_before = data_nw.columns[: yr_idx + 1]
+        cols_after = data_nw.columns[yr_idx + 1 :]
+
+        data_nw = data_nw.with_columns(nw.from_native(pct_series, series_only=True))
+
+        # Reorder columns to place pct after year
+        new_order = [*list(cols_before), pct_col, *list(cols_after)]
+        data_nw = data_nw.select(new_order)
+
     return data_nw.to_native()
 
 
@@ -255,7 +319,8 @@ def turnover(
     """Get trading volume and turnover for securities.
 
     Convenience wrapper around bdh() for turnover data with optional
-    currency conversion.
+    currency conversion. For equities where the Turnover field is not available,
+    calculates turnover as volume * VWAP (eqy_weighted_avg_px).
 
     Args:
         tickers: Single ticker or list of tickers.
@@ -312,6 +377,63 @@ def turnover(
 
     # Convert to narwhals for manipulation
     nw_df = nw.from_native(data)
+
+    # Check which tickers have turnover data
+    # Column names typically include ticker (e.g., "AAPL US Equity|Turnover")
+    tickers_with_data = set()
+    for col in nw_df.columns:
+        for t in tickers_list:
+            if t in col:
+                tickers_with_data.add(t)
+                break
+
+    # For tickers without turnover, calculate from volume * VWAP
+    missing_tickers = [t for t in tickers_list if t not in tickers_with_data]
+
+    if missing_tickers:
+        try:
+            vol_data = bdh(
+                tickers=missing_tickers,
+                flds=["eqy_weighted_avg_px", "volume"],
+                start_date=start_date,
+                end_date=end_date,
+                **kwargs,
+            )
+            vol_nw = nw.from_native(vol_data)
+
+            if len(vol_nw) > 0:
+                # Calculate turnover = volume * VWAP for each ticker
+                for t in missing_tickers:
+                    vwap_col = None
+                    vol_col = None
+                    for col in vol_nw.columns:
+                        if t in col and "eqy_weighted_avg_px" in col.lower():
+                            vwap_col = col
+                        elif t in col and "volume" in col.lower():
+                            vol_col = col
+
+                    if vwap_col and vol_col:
+                        # Calculate turnover
+                        turnover_col = f"{t}|Turnover"
+                        vol_nw = vol_nw.with_columns(
+                            (nw.col(vwap_col) * nw.col(vol_col)).alias(turnover_col)
+                        )
+
+                        # Add to main dataframe
+                        if "date" in nw_df.columns and "date" in vol_nw.columns:
+                            # Join on date
+                            turnover_series = vol_nw.select(["date", turnover_col])
+                            nw_df = nw_df.join(turnover_series, on="date", how="outer")
+                        elif len(nw_df) == 0:
+                            # Main df is empty, use vol_nw
+                            nw_df = vol_nw.select(
+                                ["date"] + [c for c in vol_nw.columns if "|Turnover" in c]
+                            )
+
+                data = nw_df.to_native()
+        except Exception:
+            # If fallback fails, continue with original data
+            pass
 
     if len(nw_df) == 0:
         return data
