@@ -28,11 +28,9 @@ def get_sdk_info() -> dict[str, Any]:
     Example::
 
         >>> import xbbg
-        >>> xbbg.get_sdk_info()
-        {
-            'sources': [{'name': 'blpapi_python', 'version': '3.24.8', 'path': ...}],
-            'active': 'blpapi_python'
-        }
+        >>> info = xbbg.get_sdk_info()  # doctest: +SKIP
+        >>> info['active']  # doctest: +SKIP
+        'blpapi_python' 
 
     Note:
         In xbbg v1.0, this replaces getBlpapiVersion() which is deprecated.
