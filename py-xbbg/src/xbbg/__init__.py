@@ -549,9 +549,9 @@ def __getattr__(name: str):
         return getattr(schema, name)
     # Extensions module
     if name == "ext":
-        from . import ext
+        import importlib
 
-        return ext
+        return importlib.import_module("xbbg.ext")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
