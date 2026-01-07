@@ -35,16 +35,28 @@ class Service(str, Enum):
     """
 
     REFDATA = "//blp/refdata"
-    """Reference data service for bdp, bdh, bds, bdib, bdtick requests."""
+    """Reference data service for bdp, bdh, bds, bdib, bdtick, beqs, bport."""
 
     MKTDATA = "//blp/mktdata"
-    """Real-time market data subscriptions."""
+    """Real-time market data subscriptions (subscribe, stream)."""
 
     APIFLDS = "//blp/apiflds"
-    """Field metadata service for field info and search."""
+    """Field metadata service for field info and search (bfld)."""
 
     INSTRUMENTS = "//blp/instruments"
-    """Instruments service for security lookup."""
+    """Instruments service for security lookup (blkp)."""
+
+    BQLSVC = "//blp/bqlsvc"
+    """Bloomberg Query Language service (bql)."""
+
+    EXRSVC = "//blp/exrsvc"
+    """Excel/Search service for Bloomberg searches (bsrch)."""
+
+    TASVC = "//blp/tasvc"
+    """Technical Analysis service for study calculations (bta)."""
+
+    MKTVWAP = "//blp/mktvwap"
+    """Real-time VWAP subscription service (vwap)."""
 
 
 class Operation(str, Enum):
@@ -84,6 +96,18 @@ class Operation(str, Enum):
     # Instruments operations (//blp/instruments)
     INSTRUMENT_LIST = "instrumentListRequest"
     """Security lookup by name (blkp)."""
+
+    # BQL operations (//blp/bqlsvc)
+    BQL_SEND_QUERY = "sendQuery"
+    """Bloomberg Query Language query (bql)."""
+
+    # Excel/Search operations (//blp/exrsvc)
+    EXCEL_GET_GRID = "ExcelGetGridRequest"
+    """Bloomberg Search/Excel grid request (bsrch)."""
+
+    # Technical Analysis operations (//blp/tasvc)
+    STUDY_REQUEST = "studyRequest"
+    """Technical analysis study request (bta)."""
 
 
 class OutputMode(str, Enum):
@@ -186,12 +210,23 @@ LongMode = Format
 
 # Mapping from Operation to default ExtractorHint
 _OPERATION_TO_EXTRACTOR: dict[str, ExtractorHint] = {
+    # Reference data operations
     Operation.REFERENCE_DATA.value: ExtractorHint.REFDATA,
     Operation.HISTORICAL_DATA.value: ExtractorHint.HISTDATA,
     Operation.INTRADAY_BAR.value: ExtractorHint.INTRADAY_BAR,
     Operation.INTRADAY_TICK.value: ExtractorHint.INTRADAY_TICK,
+    Operation.BEQS.value: ExtractorHint.JSON_ARROW,
+    Operation.PORTFOLIO_DATA.value: ExtractorHint.GENERIC,
+    # Field metadata operations
     Operation.FIELD_INFO.value: ExtractorHint.FIELD_INFO,
     Operation.FIELD_SEARCH.value: ExtractorHint.GENERIC,
+    # Instruments operations
+    Operation.INSTRUMENT_LIST.value: ExtractorHint.JSON_ARROW,
+    # BQL/Search operations
+    Operation.BQL_SEND_QUERY.value: ExtractorHint.BQL,
+    Operation.EXCEL_GET_GRID.value: ExtractorHint.BSRCH,
+    # Technical Analysis operations
+    Operation.STUDY_REQUEST.value: ExtractorHint.GENERIC,
 }
 
 

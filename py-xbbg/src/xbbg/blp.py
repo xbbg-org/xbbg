@@ -448,6 +448,64 @@ def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
     return dt.strftime(fmt)
 
 
+def _handle_deprecated_wide_format(
+    format: Format | str | None,
+    pivot_index: str | list[str],
+    stacklevel: int = 3,
+) -> tuple[Format | None, bool]:
+    """Handle deprecated WIDE format with warning.
+
+    Args:
+        format: User-provided format (may be Format.WIDE)
+        pivot_index: Column(s) to use as index when pivoting
+            - For bdp: "ticker"
+            - For bdh: ["ticker", "date"]
+        stacklevel: Stack level for the deprecation warning
+
+    Returns:
+        Tuple of (adjusted_format, want_wide) where:
+        - adjusted_format: Format to use (None if WIDE was requested)
+        - want_wide: True if WIDE was requested and post-pivot is needed
+    """
+    fmt = Format(format) if isinstance(format, str) else format
+    want_wide = fmt == Format.WIDE if fmt else False
+
+    if want_wide:
+        # Build the pivot example string
+        if isinstance(pivot_index, list):
+            index_str = str(pivot_index)
+        else:
+            index_str = f"'{pivot_index}'"
+
+        warnings.warn(
+            f"Format.WIDE is deprecated and will be removed in v2.0. "
+            f"Use format=Format.LONG (default) and then call "
+            f"df.pivot(on='field', index={index_str}, values='value') "
+            f"to convert to wide format.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        fmt = None  # Use default long format, then pivot
+
+    return fmt, want_wide
+
+
+def _apply_wide_pivot(
+    nw_df: nw.DataFrame,
+    pivot_index: str | list[str],
+) -> nw.DataFrame:
+    """Apply wide format pivot to DataFrame.
+
+    Args:
+        nw_df: Narwhals DataFrame in long format
+        pivot_index: Column(s) to use as index when pivoting
+
+    Returns:
+        Pivoted DataFrame in wide format
+    """
+    return nw_df.pivot(on="field", index=pivot_index, values="value")
+
+
 def _convert_backend(
     nw_df: nw.DataFrame,
     backend: Backend | str | None,
@@ -776,21 +834,8 @@ async def abdp(
     # Route kwargs to elements/overrides using schema introspection
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
 
-    # Normalize format
-    fmt = Format(format) if isinstance(format, str) else format
-
     # Handle deprecated WIDE format
-    want_wide = fmt == Format.WIDE if fmt else False
-    if want_wide:
-        warnings.warn(
-            "Format.WIDE is deprecated and will be removed in v2.0. "
-            "Use format=Format.LONG (default) and then call "
-            "df.pivot(on='field', index='ticker', values='value') "
-            "to convert to wide format.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        fmt = None  # Use default long format, then pivot
+    fmt, want_wide = _handle_deprecated_wide_format(format, pivot_index="ticker")
 
     logger.debug("abdp: tickers=%s fields=%s", ticker_list, field_list)
 
@@ -819,7 +864,7 @@ async def abdp(
 
     # Handle deprecated wide format
     if want_wide:
-        nw_df = nw_df.pivot(on="field", index="ticker", values="value")
+        nw_df = _apply_wide_pivot(nw_df, pivot_index="ticker")
 
     return _convert_backend(nw_df, backend)
 
@@ -872,21 +917,8 @@ async def abdh(
     ticker_list = _normalize_tickers(tickers)
     field_list = _normalize_fields(flds)
 
-    # Normalize format
-    fmt = Format(format) if isinstance(format, str) else format
-
     # Handle deprecated WIDE format
-    want_wide = fmt == Format.WIDE if fmt else False
-    if want_wide:
-        warnings.warn(
-            "Format.WIDE is deprecated and will be removed in v2.0. "
-            "Use format=Format.LONG (default) and then call "
-            "df.pivot(on='field', index=['ticker', 'date'], values='value') "
-            "to convert to wide format.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        fmt = None  # Use default long format, then pivot
+    fmt, want_wide = _handle_deprecated_wide_format(format, pivot_index=["ticker", "date"])
 
     # Handle dates
     e_dt = _fmt_date(end_date, "%Y%m%d")
@@ -945,7 +977,7 @@ async def abdh(
 
     # Handle deprecated wide format
     if want_wide:
-        nw_df = nw_df.pivot(on="field", index=["ticker", "date"], values="value")
+        nw_df = _apply_wide_pivot(nw_df, pivot_index=["ticker", "date"])
 
     return _convert_backend(nw_df, backend)
 
@@ -1949,7 +1981,6 @@ async def abta(
         # Multiple securities (sends concurrent requests)
         df = await xbbg.abta(["AAPL US Equity", "MSFT US Equity"], "rsi")
     """
-    import json
     import warnings
 
     ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
@@ -2502,7 +2533,12 @@ async def abeqs(
     """
     logger.debug("abeqs: screen=%s asof=%s type=%s group=%s", screen, asof, screen_type, group)
 
-    # Build elements for BEQS request
+    # Route kwargs to elements and overrides using schema introspection
+    routed_elements, overrides = await _aroute_kwargs(
+        Service.REFDATA, Operation.BEQS, dict(kwargs)
+    )
+
+    # Build elements for BEQS request (core elements first)
     elements: list[tuple[str, Any]] = [
         ("screenName", screen),
         ("screenType", screen_type),
@@ -2512,15 +2548,15 @@ async def abeqs(
     if asof:
         elements.append(("asOfDate", _fmt_date(asof)))
 
-    # Add any additional kwargs as elements
-    for key, value in kwargs.items():
-        elements.append((key, value))
+    # Add routed elements
+    elements.extend(routed_elements)
 
     # Send BEQS request via arequest with JSON_ARROW extractor (parsed in Rust)
     nw_df = await arequest(
         service=Service.REFDATA,
         operation=Operation.BEQS,
         elements=elements,
+        overrides=overrides if overrides else None,
         extractor=ExtractorHint.JSON_ARROW,
         backend=None,
     )
@@ -2584,6 +2620,7 @@ async def ablkp(
     language: str = "LANG_OVERRIDE_NONE",
     max_results: int = 20,
     backend: Backend | str | None = None,
+    **kwargs,
 ) -> nw.DataFrame:
     """Async Bloomberg security lookup (BLKP) request.
 
@@ -2602,6 +2639,7 @@ async def ablkp(
         language: Language override for results.
         max_results: Maximum number of results (default: 20, max: 1000).
         backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
 
     Returns:
         DataFrame with columns: security, description, and other result fields.
@@ -2619,13 +2657,21 @@ async def ablkp(
     """
     logger.debug("ablkp: query=%s yellowkey=%s max_results=%d", query, yellowkey, max_results)
 
-    # Build elements for instrumentListRequest
+    # Route kwargs to elements using schema introspection
+    routed_elements, _ = await _aroute_kwargs(
+        Service.INSTRUMENTS, Operation.INSTRUMENT_LIST, dict(kwargs)
+    )
+
+    # Build elements for instrumentListRequest (core elements first)
     elements: list[tuple[str, Any]] = [
         ("query", query),
         ("yellowKeyFilter", yellowkey),
         ("languageOverride", language),
         ("maxResults", max_results),
     ]
+
+    # Add routed elements
+    elements.extend(routed_elements)
 
     # Send request via arequest with JSON_ARROW extractor (parsed in Rust)
     nw_df = await arequest(
@@ -2648,6 +2694,7 @@ def blkp(
     language: str = "LANG_OVERRIDE_NONE",
     max_results: int = 20,
     backend: Backend | str | None = None,
+    **kwargs,
 ) -> nw.DataFrame:
     """Bloomberg security lookup (BLKP) request.
 
@@ -2668,6 +2715,7 @@ def blkp(
         language: Language override for results.
         max_results: Maximum number of results (default: 20, max: 1000).
         backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
 
     Returns:
         DataFrame with columns: security, description.
@@ -2684,7 +2732,14 @@ def blkp(
         df = blkp("Microsoft", max_results=50)
     """
     return asyncio.run(
-        ablkp(query, yellowkey=yellowkey, language=language, max_results=max_results, backend=backend)
+        ablkp(
+            query,
+            yellowkey=yellowkey,
+            language=language,
+            max_results=max_results,
+            backend=backend,
+            **kwargs,
+        )
     )
 
 

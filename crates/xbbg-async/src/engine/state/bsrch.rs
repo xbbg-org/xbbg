@@ -17,16 +17,17 @@
 //! }
 //! ```
 
-use simd_json::prelude::ValueAsScalar;
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, StringBuilder, StringArray};
+use arrow::array::{ArrayRef, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
 
-use super::json_schema::{parser, JsonValue};
+use super::json_schema::{
+    create_empty_batch, decode_double_encoded_json, parser, wrap_batch_error, JsonValue,
+};
 use xbbg_core::{BlpError, MessageRef};
 
 /// State for a BSRCH request with zero-copy parsing.
@@ -71,7 +72,7 @@ impl BsrchState {
     /// Build the final RecordBatch from collected JSON.
     fn build_batch(&mut self) -> Result<RecordBatch, BlpError> {
         if self.json_bytes.is_empty() {
-            return Self::empty_batch();
+            return create_empty_batch("ticker");
         }
 
         // Collect all responses (handle pagination)
@@ -82,7 +83,7 @@ impl BsrchState {
 
         for mut bytes in json_bytes {
             // BSRCH might return double-encoded JSON in some cases
-            let inner_bytes = match Self::decode_outer_json(&mut bytes) {
+            let inner_bytes = match decode_double_encoded_json(&mut bytes) {
                 Ok(inner) => inner,
                 Err(e) => {
                     warn!("BSRCH: Failed to decode outer JSON: {}", e);
@@ -126,25 +127,11 @@ impl BsrchState {
         }
 
         if all_titles.is_empty() || all_records.is_empty() {
-            return Self::empty_batch();
+            return create_empty_batch("ticker");
         }
 
         // Build Arrow columns
         self.build_arrow_batch(&all_titles, &all_records)
-    }
-
-    /// Decode the outer JSON string (for double-encoding case).
-    fn decode_outer_json(bytes: &mut [u8]) -> Result<Vec<u8>, simd_json::Error> {
-        // Parse as a JSON value
-        let value: simd_json::OwnedValue = simd_json::from_slice(bytes)?;
-
-        // Extract the inner string if double-encoded
-        if let Some(inner_str) = value.as_str() {
-            Ok(inner_str.as_bytes().to_vec())
-        } else {
-            // Not a string, return as-is
-            Ok(bytes.to_vec())
-        }
     }
 
     /// Convert a JsonValue to a string representation.
@@ -212,18 +199,8 @@ impl BsrchState {
             .collect();
 
         let schema = Arc::new(Schema::new(fields));
-        RecordBatch::try_new(schema, arrays).map_err(|e| BlpError::Internal {
-            detail: format!("BSRCH build RecordBatch: {e}"),
-        })
-    }
-
-    /// Create an empty RecordBatch.
-    fn empty_batch() -> Result<RecordBatch, BlpError> {
-        let schema = Arc::new(Schema::new(vec![Field::new("ticker", DataType::Utf8, true)]));
-        let ticker_array: ArrayRef = Arc::new(StringArray::from(Vec::<Option<String>>::new()));
-        RecordBatch::try_new(schema, vec![ticker_array]).map_err(|e| BlpError::Internal {
-            detail: format!("BSRCH empty batch: {e}"),
-        })
+        RecordBatch::try_new(schema, arrays)
+            .map_err(|e| wrap_batch_error("BSRCH build RecordBatch", e))
     }
 }
 

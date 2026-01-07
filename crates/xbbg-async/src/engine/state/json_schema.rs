@@ -5,10 +5,23 @@
 //! - ~3-5x faster parsing via compile-time-known structure
 //! - Direct field access without runtime key lookups
 //! - Memory efficiency through `Cow<'a, str>` for borrowed strings
+//!
+//! ## Double-Encoded JSON Handling
+//!
+//! Some Bloomberg responses (BQL, sometimes BSRCH) return double-encoded JSON:
+//! the outer JSON is a string containing the actual JSON response. Use
+//! [`decode_double_encoded_json`] to handle this case before parsing.
 
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
+
+use arrow::array::{ArrayRef, StringArray};
+use arrow::datatypes::{DataType, Field, Schema};
+use arrow::record_batch::RecordBatch;
+use serde::Deserialize;
+use simd_json::prelude::ValueAsScalar;
+use xbbg_core::BlpError;
 
 /// Reference data response (bdp).
 /// Structure: { securityData: [ { security, fieldData: { ... } } ] }
@@ -389,6 +402,64 @@ pub struct BsrchRecord<'a> {
     #[serde(borrow, default)]
     pub data_fields: Vec<JsonValue<'a>>,
 }
+
+// =============================================================================
+// Shared Utilities
+// =============================================================================
+
+/// Decode double-encoded JSON (JSON string containing JSON).
+///
+/// Some Bloomberg responses (BQL, sometimes BSRCH) return the actual JSON
+/// wrapped in an outer JSON string. This function extracts the inner JSON.
+///
+/// # Arguments
+/// * `bytes` - Mutable JSON bytes (simd-json modifies in-place)
+///
+/// # Returns
+/// * `Ok(Vec<u8>)` - The inner JSON bytes (either extracted or original if not double-encoded)
+/// * `Err` - If the outer JSON parsing fails
+pub fn decode_double_encoded_json(bytes: &mut [u8]) -> Result<Vec<u8>, simd_json::Error> {
+    // Parse as a JSON value
+    let value: simd_json::OwnedValue = simd_json::from_slice(bytes)?;
+
+    // Extract the inner string if double-encoded
+    if let Some(inner_str) = value.as_str() {
+        Ok(inner_str.as_bytes().to_vec())
+    } else {
+        // Not a string, return as-is
+        Ok(bytes.to_vec())
+    }
+}
+
+/// Wrap an Arrow error in a BlpError with context.
+///
+/// # Arguments
+/// * `context` - Description of what operation failed (e.g., "BQL build RecordBatch")
+/// * `error` - The Arrow error
+pub fn wrap_batch_error(context: &str, error: arrow::error::ArrowError) -> BlpError {
+    BlpError::Internal {
+        detail: format!("{}: {}", context, error),
+    }
+}
+
+/// Create an empty RecordBatch with a single string column.
+///
+/// # Arguments
+/// * `column_name` - Name for the column (e.g., "id", "ticker")
+pub fn create_empty_batch(column_name: &str) -> Result<RecordBatch, BlpError> {
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        column_name,
+        DataType::Utf8,
+        true,
+    )]));
+    let array: ArrayRef = Arc::new(StringArray::from(Vec::<Option<String>>::new()));
+    RecordBatch::try_new(schema, vec![array])
+        .map_err(|e| wrap_batch_error("create empty batch", e))
+}
+
+// =============================================================================
+// Parsers
+// =============================================================================
 
 /// Parse JSON using simd-json with borrowing.
 /// Returns typed response or falls back to element-by-element extraction.

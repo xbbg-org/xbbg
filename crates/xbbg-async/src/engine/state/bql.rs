@@ -3,7 +3,6 @@
 //! Uses zero-copy parsing with simd-json and borrowed types.
 //! Note: BQL returns double-encoded JSON (JSON string inside JSON).
 
-use simd_json::prelude::ValueAsScalar;
 use std::sync::Arc;
 
 use arrow::array::{ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, StringArray};
@@ -12,7 +11,10 @@ use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
 use tracing::{trace, warn};
 
-use super::json_schema::{parser, BqlResponse, JsonValue};
+use super::json_schema::{
+    create_empty_batch, decode_double_encoded_json, parser, wrap_batch_error, BqlResponse,
+    JsonValue,
+};
 use xbbg_core::{BlpError, MessageRef};
 
 /// State for a BQL request with zero-copy parsing.
@@ -57,7 +59,7 @@ impl BqlState {
     /// Build the final RecordBatch from collected JSON.
     fn build_batch(&mut self) -> Result<RecordBatch, BlpError> {
         if self.json_bytes.is_empty() {
-            return Self::empty_batch();
+            return create_empty_batch("id");
         }
 
         // BQL typically returns a single response
@@ -66,8 +68,7 @@ impl BqlState {
 
         for bytes in &mut json_bytes {
             // BQL returns double-encoded JSON - first decode the outer string
-            // The outer JSON is a string containing the actual JSON
-            let inner_bytes = match Self::decode_outer_json(bytes) {
+            let inner_bytes = match decode_double_encoded_json(bytes) {
                 Ok(inner) => inner,
                 Err(e) => {
                     warn!("BQL: Failed to decode outer JSON: {}", e);
@@ -88,27 +89,13 @@ impl BqlState {
             }
         }
 
-        Self::empty_batch()
-    }
-
-    /// Decode the outer JSON string (BQL double-encoding).
-    fn decode_outer_json(bytes: &mut [u8]) -> Result<Vec<u8>, simd_json::Error> {
-        // Parse as a JSON string value
-        let value: simd_json::OwnedValue = simd_json::from_slice(bytes)?;
-
-        // Extract the inner string
-        if let Some(inner_str) = value.as_str() {
-            Ok(inner_str.as_bytes().to_vec())
-        } else {
-            // Not a string, return as-is
-            Ok(bytes.to_vec())
-        }
+        create_empty_batch("id")
     }
 
     /// Build Arrow RecordBatch from BQL response (zero-copy where possible).
     fn build_arrow_batch(&self, response: &BqlResponse<'_>) -> Result<RecordBatch, BlpError> {
         if response.results.is_empty() {
-            return Self::empty_batch();
+            return create_empty_batch("id");
         }
 
         // Get field names (sorted for deterministic output)
@@ -166,9 +153,7 @@ impl BqlState {
         }
 
         let schema = Arc::new(Schema::new(fields));
-        RecordBatch::try_new(schema, arrays).map_err(|e| BlpError::Internal {
-            detail: format!("BQL build RecordBatch: {e}"),
-        })
+        RecordBatch::try_new(schema, arrays).map_err(|e| wrap_batch_error("BQL build RecordBatch", e))
     }
 
     /// Build a typed Arrow array from BQL values (zero-copy for strings).
@@ -205,21 +190,9 @@ impl BqlState {
 
     /// Build a string array from JSON values (uses borrowed strings where possible).
     fn build_string_array(values: &[JsonValue<'_>]) -> StringArray {
-        let strings: Vec<Option<String>> = values
-            .iter()
-            .map(|v| v.as_string())
-            .collect();
+        let strings: Vec<Option<String>> = values.iter().map(|v| v.as_string()).collect();
 
         StringArray::from(strings)
-    }
-
-    /// Create an empty RecordBatch with just an id column.
-    fn empty_batch() -> Result<RecordBatch, BlpError> {
-        let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Utf8, true)]));
-        let id_array: ArrayRef = Arc::new(StringArray::from(Vec::<Option<String>>::new()));
-        RecordBatch::try_new(schema, vec![id_array]).map_err(|e| BlpError::Internal {
-            detail: format!("BQL empty batch: {e}"),
-        })
     }
 }
 
