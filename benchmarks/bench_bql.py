@@ -5,10 +5,10 @@ Data usage: ~10-20 data points per run
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import statistics
 import time
 import tracemalloc
-from dataclasses import dataclass
 
 from config import BQL_MULTI, BQL_SIMPLE, ITERATIONS, WARMUP_ITERATIONS
 
@@ -31,8 +31,7 @@ class BenchmarkResult:
 
 
 def benchmark_bql(package_name: str, bql_func, query: str) -> BenchmarkResult:
-    """
-    Benchmark BQL operation.
+    """Benchmark BQL operation.
 
     Args:
         package_name: Name of package being benchmarked
@@ -53,14 +52,14 @@ def benchmark_bql(package_name: str, bql_func, query: str) -> BenchmarkResult:
         bql_func(query)
 
     # Measured iterations
-    for i in range(ITERATIONS):
+    for _i in range(ITERATIONS):
         start = time.perf_counter()
         result = bql_func(query)
         elapsed_ms = (time.perf_counter() - start) * 1000
         times.append(elapsed_ms)
 
     # Get memory usage
-    current, peak = tracemalloc.get_traced_memory()
+    _current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     memory_mb = peak / 1024 / 1024
 
@@ -126,20 +125,20 @@ def run_pdblp(query: str):
     """Benchmark pdblp."""
     # pdblp does not support BQL directly
     print("Warning: pdblp does not support BQL")
-    return None
+    return
 
 
 def run_bbg_fetch(query: str):
     """Benchmark bbg-fetch."""
     try:
-        import bbg_fetch
+        import bbg_fetch  # noqa: F401
 
         # bbg-fetch may not support BQL
         print("Warning: bbg-fetch BQL support needs verification")
-        return None
+        return
     except ImportError:
         print("Warning: bbg-fetch not installed")
-        return None
+        return
 
 
 def main():

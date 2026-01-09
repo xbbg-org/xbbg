@@ -5,10 +5,10 @@ Data usage: ~15-30 data points per run (3-4 trading days)
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import statistics
 import time
 import tracemalloc
-from dataclasses import dataclass
 
 from config import (
     BDH_END,
@@ -40,8 +40,7 @@ class BenchmarkResult:
 
 
 def benchmark_bdh(package_name: str, bdh_func, tickers, fields, start_date, end_date) -> BenchmarkResult:
-    """
-    Benchmark BDH operation.
+    """Benchmark BDH operation.
 
     Args:
         package_name: Name of package being benchmarked
@@ -65,14 +64,14 @@ def benchmark_bdh(package_name: str, bdh_func, tickers, fields, start_date, end_
         bdh_func(tickers, fields, start_date, end_date)
 
     # Measured iterations
-    for i in range(ITERATIONS):
+    for _i in range(ITERATIONS):
         start = time.perf_counter()
         result = bdh_func(tickers, fields, start_date, end_date)
         elapsed_ms = (time.perf_counter() - start) * 1000
         times.append(elapsed_ms)
 
     # Get memory usage
-    current, peak = tracemalloc.get_traced_memory()
+    _current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     memory_mb = peak / 1024 / 1024
 
@@ -156,14 +155,14 @@ def run_pdblp(tickers, fields, start_date, end_date):
 def run_bbg_fetch(tickers, fields, start_date, end_date):
     """Benchmark bbg-fetch."""
     try:
-        import bbg_fetch
+        import bbg_fetch  # noqa: F401
 
         # bbg-fetch API needs adaptation
         print("Warning: bbg-fetch wrapper not implemented yet")
-        return None
+        return
     except ImportError:
         print("Warning: bbg-fetch not installed")
-        return None
+        return
 
 
 def main():

@@ -13,10 +13,10 @@ Results are saved per version:
 
 from __future__ import annotations
 
-import json
-import sys
 from datetime import datetime
+import json
 from pathlib import Path
+import sys
 
 # Create results directory
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -24,8 +24,7 @@ RESULTS_DIR.mkdir(exist_ok=True)
 
 
 def get_xbbg_version():
-    """
-    Get the current xbbg version.
+    """Get the current xbbg version.
 
     Returns:
         Version string (e.g., "1.0.0") or "unknown"
@@ -128,7 +127,7 @@ def generate_markdown_report(all_results: dict, output_path: Path, version: str,
         legacy_total = 0
         pdblp_total = 0
 
-        for operation, results in all_results.items():
+        for results in all_results.values():
             for result in results:
                 if "rust" in result.package.lower():
                     rust_total += result.warm_mean_ms
@@ -137,7 +136,7 @@ def generate_markdown_report(all_results: dict, output_path: Path, version: str,
                 elif "pdblp" in result.package.lower():
                     pdblp_total += result.warm_mean_ms
 
-        f.write(f"**Total execution time (warm):**\n\n")
+        f.write("**Total execution time (warm):**\n\n")
         f.write(f"- xbbg (Rust): {rust_total:.2f}ms\n")
         if legacy_total > 0:
             f.write(f"- xbbg (legacy): {legacy_total:.2f}ms ({legacy_total / rust_total:.2f}x slower)\n")
@@ -251,21 +250,21 @@ def main():
     try:
         latest_json.symlink_to(version_json.name)
         latest_md.symlink_to(version_md.name)
-        print(f"✓ Latest symlinks updated")
+        print("✓ Latest symlinks updated")
     except OSError:
         # Windows may not support symlinks, just copy
         shutil.copy(version_json, latest_json)
         shutil.copy(version_md, latest_md)
-        print(f"✓ Latest files copied (symlinks not supported)")
+        print("✓ Latest files copied (symlinks not supported)")
 
     print(f"\n{'=' * 70}")
     print("Benchmarks Complete!")
     print(f"{'=' * 70}\n")
-    print(f"Results saved:")
+    print("Results saved:")
     print(f"  - Version-specific (overwrites): {version_md}")
     print(f"  - Timestamped archive (keeps):   {archive_md}")
-    print(f"  - Latest:                        latest.md")
-    print(f"\nCommit these files to git for version tracking.")
+    print("  - Latest:                        latest.md")
+    print("\nCommit these files to git for version tracking.")
 
     return 0
 

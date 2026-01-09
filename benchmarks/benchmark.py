@@ -6,10 +6,15 @@ the same query multiple times to measure performance (cached/warm).
 Total estimated data points: ~15-20 per full run.
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 import statistics
 import time
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Single ticker/field for minimal data usage
 TICKER = "IBM US Equity"
@@ -25,6 +30,8 @@ ITERATIONS = 5
 
 @dataclass
 class BenchmarkResult:
+    """Result of a single benchmark run."""
+
     name: str
     library: str
     cold_ms: float  # First call (includes any setup)
@@ -34,9 +41,7 @@ class BenchmarkResult:
     data_shape: tuple
 
 
-def benchmark_func(
-    name: str, library: str, func: Callable, iterations: int = ITERATIONS
-) -> BenchmarkResult:
+def benchmark_func(name: str, library: str, func: Callable, iterations: int = ITERATIONS) -> BenchmarkResult:
     """Benchmark a function with cold start and warm iterations."""
     # Cold start
     start = time.perf_counter()
@@ -71,33 +76,21 @@ def benchmark_func(
 
 def print_comparison(xbbg_result: BenchmarkResult, plbbg_result: BenchmarkResult):
     """Print side-by-side comparison."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {xbbg_result.name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  {'Metric':<20} {'xbbg':>15} {'polars-bbg':>15} {'Ratio':>10}")
-    print(f"  {'-'*60}")
+    print(f"  {'-' * 60}")
 
-    cold_ratio = (
-        xbbg_result.cold_ms / plbbg_result.cold_ms if plbbg_result.cold_ms > 0 else 0
-    )
-    warm_ratio = (
-        xbbg_result.warm_mean_ms / plbbg_result.warm_mean_ms
-        if plbbg_result.warm_mean_ms > 0
-        else 0
-    )
+    cold_ratio = xbbg_result.cold_ms / plbbg_result.cold_ms if plbbg_result.cold_ms > 0 else 0
+    warm_ratio = xbbg_result.warm_mean_ms / plbbg_result.warm_mean_ms if plbbg_result.warm_mean_ms > 0 else 0
 
-    print(
-        f"  {'Cold (ms)':<20} {xbbg_result.cold_ms:>15.2f} {plbbg_result.cold_ms:>15.2f} {cold_ratio:>10.2f}x"
-    )
+    print(f"  {'Cold (ms)':<20} {xbbg_result.cold_ms:>15.2f} {plbbg_result.cold_ms:>15.2f} {cold_ratio:>10.2f}x")
     print(
         f"  {'Warm mean (ms)':<20} {xbbg_result.warm_mean_ms:>15.2f} {plbbg_result.warm_mean_ms:>15.2f} {warm_ratio:>10.2f}x"
     )
-    print(
-        f"  {'Warm std (ms)':<20} {xbbg_result.warm_std_ms:>15.2f} {plbbg_result.warm_std_ms:>15.2f}"
-    )
-    print(
-        f"  {'Data shape':<20} {str(xbbg_result.data_shape):>15} {str(plbbg_result.data_shape):>15}"
-    )
+    print(f"  {'Warm std (ms)':<20} {xbbg_result.warm_std_ms:>15.2f} {plbbg_result.warm_std_ms:>15.2f}")
+    print(f"  {'Data shape':<20} {xbbg_result.data_shape!s:>15} {plbbg_result.data_shape!s:>15}")
 
     winner = "xbbg" if warm_ratio < 1 else "polars-bbg"
     speedup = max(warm_ratio, 1 / warm_ratio) if warm_ratio > 0 else 0
@@ -109,18 +102,19 @@ def run_benchmarks():
     print("\n" + "=" * 60)
     print("  XBBG vs POLARS-BLOOMBERG BENCHMARK")
     print("=" * 60)
-    print(f"\n  Config:")
+    print("\n  Config:")
     print(f"    Ticker: {TICKER}")
     print(f"    Field: {FIELD}")
     print(f"    BDH range: {BDH_START} to {BDH_END}")
     print(f"    Iterations per test: {ITERATIONS}")
-    print(f"\n  Estimated data points: ~15-20 total")
+    print("\n  Estimated data points: ~15-20 total")
 
     results = []
 
     # Import libraries
-    import xbbg
     import polars_bloomberg as plbbg
+
+    import xbbg
 
     # Use polars-bloomberg with context manager
     with plbbg.BQuery() as bquery:
@@ -129,9 +123,7 @@ def run_benchmarks():
         # ============================================================
         print("\n\n  Running BDP benchmark...")
 
-        xbbg_bdp = benchmark_func(
-            "BDP (1 ticker, 1 field)", "xbbg", lambda: xbbg.bdp(TICKER, FIELD)
-        )
+        xbbg_bdp = benchmark_func("BDP (1 ticker, 1 field)", "xbbg", lambda: xbbg.bdp(TICKER, FIELD))
 
         plbbg_bdp = benchmark_func(
             "BDP (1 ticker, 1 field)",
@@ -198,9 +190,7 @@ def run_benchmarks():
 
         bql_expr = "get(px_last) for(['IBM US Equity'])"
 
-        xbbg_bql = benchmark_func(
-            "BQL (simple query)", "xbbg", lambda: xbbg.bql(bql_expr)
-        )
+        xbbg_bql = benchmark_func("BQL (simple query)", "xbbg", lambda: xbbg.bql(bql_expr))
 
         plbbg_bql = benchmark_func(
             "BQL (simple query)",
@@ -229,7 +219,7 @@ def run_benchmarks():
     total_plbbg = sum(p.warm_mean_ms for _, p in results)
     overall_ratio = total_xbbg / total_plbbg if total_plbbg > 0 else 0
 
-    print(f"\n  Total warm time:")
+    print("\n  Total warm time:")
     print(f"    xbbg: {total_xbbg:.2f} ms")
     print(f"    polars-bloomberg: {total_plbbg:.2f} ms")
     print(f"    Ratio: {overall_ratio:.2f}x")

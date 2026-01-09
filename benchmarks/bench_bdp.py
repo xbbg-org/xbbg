@@ -5,10 +5,10 @@ Data usage: ~10-20 data points per run
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import statistics
 import time
 import tracemalloc
-from dataclasses import dataclass
 
 from config import (
     FIELDS_MULTI,
@@ -38,8 +38,7 @@ class BenchmarkResult:
 
 
 def benchmark_bdp(package_name: str, bdp_func, tickers, fields) -> BenchmarkResult:
-    """
-    Benchmark BDP operation.
+    """Benchmark BDP operation.
 
     Args:
         package_name: Name of package being benchmarked
@@ -61,14 +60,14 @@ def benchmark_bdp(package_name: str, bdp_func, tickers, fields) -> BenchmarkResu
         bdp_func(tickers, fields)
 
     # Measured iterations
-    for i in range(ITERATIONS):
+    for _i in range(ITERATIONS):
         start = time.perf_counter()
         result = bdp_func(tickers, fields)
         elapsed_ms = (time.perf_counter() - start) * 1000
         times.append(elapsed_ms)
 
     # Get memory usage
-    current, peak = tracemalloc.get_traced_memory()
+    _current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     memory_mb = peak / 1024 / 1024
 
@@ -164,8 +163,7 @@ def run_blpapi_raw(tickers, fields):
     while True:
         event = session.nextEvent(500)
         if event.eventType() == blpapi.Event.RESPONSE:
-            for msg in event:
-                results.append(msg)
+            results.extend(list(event))
             break
 
     session.stop()
@@ -194,15 +192,15 @@ def run_pdblp(tickers, fields):
 def run_bbg_fetch(tickers, fields):
     """Benchmark bbg-fetch."""
     try:
-        import bbg_fetch
+        import bbg_fetch  # noqa: F401
 
         # bbg-fetch has different API, adapt as needed
         # This is a placeholder - adjust based on actual bbg-fetch API
         print("Warning: bbg-fetch wrapper not implemented yet")
-        return None
+        return
     except ImportError:
         print("Warning: bbg-fetch not installed (pip install bbg-fetch)")
-        return None
+        return
 
 
 def main():

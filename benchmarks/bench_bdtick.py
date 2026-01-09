@@ -5,10 +5,10 @@ Data usage: ~100-200 data points per run (5 minutes of tick data)
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import statistics
 import time
 import tracemalloc
-from dataclasses import dataclass
 
 from config import (
     BDTICK_DATE,
@@ -40,8 +40,7 @@ class BenchmarkResult:
 def benchmark_bdtick(
     package_name: str, bdtick_func, ticker, event_types, date, start_time, end_time
 ) -> BenchmarkResult:
-    """
-    Benchmark BDTICK operation.
+    """Benchmark BDTICK operation.
 
     Args:
         package_name: Name of package being benchmarked
@@ -66,14 +65,14 @@ def benchmark_bdtick(
         bdtick_func(ticker, event_types, date, start_time, end_time)
 
     # Measured iterations
-    for i in range(ITERATIONS):
+    for _i in range(ITERATIONS):
         start = time.perf_counter()
         result = bdtick_func(ticker, event_types, date, start_time, end_time)
         elapsed_ms = (time.perf_counter() - start) * 1000
         times.append(elapsed_ms)
 
     # Get memory usage
-    current, peak = tracemalloc.get_traced_memory()
+    _current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     memory_mb = peak / 1024 / 1024
 
@@ -137,8 +136,9 @@ def run_xbbg_legacy(ticker, event_types, date, start_time, end_time):
 def run_pdblp(ticker, event_types, date, start_time, end_time):
     """Benchmark pdblp."""
     try:
-        import pdblp
         from datetime import datetime
+
+        import pdblp
 
         con = pdblp.BCon(debug=False, timeout=5000)
         con.start()
