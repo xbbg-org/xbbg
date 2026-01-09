@@ -6,10 +6,11 @@ The following versions of xbbg are currently being supported with security updat
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.7.x   | :white_check_mark: |
-| < 0.7   | :x:                |
+| 0.10.x  | :white_check_mark: |
+| 0.9.x   | :white_check_mark: |
+| < 0.9   | :x:                |
 
-We support the latest minor version (0.7.x) with security updates. Older versions may receive critical security patches on a case-by-case basis.
+We support the latest two minor versions (0.10.x and 0.9.x) with security updates. Older versions may receive critical security patches on a case-by-case basis.
 
 ## Reporting a Vulnerability
 
