@@ -1754,6 +1754,295 @@ def vwap(
 
 
 # =============================================================================
+# MKTBAR API - Real-time Streaming OHLC Bars
+# =============================================================================
+
+
+async def amktbar(
+    tickers: str | list[str],
+    *,
+    interval: int = 1,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to real-time streaming OHLC bars.
+
+    Like bdib but streaming instead of historical. Provides real-time
+    bar updates as they form during the trading day.
+
+    Args:
+        tickers: Security identifier(s).
+        interval: Bar interval in minutes (default: 1).
+        start_time: Optional start time in HH:MM format.
+        end_time: Optional end time in HH:MM format.
+        raw: If True, return raw pyarrow RecordBatch (default: False).
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        Subscription object for async iteration.
+
+    Example::
+
+        # Subscribe to 5-minute bars
+        async with await amktbar("AAPL US Equity", interval=5) as sub:
+            async for batch in sub:
+                print(batch)
+
+        # Multiple securities
+        sub = await amktbar(["AAPL US Equity", "MSFT US Equity"], interval=1)
+        async for batch in sub:
+            print(batch)
+    """
+    logger.debug("amktbar: tickers=%s interval=%d", tickers, interval)
+
+    # Normalize inputs
+    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+    effective_backend = (
+        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
+    )
+
+    # Build subscription options
+    options: list[str] = [f"interval={interval}"]
+    if start_time:
+        options.append(f"START_TIME={start_time}")
+    if end_time:
+        options.append(f"END_TIME={end_time}")
+
+    # Get engine and subscribe
+    engine = _get_engine()
+    py_sub = await engine.subscribe_with_options(
+        Service.MKTBAR.value,
+        ticker_list,
+        ["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME", "NUM_TRADES"],
+        options if options else None,
+    )
+
+    return Subscription(py_sub, raw=raw, backend=effective_backend)
+
+
+def mktbar(
+    tickers: str | list[str],
+    *,
+    interval: int = 1,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to real-time streaming OHLC bars (sync version).
+
+    Note: This returns an async Subscription. Use in an async context
+    or call methods with asyncio.run().
+
+    See amktbar() for full documentation.
+    """
+    return asyncio.run(
+        amktbar(
+            tickers,
+            interval=interval,
+            start_time=start_time,
+            end_time=end_time,
+            raw=raw,
+            backend=backend,
+        )
+    )
+
+
+# =============================================================================
+# MKTDEPTH API - Level 2 Market Depth (B-PIPE Only)
+# =============================================================================
+
+
+async def adepth(
+    tickers: str | list[str],
+    *,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to Level 2 market depth / order book data.
+
+    .. warning::
+        **Requires Bloomberg B-PIPE license.** This feature is not available
+        with standard Terminal connections.
+
+    Provides real-time order book updates with bid/ask prices and sizes
+    at multiple levels.
+
+    Args:
+        tickers: Security identifier(s).
+        raw: If True, return raw pyarrow RecordBatch (default: False).
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        Subscription object for async iteration.
+
+    Raises:
+        BlpBPipeError: If B-PIPE license is not available.
+
+    Example::
+
+        # Subscribe to market depth
+        async with await adepth("AAPL US Equity") as sub:
+            async for batch in sub:
+                print(batch)  # Order book updates
+    """
+    from xbbg.exceptions import BlpBPipeError
+
+    logger.debug("adepth: tickers=%s", tickers)
+
+    # Normalize inputs
+    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+    effective_backend = (
+        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
+    )
+
+    # Get engine and subscribe
+    engine = _get_engine()
+    try:
+        py_sub = await engine.subscribe_with_options(
+            Service.MKTDEPTH.value,
+            ticker_list,
+            [],  # Fields are implicit for market depth
+            None,
+        )
+    except Exception as e:
+        # Check for B-PIPE related errors
+        if "MKTDEPTHDATA" in str(e).upper() or "SERVICE" in str(e).upper():
+            raise BlpBPipeError("Level 2 market depth requires Bloomberg B-PIPE license.") from e
+        raise
+
+    return Subscription(py_sub, raw=raw, backend=effective_backend)
+
+
+def depth(
+    tickers: str | list[str],
+    *,
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to Level 2 market depth / order book data (sync version).
+
+    .. warning::
+        **Requires Bloomberg B-PIPE license.** This feature is not available
+        with standard Terminal connections.
+
+    Note: This returns an async Subscription. Use in an async context
+    or call methods with asyncio.run().
+
+    See adepth() for full documentation.
+    """
+    return asyncio.run(
+        adepth(
+            tickers,
+            raw=raw,
+            backend=backend,
+        )
+    )
+
+
+# =============================================================================
+# MKTLIST API - Option/Futures Chains (B-PIPE Only)
+# =============================================================================
+
+
+async def achains(
+    underlying: str,
+    *,
+    chain_type: str = "OPTIONS",
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to option or futures chain updates.
+
+    .. warning::
+        **Requires Bloomberg B-PIPE license.** This feature is not available
+        with standard Terminal connections.
+
+    Provides real-time updates for option chains or futures chains
+    on a given underlying security.
+
+    Args:
+        underlying: Underlying security identifier.
+        chain_type: Type of chain - "OPTIONS" or "FUTURES" (default: "OPTIONS").
+        raw: If True, return raw pyarrow RecordBatch (default: False).
+        backend: DataFrame backend to return. If None, uses global default.
+
+    Returns:
+        Subscription object for async iteration.
+
+    Raises:
+        BlpBPipeError: If B-PIPE license is not available.
+
+    Example::
+
+        # Subscribe to option chain
+        async with await achains("AAPL US Equity") as sub:
+            async for batch in sub:
+                print(batch)  # Option chain updates
+
+        # Subscribe to futures chain
+        sub = await achains("ES1 Index", chain_type="FUTURES")
+    """
+    from xbbg.exceptions import BlpBPipeError
+
+    logger.debug("achains: underlying=%s chain_type=%s", underlying, chain_type)
+
+    effective_backend = (
+        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
+    )
+
+    # Build subscription options
+    options: list[str] = [f"chainType={chain_type}"]
+
+    # Get engine and subscribe
+    engine = _get_engine()
+    try:
+        py_sub = await engine.subscribe_with_options(
+            Service.MKTLIST.value,
+            [underlying],
+            [],  # Fields depend on chain type
+            options,
+        )
+    except Exception as e:
+        # Check for B-PIPE related errors
+        if "MKTLIST" in str(e).upper() or "SERVICE" in str(e).upper():
+            raise BlpBPipeError("Option/futures chains require Bloomberg B-PIPE license.") from e
+        raise
+
+    return Subscription(py_sub, raw=raw, backend=effective_backend)
+
+
+def chains(
+    underlying: str,
+    *,
+    chain_type: str = "OPTIONS",
+    raw: bool = False,
+    backend: Backend | str | None = None,
+) -> Subscription:
+    """Subscribe to option or futures chain updates (sync version).
+
+    .. warning::
+        **Requires Bloomberg B-PIPE license.** This feature is not available
+        with standard Terminal connections.
+
+    Note: This returns an async Subscription. Use in an async context
+    or call methods with asyncio.run().
+
+    See achains() for full documentation.
+    """
+    return asyncio.run(
+        achains(
+            underlying,
+            chain_type=chain_type,
+            raw=raw,
+            backend=backend,
+        )
+    )
+
+
+# =============================================================================
 # Technical Analysis API - Bloomberg Technical Analysis Service
 # =============================================================================
 

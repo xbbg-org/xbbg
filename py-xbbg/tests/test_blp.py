@@ -104,6 +104,53 @@ class TestBgovts:
         assert True, "Placeholder - implement partial_match tests"
 
 
+class TestMktbar:
+    """Tests for mktbar (streaming OHLC bars) function."""
+
+    def test_mktbar_placeholder(self):
+        """Placeholder: Test mktbar function signature."""
+        # TODO: Implement actual mktbar tests
+        assert True, "Placeholder - implement mktbar tests"
+
+    def test_mktbar_interval_placeholder(self):
+        """Placeholder: Test interval parameter."""
+        # TODO: Test different bar intervals (1, 5, 15, etc.)
+        assert True, "Placeholder - implement interval tests"
+
+
+class TestDepth:
+    """Tests for depth (Level 2 market depth) function."""
+
+    def test_depth_placeholder(self):
+        """Placeholder: Test depth function signature."""
+        # TODO: Implement actual depth tests
+        assert True, "Placeholder - implement depth tests"
+
+    def test_depth_bpipe_warning_placeholder(self):
+        """Placeholder: Test B-PIPE license warning."""
+        # TODO: Test that BlpBPipeError is raised without B-PIPE
+        assert True, "Placeholder - implement B-PIPE warning tests"
+
+
+class TestChains:
+    """Tests for chains (option/futures chains) function."""
+
+    def test_chains_placeholder(self):
+        """Placeholder: Test chains function signature."""
+        # TODO: Implement actual chains tests
+        assert True, "Placeholder - implement chains tests"
+
+    def test_chains_type_placeholder(self):
+        """Placeholder: Test chain_type parameter."""
+        # TODO: Test OPTIONS vs FUTURES chain types
+        assert True, "Placeholder - implement chain_type tests"
+
+    def test_chains_bpipe_warning_placeholder(self):
+        """Placeholder: Test B-PIPE license warning."""
+        # TODO: Test that BlpBPipeError is raised without B-PIPE
+        assert True, "Placeholder - implement B-PIPE warning tests"
+
+
 class TestOverrides:
     """Tests for Bloomberg override handling."""
 

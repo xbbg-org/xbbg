@@ -58,6 +58,15 @@ class Service(str, Enum):
     MKTVWAP = "//blp/mktvwap"
     """Real-time VWAP subscription service (vwap)."""
 
+    MKTBAR = "//blp/mktbar"
+    """Real-time streaming OHLC bars (mktbar)."""
+
+    MKTDEPTH = "//blp/mktdepthdata"
+    """Level 2 market depth / order book data (depth). Requires B-PIPE license."""
+
+    MKTLIST = "//blp/mktlist"
+    """Option chains and futures chains (chains). Requires B-PIPE license."""
+
 
 class Operation(str, Enum):
     """Bloomberg request operation names.

@@ -337,6 +337,24 @@ __all__ = [
     # VWAP Streaming
     "avwap",
     "vwap",
+    # Streaming Bars
+    "amktbar",
+    "mktbar",
+    # Market Depth (B-PIPE)
+    "adepth",
+    "depth",
+    # Option/Futures Chains (B-PIPE)
+    "achains",
+    "chains",
+    # Streaming Bars
+    "amktbar",
+    "mktbar",
+    # Market Depth (B-PIPE)
+    "adepth",
+    "depth",
+    # Option/Futures Chains (B-PIPE)
+    "achains",
+    "chains",
     # Technical Analysis
     "abta",
     "bta",
@@ -393,6 +411,7 @@ __all__ = [
     "BlpValidationError",
     "BlpTimeoutError",
     "BlpInternalError",
+    "BlpBPipeError",
     # Extensions module
     "ext",
 ]
@@ -517,6 +536,7 @@ def __getattr__(name: str):
         "BlpValidationError",
         "BlpTimeoutError",
         "BlpInternalError",
+        "BlpBPipeError",
     ):
         from . import exceptions
 

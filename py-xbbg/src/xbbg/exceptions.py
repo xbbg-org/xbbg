@@ -129,3 +129,15 @@ class BlpInternalError(BlpError):
 
     If you encounter this error, please report it as a bug.
     """
+
+
+class BlpBPipeError(BlpError):
+    """B-PIPE license required for this operation.
+
+    Raised when attempting to use features that require Bloomberg B-PIPE
+    license but only a standard Terminal connection is available.
+
+    B-PIPE features include:
+        - Level 2 market depth data (depth/adepth)
+        - Option and futures chains (chains/achains)
+    """
