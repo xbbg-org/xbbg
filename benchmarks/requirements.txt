@@ -1,0 +1,21 @@
+# Benchmark dependencies
+
+# Testing packages (install from appropriate sources)
+# xbbg  # Current Rust version (from local build)
+# xbbg==0.10.3  # Legacy version for comparison
+# blpapi  # From Bloomberg repo: --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
+# bbg-fetch
+# pdblp
+
+# Benchmark tools
+pytest-benchmark>=4.0.0
+tabulate>=0.9.0
+psutil>=5.9.0  # For memory profiling
+
+# Data handling
+pandas>=2.0.0
+polars>=0.20.0
+
+# Reporting
+jinja2>=3.1.0
+markdown>=3.5.0
