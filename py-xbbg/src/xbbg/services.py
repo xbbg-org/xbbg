@@ -97,6 +97,12 @@ class Operation(str, Enum):
     INSTRUMENT_LIST = "instrumentListRequest"
     """Security lookup by name (blkp)."""
 
+    CURVE_LIST = "curveListRequest"
+    """List yield curves (bcurves)."""
+
+    GOVT_LIST = "govtListRequest"
+    """List government securities (bgovts)."""
+
     # BQL operations (//blp/bqlsvc)
     BQL_SEND_QUERY = "sendQuery"
     """Bloomberg Query Language query (bql)."""
@@ -222,6 +228,8 @@ _OPERATION_TO_EXTRACTOR: dict[str, ExtractorHint] = {
     Operation.FIELD_SEARCH.value: ExtractorHint.GENERIC,
     # Instruments operations
     Operation.INSTRUMENT_LIST.value: ExtractorHint.JSON_ARROW,
+    Operation.CURVE_LIST.value: ExtractorHint.JSON_ARROW,
+    Operation.GOVT_LIST.value: ExtractorHint.JSON_ARROW,
     # BQL/Search operations
     Operation.BQL_SEND_QUERY.value: ExtractorHint.BQL,
     Operation.EXCEL_GET_GRID.value: ExtractorHint.BSRCH,

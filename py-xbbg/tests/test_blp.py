@@ -66,6 +66,44 @@ class TestBdtick:
         assert True, "Placeholder - implement bdtick tests"
 
 
+class TestBcurves:
+    """Tests for bcurves (yield curve list) function."""
+
+    def test_bcurves_placeholder(self):
+        """Placeholder: Test bcurves function signature."""
+        # TODO: Implement actual bcurves tests
+        assert True, "Placeholder - implement bcurves tests"
+
+    def test_bcurves_country_filter_placeholder(self):
+        """Placeholder: Test country filter."""
+        # TODO: Test filtering by country (e.g., country="US")
+        assert True, "Placeholder - implement country filter tests"
+
+    def test_bcurves_currency_filter_placeholder(self):
+        """Placeholder: Test currency filter."""
+        # TODO: Test filtering by currency (e.g., currency="USD")
+        assert True, "Placeholder - implement currency filter tests"
+
+
+class TestBgovts:
+    """Tests for bgovts (government securities list) function."""
+
+    def test_bgovts_placeholder(self):
+        """Placeholder: Test bgovts function signature."""
+        # TODO: Implement actual bgovts tests
+        assert True, "Placeholder - implement bgovts tests"
+
+    def test_bgovts_query_placeholder(self):
+        """Placeholder: Test query parameter."""
+        # TODO: Test searching by query (e.g., query="T")
+        assert True, "Placeholder - implement query tests"
+
+    def test_bgovts_partial_match_placeholder(self):
+        """Placeholder: Test partial_match parameter."""
+        # TODO: Test partial_match=True vs False
+        assert True, "Placeholder - implement partial_match tests"
+
+
 class TestOverrides:
     """Tests for Bloomberg override handling."""
 

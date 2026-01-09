@@ -79,6 +79,8 @@ __all__ = [
     "abeqs",
     "ablkp",
     "abport",
+    "abcurves",
+    "abgovts",
     # Sync API (wrappers)
     "bdp",
     "bdh",
@@ -91,6 +93,8 @@ __all__ = [
     "beqs",
     "blkp",
     "bport",
+    "bcurves",
+    "bgovts",
     # Streaming API
     "Tick",
     "Subscription",
@@ -2823,6 +2827,256 @@ def bport(
         df = bport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
     """
     return asyncio.run(abport(portfolio, fields, backend=backend, **kwargs))
+
+
+# =============================================================================
+# BCURVES API - Bloomberg Yield Curve List
+# =============================================================================
+
+
+async def abcurves(
+    *,
+    country: str | None = None,
+    currency: str | None = None,
+    curve_type: str | None = None,
+    subtype: str | None = None,
+    curveid: str | None = None,
+    bbgid: str | None = None,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Async Bloomberg yield curve list (BCURVES) request.
+
+    Search for yield curves by country, currency, type, or other filters.
+
+    Args:
+        country: Country code filter (e.g., "US", "GB", "DE").
+        currency: Currency code filter (e.g., "USD", "EUR", "GBP").
+        curve_type: Curve type filter (e.g., "GOVERNMENT", "CORPORATE").
+        subtype: Curve subtype filter.
+        curveid: Specific curve ID to look up.
+        bbgid: Bloomberg Global ID filter.
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
+
+    Returns:
+        DataFrame with yield curve information.
+
+    Example::
+
+        # List US yield curves
+        df = await abcurves(country="US")
+
+        # List USD government curves
+        df = await abcurves(currency="USD", curve_type="GOVERNMENT")
+
+        # Look up specific curve
+        df = await abcurves(curveid="YCSW0023 Index")
+    """
+    logger.debug(
+        "abcurves: country=%s currency=%s type=%s",
+        country,
+        currency,
+        curve_type,
+    )
+
+    # Route kwargs to elements using schema introspection
+    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.CURVE_LIST, dict(kwargs))
+
+    # Build elements for curveListRequest
+    elements: list[tuple[str, Any]] = []
+
+    if country is not None:
+        elements.append(("countryCode", country))
+    if currency is not None:
+        elements.append(("currencyCode", currency))
+    if curve_type is not None:
+        elements.append(("type", curve_type))
+    if subtype is not None:
+        elements.append(("subtype", subtype))
+    if curveid is not None:
+        elements.append(("curveid", curveid))
+    if bbgid is not None:
+        elements.append(("bbgid", bbgid))
+
+    # Add routed elements
+    elements.extend(routed_elements)
+
+    # Send request via arequest with JSON_ARROW extractor
+    nw_df = await arequest(
+        service=Service.INSTRUMENTS,
+        operation=Operation.CURVE_LIST,
+        elements=elements if elements else None,
+        extractor=ExtractorHint.JSON_ARROW,
+        backend=None,
+    )
+
+    logger.debug("abcurves: received %d rows", len(nw_df))
+
+    return _convert_backend(nw_df, backend)
+
+
+def bcurves(
+    *,
+    country: str | None = None,
+    currency: str | None = None,
+    curve_type: str | None = None,
+    subtype: str | None = None,
+    curveid: str | None = None,
+    bbgid: str | None = None,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Bloomberg yield curve list (BCURVES) request.
+
+    Sync wrapper around abcurves(). For async usage, use abcurves() directly.
+
+    Search for yield curves by country, currency, type, or other filters.
+
+    Args:
+        country: Country code filter (e.g., "US", "GB", "DE").
+        currency: Currency code filter (e.g., "USD", "EUR", "GBP").
+        curve_type: Curve type filter (e.g., "GOVERNMENT", "CORPORATE").
+        subtype: Curve subtype filter.
+        curveid: Specific curve ID to look up.
+        bbgid: Bloomberg Global ID filter.
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
+
+    Returns:
+        DataFrame with yield curve information.
+
+    Example::
+
+        # List US yield curves
+        df = bcurves(country="US")
+
+        # List USD government curves
+        df = bcurves(currency="USD", curve_type="GOVERNMENT")
+
+        # Look up specific curve
+        df = bcurves(curveid="YCSW0023 Index")
+    """
+    return asyncio.run(
+        abcurves(
+            country=country,
+            currency=currency,
+            curve_type=curve_type,
+            subtype=subtype,
+            curveid=curveid,
+            bbgid=bbgid,
+            backend=backend,
+            **kwargs,
+        )
+    )
+
+
+# =============================================================================
+# BGOVTS API - Bloomberg Government Securities List
+# =============================================================================
+
+
+async def abgovts(
+    query: str | None = None,
+    *,
+    partial_match: bool = True,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Async Bloomberg government securities list (BGOVTS) request.
+
+    Search for government securities by ticker or name.
+
+    Args:
+        query: Search query (ticker or partial name).
+        partial_match: If True, match partial ticker names (default: True).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
+
+    Returns:
+        DataFrame with government securities information.
+
+    Example::
+
+        # Search for US Treasury securities
+        df = await abgovts("T")
+
+        # Search for German government bonds
+        df = await abgovts("DBR")
+
+        # Exact match only
+        df = await abgovts("T 2.5 05/15/24", partial_match=False)
+    """
+    logger.debug("abgovts: query=%s partial_match=%s", query, partial_match)
+
+    # Route kwargs to elements using schema introspection
+    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.GOVT_LIST, dict(kwargs))
+
+    # Build elements for govtListRequest
+    elements: list[tuple[str, Any]] = []
+
+    if query is not None:
+        elements.append(("ticker", query))
+    elements.append(("partialMatch", partial_match))
+
+    # Add routed elements
+    elements.extend(routed_elements)
+
+    # Send request via arequest with JSON_ARROW extractor
+    nw_df = await arequest(
+        service=Service.INSTRUMENTS,
+        operation=Operation.GOVT_LIST,
+        elements=elements if elements else None,
+        extractor=ExtractorHint.JSON_ARROW,
+        backend=None,
+    )
+
+    logger.debug("abgovts: received %d rows", len(nw_df))
+
+    return _convert_backend(nw_df, backend)
+
+
+def bgovts(
+    query: str | None = None,
+    *,
+    partial_match: bool = True,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> nw.DataFrame:
+    """Bloomberg government securities list (BGOVTS) request.
+
+    Sync wrapper around abgovts(). For async usage, use abgovts() directly.
+
+    Search for government securities by ticker or name.
+
+    Args:
+        query: Search query (ticker or partial name).
+        partial_match: If True, match partial ticker names (default: True).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional request parameters.
+
+    Returns:
+        DataFrame with government securities information.
+
+    Example::
+
+        # Search for US Treasury securities
+        df = bgovts("T")
+
+        # Search for German government bonds
+        df = bgovts("DBR")
+
+        # Exact match only
+        df = bgovts("T 2.5 05/15/24", partial_match=False)
+    """
+    return asyncio.run(
+        abgovts(
+            query,
+            partial_match=partial_match,
+            backend=backend,
+            **kwargs,
+        )
+    )
 
 
 # ─── Schema Introspection API ────────────────────────────────────────────────
