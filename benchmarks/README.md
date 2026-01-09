@@ -35,14 +35,14 @@ See [../BLOOMBERG_PACKAGES_BENCHMARK.md](../BLOOMBERG_PACKAGES_BENCHMARK.md) for
 ### 1. Install Dependencies
 
 ```bash
-# Install all competing packages
-pip install xbbg==0.10.3  # Legacy version for comparison
-pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
-pip install bbg-fetch
-pip install pdblp
+# Install benchmark dependencies (from project root)
+uv sync --group benchmark
 
-# Install benchmark dependencies
-pip install pytest-benchmark tabulate pandas polars
+# Install competing packages for comparison
+uv pip install xbbg==0.10.3  # Legacy version
+uv pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
+uv pip install bbg-fetch
+uv pip install pdblp
 ```
 
 ### 2. Run Benchmarks

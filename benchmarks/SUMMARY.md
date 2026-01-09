@@ -68,16 +68,16 @@ See `../BLOOMBERG_PACKAGES_BENCHMARK.md` for full details.
 ## Quick Start
 
 ```bash
-# Install dependencies
-cd benchmarks
-pip install -r requirements.txt
+# Install dependencies (from project root)
+uv sync --group benchmark
 
 # Install competing packages
-pip install xbbg==0.10.3  # Legacy version
-pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
-pip install pdblp bbg-fetch
+uv pip install xbbg==0.10.3  # Legacy version
+uv pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
+uv pip install pdblp bbg-fetch
 
 # Run benchmarks
+cd benchmarks
 python run_all.py
 
 # View results

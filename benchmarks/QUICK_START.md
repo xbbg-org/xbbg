@@ -116,11 +116,15 @@ jq '.benchmarks."BDP - Reference Data"' results/benchmark_v1.0.0.json
 - Bloomberg Terminal or B-PIPE connection
 - Active market data access
 - `xbbg` installed (the version you want to benchmark)
+- Benchmark dependencies:
+  ```bash
+  uv sync --group benchmark
+  ```
 - Competing packages installed (optional):
   ```bash
-  pip install xbbg==0.10.3  # legacy version
-  pip install pdblp
-  pip install bbg-fetch
+  uv pip install xbbg==0.10.3  # legacy version
+  uv pip install pdblp
+  uv pip install bbg-fetch
   ```
 
 **Bloomberg data usage:** ~200-350 data points per full benchmark run

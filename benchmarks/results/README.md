@@ -44,7 +44,10 @@ latest.md
 ### Running Benchmarks Locally
 
 ```bash
-# Must have Bloomberg terminal/BPIPE access
+# Install dependencies (from project root)
+uv sync --group benchmark
+
+# Run benchmarks (requires Bloomberg terminal/BPIPE access)
 cd benchmarks
 python run_all.py
 ```
