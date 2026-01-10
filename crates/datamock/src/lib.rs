@@ -107,13 +107,7 @@ mod tests {
             datamock_Request_set(request, c"endDate".as_ptr(), c"20240110".as_ptr());
 
             // Send request
-            let mut cid = datamock_CorrelationId_t {
-                size: 0,
-                valueType: 0,
-                classId: 0,
-                reserved: 0,
-                value: datamock_CorrelationId_t__bindgen_ty_1 { intValue: 1 },
-            };
+            let mut cid = std::mem::zeroed::<datamock_CorrelationId_t>();
             datamock_CorrelationId_setInt(&mut cid, 1);
             let result = datamock_Session_sendRequest(session, request, &mut cid, ptr::null());
             println!("Send request result: {}", result);
@@ -207,13 +201,7 @@ mod tests {
             datamock_Request_setDatetime(request, c"endDateTime".as_ptr(), &end_dt);
 
             // Send request with includeConditionCodes = true
-            let mut cid = datamock_CorrelationId_t {
-                size: 0,
-                valueType: 0,
-                classId: 0,
-                reserved: 0,
-                value: datamock_CorrelationId_t__bindgen_ty_1 { intValue: 2 },
-            };
+            let mut cid = std::mem::zeroed::<datamock_CorrelationId_t>();
             datamock_CorrelationId_setInt(&mut cid, 2);
             datamock_Session_sendRequest(session, request, &mut cid, ptr::null());
 
@@ -376,13 +364,7 @@ mod tests {
             datamock_Request_setDatetime(request, c"endDateTime".as_ptr(), &end_dt);
 
             // Send request
-            let mut cid = datamock_CorrelationId_t {
-                size: 0,
-                valueType: 0,
-                classId: 0,
-                reserved: 0,
-                value: datamock_CorrelationId_t__bindgen_ty_1 { intValue: 3 },
-            };
+            let mut cid = std::mem::zeroed::<datamock_CorrelationId_t>();
             datamock_CorrelationId_setInt(&mut cid, 3);
             datamock_Session_sendRequest(session, request, &mut cid, ptr::null());
 
@@ -586,13 +568,7 @@ mod tests {
             datamock_Request_setDatetime(request, c"startDateTime".as_ptr(), &start_dt);
             datamock_Request_setDatetime(request, c"endDateTime".as_ptr(), &end_dt);
 
-            let mut cid = datamock_CorrelationId_t {
-                size: 0,
-                valueType: 0,
-                classId: 0,
-                reserved: 0,
-                value: datamock_CorrelationId_t__bindgen_ty_1 { intValue: 4 },
-            };
+            let mut cid = std::mem::zeroed::<datamock_CorrelationId_t>();
             datamock_CorrelationId_setInt(&mut cid, 4);
             datamock_Session_sendRequest(session, request, &mut cid, ptr::null());
 
@@ -750,13 +726,7 @@ mod tests {
             datamock_Request_setDatetime(request, c"startDateTime".as_ptr(), &start_dt);
             datamock_Request_setDatetime(request, c"endDateTime".as_ptr(), &end_dt);
 
-            let mut cid = datamock_CorrelationId_t {
-                size: 0,
-                valueType: 0,
-                classId: 0,
-                reserved: 0,
-                value: datamock_CorrelationId_t__bindgen_ty_1 { intValue: 5 },
-            };
+            let mut cid = std::mem::zeroed::<datamock_CorrelationId_t>();
             datamock_CorrelationId_setInt(&mut cid, 5);
             datamock_Session_sendRequest(session, request, &mut cid, ptr::null());
 
@@ -855,6 +825,220 @@ mod tests {
                 datamock_Event_release(event);
             }
 
+            datamock_Request_destroy(request);
+            datamock_Session_stop(session);
+            datamock_Session_destroy(session);
+            datamock_SessionOptions_destroy(options);
+        }
+    }
+
+    #[test]
+    fn test_element_to_json() {
+        use std::os::raw::{c_char, c_int, c_void};
+
+        unsafe {
+            let options = datamock_SessionOptions_create();
+            let session = datamock_Session_create(options, None, ptr::null_mut());
+            datamock_Session_start(session);
+            datamock_Session_openService(session, c"//blp/refdata".as_ptr());
+
+            let mut service: *mut datamock_Service_t = ptr::null_mut();
+            datamock_Session_getService(session, &mut service, c"//blp/refdata".as_ptr());
+
+            // Create HistoricalDataRequest to get some data
+            let mut request: *mut datamock_Request_t = ptr::null_mut();
+            datamock_Service_createRequest(
+                service,
+                &mut request,
+                c"HistoricalDataRequest".as_ptr(),
+            );
+
+            datamock_Request_append(request, c"securities".as_ptr(), c"IBM US Equity".as_ptr());
+            datamock_Request_append(request, c"fields".as_ptr(), c"PX_LAST".as_ptr());
+            datamock_Request_set(request, c"startDate".as_ptr(), c"20240101".as_ptr());
+            datamock_Request_set(request, c"endDate".as_ptr(), c"20240105".as_ptr());
+
+            let mut cid = std::mem::zeroed::<datamock_CorrelationId_t>();
+            datamock_CorrelationId_setInt(&mut cid, 1);
+            datamock_Session_sendRequest(session, request, &mut cid, ptr::null());
+
+            let mut event: *mut datamock_Event_t = ptr::null_mut();
+            let result = datamock_Session_nextEvent(session, &mut event, 5000);
+
+            if result == DATAMOCK_OK as i32 && !event.is_null() {
+                let mut iter: *mut datamock_MessageIterator_t = ptr::null_mut();
+                datamock_MessageIterator_create(&mut iter, event);
+
+                let mut msg: *mut datamock_Message_t = ptr::null_mut();
+                if datamock_MessageIterator_next(iter, &mut msg) == DATAMOCK_OK as i32
+                    && !msg.is_null()
+                {
+                    // Get message elements
+                    let mut root: *mut datamock_Element_t = ptr::null_mut();
+                    let elements_result = datamock_Message_elements(msg, &mut root);
+
+                    if elements_result == DATAMOCK_OK as i32 && !root.is_null() {
+                        // Callback to collect JSON output
+                        extern "C" fn json_writer(
+                            data: *const c_char,
+                            length: c_int,
+                            stream: *mut c_void,
+                        ) -> c_int {
+                            if stream.is_null() || data.is_null() || length <= 0 {
+                                return 0;
+                            }
+                            unsafe {
+                                let buf = &mut *(stream as *mut String);
+                                let slice =
+                                    std::slice::from_raw_parts(data as *const u8, length as usize);
+                                if let Ok(s) = std::str::from_utf8(slice) {
+                                    buf.push_str(s);
+                                }
+                            }
+                            0
+                        }
+
+                        let mut json_output = String::new();
+                        let json_result = datamock_Element_toJson(
+                            root as *const datamock_Element_t,
+                            Some(json_writer),
+                            &mut json_output as *mut String as *mut c_void,
+                        );
+
+                        println!("toJson result: {}", json_result);
+                        println!("JSON output:\n{}", json_output);
+
+                        // Verify we got valid JSON
+                        assert_eq!(json_result, DATAMOCK_OK as i32);
+                        assert!(!json_output.is_empty(), "JSON output should not be empty");
+
+                        // Basic JSON structure checks
+                        let json_trimmed = json_output.trim();
+                        assert!(
+                            json_trimmed.starts_with('{') || json_trimmed.starts_with('['),
+                            "JSON should start with {{ or ["
+                        );
+                        assert!(
+                            json_trimmed.ends_with('}') || json_trimmed.ends_with(']'),
+                            "JSON should end with }} or ]"
+                        );
+
+                        println!("toJson test PASSED!");
+                    }
+                }
+                datamock_MessageIterator_destroy(iter);
+                datamock_Event_release(event);
+            }
+
+            datamock_Request_destroy(request);
+            datamock_Session_stop(session);
+            datamock_Session_destroy(session);
+            datamock_SessionOptions_destroy(options);
+        }
+    }
+
+    #[test]
+    fn test_pointer_correlation_id_roundtrip() {
+        use std::os::raw::c_void;
+
+        unsafe {
+            let options = datamock_SessionOptions_create();
+            let session = datamock_Session_create(options, None, ptr::null_mut());
+            datamock_Session_start(session);
+            datamock_Session_openService(session, c"//blp/refdata".as_ptr());
+
+            let mut service: *mut datamock_Service_t = ptr::null_mut();
+            datamock_Session_getService(session, &mut service, c"//blp/refdata".as_ptr());
+
+            // Create HistoricalDataRequest
+            let mut request: *mut datamock_Request_t = ptr::null_mut();
+            datamock_Service_createRequest(
+                service,
+                &mut request,
+                c"HistoricalDataRequest".as_ptr(),
+            );
+
+            datamock_Request_append(request, c"securities".as_ptr(), c"IBM US Equity".as_ptr());
+            datamock_Request_append(request, c"fields".as_ptr(), c"PX_LAST".as_ptr());
+            datamock_Request_set(request, c"startDate".as_ptr(), c"20240101".as_ptr());
+            datamock_Request_set(request, c"endDate".as_ptr(), c"20240105".as_ptr());
+
+            // Create a pointer correlation ID using a unique pointer value
+            let my_data: u64 = 0xDEADBEEF12345678;
+            let my_ptr = &my_data as *const u64 as *const c_void;
+
+            let mut cid = std::mem::zeroed::<datamock_CorrelationId_t>();
+            let result = datamockext_cid_from_ptr(&mut cid, my_ptr);
+            assert_eq!(
+                result, DATAMOCK_OK as i32,
+                "datamockext_cid_from_ptr should succeed"
+            );
+
+            // Verify the CID type is POINTER
+            let cid_type = datamock_CorrelationId_type(&mut cid);
+            assert_eq!(
+                cid_type, DATAMOCK_CORRELATION_TYPE_POINTER as i32,
+                "Correlation ID type should be POINTER"
+            );
+
+            // Send request with pointer CID
+            let send_result = datamock_Session_sendRequest(session, request, &mut cid, ptr::null());
+            assert_eq!(
+                send_result, DATAMOCK_OK as i32,
+                "sendRequest should succeed"
+            );
+
+            // Get response
+            let mut event: *mut datamock_Event_t = ptr::null_mut();
+            let event_result = datamock_Session_nextEvent(session, &mut event, 5000);
+            assert_eq!(event_result, DATAMOCK_OK as i32, "nextEvent should succeed");
+            assert!(!event.is_null(), "Event should not be null");
+
+            // Iterate messages and verify correlation ID
+            let mut iter: *mut datamock_MessageIterator_t = ptr::null_mut();
+            datamock_MessageIterator_create(&mut iter, event);
+
+            let mut msg: *mut datamock_Message_t = ptr::null_mut();
+            if datamock_MessageIterator_next(iter, &mut msg) == DATAMOCK_OK as i32 && !msg.is_null()
+            {
+                // Get correlation ID from message (pass struct directly, not pointer to pointer)
+                let mut msg_cid = std::mem::zeroed::<datamock_CorrelationId_t>();
+                let cid_result = datamock_Message_correlationId(msg, &mut msg_cid, 0);
+                assert_eq!(
+                    cid_result, DATAMOCK_OK as i32,
+                    "correlationId should succeed"
+                );
+
+                // Verify the returned CID is POINTER type
+                let returned_type = datamock_CorrelationId_type(&mut msg_cid);
+                assert_eq!(
+                    returned_type, DATAMOCK_CORRELATION_TYPE_POINTER as i32,
+                    "Returned correlation ID should be POINTER type"
+                );
+
+                // Extract pointer from returned CID
+                let mut returned_ptr: *mut c_void = ptr::null_mut();
+                let get_result = datamockext_cid_get_ptr(&msg_cid, &mut returned_ptr);
+                assert_eq!(
+                    get_result, DATAMOCK_OK as i32,
+                    "datamockext_cid_get_ptr should succeed"
+                );
+
+                // Verify the pointer matches what we sent (cast to mut for comparison)
+                assert_eq!(
+                    returned_ptr, my_ptr as *mut c_void,
+                    "Returned pointer should match original pointer"
+                );
+
+                println!("✅ Pointer correlation ID round-trip test PASSED!");
+                println!("   Sent pointer: {:?}", my_ptr);
+                println!("   Received pointer: {:?}", returned_ptr);
+            } else {
+                panic!("Failed to get message from event");
+            }
+
+            datamock_MessageIterator_destroy(iter);
+            datamock_Event_release(event);
             datamock_Request_destroy(request);
             datamock_Session_stop(session);
             datamock_Session_destroy(session);

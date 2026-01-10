@@ -69,6 +69,9 @@ namespace BEmu
 			virtual Element getElement(const char* name);
 			Element getElement(const Name& name);
 
+			// Returns this Request as an Element for manipulation
+			virtual Element asElement();
+
 			virtual std::ostream& print(std::ostream& stream, int level = 0, int spacesPerLevel = 4) const;
 
 			// The C# version of the code has a "HasElement(string)" method in the Request class.  The C++ version of the code doesn't.

@@ -115,6 +115,8 @@ namespace BEmu
 
 			DLL_EXPORT void setElement(const char* name, int value);
 			DLL_EXPORT void setElement(const Name& name, int value);
+
+			DLL_EXPORT std::string toJson() const;
 	};
 
 	DLL_EXPORT inline std::ostream& operator<< (std::ostream& out, const Element& mc)

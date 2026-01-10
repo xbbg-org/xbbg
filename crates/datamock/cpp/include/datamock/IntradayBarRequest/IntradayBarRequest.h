@@ -59,6 +59,8 @@ namespace BEmu
 				virtual void set(const char* name, int value);
 				virtual void set(const char* name, bool value);
 
+				virtual Element asElement();
+
 				virtual std::ostream& print(std::ostream& stream, int level = 0, int spacesPerLevel = 4) const;
 		};
 	}

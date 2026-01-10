@@ -8,12 +8,14 @@
 //------------------------------------------------------------------------------
 
 #include "HistoricalDataRequest/HistoricRequest.h"
+#include "HistoricalDataRequest/HistoricRequestElement.h"
 #include "HistoricalDataRequest/HistoricRequestElementDate.h"
 #include "HistoricalDataRequest/HistoricRequestElementStringArray.h"
 #include "HistoricalDataRequest/HistoricRequestElementInt.h"
 #include "HistoricalDataRequest/HistoricRequestElementBool.h"
 #include "HistoricalDataRequest/HistoricRequestElementString.h"
 #include "BloombergTypes/Datetime.h"
+#include "BloombergTypes/Element.h"
 #include "Types/DisplayFormats.h"
 #include <cstring>
 #include <ostream>
@@ -373,6 +375,12 @@ namespace BEmu
 			
 			stream << '}' << std::endl;
 			return stream;
+		}
+
+		Element HistoricRequest::asElement()
+		{
+			std::shared_ptr<HistoricRequestElement> elem(new HistoricRequestElement(*this));
+			return Element(std::dynamic_pointer_cast<ElementPtr>(elem));
 		}
 
 	}

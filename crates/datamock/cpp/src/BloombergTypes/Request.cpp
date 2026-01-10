@@ -106,6 +106,11 @@ namespace BEmu
 		return this->_shptr->getElement(name);
 	}
 
+	Element Request::asElement()
+	{
+		return this->_shptr->asElement();
+	}
+
 	std::ostream& Request::print(std::ostream& stream, int level, int spacesPerLevel) const
 	{
 		this->_shptr->print(stream, level, spacesPerLevel);

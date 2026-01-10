@@ -54,6 +54,8 @@ namespace BEmu
 			DLL_EXPORT Element getElement(const char* name);
 			DLL_EXPORT Element getElement(const Name& name);
 
+			DLL_EXPORT Element asElement();
+
 			DLL_EXPORT std::ostream& print(std::ostream& stream, int level = 0, int spacesPerLevel = 4) const;
 	};
 

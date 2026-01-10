@@ -8,9 +8,10 @@
 //------------------------------------------------------------------------------
 
 #include "ReferenceDataRequest/ReferenceRequest.h"
-
+#include "ReferenceDataRequest/ReferenceRequestElement.h"
 #include "ReferenceDataRequest/ReferenceRequestElementStringArray.h"
 #include "ReferenceDataRequest/ReferenceRequestElementOverrideArray.h"
+#include "BloombergTypes/Element.h"
 #include <cstring>
 #include <ostream>
 
@@ -88,8 +89,14 @@ namespace BEmu
 			if(this->_overrides->numValues() > 0)
 				this->_overrides->print(stream, level + 1, spacesPerLevel);
 			
-			stream << "}" << std::endl;
+		stream << "}" << std::endl;
 			return stream;
+		}
+
+		Element ReferenceRequest::asElement()
+		{
+			std::shared_ptr<ReferenceRequestElement> elem(new ReferenceRequestElement(*this));
+			return Element(std::dynamic_pointer_cast<ElementPtr>(elem));
 		}
 
 	}

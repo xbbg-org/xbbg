@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------
 
 #include "IntradayTickRequest/IntradayTickRequest.h"
+#include "IntradayTickRequest/IntradayTickRequestElement.h"
 #include "BloombergTypes/Name.h"
 #include "BloombergTypes/Element.h"
 #include "BloombergTypes/ElementPtr.h"
@@ -281,8 +282,14 @@ namespace BEmu
 			if(this->_includeBicMicCodes != 0)
 				this->_includeBicMicCodes->print(stream, level + 1, spacesPerLevel);
 
-			stream << "}" << std::endl;
+		stream << "}" << std::endl;
 			return stream;
+		}
+
+		Element IntradayTickRequest::asElement()
+		{
+			std::shared_ptr<IntradayTickRequestElement> elem(new IntradayTickRequestElement(*this));
+			return Element(std::dynamic_pointer_cast<ElementPtr>(elem));
 		}
 
 	}

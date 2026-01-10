@@ -36,6 +36,8 @@ namespace BEmu
 				virtual Element getElement(const char* name);
 				virtual void append(const char* name, const char* value);
 
+				virtual Element asElement();
+
 				virtual std::ostream& print(std::ostream& stream, int level = 0, int spacesPerLevel = 4) const;
 		};
 	}

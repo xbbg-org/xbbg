@@ -144,6 +144,8 @@ namespace BEmu
 
 	void Element::setElement(const char* name, int value) { this->_ptr->setElement(name, value); }
 	void Element::setElement(const Name& name, int value) { this->_ptr->setElement(name, value); }
+
+	std::string Element::toJson() const { return this->_ptr->toJson(); }
 	
 	const char * Element::toString(::blpapi_DataType_t datatype)
 	{

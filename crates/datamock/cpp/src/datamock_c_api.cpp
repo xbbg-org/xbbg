@@ -223,6 +223,8 @@ int datamock_Session_openServiceAsync(
         CorrelationId cid;
         if (correlationId && correlationId->valueType == DATAMOCK_CORRELATION_TYPE_INT) {
             cid = CorrelationId(correlationId->value.intValue);
+        } else if (correlationId && correlationId->valueType == DATAMOCK_CORRELATION_TYPE_POINTER) {
+            cid = CorrelationId(correlationId->value.ptrValue.pointer);
         }
         session->session->openServiceAsync(uri, cid);
         return DATAMOCK_OK;
@@ -257,6 +259,8 @@ int datamock_Session_sendRequest(
         CorrelationId cid;
         if (correlationId && correlationId->valueType == DATAMOCK_CORRELATION_TYPE_INT) {
             cid = CorrelationId(correlationId->value.intValue);
+        } else if (correlationId && correlationId->valueType == DATAMOCK_CORRELATION_TYPE_POINTER) {
+            cid = CorrelationId(correlationId->value.ptrValue.pointer);
         }
         session->session->sendRequest(request->request, cid);
         return DATAMOCK_OK;
@@ -372,11 +376,13 @@ int datamock_Request_getElement(
     if (!request || !element) return DATAMOCK_ERROR_ILLEGAL_ARG;
     try {
         *element = new datamock_Element_t();
-        // BEmu Request doesn't have asElement(), use getElement with empty name
-        // This is a limitation - caller should use append/set directly
-        return DATAMOCK_ERROR_NOT_FOUND;
+        (*element)->element = request->request.asElement();
+        return DATAMOCK_OK;
     } catch (...) {
-        return DATAMOCK_ERROR_UNKNOWN;
+        // asElement() may throw if not implemented for this request type
+        delete *element;
+        *element = nullptr;
+        return DATAMOCK_ERROR_NOT_FOUND;
     }
 }
 
@@ -514,8 +520,21 @@ int datamock_Message_correlationId(
     if (index != 0) return DATAMOCK_ERROR_NOT_FOUND; // BEmu only supports single correlation id
     try {
         CorrelationId cid = message->message.correlationId();
-        correlationId->valueType = DATAMOCK_CORRELATION_TYPE_INT;
-        correlationId->value.intValue = cid.asInteger();
+        
+        // Check the type and extract the appropriate value
+        if (cid.valueType() == CorrelationId::INT_VALUE) {
+            correlationId->valueType = DATAMOCK_CORRELATION_TYPE_INT;
+            correlationId->value.intValue = cid.asInteger();
+        } else if (cid.valueType() == CorrelationId::POINTER_VALUE) {
+            correlationId->valueType = DATAMOCK_CORRELATION_TYPE_POINTER;
+            correlationId->value.ptrValue.pointer = cid.asPointer();
+            correlationId->value.ptrValue.manager = nullptr;
+        } else {
+            // UNSET or AUTOGEN - treat as INT with value 0
+            correlationId->valueType = DATAMOCK_CORRELATION_TYPE_INT;
+            correlationId->value.intValue = 0;
+        }
+        
         return DATAMOCK_OK;
     } catch (...) {
         return DATAMOCK_ERROR_NOT_FOUND;
@@ -787,6 +806,33 @@ int datamock_Element_appendValue(
     }
 }
 
+int datamock_Element_toJson(
+    const datamock_Element_t* element,
+    datamock_StreamWriter_t writer,
+    void* stream)
+{
+    if (!element || !writer) return DATAMOCK_ERROR_ILLEGAL_ARG;
+    try {
+        // Get the underlying ElementPtr and call toJson
+        // Since element->element is an Element (wrapper), we need to access
+        // the internal shared_ptr. Element doesn't expose toJson directly,
+        // so we need to work with what we have.
+        // 
+        // The Element class wraps a std::shared_ptr<ElementPtr>.
+        // We can use the existing print() method as a fallback, but for proper
+        // JSON we need to implement toJson on the Element class as well.
+        //
+        // For now, we'll use ElementPtr's toJson through the wrapper.
+        // This requires adding toJson to Element class as well.
+        
+        std::string jsonStr = element->element.toJson();
+        int len = static_cast<int>(jsonStr.size());
+        return writer(jsonStr.c_str(), len, stream);
+    } catch (...) {
+        return DATAMOCK_ERROR_UNKNOWN;
+    }
+}
+
 /* ============================================================================
  * Name
  * ============================================================================ */
@@ -835,6 +881,8 @@ int datamock_SubscriptionList_add(
         CorrelationId cid;
         if (correlationId && correlationId->valueType == DATAMOCK_CORRELATION_TYPE_INT) {
             cid = CorrelationId(correlationId->value.intValue);
+        } else if (correlationId && correlationId->valueType == DATAMOCK_CORRELATION_TYPE_POINTER) {
+            cid = CorrelationId(correlationId->value.ptrValue.pointer);
         }
         
         // Build subscription
@@ -873,7 +921,8 @@ void datamock_CorrelationId_setInt(datamock_CorrelationId_t* cid, uint64_t value
 void datamock_CorrelationId_setPointer(datamock_CorrelationId_t* cid, void* ptr) {
     if (!cid) return;
     cid->valueType = DATAMOCK_CORRELATION_TYPE_POINTER;
-    cid->value.ptrValue = ptr;
+    cid->value.ptrValue.pointer = ptr;
+    cid->value.ptrValue.manager = nullptr;
 }
 
 uint64_t datamock_CorrelationId_asInt(datamock_CorrelationId_t* cid) {
@@ -883,10 +932,29 @@ uint64_t datamock_CorrelationId_asInt(datamock_CorrelationId_t* cid) {
 
 void* datamock_CorrelationId_asPointer(datamock_CorrelationId_t* cid) {
     if (!cid) return nullptr;
-    return cid->value.ptrValue;
+    return cid->value.ptrValue.pointer;
 }
 
 int datamock_CorrelationId_type(datamock_CorrelationId_t* cid) {
     if (!cid) return DATAMOCK_CORRELATION_TYPE_UNSET;
     return static_cast<int>(cid->valueType);
+}
+
+/* Extended helpers matching blpapiext_cid_* signatures */
+int datamockext_cid_from_ptr(datamock_CorrelationId_t* out, const void* p) {
+    if (!out) return DATAMOCK_ERROR_ILLEGAL_ARG;
+    memset(out, 0, sizeof(*out));
+    out->size = (unsigned int)sizeof(*out);
+    out->valueType = DATAMOCK_CORRELATION_TYPE_POINTER;
+    out->classId = 0;
+    out->value.ptrValue.pointer = (void*)p;
+    out->value.ptrValue.manager = nullptr;
+    return DATAMOCK_OK;
+}
+
+int datamockext_cid_get_ptr(const datamock_CorrelationId_t* cid, void** out) {
+    if (!cid || !out) return DATAMOCK_ERROR_ILLEGAL_ARG;
+    if (cid->valueType != DATAMOCK_CORRELATION_TYPE_POINTER) return DATAMOCK_ERROR_ILLEGAL_ARG;
+    *out = cid->value.ptrValue.pointer;
+    return DATAMOCK_OK;
 }

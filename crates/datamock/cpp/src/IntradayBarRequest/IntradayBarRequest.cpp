@@ -8,7 +8,7 @@
 //------------------------------------------------------------------------------------------------
 
 #include "IntradayBarRequest/IntradayBarRequest.h"
-
+#include "IntradayBarRequest/IntradayBarRequestElement.h"
 #include "IntradayBarRequest/IntradayBarRequestElementInt.h"
 #include "IntradayBarRequest/IntradayBarRequestElementBool.h"
 #include "IntradayBarRequest/IntradayBarRequestElementTime.h"
@@ -16,6 +16,7 @@
 #include "IntradayBarRequest/IntradayBarRequestElementStringArray.h"
 
 #include "BloombergTypes/Service.h"
+#include "BloombergTypes/Element.h"
 #include <cstring>
 #include <ostream>
 
@@ -222,6 +223,12 @@ namespace BEmu
 			
 			stream << '}' << std::endl;
 			return stream;
+		}
+
+		Element IntradayBarRequest::asElement()
+		{
+			std::shared_ptr<IntradayBarRequestElement> elem(new IntradayBarRequestElement(*this));
+			return Element(std::dynamic_pointer_cast<ElementPtr>(elem));
 		}
 
 	}

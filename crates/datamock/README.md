@@ -44,93 +44,79 @@ The use of this software is governed by the Microsoft Public License
 which is included with this distribution.
 ```
 
-## API Differences from Bloomberg BLPAPI
+## API Compatibility with Bloomberg BLPAPI
 
-datamock (BEmu) provides a simplified mock of the Bloomberg API. When writing code that targets both real BLPAPI and datamock, be aware of these differences:
+The datamock C API is designed to be compatible with the real Bloomberg BLPAPI C interface. Most functions have matching signatures and behavior.
 
-### Message API
+### C API Compatibility
 
-| Feature | Real BLPAPI | datamock (BEmu) |
-|---------|-------------|-----------------|
-| Correlation IDs per message | Multiple (`numCorrelationIds()`, `correlationId(index)`) | Single (`correlationId()` takes no arguments) |
-| Topic name return type | `std::string` | `const char*` |
+The following C API functions are fully compatible:
 
-```cpp
-// Real BLPAPI
-for (size_t i = 0; i < msg.numCorrelationIds(); ++i) {
-    CorrelationId cid = msg.correlationId(i);
+- **Session**: `create`, `destroy`, `start`, `stop`, `openService`, `getService`, `sendRequest`, `nextEvent`
+- **Element**: `isNull`, `isArray`, `numValues`, `numElements`, `hasElement`, `getElement`, `getValueAs*`, `toJson`
+- **Message**: `elements`, `correlationId`, `numCorrelationIds`, `typeString`
+- **Datetime**: struct uses `milliSeconds` (capital S) matching BLPAPI
+
+### JSON Serialization
+
+The `datamock_Element_toJson()` function is fully implemented and compatible with `blpapi_Element_toJson()`. This enables xbbg's JSON-based response parsing to work with datamock:
+
+```c
+// Callback to collect JSON output
+int json_writer(const char* data, int length, void* stream) {
+    // Append data to your buffer
+    return 0;
 }
 
-// datamock - only one correlation ID
-CorrelationId cid = msg.correlationId();
+// Serialize element to JSON
+datamock_Element_toJson(element, json_writer, &buffer);
 ```
 
-### Request API
+The JSON serialization supports all BLPAPI data types including nested sequences and complex types.
 
-| Feature | Real BLPAPI | datamock (BEmu) |
-|---------|-------------|-----------------|
-| Convert to Element | `request.asElement()` | Not available - use `append()`/`set()` directly |
+### C++ API Differences (BEmu internals)
 
-```cpp
-// Real BLPAPI
-Element securities = request.asElement().getElement("securities");
+The underlying BEmu C++ library has some differences from the real BLPAPI C++ API. These are abstracted away by the C API, but if you're working with the C++ code directly:
 
-// datamock - work with Request directly
-request.append("securities", "AAPL US Equity");
+| Feature | Real BLPAPI C++ | BEmu C++ (datamock) |
+|---------|-----------------|---------------------|
+| `Datetime::milliSeconds()` | Capital 'S' | `milliseconds()` lowercase |
+| `Request::asElement()` | Returns Element | ✅ Fully implemented |
+| Multiple correlation IDs | `correlationId(index)` | Single `correlationId()` |
+
+### Request.asElement() Support
+
+The `Request::asElement()` method is fully implemented for all request types:
+
+- `HistoricalDataRequest`
+- `ReferenceDataRequest`
+- `IntradayBarRequest`
+- `IntradayTickRequest`
+
+The C API function `datamock_Request_getElement()` returns an Element view of the request, enabling introspection and JSON serialization of request parameters:
+
+```c
+datamock_Element* element = NULL;
+int result = datamock_Request_getElement(request, &element);
+if (result == DATAMOCK_OK) {
+    // Serialize request to JSON
+    datamock_Element_toJson(element, json_writer, &buffer);
+}
 ```
-
-### Service API
-
-| Feature | Real BLPAPI | datamock (BEmu) |
-|---------|-------------|-----------------|
-| Service name return type | `std::string` | `const char*` |
-
-### Datetime API
-
-| Feature | Real BLPAPI | datamock (BEmu) |
-|---------|-------------|-----------------|
-| Milliseconds accessor | `milliSeconds()` | `milliseconds()` (lowercase 's') |
-
-```cpp
-// Real BLPAPI
-int ms = datetime.milliSeconds();
-
-// datamock
-int ms = datetime.milliseconds();
-```
-
-### Element API
-
-| Feature | Real BLPAPI | datamock (BEmu) |
-|---------|-------------|-----------------|
-| Null check | `element.isNull()` | `element.IsNull()` (capital 'I') |
-| Array check | `element.isArray()` | `element.IsArray()` (capital 'I') |
 
 ### SessionOptions API
 
-| Feature | Real BLPAPI | datamock (BEmu) |
-|---------|-------------|-----------------|
-| Auth options | Full authentication support | Stub only (`setAuthenticationOptions` exists but is no-op) |
+| Feature | Real BLPAPI | datamock |
+|---------|-------------|----------|
+| Auth options | Full authentication support | Stub only (no-op) |
 | TLS config | Full TLS support | Not implemented |
 
 ### Subscription API
 
-| Feature | Real BLPAPI | datamock (BEmu) |
-|---------|-------------|-----------------|
+| Feature | Real BLPAPI | datamock |
+|---------|-------------|----------|
 | Real-time data | Actual market data | Simulated/random data |
 | Throttling | Server-side limits | None |
-
-### Writing Compatible Code
-
-For code that must work with both real BLPAPI and datamock, use feature flags or abstraction layers:
-
-```rust
-#[cfg(feature = "mock")]
-use datamock_sys as blp;
-
-#[cfg(not(feature = "mock"))]
-use blpapi_sys as blp;
-```
 
 ### Known Limitations
 

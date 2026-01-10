@@ -92,14 +92,25 @@ typedef struct datamock_Datetime_t {
  * CorrelationId
  * ============================================================================ */
 
+/* ManagedPtr for pointer-type correlation IDs */
+typedef void* datamock_ManagedPtr_t_data_;
+typedef void (*datamock_ManagedPtr_ManagerFunction_t)(void*, void*);
+
+typedef struct datamock_ManagedPtr_t_ {
+    void* pointer;
+    datamock_ManagedPtr_t_data_ userData[4];
+    datamock_ManagedPtr_ManagerFunction_t manager;
+} datamock_ManagedPtr_t;
+
+/* CorrelationId with bitfield layout matching Bloomberg BLPAPI */
 typedef struct datamock_CorrelationId_t {
-    uint32_t size;
-    uint32_t valueType;
-    uint32_t classId;
-    uint32_t reserved;
+    unsigned int size : 8;
+    unsigned int valueType : 4;
+    unsigned int classId : 16;
+    unsigned int reserved : 4;
     union {
         uint64_t intValue;
-        void* ptrValue;
+        datamock_ManagedPtr_t ptrValue;
     } value;
 } datamock_CorrelationId_t;
 
@@ -355,6 +366,14 @@ DATAMOCK_EXPORT int datamock_Element_appendValue(
     datamock_Element_t* element,
     const char* value);
 
+/* JSON serialization (matches blpapi_Element_toJson signature) */
+typedef int (*datamock_StreamWriter_t)(const char* data, int length, void* stream);
+
+DATAMOCK_EXPORT int datamock_Element_toJson(
+    const datamock_Element_t* element,
+    datamock_StreamWriter_t writer,
+    void* stream);
+
 /* ============================================================================
  * Name
  * ============================================================================ */
@@ -387,6 +406,10 @@ DATAMOCK_EXPORT void datamock_CorrelationId_setPointer(datamock_CorrelationId_t*
 DATAMOCK_EXPORT uint64_t datamock_CorrelationId_asInt(datamock_CorrelationId_t* cid);
 DATAMOCK_EXPORT void* datamock_CorrelationId_asPointer(datamock_CorrelationId_t* cid);
 DATAMOCK_EXPORT int datamock_CorrelationId_type(datamock_CorrelationId_t* cid);
+
+/* Extended helpers matching blpapiext_cid_* signatures */
+DATAMOCK_EXPORT int datamockext_cid_from_ptr(datamock_CorrelationId_t* out, const void* p);
+DATAMOCK_EXPORT int datamockext_cid_get_ptr(const datamock_CorrelationId_t* cid, void** out);
 
 #ifdef __cplusplus
 }

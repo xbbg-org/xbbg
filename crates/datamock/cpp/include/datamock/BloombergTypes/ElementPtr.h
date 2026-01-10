@@ -112,6 +112,9 @@ namespace BEmu
 			void setElement(const Name& name, int value);
 
 			virtual std::ostream& print(std::ostream& stream, int level = 0, int spacesPerLevel = 4) const;
+
+			// Serialize to JSON string
+			virtual std::string toJson() const;
 	};
 
 	inline std::ostream& operator<< (std::ostream& out, const ElementPtr& mc)
