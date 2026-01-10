@@ -128,3 +128,19 @@ xbbg/tests/data/**/TRADE/*.parq
 
 # Claude Code
 .claude/
+
+# SQLite WAL files
+*.db-shm
+*.db-wal
+
+# Astro build artifacts
+docs/.astro/
+
+# Node modules in docs
+docs/node_modules/
+
+# Windows artifacts
+nul
+
+# Backup files
+*.backup
