@@ -9,6 +9,7 @@ Thank you for your interest in contributing to xbbg! We welcome contributions fr
 - [Development Setup](#development-setup)
 - [How to Contribute](#how-to-contribute)
 - [Pull Request Process](#pull-request-process)
+- [Changelog and Releases](#changelog-and-releases)
 - [Coding Standards](#coding-standards)
 - [Testing](#testing)
 - [Documentation](#documentation)
@@ -124,7 +125,7 @@ Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md).
    uv run ruff check xbbg
    uv run pytest --doctest-modules --cov -v xbbg
    ```
-4. **Update CHANGELOG.md**: Add a brief description of your changes under "Unreleased"
+4. **Update CHANGELOG.md**: Add your changes under the `[Unreleased]` section (see [Changelog and Releases](#changelog-and-releases))
 5. **Ensure CI passes**: All GitHub Actions workflows must pass
 6. **Request review**: Tag maintainers or wait for automatic review assignment
 7. **Address feedback**: Respond to review comments and make requested changes
@@ -167,6 +168,94 @@ fix(bdib): handle empty DataFrame when no data available
 
 docs(README): update installation instructions for Python 3.14
 ```
+
+## Changelog and Releases
+
+### CHANGELOG.md as Single Source of Truth
+
+We use `CHANGELOG.md` as the single source of truth for release notes. This ensures consistency across:
+- GitHub Releases
+- README.md
+- Documentation (docs/index.rst)
+- PyPI release descriptions
+
+### How It Works
+
+1. **Contributors** update `CHANGELOG.md` under the `[Unreleased]` section when submitting PRs
+2. **Release workflow** extracts content from `[Unreleased]` for GitHub Release notes
+3. **Release workflow** renames `[Unreleased]` to the version number with date
+4. **Release workflow** creates a new empty `[Unreleased]` section
+
+### Updating the Changelog
+
+When contributing, add your changes to `CHANGELOG.md` under the `[Unreleased]` section:
+
+```markdown
+## [Unreleased]
+
+### Added
+- New `bta()` function for Bloomberg Technical Analysis (#175)
+
+### Changed
+- Improved performance of `bdib()` for large date ranges
+
+### Fixed
+- Fixed empty DataFrame handling in `bdh()` (#123)
+```
+
+### Changelog Categories
+
+Follow [Keep a Changelog](https://keepachangelog.com/) format:
+
+| Category | Use For |
+|----------|---------|
+| **Added** | New features |
+| **Changed** | Changes to existing functionality |
+| **Deprecated** | Features that will be removed in future versions |
+| **Removed** | Features removed in this release |
+| **Fixed** | Bug fixes |
+| **Security** | Security vulnerability fixes |
+
+### Best Practices
+
+- **Be concise**: One line per change, focused on *what* changed
+- **Link issues/PRs**: Reference related issues (e.g., `(#123)`)
+- **User perspective**: Describe changes from the user's point of view
+- **Group related changes**: Keep related items together under the same category
+
+### Example Entry
+
+```markdown
+### Added
+- Multi-backend support with `Backend` enum (narwhals, pandas, polars, pyarrow, duckdb)
+- Output format control with `Format` enum (long, semi_long, wide)
+- `bta()` function for Bloomberg Technical Analysis (#175)
+- `get_sdk_info()` as replacement for deprecated `getBlpapiVersion()`
+
+### Changed
+- All API functions now accept `backend` and `format` parameters
+- Internal pipeline uses PyArrow tables with narwhals transformations
+
+### Deprecated
+- `connect()` / `disconnect()` - engine auto-initializes in v1.0
+- `getBlpapiVersion()` - use `get_sdk_info()` instead
+
+### Fixed
+- Empty DataFrame handling in helper functions with LONG format output
+```
+
+### Release Process (Maintainers)
+
+1. Ensure `[Unreleased]` section in `CHANGELOG.md` is up to date
+2. Run the `semantic_version.yml` workflow:
+   - Select bump type (major/minor/patch)
+   - Select pre-release type if applicable (alpha/beta/rc)
+3. Workflow automatically:
+   - Extracts release notes from `[Unreleased]`
+   - Creates GitHub Release with those notes
+   - Updates `CHANGELOG.md` (renames section, adds new `[Unreleased]`)
+   - Triggers asset upload, docs update, etc.
+4. Manually trigger `pypi_upload.yml` to publish to PyPI
 
 ## Coding Standards
 

@@ -1,5 +1,27 @@
 name: Bump Version and Create Release
 
+# =============================================================================
+# RELEASE WORKFLOW
+# =============================================================================
+#
+# This workflow creates releases using CHANGELOG.md as the single source of truth.
+#
+# BEFORE RUNNING THIS WORKFLOW:
+# 1. Update CHANGELOG.md with your changes under the [Unreleased] section
+# 2. Follow Keep a Changelog format (https://keepachangelog.com/)
+# 3. Use categories: Added, Changed, Deprecated, Removed, Fixed, Security
+#
+# WHAT THIS WORKFLOW DOES:
+# 1. Reads release notes from CHANGELOG.md [Unreleased] section
+# 2. Creates a git tag and GitHub release with those notes
+# 3. Updates CHANGELOG.md: renames [Unreleased] to [version] - date
+# 4. Adds a new empty [Unreleased] section
+# 5. Commits the CHANGELOG.md changes
+# 6. Triggers downstream workflows (assets, docs, etc.)
+#
+# See CONTRIBUTING.md for detailed documentation.
+# =============================================================================
+
 on:
   workflow_dispatch:
     inputs:
@@ -32,11 +54,6 @@ on:
         required: false
         type: boolean
         default: true
-      release_notes:
-        description: 'Release notes (markdown)'
-        required: false
-        type: string
-        default: ''
 
 jobs:
   bump-version:
@@ -117,6 +134,132 @@ jobs:
         echo "New version: $NEW_VERSION"
         echo "Tag: v${NEW_VERSION}"
 
+    - name: Validate and extract release notes from CHANGELOG.md
+      id: changelog
+      run: |
+        VERSION="${{ steps.new_version.outputs.new_version }}"
+        TAG="${{ steps.new_version.outputs.tag }}"
+        PREV_TAG="v${{ steps.current_version.outputs.current }}"
+        
+        # Extract content between [Unreleased] and the next ## heading
+        # This captures all content under [Unreleased] section
+        RELEASE_NOTES=$(awk '
+          /^## \[Unreleased\]/ { capture=1; next }
+          /^## \[/ { if(capture) exit }
+          capture { print }
+        ' CHANGELOG.md | head -100)
+        
+        # Remove leading/trailing whitespace and empty lines for validation
+        RELEASE_NOTES_TRIMMED=$(echo "$RELEASE_NOTES" | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        # Validation: Check if [Unreleased] section has meaningful content
+        if [ -z "$RELEASE_NOTES_TRIMMED" ]; then
+          echo "::error::CHANGELOG.md [Unreleased] section is empty!"
+          echo "::error::Please update CHANGELOG.md before releasing."
+          echo ""
+          echo "============================================================"
+          echo "RELEASE BLOCKED: Empty changelog"
+          echo "============================================================"
+          echo ""
+          echo "Before running this workflow, you must update CHANGELOG.md:"
+          echo ""
+          echo "1. Add your changes under the [Unreleased] section"
+          echo "2. Use categories: Added, Changed, Deprecated, Removed, Fixed, Security"
+          echo "3. Follow Keep a Changelog format (https://keepachangelog.com/)"
+          echo ""
+          echo "Example:"
+          echo "  ## [Unreleased]"
+          echo ""
+          echo "  ### Added"
+          echo "  - New feature X for doing Y (#123)"
+          echo ""
+          echo "  ### Fixed"
+          echo "  - Bug in Z that caused W (#456)"
+          echo ""
+          echo "See CONTRIBUTING.md and .github/RELEASE_INSTRUCTIONS.md for details."
+          echo "============================================================"
+          exit 1
+        fi
+        
+        # Validation: Check for placeholder text that shouldn't be released
+        if echo "$RELEASE_NOTES_TRIMMED" | grep -qiE '(TODO|FIXME|WIP|PLACEHOLDER|TBD|coming soon)'; then
+          echo "::warning::CHANGELOG.md may contain placeholder text (TODO/FIXME/WIP/TBD)"
+          echo "::warning::Please review the [Unreleased] section before releasing."
+        fi
+        
+        # Validation: Check for minimum content (at least one category header)
+        if ! echo "$RELEASE_NOTES_TRIMMED" | grep -qE '^### (Added|Changed|Deprecated|Removed|Fixed|Security)'; then
+          echo "::warning::CHANGELOG.md [Unreleased] section doesn't follow Keep a Changelog format"
+          echo "::warning::Consider using categories: Added, Changed, Deprecated, Removed, Fixed, Security"
+        fi
+        
+        # Write to file for multi-line handling (preserve original formatting)
+        echo "$RELEASE_NOTES" > /tmp/release_notes.md
+        
+        # Append full changelog link
+        echo "" >> /tmp/release_notes.md
+        echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}" >> /tmp/release_notes.md
+        
+        echo "Release notes extracted and validated:"
+        echo "============================================================"
+        cat /tmp/release_notes.md
+        echo "============================================================"
+
+    - name: Update CHANGELOG.md
+      if: inputs.create_release == true
+      run: |
+        VERSION="${{ steps.new_version.outputs.new_version }}"
+        TAG="${{ steps.new_version.outputs.tag }}"
+        DATE=$(date -u +"%Y-%m-%d")
+        
+        # Create the new version header
+        NEW_HEADER="## [${VERSION}] - ${DATE}"
+        
+        # Replace [Unreleased] section header with new version, and add new [Unreleased]
+        # Uses awk to:
+        # 1. When we see "## [Unreleased]", print new [Unreleased] section + new version header
+        # 2. Skip the old [Unreleased] line
+        # 3. Print everything else as-is
+        awk -v new_header="$NEW_HEADER" '
+          /^## \[Unreleased\]/ {
+            print "## [Unreleased]"
+            print ""
+            print new_header
+            next
+          }
+          { print }
+        ' CHANGELOG.md > /tmp/CHANGELOG.md.new
+        
+        mv /tmp/CHANGELOG.md.new CHANGELOG.md
+        
+        # Add version link at the bottom if not already present
+        if ! grep -q "^\[${VERSION}\]:" CHANGELOG.md; then
+          # Find the [Unreleased] link line and add the new version link after it
+          sed -i "/^\[Unreleased\]:/a [${VERSION}]: https://github.com/${{ github.repository }}/releases/tag/${TAG}" CHANGELOG.md
+        fi
+        
+        # Update the [Unreleased] comparison link to compare from new version
+        sed -i "s|\[Unreleased\]: .*/compare/v.*\.\.\.HEAD|[Unreleased]: https://github.com/${{ github.repository }}/compare/${TAG}...HEAD|" CHANGELOG.md
+        
+        echo "CHANGELOG.md updated:"
+        head -50 CHANGELOG.md
+
+    - name: Commit CHANGELOG.md changes
+      if: inputs.create_release == true
+      run: |
+        VERSION="${{ steps.new_version.outputs.new_version }}"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        
+        # Check if there are changes to commit
+        if git diff --quiet CHANGELOG.md; then
+          echo "No changes to CHANGELOG.md"
+        else
+          git add CHANGELOG.md
+          git commit -m "docs(CHANGELOG): update for ${VERSION} release"
+          git push origin main
+        fi
+
     - name: Create git tag
       run: |
         TAG="${{ steps.new_version.outputs.tag }}"
@@ -131,12 +274,9 @@ jobs:
       with:
         tag_name: ${{ steps.new_version.outputs.tag }}
         name: xbbg ${{ steps.new_version.outputs.new_version }}
-        body: |
-          ${{ inputs.release_notes }}
-
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.current_version.outputs.current }}...${{ steps.new_version.outputs.tag }}
+        body_path: /tmp/release_notes.md
         prerelease: ${{ inputs.pre_release != 'none' && inputs.pre_release != '' }}
-        generate_release_notes: ${{ inputs.release_notes == '' }}
+        generate_release_notes: false
         make_latest: ${{ inputs.pre_release == 'none' || inputs.pre_release == '' }}
         draft: false
 

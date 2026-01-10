@@ -7,13 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0b1] - 2026-01-10
+
 ### Added
+- **Arrow-first pipeline**: Complete rewrite of internal data processing using PyArrow
+- **Multi-backend support**: New `Backend` enum supporting narwhals, pandas, polars, polars_lazy, pyarrow, duckdb
+- **Output format control**: New `Format` enum with long, semi_long, wide options
+- **Bloomberg Technical Analysis**: New `bta()` function for technical indicators (#175)
+- `set_backend()`, `get_backend()`, `set_format()`, `get_format()` configuration functions
+- `get_sdk_info()` as replacement for deprecated `getBlpapiVersion()`
+- v1.0-compatible exception classes (`BlpError`, `BlpSessionError`, `BlpRequestError`, etc.)
+- `EngineConfig` dataclass and `configure()` function for engine configuration
+- `Service` and `Operation` enums for Bloomberg service URIs
 - CONTRIBUTING.md with comprehensive contribution guidelines
 - CODE_OF_CONDUCT.md for community standards
-- CHANGELOG.md for tracking version history
 
 ### Changed
-- Updated SECURITY.md to reference current supported versions (0.10.x and 0.9.x)
+- All API functions now accept `backend` and `format` parameters
+- Internal pipeline uses PyArrow tables with narwhals transformations
+- Removed pytz dependency (using stdlib `datetime.timezone`)
+- Updated SECURITY.md to reference current supported versions
+
+### Deprecated
+- `connect()` / `disconnect()` - engine auto-initializes in v1.0
+- `getBlpapiVersion()` - use `get_sdk_info()` instead
+- `lookupSecurity()` - will become `blkp()` in v1.0
+- `fieldInfo()` / `fieldSearch()` - will merge into `bfld()` in v1.0
+- `bta_studies()` - renamed to `ta_studies()` in v1.0
+- `getPortfolio()` - renamed to `bport()` in v1.0
+- Helper functions (`dividend()`, `earning()`, `turnover()`, `adjust_ccy()`) moving to `xbbg.ext` in v1.0
+- Futures/CDX utilities (`fut_ticker()`, `active_futures()`, `cdx_ticker()`, `active_cdx()`) moving to `xbbg.ext` in v1.0
+
+### Fixed
+- Extended BDS test date range to 120 days for quarterly dividends
+- Helper functions now work correctly with LONG format output
+- String concatenation in WIDE format conversion using `concat_str`
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0b1
 
 ## [0.10.3] - 2024-01-07
 
@@ -167,7 +197,8 @@ See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.10.3...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b1...HEAD
+[0.11.0b1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b1
 [0.10.3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.3
 [0.10.2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.2
 [0.10.1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.1
