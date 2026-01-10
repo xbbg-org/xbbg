@@ -144,4 +144,11 @@ xbbg/tests/data/**/TRADE/*.parq
 # Bloomberg BLPAPI SDK (local development only; do not commit)
 # Keep a tracked README for instructions, ignore all other contents.
 vendor/blpapi/**
-!vendor/blpapi/README.md*.dll
+!vendor/blpapi/README.md
+vendor/*.zip
+
+# Bloomberg DLL files (local development only)
+**/blpapi3_64.dll
+
+# Windows artifacts
+nul

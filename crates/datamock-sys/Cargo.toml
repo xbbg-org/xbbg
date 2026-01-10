@@ -1,0 +1,18 @@
+[package]
+name = "datamock-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unsafe FFI bindings to datamock C API for testing without Bloomberg Terminal"
+publish = false
+links = "datamock"
+
+[features]
+default = []
+
+[dependencies]
+cty = "0.2"
+
+[build-dependencies]
+bindgen = { version = "0.69", default-features = false }

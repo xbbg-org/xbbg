@@ -1,0 +1,2114 @@
+[
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\datamock_c_api.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\datamock_c_api.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Constant.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Constant.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\ConstantList.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\ConstantList.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\CorrelationId.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\CorrelationId.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Datetime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Datetime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Element.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Element.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\ElementPtr.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\ElementPtr.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Event.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Event.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\EventPtr.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\EventPtr.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Message.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Message.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\MessageIterator.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\MessageIterator.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\MessagePtr.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\MessagePtr.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Name.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Name.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Request.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Request.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\RequestPtr.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\RequestPtr.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SchemaElementDefinition.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SchemaElementDefinition.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SchemaTypeDefinition.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SchemaTypeDefinition.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Service.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Service.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\ServiceRefData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\ServiceRefData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Session.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Session.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SessionOptions.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SessionOptions.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SessionTimerFunction.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SessionTimerFunction.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Subscription.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\Subscription.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SubscriptionList.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\BloombergTypes\\SubscriptionList.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElement.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElement.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementDateTime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementDateTime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementDouble.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementDouble.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementEidDataArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementEidDataArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementErrorInfo.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementErrorInfo.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldDataArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldDataArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldExceptions.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldExceptions.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldExceptionsArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementFieldExceptionsArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementSecurityData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementSecurityData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementSecurityError.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementSecurityError.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricEvent.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricEvent.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricMessage.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricMessage.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequest.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequest.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementBool.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementBool.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementDate.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementDate.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementStringArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\HistoricalDataRequest\\HistoricRequestElementStringArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElement.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElement.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementDateTime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementDateTime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementDouble.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementDouble.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementLong.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementLong.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementResponseError.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementResponseError.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementTickData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementTickData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementTickDataArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarElementTickDataArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarEvent.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarEvent.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarMessage.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarMessage.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequest.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequest.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementBool.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementBool.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementStringArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementStringArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementTime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarRequestElementTime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarTickDataType.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayBarRequest\\IntradayBarTickDataType.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElement.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElement.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDataArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDataArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDataParent.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDataParent.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDateTime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDateTime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDouble.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementDouble.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementResponseError.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementResponseError.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementTuple3.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickElementTuple3.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickEvent.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickEvent.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickMessage.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickMessage.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequest.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequest.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementBool.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementBool.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementStringArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementStringArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementTime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\IntradayTickRequest\\IntradayTickRequestElementTime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementBool.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementBool.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementDatetime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementDatetime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementDouble.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementDouble.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementExceptions.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementExceptions.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementExceptionsArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementExceptionsArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementNull.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementNull.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementReason.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementReason.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementServiceStatus.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementServiceStatus.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementSubscriptionCanceled.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementSubscriptionCanceled.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementSubscriptionCancelReason.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementSubscriptionCancelReason.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementSubscriptionStarted.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketElementSubscriptionStarted.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketEvent.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketEvent.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageServiceStatus.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageServiceStatus.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSessionOpened.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSessionOpened.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionCanceled.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionCanceled.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionFailure.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionFailure.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionStarted.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\MarketDataRequest\\MarketMessageSubscriptionStarted.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElement.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElement.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementArrayChainTickers.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementArrayChainTickers.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementArrayChainTickersItem.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementArrayChainTickersItem.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementDateTime.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementDateTime.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementDouble.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementDouble.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementErrorInfo.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementErrorInfo.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementFieldData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementFieldData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementFieldExceptions.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementFieldExceptions.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementFieldExceptionsArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementFieldExceptionsArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementInt.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementInt.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementObject.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementObject.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementSecurityData.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementSecurityData.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementSecurityDataArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementSecurityDataArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementSecurityError.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementSecurityError.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceEvent.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceEvent.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceMessage.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceMessage.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequest.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequest.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementOverride.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementOverride.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementOverrideArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementOverrideArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementString.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementString.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementStringArray.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\ReferenceDataRequest\\ReferenceRequestElementStringArray.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\BEmuTimer.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\BEmuTimer.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\CanConvertToStringType.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\CanConvertToStringType.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\DisplayFormats.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\DisplayFormats.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\IndentType.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\IndentType.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\ObjectType.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\ObjectType.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\RandomDataGenerator.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\RandomDataGenerator.cpp"
+    },
+    {
+        "directory":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types",
+        "arguments":  [
+                          "clang++",
+                          "-std=c++17",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include\\datamock",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\include",
+                          "-IC:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src",
+                          "-DDATAMOCK_BUILDING",
+                          "-D_WIN32_WINNT=0x0601",
+                          "-DNOMINMAX",
+                          "-c",
+                          "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\Rules.cpp"
+                      ],
+        "file":  "C:\\Dev\\Repositories\\xbbg\\crates\\datamock\\cpp\\src\\Types\\Rules.cpp"
+    }
+]
