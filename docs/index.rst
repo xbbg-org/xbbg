@@ -146,6 +146,61 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.11.0b1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b1>`__
+
+## v0.11.0b1 - Beta Release
+
+### Highlights
+
+- **Arrow-first pipeline**: Complete rewrite of data processing using PyArrow internally
+
+- **Multi-backend support**: New Backend enum supporting narwhals, pandas, polars, polars_lazy, pyarrow, duckdb
+
+- **Output format control**: New Format enum with long, semi_long, wide options
+
+- **Bloomberg Technical Analysis (BTA)**: New `bta()` function for technical indicators
+
+- **v1.0 migration infrastructure**: Deprecation warnings and forward-compatible APIs
+
+### Added
+
+- `Backend` and `Format` enums for output control
+
+- `set_backend()`, `get_backend()`, `set_format()`, `get_format()` functions
+
+- `bta()` function for Bloomberg Technical Analysis
+
+- `get_sdk_info()` as replacement for `getBlpapiVersion()`
+
+- v1.0-compatible exception classes (`BlpError`, `BlpSessionError`, etc.)
+
+- `EngineConfig` dataclass and `configure()` function
+
+- `Service` and `Operation` enums for Bloomberg services
+
+### Changed
+
+- All API functions now support `backend` and `format` parameters
+
+- Internal pipeline uses PyArrow tables with narwhals transformations
+
+- Removed pytz dependency (using stdlib datetime.timezone)
+
+### Deprecated
+
+- `connect()` / `disconnect()` - engine auto-initializes in v1.0
+
+- `getBlpapiVersion()` - use `get_sdk_info()`
+
+- `lookupSecurity()` - will become `blkp()` in v1.0
+
+- `fieldInfo()` / `fieldSearch()` - will merge into `bfld()` in v1.0
+
+This is a **beta release** for testing the new Arrow-first architecture before v1.0.
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0b1
+
+
 *0.10.3* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.10.3>`__
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.2...v0.10.3
