@@ -298,17 +298,8 @@ class TestToOutputWide:
         # WIDE format should have MultiIndex columns for pandas
         assert isinstance(result.columns, pd.MultiIndex)
 
-    @pytest.mark.xfail(
-        reason="WIDE format with narwhals backend has string concat issue with pyarrow - needs fix in convert.py",
-        raises=Exception,
-    )
     def test_to_output_wide_format_narwhals(self):
-        """Test to_output with WIDE format for narwhals backend.
-
-        Note: WIDE format with narwhals backend currently fails due to pyarrow
-        not supporting string concatenation via the add operator. This needs
-        to be fixed in xbbg/io/convert.py by using proper string concat.
-        """
+        """Test to_output with WIDE format for narwhals backend."""
         arrow_table = self._create_test_arrow_table()
         result = to_output(
             arrow_table,

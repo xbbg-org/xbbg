@@ -232,12 +232,19 @@ def to_output(
             variable_name="field",
             value_name="value",
         )
-        # Create combined ticker_field column and pivot
-        wide_frame = long_frame.with_columns((nw.col(ticker_col) + "_" + nw.col("field")).alias("ticker_field")).pivot(
-            on="ticker_field",
-            index=date_col,
-            values="value",
+        # Create combined ticker_field column using concat_str
+        # (+ operator fails with pyarrow backend)
+        long_frame = long_frame.with_columns(
+            nw.concat_str([nw.col(ticker_col), nw.col("field")], separator="_").alias("ticker_field")
         )
-        return _convert_backend(wide_frame, backend)
+        # Pivot is not supported by all backends (e.g., pyarrow)
+        # Fall back to pandas for pivot, then convert to target backend
+        pdf = long_frame.to_pandas()
+        pivoted = pdf.pivot(index=date_col, columns="ticker_field", values="value")
+        pivoted = pivoted.reset_index()
+        # Convert back to target backend
+        if backend == Backend.NARWHALS:
+            return nw.from_native(pivoted)
+        return _convert_backend(nw.from_native(pivoted), backend)
 
     raise ValueError(f"Unsupported format: {format}")
