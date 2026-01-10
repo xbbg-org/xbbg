@@ -37,6 +37,7 @@ Latest release: xbbg==0.11.0b1 (release: [notes](https://github.com/alpha-xone/x
   - [Common Use Cases](#common-use-cases)
   - [Connection Options](#connection-options)
   - [Async Functions](#async-functions)
+  - [Multi-Backend Support](#multi-backend-support)
 - [Examples](#examples)
   - [📊 Reference Data](#-reference-data)
   - [📈 Historical Data](#-historical-data)
@@ -76,10 +77,10 @@ xbbg is a comprehensive Bloomberg API wrapper for Python, providing a clean, Pyt
 **Production-Grade Features**
 - Intelligent Parquet-based caching
 - Async/await support for non-blocking operations
+- **Multi-backend output** (pandas, Polars, PyArrow, DuckDB)
 - Full type hints for IDE integration
 - Comprehensive error handling
 - Exchange-aware market hours
-- Multi-platform support (Windows, Linux, macOS)
 
 </td>
 </tr>
@@ -177,6 +178,7 @@ xbbg is the **only Python library** that provides:
 | Sub-minute intervals (10s bars) | ✅ | ❌ | ❌ | ❌ |
 | Async/await support | ✅ | ❌ | ❌ | ❌ |
 | Local Parquet caching | ✅ | ❌ | ❌ | ❌ |
+| Multi-backend output | ✅ | ❌ | ❌ | ❌ |
 | **Utilities** | | | | |
 | Currency conversion | ✅ | ❌ | ❌ | ❌ |
 | Futures contract resolution | ✅ | ❌ | ❌ | ❌ |
@@ -185,7 +187,7 @@ xbbg is the **only Python library** that provides:
 | **Project Health** | | | | |
 | Active development | ✅ | ❌[^1] | ✅ | ✅ |
 | Python version support | 3.10-3.14 | 3.8+ | 3.8+ | 3.12+ |
-| DataFrame library | pandas | pandas | pandas | Polars |
+| DataFrame library | **Multi-backend** | pandas | pandas | Polars |
 | Type hints | ✅ Full | ❌ | Partial | ✅ Full |
 | CI/CD testing | ✅ | ❌ | ✅ | ✅ |
 
@@ -273,7 +275,11 @@ xbbg is the **only Python library** that provides:
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
-- **Python dependencies**: `numpy`, `pandas`, `ruamel.yaml` and `pyarrow` (automatically installed)
+- **Python dependencies**: `numpy`, `pandas`, `narwhals`, `ruamel.yaml` and `pyarrow` (automatically installed)
+
+- **Optional backends** (install separately if needed):
+  - `polars` - For Polars DataFrame output
+  - `duckdb` - For DuckDB relation output
 
 ## Installation
 
@@ -443,6 +449,80 @@ multiple = asyncio.run(get_multiple())
 - Concurrent: use `asyncio.gather()` for parallel requests
 - Compatible: works with async web frameworks and async codebases
 - Same API: identical parameters to sync versions (`bdp`, `bds`, `bdh`)
+
+### Multi-Backend Support
+
+Starting with v0.11.0, xbbg is **DataFrame-library agnostic**. You can get output in your preferred format:
+
+#### Supported Backends
+
+| Backend | Output Type | Best For |
+|---------|-------------|----------|
+| `pandas` | `pd.DataFrame` | Traditional workflows, compatibility |
+| `polars` | `pl.DataFrame` | High performance, large datasets |
+| `polars_lazy` | `pl.LazyFrame` | Deferred execution, query optimization |
+| `pyarrow` | `pa.Table` | Zero-copy interop, memory efficiency |
+| `duckdb` | DuckDB relation | SQL analytics, OLAP queries |
+| `narwhals` | Narwhals DataFrame | Library-agnostic code |
+
+#### Usage
+
+```python
+from xbbg import blp, Backend, Format
+
+# Get data as Polars DataFrame
+df_polars = blp.bdp('AAPL US Equity', 'PX_LAST', backend=Backend.POLARS)
+
+# Get data as PyArrow Table
+table = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', backend=Backend.PYARROW)
+
+# Get data as pandas (default)
+df_pandas = blp.bdp('MSFT US Equity', 'PX_LAST', backend=Backend.PANDAS)
+```
+
+#### Output Formats
+
+Control the shape of your data with the `format` parameter:
+
+| Format | Description | Use Case |
+|--------|-------------|----------|
+| `long` | Tidy format with ticker, field, value columns | Analysis, joins, aggregations |
+| `semi_long` | One row per ticker, fields as columns | Quick inspection |
+| `wide` | Tickers as columns (pandas only) | Time series alignment, Excel-like |
+
+```python
+from xbbg import blp, Format
+
+# Long format (tidy data)
+df_long = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'], format=Format.LONG)
+
+# Wide format (Excel-like)
+df_wide = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format=Format.WIDE)
+```
+
+#### Global Configuration
+
+Set defaults for your entire session:
+
+```python
+from xbbg import set_backend, set_format, Backend, Format
+
+# Set Polars as default backend
+set_backend(Backend.POLARS)
+
+# Set long format as default
+set_format(Format.LONG)
+
+# All subsequent calls use these defaults
+df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame in long format
+```
+
+#### Why Multi-Backend?
+
+- **Performance**: Polars and PyArrow can be 10-100x faster for large datasets
+- **Memory**: Arrow-based backends use zero-copy and columnar storage
+- **Interoperability**: Direct integration with DuckDB, Spark, and other Arrow-compatible tools
+- **Future-proof**: Write library-agnostic code with narwhals backend
 
 ## Examples
 
