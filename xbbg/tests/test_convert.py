@@ -14,11 +14,10 @@ CRITICAL: These tests are essential for v1.0 migration.
 
 from __future__ import annotations
 
+import narwhals as nw
 import pandas as pd
 import pyarrow as pa
 import pytest
-
-import narwhals as nw
 
 from xbbg.backend import Backend, Format
 from xbbg.io.convert import (
@@ -127,7 +126,6 @@ class TestConvertBackendDuckDB:
     def test_convert_backend_duckdb(self):
         """Test converting to duckdb backend."""
         pytest.importorskip("duckdb")
-        import duckdb
 
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.DUCKDB)

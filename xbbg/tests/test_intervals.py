@@ -10,7 +10,7 @@ Tests all interval utilities in xbbg/core/config/intervals.py including:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
