@@ -543,7 +543,7 @@ def bdtick(
         split = split_kwargs(**kwargs)
         ctx = split.infra
         tz = exch.tz
-        time_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz = tz, ctx=ctx, **kwargs)
+        time_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=tz, ctx=ctx, **kwargs)
         if time_rng.start_time is None or time_rng.end_time is None:
             raise ValueError(f"Unable to resolve trading session for ticker {ticker} on date {dt}")
         # Convert timezone-naive times from exchange timezone to UTC
@@ -581,8 +581,20 @@ def bdtick(
     logger.debug("Sending Bloomberg tick data request for ticker: %s, event types: %s", ticker, types)
     handle = conn.send_request(request=request, service="//blp/refdata", **kwargs)
 
+    # Tick data requests need higher timeout defaults than bar data
+    # due to larger data volumes and initial response latency
+    tick_timeout = kwargs.pop("timeout", 2000)  # 2 seconds per poll (vs 500ms default)
+    tick_max_timeouts = kwargs.pop("max_timeouts", 60)  # 60 polls = 2 min total (vs 10s default)
+
     res = pd.DataFrame(
-        process.rec_events(func=process.process_bar, typ="t", event_queue=handle["event_queue"], **kwargs)
+        process.rec_events(
+            func=process.process_bar,
+            typ="t",
+            event_queue=handle["event_queue"],
+            timeout=tick_timeout,
+            max_timeouts=tick_max_timeouts,
+            **kwargs,
+        )
     )
     if kwargs.get("raw", False):
         return res
