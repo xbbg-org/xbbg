@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **bdtick timezone fix**: Pass exchange timezone to `time_range()` to fix blank results for non-UTC exchanges like HK, Tokyo (#185)
+- **bdtick timeout defaults**: Increase timeout from 10s to 2 minutes for tick data requests to prevent empty results
+- **CI pre-release publishing**: Fix workflow to include pre-releases when publishing via workflow_dispatch
+
 ## [0.11.0b1] - 2026-01-10
 
 ### Added
