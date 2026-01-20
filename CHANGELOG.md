@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **preferreds()**: New BQL convenience function to find preferred stocks for an equity ticker (e.g., `blp.preferreds('BAC')`)
+- **corporate_bonds()**: New BQL convenience function to find active corporate bonds for a ticker (e.g., `blp.corporate_bonds('AAPL')`)
+
 ### Fixed
 - **bdtick timezone fix**: Pass exchange timezone to `time_range()` to fix blank results for non-UTC exchanges like HK, Tokyo (#185)
 - **bdtick timeout defaults**: Increase timeout from 10s to 2 minutes for tick data requests to prevent empty results

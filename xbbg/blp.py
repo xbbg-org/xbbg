@@ -29,7 +29,14 @@ from xbbg.api.reference import (
     getPortfolio as _getPortfolio,
     lookupSecurity as _lookupSecurity,
 )
-from xbbg.api.screening import beqs, bql, bsrch, etf_holdings as _etf_holdings
+from xbbg.api.screening import (
+    beqs,
+    bql,
+    bsrch,
+    corporate_bonds as _corporate_bonds,
+    etf_holdings as _etf_holdings,
+    preferreds as _preferreds,
+)
 from xbbg.api.technical import bta, bta_studies as _bta_studies, refresh_studies as _refresh_studies
 from xbbg.core.infra.conn import connect as _connect, disconnect as _disconnect
 from xbbg.deprecation import (
@@ -39,6 +46,7 @@ from xbbg.deprecation import (
     warn_bta_studies,
     warn_cdx_ticker,
     warn_connect,
+    warn_corporate_bonds,
     warn_disconnect,
     warn_dividend,
     warn_earning,
@@ -50,6 +58,7 @@ from xbbg.deprecation import (
     warn_getPortfolio,
     warn_live,
     warn_lookupSecurity,
+    warn_preferreds,
     warn_refresh_studies,
     warn_subscribe,
     warn_turnover,
@@ -200,6 +209,24 @@ def etf_holdings(*args, **kwargs):
     return _etf_holdings(*args, **kwargs)
 
 
+def preferreds(*args, **kwargs):
+    """DEPRECATED: Find preferred stocks for an equity ticker.
+
+    In v1.0, moved to xbbg.ext.preferreds().
+    """
+    warn_preferreds()
+    return _preferreds(*args, **kwargs)
+
+
+def corporate_bonds(*args, **kwargs):
+    """DEPRECATED: Find active corporate bonds for a ticker.
+
+    In v1.0, moved to xbbg.ext.corporate_bonds().
+    """
+    warn_corporate_bonds()
+    return _corporate_bonds(*args, **kwargs)
+
+
 # Resolver functions - moved to xbbg.ext
 
 
@@ -296,6 +323,8 @@ __all__ = [
     "turnover",
     "adjust_ccy",
     "etf_holdings",
+    "preferreds",
+    "corporate_bonds",
     "fut_ticker",
     "active_futures",
     "cdx_ticker",

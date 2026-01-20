@@ -286,3 +286,13 @@ def warn_active_cdx() -> None:
 def warn_etf_holdings() -> None:
     """Warn about etf_holdings() move to ext module."""
     warn_function_moved("etf_holdings", "xbbg.ext.etf_holdings")
+
+
+def warn_preferreds() -> None:
+    """Warn about preferreds() move to ext module."""
+    warn_function_moved("preferreds", "xbbg.ext.preferreds")
+
+
+def warn_corporate_bonds() -> None:
+    """Warn about corporate_bonds() move to ext module."""
+    warn_function_moved("corporate_bonds", "xbbg.ext.corporate_bonds")
