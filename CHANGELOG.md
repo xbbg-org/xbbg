@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0b2] - 2026-01-19
+
 ### Added
 - **preferreds()**: New BQL convenience function to find preferred stocks for an equity ticker (e.g., `blp.preferreds('BAC')`)
 - **corporate_bonds()**: New BQL convenience function to find active corporate bonds for a ticker (e.g., `blp.corporate_bonds('AAPL')`)
