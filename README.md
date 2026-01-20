@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.11.0b1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b1))
+Latest release: xbbg==0.11.0b2 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2))
 <!-- xbbg:latest-release-end -->
 
 ## Table of Contents
@@ -1358,3 +1358,17 @@ _0.11.0b1_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/ta
 This is a **beta release** for testing the new Arrow-first architecture before v1.0.
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0b1
+
+_0.11.0b2_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2)
+
+v0.11.0b2
+
+- preferreds(): New BQL convenience function to find preferred stocks for an equity ticker
+
+- corporate_bonds(): New BQL convenience function to find active corporate bonds for a ticker
+
+- bdtick timezone fix: Pass exchange timezone to time_range() to fix blank results for non-UTC exchanges (#185)
+
+- bdtick timeout defaults: Increase timeout from 10s to 2 minutes for tick data requests
+
+- CI pre-release publishing: Fix workflow to include pre-releases when publishing via workflow_dispatch
