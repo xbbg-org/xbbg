@@ -542,7 +542,8 @@ def bdtick(
 
         split = split_kwargs(**kwargs)
         ctx = split.infra
-        time_rng = process.time_range(dt=dt, ticker=ticker, session=session, ctx=ctx, **kwargs)
+        tz = exch.tz
+        time_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz = tz, ctx=ctx, **kwargs)
         if time_rng.start_time is None or time_rng.end_time is None:
             raise ValueError(f"Unable to resolve trading session for ticker {ticker} on date {dt}")
         # Convert timezone-naive times from exchange timezone to UTC
