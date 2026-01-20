@@ -146,6 +146,21 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.11.0b2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2>`__
+
+v0.11.0b2
+
+- preferreds(): New BQL convenience function to find preferred stocks for an equity ticker
+
+- corporate_bonds(): New BQL convenience function to find active corporate bonds for a ticker
+
+- bdtick timezone fix: Pass exchange timezone to time_range() to fix blank results for non-UTC exchanges (#185)
+
+- bdtick timeout defaults: Increase timeout from 10s to 2 minutes for tick data requests
+
+- CI pre-release publishing: Fix workflow to include pre-releases when publishing via workflow_dispatch
+
+
 *0.11.0b1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b1>`__
 
 ## v0.11.0b1 - Beta Release
