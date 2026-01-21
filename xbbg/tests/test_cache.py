@@ -11,7 +11,18 @@ from unittest.mock import patch
 import pandas as pd
 
 from xbbg.core.domain.contracts import DataRequest, SessionWindow
-from xbbg.io.cache import BarCacheAdapter, bar_file, get_cache_root, multi_day_bar_files
+from xbbg.io.cache import (
+    BarCacheAdapter,
+    bar_file,
+    build_parquet_metadata,
+    ensure_cache_metadata,
+    get_cache_root,
+    hash_overrides,
+    multi_day_bar_files,
+    read_cache_metadata,
+    ref_file,
+    write_cache_metadata,
+)
 
 
 class TestGetCacheRoot:
@@ -147,6 +158,12 @@ class TestBarCacheAdapter:
 class TestBarFileInterval:
     """Test that bar_file() includes interval in cache path."""
 
+    def test_bar_file_includes_intraday_prefix(self, tmp_path):
+        """Test that bar_file() includes intraday/ prefix in path."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = bar_file(ticker="AAPL US Equity", dt="2025-01-15", typ="TRADE")
+            assert "/intraday/" in result
+
     def test_bar_file_includes_1m_interval_by_default(self, tmp_path):
         """Test that bar_file() includes 1m interval in path by default."""
         with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
@@ -201,6 +218,20 @@ class TestBarFileInterval:
 class TestMultiDayBarFilesInterval:
     """Test that multi_day_bar_files() includes interval in cache paths."""
 
+    def test_multi_day_bar_files_includes_intraday_prefix(self, tmp_path):
+        """Test that multi_day_bar_files() includes intraday/ prefix in paths."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = multi_day_bar_files(
+                ticker="AAPL US Equity",
+                start_datetime="2025-01-15",
+                end_datetime="2025-01-17",
+                typ="TRADE",
+            )
+
+            # All paths should include intraday/ prefix
+            for _date_str, path in result:
+                assert "/intraday/" in path
+
     def test_multi_day_bar_files_includes_interval(self, tmp_path):
         """Test that multi_day_bar_files() includes interval in paths."""
         with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
@@ -237,3 +268,165 @@ class TestMultiDayBarFilesInterval:
             # All paths should include 30s interval
             for _date_str, path in result:
                 assert "/30s/" in path
+
+
+class TestCacheMetadata:
+    """Test cache metadata functions."""
+
+    def test_write_and_read_cache_metadata(self, tmp_path):
+        """Test writing and reading cache metadata."""
+        import xbbg.io.cache as cache_module
+
+        # Reset metadata cache
+        cache_module._metadata_cache = None
+
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            metadata = {
+                "schema_version": 1,
+                "created_at": "2026-01-20T00:00:00Z",
+                "xbbg_version": "0.11.0b3",
+            }
+            write_cache_metadata(metadata)
+
+            # Reset cache to force re-read
+            cache_module._metadata_cache = None
+
+            result = read_cache_metadata()
+            assert result["schema_version"] == 1
+            assert result["xbbg_version"] == "0.11.0b3"
+
+    def test_ensure_cache_metadata_creates_new(self, tmp_path):
+        """Test that ensure_cache_metadata creates metadata if missing."""
+        import xbbg.io.cache as cache_module
+
+        # Reset metadata cache
+        cache_module._metadata_cache = None
+
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            metadata = ensure_cache_metadata()
+
+            assert "schema_version" in metadata
+            assert "created_at" in metadata
+            assert "xbbg_version" in metadata
+            assert "python_version" in metadata
+            assert "platform" in metadata
+
+    def test_read_cache_metadata_returns_empty_if_missing(self, tmp_path):
+        """Test that read_cache_metadata returns empty dict if no metadata file."""
+        import xbbg.io.cache as cache_module
+
+        # Reset metadata cache
+        cache_module._metadata_cache = None
+
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = read_cache_metadata()
+            assert result == {}
+
+
+class TestHashOverrides:
+    """Test override hashing for cache filenames."""
+
+    def test_hash_overrides_returns_default_for_empty(self):
+        """Test that hash_overrides returns 'default' for empty dict."""
+        assert hash_overrides({}) == "default"
+        assert hash_overrides(None) == "default"
+
+    def test_hash_overrides_returns_consistent_hash(self):
+        """Test that hash_overrides returns consistent hash for same input."""
+        overrides = {"VWAP_Dt": "20230117", "other_param": "value"}
+        hash1 = hash_overrides(overrides)
+        hash2 = hash_overrides(overrides)
+        assert hash1 == hash2
+        assert len(hash1) == 8  # SHA256 truncated to 8 chars
+
+    def test_hash_overrides_different_for_different_inputs(self):
+        """Test that hash_overrides returns different hashes for different inputs."""
+        hash1 = hash_overrides({"param": "value1"})
+        hash2 = hash_overrides({"param": "value2"})
+        assert hash1 != hash2
+
+
+class TestBuildParquetMetadata:
+    """Test parquet metadata building."""
+
+    def test_build_parquet_metadata_basic(self):
+        """Test building basic parquet metadata."""
+        meta = build_parquet_metadata(
+            ticker="AAPL US Equity",
+            data_type="intraday",
+        )
+
+        assert meta["xbbg.ticker"] == "AAPL US Equity"
+        assert meta["xbbg.data_type"] == "intraday"
+        assert "xbbg.fetched_at" in meta
+        assert "xbbg.version" in meta
+
+    def test_build_parquet_metadata_with_interval(self):
+        """Test building parquet metadata with interval."""
+        meta = build_parquet_metadata(
+            ticker="AAPL US Equity",
+            data_type="intraday",
+            interval=5,
+            interval_has_seconds=False,
+        )
+
+        assert meta["xbbg.interval"] == "5m"
+
+    def test_build_parquet_metadata_with_seconds_interval(self):
+        """Test building parquet metadata with seconds interval."""
+        meta = build_parquet_metadata(
+            ticker="AAPL US Equity",
+            data_type="intraday",
+            interval=10,
+            interval_has_seconds=True,
+        )
+
+        assert meta["xbbg.interval"] == "10s"
+
+    def test_build_parquet_metadata_with_event_type(self):
+        """Test building parquet metadata with event type."""
+        meta = build_parquet_metadata(
+            ticker="AAPL US Equity",
+            data_type="intraday",
+            event_type="TRADE",
+        )
+
+        assert meta["xbbg.event_type"] == "TRADE"
+
+
+class TestRefFileStructure:
+    """Test ref_file() uses new folder structure."""
+
+    def test_ref_file_includes_reference_prefix(self, tmp_path):
+        """Test that ref_file() includes reference/ prefix in path."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = ref_file(
+                ticker="AAPL US Equity",
+                fld="PX_LAST",
+                cache=True,
+            )
+            assert "/reference/" in result
+
+    def test_ref_file_uses_hash_for_overrides(self, tmp_path):
+        """Test that ref_file() uses hash for override parameters."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = ref_file(
+                ticker="AAPL US Equity",
+                fld="PX_LAST",
+                cache=True,
+                VWAP_Dt="20230117",
+            )
+            # Should not contain the raw override value in path
+            assert "VWAP_Dt" not in result
+            # Should end with .parq
+            assert result.endswith(".parq")
+
+    def test_ref_file_returns_default_for_no_overrides(self, tmp_path):
+        """Test that ref_file() uses 'default' when no overrides."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = ref_file(
+                ticker="AAPL US Equity",
+                fld="PX_LAST",
+                cache=True,
+            )
+            assert "/default.parq" in result
