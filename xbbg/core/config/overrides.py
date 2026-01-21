@@ -20,7 +20,7 @@ PRSV_COLS = [
     "price_only",
     "port",
     "log",
-    "timeout",
+    "slow_warn_seconds",
     "sess",
     # Request-specific parameters (not Bloomberg override fields)
     "interval",

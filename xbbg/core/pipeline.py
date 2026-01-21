@@ -89,8 +89,6 @@ class PipelineConfig:
         needs_session: Whether this API needs session resolution.
         default_resolvers: Default resolver chain factory.
         default_cache_adapter: Default cache adapter factory.
-        timeout: Request timeout in milliseconds.
-        max_timeouts: Maximum allowed timeouts.
     """
 
     service: str
@@ -101,8 +99,6 @@ class PipelineConfig:
     needs_session: bool = False
     default_resolvers: Callable[[], list[MarketResolver]] | None = None
     default_cache_adapter: Callable[[], CacheAdapter | None] = lambda: None
-    timeout: int | None = None
-    max_timeouts: int | None = None
 
 
 class BloombergPipeline(BaseContextAware):
@@ -388,17 +384,12 @@ class BloombergPipeline(BaseContextAware):
         """Fetch data from Bloomberg using configured strategy."""
         blp_request, ctx_kwargs = self.config.request_builder.build_request(request, session_window)
 
-        timeout = self.config.timeout or ctx_kwargs.get("timeout", 500)
-        max_timeouts = self.config.max_timeouts or ctx_kwargs.get("max_timeouts", 20)
-
         handle = conn.send_request(request=blp_request, service=self.config.service, **ctx_kwargs)
 
         events = list(
             process.rec_events(
                 func=self.config.process_func,
                 event_queue=handle["event_queue"],
-                timeout=timeout,
-                max_timeouts=max_timeouts,
                 **ctx_kwargs,
             )
         )
@@ -1381,8 +1372,6 @@ def beqs_pipeline_config() -> PipelineConfig:
         transformer=BeqsTransformer(),
         needs_session=False,
         default_resolvers=lambda: [],
-        timeout=2000,
-        max_timeouts=50,
     )
 
 
@@ -1396,8 +1385,6 @@ def bsrch_pipeline_config() -> PipelineConfig:
         transformer=BsrchTransformer(),
         needs_session=False,
         default_resolvers=lambda: [],
-        timeout=2000,
-        max_timeouts=50,
     )
 
 
@@ -1745,6 +1732,4 @@ def bqr_pipeline_config() -> PipelineConfig:
         transformer=BqrTransformer(),
         needs_session=False,
         default_resolvers=lambda: [],
-        timeout=5000,
-        max_timeouts=30,
     )
