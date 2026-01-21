@@ -76,7 +76,7 @@ def test_bql_accepts_params(monkeypatch, fake_handle):
 
     assert not df.empty
     assert list(df.columns) == ["x"]
-    assert df.iloc[0, 0] == "1"  # Pipeline converts to string for Arrow compatibility
+    assert df.iloc[0, 0] == 1  # Pipeline preserves original types
 
 
 def test_iter_bql_json_rows_handles_duplicate_ids():

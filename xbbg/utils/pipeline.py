@@ -224,8 +224,18 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
     mask = (dtypes == "object") | (data.columns.str.contains("UPDATE_STAMP"))
     cols = dtypes.index[mask]
     if len(cols) > 0:
+        import warnings
+
         for col in cols:
-            parsed = pd.to_datetime(data[col], errors="coerce")
+            # Suppress pandas warning about format inference - we're intentionally
+            # trying to detect datetime columns without specifying a format
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Could not infer format",
+                    category=UserWarning,
+                )
+                parsed = pd.to_datetime(data[col], errors="coerce")
             # Ensure parsed is a Series (pd.to_datetime on scalars can return Timestamp)
             if not isinstance(parsed, pd.Series):
                 parsed = pd.Series(parsed, index=data.index)
