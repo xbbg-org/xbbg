@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from xbbg.core.domain.contracts import DataRequest, SessionWindow
-from xbbg.io.cache import BarCacheAdapter, get_cache_root
+from xbbg.io.cache import BarCacheAdapter, bar_file, get_cache_root, multi_day_bar_files
 
 
 class TestGetCacheRoot:
@@ -142,3 +142,98 @@ class TestBarCacheAdapter:
         warning_messages = [record.message for record in caplog.records if record.levelname == "WARNING"]
         empty_data_warnings = [msg for msg in warning_messages if "No data to save" in msg]
         assert len(empty_data_warnings) > 0, "Expected WARNING message about empty data"
+
+
+class TestBarFileInterval:
+    """Test that bar_file() includes interval in cache path."""
+
+    def test_bar_file_includes_1m_interval_by_default(self, tmp_path):
+        """Test that bar_file() includes 1m interval in path by default."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = bar_file(ticker="AAPL US Equity", dt="2025-01-15", typ="TRADE")
+            assert "/1m/" in result
+            assert result.endswith("2025-01-15.parq")
+
+    def test_bar_file_includes_5m_interval(self, tmp_path):
+        """Test that bar_file() includes 5m interval in path."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = bar_file(
+                ticker="AAPL US Equity",
+                dt="2025-01-15",
+                typ="TRADE",
+                interval=5,
+            )
+            assert "/5m/" in result
+            assert result.endswith("2025-01-15.parq")
+
+    def test_bar_file_includes_10s_interval_with_seconds_flag(self, tmp_path):
+        """Test that bar_file() includes 10s interval when intervalHasSeconds=True."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = bar_file(
+                ticker="AAPL US Equity",
+                dt="2025-01-15",
+                typ="TRADE",
+                interval=10,
+                interval_has_seconds=True,
+            )
+            assert "/10s/" in result
+            assert result.endswith("2025-01-15.parq")
+
+    def test_bar_file_different_intervals_produce_different_paths(self, tmp_path):
+        """Test that different intervals produce different cache paths."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            path_1m = bar_file(ticker="AAPL US Equity", dt="2025-01-15", typ="TRADE", interval=1)
+            path_5m = bar_file(ticker="AAPL US Equity", dt="2025-01-15", typ="TRADE", interval=5)
+            path_10s = bar_file(
+                ticker="AAPL US Equity",
+                dt="2025-01-15",
+                typ="TRADE",
+                interval=10,
+                interval_has_seconds=True,
+            )
+
+            # All paths should be different
+            assert path_1m != path_5m
+            assert path_1m != path_10s
+            assert path_5m != path_10s
+
+
+class TestMultiDayBarFilesInterval:
+    """Test that multi_day_bar_files() includes interval in cache paths."""
+
+    def test_multi_day_bar_files_includes_interval(self, tmp_path):
+        """Test that multi_day_bar_files() includes interval in paths."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = multi_day_bar_files(
+                ticker="AAPL US Equity",
+                start_datetime="2025-01-15",
+                end_datetime="2025-01-17",
+                typ="TRADE",
+                interval=5,
+            )
+
+            # Should have 3 days
+            assert len(result) == 3
+
+            # All paths should include 5m interval
+            for _date_str, path in result:
+                assert "/5m/" in path
+
+    def test_multi_day_bar_files_includes_seconds_interval(self, tmp_path):
+        """Test that multi_day_bar_files() includes seconds interval in paths."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = multi_day_bar_files(
+                ticker="AAPL US Equity",
+                start_datetime="2025-01-15",
+                end_datetime="2025-01-16",
+                typ="TRADE",
+                interval=30,
+                interval_has_seconds=True,
+            )
+
+            # Should have 2 days
+            assert len(result) == 2
+
+            # All paths should include 30s interval
+            for _date_str, path in result:
+                assert "/30s/" in path

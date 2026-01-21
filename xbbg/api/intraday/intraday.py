@@ -54,7 +54,15 @@ def _load_cached_bdib(
             f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
             f"This should not happen - session validation should have caught this earlier."
         )
-    data_file = cache.bar_file(ticker=ticker, dt=dt, typ=typ)
+    interval = kwargs.get("interval", 1)
+    interval_has_seconds = kwargs.get("intervalHasSeconds", False)
+    data_file = cache.bar_file(
+        ticker=ticker,
+        dt=dt,
+        typ=typ,
+        interval=interval,
+        interval_has_seconds=interval_has_seconds,
+    )
     if ctx is None:
         cache_enabled = kwargs.get("cache", True)
         reload_flag = kwargs.get("reload", False)
@@ -331,7 +339,17 @@ def _process_bdib_response(
         cache_enabled = ctx.cache
         cache_kwargs = ctx.to_kwargs()
     if cache_enabled:
-        cache.save_intraday(data=data[ticker], ticker=ticker, dt=dt, typ=typ, **cache_kwargs)
+        interval = kwargs.get("interval", 1)
+        interval_has_seconds = kwargs.get("intervalHasSeconds", False)
+        cache.save_intraday(
+            data=data[ticker],
+            ticker=ticker,
+            dt=dt,
+            typ=typ,
+            interval=interval,
+            interval_has_seconds=interval_has_seconds,
+            **cache_kwargs,
+        )
 
     if ss_rng.start_time is None or ss_rng.end_time is None:
         raise ValueError(
