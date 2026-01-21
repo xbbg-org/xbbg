@@ -921,3 +921,61 @@ def process_tasvc(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     except Exception as e:
         logger.error("Error processing TASVC studyResponse: %s", e, exc_info=True)
         return iter([])
+
+
+def process_bqr(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
+    """Process BQR (Quote Request) tick messages with broker codes.
+
+    BQR is implemented as an IntradayTickRequest with BID/ASK event types
+    and includeBrokerCodes=true. This function extracts the tick data
+    including broker information for dealer quotes.
+
+    Args:
+        msg: Bloomberg IntradayTickResponse message.
+        **kwargs: Additional options (unused).
+
+    Yields:
+        dict: Row dictionaries with time, type, value, size, and broker codes.
+    """
+    kwargs.pop("(^_^)", None)
+    check_error(msg=msg)
+
+    tick_data_name = blpapi.Name("tickData")
+
+    if not msg.hasElement(tick_data_name):
+        return iter([])
+
+    try:
+        tick_element = msg.getElement(tick_data_name)
+
+        # tickData contains another tickData array with the actual ticks
+        if not tick_element.hasElement(tick_data_name):
+            return iter([])
+
+        tick_array = tick_element.getElement(tick_data_name)
+
+        for i in range(tick_array.numValues()):
+            tick = tick_array.getValueAsElement(i)
+            row = {}
+
+            # Extract all elements from the tick
+            for j in range(tick.numElements()):
+                elem = tick.getElement(j)
+                elem_name = str(elem.name())
+                try:
+                    if elem.isNull():
+                        row[elem_name] = None
+                    else:
+                        value = elem.getValue()
+                        # Convert blpapi.Name to string for serialization
+                        if isinstance(value, blpapi.Name):
+                            value = str(value)
+                        row[elem_name] = value
+                except Exception:
+                    row[elem_name] = str(elem)
+
+            yield row
+
+    except Exception as e:
+        logger.error("Error processing BQR tick response: %s", e, exc_info=True)
+        return iter([])

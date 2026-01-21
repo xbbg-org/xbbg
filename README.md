@@ -233,6 +233,7 @@ xbbg is the **only Python library** that provides:
 |----------|-------------|--------------|
 | **`beqs()`** | Bloomberg Equity Screening | Custom screening criteria<br>Private & public screens |
 | **`bql()`** | Bloomberg Query Language | SQL-like syntax<br>Complex transformations<br>Options chain analysis |
+| **`bqr()`** | Bloomberg Quote Request | Dealer quotes with broker codes<br>MSG1 pricing source<br>Excel BQR emulation |
 | **`bsrch()`** | SRCH (Search) queries | Fixed income searches<br>Commodity screens<br>Weather data |
 | **`bta()`** | Technical Analysis | 50+ technical indicators<br>Custom studies |
 | **`etf_holdings()`** | ETF holdings via BQL | Complete holdings list<br>Weights & positions |
@@ -372,6 +373,9 @@ holdings = blp.etf_holdings('SPY US Equity')
 
 # Search queries
 bonds = blp.bsrch("FI:MYSEARCH")
+
+# Dealer quotes with broker codes (BQR)
+quotes = blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", date_offset="-2d")
 ```
 
 </details>
@@ -1026,6 +1030,33 @@ Out[17]:
 ```
 
 **Note:** The `bsrch()` function uses the blpapi Excel service (`//blp/exrsvc`) and supports user-defined SRCH screens, commodity screens, and blpapi example screens. For weather data and other specialized searches, use the `overrides` parameter to pass search-specific parameters.
+
+```python
+# Bloomberg Quote Request (BQR) - Dealer quotes with broker codes
+# Emulates Excel =BQR() function for fixed income dealer quotes
+
+# Get quotes from last 2 days with broker attribution
+# blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", date_offset="-2d")  # doctest: +SKIP
+
+# Using ISIN with MSG1 pricing source
+# blp.bqr("/isin/US123456789@MSG1", date_offset="-2d")  # doctest: +SKIP
+
+# With explicit date range
+# blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", start_date="2024-01-15", end_date="2024-01-17")  # doctest: +SKIP
+
+# Get only trade events
+# blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", date_offset="-1d", event_types=["TRADE"])  # doctest: +SKIP
+```
+
+```pydocstring
+Out[18]:
+                              ticker                 time event_type   price    size broker_buy broker_sell
+0  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:00        BID  101.25  500000       EUBS         nan
+1  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:05        ASK  101.50  250000        nan        CTSD
+2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE  101.35  100000       MAXE        MAXE
+```
+
+**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula. Use the `@MSG1` pricing source suffix to get dealer-level quote attribution. The `broker_buy` and `broker_sell` columns identify the contributing dealers.
 
 ### 📡 Real-time
 

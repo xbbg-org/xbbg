@@ -14,7 +14,7 @@ from xbbg.io.convert import is_empty, rename_columns
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["beqs", "bsrch", "bql", "etf_holdings", "preferreds", "corporate_bonds"]
+__all__ = ["beqs", "bsrch", "bql", "bqr", "etf_holdings", "preferreds", "corporate_bonds"]
 
 
 def beqs(
@@ -533,3 +533,131 @@ def corporate_bonds(
     # Clean up column names
     col_map = {"ID": "ticker"}
     return rename_columns(res, col_map)
+
+
+def bqr(
+    ticker: str,
+    date_offset: str | None = None,
+    start_date: str | pd.Timestamp | None = None,
+    end_date: str | pd.Timestamp | None = None,
+    event_types: list[str] | None = None,
+    include_broker_codes: bool = True,
+    include_condition_codes: bool = False,
+    include_exchange_codes: bool = False,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Bloomberg Quote Request - get dealer quotes with broker information.
+
+    Emulates the Excel =BQR() function for retrieving quote data from Bloomberg.
+    BQR returns a grid of quotes from different dealers/contributors with
+    timestamps, prices, sizes, and broker codes.
+
+    This function uses IntradayTickRequest internally with BID/ASK event types
+    and broker codes enabled to replicate Excel BQR functionality.
+
+    Args:
+        ticker: Security identifier. Supports various formats:
+            - Bloomberg ticker with pricing source: "AAPL 3.45 02/09/45@MSG1 Corp"
+            - ISIN with pricing source: "/isin/US037833BA77@MSG1"
+            - ISIN with Corp suffix: "US037833BA77@MSG1 Corp"
+            - Plain ISIN: "/isin/US037833BA77" (returns all quotes, no broker codes)
+        date_offset: Date offset from now (e.g., "-2d", "-1w", "-3h").
+            Takes precedence over start_date/end_date if provided.
+        start_date: Start date for quote range (if date_offset not provided).
+        end_date: End date for quote range (defaults to now if not provided).
+        event_types: List of event types to retrieve. Defaults to ["BID", "ASK"].
+            Other options: ["TRADE"], ["BID"], ["ASK"].
+        include_broker_codes: Include broker/dealer codes (default True for AllQuotes).
+            Set to True to get dealer-level quote attribution (MSG1 sources).
+        include_condition_codes: Include trade condition codes (default False).
+        include_exchange_codes: Include exchange codes (default False).
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS).
+            Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG).
+            Defaults to global setting.
+        **kwargs: Additional options passed to the Bloomberg session.
+
+    Returns:
+        pd.DataFrame: Quote data with columns:
+            - ticker: Security identifier
+            - time: Quote timestamp
+            - event_type: BID, ASK, or TRADE
+            - price: Quote price
+            - size: Quote size
+            - broker_buy: Broker code for bid (if available)
+            - broker_sell: Broker code for ask (if available)
+
+    Examples:
+        Basic usage with date offset (requires Bloomberg session; skipped in doctest):
+
+        >>> from xbbg import blp  # doctest: +SKIP
+        >>> # Get quotes from last 2 days
+        >>> df = blp.bqr("AAPL 3.45 02/09/45@MSG1 Corp", date_offset="-2d")  # doctest: +SKIP
+        >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
+        True
+
+        Using ISIN with pricing source:
+
+        >>> df = blp.bqr("/isin/US037833BA77@MSG1", date_offset="-2d")  # doctest: +SKIP
+
+        Using explicit date range:
+
+        >>> df = blp.bqr(  # doctest: +SKIP
+        ...     "AAPL 3.45 02/09/45@MSG1 Corp",
+        ...     start_date="2024-01-15",
+        ...     end_date="2024-01-17"
+        ... )
+
+        Get only trade events:
+
+        >>> df = blp.bqr(  # doctest: +SKIP
+        ...     "AAPL 3.45 02/09/45@MSG1 Corp",
+        ...     date_offset="-1d",
+        ...     event_types=["TRADE"]
+        ... )
+
+    Notes:
+        - MSG1 is a composite pricing source that aggregates dealer quotes
+        - The @MSG1 suffix in the ticker enables dealer-level attribution
+        - Without @MSG1, quotes come from the default pricing source
+        - Broker codes (broker_buy, broker_sell) are only available with MSG1 source
+        - For Excel compatibility, this emulates: =BQR("ticker", "-2d", "", "View=AllQuotes")
+    """
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bqr_pipeline_config
+
+    # Default event types
+    if event_types is None:
+        event_types = ["BID", "ASK"]
+
+    # Split kwargs
+    split = split_kwargs(**kwargs)
+
+    # Build request
+    request = (
+        RequestBuilder()
+        .ticker(ticker)
+        .date("today")  # Required by builder, but not used by BQR
+        .context(split.infra)
+        .cache_policy(enabled=False)  # BQR typically not cached
+        .request_opts(
+            ticker=ticker,
+            date_offset=date_offset,
+            start_date=start_date,
+            end_date=end_date,
+            event_types=event_types,
+            include_broker_codes=include_broker_codes,
+            include_condition_codes=include_condition_codes,
+            include_exchange_codes=include_exchange_codes,
+        )
+        .override_kwargs(**split.override_like)
+        .with_output(backend, format)
+        .build()
+    )
+
+    # Run pipeline
+    pipeline = BloombergPipeline(config=bqr_pipeline_config())
+    return pipeline.run(request)

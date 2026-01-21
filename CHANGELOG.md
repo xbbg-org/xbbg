@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **bqr()**: New Bloomberg Quote Request function emulating Excel `=BQR()` for dealer quote data (#22)
+  - Retrieves tick-level quotes with broker/dealer attribution from MSG1 pricing sources
+  - Supports date offsets (`-2d`, `-1w`) and explicit date ranges
+  - Includes broker codes (`broker_buy`, `broker_sell`) for dealer identification
+  - Works with Bloomberg tickers and ISINs (e.g., `/isin/US037833BA77@MSG1`)
+  - Full multi-backend support (pandas, polars, pyarrow, duckdb)
+
 ## [0.11.0b2] - 2026-01-19
 
 ### Added
