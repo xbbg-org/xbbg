@@ -171,6 +171,7 @@ xbbg is the **only Python library** that provides:
 | **Advanced Features** | | | | |
 | Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ |
 | Query Language (BQL) | ✅ | ❌ | ❌ | ✅ |
+| Quote Request (BQR) | ✅ | ❌ | ❌ | ❌ |
 | Search (BSRCH) | ✅ | ❌ | ❌ | ✅ |
 | Technical Analysis (BTA) | ✅ | ❌ | ❌ | ❌ |
 | **Developer Features** | | | | |
@@ -233,7 +234,7 @@ xbbg is the **only Python library** that provides:
 |----------|-------------|--------------|
 | **`beqs()`** | Bloomberg Equity Screening | Custom screening criteria<br>Private & public screens |
 | **`bql()`** | Bloomberg Query Language | SQL-like syntax<br>Complex transformations<br>Options chain analysis |
-| **`bqr()`** | Bloomberg Quote Request | Dealer quotes with broker codes<br>MSG1 pricing source<br>Excel BQR emulation |
+| **`bqr()`** | Bloomberg Quote Request | Tick-level dealer quotes<br>Broker attribution codes<br>Date offset support (-2d, -1w) |
 | **`bsrch()`** | SRCH (Search) queries | Fixed income searches<br>Commodity screens<br>Weather data |
 | **`bta()`** | Technical Analysis | 50+ technical indicators<br>Custom studies |
 | **`etf_holdings()`** | ETF holdings via BQL | Complete holdings list<br>Weights & positions |
@@ -1050,13 +1051,13 @@ Out[17]:
 
 ```pydocstring
 Out[18]:
-                              ticker                 time event_type   price    size broker_buy broker_sell
-0  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:00        BID  101.25  500000       EUBS         nan
-1  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:05        ASK  101.50  250000        nan        CTSD
-2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE  101.35  100000       MAXE        MAXE
+                              ticker                 time event_type   price   size broker_buy broker_sell
+0  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:00        BID   98.75  10000       DLRA         NaN
+1  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:05        ASK   99.00   5000        NaN        DLRB
+2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE   98.85   2500       DLRC        DLRC
 ```
 
-**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula. Use the `@MSG1` pricing source suffix to get dealer-level quote attribution. The `broker_buy` and `broker_sell` columns identify the contributing dealers.
+**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula. Use the `@MSG1` pricing source suffix to get dealer-level quote attribution. The `broker_buy` and `broker_sell` columns identify the contributing dealers (4-character codes).
 
 ### 📡 Real-time
 
