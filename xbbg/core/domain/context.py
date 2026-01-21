@@ -16,7 +16,7 @@ from xbbg.core.config import overrides
 _INFRA_KWARGS = {
     "sess",  # Bloomberg session
     "port",  # Port number
-    "timeout",  # Timeout in milliseconds
+    "slow_warn_seconds",  # Threshold for warning about slow requests
     "log",  # Logging level
     "raw",  # Return raw response
     "cache",  # Enable caching
@@ -49,7 +49,7 @@ class BloombergContext:
     Attributes:
         sess: Bloomberg session (optional)
         port: Port number (optional)
-        timeout: Timeout in milliseconds (optional)
+        slow_warn_seconds: Threshold for warning about slow requests (optional)
         log: Logging level (optional)
         raw: Return raw response (optional)
         cache: Enable caching (optional)
@@ -71,7 +71,7 @@ class BloombergContext:
 
     sess: Any = None
     port: int | None = None
-    timeout: int | None = None
+    slow_warn_seconds: float | None = None
     log: str | int | None = None
     raw: bool = False
     cache: bool = True
@@ -154,14 +154,14 @@ def split_kwargs(**kwargs) -> KwargsSplit:
 
     Example:
         >>> split = split_kwargs(
-        ...     interval=5, typ='TRADE', sess=None, timeout=1000,
+        ...     interval=5, typ='TRADE', sess=None, slow_warn_seconds=30.0,
         ...     DVD_Start_Dt='20180101', Period='W'
         ... )
         >>> 'interval' in split.request_opts
         True
         >>> 'DVD_Start_Dt' in split.override_like
         True
-        >>> 'timeout' in split.infra.to_kwargs()
+        >>> 'slow_warn_seconds' in split.infra.to_kwargs()
         True
     """
     # Request-specific parameters (not Bloomberg overrides, not infrastructure)

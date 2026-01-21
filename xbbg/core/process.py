@@ -357,26 +357,27 @@ def _process_response_event(ev: blpapi.Event, func, **kwargs):
     return is_final
 
 
-def _handle_timeout(timeout_counts: int, max_timeouts: int) -> tuple[int, bool]:
-    """Handle timeout event.
+def _handle_timeout(elapsed_seconds: float, slow_warn_seconds: float, warned: bool) -> bool:
+    """Handle timeout event with time-based warning.
+
+    Bloomberg TIMEOUT events are not errors - they just mean "no data yet, still working".
+    We never give up on timeouts; we only warn if the request is taking longer than expected.
 
     Args:
-        timeout_counts: Current timeout count.
-        max_timeouts: Maximum allowed timeouts.
+        elapsed_seconds: Time elapsed since request started.
+        slow_warn_seconds: Threshold for warning about slow requests.
+        warned: Whether we've already warned about this request.
 
     Returns:
-        Tuple of (updated_timeout_counts, should_stop_flag).
+        True if we should warn (and haven't already), False otherwise.
     """
-    timeout_counts += 1
-    should_stop = timeout_counts > max_timeouts
-
-    if timeout_counts % 5 == 0 or should_stop:
-        if should_stop:
-            logger.warning("Maximum timeout count (%d) reached, stopping event processing", max_timeouts)
-        elif logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Event timeout %d/%d", timeout_counts, max_timeouts)
-
-    return timeout_counts, should_stop
+    if not warned and elapsed_seconds > slow_warn_seconds:
+        logger.warning(
+            "Bloomberg request taking %.1f seconds (still waiting for response)...",
+            elapsed_seconds,
+        )
+        return True  # Signal that we've now warned
+    return warned  # Return current warned state
 
 
 def _handle_other_event(ev: blpapi.Event) -> bool:
@@ -398,27 +399,40 @@ def _handle_other_event(ev: blpapi.Event) -> bool:
 def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
     """Receive and iterate events from Bloomberg.
 
+    Bloomberg TIMEOUT events are not errors - they indicate the request is still
+    being processed. This function will wait indefinitely for a response, only
+    stopping when:
+    - RESPONSE event received (success)
+    - responseError in message (Bloomberg error)
+    - SESSION_TERMINATED event (connection lost)
+
     Args:
         func: Generator function yielding parsed messages.
         event_queue: Optional queue to read events from; defaults to session queue.
         **kwargs: Arguments forwarded to ``func`` and session access.
+            slow_warn_seconds: Threshold for warning about slow requests (default: 15.0)
 
     Yields:
         Elements of Bloomberg responses.
     """
-    timeout_counts = 0
+    import time
+
     responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
-    timeout = kwargs.pop("timeout", 500)
-    max_timeouts = kwargs.pop("max_timeouts", 20)  # Allow configurable max timeouts
+    slow_warn_seconds = kwargs.pop("slow_warn_seconds", 15.0)
+    # Poll interval - how often to check for events (1 second is reasonable)
+    poll_interval_ms = 1000
+
+    start_time = time.time()
+    warned = False
 
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Starting Bloomberg event processing (timeout=%dms, max_timeouts=%d)", timeout, max_timeouts)
+        logger.debug("Starting Bloomberg event processing (slow_warn_seconds=%.1f)", slow_warn_seconds)
     while True:
         try:
             if event_queue is not None:
-                ev = event_queue.nextEvent(timeout=timeout)
+                ev = event_queue.nextEvent(timeout=poll_interval_ms)
             else:
-                ev = conn.bbg_session(**kwargs).nextEvent(timeout=timeout)
+                ev = conn.bbg_session(**kwargs).nextEvent(timeout=poll_interval_ms)
         except blpapi.InvalidStateException as e:
             logger.error("Bloomberg session in invalid state: %s", e)
             raise
@@ -445,9 +459,10 @@ def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
                 logger.error("Error processing Bloomberg message: %s", e)
                 raise
         elif ev.eventType() == blpapi.Event.TIMEOUT:
-            timeout_counts, should_stop = _handle_timeout(timeout_counts, max_timeouts)
-            if should_stop:
-                break
+            # TIMEOUT is not an error - Bloomberg is still working on the request
+            elapsed = time.time() - start_time
+            warned = _handle_timeout(elapsed, slow_warn_seconds, warned)
+            # Continue waiting - never give up on timeouts
         else:
             if _handle_other_event(ev):
                 break

@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Works with Bloomberg tickers and ISINs (e.g., `/isin/US037833BA77@MSG1`)
   - Full multi-backend support (pandas, polars, pyarrow, duckdb)
 
+### Fixed
+- **Slow Bloomberg fields no longer timeout prematurely** (#193)
+  - Bloomberg TIMEOUT events are now handled correctly - they indicate the request is still processing, not an error
+  - Removed `max_timeouts` limit that caused requests to fail after ~10 seconds
+  - Added `slow_warn_seconds` parameter (default: 15s) to warn about slow requests without aborting them
+  - Requests will now wait indefinitely for Bloomberg response (or until connection lost)
+  - Fields like `STOCHASTIC_OAS_MID_MOD_DUR` that take 10+ seconds now work correctly
+
 ## [0.11.0b2] - 2026-01-19
 
 ### Added
