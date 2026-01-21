@@ -32,6 +32,7 @@ from xbbg.api.reference import (
 from xbbg.api.screening import (
     beqs,
     bql,
+    bqr,
     bsrch,
     corporate_bonds as _corporate_bonds,
     etf_holdings as _etf_holdings,
@@ -344,6 +345,7 @@ __all__ = [
     "beqs",
     "bsrch",
     "bql",
+    "bqr",
     "bta",
     "stream",
 ]
