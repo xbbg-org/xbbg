@@ -4,6 +4,8 @@ This module provides functions to convert Arrow tables to various backends
 and output formats (LONG, SEMI_LONG, WIDE).
 """
 
+from __future__ import annotations
+
 import contextlib
 from typing import Any
 
@@ -12,6 +14,213 @@ import pandas as pd
 import pyarrow as pa
 
 from xbbg.backend import Backend, Format
+
+# =============================================================================
+# Backend-agnostic DataFrame utilities
+# =============================================================================
+
+
+def is_empty(df: Any) -> bool:
+    """Check if a DataFrame is empty, works with any backend.
+
+    Parameters
+    ----------
+    df : Any
+        DataFrame from any supported backend (pandas, polars, pyarrow, etc.)
+
+    Returns:
+    -------
+    bool
+        True if the DataFrame has no rows, False otherwise.
+    """
+    if df is None:
+        return True
+
+    # pandas DataFrame/Series
+    if hasattr(df, "empty"):
+        return df.empty
+
+    # polars DataFrame/LazyFrame
+    if hasattr(df, "is_empty"):
+        # polars LazyFrame needs to be collected first, but is_empty() works on DataFrame
+        if hasattr(df, "collect"):
+            # It's a LazyFrame - check shape instead to avoid collecting
+            return False  # LazyFrames are never "empty" until collected
+        return df.is_empty()
+
+    # pyarrow Table
+    if hasattr(df, "num_rows"):
+        return df.num_rows == 0
+
+    # narwhals DataFrame
+    if hasattr(df, "shape"):
+        return df.shape[0] == 0
+
+    # Fallback: try len()
+    try:
+        return len(df) == 0
+    except TypeError:
+        return False
+
+
+def concat_frames(frames: list[Any], backend: Backend | None = None) -> Any:
+    """Concatenate DataFrames, works with any backend.
+
+    Parameters
+    ----------
+    frames : list[Any]
+        List of DataFrames to concatenate.
+    backend : Backend | None
+        Target backend. If None, inferred from first frame.
+
+    Returns:
+    -------
+    Any
+        Concatenated DataFrame in the same backend as input.
+    """
+    if not frames:
+        return pd.DataFrame()
+
+    # Filter out empty frames
+    non_empty = [f for f in frames if not is_empty(f)]
+    if not non_empty:
+        return frames[0] if frames else pd.DataFrame()
+
+    first = non_empty[0]
+
+    # Detect backend from first frame
+    frame_type = type(first).__module__
+
+    if "polars" in frame_type:
+        import polars as pl
+
+        return pl.concat(non_empty)
+
+    if "pyarrow" in frame_type:
+        return pa.concat_tables(non_empty)
+
+    if "pandas" in frame_type:
+        return pd.concat(non_empty, ignore_index=True)
+
+    # Try narwhals concat
+    try:
+        return nw.concat(non_empty)
+    except Exception:
+        pass
+
+    # Fallback: convert to pandas
+    pd_frames = [f.to_pandas() if hasattr(f, "to_pandas") else f for f in non_empty]
+    return pd.concat(pd_frames, ignore_index=True)
+
+
+def to_arrow(df: Any) -> pa.Table:
+    """Convert any DataFrame to PyArrow Table.
+
+    Parameters
+    ----------
+    df : Any
+        DataFrame from any supported backend.
+
+    Returns:
+    -------
+    pa.Table
+        PyArrow Table.
+    """
+    if isinstance(df, pa.Table):
+        return df
+
+    # polars DataFrame
+    if hasattr(df, "to_arrow") and not isinstance(df, pd.DataFrame):
+        return df.to_arrow()
+
+    # polars LazyFrame - collect first
+    if hasattr(df, "collect"):
+        return df.collect().to_arrow()
+
+    # narwhals DataFrame
+    if hasattr(df, "to_arrow"):
+        return df.to_arrow()
+
+    # pandas DataFrame
+    if isinstance(df, pd.DataFrame):
+        return pa.Table.from_pandas(df)
+
+    # Fallback
+    return pa.Table.from_pandas(pd.DataFrame(df))
+
+
+def to_pandas(df: Any) -> pd.DataFrame:
+    """Convert any DataFrame to pandas.
+
+    Parameters
+    ----------
+    df : Any
+        DataFrame from any supported backend.
+
+    Returns:
+    -------
+    pd.DataFrame
+        Pandas DataFrame.
+    """
+    if isinstance(df, pd.DataFrame):
+        return df
+
+    if hasattr(df, "to_pandas"):
+        return df.to_pandas()
+
+    if hasattr(df, "collect"):
+        # polars LazyFrame
+        return df.collect().to_pandas()
+
+    # Fallback
+    return pd.DataFrame(df)
+
+
+def rename_columns(df: Any, rename_map: dict[str, str]) -> Any:
+    """Rename columns in a DataFrame, works with any backend.
+
+    Parameters
+    ----------
+    df : Any
+        DataFrame from any supported backend.
+    rename_map : dict[str, str]
+        Mapping of old column names to new column names.
+
+    Returns:
+    -------
+    Any
+        DataFrame with renamed columns in the same backend as input.
+    """
+    if df is None or is_empty(df):
+        return df
+
+    frame_type = type(df).__module__
+
+    # pandas DataFrame
+    if "pandas" in frame_type or isinstance(df, pd.DataFrame):
+        return df.rename(columns=rename_map)
+
+    # polars DataFrame/LazyFrame
+    if "polars" in frame_type:
+        # polars uses .rename() but with different signature
+        return df.rename(rename_map)
+
+    # pyarrow Table
+    if "pyarrow" in frame_type:
+        # Get current column names
+        names = df.column_names
+        new_names = [rename_map.get(n, n) for n in names]
+        return df.rename_columns(new_names)
+
+    # narwhals DataFrame
+    if hasattr(df, "rename"):
+        return df.rename(rename_map)
+
+    # Fallback: convert to pandas, rename, hope for the best
+    if hasattr(df, "to_pandas"):
+        return df.to_pandas().rename(columns=rename_map)
+
+    return df
 
 
 def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
@@ -191,7 +400,12 @@ def to_output(
                 for col in pivoted.columns:
                     with contextlib.suppress(ValueError, TypeError):
                         pivoted[col] = pd.to_numeric(pivoted[col])
-                return pivoted
+                # Convert to requested backend (pivoted is pandas with ticker as index)
+                if backend == Backend.PANDAS:
+                    return pivoted
+                # For other backends, reset index and convert
+                pivoted_reset = pivoted.reset_index()
+                return _convert_backend(nw.from_native(pivoted_reset), backend)
             # For LONG/SEMI_LONG, return as-is
             return _convert_backend(nw_frame, backend)
         # Data has ticker but no standard field/value structure - passthrough

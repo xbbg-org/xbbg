@@ -10,6 +10,7 @@ import logging
 import pandas as pd
 
 from xbbg.backend import Backend, Format
+from xbbg.io.convert import is_empty, rename_columns
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ def beqs(
     result = pipeline.run(request)
 
     # Handle retry logic
-    if result.empty and trial == 0:
+    if is_empty(result) and trial == 0:
         return beqs(screen=screen, asof=asof, typ=typ, group=group, backend=backend, format=format, trial=1, **kwargs)
 
     return result
@@ -363,13 +364,13 @@ def etf_holdings(
     # Execute BQL query
     res = bql(query=bql_query, backend=backend, format=format, **kwargs)
 
-    if res.empty:
+    if is_empty(res):
         return res
 
     # Clean up column names
     # BQL returns 'id().position' which is awkward to access
-    rename_map = {"id().position": "position", "ID": "holding"}
-    return res.rename(columns=rename_map)
+    col_map = {"id().position": "position", "ID": "holding"}
+    return rename_columns(res, col_map)
 
 
 def preferreds(
@@ -445,12 +446,12 @@ def preferreds(
     # Execute BQL query
     res = bql(query=bql_query, backend=backend, format=format, **kwargs)
 
-    if res.empty:
+    if is_empty(res):
         return res
 
     # Clean up column names
-    rename_map = {"ID": "ticker"}
-    return res.rename(columns=rename_map)
+    col_map = {"ID": "ticker"}
+    return rename_columns(res, col_map)
 
 
 def corporate_bonds(
@@ -526,9 +527,9 @@ def corporate_bonds(
     # Execute BQL query
     res = bql(query=bql_query, backend=backend, format=format, **kwargs)
 
-    if res.empty:
+    if is_empty(res):
         return res
 
     # Clean up column names
-    rename_map = {"ID": "ticker"}
-    return res.rename(columns=rename_map)
+    col_map = {"ID": "ticker"}
+    return rename_columns(res, col_map)

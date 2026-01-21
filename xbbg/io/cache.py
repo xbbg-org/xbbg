@@ -13,12 +13,15 @@ import sys
 from typing import TYPE_CHECKING
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from xbbg import const
 from xbbg.core.config import overrides
 from xbbg.core.domain import contracts
 from xbbg.core.utils import utils
 from xbbg.io import files
+from xbbg.io.convert import is_empty, to_pandas
 
 if TYPE_CHECKING:
     pass
@@ -209,7 +212,9 @@ def save_intraday(data: pd.DataFrame, ticker: str, dt, typ="TRADE", **kwargs):
     else:
         logger.info("Saving intraday data to cache: %s", data_file)
     files.create_folder(data_file, is_file=True)
-    data.to_parquet(data_file)
+    # Use PyArrow for parquet I/O (backend-agnostic)
+    table = pa.Table.from_pandas(data)
+    pq.write_table(table, data_file)
 
 
 # ============================================================================
@@ -244,8 +249,10 @@ class BarCacheAdapter:
         try:
             from xbbg.utils import pipeline
 
+            # Use PyArrow for parquet I/O, then convert to pandas for pipeline
+            table = pq.read_table(data_file)
             res = (
-                pd.read_parquet(data_file)
+                table.to_pandas()
                 .pipe(pipeline.add_ticker, ticker=request.ticker)
                 .loc[session_window.start_time : session_window.end_time]
             )
@@ -301,7 +308,9 @@ class BarCacheAdapter:
         dfs = []
         for _dt_str, path in day_files:
             try:
-                df = pd.read_parquet(path)
+                # Use PyArrow for parquet I/O
+                table = pq.read_table(path)
+                df = table.to_pandas()
                 dfs.append(df)
             except Exception as e:
                 logger.debug("Failed to load cache file %s: %s", path, e)
@@ -338,14 +347,17 @@ class BarCacheAdapter:
 
     def save(
         self,
-        data: pd.DataFrame,
+        data,
         request: contracts.DataRequest,
         session_window: contracts.SessionWindow,
     ) -> None:
         """Save bar data to cache."""
-        if data.empty:
+        if is_empty(data):
             logger.warning("No data to save for %s / %s", request.ticker, request.to_date_string())
             return
+
+        # Convert to pandas for cache storage (cache always uses parquet via pandas)
+        data = to_pandas(data)
 
         # Handle multi-day requests: split and save each day separately
         if request.is_multi_day():
@@ -395,7 +407,7 @@ class BarCacheAdapter:
         saved_count = 0
 
         for date, day_data in grouped:
-            if day_data.empty:
+            if is_empty(day_data):
                 continue
 
             # Use existing save_intraday which handles market timing checks

@@ -9,9 +9,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import narwhals as nw
 import pandas as pd
+import pyarrow as pa
 
 from xbbg.api.technical.schema import get_studies, refresh_cache
+from xbbg.backend import Backend
+from xbbg.io.convert import _convert_backend
+from xbbg.options import get_backend
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +28,20 @@ def _get_study_types() -> dict[str, dict[str, Any]]:
     return get_studies()
 
 
-def bta_studies(study: str | None = None) -> pd.DataFrame:
+def bta_studies(
+    study: str | None = None,
+    *,
+    backend: Backend | None = None,
+) -> Any:
     """List available technical analysis studies and their parameters.
 
     Args:
         study: Optional study name to get details for a specific study.
             If None, returns all available studies.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
 
     Returns:
-        pd.DataFrame: DataFrame with study information.
+        DataFrame: DataFrame with study information.
             If study is None: columns are [study, description, output_field]
             If study is specified: columns are [parameter, type, default, description]
 
@@ -46,6 +56,7 @@ def bta_studies(study: str | None = None) -> pd.DataFrame:
         >>> print(params)  # doctest: +SKIP
     """
     study_types = _get_study_types()
+    actual_backend = backend if backend is not None else get_backend()
 
     if study is None:
         # Return list of all studies
@@ -58,7 +69,8 @@ def bta_studies(study: str | None = None) -> pd.DataFrame:
                     "output_field": info["output"],
                 }
             )
-        return pd.DataFrame(data).set_index("study")
+        arrow_table = pa.Table.from_pylist(data)
+        return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
     # Return parameters for specific study
     study_upper = study.upper()
@@ -79,19 +91,23 @@ def bta_studies(study: str | None = None) -> pd.DataFrame:
                 "description": param_info["description"],
             }
         )
-    return pd.DataFrame(data).set_index("parameter")
+    arrow_table = pa.Table.from_pylist(data)
+    return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
-def refresh_studies() -> pd.DataFrame:
+def refresh_studies(*, backend: Backend | None = None) -> Any:
     """Refresh the study cache from Bloomberg service.
 
     Call this to update the cached studies when connected to Bloomberg.
 
+    Args:
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+
     Returns:
-        pd.DataFrame: Updated list of available studies.
+        DataFrame: Updated list of available studies.
     """
     refresh_cache()
-    return bta_studies()
+    return bta_studies(backend=backend)
 
 
 def bta(
@@ -100,8 +116,10 @@ def bta(
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp | None = None,
     periodicity: str = "DAILY",
+    *,
+    backend: Backend | None = None,
     **kwargs,
-) -> pd.DataFrame:
+) -> Any:
     """Bloomberg Technical Analysis - retrieve technical study data.
 
     Args:
@@ -111,11 +129,12 @@ def bta(
         start_date: Start date for the study data.
         end_date: End date for the study data.
         periodicity: Data periodicity ('DAILY', 'WEEKLY', 'MONTHLY').
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
         **kwargs: Study-specific parameters (e.g., period=20 for SMA).
             Use bta_studies(study) to see available parameters.
 
     Returns:
-        pd.DataFrame: DataFrame with date index and study values.
+        DataFrame: DataFrame with date index and study values.
 
     Examples:
         >>> from xbbg import blp  # doctest: +SKIP
@@ -177,6 +196,7 @@ def bta(
             end_date=end_date,
             periodicity=periodicity,
         )
+        .with_output(backend=backend, format=None)
         .build()
     )
 

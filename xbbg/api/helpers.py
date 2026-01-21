@@ -8,6 +8,7 @@ from __future__ import annotations
 import pandas as pd
 
 from xbbg.backend import Format
+from xbbg.io.convert import is_empty
 
 __all__ = ["adjust_ccy"]
 
@@ -40,7 +41,7 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
     from xbbg.api.historical import bdh  # noqa: PLC0415
     from xbbg.api.reference import bdp  # noqa: PLC0415
 
-    if data.empty:
+    if is_empty(data):
         return pd.DataFrame()
     if ccy.lower() == "local":
         return data
@@ -50,7 +51,7 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
 
     # Use WIDE format for internal calls since this function expects MultiIndex columns
     uccy = bdp(tickers=tickers, flds="crncy", format=Format.WIDE)
-    if not uccy.empty:
+    if not is_empty(uccy):
         adj = (
             uccy.crncy.map(
                 lambda v: {
@@ -64,7 +65,7 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
     else:
         adj = pd.DataFrame()
 
-    if not adj.empty:
+    if not is_empty(adj):
         # Use WIDE format to get MultiIndex columns for .xs() access
         fx = bdh(tickers=adj.ccy.unique(), start_date=start_date, end_date=end_date, format=Format.WIDE).xs(
             "Last_Price", axis=1, level=1

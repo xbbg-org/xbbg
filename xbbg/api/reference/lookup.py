@@ -8,18 +8,27 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import pandas as pd
+import narwhals as nw
+import pyarrow as pa
 
+from xbbg.backend import Backend, Format
 from xbbg.core.infra import conn as conn_module
 from xbbg.core.infra.blpapi_wrapper import blpapi
 from xbbg.core.utils import utils
+from xbbg.io.convert import _convert_backend
+from xbbg.options import get_backend
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["fieldInfo", "fieldSearch", "lookupSecurity", "getPortfolio", "getBlpapiVersion"]
 
 
-def fieldInfo(fields: str | list[str], **kwargs) -> pd.DataFrame:
+def fieldInfo(
+    fields: str | list[str],
+    *,
+    backend: Backend | None = None,
+    **kwargs,
+) -> Any:
     """Get metadata about Bloomberg fields.
 
     Retrieves field information including ID, mnemonic, data type, and field type
@@ -27,10 +36,11 @@ def fieldInfo(fields: str | list[str], **kwargs) -> pd.DataFrame:
 
     Args:
         fields: Single field or list of fields to query.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
         **kwargs: Infrastructure options (e.g., port, server).
 
     Returns:
-        pd.DataFrame: Field information with columns: id, mnemonic, datatype, ftype.
+        DataFrame: Field information with columns: id, mnemonic, datatype, ftype.
 
     Examples:
         >>> from xbbg import blp
@@ -99,10 +109,18 @@ def fieldInfo(fields: str | list[str], **kwargs) -> pd.DataFrame:
         if field_info:
             results.append(field_info)
 
-    return pd.DataFrame(results)
+    # Convert to requested backend
+    actual_backend = backend if backend is not None else get_backend()
+    arrow_table = pa.Table.from_pylist(results)
+    return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
-def fieldSearch(searchterm: str, **kwargs) -> pd.DataFrame:
+def fieldSearch(
+    searchterm: str,
+    *,
+    backend: Backend | None = None,
+    **kwargs,
+) -> Any:
     """Search for Bloomberg fields by name or description.
 
     Searches for Bloomberg fields matching the given search term. Useful for
@@ -110,10 +128,11 @@ def fieldSearch(searchterm: str, **kwargs) -> pd.DataFrame:
 
     Args:
         searchterm: Search term to match against field names/descriptions.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
         **kwargs: Infrastructure options (e.g., port, server).
 
     Returns:
-        pd.DataFrame: Matching fields with columns: id, mnemonic, description.
+        DataFrame: Matching fields with columns: id, mnemonic, description.
 
     Examples:
         >>> from xbbg import blp
@@ -139,9 +158,7 @@ def fieldSearch(searchterm: str, **kwargs) -> pd.DataFrame:
     session.sendRequest(request)
 
     # Process response
-    field_ids = []
-    mnemonics = []
-    descriptions = []
+    results = []
 
     while True:
         event = session.nextEvent()
@@ -161,9 +178,13 @@ def fieldSearch(searchterm: str, **kwargs) -> pd.DataFrame:
                     mnemonic = field_info.getElementAsString(blpapi.Name("mnemonic"))
                     description = field_info.getElementAsString(blpapi.Name("description"))
 
-                    field_ids.append(field_id)
-                    mnemonics.append(mnemonic)
-                    descriptions.append(description)
+                    results.append(
+                        {
+                            "id": field_id,
+                            "mnemonic": mnemonic,
+                            "description": description,
+                        }
+                    )
                 else:
                     # Field error
                     field_error = field_elem.getElement(blpapi.Name("fieldError"))
@@ -173,13 +194,10 @@ def fieldSearch(searchterm: str, **kwargs) -> pd.DataFrame:
         if event.eventType() == blpapi.Event.RESPONSE:
             break
 
-    return pd.DataFrame(
-        {
-            "id": field_ids,
-            "mnemonic": mnemonics,
-            "description": descriptions,
-        }
-    )
+    # Convert to requested backend
+    actual_backend = backend if backend is not None else get_backend()
+    arrow_table = pa.Table.from_pylist(results)
+    return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
 def lookupSecurity(
@@ -188,8 +206,10 @@ def lookupSecurity(
     language: str = "none",
     max_results: int = 20,
     verbose: bool = False,
+    *,
+    backend: Backend | None = None,
     **kwargs,
-) -> pd.DataFrame:
+) -> Any:
     """Look up securities/tickers by company name.
 
     Searches for securities matching the given query string. Useful for finding
@@ -205,10 +225,11 @@ def lookupSecurity(
         max_results: Maximum number of results to return (capped at 1000 by API).
             Defaults to 20.
         verbose: Whether to print verbose output. Defaults to False.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
         **kwargs: Infrastructure options (e.g., port, server).
 
     Returns:
-        pd.DataFrame: Matching securities with columns: security, description.
+        DataFrame: Matching securities with columns: security, description.
 
     Examples:
         >>> from xbbg import blp
@@ -278,8 +299,7 @@ def lookupSecurity(
     session.sendRequest(request)
 
     # Process response
-    securities = []
-    descriptions = []
+    results = []
 
     done = False
     while not done:
@@ -288,29 +308,26 @@ def lookupSecurity(
         if event.eventType() == blpapi.Event.PARTIAL_RESPONSE:
             if verbose:
                 logger.debug("Processing partial response")
-            _process_lookup_event(event, securities, descriptions, verbose)
+            _process_lookup_event(event, results, verbose)
         elif event.eventType() == blpapi.Event.RESPONSE:
             if verbose:
                 logger.debug("Processing response")
-            _process_lookup_event(event, securities, descriptions, verbose)
+            _process_lookup_event(event, results, verbose)
             done = True
         elif event.eventType() == blpapi.Event.SESSION_STATUS:
             for msg in event:
                 if msg.messageType() == blpapi.Name("SessionTerminated"):
                     done = True
 
-    return pd.DataFrame(
-        {
-            "security": securities,
-            "description": descriptions,
-        }
-    )
+    # Convert to requested backend
+    actual_backend = backend if backend is not None else get_backend()
+    arrow_table = pa.Table.from_pylist(results)
+    return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
 def _process_lookup_event(
-    event: blpapi.Event,
-    securities: list[str],
-    descriptions: list[str],
+    event,
+    results: list[dict],
     verbose: bool,
 ) -> None:
     """Process lookup response event."""
@@ -324,22 +341,26 @@ def _process_lookup_event(
         if str(response.name()) != "InstrumentListResponse":
             raise ValueError("Not a valid InstrumentListResponse")
 
-        results = response.getElement(blpapi.Name("results"))
-        num_items = results.numValues()
+        response_results = response.getElement(blpapi.Name("results"))
+        num_items = response_results.numValues()
 
         if verbose:
             logger.debug(f"Response contains {num_items} items")
 
         for i in range(num_items):
-            item = results.getValueAsElement(i)
+            item = response_results.getValueAsElement(i)
             security = item.getElementAsString(blpapi.Name("security"))
             description = item.getElementAsString(blpapi.Name("description"))
 
             if verbose:
                 logger.debug(f"{security}\t\t{description}")
 
-            securities.append(security)
-            descriptions.append(description)
+            results.append(
+                {
+                    "security": security,
+                    "description": description,
+                }
+            )
 
 
 def getPortfolio(
@@ -348,8 +369,11 @@ def getPortfolio(
     options: dict[str, Any] | None = None,
     overrides: dict[str, Any] | None = None,
     verbose: bool = False,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
-) -> pd.DataFrame:
+) -> Any:
     """Get portfolio data for a security.
 
     This is a convenience wrapper around `bds()` that uses PortfolioDataRequest
@@ -362,10 +386,12 @@ def getPortfolio(
         options: Optional named dictionary with option values.
         overrides: Optional named dictionary with override values.
         verbose: Whether to print verbose output. Defaults to False.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Additional infrastructure options.
 
     Returns:
-        pd.DataFrame: Portfolio data.
+        DataFrame: Portfolio data.
 
     Examples:
         >>> from xbbg import blp
@@ -381,7 +407,7 @@ def getPortfolio(
     if overrides:
         all_kwargs.update(overrides)
 
-    return bds(security, field, use_port=True, verbose=verbose, **all_kwargs)
+    return bds(security, field, use_port=True, verbose=verbose, backend=backend, format=format, **all_kwargs)
 
 
 def getBlpapiVersion(**kwargs) -> dict[str, str]:

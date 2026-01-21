@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from xbbg import const
 from xbbg.backend import Backend, Format
@@ -15,6 +16,7 @@ from xbbg.core import process
 from xbbg.core.infra import conn
 from xbbg.core.process import DEFAULT_TZ
 from xbbg.io import cache, files
+from xbbg.io.convert import is_empty
 from xbbg.markets import resolvers
 from xbbg.utils import pipeline
 
@@ -60,10 +62,10 @@ def _load_cached_bdib(
         cache_enabled = ctx.cache
         reload_flag = ctx.reload
     if files.exists(data_file) and cache_enabled and (not reload_flag):
-        res = (
-            pd.read_parquet(data_file).pipe(pipeline.add_ticker, ticker=ticker).loc[ss_rng.start_time : ss_rng.end_time]
-        )
-        if not res.empty:
+        # Use PyArrow for parquet I/O (backend-agnostic)
+        table = pq.read_table(data_file)
+        res = table.to_pandas().pipe(pipeline.add_ticker, ticker=ticker).loc[ss_rng.start_time : ss_rng.end_time]
+        if not is_empty(res):
             logger.debug("Loading cached Bloomberg intraday data from: %s", data_file)
             return res
     return None
@@ -310,7 +312,7 @@ def _process_bdib_response(
     Returns:
         Processed DataFrame filtered by session range.
     """
-    if res.empty or ("time" not in res):
+    if is_empty(res) or ("time" not in res):
         return pd.DataFrame()
 
     ss_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=ex_info.tz, ctx=ctx, **kwargs)
@@ -475,7 +477,9 @@ def bdib(
     result = pipeline.run(request)
 
     # Update trial count if no data returned (only for single-day requests)
-    if result.empty and not is_multi_day:
+    from xbbg.io.convert import is_empty
+
+    if is_empty(result) and not is_multi_day:
         trials.update_trials(cnt=num_trials + 1, **trial_kw)
 
     return result
@@ -598,10 +602,26 @@ def bdtick(
     )
     if kwargs.get("raw", False):
         return res
-    if res.empty or ("time" not in res):
+    if is_empty(res) or ("time" not in res):
+        # Return empty result in requested backend format
+        from xbbg.backend import Backend as BackendEnum
+        from xbbg.options import get_backend
+
+        actual_backend = backend if backend is not None else get_backend()
+        if isinstance(actual_backend, str):
+            actual_backend = BackendEnum(actual_backend)
+
+        if actual_backend == BackendEnum.POLARS:
+            import polars as pl
+
+            return pl.DataFrame()
+        if actual_backend == BackendEnum.PYARROW:
+            import pyarrow as pa
+
+            return pa.table({})
         return pd.DataFrame()
 
-    return (
+    result = (
         res.set_index("time")
         .rename_axis(index=None)
         .tz_localize("UTC")
@@ -616,4 +636,39 @@ def bdtick(
                 "tradeTime": "trd_time",
             }
         )
+    )
+
+    # Convert to requested backend
+    import pyarrow as pa
+
+    from xbbg.backend import Backend as BackendEnum
+    from xbbg.deprecation import warn_defaults_changing
+    from xbbg.io.convert import to_output
+    from xbbg.options import get_backend, get_format
+
+    actual_backend = backend if backend is not None else get_backend()
+    actual_format = format if format is not None else get_format()
+
+    # Ensure backend and format are enum values
+    if isinstance(actual_backend, str):
+        actual_backend = BackendEnum(actual_backend)
+    if isinstance(actual_format, str):
+        actual_format = Format(actual_format)
+
+    # Warn if using implicit defaults
+    if backend is None or format is None:
+        warn_defaults_changing()
+
+    # Convert to Arrow and then to requested backend/format
+    # Reset index to include time as a column for conversion
+    result_reset = result.reset_index()
+    arrow_table = pa.Table.from_pandas(result_reset)
+
+    return to_output(
+        arrow_table,
+        backend=actual_backend,
+        format=actual_format,
+        ticker_col="ticker",
+        date_col="time",
+        field_cols=None,
     )
