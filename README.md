@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.11.0b2 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2))
+Latest release: xbbg==0.11.0b3 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3))
 <!-- xbbg:latest-release-end -->
 
 ## Table of Contents
@@ -1391,16 +1391,12 @@ This is a **beta release** for testing the new Arrow-first architecture before v
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0b1
 
-_0.11.0b2_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2)
+_0.11.0b3_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3)
 
-v0.11.0b2
+v0.11.0b3
 
-- preferreds(): New BQL convenience function to find preferred stocks for an equity ticker
+- bqr(): New Bloomberg Quote Request function emulating Excel =BQR() for dealer quote data with broker attribution (#22)
 
-- corporate_bonds(): New BQL convenience function to find active corporate bonds for a ticker
+- Slow Bloomberg fields no longer timeout prematurely - TIMEOUT events handled correctly (#193)
 
-- bdtick timezone fix: Pass exchange timezone to time_range() to fix blank results for non-UTC exchanges (#185)
-
-- bdtick timeout defaults: Increase timeout from 10s to 2 minutes for tick data requests
-
-- CI pre-release publishing: Fix workflow to include pre-releases when publishing via workflow_dispatch
+- Pipeline data types: Preserve original data types in pipeline output instead of converting to strings (#191)

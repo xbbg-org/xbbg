@@ -29,7 +29,7 @@ xbbg
 ..
    xbbg:latest-release-start
 
-Latest release: xbbg==0.9.1 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.9.1>`_)
+Latest release: xbbg==0.11.0b3 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3>`_)
 
 ..
    xbbg:latest-release-end
@@ -145,6 +145,55 @@ What's New
 ==========
 
 .. xbbg:changelog-start
+
+*0.11.0b3* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3>`__
+
+## v0.11.0b3 - Beta Release
+
+### Highlights
+
+- **New BQR function**: Bloomberg Quote Request for dealer quote data with broker attribution
+
+- **Timeout handling fix**: Slow Bloomberg fields no longer timeout prematurely
+
+- **Pipeline improvements**: Preserve data types and backend/format attributes
+
+### Added
+
+- **bqr()**: New Bloomberg Quote Request function emulating Excel `=BQR()` for dealer quote data (#22)
+  - Retrieves tick-level quotes with broker/dealer attribution from MSG1 pricing sources
+  - Supports date offsets (`-2d`, `-1w`) and explicit date ranges
+  - Includes broker codes (`broker_buy`, `broker_sell`) for dealer identification
+  - Works with Bloomberg tickers and ISINs (e.g., `/isin/US037833BA77@MSG1`)
+  - Full multi-backend support (pandas, polars, pyarrow, duckdb)
+
+### Fixed
+
+- **Slow Bloomberg fields no longer timeout prematurely** (#193)
+  - Bloomberg TIMEOUT events are now handled correctly - they indicate the request is still processing, not an error
+  - Removed `max_timeouts` limit that caused requests to fail after ~10 seconds
+  - Added `slow_warn_seconds` parameter (default: 15s) to warn about slow requests without aborting them
+  - Fields like `STOCHASTIC_OAS_MID_MOD_DUR` that take 10+ seconds now work correctly
+
+- **Pipeline data types**: Preserve original data types in pipeline output instead of converting to strings (#191)
+
+- **Backend/format attributes**: Preserve backend/format attributes in DataRequest pipeline helpers
+
+This is a **beta release** continuing the v0.11 series with new features and bug fixes.
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.0b2...v0.11.0b3
+
+
+*0.11.0b3* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3>`__
+
+v0.11.0b3
+
+- bqr(): New Bloomberg Quote Request function emulating Excel =BQR() for dealer quote data with broker attribution (#22)
+
+- Slow Bloomberg fields no longer timeout prematurely - TIMEOUT events handled correctly (#193)
+
+- Pipeline data types: Preserve original data types in pipeline output instead of converting to strings (#191)
+
 
 *0.11.0b2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2>`__
 
