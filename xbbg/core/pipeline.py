@@ -198,7 +198,9 @@ class BloombergPipeline(BaseContextAware):
         # Step 4: Try cache
         if request.cache_policy.enabled and not request.cache_policy.reload:
             cached_data = self._read_cache(request, session_window)
-            if cached_data is not None and not cached_data.empty:
+            from xbbg.io.convert import is_empty as check_empty
+
+            if cached_data is not None and not check_empty(cached_data):
                 logger.debug("Cache hit for %s / %s", request.ticker, request.to_date_string())
                 return cached_data
 
@@ -209,12 +211,12 @@ class BloombergPipeline(BaseContextAware):
         # Step 6: Fetch from Bloomberg
         raw_data = self._fetch_from_bloomberg(request, session_window)
         # Check for empty data (handle both Arrow and pandas)
-        is_empty = (
+        raw_is_empty = (
             raw_data is None
             or (isinstance(raw_data, pa.Table) and raw_data.num_rows == 0)
             or (isinstance(raw_data, pd.DataFrame) and raw_data.empty)
         )
-        if is_empty:
+        if raw_is_empty:
             logger.debug("No data returned from Bloomberg for %s", request.ticker)
             raw_data = pa.table({})  # Empty Arrow table for transformer
 
@@ -404,24 +406,12 @@ class BloombergPipeline(BaseContextAware):
         if not events:
             return None
 
-        # Build Arrow table with explicit schema to handle mixed types
-        # The value column may contain floats, strings, dates, etc.
+        # Build DataFrame from events - let pandas infer types naturally
         df = pd.DataFrame(events)
 
-        # Build schema - use string type for value column to handle mixed types
-        fields = []
-        for col in df.columns:
-            if col == "value":
-                fields.append(pa.field(col, pa.string()))
-            else:
-                fields.append(pa.field(col, pa.string()))
-        schema = pa.schema(fields)
-
-        # Convert values to strings for Arrow compatibility
-        for col in df.columns:
-            df[col] = df[col].astype(str)
-
-        return pa.Table.from_pandas(df, schema=schema, preserve_index=False)
+        # Convert to Arrow table, letting PyArrow infer types from pandas
+        # This preserves numeric types (float64, int64) and handles dates properly
+        return pa.Table.from_pandas(df, preserve_index=False)
 
     def _persist_cache(
         self,
@@ -456,6 +446,8 @@ class BloombergPipeline(BaseContextAware):
             cache_policy=request.cache_policy,
             override_kwargs=request.override_kwargs,
             request_opts=request.request_opts,
+            backend=request.backend,
+            format=request.format,
         )
 
     def _with_resolved_ticker(self, request: DataRequest, resolved_ticker: str) -> DataRequest:
@@ -473,6 +465,8 @@ class BloombergPipeline(BaseContextAware):
             cache_policy=request.cache_policy,
             override_kwargs=request.override_kwargs,
             request_opts=request.request_opts,
+            backend=request.backend,
+            format=request.format,
         )
 
 

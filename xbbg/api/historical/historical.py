@@ -7,14 +7,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
+import narwhals as nw
 import pandas as pd
+import pyarrow as pa
 
 from xbbg import const
 from xbbg.api.reference import bds
 from xbbg.backend import Backend, Format
 from xbbg.core import process
 from xbbg.core.utils import utils
+from xbbg.io.convert import _convert_backend, is_empty
+from xbbg.options import get_backend
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +104,11 @@ def earning(
     typ: str = "Revenue",
     ccy: str | None = None,
     level: int | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
-) -> pd.DataFrame:
+) -> Any:
     """Earning exposures by Geo or Products.
 
     Args:
@@ -114,10 +122,12 @@ def earning(
             `Capital_Expenditures` - Capital expenditures of the company
         ccy: currency of earnings
         level: hierarchy level of earnings
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: Additional overrides such as fiscal year and periods.
 
     Returns:
-        pd.DataFrame.
+        DataFrame.
     """
     kwargs.pop("raw", None)
     ovrd = "G" if by[0].upper() == "G" else "P"
@@ -138,8 +148,9 @@ def earning(
         kwargs["PG_Hierarchy_Level"] = level
     data = bds(tickers=ticker, flds=f"PG_{typ}", use_port=False, format=Format.WIDE, **new_kw, **kwargs)
 
-    if data.empty or header.empty:
-        return pd.DataFrame()
+    if is_empty(data) or is_empty(header):
+        actual_backend = backend if backend is not None else get_backend()
+        return _convert_backend(nw.from_native(pa.table({})), actual_backend)
     if data.shape[1] != header.shape[1]:
         raise ValueError("Inconsistent shape of data and header")
     data.columns = header.iloc[0].str.lower().str.replace(" ", "_").str.replace("_20", "20").tolist()
@@ -158,7 +169,10 @@ def earning(
     for yr in data.columns[data.columns.str.startswith("fy")]:
         process.earning_pct(data=data, yr=yr)
 
-    return data
+    # Convert to requested backend
+    actual_backend = backend if backend is not None else get_backend()
+    arrow_table = pa.Table.from_pandas(data)
+    return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
 def dividend(
@@ -166,8 +180,11 @@ def dividend(
     typ: str = "all",
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp | None = None,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
-) -> pd.DataFrame:
+) -> Any:
     """Bloomberg dividend / split history.
 
     Args:
@@ -185,10 +202,12 @@ def dividend(
             `projected`: `BDVD_Pr_Ex_Dts_DVD_Amts_w_Ann`
         start_date: start date
         end_date: end date
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
         **kwargs: overrides
 
     Returns:
-        pd.DataFrame
+        DataFrame
     """
     kwargs.pop("raw", None)
     tickers = utils.normalize_tickers(tickers)
@@ -204,8 +223,7 @@ def dividend(
     if end_date:
         kwargs["DVD_End_Dt"] = utils.fmt_dt(end_date, fmt="%Y%m%d")
 
-    # Use WIDE format for backward compatibility (ticker as index)
-    return bds(tickers=tickers, flds=fld, col_maps=const.DVD_COLS, format=Format.WIDE, **kwargs)
+    return bds(tickers=tickers, flds=fld, col_maps=const.DVD_COLS, backend=backend, format=format, **kwargs)
 
 
 def turnover(
@@ -215,7 +233,10 @@ def turnover(
     end_date: str | pd.Timestamp | None = None,
     ccy: str = "USD",
     factor: float = 1e6,
-) -> pd.DataFrame:
+    *,
+    backend: Backend | None = None,
+    **kwargs,
+) -> Any:
     """Currency adjusted turnover (in million).
 
     Args:
@@ -225,9 +246,11 @@ def turnover(
         end_date: end date, default T - 1.
         ccy: currency - 'USD' (default), any currency, or 'local' (no adjustment).
         factor: adjustment factor, default 1e6 - return values in millions.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        **kwargs: Additional options.
 
     Returns:
-        pd.DataFrame.
+        DataFrame.
     """
     if end_date is None:
         end_date = pd.bdate_range(end="today", periods=2)[0]
@@ -249,17 +272,20 @@ def turnover(
                 end_date=end_date,
                 format=Format.WIDE,
             )
-            if not vol_data.empty:
+            if not is_empty(vol_data):
                 # Calculate turnover = volume * VWAP
                 use_volume = vol_data.xs("eqy_weighted_avg_px", axis=1, level=1) * vol_data.xs(
                     "volume", axis=1, level=1
                 )
 
-    if data.empty and use_volume.empty:
-        return pd.DataFrame()
+    actual_backend = backend if backend is not None else get_backend()
+    if is_empty(data) and is_empty(use_volume):
+        return _convert_backend(nw.from_native(pa.table({})), actual_backend)
     from xbbg.api.helpers import adjust_ccy  # noqa: PLC0415
 
-    return pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
+    result = pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
+    arrow_table = pa.Table.from_pandas(result)
+    return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
 async def abdh(

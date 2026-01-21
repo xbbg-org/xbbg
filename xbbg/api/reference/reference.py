@@ -99,7 +99,7 @@ def bds(
     ticker_list = utils.normalize_tickers(tickers)
 
     # Process each ticker using pipeline
-    def _process_ticker(ticker: str) -> pd.DataFrame:
+    def _process_ticker(ticker: str):
         request = (
             RequestBuilder()
             .ticker(ticker)
@@ -116,7 +116,11 @@ def bds(
         return pipeline.run(request)
 
     results = [_process_ticker(t) for t in ticker_list]
-    return pd.DataFrame(pd.concat(results, sort=False))
+
+    # Use backend-agnostic concat
+    from xbbg.io.convert import concat_frames
+
+    return concat_frames(results, backend)
 
 
 async def abdp(
