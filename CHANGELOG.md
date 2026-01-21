@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0b3] - 2026-01-21
+
 ### Added
 - **bqr()**: New Bloomberg Quote Request function emulating Excel `=BQR()` for dealer quote data (#22)
   - Retrieves tick-level quotes with broker/dealer attribution from MSG1 pricing sources
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `slow_warn_seconds` parameter (default: 15s) to warn about slow requests without aborting them
   - Requests will now wait indefinitely for Bloomberg response (or until connection lost)
   - Fields like `STOCHASTIC_OAS_MID_MOD_DUR` that take 10+ seconds now work correctly
+- **Pipeline data types**: Preserve original data types in pipeline output instead of converting to strings (#191)
+- **Backend/format attributes**: Preserve backend/format attributes in DataRequest pipeline helpers
 
 ## [0.11.0b2] - 2026-01-19
 
