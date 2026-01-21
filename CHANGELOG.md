@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pipeline data types**: Preserve original data types in pipeline output instead of converting to strings (#191)
 - **Backend/format attributes**: Preserve backend/format attributes in DataRequest pipeline helpers
 
+- **Intraday cache now includes interval in path** (#80)
+  - Different bar intervals (1m, 5m, 10s, etc.) are now cached separately
+  - Previously, requesting 1-min bars then 5-min bars for the same ticker/date would return cached 1-min data
+  - Cache path format: `{BBG_ROOT}/{asset}/{ticker}/{typ}/{interval}/{date}.parq`
+  - Example: `Equity/AAPL US Equity/TRADE/5m/2025-01-15.parq`
+  - **Breaking change**: Existing cached data without interval folder will be cache misses (first request will re-fetch)
+
 ## [0.11.0b2] - 2026-01-19
 
 ### Added

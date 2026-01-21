@@ -82,16 +82,29 @@ def get_cache_root() -> str:
     return str(default_cache)
 
 
-def bar_file(ticker: str, dt, typ="TRADE") -> str:
+def bar_file(
+    ticker: str,
+    dt,
+    typ: str = "TRADE",
+    interval: int = 1,
+    interval_has_seconds: bool = False,
+) -> str:
     """Data file location for Bloomberg historical data.
 
     Args:
         ticker: ticker name
         dt: date
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
+        interval: bar interval (in minutes by default, or seconds if interval_has_seconds=True)
+        interval_has_seconds: if True, interval is in seconds
 
     Returns:
         str: File location (uses default cache location if BBG_ROOT not set).
+
+    Note:
+        Cache path includes interval to avoid mixing data from different intervals.
+        Format: {BBG_ROOT}/{asset}/{ticker}/{typ}/{interval_str}/{date}.parq
+        where interval_str is e.g., "1m" for 1-minute bars or "10s" for 10-second bars.
     """
     data_path_str = get_cache_root()
     if not data_path_str:
@@ -100,7 +113,9 @@ def bar_file(ticker: str, dt, typ="TRADE") -> str:
     asset = ticker.split()[-1]
     proper_ticker = ticker.replace("/", "_")
     cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
-    return (data_path / asset / proper_ticker / typ / f"{cur_dt}.parq").as_posix()
+    # Include interval in path to avoid cache collisions between different intervals
+    interval_str = f"{interval}s" if interval_has_seconds else f"{interval}m"
+    return (data_path / asset / proper_ticker / typ / interval_str / f"{cur_dt}.parq").as_posix()
 
 
 def multi_day_bar_files(
@@ -108,6 +123,8 @@ def multi_day_bar_files(
     start_datetime: str | pd.Timestamp,
     end_datetime: str | pd.Timestamp,
     typ: str = "TRADE",
+    interval: int = 1,
+    interval_has_seconds: bool = False,
 ) -> list[tuple[str, str]]:
     """Get list of (date_str, file_path) tuples for a multi-day range.
 
@@ -116,6 +133,8 @@ def multi_day_bar_files(
         start_datetime: Start of range
         end_datetime: End of range
         typ: Event type
+        interval: bar interval (in minutes by default, or seconds if interval_has_seconds=True)
+        interval_has_seconds: if True, interval is in seconds
 
     Returns:
         List of (date_str, file_path) tuples for each day in range.
@@ -130,7 +149,19 @@ def multi_day_bar_files(
 
     dates = pd.date_range(start=start_dt, end=end_dt, freq="D")
 
-    return [(dt.strftime("%Y-%m-%d"), bar_file(ticker=ticker, dt=dt, typ=typ)) for dt in dates]
+    return [
+        (
+            dt.strftime("%Y-%m-%d"),
+            bar_file(
+                ticker=ticker,
+                dt=dt,
+                typ=typ,
+                interval=interval,
+                interval_has_seconds=interval_has_seconds,
+            ),
+        )
+        for dt in dates
+    ]
 
 
 def ref_file(ticker: str, fld: str, has_date=False, cache=False, ext="parq", **kwargs) -> str:
@@ -174,7 +205,15 @@ def ref_file(ticker: str, fld: str, has_date=False, cache=False, ext="parq", **k
     return (root / f"{info}.{ext}").as_posix()
 
 
-def save_intraday(data: pd.DataFrame, ticker: str, dt, typ="TRADE", **kwargs):
+def save_intraday(
+    data: pd.DataFrame,
+    ticker: str,
+    dt,
+    typ: str = "TRADE",
+    interval: int = 1,
+    interval_has_seconds: bool = False,
+    **kwargs,
+):
     """Check whether data is done for the day and save.
 
     Args:
@@ -182,11 +221,20 @@ def save_intraday(data: pd.DataFrame, ticker: str, dt, typ="TRADE", **kwargs):
         ticker: ticker
         dt: date
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
+        interval: bar interval (in minutes by default, or seconds if interval_has_seconds=True)
+        interval_has_seconds: if True, interval is in seconds
         **kwargs: Additional options forwarded to timing/logging helpers.
     """
     cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
-    info = f"{ticker} / {cur_dt} / {typ}"
-    data_file = bar_file(ticker=ticker, dt=dt, typ=typ)
+    interval_str = f"{interval}s" if interval_has_seconds else f"{interval}m"
+    info = f"{ticker} / {cur_dt} / {typ} / {interval_str}"
+    data_file = bar_file(
+        ticker=ticker,
+        dt=dt,
+        typ=typ,
+        interval=interval,
+        interval_has_seconds=interval_has_seconds,
+    )
     if not data_file:
         return
 
@@ -239,7 +287,13 @@ class BarCacheAdapter:
         if not session_window.is_valid():
             return None
 
-        data_file = bar_file(ticker=request.ticker, dt=request.dt, typ=request.event_type)
+        data_file = bar_file(
+            ticker=request.ticker,
+            dt=request.dt,
+            typ=request.event_type,
+            interval=request.interval,
+            interval_has_seconds=request.interval_has_seconds,
+        )
         if not data_file:
             # BBG_ROOT not set - debug message logged in save() method if needed
             return None
@@ -287,6 +341,8 @@ class BarCacheAdapter:
             start_datetime=request.start_datetime,
             end_datetime=request.end_datetime,
             typ=request.event_type,
+            interval=request.interval,
+            interval_has_seconds=request.interval_has_seconds,
         )
 
         if not day_files:
@@ -375,6 +431,8 @@ class BarCacheAdapter:
             ticker=request.ticker,
             dt=request.dt,
             typ=request.event_type,
+            interval=request.interval,
+            interval_has_seconds=request.interval_has_seconds,
             **ctx_kwargs,
         )
 
@@ -416,6 +474,8 @@ class BarCacheAdapter:
                 ticker=request.ticker,
                 dt=date,
                 typ=request.event_type,
+                interval=request.interval,
+                interval_has_seconds=request.interval_has_seconds,
                 **ctx_kwargs,
             )
             saved_count += 1
