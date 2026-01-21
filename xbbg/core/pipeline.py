@@ -409,6 +409,16 @@ class BloombergPipeline(BaseContextAware):
         # Build DataFrame from events - let pandas infer types naturally
         df = pd.DataFrame(events)
 
+        # Handle mixed-type 'value' column (can contain strings, floats, dates)
+        # Convert to string only if it has mixed types that PyArrow can't handle
+        if "value" in df.columns and df["value"].dtype == object:
+            # Check if all non-null values are numeric
+            try:
+                pd.to_numeric(df["value"], errors="raise")
+            except (ValueError, TypeError):
+                # Mixed types - convert to string for Arrow compatibility
+                df["value"] = df["value"].astype(str)
+
         # Convert to Arrow table, letting PyArrow infer types from pandas
         # This preserves numeric types (float64, int64) and handles dates properly
         return pa.Table.from_pandas(df, preserve_index=False)
