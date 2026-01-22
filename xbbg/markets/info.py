@@ -183,8 +183,20 @@ def market_info(ticker: str) -> pd.Series:
     if "tickers" in a_info.columns and t_info[0] in a_info.tickers.values:
         symbol = t_info[0]
     elif t_info[0][-1].isdigit():
-        end_idx = 2 if t_info[-2].isdigit() else 1
-        symbol = t_info[0][:-end_idx].strip()
+        # Strip year digits from futures ticker: TYH6 -> TY, TYH24 -> TY
+        # Futures format: ROOT + MONTH_CODE + YEAR (1 or 2 digits)
+        # Month codes are single letters (F,G,H,J,K,M,N,Q,U,V,X,Z)
+        ticker_part = t_info[0]
+        # Count trailing digits to determine year length (1 or 2)
+        year_digits = 0
+        for char in reversed(ticker_part):
+            if char.isdigit():
+                year_digits += 1
+            else:
+                break
+        # Strip year digits + 1 for month code
+        end_idx = year_digits + 1
+        symbol = ticker_part[:-end_idx].strip() if end_idx < len(ticker_part) else ticker_part
     else:
         symbol = t_info[0].split("+")[0]
     # Special contracts: map any UX* Index form (e.g., UXA, UX1, UXF1UXG1) to UX root

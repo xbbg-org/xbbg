@@ -30,6 +30,21 @@ Comdty:
     exch: CBT
     freq: Q
     is_fut: True
+  # Treasury futures (CBOT)
+  - tickers: [TY, ZN, ZB, ZF, ZT, UB, TN]
+    exch: CBT
+    freq: Q
+    is_fut: True
+  # SOFR futures (CME)
+  - tickers: [SFR, SR1, SR3]
+    exch: CME
+    freq: Q
+    is_fut: True
+  # Eurodollar futures (CME) - legacy but still traded
+  - tickers: [ED]
+    exch: CME
+    freq: Q
+    is_fut: True
 
 Curncy:
   - tickers: [
