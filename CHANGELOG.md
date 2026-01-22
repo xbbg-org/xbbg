@@ -7,11 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Treasury & SOFR futures support**: Added TY, ZN, ZB, ZF, ZT, UB, TN (Treasury), SFR, SR1, SR3 (SOFR), and ED (Eurodollar) futures to assets.yml (#198)
+
 ### Fixed
 - **stream() field values**: Subscribed field values are now always included in output dict (#199)
   - Previously, fields not in `const.LIVE_INFO` (like `RT_BN_SURVEY_MEDIAN`) were filtered out
   - Output would show `FIELD='RT_BN_SURVEY_MEDIAN'` but contain `LAST_PRICE` value instead
   - Fix ensures the subscribed field's value is always present regardless of info filter
+- **Futures symbol parsing for bdib**: Fixed `market_info()` to correctly parse futures symbols like `TYH6` → `TY` (#198)
+  - Previously failed to identify root symbol when ticker had single-digit year suffix
 
 ## [0.11.0b3] - 2026-01-21
 
