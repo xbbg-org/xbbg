@@ -272,16 +272,19 @@ def _make_live_handler(
                     except ImportError:
                         pass
 
+                # Always include the subscribed field's value, regardless of info filter
+                # This fixes issue #199 where subscribed fields not in LIVE_INFO
+                # (like RT_BN_SURVEY_MEDIAN) were being filtered out
+                field_value = process.elem_value(msg.getElement(fld))
                 outq.put(
                     {
-                        **{
-                            "TICKER": msg.correlationIds()[0].value(),
-                            "FIELD": fld,
-                        },
+                        "TICKER": msg.correlationIds()[0].value(),
+                        "FIELD": fld,
+                        fld: field_value,  # Always include the subscribed field's value
                         **{
                             str(elem.name()): process.elem_value(elem)
                             for elem in msg.asElement().elements()
-                            if (True if not info else str(elem.name()) in info)
+                            if str(elem.name()) != fld and (True if not info else str(elem.name()) in info)
                         },
                     }
                 )
