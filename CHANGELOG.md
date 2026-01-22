@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **stream() field values**: Subscribed field values are now always included in output dict (#199)
+  - Previously, fields not in `const.LIVE_INFO` (like `RT_BN_SURVEY_MEDIAN`) were filtered out
+  - Output would show `FIELD='RT_BN_SURVEY_MEDIAN'` but contain `LAST_PRICE` value instead
+  - Fix ensures the subscribed field's value is always present regardless of info filter
+
 ## [0.11.0b3] - 2026-01-21
 
 ### Added
