@@ -1444,6 +1444,102 @@ def test_active_cdx():
     print("✓ active_cdx() endpoint working correctly")
 
 
+@pytest.mark.live_endpoint
+def test_stream_survey_field_issue_199():
+    """Test that stream() correctly returns non-LIVE_INFO field values (Issue #199).
+
+    This test verifies the fix for GitHub issue #199 where subscribing to fields
+    not in const.LIVE_INFO (like RT_BN_SURVEY_MEDIAN) would incorrectly return
+    the LAST_PRICE value instead of the actual field value.
+
+    The bug was that the info filter in _make_live_handler would filter out
+    field values not in LIVE_INFO, but still report the FIELD name correctly,
+    leading to confusing output where FIELD='RT_BN_SURVEY_MEDIAN' but the
+    dict contained LAST_PRICE instead.
+    """
+    print(f"\n{'=' * 80}")
+    print("Testing stream() (Issue #199 - Survey Field Values)")
+    print(f"{'=' * 80}")
+
+    # Use NAPMPMI Index which has RT_BN_SURVEY_MEDIAN field
+    test_ticker = "NAPMPMI Index"
+    test_fields = ["LAST_PRICE", "RT_BN_SURVEY_MEDIAN"]
+
+    updates_received = []
+    timeout_occurred = threading.Event()
+
+    def timeout_handler():
+        timeout_occurred.set()
+
+    # Set a 15-second timeout
+    timer = threading.Timer(15.0, timeout_handler)
+    timer.start()
+
+    try:
+
+        async def collect_updates():
+            async for data in blp.stream([test_ticker], test_fields, max_cnt=6):
+                if timeout_occurred.is_set():
+                    break
+                updates_received.append(data)
+                if len(updates_received) >= 6:
+                    break
+
+        asyncio.run(collect_updates())
+    except Exception as e:
+        print(f"Stream error (may be expected): {e}")
+    finally:
+        timer.cancel()
+
+    print(f"\nTotal updates received: {len(updates_received)}")
+
+    # Verify that for each update, the FIELD value is present in the dict
+    survey_field_found = False
+    survey_value_present = False
+
+    for i, update in enumerate(updates_received):
+        field_name = update.get("FIELD")
+        print(f"\nUpdate {i + 1}:")
+        print(f"  FIELD: {field_name}")
+        print(f"  Keys in update: {list(update.keys())}")
+
+        if field_name == "RT_BN_SURVEY_MEDIAN":
+            survey_field_found = True
+            # The critical check: the FIELD value should be in the dict
+            if "RT_BN_SURVEY_MEDIAN" in update:
+                survey_value_present = True
+                print(f"  RT_BN_SURVEY_MEDIAN value: {update['RT_BN_SURVEY_MEDIAN']}")
+            else:
+                print("  WARNING: RT_BN_SURVEY_MEDIAN not in update dict!")
+
+        # For any field, verify the field value is in the dict
+        if field_name and field_name in update:
+            print(f"  ✓ {field_name} value present: {update[field_name]}")
+        elif field_name:
+            print(f"  ✗ {field_name} value MISSING from dict (Issue #199 bug)")
+
+    # Assert the fix works
+    if survey_field_found:
+        assert survey_value_present, (
+            "Issue #199: RT_BN_SURVEY_MEDIAN field was in FIELD but value was missing from dict. "
+            "The subscribed field's value should always be included regardless of info filter."
+        )
+        print("\n✓ Issue #199 fix verified: RT_BN_SURVEY_MEDIAN value correctly included")
+    else:
+        print("\n⚠ RT_BN_SURVEY_MEDIAN field not received (may not be available for this ticker)")
+
+    # General assertion: for every update, the FIELD value should be in the dict
+    for update in updates_received:
+        field_name = update.get("FIELD")
+        if field_name:
+            assert field_name in update, (
+                f"Issue #199: FIELD='{field_name}' but '{field_name}' key not in update dict. "
+                f"Got keys: {list(update.keys())}"
+            )
+
+    print("✓ stream() field values working correctly")
+
+
 if __name__ == "__main__":
     # Allow running tests directly with verbose output
     print("\n" + "=" * 80)
