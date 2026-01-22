@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from xbbg import __version__
+from xbbg.api.fixed_income import yas as _yas
 
 # Import implementations with underscore prefix for wrapping
 from xbbg.api.helpers import adjust_ccy as _adjust_ccy
@@ -63,6 +64,7 @@ from xbbg.deprecation import (
     warn_refresh_studies,
     warn_subscribe,
     warn_turnover,
+    warn_yas,
 )
 from xbbg.markets import resolvers as _res
 
@@ -228,6 +230,15 @@ def corporate_bonds(*args, **kwargs):
     return _corporate_bonds(*args, **kwargs)
 
 
+def yas(*args, **kwargs):
+    """DEPRECATED: Bloomberg Yield & Spread Analysis (YAS) data.
+
+    In v1.0, moved to xbbg.ext.yas().
+    """
+    warn_yas()
+    return _yas(*args, **kwargs)
+
+
 # Resolver functions - moved to xbbg.ext
 
 
@@ -326,6 +337,7 @@ __all__ = [
     "etf_holdings",
     "preferreds",
     "corporate_bonds",
+    "yas",
     "fut_ticker",
     "active_futures",
     "cdx_ticker",

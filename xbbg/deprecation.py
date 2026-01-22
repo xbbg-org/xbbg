@@ -296,3 +296,8 @@ def warn_preferreds() -> None:
 def warn_corporate_bonds() -> None:
     """Warn about corporate_bonds() move to ext module."""
     warn_function_moved("corporate_bonds", "xbbg.ext.corporate_bonds")
+
+
+def warn_yas() -> None:
+    """Warn about yas() move to ext module."""
+    warn_function_moved("yas", "xbbg.ext.yas")
