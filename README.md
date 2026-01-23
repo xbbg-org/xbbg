@@ -174,6 +174,7 @@ xbbg is the **only Python library** that provides:
 | Quote Request (BQR) | ✅ | ❌ | ❌ | ❌ |
 | Search (BSRCH) | ✅ | ❌ | ❌ | ✅ |
 | Technical Analysis (BTA) | ✅ | ❌ | ❌ | ❌ |
+| Yield & Spread Analysis (YAS) | ✅ | ❌ | ❌ | ❌ |
 | **Developer Features** | | | | |
 | Excel-compatible syntax | ✅ | ❌ | ❌ | ❌ |
 | Sub-minute intervals (10s bars) | ✅ | ❌ | ❌ | ❌ |
