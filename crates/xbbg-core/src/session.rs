@@ -1,103 +1,235 @@
+//! Bloomberg session management
+
+use std::cell::Cell;
 use std::ffi::CString;
+use std::marker::PhantomData;
 
 use crate::correlation::CorrelationId;
 use crate::errors::{BlpError, Result};
 use crate::event::Event;
 use crate::identity::Identity;
-use crate::options::SessionOptions;
 use crate::request::Request;
-use crate::request_template::RequestTemplate;
 use crate::service::Service;
 use crate::subscription::SubscriptionList;
 
+// Re-export SessionOptions from options module
+pub use crate::options::SessionOptions;
+
+/// Bloomberg session for making requests and receiving data.
+///
+/// A Session represents a connection to the Bloomberg API. It is Send but NOT Sync,
+/// meaning it can be moved between threads but cannot be accessed concurrently from
+/// multiple threads. If you need concurrent access, wrap it in a `Mutex<Session>`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use xbbg_core::{Session, SessionOptions, EventType, Name};
+///
+/// // Pre-intern names (do once at setup)
+/// let securities = Name::get_or_intern("securities");
+/// let fields = Name::get_or_intern("fields");
+///
+/// // Create and start session
+/// let mut opts = SessionOptions::new()?;
+/// opts.set_server_host("localhost")?;
+/// opts.set_server_port(8194);
+///
+/// let sess = Session::new(&opts)?;
+/// sess.start()?;
+///
+/// // Wait for SessionStarted
+/// loop {
+///     if let Ok(ev) = sess.next_event(Some(5000)) {
+///         if ev.event_type() == EventType::SessionStatus {
+///             break;
+///         }
+///     }
+/// }
+///
+/// // Open service and make request
+/// sess.open_service("//blp/refdata")?;
+/// let svc = sess.get_service("//blp/refdata")?;
+/// let mut req = svc.create_request("ReferenceDataRequest")?;
+///
+/// req.append_string(&securities, "IBM US Equity")?;
+/// req.append_string(&fields, "PX_LAST")?;
+///
+/// sess.send_request(&req, None, None)?;
+///
+/// // Process response
+/// loop {
+///     if let Ok(ev) = sess.next_event(Some(5000)) {
+///         if ev.event_type() == EventType::Response {
+///             for msg in ev.messages() {
+///                 // Extract data...
+///             }
+///             break;
+///         }
+///     }
+/// }
+///
+/// sess.stop();
+/// ```
+///
+/// # Threading Model
+/// - `Send`: Yes - can be moved between threads
+/// - `Sync`: No - cannot be accessed concurrently (use `Mutex` if needed)
+///
+/// This matches Bloomberg's threading model where session mutations (start, stop,
+/// subscribe, sendRequest) are NOT thread-safe and must be serialized by the caller.
 pub struct Session {
-    ptr: *mut blpapi_sys::blpapi_Session_t,
+    ptr: *mut crate::ffi::blpapi_Session_t,
+    _not_sync: PhantomData<Cell<()>>, // Makes !Sync
 }
 
+// SAFETY: Session can be sent between threads
+// The underlying Bloomberg API allows a session to be used from different threads
+// (just not concurrently)
 unsafe impl Send for Session {}
-unsafe impl Sync for Session {}
+
+// DO NOT implement Sync for Session
+// Bloomberg API requires serialized access to session methods
 
 impl Session {
+    /// Create a new session with the given options.
+    ///
+    /// Creates a session but does not start it. Call `start()` to initiate the connection.
+    ///
+    /// # Arguments
+    /// * `options` - Session configuration options
+    ///
+    /// # Returns
+    /// A new Session on success, or an error if creation fails
     pub fn new(options: &SessionOptions) -> Result<Self> {
+        // SAFETY: We're calling the Bloomberg API with valid pointers
+        // - options.as_raw() is guaranteed valid by SessionOptions
+        // - handler, dispatcher, and eventQueue are None/null (synchronous mode)
         let ptr = unsafe {
-            blpapi_sys::blpapi_Session_create(
+            crate::ffi::blpapi_Session_create(
                 options.as_raw(),
-                None, // handler: sync mode
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
+                None,                 // handler (None = synchronous mode)
+                std::ptr::null_mut(), // dispatcher
+                std::ptr::null_mut(), // eventQueue
             )
         };
+
         if ptr.is_null() {
-            return Err(BlpError::Internal {
-                detail: "blpapi_Session_create returned null".into(),
+            return Err(BlpError::SessionStart {
+                source: None,
+                label: None,
             });
         }
-        Ok(Self { ptr })
+
+        Ok(Self {
+            ptr,
+            _not_sync: PhantomData,
+        })
     }
 
-    pub fn create_identity(&self) -> Result<Identity> {
-        let ptr = unsafe { blpapi_sys::blpapi_Session_createIdentity(self.ptr) };
-        Identity::from_raw(ptr)
-    }
-
+    /// Start the session.
+    ///
+    /// This initiates the connection to the Bloomberg API. You should wait for
+    /// a `SessionStatus` event with `SessionStarted` message before making requests.
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err on failure
     pub fn start(&self) -> Result<()> {
-        let rc = unsafe { blpapi_sys::blpapi_Session_start(self.ptr) };
+        // SAFETY: We're calling the Bloomberg API with a valid pointer
+        let rc = unsafe { crate::ffi::blpapi_Session_start(self.ptr) };
+
         if rc != 0 {
             return Err(BlpError::SessionStart {
                 source: None,
                 label: None,
             });
         }
+
         Ok(())
     }
 
-    pub fn start_async(&self) -> Result<()> {
-        let rc = unsafe { blpapi_sys::blpapi_Session_startAsync(self.ptr) };
-        if rc != 0 {
-            return Err(BlpError::SessionStart {
-                source: None,
-                label: None,
-            });
-        }
-        Ok(())
-    }
-
+    /// Stop the session.
+    ///
+    /// This closes the connection to the Bloomberg API. After calling stop(),
+    /// the session cannot be restarted. Always call this before dropping the session
+    /// to ensure clean shutdown.
     pub fn stop(&self) {
-        unsafe { blpapi_sys::blpapi_Session_stop(self.ptr) };
+        // SAFETY: We're calling the Bloomberg API with a valid pointer
+        unsafe {
+            crate::ffi::blpapi_Session_stop(self.ptr);
+        }
     }
 
-    pub fn stop_async(&self) {
-        unsafe { blpapi_sys::blpapi_Session_stopAsync(self.ptr) };
-    }
-
+    /// Wait for the next event with an optional timeout.
+    ///
+    /// This is the primary method for receiving data from Bloomberg. Blocks until
+    /// an event is available or the timeout expires.
+    ///
+    /// # Arguments
+    /// * `timeout_ms` - Optional timeout in milliseconds. None means wait indefinitely.
+    ///
+    /// # Returns
+    /// The next Event, or an error if the timeout expires or an error occurs
     pub fn next_event(&self, timeout_ms: Option<u32>) -> Result<Event> {
-        let mut ev_ptr: *mut blpapi_sys::blpapi_Event_t = std::ptr::null_mut();
+        let mut event_ptr: *mut crate::ffi::blpapi_Event_t = std::ptr::null_mut();
+
+        // SAFETY: We're calling the Bloomberg API with valid pointers
         let rc = unsafe {
-            blpapi_sys::blpapi_Session_nextEvent(self.ptr, &mut ev_ptr, timeout_ms.unwrap_or(0))
+            crate::ffi::blpapi_Session_nextEvent(self.ptr, &mut event_ptr, timeout_ms.unwrap_or(0))
         };
+
         if rc != 0 {
+            return Err(BlpError::Timeout);
+        }
+
+        if event_ptr.is_null() {
             return Err(BlpError::Internal {
-                detail: format!("nextEvent rc={rc}"),
+                detail: "nextEvent returned null event".into(),
             });
         }
-        Event::from_raw(ev_ptr)
+
+        // SAFETY: event_ptr is guaranteed non-null and valid from blpapi_Session_nextEvent
+        Ok(unsafe { Event::from_raw(event_ptr) })
     }
 
+    /// Try to get the next event without blocking.
+    ///
+    /// Non-blocking version of `next_event()`. Returns immediately.
+    ///
+    /// # Returns
+    /// Some(Event) if an event is available, None if no event is ready
     pub fn try_next_event(&self) -> Option<Event> {
-        let mut ev_ptr: *mut blpapi_sys::blpapi_Event_t = std::ptr::null_mut();
-        let rc = unsafe { blpapi_sys::blpapi_Session_tryNextEvent(self.ptr, &mut ev_ptr) };
-        if rc == 0 && !ev_ptr.is_null() {
-            Event::from_raw(ev_ptr).ok()
+        let mut event_ptr: *mut crate::ffi::blpapi_Event_t = std::ptr::null_mut();
+
+        // SAFETY: We're calling the Bloomberg API with valid pointers
+        let rc = unsafe { crate::ffi::blpapi_Session_tryNextEvent(self.ptr, &mut event_ptr) };
+
+        if rc == 0 && !event_ptr.is_null() {
+            // SAFETY: event_ptr is guaranteed non-null and valid from blpapi_Session_tryNextEvent
+            Some(unsafe { Event::from_raw(event_ptr) })
         } else {
             None
         }
     }
 
+    /// Open a service
+    ///
+    /// This must be called before you can get the service and create requests.
+    /// You should wait for a ServiceOpened event before calling get_service().
+    ///
+    /// # Arguments
+    /// * `name` - The service name (e.g., "//blp/refdata")
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err on failure
     pub fn open_service(&self, name: &str) -> Result<()> {
-        let cname = CString::new(name).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid service name: {e}"),
+        let c_name = CString::new(name).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid service name: {}", e),
         })?;
-        let rc = unsafe { blpapi_sys::blpapi_Session_openService(self.ptr, cname.as_ptr()) };
+
+        // SAFETY: We're calling the Bloomberg API with valid pointers
+        let rc = unsafe { crate::ffi::blpapi_Session_openService(self.ptr, c_name.as_ptr()) };
+
         if rc != 0 {
             return Err(BlpError::OpenService {
                 service: name.to_string(),
@@ -105,17 +237,31 @@ impl Session {
                 label: None,
             });
         }
+
         Ok(())
     }
 
+    /// Get a service handle
+    ///
+    /// The service must have been opened with open_service() first.
+    ///
+    /// # Arguments
+    /// * `name` - The service name (e.g., "//blp/refdata")
+    ///
+    /// # Returns
+    /// A Service handle on success, or an error if the service is not open
     pub fn get_service(&self, name: &str) -> Result<Service> {
-        let cname = CString::new(name).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid service name: {e}"),
+        let c_name = CString::new(name).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid service name: {}", e),
         })?;
-        let mut svc_ptr: *mut blpapi_sys::blpapi_Service_t = std::ptr::null_mut();
+
+        let mut service_ptr: *mut crate::ffi::blpapi_Service_t = std::ptr::null_mut();
+
+        // SAFETY: We're calling the Bloomberg API with valid pointers
         let rc = unsafe {
-            blpapi_sys::blpapi_Session_getService(self.ptr, &mut svc_ptr, cname.as_ptr())
+            crate::ffi::blpapi_Session_getService(self.ptr, &mut service_ptr, c_name.as_ptr())
         };
+
         if rc != 0 {
             return Err(BlpError::OpenService {
                 service: name.to_string(),
@@ -123,199 +269,173 @@ impl Session {
                 label: None,
             });
         }
-        Service::from_raw(svc_ptr)
+
+        Service::from_raw(service_ptr)
     }
 
-    pub fn subscribe(&self, subs: &SubscriptionList, label: Option<&str>) -> Result<()> {
-        let (label_ptr, label_len, owned) = if let Some(s) = label {
-            let cs = CString::new(s).map_err(|e| BlpError::InvalidArgument {
-                detail: format!("invalid label: {e}"),
-            })?;
-            let len = s.len() as i32;
-            (cs.as_ptr(), len, Some(cs))
-        } else {
-            (std::ptr::null(), 0, None)
-        };
-        let rc = unsafe {
-            blpapi_sys::blpapi_Session_subscribe(
-                self.ptr,
-                subs.as_raw(),
-                std::ptr::null(),
-                label_ptr,
-                label_len,
-            )
-        };
-        drop(owned);
-        if rc != 0 {
-            return Err(BlpError::Internal {
-                detail: format!("subscribe rc={rc}"),
-            });
-        }
-        Ok(())
-    }
-
-    pub fn unsubscribe(&self, subs: &SubscriptionList) -> Result<()> {
-        let rc = unsafe {
-            blpapi_sys::blpapi_Session_unsubscribe(self.ptr, subs.as_raw(), std::ptr::null(), 0)
-        };
-        if rc != 0 {
-            return Err(BlpError::Internal {
-                detail: format!("unsubscribe rc={rc}"),
-            });
-        }
-        Ok(())
-    }
-
-    pub fn set_status_correlation_id(&self, service: &Service, cid: &CorrelationId) -> Result<()> {
-        let raw = cid.to_ffi();
-        let rc = unsafe {
-            blpapi_sys::blpapi_Session_setStatusCorrelationId(
-                self.ptr,
-                service.as_raw(),
-                std::ptr::null_mut(),
-                &raw as *const _,
-            )
-        };
-        if rc != 0 {
-            return Err(BlpError::Internal {
-                detail: format!("setStatusCorrelationId rc={rc}"),
-            });
-        }
-        Ok(())
-    }
-
+    /// Send a request
+    ///
+    /// # Arguments
+    /// * `req` - The request to send
+    /// * `identity` - Optional identity for authorization
+    /// * `cid` - Optional correlation ID for tracking the response
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err on failure
     pub fn send_request(
         &self,
-        request: &Request,
+        req: &Request,
         identity: Option<&Identity>,
         cid: Option<&CorrelationId>,
     ) -> Result<()> {
-        // Pass a valid CorrelationId pointer. If none provided, pass UNSET (all zeros),
-        // matching the C++ default-constructed CorrelationId semantics.
-        let mut raw = cid
-            .map(|c| c.to_ffi())
-            .unwrap_or_else(CorrelationId::to_ffi_autogen);
-        let id_ptr = identity.map(|i| i.as_raw()).unwrap_or(std::ptr::null_mut());
+        // Prepare correlation ID
+        let mut cid_ffi = match cid {
+            Some(c) => c.to_ffi(),
+            None => CorrelationId::default().to_ffi(),
+        };
+
+        // Get identity pointer
+        let identity_ptr = match identity {
+            Some(id) => id.as_ptr(),
+            None => std::ptr::null_mut(),
+        };
+
+        // SAFETY: We're calling the Bloomberg API with valid pointers
         let rc = unsafe {
-            blpapi_sys::blpapi_Session_sendRequest(
+            crate::ffi::blpapi_Session_sendRequest(
                 self.ptr,
-                request.as_raw(),
-                &mut raw as *mut _,
-                id_ptr,
-                std::ptr::null_mut(),
-                std::ptr::null(),
-                0,
+                req.as_ptr(),
+                &mut cid_ffi,
+                identity_ptr,
+                std::ptr::null_mut(), // eventQueue (null = use session's queue)
+                std::ptr::null(),     // requestLabel
+                0,                    // requestLabelLen
             )
         };
+
         if rc != 0 {
             return Err(BlpError::Internal {
-                detail: format!("sendRequest rc={rc}"),
+                detail: format!("blpapi_Session_sendRequest failed with rc={}", rc),
             });
         }
-        Ok(())
-    }
-    pub fn create_snapshot_request_template(
-        &self,
-        subscription_string: &str,
-    ) -> Result<RequestTemplate> {
-        self.create_snapshot_request_template_with_cid(subscription_string, None)
-    }
 
-    pub fn create_snapshot_request_template_with_cid(
-        &self,
-        subscription_string: &str,
-        cid: Option<&CorrelationId>,
-    ) -> Result<RequestTemplate> {
-        let cstr = CString::new(subscription_string).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid subscription string: {e}"),
-        })?;
-        let mut tmpl_ptr: *mut blpapi_sys::blpapi_RequestTemplate_t = std::ptr::null_mut();
-        // Using session identity (null); correlation id from caller or autogen.
-        let mut raw_cid: blpapi_sys::blpapi_CorrelationId_t = if let Some(c) = cid {
-            c.to_ffi()
-        } else {
-            CorrelationId::to_ffi_autogen()
-        };
-        let rc = unsafe {
-            blpapi_sys::blpapi_Session_createSnapshotRequestTemplate(
-                &mut tmpl_ptr,
-                self.ptr,
-                cstr.as_ptr(),
-                std::ptr::null_mut(),
-                &mut raw_cid,
-            )
-        };
-        if rc != 0 {
-            return Err(BlpError::Internal {
-                detail: format!("createSnapshotRequestTemplate rc={rc}"),
-            });
-        }
-        RequestTemplate::from_raw(tmpl_ptr)
-    }
-
-    pub fn send_request_template(&self, tmpl: &RequestTemplate) -> Result<()> {
-        self.send_request_template_with_cid(tmpl, None)
-    }
-
-    pub fn send_request_template_with_cid(
-        &self,
-        tmpl: &RequestTemplate,
-        cid: Option<&CorrelationId>,
-    ) -> Result<()> {
-        let mut raw = cid
-            .map(|c| c.to_ffi())
-            .unwrap_or_else(CorrelationId::to_ffi_autogen);
-        let rc = unsafe {
-            blpapi_sys::blpapi_Session_sendRequestTemplate(self.ptr, tmpl.as_raw(), &mut raw)
-        };
-        if rc != 0 {
-            return Err(BlpError::Internal {
-                detail: format!("sendRequestTemplate rc={rc}"),
-            });
-        }
         Ok(())
     }
 
-    pub fn cancel(&self, cids: &[CorrelationId], label: Option<&str>) -> Result<()> {
-        let raws: Vec<blpapi_sys::blpapi_CorrelationId_t> =
-            cids.iter().map(|c| c.to_ffi()).collect();
-        let (label_ptr, label_len, owned) = if let Some(s) = label {
-            let cs = CString::new(s).map_err(|e| BlpError::InvalidArgument {
-                detail: format!("invalid label: {e}"),
-            })?;
-            (cs.as_ptr(), s.len() as i32, Some(cs))
-        } else {
-            (std::ptr::null(), 0, None)
+    /// Subscribe to market data
+    ///
+    /// # Arguments
+    /// * `subs` - The subscription list
+    /// * `label` - Optional label for the subscription
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err on failure
+    pub fn subscribe(&self, subs: &SubscriptionList, label: Option<&str>) -> Result<()> {
+        let (label_ptr, label_len, _label_cstring) = match label {
+            Some(l) => {
+                let cs = CString::new(l).map_err(|e| BlpError::InvalidArgument {
+                    detail: format!("invalid label: {}", e),
+                })?;
+                let len = l.len() as i32;
+                (cs.as_ptr(), len, Some(cs))
+            }
+            None => (std::ptr::null(), 0, None),
         };
+
+        // SAFETY: We're calling the Bloomberg API with valid pointers
         let rc = unsafe {
-            blpapi_sys::blpapi_Session_cancel(
+            crate::ffi::blpapi_Session_subscribe(
                 self.ptr,
-                raws.as_ptr(),
-                raws.len(),
+                subs.as_ptr(),
+                std::ptr::null(), // identity
                 label_ptr,
                 label_len,
             )
         };
-        drop(owned);
+
         if rc != 0 {
             return Err(BlpError::Internal {
-                detail: format!("cancel rc={rc}"),
+                detail: format!("blpapi_Session_subscribe failed with rc={}", rc),
             });
         }
+
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn as_raw(&self) -> *mut blpapi_sys::blpapi_Session_t {
-        self.ptr
+    /// Unsubscribe from market data
+    ///
+    /// # Arguments
+    /// * `subs` - The subscription list to unsubscribe
+    ///
+    /// # Returns
+    /// Ok(()) on success, Err on failure
+    pub fn unsubscribe(&self, subs: &SubscriptionList) -> Result<()> {
+        // SAFETY: We're calling the Bloomberg API with valid pointers
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_unsubscribe(
+                self.ptr,
+                subs.as_ptr(),
+                std::ptr::null(), // requestLabel
+                0,                // requestLabelLen
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_unsubscribe failed with rc={}", rc),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Create an identity for authorization
+    ///
+    /// # Returns
+    /// A new Identity on success, or an error if creation fails
+    pub fn create_identity(&self) -> Result<Identity> {
+        // SAFETY: We're calling the Bloomberg API with a valid pointer
+        let identity_ptr = unsafe { crate::ffi::blpapi_Session_createIdentity(self.ptr) };
+
+        Identity::from_raw(identity_ptr)
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
-            unsafe { blpapi_sys::blpapi_Session_destroy(self.ptr) };
+            // SAFETY: We're calling the Bloomberg API to clean up the session
+            // First stop the session, then destroy it
+            unsafe {
+                crate::ffi::blpapi_Session_stop(self.ptr);
+                crate::ffi::blpapi_Session_destroy(self.ptr);
+            }
             self.ptr = std::ptr::null_mut();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Compile-time verification that Session is Send but NOT Sync
+    fn assert_send<T: Send>() {}
+    fn assert_not_sync<T: Send>() {
+        // This function compiles only if T is NOT Sync
+        // If T were Sync, we could add `T: Sync` bound and it would still compile
+    }
+
+    #[test]
+    fn session_is_send() {
+        assert_send::<Session>();
+    }
+
+    #[test]
+    fn session_is_not_sync() {
+        assert_not_sync::<Session>();
+        // If you uncomment the next line, it should NOT compile:
+        // fn assert_sync<T: Sync>() {}
+        // assert_sync::<Session>();
     }
 }

@@ -1,0 +1,23 @@
+{
+  "timestamp": 1769074758,
+  "crate": "xbbg-core",
+  "benchmark_type": "subscription",
+  "benchmarks": [
+    {
+      "name": "subscription_IBM_US_Equity",
+      "setup_us": 3039,
+      "time_to_first_tick_us": 326291,
+      "ticks_received": 2,
+      "tick_processing_us": 3651,
+      "fields_per_tick": 3.50
+    },
+    {
+      "name": "subscription_3t_3f",
+      "setup_us": 154,
+      "time_to_first_tick_us": 396247,
+      "ticks_received": 11,
+      "tick_processing_us": 398,
+      "fields_per_tick": 1.00
+    }
+  ]
+}

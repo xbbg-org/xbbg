@@ -1,194 +1,180 @@
+//! Message type for Bloomberg BLPAPI
+//!
+//! Messages are the primary data containers in Bloomberg responses.
+//! Each message contains a root element with field data.
+//!
+//! **Zero allocation**: Messages are borrowed from Events and provide
+//! zero-cost access to their contents.
+
+use crate::{ffi, Element, Name};
 use std::ffi::CStr;
-use std::sync::Arc;
+use std::marker::PhantomData;
+use std::ptr::NonNull;
+use std::rc::Rc;
 
-use crate::correlation::CorrelationId;
-use crate::name::Name;
-use crate::tag_registry::TAG_REGISTRY;
-
-pub struct MessageRef {
-    ptr: *mut blpapi_sys::blpapi_Message_t,
-    // Borrowed by iterator; do not release
+/// Bloomberg message wrapper.
+///
+/// Borrowed from Event, valid only while Event is alive.
+/// NOT thread-safe - must be consumed on receiving thread.
+///
+/// # Lifetime
+/// The lifetime `'a` ties this Message to its parent Event.
+/// Do not store Messages - extract data immediately.
+///
+/// # Thread Safety
+/// Messages are `!Send + !Sync` because:
+/// - Bloomberg's API is not thread-safe
+/// - Messages must be processed on the thread that received them
+///
+/// # Performance
+/// All methods are `#[inline(always)]` for zero-cost abstraction.
+#[repr(transparent)]
+pub struct Message<'a> {
+    ptr: *mut ffi::blpapi_Message_t,
+    _life: PhantomData<&'a ()>,
+    _marker: PhantomData<Rc<()>>, // Makes !Send + !Sync
 }
 
-#[allow(dead_code)]
-pub struct MessageOwned {
-    ptr: *mut blpapi_sys::blpapi_Message_t,
-}
+impl<'a> Message<'a> {
+    /// Construct from raw pointer (internal use only).
+    ///
+    /// # Safety
+    /// Caller must ensure:
+    /// - `ptr` is a valid `blpapi_Message_t` pointer
+    /// - The lifetime `'a` does not outlive the parent Event
+    /// - The pointer remains valid for the lifetime `'a`
+    #[inline]
+    pub(crate) unsafe fn from_raw(ptr: *mut ffi::blpapi_Message_t) -> Self {
+        Self {
+            ptr,
+            _life: PhantomData,
+            _marker: PhantomData,
+        }
+    }
 
-impl MessageRef {
-    pub(crate) fn from_raw(ptr: *mut blpapi_sys::blpapi_Message_t) -> Option<Self> {
+    /// Get root element of this message.
+    ///
+    /// The root element contains all field data for this message.
+    /// Use this to navigate the message structure.
+    ///
+    /// # Performance
+    /// This is a hot path method - returns immediately with no allocation.
+    #[inline(always)]
+    pub fn elements(&self) -> Element<'a> {
+        // SAFETY: blpapi_Message_elements returns a valid Element pointer.
+        // The Element borrows from this Message, so lifetime 'a is correct.
+        // Bloomberg guarantees the element pointer is valid for the message's lifetime.
+        // Element::new is safe to call with a valid pointer.
+        let ptr = unsafe { ffi::blpapi_Message_elements(self.ptr) };
+        Element::new(ptr)
+    }
+
+    /// Message type name.
+    ///
+    /// Returns the schema type of this message (e.g., "ReferenceDataResponse").
+    /// This is an owned Name because it's duplicated from Bloomberg's internal storage.
+    ///
+    /// # Performance
+    /// This allocates a new Name (increments refcount). Cache if called repeatedly.
+    #[inline(always)]
+    pub fn message_type(&self) -> Name {
+        self.name()
+    }
+
+    /// Message name (alias for `message_type()`).
+    ///
+    /// Returns the schema type of this message (e.g., "ReferenceDataResponse").
+    /// This is an owned Name because it's duplicated from Bloomberg's internal storage.
+    ///
+    /// # Performance
+    /// This allocates a new Name (increments refcount). Cache if called repeatedly.
+    #[inline(always)]
+    pub fn name(&self) -> Name {
+        // SAFETY: blpapi_Message_messageType returns a valid Name pointer.
+        // We duplicate it to get an owned Name that we can return.
+        // The duplicate increments Bloomberg's internal refcount.
+        let ptr = unsafe { ffi::blpapi_Message_messageType(self.ptr) };
+        // SAFETY: blpapi_Name_duplicate returns a valid pointer
+        unsafe { Name::from_raw(NonNull::new(ffi::blpapi_Name_duplicate(ptr)).unwrap()) }
+    }
+
+    /// Topic name (for subscription messages).
+    ///
+    /// Returns the topic string for subscription data messages.
+    /// Returns `None` for request/response messages.
+    ///
+    /// # Performance
+    /// Zero allocation - returns a reference to Bloomberg's internal buffer.
+    ///
+    /// # Example
+    /// ```ignore
+    /// if let Some(topic) = msg.topic_name() {
+    ///     println!("Received data for: {}", topic);
+    /// }
+    /// ```
+    #[inline]
+    pub fn topic_name(&self) -> Option<&str> {
+        // SAFETY: blpapi_Message_topicName returns a pointer to an internal
+        // null-terminated C string, or null if this is not a subscription message.
+        // The string is valid for the lifetime of the message.
+        let ptr = unsafe { ffi::blpapi_Message_topicName(self.ptr) };
         if ptr.is_null() {
             None
         } else {
-            Some(Self { ptr })
+            // SAFETY: Bloomberg guarantees valid UTF-8 in topic names.
+            // Topic names are always ASCII/UTF-8 strings.
+            // The string lives as long as the message (lifetime 'a).
+            Some(unsafe { CStr::from_ptr(ptr).to_str().unwrap_unchecked() })
         }
     }
 
-    pub fn elements(&self) -> crate::element::ElementRef {
-        let el_ptr = unsafe { blpapi_sys::blpapi_Message_elements(self.ptr) };
-        crate::element::ElementRef::from_raw(el_ptr).expect("message elements")
-    }
-
-    pub fn payload_definition(&self) -> crate::schema::SchemaElementDefinition {
-        let el_ptr = unsafe { blpapi_sys::blpapi_Message_elements(self.ptr) };
-        let def_ptr = unsafe { blpapi_sys::blpapi_Element_definition(el_ptr) };
-        crate::schema::SchemaElementDefinition::from_raw(def_ptr).expect("payload definition")
-    }
-    pub fn message_type(&self) -> Name {
-        let name_ptr = unsafe { blpapi_sys::blpapi_Message_messageType(self.ptr) };
-        Name::from_raw(name_ptr)
-    }
-
-    pub fn num_correlation_ids(&self) -> i32 {
-        unsafe { blpapi_sys::blpapi_Message_numCorrelationIds(self.ptr) }
-    }
-
-    pub fn correlation_id(&self, index: usize) -> Option<CorrelationId> {
-        let n = self.num_correlation_ids();
-        if n <= 0 || index >= n as usize {
-            return None;
-        }
-        let raw = unsafe { blpapi_sys::blpapi_Message_correlationId(self.ptr, index) };
-        let mut out_u64: u64 = 0;
-        let is_int = unsafe { blpapi_sys::blpapiext_cid_is_int(&raw as *const _) } != 0;
-        if is_int {
-            let rc = unsafe {
-                blpapi_sys::blpapiext_cid_get_u64(&raw as *const _, &mut out_u64 as *mut _)
-            };
-            if rc == 0 {
-                return Some(CorrelationId::U64(out_u64));
-            }
-        }
-        let mut out_ptr: *const core::ffi::c_void = core::ptr::null();
-        let is_ptr = unsafe { blpapi_sys::blpapiext_cid_is_ptr(&raw as *const _) } != 0;
-        if is_ptr {
-            let rc = unsafe {
-                blpapi_sys::blpapiext_cid_get_ptr(&raw as *const _, &mut out_ptr as *mut _)
-            };
-            if rc == 0 && !out_ptr.is_null() {
-                if let Some(s) = TAG_REGISTRY.lookup(out_ptr) {
-                    if let Ok(st) = s.to_str() {
-                        return Some(CorrelationId::Tag(Arc::from(st)));
-                    }
-                }
-                // Unknown pointer tag: surface diagnostic string
-                let diag = format!("<unknown:{out_ptr:p}>");
-                return Some(CorrelationId::Tag(Arc::from(diag.as_str())));
-            }
-        }
-        None
-    }
-
-    /// Check if this message matches the given correlation ID.
-    /// Returns `false` if the message has no correlation ID or it doesn't match.
-    pub fn matches_correlation_id(&self, cid: &CorrelationId) -> bool {
-        self.correlation_id(0)
-            .map(|msg_cid| &msg_cid == cid)
-            .unwrap_or(false)
-    }
-    pub fn get_request_id(&self) -> Option<&str> {
-        let mut req_id: *const i8 = std::ptr::null();
-        let rc = unsafe { blpapi_sys::blpapi_Message_getRequestId(self.ptr, &mut req_id) };
-        if rc == 0 && !req_id.is_null() {
-            Some(
-                unsafe { CStr::from_ptr(req_id) }
-                    .to_str()
-                    .unwrap_or_default(),
-            )
-        } else {
-            None
-        }
-    }
-
-    pub fn recap_type(&self) -> i32 {
-        unsafe { blpapi_sys::blpapi_Message_recapType(self.ptr) }
-    }
-
-    pub fn print_to_string(&self) -> String {
-        // Fallback: use type string if print is unavailable
-        let mut out = String::new();
-        unsafe extern "C" fn write_cb(
-            data: *const i8,
-            len: i32,
-            ctx: *mut core::ffi::c_void,
-        ) -> i32 {
-            if ctx.is_null() || data.is_null() || len <= 0 {
-                return 0;
-            }
-            let s = std::slice::from_raw_parts(data as *const u8, len as usize);
-            let buf = &mut *(ctx as *mut String);
-            buf.extend(s.iter().map(|&b| b as char));
-            0
-        }
-        unsafe {
-            let _rc = blpapi_sys::blpapi_Message_print(
-                self.ptr,
-                Some(write_cb),
-                &mut out as *mut _ as *mut core::ffi::c_void,
-                0,
-                -1,
-            );
-        }
-        if out.is_empty() {
-            format!("{}", self.message_type())
-        } else {
-            out
-        }
-    }
-
-    /// Serialize the message payload to JSON using the Bloomberg SDK's native toJson.
+    /// Get raw pointer for FFI calls (internal use).
     ///
-    /// This is significantly faster than iterating over elements individually
-    /// because it makes a single FFI call and the SDK serializes internally.
-    ///
-    /// Returns `None` if the toJson function is not available (SDK < 3.25.11).
-    pub fn to_json(&self) -> Option<String> {
-        self.elements().to_json()
+    /// This is used internally by other xbbg-core types that need to call
+    /// Bloomberg C API functions.
+    #[inline(always)]
+    #[allow(dead_code)] // Used in integration, not unit tests
+    pub(crate) fn as_ptr(&self) -> *mut ffi::blpapi_Message_t {
+        self.ptr
     }
 }
 
-#[allow(dead_code)]
-impl MessageOwned {
-    pub(crate) fn clone_from(ptr: *mut blpapi_sys::blpapi_Message_t) -> Option<Self> {
-        if ptr.is_null() {
-            None
-        } else {
-            unsafe {
-                blpapi_sys::blpapi_Message_addRef(ptr);
-            }
-            Some(Self { ptr })
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_size() {
+        // Message should be pointer-sized (transparent wrapper)
+        assert_eq!(
+            std::mem::size_of::<Message>(),
+            std::mem::size_of::<*mut ()>()
+        );
     }
 
-    pub fn message_type(&self) -> Name {
-        let name_ptr = unsafe { blpapi_sys::blpapi_Message_messageType(self.ptr) };
-        Name::from_raw(name_ptr)
+    #[test]
+    fn test_message_alignment() {
+        // Message should have pointer alignment
+        assert_eq!(
+            std::mem::align_of::<Message>(),
+            std::mem::align_of::<*mut ()>()
+        );
     }
 
-    pub fn num_correlation_ids(&self) -> i32 {
-        unsafe { blpapi_sys::blpapi_Message_numCorrelationIds(self.ptr) }
-    }
-
-    pub fn get_request_id(&self) -> Option<&str> {
-        let mut req_id: *const i8 = std::ptr::null();
-        let rc = unsafe { blpapi_sys::blpapi_Message_getRequestId(self.ptr, &mut req_id) };
-        if rc == 0 && !req_id.is_null() {
-            Some(
-                unsafe { CStr::from_ptr(req_id) }
-                    .to_str()
-                    .unwrap_or_default(),
-            )
-        } else {
-            None
-        }
-    }
-}
-
-impl Drop for MessageOwned {
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            unsafe { blpapi_sys::blpapi_Message_release(self.ptr) };
-            self.ptr = std::ptr::null_mut();
-        }
-    }
+    // Compile-time checks that Message is !Send and !Sync
+    // These are commented out because they should NOT compile.
+    // Uncomment to verify the trait bounds are working correctly.
+    //
+    // fn assert_send<T: Send>() {}
+    // fn assert_sync<T: Sync>() {}
+    //
+    // #[test]
+    // fn message_is_not_send() {
+    //     assert_send::<Message>();  // Should NOT compile
+    // }
+    //
+    // #[test]
+    // fn message_is_not_sync() {
+    //     assert_sync::<Message>();  // Should NOT compile
+    // }
 }

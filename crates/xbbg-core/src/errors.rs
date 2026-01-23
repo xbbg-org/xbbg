@@ -3,6 +3,8 @@ use std::fmt;
 use thiserror::Error;
 
 /// Unified result type for the core crate.
+///
+/// All fallible operations return this type for consistent error handling.
 pub type Result<T, E = BlpError> = std::result::Result<T, E>;
 
 /// Lightweight CorrelationId context display (string or number).
@@ -22,12 +24,15 @@ impl fmt::Display for CorrelationContext {
 }
 
 /// Common error type surfaced by xbbg-core.
+///
+/// All errors from Bloomberg API operations are wrapped in this enum.
+/// Use pattern matching or the `thiserror` traits to handle specific error cases.
 #[derive(Debug, Error)]
 pub enum BlpError {
     #[error("session start failed")]
     SessionStart {
         #[source]
-        source: Option<anyhow::Error>,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
         label: Option<String>,
     },
 
@@ -35,7 +40,7 @@ pub enum BlpError {
     OpenService {
         service: String,
         #[source]
-        source: Option<anyhow::Error>,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
         label: Option<String>,
     },
 
@@ -47,7 +52,7 @@ pub enum BlpError {
         label: Option<String>,
         request_id: Option<String>,
         #[source]
-        source: Option<anyhow::Error>,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 
     #[error("invalid argument")]
@@ -67,29 +72,28 @@ pub enum BlpError {
 
     #[error("internal error")]
     Internal { detail: String },
+    // Schema errors (commented out until schema module is implemented)
+    // #[error("operation not found: {service}::{operation}")]
+    // SchemaOperationNotFound { service: String, operation: String },
 
-    // Schema errors
-    #[error("operation not found: {service}::{operation}")]
-    SchemaOperationNotFound { service: String, operation: String },
+    // #[error("schema element not found: {parent}.{name}")]
+    // SchemaElementNotFound { parent: String, name: String },
 
-    #[error("schema element not found: {parent}.{name}")]
-    SchemaElementNotFound { parent: String, name: String },
+    // #[error("schema type mismatch at {element}: expected {expected:?}, found {found:?}")]
+    // SchemaTypeMismatch {
+    //     element: String,
+    //     expected: crate::schema::DataType,
+    //     found: crate::schema::DataType,
+    // },
 
-    #[error("schema type mismatch at {element}: expected {expected:?}, found {found:?}")]
-    SchemaTypeMismatch {
-        element: String,
-        expected: crate::schema::DataType,
-        found: crate::schema::DataType,
-    },
+    // #[error("unsupported schema construct at {element}: {detail}")]
+    // SchemaUnsupported { element: String, detail: String },
 
-    #[error("unsupported schema construct at {element}: {detail}")]
-    SchemaUnsupported { element: String, detail: String },
-
-    #[error("request validation failed: {message}")]
-    Validation {
-        message: String,
-        errors: Vec<crate::schema::ValidationError>,
-    },
+    // #[error("request validation failed: {message}")]
+    // Validation {
+    //     message: String,
+    //     errors: Vec<crate::schema::ValidationError>,
+    // },
 }
 
 impl BlpError {
@@ -99,7 +103,7 @@ impl BlpError {
         cid: Option<CorrelationContext>,
         label: Option<impl Into<String>>,
         request_id: Option<impl Into<String>>,
-        source: Option<anyhow::Error>,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Self {
         BlpError::RequestFailure {
             service: service.into(),

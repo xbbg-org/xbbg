@@ -1,186 +1,112 @@
+//! Bloomberg service handle
+
 use std::ffi::CString;
 
 use crate::errors::{BlpError, Result};
-use crate::name::Name;
 use crate::request::Request;
-use crate::schema::{Operation, SchemaElementDefinition};
 
+/// Service handle for creating requests.
+///
+/// A Service is obtained from a Session after opening the service.
+/// Services are immutable after creation and can be safely shared across threads.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Open service
+/// session.open_service("//blp/refdata")?;
+/// let svc = session.get_service("//blp/refdata")?;
+///
+/// // Create request
+/// let req = svc.create_request("ReferenceDataRequest")?;
+/// ```
 pub struct Service {
-    ptr: *mut blpapi_sys::blpapi_Service_t,
+    ptr: *mut crate::ffi::blpapi_Service_t,
 }
 
+// SAFETY: Service can be sent between threads
+// The underlying Bloomberg API allows service handles to be used from different threads
 unsafe impl Send for Service {}
+
+// SAFETY: Service can be shared between threads
+// Service is immutable after get_service() and can be safely accessed concurrently
 unsafe impl Sync for Service {}
 
 impl Service {
-    pub(crate) fn from_raw(ptr: *mut blpapi_sys::blpapi_Service_t) -> Result<Self> {
+    /// Create a Service from a raw pointer (internal use only)
+    pub(crate) fn from_raw(ptr: *mut crate::ffi::blpapi_Service_t) -> Result<Self> {
         if ptr.is_null() {
             return Err(BlpError::Internal {
                 detail: "null service pointer".into(),
             });
         }
-        // addRef so drop can release
-        let rc = unsafe { blpapi_sys::blpapi_Service_addRef(ptr) };
-        if rc != 0 {
-            return Err(BlpError::Internal {
-                detail: format!("blpapi_Service_addRef rc={rc}"),
-            });
-        }
         Ok(Self { ptr })
     }
 
-    pub fn name(&self) -> &str {
-        let cptr = unsafe { blpapi_sys::blpapi_Service_name(self.ptr) };
-        if cptr.is_null() {
-            ""
-        } else {
-            unsafe { std::ffi::CStr::from_ptr(cptr) }
-                .to_str()
-                .unwrap_or_default()
-        }
+    /// Get the raw pointer (internal use only)
+    #[allow(dead_code)] // Used in integration, not unit tests
+    pub(crate) fn as_ptr(&self) -> *mut crate::ffi::blpapi_Service_t {
+        self.ptr
     }
 
-    pub fn description(&self) -> &str {
-        let cptr = unsafe { blpapi_sys::blpapi_Service_description(self.ptr) };
-        if cptr.is_null() {
-            ""
-        } else {
-            unsafe { std::ffi::CStr::from_ptr(cptr) }
-                .to_str()
-                .unwrap_or_default()
-        }
-    }
-
-    pub fn num_operations(&self) -> usize {
-        unsafe { blpapi_sys::blpapi_Service_numOperations(self.ptr) as usize }
-    }
-
-    pub fn operation_names(&self) -> Vec<Name> {
-        let n = self.num_operations();
-        let mut out = Vec::with_capacity(n);
-        for i in 0..n {
-            let mut op_ptr: *mut blpapi_sys::blpapi_Operation_t = std::ptr::null_mut();
-            let rc = unsafe { blpapi_sys::blpapi_Service_getOperationAt(self.ptr, &mut op_ptr, i) };
-            if rc == 0 && !op_ptr.is_null() {
-                let c = unsafe { blpapi_sys::blpapi_Operation_name(op_ptr) };
-                if !c.is_null() {
-                    if let Ok(s) = unsafe { std::ffi::CStr::from_ptr(c) }.to_str() {
-                        if let Ok(nm) = Name::new(s) {
-                            out.push(nm);
-                        }
-                    }
-                }
-            }
-        }
-        out
-    }
-
-    pub fn get_operation(&self, name: &Name) -> Result<Operation> {
-        let mut op_ptr: *mut blpapi_sys::blpapi_Operation_t = std::ptr::null_mut();
-        let rc = unsafe {
-            blpapi_sys::blpapi_Service_getOperation(
-                self.ptr,
-                &mut op_ptr,
-                std::ptr::null(),
-                name.as_raw(),
-            )
-        };
-        if rc != 0 || op_ptr.is_null() {
-            return Err(BlpError::Internal {
-                detail: format!("operation not found: {}", name.as_str()),
-            });
-        }
-        Ok(Operation { ptr: op_ptr })
-    }
-
-    pub fn num_event_definitions(&self) -> usize {
-        unsafe { blpapi_sys::blpapi_Service_numEventDefinitions(self.ptr) as usize }
-    }
-
-    pub fn get_event_definition(&self, index: usize) -> Result<SchemaElementDefinition> {
-        let mut def_ptr: *mut blpapi_sys::blpapi_SchemaElementDefinition_t = std::ptr::null_mut();
-        let rc = unsafe {
-            blpapi_sys::blpapi_Service_getEventDefinitionAt(self.ptr, &mut def_ptr, index)
-        };
-        if rc != 0 || def_ptr.is_null() {
-            return Err(BlpError::Internal {
-                detail: format!("getEventDefinitionAt rc={rc}"),
-            });
-        }
-        SchemaElementDefinition::from_raw(def_ptr)
-    }
-
-    pub fn get_event_definition_by_name(&self, name: &Name) -> Result<SchemaElementDefinition> {
-        let mut def_ptr: *mut blpapi_sys::blpapi_SchemaElementDefinition_t = std::ptr::null_mut();
-        let rc = unsafe {
-            blpapi_sys::blpapi_Service_getEventDefinition(
-                self.ptr,
-                &mut def_ptr,
-                std::ptr::null(),
-                name.as_raw(),
-            )
-        };
-        if rc != 0 || def_ptr.is_null() {
-            return Err(BlpError::Internal {
-                detail: format!("getEventDefinition rc={rc}"),
-            });
-        }
-        SchemaElementDefinition::from_raw(def_ptr)
-    }
-
+    /// Create a new request for the specified operation.
+    ///
+    /// Common operations:
+    /// - `"ReferenceDataRequest"` - Get reference data for securities
+    /// - `"HistoricalDataRequest"` - Get historical time series data
+    /// - `"IntradayBarRequest"` - Get intraday bar data
+    ///
+    /// # Arguments
+    /// * `operation` - The operation name (e.g., "ReferenceDataRequest")
+    ///
+    /// # Returns
+    /// A new Request object that can be populated and sent
     pub fn create_request(&self, operation: &str) -> Result<Request> {
-        let mut req_ptr: *mut blpapi_sys::blpapi_Request_t = std::ptr::null_mut();
-        let cop = CString::new(operation).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid operation: {e}"),
+        let c_operation = CString::new(operation).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid operation name: {}", e),
         })?;
+
+        let mut req_ptr: *mut crate::ffi::blpapi_Request_t = std::ptr::null_mut();
+
+        // SAFETY: We're calling the Bloomberg API with valid pointers
+        // - self.ptr is guaranteed non-null by from_raw()
+        // - req_ptr is a valid mutable pointer
+        // - c_operation is a valid C string
         let rc = unsafe {
-            blpapi_sys::blpapi_Service_createRequest(self.ptr, &mut req_ptr, cop.as_ptr())
+            crate::ffi::blpapi_Service_createRequest(self.ptr, &mut req_ptr, c_operation.as_ptr())
         };
+
         if rc != 0 {
             return Err(BlpError::Internal {
-                detail: format!("createRequest failed rc={rc} op='{operation}'"),
+                detail: format!("blpapi_Service_createRequest failed with rc={}", rc),
             });
         }
+
         Request::from_raw(req_ptr)
     }
 
-    #[cfg(feature = "schema-debug")]
-    pub fn print_schema(&self) -> String {
-        let mut out = String::new();
-        unsafe extern "C" fn write_cb(
-            data: *const i8,
-            len: i32,
-            ctx: *mut core::ffi::c_void,
-        ) -> i32 {
-            if ctx.is_null() || data.is_null() || len <= 0 {
-                return 0;
-            }
-            let s = unsafe { std::slice::from_raw_parts(data as *const u8, len as usize) };
-            let buf = unsafe { &mut *(ctx as *mut String) };
-            let _ = buf.extend(s.iter().map(|&b| b as char));
-            0
-        }
+    /// Get the service name.
+    ///
+    /// Returns the full service URI (e.g., "//blp/refdata").
+    ///
+    /// # Returns
+    /// The service name as a string slice
+    pub fn name(&self) -> &str {
+        // SAFETY: We're calling the Bloomberg API with a valid pointer
+        // The returned pointer is valid for the lifetime of the Service
         unsafe {
-            let _ = blpapi_sys::blpapi_Service_print(
-                self.ptr,
-                Some(write_cb),
-                &mut out as *mut _ as *mut core::ffi::c_void,
-                0,
-                -1,
-            );
+            let name_ptr = crate::ffi::blpapi_Service_name(self.ptr);
+            if name_ptr.is_null() {
+                return "";
+            }
+
+            // Convert C string to Rust string
+            let c_str = std::ffi::CStr::from_ptr(name_ptr);
+            c_str.to_str().unwrap_or("")
         }
-        out
-    }
-    pub(crate) fn as_raw(&self) -> *mut blpapi_sys::blpapi_Service_t {
-        self.ptr
     }
 }
 
-impl Drop for Service {
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            unsafe { blpapi_sys::blpapi_Service_release(self.ptr) };
-            self.ptr = std::ptr::null_mut();
-        }
-    }
-}
+// Note: Service does NOT implement Drop
+// The service pointer is managed by the session and will be cleaned up
+// when the session is destroyed
