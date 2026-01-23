@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **yas()**: New Bloomberg YAS (Yield Analysis) wrapper for fixed income analytics
+  - Provides convenient interface to Bloomberg's YAS calculator via `bdp()` overrides
+  - `YieldType` enum for yield calculation type (`YTM=1`, `YTC=2`)
+  - Supports settlement date, spread, yield, price, and benchmark overrides
+  - Parameter mapping: `settle_dt` → `SETTLE_DT`, `yield_type` → `YAS_YLD_FLAG`, etc.
+  - Available via `blp.yas()` or `from xbbg.api.fixed_income import yas, YieldType`
 - **Treasury & SOFR futures support**: Added TY, ZN, ZB, ZF, ZT, UB, TN (Treasury), SFR, SR1, SR3 (SOFR), and ED (Eurodollar) futures to assets.yml (#198)
 
 ### Fixed
