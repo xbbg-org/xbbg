@@ -211,6 +211,12 @@ xbbg is the **only Python library** that provides:
 | **`lookupSecurity()`** | Find tickers by name | Company name search<br>Asset class filtering |
 | **`getPortfolio()`** | Portfolio data queries | Dedicated portfolio API<br>Holdings & weights |
 
+### Fixed Income Analytics
+
+| Function | Description | Key Features |
+|----------|-------------|--------------|
+| **`yas()`** | Yield & Spread Analysis | YAS calculator wrapper<br>YTM/YTC yield types<br>Price↔yield conversion<br>Spread calculations |
+
 ### Historical Data - Time Series Analysis
 
 | Function | Description | Key Features |
@@ -616,6 +622,81 @@ Out[10]:
 ```
 
 **Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to blpapi.
+
+#### Yield & Spread Analysis (YAS)
+
+The `yas()` function provides a convenient wrapper for Bloomberg's YAS calculator:
+
+```python
+from xbbg import blp
+from xbbg.api.fixed_income import YieldType
+
+# Get yield to maturity
+blp.yas('T 4.5 05/15/38 Govt')
+```
+
+```pydocstring
+Out[11]:
+                     YAS_BOND_YLD
+ticker
+T 4.5 05/15/38 Govt         4.348
+```
+
+```python
+# Calculate yield from price
+blp.yas('T 4.5 05/15/38 Govt', price=95.0)
+```
+
+```pydocstring
+Out[12]:
+                     YAS_BOND_YLD
+ticker
+T 4.5 05/15/38 Govt          5.05
+```
+
+```python
+# Calculate price from yield
+blp.yas('T 4.5 05/15/38 Govt', flds='YAS_BOND_PX', yield_=4.8)
+```
+
+```pydocstring
+Out[13]:
+                     YAS_BOND_PX
+ticker
+T 4.5 05/15/38 Govt    97.229553
+```
+
+```python
+# Yield to call for callable bonds
+blp.yas('AAPL 2.65 05/11/50 Corp', yield_type=YieldType.YTC)
+```
+
+```pydocstring
+Out[14]:
+                          YAS_BOND_YLD
+ticker
+AAPL 2.65 05/11/50 Corp          5.431
+```
+
+```python
+# Multiple YAS analytics
+blp.yas('T 4.5 05/15/38 Govt', ['YAS_BOND_YLD', 'YAS_MOD_DUR', 'YAS_ASW_SPREAD'])
+```
+
+```pydocstring
+Out[15]:
+                     YAS_ASW_SPREAD  YAS_BOND_YLD  YAS_MOD_DUR
+ticker
+T 4.5 05/15/38 Govt       33.093531         4.348     9.324928
+```
+
+**Available parameters:**
+- `settle_dt`: Settlement date (YYYYMMDD or datetime)
+- `yield_type`: `YieldType.YTM` (default) or `YieldType.YTC`
+- `price`: Input price to calculate yield
+- `yield_`: Input yield to calculate price
+- `spread`: Spread to benchmark in basis points
+- `benchmark`: Benchmark bond ticker for spread calculations
 
 #### Field Information and Search
 
