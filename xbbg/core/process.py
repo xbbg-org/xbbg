@@ -17,7 +17,7 @@ import pandas as pd
 from xbbg import const
 from xbbg.core.config import intervals, overrides
 from xbbg.core.infra import conn
-from xbbg.core.infra.blpapi_wrapper import blpapi
+from xbbg.core.infra.blpapi_wrapper import blpapi, is_available
 from xbbg.core.utils import timezone, utils as utils_module
 
 if TYPE_CHECKING:
@@ -32,20 +32,39 @@ try:
 except ImportError:
     blpapi_logging = None  # type: ignore[assignment]
 
-RESPONSE_ERROR = blpapi.Name("responseError")
-SESSION_TERMINATED = blpapi.Name("SessionTerminated")
-CATEGORY = blpapi.Name("category")
-MESSAGE = blpapi.Name("message")
-BAR_DATA = blpapi.Name("barData")
-BAR_TICK = blpapi.Name("barTickData")
-TICK_DATA = blpapi.Name("tickData")
-RESULTS = blpapi.Name("results")
-TABLE = blpapi.Name("table")
-COLUMNS = blpapi.Name("columns")
-ROWS = blpapi.Name("rows")
-VALUES = blpapi.Name("values")
-NAME = blpapi.Name("name")
-FIELD = blpapi.Name("field")
+# Pre-create blpapi.Name objects for performance (avoid repeated string lookups)
+# Guard with is_available() to allow import when blpapi is not installed
+if is_available():
+    RESPONSE_ERROR = blpapi.Name("responseError")
+    SESSION_TERMINATED = blpapi.Name("SessionTerminated")
+    CATEGORY = blpapi.Name("category")
+    MESSAGE = blpapi.Name("message")
+    BAR_DATA = blpapi.Name("barData")
+    BAR_TICK = blpapi.Name("barTickData")
+    TICK_DATA = blpapi.Name("tickData")
+    RESULTS = blpapi.Name("results")
+    TABLE = blpapi.Name("table")
+    COLUMNS = blpapi.Name("columns")
+    ROWS = blpapi.Name("rows")
+    VALUES = blpapi.Name("values")
+    NAME = blpapi.Name("name")
+    FIELD = blpapi.Name("field")
+else:
+    # Placeholders when blpapi unavailable - will fail at runtime if used
+    RESPONSE_ERROR = None  # type: ignore[assignment]
+    SESSION_TERMINATED = None  # type: ignore[assignment]
+    CATEGORY = None  # type: ignore[assignment]
+    MESSAGE = None  # type: ignore[assignment]
+    BAR_DATA = None  # type: ignore[assignment]
+    BAR_TICK = None  # type: ignore[assignment]
+    TICK_DATA = None  # type: ignore[assignment]
+    RESULTS = None  # type: ignore[assignment]
+    TABLE = None  # type: ignore[assignment]
+    COLUMNS = None  # type: ignore[assignment]
+    ROWS = None  # type: ignore[assignment]
+    VALUES = None  # type: ignore[assignment]
+    NAME = None  # type: ignore[assignment]
+    FIELD = None  # type: ignore[assignment]
 
 
 def create_request(

@@ -4,6 +4,8 @@ Provides utilities to create and reuse `blpapi.Session` objects, open
 services, and send requests with sensible defaults.
 """
 
+from __future__ import annotations  # Required: defer annotation evaluation when blpapi unavailable
+
 import logging
 from threading import Lock
 from typing import Any
