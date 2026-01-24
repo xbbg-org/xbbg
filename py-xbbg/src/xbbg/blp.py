@@ -569,8 +569,12 @@ def _convert_backend(
 ) -> DataFrameResult:
     """Convert narwhals DataFrame to the requested backend.
 
+    Note: Uses Any for input because this function handles both narwhals
+    DataFrames and already-converted native DataFrames, and the narwhals
+    generic type system makes precise typing impractical.
+
     Args:
-        nw_df: A narwhals DataFrame (or already-converted DataFrame)
+        nw_df: A narwhals DataFrame (or already-converted native DataFrame).
         backend: Target backend (Backend enum, string, or None)
 
     Returns:
@@ -1417,6 +1421,10 @@ def bdtick(
 # =============================================================================
 
 
+# Bloomberg field values can be various primitive types
+TickValue: TypeAlias = float | int | str | bool | datetime | None
+
+
 @dataclass
 class Tick:
     """Single tick data point from a subscription.
@@ -1424,13 +1432,13 @@ class Tick:
     Attributes:
         ticker: Security identifier
         field: Bloomberg field name
-        value: Field value (type depends on field)
+        value: Field value (float, int, str, bool, datetime, or None)
         timestamp: Time the tick was received
     """
 
     ticker: str
     field: str
-    value: Any
+    value: TickValue
     timestamp: datetime
 
 
