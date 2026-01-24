@@ -21,10 +21,10 @@ Design:
 from __future__ import annotations
 
 import asyncio
-import logging
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
+import logging
+import re
 from typing import TYPE_CHECKING
 
 import pandas as pd

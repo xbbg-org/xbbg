@@ -186,7 +186,6 @@ class TestParseHhmm:
     def test_parse_nan(self):
         """Test parsing NaN values."""
         # NaN is passed as a value that could come from pandas
-        import math
 
         nan_val = float("nan")
         # The function handles this via pd.isna check

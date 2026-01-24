@@ -6,10 +6,10 @@ for Bloomberg intraday bar data and reference data (BDP/BDS).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING

@@ -8,8 +8,8 @@ Replaces the static YAML configuration with dynamic derivation.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

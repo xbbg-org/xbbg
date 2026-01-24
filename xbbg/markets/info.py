@@ -6,13 +6,11 @@ Provides functions to resolve exchange information, market timing, and asset con
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import pandas as pd
 
 from xbbg import const
 from xbbg.core.utils import timezone
-from xbbg.io import files
 
 logger = logging.getLogger(__name__)
 

@@ -446,4 +446,4 @@ class TestStandardSessions:
         from xbbg.core.config.intervals import STANDARD_SESSIONS
 
         expected = {"allday", "day", "am", "pm", "pre", "post", "night"}
-        assert STANDARD_SESSIONS == expected
+        assert expected == STANDARD_SESSIONS
