@@ -19,14 +19,13 @@ use arrow::record_batch::RecordBatch;
 use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
-use xbbg_core::schema::SerializedSchema;
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, CorrelationId, EventType, RequestBuilder, Service, SessionOptions};
+use xbbg_core::{BlpError, CorrelationId, EventType, Service, SessionOptions};
 
 use super::state::{
     BqlState, BsrchState, BulkDataState, FieldInfoState, GenericState, HistDataState,
     HistDataStreamState, IntradayBarState, IntradayBarStreamState, IntradayTickState,
-    IntradayTickStreamState, JsonArrowState, LongMode, OutputFormat, RawJsonState, RefDataState,
+    IntradayTickStreamState, LongMode, OutputFormat, RefDataState,
 };
 use super::{EngineConfig, ExtractorType, RequestParams};
 
@@ -42,11 +41,6 @@ pub enum WorkerCommand {
         params: RequestParams,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     },
-    /// Introspect a service schema.
-    SchemaIntrospect {
-        service: String,
-        reply: oneshot::Sender<Result<SerializedSchema, BlpError>>,
-    },
     /// Shutdown the worker gracefully.
     Shutdown,
 }
@@ -60,8 +54,6 @@ pub enum UnifiedRequestState {
     BulkData(BulkDataState),
     HistDataStream(HistDataStreamState),
     Generic(GenericState),
-    RawJson(RawJsonState),
-    JsonArrow(JsonArrowState),
     Bql(BqlState),
     Bsrch(BsrchState),
     FieldInfo(FieldInfoState),
@@ -74,7 +66,7 @@ pub enum UnifiedRequestState {
 
 impl UnifiedRequestState {
     /// Process a PARTIAL_RESPONSE message (append to builders).
-    pub fn on_partial(&mut self, msg: &xbbg_core::MessageRef) {
+    pub fn on_partial(&mut self, msg: &xbbg_core::Message) {
         match self {
             // Bulk types
             UnifiedRequestState::RefData(s) => s.on_partial(msg),
@@ -82,8 +74,6 @@ impl UnifiedRequestState {
             UnifiedRequestState::BulkData(s) => s.on_partial(msg),
             UnifiedRequestState::HistDataStream(s) => s.on_partial(msg),
             UnifiedRequestState::Generic(s) => s.on_partial(msg),
-            UnifiedRequestState::RawJson(s) => s.on_partial(msg),
-            UnifiedRequestState::JsonArrow(s) => s.on_partial(msg),
             UnifiedRequestState::Bql(s) => s.on_partial(msg),
             UnifiedRequestState::Bsrch(s) => s.on_partial(msg),
             UnifiedRequestState::FieldInfo(s) => s.on_partial(msg),
@@ -96,7 +86,7 @@ impl UnifiedRequestState {
     }
 
     /// Process the final RESPONSE message, build the result, and send reply.
-    pub fn finish_and_reply(self, msg: &xbbg_core::MessageRef) {
+    pub fn finish_and_reply(self, msg: &xbbg_core::Message) {
         match self {
             // Bulk types
             UnifiedRequestState::RefData(s) => s.finish(msg),
@@ -104,8 +94,6 @@ impl UnifiedRequestState {
             UnifiedRequestState::BulkData(s) => s.finish(msg),
             UnifiedRequestState::HistDataStream(s) => s.finish(msg),
             UnifiedRequestState::Generic(s) => s.finish(msg),
-            UnifiedRequestState::RawJson(s) => s.finish(msg),
-            UnifiedRequestState::JsonArrow(s) => s.finish(msg),
             UnifiedRequestState::Bql(s) => s.finish(msg),
             UnifiedRequestState::Bsrch(s) => s.finish(msg),
             UnifiedRequestState::FieldInfo(s) => s.finish(msg),
@@ -132,12 +120,6 @@ impl UnifiedRequestState {
             }
             UnifiedRequestState::HistDataStream(s) => s.fail(error),
             UnifiedRequestState::Generic(s) => {
-                let _ = s.reply.send(Err(error));
-            }
-            UnifiedRequestState::RawJson(s) => {
-                let _ = s.reply.send(Err(error));
-            }
-            UnifiedRequestState::JsonArrow(s) => {
                 let _ = s.reply.send(Err(error));
             }
             UnifiedRequestState::Bql(s) => {
@@ -256,10 +238,6 @@ impl RequestWorker {
                             tracing::error!(worker_id = self.id, error = %e, "stream request error");
                         }
                     }
-                    Ok(WorkerCommand::SchemaIntrospect { service, reply }) => {
-                        let result = self.introspect_schema(&service);
-                        let _ = reply.send(result);
-                    }
                     Err(mpsc::error::TryRecvError::Empty) => break,
                     Err(mpsc::error::TryRecvError::Disconnected) => {
                         tracing::info!(worker_id = self.id, "command channel closed");
@@ -280,36 +258,9 @@ impl RequestWorker {
         if !self.services.contains_key(name) {
             self.session.open_service(name)?;
             let svc = self.session.get_service(name)?;
-
-            // Cache schema on first service open (for validation)
-            let cache = crate::schema_cache::global_schema_cache();
-            if cache.get(name).is_none() {
-                tracing::info!(
-                    worker_id = self.id,
-                    service = name,
-                    "caching service schema"
-                );
-                let schema = SerializedSchema::from_service(&svc);
-                if let Err(e) = cache.put(&schema) {
-                    tracing::warn!(error = %e, "failed to cache schema");
-                }
-            }
-
             self.services.insert(name.to_string(), svc);
         }
         Ok(())
-    }
-
-    /// Introspect a service schema and return serialized form.
-    fn introspect_schema(&mut self, service_name: &str) -> Result<SerializedSchema, BlpError> {
-        self.ensure_service(service_name)?;
-        let service = self.services.get(service_name).unwrap();
-        tracing::info!(
-            worker_id = self.id,
-            service = service_name,
-            "introspecting service schema"
-        );
-        Ok(SerializedSchema::from_service(service))
     }
 
     /// Unified request handler - routes to correct state based on extractor type.
@@ -330,7 +281,7 @@ impl RequestWorker {
         let state = self.create_request_state(&params, reply)?;
 
         let key = self.requests.insert(state);
-        let cid = CorrelationId::U64(key as u64);
+        let cid = CorrelationId::Int(key as i64);
 
         // Build request from params
         let service = self.services.get(&params.service).unwrap();
@@ -385,9 +336,10 @@ impl RequestWorker {
                 let field = fields.first().cloned().unwrap_or_default();
                 UnifiedRequestState::BulkData(BulkDataState::new(field, reply))
             }
-            ExtractorType::Generic => UnifiedRequestState::Generic(GenericState::new(reply)),
-            ExtractorType::RawJson => UnifiedRequestState::RawJson(RawJsonState::new(reply)),
-            ExtractorType::JsonArrow => UnifiedRequestState::JsonArrow(JsonArrowState::new(reply)),
+            ExtractorType::Generic | ExtractorType::RawJson | ExtractorType::JsonArrow => {
+                // RawJson and JsonArrow now use Generic (Element-based flattener)
+                UnifiedRequestState::Generic(GenericState::new(reply))
+            }
             ExtractorType::Bql => UnifiedRequestState::Bql(BqlState::new(reply)),
             ExtractorType::Bsrch => UnifiedRequestState::Bsrch(BsrchState::new(reply)),
             ExtractorType::FieldInfo => UnifiedRequestState::FieldInfo(FieldInfoState::new(reply)),
@@ -443,7 +395,7 @@ impl RequestWorker {
         };
 
         let key = self.requests.insert(state);
-        let cid = CorrelationId::U64(key as u64);
+        let cid = CorrelationId::Int(key as i64);
 
         let service = self.services.get(&params.service).unwrap();
         let request = self.build_request_from_params(service, &params)?;
@@ -465,81 +417,75 @@ impl RequestWorker {
         service: &Service,
         params: &RequestParams,
     ) -> Result<xbbg_core::Request, BlpError> {
-        let mut builder = RequestBuilder::new();
+        let mut request = service.create_request(&params.operation)?;
 
         // Set securities (multi or single)
         if let Some(ref securities) = params.securities {
-            builder = builder.securities(securities.clone());
+            for sec in securities {
+                request.append_str("securities", sec)?;
+            }
         }
         if let Some(ref security) = params.security {
-            // For intraday requests, use single security method
+            // For intraday requests, use "security" element
             if matches!(
                 params.extractor,
                 ExtractorType::IntradayBar | ExtractorType::IntradayTick
             ) {
-                builder = builder.security(security);
+                request.append_str("security", security)?;
             } else {
-                builder = builder.securities(vec![security.clone()]);
+                request.append_str("securities", security)?;
             }
         }
 
         // Set fields
         if let Some(ref fields) = params.fields {
-            builder = builder.fields(fields.clone());
+            for field in fields {
+                request.append_str("fields", field)?;
+            }
         }
 
         // Set date range (for historical)
         if let Some(ref start) = params.start_date {
-            builder = builder.start_date(start);
+            request.append_str("startDate", start)?;
         }
         if let Some(ref end) = params.end_date {
-            builder = builder.end_date(end);
+            request.append_str("endDate", end)?;
         }
 
         // Set datetime range (for intraday)
         if let Some(ref start) = params.start_datetime {
-            builder = builder.start_datetime(start);
+            request.append_str("startDateTime", start)?;
         }
         if let Some(ref end) = params.end_datetime {
-            builder = builder.end_datetime(end);
+            request.append_str("endDateTime", end)?;
         }
 
         // Set event type and interval (for intraday bars)
         if let Some(ref event_type) = params.event_type {
-            builder = builder.event_type(event_type);
+            request.append_str("eventType", event_type)?;
         }
         if let Some(interval) = params.interval {
-            builder = builder.interval(interval);
+            request.append_str("interval", &interval.to_string())?;
         }
 
-        // Set overrides (Bloomberg field override format)
-        if let Some(ref overrides) = params.overrides {
-            for (name, value) in overrides {
-                builder = builder.r#override(name, value.clone());
-            }
-        }
-
-        // Set generic elements (for BQL, bsrch, etc.)
+        // Set generic elements (for BQL, bsrch, options, etc.)
         if let Some(ref elements) = params.elements {
             for (name, value) in elements {
-                builder = builder.element(name, value.clone());
+                request.append_str(name, value)?;
             }
         }
 
-        // Set JSON elements (for complex nested structures like tasvc)
-        if let Some(ref json) = params.json_elements {
-            builder = builder.json_elements(json);
-        }
-
-        // Set apiflds parameters
-        if let Some(ref search_spec) = params.search_spec {
-            builder = builder.search_spec(search_spec);
-        }
+        // Set apiflds field IDs
         if let Some(ref field_ids) = params.field_ids {
-            builder = builder.field_ids(field_ids.clone());
+            for id in field_ids {
+                request.append_str("id", id)?;
+            }
         }
 
-        builder.build(service, &params.operation)
+        // Note: overrides, json_elements, and search_spec require more complex handling
+        // TODO: Implement override and complex element support when needed
+
+        Ok(request)
     }
 
     fn dispatch_event(&mut self, ev: xbbg_core::Event) {
@@ -568,10 +514,10 @@ impl RequestWorker {
         }
     }
 
-    fn handle_partial_response(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_partial_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
                 if let Some(state) = self.requests.get_mut(key as usize) {
                     state.on_partial(msg);
                     tracing::trace!(worker_id = self.id, key = key, "partial response");
@@ -580,10 +526,10 @@ impl RequestWorker {
         }
     }
 
-    fn handle_response(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
                 if self.requests.contains(key as usize) {
                     // Log round-trip time
                     if let Some(t_send) = self.send_times.remove(&(key as usize)) {
@@ -603,13 +549,13 @@ impl RequestWorker {
         }
     }
 
-    fn handle_request_status(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_request_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
         let n = msg.num_correlation_ids();
 
         for i in 0..n {
-            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
                 if msg_type == "RequestFailure" {
                     tracing::error!(worker_id = self.id, key = key, "request failed");
                     if self.requests.contains(key as usize) {
@@ -623,7 +569,7 @@ impl RequestWorker {
         }
     }
 
-    fn handle_session_status(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_session_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
         match msg_type {
@@ -639,7 +585,7 @@ impl RequestWorker {
         }
     }
 
-    fn handle_service_status(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_service_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
         tracing::debug!(worker_id = self.id, msg_type = msg_type, "service status");

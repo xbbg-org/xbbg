@@ -1,4 +1,7 @@
 //! Subscription state with Arrow builders for real-time data.
+//!
+//! Extracts subscription messages directly from Bloomberg Elements
+//! without JSON intermediate serialization.
 
 use std::sync::Arc;
 
@@ -7,7 +10,7 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
 
-use xbbg_core::MessageRef;
+use xbbg_core::Message;
 
 use super::super::OverflowPolicy;
 
@@ -79,8 +82,18 @@ impl SubscriptionState {
         }
     }
 
-    /// Process a SUBSCRIPTION_DATA message.
-    pub fn on_message(&mut self, msg: &MessageRef) {
+    /// Process a SUBSCRIPTION_DATA message using Element API.
+    ///
+    /// Bloomberg subscription messages have a flat structure:
+    /// ```text
+    /// MarketDataEvents {
+    ///   LAST_PRICE: 150.0
+    ///   BID: 149.95
+    ///   ASK: 150.05
+    ///   ...
+    /// }
+    /// ```
+    pub fn on_message(&mut self, msg: &Message) {
         // Get timestamp
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -90,12 +103,12 @@ impl SubscriptionState {
         self.timestamp_builder.append_value(timestamp);
         self.topic_builder.append_value(self.topic.as_ref());
 
-        // Extract each field value directly (no text conversion)
+        // Extract each field value directly using Element API
         let elem = msg.elements();
         for (i, field_name) in self.field_strings.iter().enumerate() {
-            if let Some(field_elem) = elem.get_element(field_name) {
+            if let Some(field_elem) = elem.get_by_str(field_name) {
                 // Try to get as float64 (most market data is numeric)
-                if let Some(val) = field_elem.get_value_as_float64(0) {
+                if let Some(val) = field_elem.get_f64(0) {
                     self.field_builders[i].append_value(val);
                 } else {
                     self.field_builders[i].append_null();

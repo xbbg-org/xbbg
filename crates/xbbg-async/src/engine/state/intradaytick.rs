@@ -1,33 +1,21 @@
 //! Intraday tick (bdtick) state with Arrow builders.
+//!
+//! Extracts IntradayTickResponse messages directly from Bloomberg Elements
+//! without JSON intermediate serialization.
 
-use std::sync::Arc;
-
-use arrow::array::{Float64Builder, Int64Builder, StringBuilder, TimestampMicrosecondBuilder};
-use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
-use chrono::{DateTime, Utc};
 use tokio::sync::oneshot;
 use tracing::trace;
 
-use super::json_schema;
-use xbbg_core::{BlpError, MessageRef};
+use super::typed_builder::{ArrowType, ColumnSet};
+use xbbg_core::{BlpError, Message};
 
 /// State for an intraday tick request (bdtick).
 pub struct IntradayTickState {
     /// Ticker for this request
     ticker: String,
-    /// Ticker builder
-    ticker_builder: StringBuilder,
-    /// Time builder (microseconds since epoch)
-    time_builder: TimestampMicrosecondBuilder,
-    /// Event type builder (TRADE, BID, ASK, etc.)
-    type_builder: StringBuilder,
-    /// Value builder (price)
-    value_builder: Float64Builder,
-    /// Size builder
-    size_builder: Int64Builder,
-    /// Condition codes builder
-    condition_codes_builder: StringBuilder,
+    /// Column set for building the output
+    columns: ColumnSet,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -35,132 +23,110 @@ pub struct IntradayTickState {
 impl IntradayTickState {
     /// Create a new intraday tick state.
     pub fn new(ticker: String, reply: oneshot::Sender<Result<RecordBatch, BlpError>>) -> Self {
+        let mut columns = ColumnSet::new();
+        columns.set_type_hint("ticker", ArrowType::String);
+        columns.set_type_hint("time", ArrowType::TimestampMicros);
+        columns.set_type_hint("type", ArrowType::String);
+        columns.set_type_hint("value", ArrowType::Float64);
+        columns.set_type_hint("size", ArrowType::Int64);
+        columns.set_type_hint("conditionCodes", ArrowType::String);
+
         Self {
             ticker,
-            ticker_builder: StringBuilder::new(),
-            time_builder: TimestampMicrosecondBuilder::new(),
-            type_builder: StringBuilder::new(),
-            value_builder: Float64Builder::new(),
-            size_builder: Int64Builder::new(),
-            condition_codes_builder: StringBuilder::new(),
+            columns,
             reply,
         }
     }
 
     /// Process a PARTIAL_RESPONSE message.
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         self.process_message(msg);
     }
 
     /// Process the final RESPONSE message and send the result via reply channel.
-    pub fn finish(mut self, msg: &MessageRef) {
+    pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
-
-        let result = self.build_batch_inner();
-        let _ = self.reply.send(result);
+        let reply = self.reply;
+        let result = self.columns.finish_with_order(&[
+            "ticker",
+            "time",
+            "type",
+            "value",
+            "size",
+            "conditionCodes",
+        ]);
+        let _ = reply.send(result);
     }
 
-    /// Process an IntradayTickResponse message using JSON bulk extraction.
-    fn process_message(&mut self, msg: &MessageRef) {
-        let Some(json_str) = msg.to_json() else {
-            trace!("toJson not available, message skipped");
+    /// Process an IntradayTickResponse message using Element API.
+    ///
+    /// Bloomberg structure:
+    /// ```text
+    /// IntradayTickResponse {
+    ///   tickData {
+    ///     tickData[] {
+    ///       time: 2024-01-15T09:30:00.123
+    ///       type: "TRADE"
+    ///       value: 150.0
+    ///       size: 100
+    ///       conditionCodes: "R"
+    ///     }
+    ///   }
+    /// }
+    /// ```
+    fn process_message(&mut self, msg: &Message) {
+        let root = msg.elements();
+
+        // Get tickData (outer)
+        let Some(tick_data_outer) = root.get_by_str("tickData") else {
+            trace!("No tickData in message");
             return;
         };
 
-        let mut json_bytes = json_str.into_bytes();
-
-        let Ok(resp) = json_schema::parser::parse_intraday_tick(&mut json_bytes) else {
-            trace!("JSON parsing failed, message skipped");
+        // Get tickData[] (inner array)
+        let Some(tick_data) = tick_data_outer.get_by_str("tickData") else {
+            trace!("No inner tickData array in message");
             return;
         };
 
-        for tick in &resp.tick_data.tick_data {
-            self.ticker_builder.append_value(&self.ticker);
+        // Iterate through each tick
+        let n = tick_data.len();
+        for i in 0..n {
+            let Some(tick) = tick_data.get_element(i) else {
+                continue;
+            };
 
-            // Parse time string to microseconds
-            if let Some(time_str) = &tick.time {
-                if let Some(micros) = parse_datetime_to_micros(time_str.as_ref()) {
-                    self.time_builder.append_value(micros);
-                } else {
-                    self.time_builder.append_null();
-                }
-            } else {
-                self.time_builder.append_null();
-            }
+            self.columns.append_str("ticker", &self.ticker);
 
-            // Type
-            if let Some(t) = &tick.tick_type {
-                self.type_builder.append_value(t.as_ref());
-            } else {
-                self.type_builder.append_null();
-            }
+            // Get time
+            self.append_field(&tick, "time");
 
-            // Value
-            if let Some(v) = tick.value {
-                self.value_builder.append_value(v);
-            } else {
-                self.value_builder.append_null();
-            }
+            // Get type
+            self.append_field(&tick, "type");
 
-            // Size
-            if let Some(s) = tick.size {
-                self.size_builder.append_value(s);
-            } else {
-                self.size_builder.append_null();
-            }
+            // Get value
+            self.append_field(&tick, "value");
 
-            // Condition codes (not in base schema, append null)
-            self.condition_codes_builder.append_null();
+            // Get size
+            self.append_field(&tick, "size");
+
+            // Get condition codes (may not always be present)
+            self.append_field(&tick, "conditionCodes");
+
+            self.columns.end_row();
         }
     }
 
-    /// Build the final RecordBatch.
-    fn build_batch_inner(&mut self) -> Result<RecordBatch, BlpError> {
-        let ticker_array = self.ticker_builder.finish();
-        let time_array = self.time_builder.finish();
-        let type_array = self.type_builder.finish();
-        let value_array = self.value_builder.finish();
-        let size_array = self.size_builder.finish();
-        let condition_codes_array = self.condition_codes_builder.finish();
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("ticker", DataType::Utf8, false),
-            Field::new(
-                "time",
-                DataType::Timestamp(TimeUnit::Microsecond, None),
-                true,
-            ),
-            Field::new("type", DataType::Utf8, true),
-            Field::new("value", DataType::Float64, true),
-            Field::new("size", DataType::Int64, true),
-            Field::new("conditionCodes", DataType::Utf8, true),
-        ]));
-
-        let columns: Vec<Arc<dyn arrow::array::Array>> = vec![
-            Arc::new(ticker_array),
-            Arc::new(time_array),
-            Arc::new(type_array),
-            Arc::new(value_array),
-            Arc::new(size_array),
-            Arc::new(condition_codes_array),
-        ];
-
-        RecordBatch::try_new(schema, columns).map_err(|e| BlpError::Internal {
-            detail: format!("build RecordBatch: {e}"),
-        })
+    /// Helper to append a field value or null.
+    fn append_field(&mut self, element: &xbbg_core::Element, field_name: &str) {
+        if let Some(field_elem) = element.get_by_str(field_name) {
+            if let Some(value) = field_elem.get_value(0) {
+                self.columns.append(field_name, value);
+            } else {
+                self.columns.append_null(field_name);
+            }
+        } else {
+            self.columns.append_null(field_name);
+        }
     }
-}
-
-/// Parse an ISO datetime string to microseconds since epoch.
-fn parse_datetime_to_micros(dt_str: &str) -> Option<i64> {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(dt_str) {
-        return Some(dt.with_timezone(&Utc).timestamp_micros());
-    }
-    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S") {
-        return Some(dt.and_utc().timestamp_micros());
-    }
-    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S%.3f") {
-        return Some(dt.and_utc().timestamp_micros());
-    }
-    None
 }

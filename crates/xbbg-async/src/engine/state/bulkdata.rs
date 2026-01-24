@@ -1,27 +1,23 @@
 //! Bulk data (bds) state with Arrow builders.
+//!
+//! Extracts BulkDataResponse messages directly from Bloomberg Elements
+//! without JSON intermediate serialization.
 
-use std::borrow::Cow;
-use std::sync::Arc;
-
-use arrow::array::StringBuilder;
-use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
 use tracing::trace;
 
-use super::json_schema::{self, JsonValue};
-use xbbg_core::{BlpError, MessageRef};
+use super::typed_builder::ColumnSet;
+use xbbg_core::{BlpError, Message};
 
 /// State for a bulk data request (bds).
 pub struct BulkDataState {
-    /// Field name as string
-    field_string: String,
-    /// Ticker builder
-    ticker_builder: StringBuilder,
+    /// Field name as string (the bulk field to extract)
+    field_name: String,
+    /// Column set for building the output
+    columns: ColumnSet,
     /// Discovered sub-field names (populated on first row)
     subfield_names: Vec<String>,
-    /// Sub-field builders (one per sub-field, dynamic)
-    subfield_builders: Vec<StringBuilder>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -30,105 +26,120 @@ impl BulkDataState {
     /// Create a new bulkdata state.
     pub fn new(field: String, reply: oneshot::Sender<Result<RecordBatch, BlpError>>) -> Self {
         Self {
-            field_string: field,
-            ticker_builder: StringBuilder::new(),
+            field_name: field,
+            columns: ColumnSet::new(),
             subfield_names: Vec::new(),
-            subfield_builders: Vec::new(),
             reply,
         }
     }
 
     /// Process a PARTIAL_RESPONSE message.
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         self.process_message(msg);
     }
 
     /// Process the final RESPONSE message and send the result via reply channel.
-    pub fn finish(mut self, msg: &MessageRef) {
+    pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
-
-        // Build batch first (borrows self), then take reply
-        let result = self.build_batch_inner();
-        let _ = self.reply.send(result);
+        let reply = self.reply;
+        let mut order = vec!["ticker"];
+        order.extend(self.subfield_names.iter().map(|s| s.as_str()));
+        let result = self.columns.finish_with_order(&order);
+        let _ = reply.send(result);
     }
 
-    /// Process a BulkDataResponse message using JSON bulk extraction.
-    fn process_message(&mut self, msg: &MessageRef) {
-        let Some(json_str) = msg.to_json() else {
-            trace!("toJson not available, message skipped");
+    /// Process a BulkDataResponse message using Element API.
+    ///
+    /// Bloomberg structure (for bds - similar to refdata but with array fields):
+    /// ```text
+    /// ReferenceDataResponse {
+    ///   securityData[] {
+    ///     security: "AAPL US Equity"
+    ///     fieldData {
+    ///       DVD_HIST[] {           // <-- bulk field is an array
+    ///         Declared Date: "2024-01-15"
+    ///         Amount: 0.24
+    ///         ...
+    ///       }
+    ///     }
+    ///   }
+    /// }
+    /// ```
+    fn process_message(&mut self, msg: &Message) {
+        let root = msg.elements();
+
+        // Get securityData array
+        let Some(security_data) = root.get_by_str("securityData") else {
+            trace!("No securityData in message");
             return;
         };
 
-        let mut json_bytes = json_str.into_bytes();
-
-        let Ok(resp) = json_schema::parser::parse_bulkdata(&mut json_bytes) else {
-            trace!("JSON parsing failed, message skipped");
-            return;
-        };
-
-        for sec in &resp.security_data {
-            let ticker = sec.security.as_ref();
-
-            // Get the bulk field array from fieldData
-            let Some(bulk_value) = sec.field_data.get(self.field_string.as_str()) else {
+        // Iterate through each security
+        let n = security_data.len();
+        for i in 0..n {
+            let Some(sec) = security_data.get_element(i) else {
                 continue;
             };
 
-            // bulk_value should be an array of objects
-            let JsonValue::Array(rows) = bulk_value else {
+            // Get ticker
+            let ticker = sec
+                .get_by_str("security")
+                .and_then(|e| e.get_str(0))
+                .unwrap_or("");
+
+            // Check for security error
+            if sec.get_by_str("securityError").is_some() {
+                trace!(ticker = ticker, "Security has error, skipping");
+                continue;
+            }
+
+            // Get fieldData
+            let Some(field_data) = sec.get_by_str("fieldData") else {
+                trace!(ticker = ticker, "No fieldData for security");
                 continue;
             };
 
-            for row in rows {
-                let JsonValue::Object(row_obj) = row else {
+            // Get the bulk field (which is an array)
+            let Some(bulk_field) = field_data.get_by_str(&self.field_name) else {
+                trace!(ticker = ticker, field = %self.field_name, "Bulk field not found");
+                continue;
+            };
+
+            // Iterate through the array of rows
+            let row_count = bulk_field.len();
+            for j in 0..row_count {
+                let Some(row) = bulk_field.get_element(j) else {
                     continue;
                 };
 
-                self.ticker_builder.append_value(ticker);
+                self.columns.append_str("ticker", ticker);
 
                 // Discover sub-fields on first row
                 if self.subfield_names.is_empty() {
-                    for key in row_obj.keys() {
-                        self.subfield_names.push(key.to_string());
-                        self.subfield_builders.push(StringBuilder::new());
+                    let num_children = row.num_children();
+                    for k in 0..num_children {
+                        if let Some(child) = row.get_at(k) {
+                            let name = child.name();
+                            self.subfield_names.push(name.as_str().to_string());
+                        }
                     }
                 }
 
                 // Extract sub-field values
-                for (k, subfield_name) in self.subfield_names.iter().enumerate() {
-                    if let Some(value) = row_obj.get(&Cow::Borrowed(subfield_name.as_str())) {
-                        if let Some(s) = value.as_string() {
-                            self.subfield_builders[k].append_value(&s);
+                for subfield_name in &self.subfield_names.clone() {
+                    if let Some(subfield_elem) = row.get_by_str(subfield_name) {
+                        if let Some(value) = subfield_elem.get_value(0) {
+                            self.columns.append(subfield_name, value);
                         } else {
-                            self.subfield_builders[k].append_null();
+                            self.columns.append_null(subfield_name);
                         }
                     } else {
-                        self.subfield_builders[k].append_null();
+                        self.columns.append_null(subfield_name);
                     }
                 }
+
+                self.columns.end_row();
             }
         }
-    }
-
-    /// Build the final RecordBatch.
-    fn build_batch_inner(&mut self) -> Result<RecordBatch, BlpError> {
-        let ticker_array = self.ticker_builder.finish();
-
-        // Build schema
-        let mut fields = vec![Field::new("ticker", DataType::Utf8, false)];
-        for name in &self.subfield_names {
-            fields.push(Field::new(name.as_str(), DataType::Utf8, true));
-        }
-        let schema = Arc::new(Schema::new(fields));
-
-        // Build columns
-        let mut columns: Vec<Arc<dyn arrow::array::Array>> = vec![Arc::new(ticker_array)];
-        for builder in &mut self.subfield_builders {
-            columns.push(Arc::new(builder.finish()));
-        }
-
-        RecordBatch::try_new(schema, columns).map_err(|e| BlpError::Internal {
-            detail: format!("build RecordBatch: {e}"),
-        })
     }
 }

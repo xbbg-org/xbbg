@@ -180,16 +180,9 @@ impl SubscriptionWorker {
         options: Vec<String>,
         stream: mpsc::Sender<RecordBatch>,
     ) -> Vec<SlabKey> {
-        let mut sub_list = match SubscriptionList::new() {
-            Ok(list) => list,
-            Err(e) => {
-                tracing::error!(worker_id = self.id, error = %e, "failed to create subscription list");
-                return vec![];
-            }
-        };
+        let mut sub_list = SubscriptionList::new();
 
         let field_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
-        let option_refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
         let mut keys = Vec::with_capacity(topics.len());
 
         for topic in &topics {
@@ -203,8 +196,10 @@ impl SubscriptionWorker {
             let key = self.subs.insert(state);
             keys.push(key);
 
-            let cid = CorrelationId::U64(key as u64);
-            if let Err(e) = sub_list.add_with_options(topic, &field_refs, &option_refs, Some(&cid))
+            let cid = CorrelationId::Int(key as i64);
+            // Convert options Vec to comma-separated string for SubscriptionList::add
+            let options_str = options.join(",");
+            if let Err(e) = sub_list.add(topic, &field_refs, &options_str, &cid)
             {
                 tracing::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
             }
@@ -250,18 +245,18 @@ impl SubscriptionWorker {
         }
     }
 
-    fn handle_subscription_data(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_subscription_data(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
                 if let Some(state) = self.subs.get_mut(key as usize) {
                     // Check for DATALOSS
                     let elem = msg.elements();
-                    if let Some(event_type) = elem.get_element("MKTDATA_EVENT_TYPE") {
-                        if let Some(val) = event_type.get_value_as_string(0) {
+                    if let Some(event_type) = elem.get_by_str("MKTDATA_EVENT_TYPE") {
+                        if let Some(val) = event_type.get_str(0) {
                             if val == "SUMMARY" {
-                                if let Some(subtype) = elem.get_element("MKTDATA_EVENT_SUBTYPE") {
-                                    if let Some(sub_val) = subtype.get_value_as_string(0) {
+                                if let Some(subtype) = elem.get_by_str("MKTDATA_EVENT_SUBTYPE") {
+                                    if let Some(sub_val) = subtype.get_str(0) {
                                         if sub_val == "DATALOSS" {
                                             state.on_dataloss();
                                             continue;
@@ -278,13 +273,13 @@ impl SubscriptionWorker {
         }
     }
 
-    fn handle_subscription_status(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_subscription_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
         let n = msg.num_correlation_ids();
 
         for i in 0..n {
-            if let Some(CorrelationId::U64(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
                 match msg_type {
                     "SubscriptionStarted" => {
                         tracing::debug!(worker_id = self.id, key = key, "subscription started");
@@ -314,7 +309,7 @@ impl SubscriptionWorker {
         }
     }
 
-    fn handle_session_status(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_session_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
         match msg_type {
@@ -330,7 +325,7 @@ impl SubscriptionWorker {
         }
     }
 
-    fn handle_service_status(&mut self, msg: &xbbg_core::MessageRef) {
+    fn handle_service_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
         tracing::debug!(worker_id = self.id, msg_type = msg_type, "service status");

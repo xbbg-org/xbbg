@@ -5,6 +5,8 @@
 //! - type: Arrow type string (e.g., "float64", "string", "date32")
 //! - description: Field description
 //! - category: Category name
+//!
+//! Extracts directly from Bloomberg Elements without JSON intermediate.
 
 use std::sync::Arc;
 
@@ -14,9 +16,8 @@ use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
 use tracing::trace;
 
-use super::json_schema::parser;
 use crate::field_cache::BlpFieldType;
-use xbbg_core::{BlpError, MessageRef};
+use xbbg_core::{BlpError, Message};
 
 /// State for a FieldInfoRequest that extracts field metadata.
 pub struct FieldInfoState {
@@ -45,39 +46,60 @@ impl FieldInfoState {
     }
 
     /// Process a PARTIAL_RESPONSE message.
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         self.process_message(msg);
     }
 
     /// Process the final RESPONSE message and send the result via reply channel.
-    pub fn finish(mut self, msg: &MessageRef) {
+    pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
         let result = self.build_batch();
         let _ = self.reply.send(result);
     }
 
-    /// Process a message by extracting field info.
-    fn process_message(&mut self, msg: &MessageRef) {
-        let Some(json_str) = msg.to_json() else {
-            trace!("toJson not available, message skipped");
+    /// Process a message by extracting field info using Element API.
+    ///
+    /// Bloomberg structure:
+    /// ```text
+    /// FieldInfoResponse {
+    ///   fieldData[] {
+    ///     fieldInfo {
+    ///       id: "PX_LAST"
+    ///       mnemonic: "PX_LAST"
+    ///       description: "Last Price"
+    ///       datatype: "Double"
+    ///       ftype: "Price"
+    ///       categoryName[]: ["Analysis", "Pricing"]
+    ///     }
+    ///   }
+    ///   fieldSearchError? { ... }
+    /// }
+    /// ```
+    fn process_message(&mut self, msg: &Message) {
+        let root = msg.elements();
+
+        // Get fieldData array
+        let Some(field_data) = root.get_by_str("fieldData") else {
+            trace!("No fieldData in message");
             return;
         };
 
-        let mut json_bytes = json_str.into_bytes();
-        let Ok(response) = parser::parse_field_info(&mut json_bytes) else {
-            trace!("FieldInfo JSON parsing failed, message skipped");
-            return;
-        };
+        let n = field_data.len();
+        for i in 0..n {
+            let Some(item) = field_data.get_element(i) else {
+                continue;
+            };
 
-        for item in &response.field_data {
-            let info = &item.field_info;
+            // Get fieldInfo sub-element
+            let Some(field_info) = item.get_by_str("fieldInfo") else {
+                continue;
+            };
 
-            // Get field mnemonic
-            let field = info
-                .mnemonic
-                .as_ref()
-                .or(info.id.as_ref())
-                .map(|s| s.as_ref())
+            // Get field mnemonic (prefer mnemonic over id)
+            let field = field_info
+                .get_by_str("mnemonic")
+                .and_then(|e| e.get_str(0))
+                .or_else(|| field_info.get_by_str("id").and_then(|e| e.get_str(0)))
                 .unwrap_or("");
 
             if field.is_empty() {
@@ -85,11 +107,10 @@ impl FieldInfoState {
             }
 
             // Get type - prefer datatype over ftype
-            let type_str = info
-                .datatype
-                .as_ref()
-                .or(info.ftype.as_ref())
-                .map(|s| s.as_ref())
+            let type_str = field_info
+                .get_by_str("datatype")
+                .and_then(|e| e.get_str(0))
+                .or_else(|| field_info.get_by_str("ftype").and_then(|e| e.get_str(0)))
                 .unwrap_or("String");
 
             // Convert to Arrow type
@@ -97,14 +118,15 @@ impl FieldInfoState {
             let arrow_type = blp_type.to_arrow_type_str();
 
             // Get description
-            let description = info.description.as_ref().map(|s| s.as_ref()).unwrap_or("");
+            let description = field_info
+                .get_by_str("description")
+                .and_then(|e| e.get_str(0))
+                .unwrap_or("");
 
             // Get category (first one if multiple)
-            let category = info
-                .category_name
-                .as_ref()
-                .and_then(|cats| cats.first())
-                .map(|s| s.as_ref())
+            let category = field_info
+                .get_by_str("categoryName")
+                .and_then(|cats| cats.get_str(0))
                 .unwrap_or("");
 
             self.field_builder.append_value(field);

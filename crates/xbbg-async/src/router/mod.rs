@@ -1,8 +1,5 @@
 mod shard;
 
-use ahash::AHasher;
-use std::hash::{Hash, Hasher};
-
 use tokio::sync::mpsc;
 
 use xbbg_core::CorrelationId;
@@ -42,13 +39,8 @@ impl Router {
 
     fn key_for_cid(cid: &CorrelationId) -> u64 {
         match cid {
-            CorrelationId::U64(v) => *v,
-            CorrelationId::Tag(s) => {
-                let mut h = AHasher::default();
-                "tag".hash(&mut h);
-                s.as_ref().hash(&mut h);
-                h.finish()
-            }
+            CorrelationId::Int(v) => *v as u64,
+            CorrelationId::Ptr(p) => *p as u64,
         }
     }
 

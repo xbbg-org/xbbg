@@ -17,9 +17,10 @@ pub fn run_pump(session: Arc<Session>, router: Arc<Router>) {
                     // Build a lightweight envelope
                     let ty = msg.message_type();
                     let message_type = ty.as_str().to_string();
-                    let request_id = msg.get_request_id().map(|s| s.to_string());
-                    let recap_type = msg.recap_type();
-                    let text = Some(msg.print_to_string());
+                    // These methods don't exist in xbbg-core yet - stub them
+                    let request_id: Option<String> = None;
+                    let recap_type: i32 = 0;
+                    let text: Option<String> = None;
                     let envelope = Envelope {
                         message_type,
                         request_id,

@@ -33,7 +33,7 @@ impl SubscriptionHandle {
     fn as_list_dummy(&self) -> SubscriptionList {
         // We don't reconstruct; core requires the original list. Unsubscribe is optional; rely on Drop in many flows.
         // For now, this is a no-op placeholder returning an empty list (won't affect session); users should keep original list if needed.
-        SubscriptionList::new().expect("empty list")
+        SubscriptionList::new()
     }
 }
 

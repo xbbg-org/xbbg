@@ -2,23 +2,24 @@
 //!
 //! Unlike HistDataState, this state yields chunks immediately via a channel
 //! instead of accumulating all data until the final response.
+//!
+//! Extracts directly from Bloomberg Elements without JSON intermediate.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow::array::{Date32Builder, Float64Builder, StringBuilder};
+use arrow::array::{ArrayRef, Date32Builder, Float64Builder, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use chrono::NaiveDate;
 use tokio::sync::mpsc;
 use tracing::trace;
 
-use super::json_schema;
-use xbbg_core::{BlpError, MessageRef};
+use xbbg_core::{BlpError, Message};
 
 /// Streaming state for a historical data request (bdh).
 pub struct HistDataStreamState {
     /// Field names as strings
-    field_strings: Vec<String>,
+    field_names: Vec<String>,
     /// Stream channel for sending chunks
     stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     /// Schema (cached after first build)
@@ -28,15 +29,25 @@ pub struct HistDataStreamState {
 impl HistDataStreamState {
     /// Create a new streaming histdata state.
     pub fn new(fields: Vec<String>, stream: mpsc::Sender<Result<RecordBatch, BlpError>>) -> Self {
+        Self::with_types(fields, None, stream)
+    }
+
+    /// Create a new streaming histdata state with optional field type overrides.
+    pub fn with_types(
+        fields: Vec<String>,
+        _field_types: Option<HashMap<String, String>>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+    ) -> Self {
+        // Note: field_types is currently unused - streaming uses dynamic schema
         Self {
-            field_strings: fields,
+            field_names: fields,
             stream,
             schema: None,
         }
     }
 
     /// Process a PARTIAL_RESPONSE message and yield a chunk.
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         if let Some(batch) = self.process_message(msg) {
             // Non-blocking send - if channel is full, drop the batch
             let _ = self.stream.try_send(Ok(batch));
@@ -44,7 +55,7 @@ impl HistDataStreamState {
     }
 
     /// Process the final RESPONSE message and close the stream.
-    pub fn finish(mut self, msg: &MessageRef) {
+    pub fn finish(mut self, msg: &Message) {
         if let Some(batch) = self.process_message(msg) {
             let _ = self.stream.try_send(Ok(batch));
         }
@@ -56,23 +67,43 @@ impl HistDataStreamState {
         let _ = self.stream.try_send(Err(error));
     }
 
-    /// Process a HistoricalDataResponse message using JSON bulk extraction.
-    fn process_message(&mut self, msg: &MessageRef) -> Option<RecordBatch> {
-        let Some(json_str) = msg.to_json() else {
-            trace!("toJson not available, message skipped");
+    /// Process a HistoricalDataResponse message using Element API.
+    ///
+    /// Bloomberg structure:
+    /// ```text
+    /// HistoricalDataResponse {
+    ///   securityData {
+    ///     security: "AAPL US Equity"
+    ///     fieldData[] {
+    ///       date: 2024-01-15
+    ///       PX_LAST: 150.0
+    ///       VOLUME: 1000000
+    ///     }
+    ///   }
+    /// }
+    /// ```
+    fn process_message(&mut self, msg: &Message) -> Option<RecordBatch> {
+        let root = msg.elements();
+
+        // Get securityData (singular in HistoricalDataResponse)
+        let security_data = root.get_by_str("securityData")?;
+
+        // Get ticker
+        let ticker = security_data
+            .get_by_str("security")
+            .and_then(|e| e.get_str(0))
+            .unwrap_or("");
+
+        // Check for security error
+        if security_data.get_by_str("securityError").is_some() {
+            trace!(ticker = ticker, "Security has error, skipping");
             return None;
-        };
+        }
 
-        let mut json_bytes = json_str.into_bytes();
-
-        let Ok(resp) = json_schema::parser::parse_histdata(&mut json_bytes) else {
-            trace!("JSON parsing failed, message skipped");
-            return None;
-        };
-
-        let ticker = resp.security_data.security.as_ref();
-
-        if resp.security_data.field_data.is_empty() {
+        // Get fieldData array
+        let field_data = security_data.get_by_str("fieldData")?;
+        let n = field_data.len();
+        if n == 0 {
             return None;
         }
 
@@ -80,17 +111,21 @@ impl HistDataStreamState {
         let mut ticker_builder = StringBuilder::new();
         let mut date_builder = Date32Builder::new();
         let mut field_builders: Vec<Float64Builder> = self
-            .field_strings
+            .field_names
             .iter()
             .map(|_| Float64Builder::new())
             .collect();
 
-        for row in &resp.security_data.field_data {
+        for i in 0..n {
+            let Some(row) = field_data.get_element(i) else {
+                continue;
+            };
+
             ticker_builder.append_value(ticker);
 
-            // Parse date string to days since epoch
-            if let Some(date_str) = &row.date {
-                if let Some(days) = parse_date_to_days(date_str.as_ref()) {
+            // Get date
+            if let Some(date_elem) = row.get_by_str("date") {
+                if let Some(days) = date_elem.get_date32(0) {
                     date_builder.append_value(days);
                 } else {
                     date_builder.append_null();
@@ -100,10 +135,13 @@ impl HistDataStreamState {
             }
 
             // Get each field value
-            for (j, field_str) in self.field_strings.iter().enumerate() {
-                if let Some(value) = row.fields.get(field_str.as_str()) {
-                    if let Some(f) = value.as_f64() {
-                        field_builders[j].append_value(f);
+            for (j, field_name) in self.field_names.iter().enumerate() {
+                if let Some(field_elem) = row.get_by_str(field_name) {
+                    if let Some(value) = field_elem.get_value(0) {
+                        match value.as_f64() {
+                            Some(f) => field_builders[j].append_value(f),
+                            None => field_builders[j].append_null(),
+                        }
                     } else {
                         field_builders[j].append_null();
                     }
@@ -119,7 +157,7 @@ impl HistDataStreamState {
                 Field::new("ticker", DataType::Utf8, false),
                 Field::new("date", DataType::Date32, true),
             ];
-            for name in &self.field_strings {
+            for name in &self.field_names {
                 fields.push(Field::new(name.as_str(), DataType::Float64, true));
             }
             Arc::new(Schema::new(fields))
@@ -128,31 +166,14 @@ impl HistDataStreamState {
         // Build columns
         let ticker_array = ticker_builder.finish();
         let date_array = date_builder.finish();
-        let field_arrays: Vec<_> = field_builders
+        let field_arrays: Vec<ArrayRef> = field_builders
             .iter_mut()
-            .map(|b| Arc::new(b.finish()) as _)
+            .map(|b| Arc::new(b.finish()) as ArrayRef)
             .collect();
 
-        let mut columns: Vec<Arc<dyn arrow::array::Array>> =
-            vec![Arc::new(ticker_array), Arc::new(date_array)];
+        let mut columns: Vec<ArrayRef> = vec![Arc::new(ticker_array), Arc::new(date_array)];
         columns.extend(field_arrays);
 
         RecordBatch::try_new(schema.clone(), columns).ok()
-    }
-}
-
-/// Parse a date string (YYYY-MM-DD) to days since Unix epoch.
-fn parse_date_to_days(date_str: &str) -> Option<i32> {
-    let parts: Vec<&str> = date_str.split('-').collect();
-    if parts.len() >= 3 {
-        let year: i32 = parts[0].parse().ok()?;
-        let month: u32 = parts[1].parse().ok()?;
-        let day: u32 = parts[2].parse().ok()?;
-
-        let date = NaiveDate::from_ymd_opt(year, month, day)?;
-        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)?;
-        Some(date.signed_duration_since(epoch).num_days() as i32)
-    } else {
-        None
     }
 }

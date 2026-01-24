@@ -11,9 +11,6 @@ mod intradaybar;
 mod intradaybar_stream;
 mod intradaytick;
 mod intradaytick_stream;
-mod json_arrow;
-pub mod json_schema;
-mod raw_json;
 mod refdata;
 mod subscription;
 pub mod typed_builder;
@@ -29,12 +26,10 @@ pub use intradaybar::IntradayBarState;
 pub use intradaybar_stream::IntradayBarStreamState;
 pub use intradaytick::IntradayTickState;
 pub use intradaytick_stream::IntradayTickStreamState;
-pub use json_arrow::JsonArrowState;
-pub use raw_json::RawJsonState;
 pub use refdata::{LongMode, OutputFormat, RefDataState};
 pub use subscription::SubscriptionState;
 
-use xbbg_core::{BlpError, MessageRef};
+use xbbg_core::{BlpError, Message};
 
 /// Unified request state for Lane B (bulk requests).
 #[allow(clippy::large_enum_variant)]
@@ -44,8 +39,6 @@ pub enum RequestState {
     BulkData(BulkDataState),
     HistDataStream(HistDataStreamState),
     Generic(GenericState),
-    RawJson(RawJsonState),
-    JsonArrow(JsonArrowState),
     Bql(BqlState),
     Bsrch(BsrchState),
     FieldInfo(FieldInfoState),
@@ -62,15 +55,13 @@ pub enum IntradayRequestState {
 
 impl RequestState {
     /// Process a PARTIAL_RESPONSE message (append to builders).
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         match self {
             RequestState::RefData(s) => s.on_partial(msg),
             RequestState::HistData(s) => s.on_partial(msg),
             RequestState::BulkData(s) => s.on_partial(msg),
             RequestState::HistDataStream(s) => s.on_partial(msg),
             RequestState::Generic(s) => s.on_partial(msg),
-            RequestState::RawJson(s) => s.on_partial(msg),
-            RequestState::JsonArrow(s) => s.on_partial(msg),
             RequestState::Bql(s) => s.on_partial(msg),
             RequestState::Bsrch(s) => s.on_partial(msg),
             RequestState::FieldInfo(s) => s.on_partial(msg),
@@ -78,15 +69,13 @@ impl RequestState {
     }
 
     /// Process the final RESPONSE message, build the result, and send reply.
-    pub fn finish_and_reply(self, msg: &MessageRef) {
+    pub fn finish_and_reply(self, msg: &Message) {
         match self {
             RequestState::RefData(s) => s.finish(msg),
             RequestState::HistData(s) => s.finish(msg),
             RequestState::BulkData(s) => s.finish(msg),
             RequestState::HistDataStream(s) => s.finish(msg),
             RequestState::Generic(s) => s.finish(msg),
-            RequestState::RawJson(s) => s.finish(msg),
-            RequestState::JsonArrow(s) => s.finish(msg),
             RequestState::Bql(s) => s.finish(msg),
             RequestState::Bsrch(s) => s.finish(msg),
             RequestState::FieldInfo(s) => s.finish(msg),
@@ -109,12 +98,6 @@ impl RequestState {
             RequestState::Generic(s) => {
                 let _ = s.reply.send(Err(error));
             }
-            RequestState::RawJson(s) => {
-                let _ = s.reply.send(Err(error));
-            }
-            RequestState::JsonArrow(s) => {
-                let _ = s.reply.send(Err(error));
-            }
             RequestState::Bql(s) => {
                 let _ = s.reply.send(Err(error));
             }
@@ -130,7 +113,7 @@ impl RequestState {
 
 impl IntradayRequestState {
     /// Process a PARTIAL_RESPONSE message (append to builders).
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         match self {
             IntradayRequestState::Bar(s) => s.on_partial(msg),
             IntradayRequestState::Tick(s) => s.on_partial(msg),
@@ -140,7 +123,7 @@ impl IntradayRequestState {
     }
 
     /// Process the final RESPONSE message, build the result, and send reply.
-    pub fn finish_and_reply(self, msg: &MessageRef) {
+    pub fn finish_and_reply(self, msg: &Message) {
         match self {
             IntradayRequestState::Bar(s) => s.finish(msg),
             IntradayRequestState::Tick(s) => s.finish(msg),

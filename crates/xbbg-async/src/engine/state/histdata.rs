@@ -1,28 +1,23 @@
 //! Historical data (bdh) state with Arrow builders.
+//!
+//! Extracts HistoricalDataResponse messages directly from Bloomberg Elements
+//! without JSON intermediate serialization.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use arrow::array::{Date32Builder, StringBuilder};
-use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
 use tracing::trace;
 
-use super::json_schema;
-use super::typed_builder::{ArrowType, TypedBuilder};
-use xbbg_core::{BlpError, MessageRef};
+use super::typed_builder::{ArrowType, ColumnSet};
+use xbbg_core::{BlpError, Message};
 
 /// State for a historical data request (bdh).
 pub struct HistDataState {
     /// Field names as strings
-    field_strings: Vec<String>,
-    /// Ticker builder
-    ticker_builder: StringBuilder,
-    /// Date builder (days since epoch)
-    date_builder: Date32Builder,
-    /// Value builders (one per field, typed based on field_types)
-    field_builders: Vec<TypedBuilder>,
+    field_names: Vec<String>,
+    /// Column set for building the output
+    columns: ColumnSet,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -46,124 +41,121 @@ impl HistDataState {
             .map(|(k, v)| (k, ArrowType::parse(&v)))
             .collect();
 
-        // Create typed builders for each field
-        let field_builders = fields
-            .iter()
-            .map(|f| {
-                // Default to Float64 for historical data (prices, volumes are numeric)
-                let arrow_type = arrow_types.get(f).cloned().unwrap_or(ArrowType::Float64);
-                TypedBuilder::new(&arrow_type)
-            })
-            .collect();
+        // Create column set with type hints
+        let mut columns = ColumnSet::new();
+        columns.set_type_hint("ticker", ArrowType::String);
+        columns.set_type_hint("date", ArrowType::Date32);
+
+        // Set hints for fields, defaulting to Float64 for historical data
+        for field in &fields {
+            let arrow_type = arrow_types
+                .get(field)
+                .copied()
+                .unwrap_or(ArrowType::Float64);
+            columns.set_type_hint(field, arrow_type);
+        }
 
         Self {
-            field_strings: fields,
-            ticker_builder: StringBuilder::new(),
-            date_builder: Date32Builder::new(),
-            field_builders,
+            field_names: fields,
+            columns,
             reply,
         }
     }
 
     /// Process a PARTIAL_RESPONSE message.
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         self.process_message(msg);
     }
 
     /// Process the final RESPONSE message and send the result via reply channel.
-    pub fn finish(mut self, msg: &MessageRef) {
+    pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
-
-        // Build batch first (borrows self), then take reply
-        let result = self.build_batch_inner();
-        let _ = self.reply.send(result);
+        let reply = self.reply;
+        let mut order = vec!["ticker", "date"];
+        order.extend(self.field_names.iter().map(|s| s.as_str()));
+        let result = self.columns.finish_with_order(&order);
+        let _ = reply.send(result);
     }
 
-    /// Process a HistoricalDataResponse message using JSON bulk extraction.
+    /// Process a HistoricalDataResponse message using Element API.
     ///
-    /// Uses Bloomberg SDK's native toJson (SDK 3.25.11+) for single-FFI-call extraction,
-    /// then parses with simd-json for high-performance zero-copy deserialization.
-    fn process_message(&mut self, msg: &MessageRef) {
-        let Some(json_str) = msg.to_json() else {
-            trace!("toJson not available, message skipped");
+    /// Bloomberg structure:
+    /// ```text
+    /// HistoricalDataResponse {
+    ///   securityData {
+    ///     security: "AAPL US Equity"
+    ///     fieldData[] {
+    ///       date: 2024-01-15
+    ///       PX_LAST: 150.0
+    ///       VOLUME: 1000000
+    ///       ...
+    ///     }
+    ///     fieldExceptions[]? { ... }
+    ///     securityError? { ... }
+    ///   }
+    /// }
+    /// ```
+    fn process_message(&mut self, msg: &Message) {
+        let root = msg.elements();
+
+        // Get securityData (note: singular in HistoricalDataResponse)
+        let Some(security_data) = root.get_by_str("securityData") else {
+            trace!("No securityData in message");
             return;
         };
 
-        // simd-json requires mutable bytes for in-place parsing (zero-copy)
-        let mut json_bytes = json_str.into_bytes();
+        // Get ticker
+        let ticker = security_data
+            .get_by_str("security")
+            .and_then(|e| e.get_str(0))
+            .unwrap_or("");
 
-        let Ok(resp) = json_schema::parser::parse_histdata(&mut json_bytes) else {
-            trace!("JSON parsing failed, message skipped");
+        // Check for security error
+        if security_data.get_by_str("securityError").is_some() {
+            trace!(ticker = ticker, "Security has error, skipping");
+            return;
+        }
+
+        // Get fieldData array
+        let Some(field_data) = security_data.get_by_str("fieldData") else {
+            trace!(ticker = ticker, "No fieldData for security");
             return;
         };
 
-        let ticker = resp.security_data.security.as_ref();
+        // Iterate through each row (each date)
+        let n = field_data.len();
+        for i in 0..n {
+            let Some(row) = field_data.get_element(i) else {
+                continue;
+            };
 
-        for row in &resp.security_data.field_data {
-            self.ticker_builder.append_value(ticker);
+            self.columns.append_str("ticker", ticker);
 
-            // Parse date string to days since epoch
-            if let Some(date_str) = &row.date {
-                if let Some(days) = parse_date_to_days(date_str.as_ref()) {
-                    self.date_builder.append_value(days);
+            // Get date
+            if let Some(date_elem) = row.get_by_str("date") {
+                if let Some(date_value) = date_elem.get_value(0) {
+                    self.columns.append("date", date_value);
                 } else {
-                    self.date_builder.append_null();
+                    self.columns.append_null("date");
                 }
             } else {
-                self.date_builder.append_null();
+                self.columns.append_null("date");
             }
 
-            // Get each field value using typed builders
-            for (j, field_str) in self.field_strings.iter().enumerate() {
-                let value = row.fields.get(field_str.as_str());
-                self.field_builders[j].append_json_value(value);
+            // Get each field value
+            for field_name in &self.field_names.clone() {
+                if let Some(field_elem) = row.get_by_str(field_name) {
+                    if let Some(value) = field_elem.get_value(0) {
+                        self.columns.append(field_name, value);
+                    } else {
+                        self.columns.append_null(field_name);
+                    }
+                } else {
+                    self.columns.append_null(field_name);
+                }
             }
+
+            self.columns.end_row();
         }
-    }
-
-    /// Build the final RecordBatch.
-    fn build_batch_inner(&mut self) -> Result<RecordBatch, BlpError> {
-        let ticker_array = self.ticker_builder.finish();
-        let date_array = self.date_builder.finish();
-
-        // Build schema with typed columns
-        let mut fields = vec![
-            Field::new("ticker", DataType::Utf8, false),
-            Field::new("date", DataType::Date32, true),
-        ];
-        for (i, name) in self.field_strings.iter().enumerate() {
-            let data_type = self.field_builders[i].data_type();
-            fields.push(Field::new(name.as_str(), data_type, true));
-        }
-        let schema = Arc::new(Schema::new(fields));
-
-        // Build columns
-        let mut columns: Vec<Arc<dyn arrow::array::Array>> =
-            vec![Arc::new(ticker_array), Arc::new(date_array)];
-        for builder in &mut self.field_builders {
-            columns.push(builder.finish());
-        }
-
-        RecordBatch::try_new(schema, columns).map_err(|e| BlpError::Internal {
-            detail: format!("build RecordBatch: {e}"),
-        })
-    }
-}
-
-/// Parse a date string (YYYY-MM-DD) to days since Unix epoch.
-fn parse_date_to_days(date_str: &str) -> Option<i32> {
-    // Try parsing ISO date format (YYYY-MM-DD)
-    let parts: Vec<&str> = date_str.split('-').collect();
-    if parts.len() >= 3 {
-        let year: i32 = parts[0].parse().ok()?;
-        let month: u32 = parts[1].parse().ok()?;
-        let day: u32 = parts[2].parse().ok()?;
-
-        use chrono::NaiveDate;
-        let date = NaiveDate::from_ymd_opt(year, month, day)?;
-        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)?;
-        Some(date.signed_duration_since(epoch).num_days() as i32)
-    } else {
-        None
     }
 }

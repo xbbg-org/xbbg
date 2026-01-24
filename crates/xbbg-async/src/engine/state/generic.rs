@@ -1,25 +1,25 @@
 //! Generic flattener state for arbitrary Bloomberg responses.
 //!
-//! Flattens any JSON response into a normalized table with columns:
-//! - path: JSON path (e.g., "securityData[0].fieldData.PX_LAST")
+//! Flattens any Bloomberg response into a normalized table with columns:
+//! - path: Element path (e.g., "securityData[0].fieldData.PX_LAST")
 //! - type: Value type (string, number, boolean, null, array, object)
 //! - value_str: String representation of value
 //! - value_num: Numeric value (if applicable)
+//!
+//! Extracts directly from Bloomberg Elements without JSON intermediate.
 
 use std::sync::Arc;
 
 use arrow::array::{Float64Builder, StringBuilder};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::{DataType as ArrowDataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
-use tracing::trace;
 
-use super::json_schema::JsonValue;
-use xbbg_core::{BlpError, MessageRef};
+use xbbg_core::{BlpError, DataType, Element, Message, Value};
 
-/// State for a generic request that flattens JSON to tabular format.
+/// State for a generic request that flattens elements to tabular format.
 pub struct GenericState {
-    /// JSON path builder
+    /// Element path builder
     path_builder: StringBuilder,
     /// Value type builder
     type_builder: StringBuilder,
@@ -44,72 +44,115 @@ impl GenericState {
     }
 
     /// Process a PARTIAL_RESPONSE message.
-    pub fn on_partial(&mut self, msg: &MessageRef) {
+    pub fn on_partial(&mut self, msg: &Message) {
         self.process_message(msg);
     }
 
     /// Process the final RESPONSE message and send the result via reply channel.
-    pub fn finish(mut self, msg: &MessageRef) {
+    pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
 
         let result = self.build_batch();
         let _ = self.reply.send(result);
     }
 
-    /// Process a message by flattening its JSON to rows.
-    fn process_message(&mut self, msg: &MessageRef) {
-        let Some(json_str) = msg.to_json() else {
-            trace!("toJson not available, message skipped");
-            return;
-        };
-
-        // Parse as generic JSON value
-        let mut json_bytes = json_str.into_bytes();
-        let Ok(value) = simd_json::from_slice::<JsonValue<'_>>(&mut json_bytes) else {
-            trace!("JSON parsing failed, message skipped");
-            return;
-        };
-
-        // Flatten the JSON recursively
-        self.flatten_value("", &value);
+    /// Process a message by flattening its elements to rows.
+    fn process_message(&mut self, msg: &Message) {
+        let root = msg.elements();
+        self.flatten_element("", &root);
     }
 
-    /// Recursively flatten a JSON value into rows.
-    fn flatten_value(&mut self, path: &str, value: &JsonValue<'_>) {
-        match value {
-            JsonValue::Null => {
-                self.append_row(path, "null", None, None);
-            }
-            JsonValue::Bool(b) => {
-                self.append_row(path, "boolean", Some(&b.to_string()), None);
-            }
-            JsonValue::Int(i) => {
-                self.append_row(path, "number", Some(&i.to_string()), Some(*i as f64));
-            }
-            JsonValue::Float(f) => {
-                self.append_row(path, "number", Some(&f.to_string()), Some(*f));
-            }
-            JsonValue::String(s) => {
-                self.append_row(path, "string", Some(s.as_ref()), None);
-            }
-            JsonValue::Array(arr) => {
-                for (i, item) in arr.iter().enumerate() {
+    /// Recursively flatten an element into rows.
+    fn flatten_element(&mut self, path: &str, elem: &Element<'_>) {
+        match elem.datatype() {
+            DataType::Sequence => {
+                // Sequence with named children - iterate over children
+                for child in elem.children() {
+                    let child_name = child.name();
                     let child_path = if path.is_empty() {
-                        format!("[{i}]")
+                        child_name.as_str().to_string()
                     } else {
-                        format!("{path}[{i}]")
+                        format!("{}.{}", path, child_name.as_str())
                     };
-                    self.flatten_value(&child_path, item);
+
+                    // Check if child is an array
+                    if child.is_array() {
+                        // Iterate through array values
+                        let n = child.len();
+                        for i in 0..n {
+                            if let Some(item) = child.get_element(i) {
+                                let item_path = format!("{}[{}]", child_path, i);
+                                self.flatten_element(&item_path, &item);
+                            }
+                        }
+                    } else {
+                        self.flatten_element(&child_path, &child);
+                    }
                 }
             }
-            JsonValue::Object(obj) => {
-                for (key, val) in obj {
+            DataType::Choice => {
+                // Choice - single selected child
+                for child in elem.children() {
+                    let child_name = child.name();
                     let child_path = if path.is_empty() {
-                        key.to_string()
+                        child_name.as_str().to_string()
                     } else {
-                        format!("{path}.{key}")
+                        format!("{}.{}", path, child_name.as_str())
                     };
-                    self.flatten_value(&child_path, val);
+                    self.flatten_element(&child_path, &child);
+                }
+            }
+            _ => {
+                // Leaf value - extract and record
+                if elem.is_null() {
+                    self.append_row(path, "null", None, None);
+                    return;
+                }
+
+                // Try to get the value at index 0
+                if let Some(value) = elem.get_value(0) {
+                    match value {
+                        Value::Null => {
+                            self.append_row(path, "null", None, None);
+                        }
+                        Value::Bool(b) => {
+                            self.append_row(path, "boolean", Some(&b.to_string()), None);
+                        }
+                        Value::Int32(i) => {
+                            self.append_row(path, "number", Some(&i.to_string()), Some(i as f64));
+                        }
+                        Value::Int64(i) => {
+                            self.append_row(path, "number", Some(&i.to_string()), Some(i as f64));
+                        }
+                        Value::Float64(f) => {
+                            self.append_row(path, "number", Some(&f.to_string()), Some(f));
+                        }
+                        Value::String(s) => {
+                            self.append_row(path, "string", Some(s), None);
+                        }
+                        Value::Enum(s) => {
+                            self.append_row(path, "string", Some(s), None);
+                        }
+                        Value::Date32(days) => {
+                            let date_str = format_date32(days);
+                            self.append_row(path, "date", Some(&date_str), Some(days as f64));
+                        }
+                        Value::TimestampMicros(micros) => {
+                            let dt_str = format_timestamp_micros(micros);
+                            self.append_row(path, "datetime", Some(&dt_str), Some(micros as f64));
+                        }
+                        Value::Datetime(dt) => {
+                            let micros = dt.to_micros();
+                            let dt_str = format_timestamp_micros(micros);
+                            self.append_row(path, "datetime", Some(&dt_str), Some(micros as f64));
+                        }
+                        Value::Byte(b) => {
+                            self.append_row(path, "number", Some(&b.to_string()), Some(b as f64));
+                        }
+                    }
+                } else {
+                    // Could not extract value
+                    self.append_row(path, "null", None, None);
                 }
             }
         }
@@ -145,10 +188,10 @@ impl GenericState {
         let value_num_array = self.value_num_builder.finish();
 
         let schema = Arc::new(Schema::new(vec![
-            Field::new("path", DataType::Utf8, false),
-            Field::new("type", DataType::Utf8, false),
-            Field::new("value_str", DataType::Utf8, true),
-            Field::new("value_num", DataType::Float64, true),
+            Field::new("path", ArrowDataType::Utf8, false),
+            Field::new("type", ArrowDataType::Utf8, false),
+            Field::new("value_str", ArrowDataType::Utf8, true),
+            Field::new("value_num", ArrowDataType::Float64, true),
         ]));
 
         RecordBatch::try_new(
@@ -163,5 +206,25 @@ impl GenericState {
         .map_err(|e| BlpError::Internal {
             detail: format!("build RecordBatch: {e}"),
         })
+    }
+}
+
+/// Format days since epoch as YYYY-MM-DD string.
+fn format_date32(days: i32) -> String {
+    use chrono::{Duration, NaiveDate};
+    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+    let date = epoch + Duration::days(days as i64);
+    date.format("%Y-%m-%d").to_string()
+}
+
+/// Format microseconds since epoch as ISO datetime string.
+fn format_timestamp_micros(micros: i64) -> String {
+    use chrono::DateTime;
+    let secs = micros / 1_000_000;
+    let nanos = ((micros % 1_000_000) * 1000) as u32;
+    if let Some(dt) = DateTime::from_timestamp(secs, nanos) {
+        dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
+    } else {
+        format!("{}us", micros)
     }
 }
