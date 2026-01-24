@@ -517,7 +517,7 @@ def _convert_backend(
     """Convert narwhals DataFrame to the requested backend.
 
     Args:
-        nw_df: A narwhals DataFrame
+        nw_df: A narwhals DataFrame (or already-converted DataFrame)
         backend: Target backend (Backend enum, string, or None)
 
     Returns:
@@ -525,6 +525,14 @@ def _convert_backend(
     """
     # Resolve effective backend
     effective = (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
+
+    # Handle already-converted DataFrames (avoid double-conversion)
+    # Check for pandas DataFrame
+    if hasattr(nw_df, "_mgr"):  # pandas DataFrame has _mgr attribute
+        if effective == Backend.PANDAS:
+            return nw_df  # Already pandas
+        # Convert pandas to narwhals first for other conversions
+        nw_df = nw.from_native(nw_df)
 
     if effective == Backend.PANDAS:
         return nw_df.to_pandas()
