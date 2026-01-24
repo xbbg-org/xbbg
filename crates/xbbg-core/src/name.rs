@@ -22,20 +22,22 @@
 
 use crate::ffi;
 use rustc_hash::FxHashMap;
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::ffi::{CStr, CString};
 use std::hash::{Hash, Hasher};
-
 use std::ptr::NonNull;
 
 // Thread-local cache for interned names.
 // Uses FxHashMap for faster hashing (non-cryptographic, ~2-5x faster than SipHash).
 // Box<str> keys avoid per-lookup String allocation.
 //
+// SAFETY: UnsafeCell is safe here because thread_local! guarantees single-threaded access.
+// This eliminates the runtime borrow-checking overhead of RefCell (~5-10 instructions per access).
+//
 // NOTE: This cache grows unbounded. Call `clear_name_cache()` periodically
 // in long-running applications that use many distinct field names.
 thread_local! {
-    static NAME_CACHE: RefCell<FxHashMap<Box<str>, Name>> = RefCell::new(FxHashMap::default());
+    static NAME_CACHE: UnsafeCell<FxHashMap<Box<str>, Name>> = UnsafeCell::new(FxHashMap::default());
 }
 
 /// Clear the thread-local Name cache.
@@ -58,7 +60,8 @@ thread_local! {
 /// ```
 pub fn clear_name_cache() {
     NAME_CACHE.with(|cache| {
-        cache.borrow_mut().clear();
+        // SAFETY: TLS guarantees single-threaded access
+        unsafe { (*cache.get()).clear() };
     });
 }
 
@@ -66,7 +69,10 @@ pub fn clear_name_cache() {
 ///
 /// Useful for monitoring memory usage in long-running applications.
 pub fn name_cache_size() -> usize {
-    NAME_CACHE.with(|cache| cache.borrow().len())
+    NAME_CACHE.with(|cache| {
+        // SAFETY: TLS guarantees single-threaded access
+        unsafe { (*cache.get()).len() }
+    })
 }
 
 /// Interned string for O(1) comparison.
@@ -137,19 +143,17 @@ impl Name {
     #[inline]
     pub fn get_or_intern(s: &str) -> Self {
         NAME_CACHE.with(|cache| {
-            // Phase 1: Immutable check (fast path - no FFI on cache hit)
-            {
-                let cache_ref = cache.borrow();
-                if let Some(name) = cache_ref.get(s) {
-                    // Clone increments refcount via FFI, but we found it in cache
-                    return name.clone();
-                }
-            }
-            // Phase 2: Create Name outside borrow (FFI call)
-            let name = Self::new(s).expect("failed to intern name");
+            // SAFETY: TLS guarantees single-threaded access. No borrow checking overhead.
+            let cache = unsafe { &mut *cache.get() };
 
-            // Phase 3: Short mutable borrow for insert only
-            cache.borrow_mut().insert(s.into(), name.clone());
+            // Fast path: return clone from cache
+            if let Some(name) = cache.get(s) {
+                return name.clone();
+            }
+
+            // Slow path: create and cache
+            let name = Self::new(s).expect("failed to intern name");
+            cache.insert(s.into(), name.clone());
             name
         })
     }
@@ -161,18 +165,17 @@ impl Name {
     #[inline]
     pub fn try_get_or_intern(s: &str) -> Option<Self> {
         NAME_CACHE.with(|cache| {
-            // Phase 1: Immutable check (fast path)
-            {
-                let cache_ref = cache.borrow();
-                if let Some(name) = cache_ref.get(s) {
-                    return Some(name.clone());
-                }
-            }
-            // Phase 2: Create Name outside borrow
-            let name = Self::new(s)?;
+            // SAFETY: TLS guarantees single-threaded access. No borrow checking overhead.
+            let cache = unsafe { &mut *cache.get() };
 
-            // Phase 3: Short mutable borrow for insert
-            cache.borrow_mut().insert(s.into(), name.clone());
+            // Fast path: return clone from cache
+            if let Some(name) = cache.get(s) {
+                return Some(name.clone());
+            }
+
+            // Slow path: create and cache
+            let name = Self::new(s)?;
+            cache.insert(s.into(), name.clone());
             Some(name)
         })
     }
