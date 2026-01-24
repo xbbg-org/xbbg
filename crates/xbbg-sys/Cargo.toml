@@ -1,0 +1,20 @@
+[package]
+name = "xbbg-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified FFI abstraction over blpapi-sys (real) and datamock (mock)"
+publish = false
+
+[features]
+default = ["mock"]
+mock = ["datamock"]
+live = ["blpapi-sys"]
+
+[dependencies]
+datamock = { path = "../datamock", optional = true }
+blpapi-sys = { path = "../blpapi-sys", optional = true }
+
+[build-dependencies]
+bindgen = "0.70"

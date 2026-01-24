@@ -6,7 +6,7 @@
 //! **Zero allocation**: Messages are borrowed from Events and provide
 //! zero-cost access to their contents.
 
-use crate::{ffi, Element, Name};
+use crate::{ffi, CorrelationId, Element, Name};
 use std::ffi::CStr;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
@@ -136,6 +136,46 @@ impl<'a> Message<'a> {
     #[allow(dead_code)] // Used in integration, not unit tests
     pub(crate) fn as_ptr(&self) -> *mut ffi::blpapi_Message_t {
         self.ptr
+    }
+
+    /// Get the number of correlation IDs on this message.
+    ///
+    /// Most messages have exactly one correlation ID, but multi-correlation
+    /// responses (MCM) can have multiple.
+    ///
+    /// # Performance
+    /// This is a hot path method - returns immediately with no allocation.
+    #[inline(always)]
+    pub fn num_correlation_ids(&self) -> usize {
+        // SAFETY: self.ptr is valid for the lifetime 'a
+        unsafe { ffi::blpapi_Message_numCorrelationIds(self.ptr) }
+    }
+
+    /// Get the correlation ID at the specified index.
+    ///
+    /// Returns `None` if the index is out of bounds.
+    ///
+    /// # Arguments
+    /// * `index` - Zero-based index of the correlation ID
+    ///
+    /// # Performance
+    /// This is a hot path method - minimal allocation (just the CorrelationId).
+    #[inline]
+    pub fn correlation_id(&self, index: usize) -> Option<CorrelationId> {
+        if index >= self.num_correlation_ids() {
+            return None;
+        }
+
+        // SAFETY: We've verified index is in bounds, and self.ptr is valid
+        unsafe {
+            let mut cid = std::mem::zeroed::<ffi::blpapi_CorrelationId_t>();
+            let rc = ffi::blpapi_Message_correlationId(self.ptr, &mut cid, index);
+            if rc == 0 {
+                Some(CorrelationId::from_ffi(&mut cid))
+            } else {
+                None
+            }
+        }
     }
 }
 

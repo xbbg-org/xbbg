@@ -95,8 +95,7 @@ impl CorrelationId {
     ///
     /// Uses Bloomberg's helper functions to properly read the valueType and extract
     /// the correct value from the union.
-    #[allow(dead_code)] // Used in integration, not unit tests
-    pub(crate) fn from_ffi(cid: &mut crate::ffi::blpapi_CorrelationId_t) -> Self {
+    pub fn from_ffi(cid: &mut crate::ffi::blpapi_CorrelationId_t) -> Self {
         // Constants from Bloomberg API
         const CORRELATION_TYPE_UNSET: i32 = 0;
         const CORRELATION_TYPE_INT: i32 = 1;
