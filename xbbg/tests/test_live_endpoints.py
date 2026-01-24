@@ -99,23 +99,12 @@ TEST_SINGLE_FIELD = "PX_LAST"
 # Date ranges - use recent dates but keep small
 # Get a business day for intraday tests (markets are closed on weekends/holidays)
 def _get_previous_business_day(days_back=1):
-    """Get the previous business day for US markets."""
-    try:
-        import pandas_market_calendars as mcal
-
-        nyse = mcal.get_calendar("NYSE")
-        end_date = datetime.now().date()
-        # Look back up to 10 days to find a business day
-        for i in range(days_back, days_back + 10):
-            check_date = end_date - timedelta(days=i)
-            sched = nyse.schedule(start_date=check_date, end_date=check_date)
-            if not sched.empty:
-                return check_date
-        # Fallback: just use yesterday if calendar lookup fails
-        return end_date - timedelta(days=days_back)
-    except Exception:
-        # Fallback: use yesterday if pandas-market-calendars not available
-        return datetime.now().date() - timedelta(days=days_back)
+    """Get the previous business day (skips weekends)."""
+    date = datetime.now().date() - timedelta(days=days_back)
+    # Skip weekends (Saturday=5, Sunday=6)
+    while date.weekday() >= 5:
+        date -= timedelta(days=1)
+    return date
 
 
 END_DATE = datetime.now().date()
@@ -585,12 +574,6 @@ def test_bdib_intraday_bars():
     - Limiting request to first 30 minutes of trading (9:30-10:00) using compound session
     - Using 5-minute intervals instead of 1-minute (reduces bars by 5x)
     """
-    from xbbg.core.utils import trials
-
-    # Reset trial count for this test to allow retry after fix
-    trial_kw = {"ticker": TEST_TICKER, "dt": TEST_DATE.strftime("%Y-%m-%d"), "typ": "TRADE", "func": "bdib"}
-    trials.update_trials(cnt=0, **trial_kw)
-
     print(f"\n{'=' * 80}")
     print("Testing BDIB (Intraday Bars)")
     print(f"{'=' * 80}")
@@ -632,12 +615,6 @@ def test_bdib_sub_minute_intervals():
     - Limiting request to first 30 minutes of trading (9:30-10:00) using compound session
     - Using 10-second bars instead of 1-minute (reduces data significantly)
     """
-    from xbbg.core.utils import trials
-
-    # Reset trial count for this test to allow retry after fix
-    trial_kw = {"ticker": TEST_TICKER, "dt": TEST_DATE.strftime("%Y-%m-%d"), "typ": "TRADE", "func": "bdib"}
-    trials.update_trials(cnt=0, **trial_kw)
-
     print(f"\n{'=' * 80}")
     print("Testing BDIB (Sub-minute Intervals)")
     print(f"{'=' * 80}")
@@ -677,12 +654,6 @@ def test_bdib_reference_exchange():
 
     Uses minimal data by limiting request to first 30 minutes with reference exchange.
     """
-    from xbbg.core.utils import trials
-
-    # Reset trial count for this test to allow retry after fix
-    trial_kw = {"ticker": TEST_TICKER, "dt": TEST_DATE.strftime("%Y-%m-%d"), "typ": "TRADE", "func": "bdib"}
-    trials.update_trials(cnt=0, **trial_kw)
-
     print(f"\n{'=' * 80}")
     print("Testing BDIB (Reference Exchange)")
     print(f"{'=' * 80}")
@@ -723,13 +694,8 @@ def test_bdib_am_open_session():
     Uses minimal data by limiting request to first 30 minutes of AM session.
     This test is disabled by default as it requires a Japanese market ticker.
     """
-    from xbbg.core.utils import trials
-
-    # Reset trial count for this test to allow retry after fix
     # Use a Japanese ticker for this test
     japanese_ticker = "7974 JT Equity"  # Example from README
-    trial_kw = {"ticker": japanese_ticker, "dt": TEST_DATE.strftime("%Y-%m-%d"), "typ": "TRADE", "func": "bdib"}
-    trials.update_trials(cnt=0, **trial_kw)
 
     print(f"\n{'=' * 80}")
     print("Testing BDIB (AM Open Session - Japanese Market)")

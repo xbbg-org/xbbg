@@ -142,11 +142,11 @@ class TestCachePolicy:
 class TestResolverChain:
     """Test resolver chain functionality."""
 
-    def test_exchange_yaml_resolver_can_resolve(self):
-        """Test ExchangeYamlResolver can_resolve."""
-        from xbbg.markets.resolver_chain import ExchangeYamlResolver
+    def test_exchange_metadata_resolver_can_resolve(self):
+        """Test ExchangeMetadataResolver can_resolve."""
+        from xbbg.markets.resolver_chain import ExchangeMetadataResolver
 
-        resolver = ExchangeYamlResolver()
+        resolver = ExchangeMetadataResolver()
         request = DataRequest(ticker="AAPL US Equity", dt="2025-01-01")
         assert resolver.can_resolve(request) is True
 
@@ -176,21 +176,12 @@ class TestResolverChain:
         request3 = DataRequest(ticker="AAPL US Equity", dt="2025-01-01")
         assert resolver.can_resolve(request3) is False
 
-    def test_pmc_resolver_can_resolve(self):
-        """Test PmcCalendarResolver can_resolve."""
-        from xbbg.markets.resolver_chain import PmcCalendarResolver
-
-        resolver = PmcCalendarResolver()
-        request = DataRequest(ticker="AAPL US Equity", dt="2025-01-01", session="day")
-        assert resolver.can_resolve(request) is True
-
-        request2 = DataRequest(ticker="AAPL US Equity", dt="2025-01-01", session="am")
-        assert resolver.can_resolve(request2) is False
-
     def test_create_default_resolver_chain(self):
         """Test creating default resolver chain."""
         from xbbg.markets.resolver_chain import create_default_resolver_chain
 
         chain = create_default_resolver_chain()
-        assert len(chain) == 4
+        assert (
+            len(chain) == 4
+        )  # BloombergExchangeResolver, ExchangeYamlResolver, FuturesRollResolver, FixedIncomeDefaultResolver
         assert all(hasattr(r, "can_resolve") and hasattr(r, "resolve") for r in chain)

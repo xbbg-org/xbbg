@@ -1,10 +1,16 @@
-"""Unit tests for parameter/config file utilities."""
+"""Unit tests for parameter/config file utilities.
+
+Note: The YAML configuration loading functions in param.py are deprecated
+since YAML configuration files have been removed. However, to_hours() is
+still used internally and is NOT deprecated.
+"""
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import warnings
 
 import pandas as pd
+import pytest
 
 from xbbg.io import param
 
@@ -54,34 +60,51 @@ class TestToHours:
 
 
 class TestConfigFiles:
-    """Test config file location utility."""
+    """Test config file location utility (deprecated)."""
 
-    def test_config_files_returns_list(self):
-        """Test that config_files returns a list."""
-        # Just verify it returns a list - actual path logic depends on file system
-        result = param.config_files("test_cat")
+    def test_config_files_returns_empty_list(self):
+        """Test that config_files returns an empty list (deprecated)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = param.config_files("test_cat")
         assert isinstance(result, list)
+        assert result == []
+
+    def test_config_files_deprecation_warning(self):
+        """Test that config_files raises DeprecationWarning."""
+        with pytest.warns(DeprecationWarning, match="config_files.*deprecated"):
+            param.config_files("test_cat")
+
+
+class TestLoadConfig:
+    """Test config loading utility (deprecated)."""
+
+    def test_load_config_returns_empty_dataframe(self):
+        """Test that load_config returns an empty DataFrame (deprecated)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = param.load_config("test_cat")
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+
+    def test_load_config_deprecation_warning(self):
+        """Test that load_config raises DeprecationWarning."""
+        with pytest.warns(DeprecationWarning, match="load_config.*deprecated"):
+            param.load_config("test_cat")
 
 
 class TestLoadYaml:
-    """Test YAML loading utility."""
+    """Test YAML loading utility (deprecated)."""
 
-    @patch("xbbg.io.param.files.exists")
-    @patch("xbbg.io.param.files.modified_time")
-    @patch("xbbg.io.param.pd.read_parquet")
-    def test_load_yaml_from_cache(self, mock_read_parquet, mock_mod_time, mock_exists):
-        """Test loading YAML from cache."""
-        mock_exists.return_value = True
-        mock_mod_time.side_effect = [100, 150]  # cache is newer
-        # Mock parquet read: returns DataFrame with 'value' column containing Series data
-        mock_df = pd.DataFrame({"value": pd.Series({"key": "value"})})
-        mock_read_parquet.return_value = mock_df
-
-        result = param.load_yaml("test.yml")
+    def test_load_yaml_returns_empty_series(self):
+        """Test that load_yaml returns an empty Series (deprecated)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = param.load_yaml("test.yml")
         assert isinstance(result, pd.Series)
-        mock_read_parquet.assert_called_once()
+        assert result.empty
 
-    def test_load_yaml_from_source_skipped(self):
-        """Test loading YAML from source file - skipped due to file system complexity."""
-        # This test is skipped because it requires complex file system mocking
-        # The function is tested indirectly through other tests
+    def test_load_yaml_deprecation_warning(self):
+        """Test that load_yaml raises DeprecationWarning."""
+        with pytest.warns(DeprecationWarning, match="load_yaml.*deprecated"):
+            param.load_yaml("test.yml")

@@ -171,7 +171,6 @@ def split_kwargs(**kwargs) -> KwargsSplit:
         "types",
         "intervalHasSeconds",
         "time_range",
-        "pmc_extended",  # PMC-specific flag
     }
 
     infra_dict = {}

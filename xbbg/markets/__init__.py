@@ -18,12 +18,29 @@ def __getattr__(name: str):
     if name in ("active_cdx", "active_futures", "cdx_ticker", "fut_ticker"):
         # Use module-level resolvers import (avoid reimport)
         return getattr(resolvers, name)
+    # Bloomberg exchange metadata functions
+    if name in ("ExchangeInfo", "fetch_exchange_info", "afetch_exchange_info"):
+        from xbbg.markets import bloomberg  # noqa: PLC0415
+
+        return getattr(bloomberg, name)
+    # Runtime override functions
+    if name in (
+        "set_exchange_override",
+        "get_exchange_override",
+        "clear_exchange_override",
+        "list_exchange_overrides",
+    ):
+        from xbbg.markets import overrides  # noqa: PLC0415
+
+        return getattr(overrides, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 # Direct imports for modules (no circular dependency)
 from xbbg.markets import (  # noqa: E402
-    pmc,
+    bloomberg,
+    info,
+    overrides,
     providers,
     resolvers,  # noqa: E402
 )
@@ -41,9 +58,19 @@ __all__ = [
     "active_futures",
     "cdx_ticker",
     "fut_ticker",
+    # Bloomberg exchange metadata (lazy-loaded via __getattr__)
+    "ExchangeInfo",
+    "afetch_exchange_info",
+    "fetch_exchange_info",
+    # Runtime overrides (lazy-loaded via __getattr__)
+    "clear_exchange_override",
+    "get_exchange_override",
+    "list_exchange_overrides",
+    "set_exchange_override",
     # Modules
+    "bloomberg",
     "info",
-    "pmc",
+    "overrides",
     "providers",
     "resolvers",
 ]

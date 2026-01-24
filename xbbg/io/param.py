@@ -1,105 +1,106 @@
 """Parameter/config file helpers for xbbg.
 
-Utilities to locate config YAMLs, load them with caching, and convert
-numeric time formats into ``HH:MM`` strings.
-"""
+This module provides utilities for time formatting and configuration paths.
 
-import os
-from pathlib import Path
+Note: YAML configuration loading utilities (load_config, load_yaml, config_files)
+are deprecated since YAML configuration files have been removed in favor of
+Bloomberg API calls. Use Bloomberg API directly for market metadata:
+- Exchange info: bdp(ticker, ['EXCH_CODE', 'IANA_TIME_ZONE', 'TRADING_DAY_START_TIME_EOD', ...])
+- Futures cycles: bdp(ticker, 'FUT_GEN_MONTH')
+- Currency pairs: bdp(ticker, ['INVERSE_QUOTED', 'BASE_CRNCY'])
+"""
 
 import numpy as np
 import pandas as pd
-from ruamel.yaml import YAML
 
 from xbbg.io import files
 
+# Package path - used for locating test data and other resources
 PKG_PATH = files.abspath(__file__, 1)
-
-_yaml = YAML(typ="safe")
-_yaml.allow_duplicate_keys = False
 
 
 def config_files(cat: str) -> list:
     """Category files.
 
+    .. deprecated::
+        YAML configuration files have been removed. This function is deprecated
+        and will be removed in a future version.
+
     Args:
         cat: category
 
     Returns:
-        list: Files that exist for the given category.
+        list: Empty list. YAML config files no longer exist.
     """
-    paths = [
-        Path(PKG_PATH),
-        Path(os.environ.get("BBG_ROOT", "")),
-    ]
-    return [
-        str(p / "markets" / "config" / f"{cat}.yml")
-        for p in paths
-        if p.as_posix() and files.exists(str(p / "markets" / "config" / f"{cat}.yml"))
-    ]
+    import warnings
+
+    warnings.warn(
+        "config_files() is deprecated. YAML configuration files have been removed. "
+        "Use Bloomberg API directly for market metadata.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return []
 
 
 def load_config(cat: str) -> pd.DataFrame:
     """Load market info that can apply ``pd.Series`` directly.
 
+    .. deprecated::
+        YAML configuration files have been removed. This function is deprecated
+        and will be removed in a future version. Use Bloomberg API directly.
+
     Args:
         cat: category name
 
     Returns:
-        pd.DataFrame: Concatenated configuration.
+        pd.DataFrame: Empty DataFrame. YAML config files no longer exist.
     """
-    cfg_files = config_files(cat=cat)
-    if not cfg_files:
-        return pd.DataFrame()
-    cache_cfg = str(Path(PKG_PATH) / "markets" / "cached" / f"{cat}_cfg.parq")
-    last_mod = max(map(files.modified_time, cfg_files), default=0)
-    if files.exists(cache_cfg) and files.modified_time(cache_cfg) > last_mod:
-        return pd.read_parquet(cache_cfg)
+    import warnings
 
-    if not cfg_files:
-        return pd.DataFrame()
-    config = pd.concat([load_yaml(cf).apply(pd.Series) for cf in cfg_files], sort=False)
-    if config.empty:
-        return pd.DataFrame()
-    files.create_folder(cache_cfg, is_file=True)
-    config.to_parquet(cache_cfg)
-    return config
+    warnings.warn(
+        "load_config() is deprecated. YAML configuration files have been removed. "
+        "Use Bloomberg API directly for market metadata (e.g., bdp with EXCH_CODE, "
+        "IANA_TIME_ZONE, FUT_GEN_MONTH fields).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return pd.DataFrame()
 
 
 def load_yaml(yaml_file: str) -> pd.Series:
     """Load YAML from cache.
 
+    .. deprecated::
+        YAML configuration files have been removed. This function is deprecated
+        and will be removed in a future version.
+
     Args:
         yaml_file: YAML file name
 
     Returns:
-        pd.Series: Parsed YAML content.
+        pd.Series: Empty Series. YAML config files no longer exist.
     """
-    # Convert to Path for cross-platform compatibility
-    yaml_path = Path(yaml_file)
-    cache_file = str(yaml_path.parent.parent / "cached" / yaml_path.with_suffix(".parq").name)
-    cur_mod = files.modified_time(yaml_file)
-    if files.exists(cache_file) and files.modified_time(cache_file) > cur_mod:
-        # Load from parquet: Series was saved as DataFrame with 'value' column
-        df = pd.read_parquet(cache_file)
-        # Restore Series with original index
-        return pd.Series(df["value"].values, index=df.index, name=df["value"].name)
+    import warnings
 
-    with open(yaml_file) as fp:
-        data = pd.Series(_yaml.load(fp))
-        files.create_folder(cache_file, is_file=True)
-        # Convert Series to DataFrame for parquet storage
-        # Store index as column and values as 'value' column
-        df = pd.DataFrame({"value": data.values}, index=data.index)
-        df.to_parquet(cache_file)
-        return data
+    warnings.warn(
+        "load_yaml() is deprecated. YAML configuration files have been removed. "
+        "Use Bloomberg API directly for market metadata.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return pd.Series(dtype=object)
 
 
 def to_hours(num_ts: str | list | int | float | np.integer | np.floating) -> str | list:
-    """Convert YAML input to hours.
+    """Convert numeric time to hours format (HH:MM).
 
     Args:
-        num_ts: list of number in YMAL file, e.g., 900, 1700, etc.
+        num_ts: Numeric time value or list of values. Examples:
+            - 900 → "09:00"
+            - 1700 → "17:00"
+            - [900, 1700] → ["09:00", "17:00"]
+            - "XYZ" → "XYZ" (strings returned as-is)
 
     Returns:
         str | list: Time formatted as ``HH:MM`` or list of times.
@@ -120,7 +121,7 @@ def to_hours(num_ts: str | list | int | float | np.integer | np.floating) -> str
         return f"{int(num_val / 100):02d}:{int(num_val % 100):02d}"
     # Handle list-like types (list, tuple, array, etc.)
     if hasattr(num_ts, "__iter__") and not isinstance(num_ts, (str, bytes)):
-        return [to_hours(num) for num in num_ts]
+        return [to_hours(num) for num in num_ts]  # type: ignore[arg-type]
     # Fallback: treat as scalar (convert to float first)
-    num_val = float(num_ts)
+    num_val = float(num_ts)  # type: ignore[arg-type]
     return f"{int(num_val / 100):02d}:{int(num_val % 100):02d}"

@@ -9,8 +9,24 @@ from xbbg.io import param
 
 def test_bdib_uses_cached_parquet_when_available(monkeypatch):
     """bdib should load from cached intraday parquet and avoid live Bloomberg calls."""
+    from xbbg.markets import bloomberg
+    from xbbg.markets.bloomberg import ExchangeInfo
+
     data_root = os.path.join(param.PKG_PATH, "tests", "data")
     monkeypatch.setenv("BBG_ROOT", data_root)
+
+    # Mock Bloomberg exchange info to avoid live calls
+    def mock_fetch_exchange_info(ticker, *args, **kwargs):
+        return ExchangeInfo(
+            ticker=ticker,
+            mic="XNGS",
+            exch_code="US",
+            timezone="America/New_York",
+            sessions={"regular": ("09:30", "16:00")},
+            source="mock",
+        )
+
+    monkeypatch.setattr(bloomberg, "fetch_exchange_info", mock_fetch_exchange_info)
 
     def _fail(*args, **kwargs):  # pragma: no cover - defensive
         raise AssertionError("send_request should not be called when cache file exists")

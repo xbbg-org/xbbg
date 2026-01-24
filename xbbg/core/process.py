@@ -145,14 +145,10 @@ def time_range(
 ) -> intervals.Session:
     """Time range in UTC (for intraday bar) or other timezone.
 
-    This is a thin orchestration wrapper that tries exch.yml-based metadata
-    first, then falls back to pandas-market-calendars (PMC). The detailed
-    resolution logic lives in dedicated helpers to keep this function simple.
-
     Args:
         dt: Date-like input to compute the range for.
         ticker: Ticker.
-        session: Market session defined in ``markets/exch.yml``.
+        session: Market session defined in exchange metadata.
         tz: Target timezone name or tz-resolvable input.
         ctx: Bloomberg context (infrastructure kwargs only). If None, will be
             extracted from kwargs for backward compatibility.
@@ -167,39 +163,26 @@ def time_range(
     if ctx is None:
         split = split_kwargs(**kwargs)
         ctx = split.infra
-        pmc_extended = bool(split.request_opts.get("pmc_extended", False))
-    else:
-        pmc_extended = bool(kwargs.pop("pmc_extended", False))
+    # Ignore pmc_extended in kwargs for backward compatibility
+    kwargs.pop("pmc_extended", None)
 
     session_kwargs = ctx.to_kwargs()
 
-    # 1) Primary: exch.yml-based session metadata
-    primary = _time_range_from_exch_metadata(
+    # Resolve session from exchange metadata
+    result = _time_range_from_exch_metadata(
         dt=dt,
         ticker=ticker,
         session=session,
         tz=tz,
         session_kwargs=session_kwargs,
     )
-    if primary is not None:
-        return primary
+    if result is not None:
+        return result
 
-    # 2) Fallback: pandas-market-calendars-based session
-    pmc_session = _time_range_from_pmc(
-        dt=dt,
-        ticker=ticker,
-        session=session,
-        tz=tz,
-        ctx=ctx,
-        pmc_extended=pmc_extended,
-    )
-    if pmc_session is not None:
-        return pmc_session
-
-    # 3) Nothing worked – propagate a clear error
+    # Nothing worked – propagate a clear error
     raise ValueError(
         f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
-        f"Session is not defined in exch.yml and PMC fallback is not available or does not support this session."
+        f"Session is not defined in exchange metadata."
     )
 
 
@@ -218,7 +201,7 @@ def _time_range_from_exch_metadata(
     tz: str,
     session_kwargs: dict,
 ) -> intervals.Session | None:
-    """Resolve time range using exch.yml-based metadata, or return None on failure."""
+    """Resolve time range using exchange metadata, or return None on failure."""
     logger = logging.getLogger(__name__)
 
     try:
@@ -254,66 +237,6 @@ def _time_range_from_exch_metadata(
             ],
         )
         .tz_localize(ex_info.tz)
-        .tz_convert(DEFAULT_TZ)
-        .tz_convert(dest_tz)
-    )
-    if time_idx[0] > time_idx[1]:
-        time_idx -= pd.TimedeltaIndex(["1D", "0D"])
-    return intervals.Session(
-        time_idx[0].strftime(time_fmt),
-        time_idx[1].strftime(time_fmt),
-    )
-
-
-def _time_range_from_pmc(
-    dt,
-    ticker: str,
-    session: str,
-    tz: str,
-    ctx: BloombergContext,
-    pmc_extended: bool,
-) -> intervals.Session | None:
-    """Resolve time range using pandas-market-calendars, or return None on failure."""
-    logger = logging.getLogger(__name__)
-
-    pmc_supported_sessions = {"day", "allday"}
-    if session not in pmc_supported_sessions:
-        return None
-
-    try:
-        from xbbg.markets.pmc import pmc_session_for_date
-
-        pmc_ss = pmc_session_for_date(
-            ticker=ticker,
-            dt=dt,
-            session=session,
-            include_extended=pmc_extended,
-            ctx=ctx,
-        )
-    except Exception:  # noqa: BLE001
-        pmc_ss = None
-
-    if pmc_ss is None:
-        return None
-
-    logger.warning(
-        "Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars",
-        ticker,
-        session,
-    )
-
-    cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
-    time_fmt = "%Y-%m-%dT%H:%M:%S"
-    dest_tz = _normalize_dest_tz(tz)
-
-    time_idx = (
-        pd.DatetimeIndex(
-            [
-                f"{cur_dt} {pmc_ss.start}",
-                f"{cur_dt} {pmc_ss.end}",
-            ],
-        )
-        .tz_localize(pmc_ss.tz)
         .tz_convert(DEFAULT_TZ)
         .tz_convert(dest_tz)
     )

@@ -99,21 +99,11 @@ def _resolve_bdib_ticker(ticker: str, dt, ex_info) -> tuple[str, bool]:
 def _get_default_exchange_info(ticker: str, dt=None, session="allday", **kwargs) -> pd.Series:
     """Get default exchange info for fixed income securities.
 
-    Tries to use pandas-market-calendars (PMC) with appropriate bond market calendars
-    (SIFMA_US, SIFMA_UK, SIFMA_JP, etc.) based on country code.
-    Falls back to timezone-based defaults if PMC is not available.
+    Uses timezone-based defaults inferred from country code.
 
     Returns:
         pd.Series with default timezone and session info.
     """
-    # Map country codes to PMC bond market calendars
-    country_to_pmc_calendar = {
-        "US": "SIFMA_US",
-        "GB": "SIFMA_UK",
-        "UK": "SIFMA_UK",
-        "JP": "SIFMA_JP",
-    }
-
     # Try to infer country code from ticker
     country_code = None
 
@@ -125,77 +115,16 @@ def _get_default_exchange_info(ticker: str, dt=None, session="allday", **kwargs)
             country_code = identifier[:2].upper()
     elif ticker.startswith("/cusip/") or ticker.startswith("/sedol/"):
         # CUSIP/SEDOL: Cannot reliably determine country code from identifier alone
-        # User needs to provide calendar mapping or use ISIN format instead
         country_code = None
     else:
         # Regular ticker format: US912810FE39 Govt -> extract US
-        # Note: CUSIP/SEDOL followed by asset type (e.g., "12345678 Govt") won't match here
-        # as they don't start with country code
         t_info = ticker.split()
         if t_info and len(t_info[0]) == 2:
             country_code = t_info[0].upper()
 
-    # Try to use PMC calendar if available and date is provided
-    if dt and country_code and country_code in country_to_pmc_calendar:
-        try:
-            import pandas_market_calendars as mcal  # type: ignore
-
-            cal_name = country_to_pmc_calendar[country_code]
-            cal = mcal.get_calendar(cal_name)
-            s_date = pd.Timestamp(dt).date()
-
-            # Get schedule for the date
-            # Note: SIFMA calendars may not support 'pre'/'post', so use regular schedule
-            sched = cal.schedule(start_date=s_date, end_date=s_date)
-            if sched.empty:
-                # Date might be a holiday/weekend, fall through to defaults
-                raise ValueError(f"No schedule available for {s_date} (likely holiday/weekend)")
-
-            # Check for extended hours columns, fallback to regular market hours
-            if "pre" in sched.columns and "post" in sched.columns and session == "allday":
-                pre_col = "pre"
-                post_col = "post"
-            else:
-                pre_col = "market_open"
-                post_col = "market_close"
-
-            if not sched.empty:
-                tz_name = cal.tz.zone if hasattr(cal.tz, "zone") else str(cal.tz)
-                start_ts = sched.iloc[0][pre_col]
-                end_ts = sched.iloc[0][post_col]
-
-                # Convert to timezone-aware timestamps and extract HH:MM
-                start_time = start_ts.tz_convert(tz_name).strftime("%H:%M")
-                end_time = end_ts.tz_convert(tz_name).strftime("%H:%M")
-
-                logger.debug("Using PMC calendar %s for fixed income security %s", cal_name, ticker)
-                return pd.Series(
-                    {
-                        "tz": tz_name,
-                        "allday": [start_time, end_time],
-                        "day": [start_time, end_time],
-                    }
-                )
-        except Exception as e:
-            # PMC not available or calendar lookup failed, fall through to defaults
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("PMC calendar lookup failed for %s: %s, using timezone defaults", ticker, e)
-
-    # Fallback: timezone-based defaults
-    # If country_code is None (e.g., CUSIP/SEDOL), we can't determine calendar
-    if country_code is None:
-        # Check if this is a CUSIP/SEDOL identifier format
-        if ticker.startswith("/cusip/") or ticker.startswith("/sedol/"):
-            raise ValueError(
-                f"Cannot determine country code from {ticker}. "
-                "CUSIP/SEDOL identifiers do not contain country information. "
-                "Please use ISIN format (/isin/...) which includes country code, "
-                "or provide a calendar mapping via pandas-market-calendars."
-            )
-        # For other cases where country_code is None, use default
-        default_tz = kwargs.get("tz", "America/New_York")
-    else:
-        default_tz = kwargs.get("tz", "America/New_York")  # Default to US Eastern
+    # Timezone-based defaults
+    default_tz = kwargs.get("tz", "America/New_York")
+    if country_code:
         tz_map = {
             "US": "America/New_York",
             "GB": "Europe/London",
@@ -376,9 +305,9 @@ def bdib(
         ticker: ticker name
         dt: date to download (for single-day requests). Can be omitted if
             start_datetime and end_datetime are provided.
-        session: Trading session name. Sessions are dynamically extracted from ``exch.yml``.
+        session: Trading session name. Sessions are dynamically resolved from Bloomberg.
             Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
-            Availability depends on exchange - check ``xbbg/markets/exch.yml`` for definitions.
+            Availability depends on exchange.
             Raises ``ValueError`` if session is not defined for the ticker's exchange.
             Ignored when start_datetime and end_datetime are provided.
         typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
@@ -430,7 +359,6 @@ def bdib(
     if dt is None and is_multi_day:
         dt = pd.Timestamp(start_datetime).strftime("%Y-%m-%d")
     from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, intraday_pipeline_config
-    from xbbg.core.utils import trials
 
     # Build request using RequestBuilder
     request = RequestBuilder.from_legacy_kwargs(
@@ -470,37 +398,9 @@ def bdib(
         if not is_fixed_income:
             raise KeyError(f"Cannot find exchange info for {ticker}")
 
-    # Check trial count (preserve legacy behavior) - skip for multi-day requests
-    if not is_multi_day:
-        trial_kw = {"ticker": ticker, "dt": dt, "typ": typ, "func": "bdib"}
-        num_trials = trials.num_trials(**trial_kw)
-        if num_trials >= 2:
-            if request.context and request.context.batch:
-                return pd.DataFrame()
-            if logger.isEnabledFor(logging.INFO):
-                cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
-                logger.info(
-                    "No data available after %d attempt(s) for %s / %s / %s",
-                    num_trials,
-                    ticker,
-                    cur_dt,
-                    typ,
-                )
-            return pd.DataFrame()
-    else:
-        num_trials = 0
-
     # Run pipeline
     pipeline = BloombergPipeline(config=intraday_pipeline_config())
-    result = pipeline.run(request)
-
-    # Update trial count if no data returned (only for single-day requests)
-    from xbbg.io.convert import is_empty
-
-    if is_empty(result) and not is_multi_day:
-        trials.update_trials(cnt=num_trials + 1, **trial_kw)
-
-    return result
+    return pipeline.run(request)
 
 
 def bdtick(
@@ -518,7 +418,7 @@ def bdtick(
     Args:
         ticker: Ticker name.
         dt: Date to download.
-        session: Trading session name. Sessions are dynamically extracted from ``exch.yml``.
+        session: Trading session name. Sessions are dynamically resolved from Bloomberg.
             Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
             Availability depends on exchange. Defaults to 'allday'.
             Raises ``ValueError`` if session is not defined for the ticker's exchange.

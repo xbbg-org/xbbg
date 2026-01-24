@@ -6,6 +6,8 @@ for Bloomberg intraday bar data and reference data (BDP/BDS).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
 import logging
 import os
 from pathlib import Path
@@ -24,7 +26,7 @@ from xbbg.io import files
 from xbbg.io.convert import is_empty, to_pandas
 
 if TYPE_CHECKING:
-    pass
+    from xbbg.markets.bloomberg import ExchangeInfo
 
 logger = logging.getLogger(__name__)
 
@@ -447,7 +449,7 @@ class BarCacheAdapter:
         allowing future single-day or multi-day requests to reuse the cache.
 
         Args:
-            data: DataFrame with DatetimeIndex containing multiple days.
+            data: DataFrame with DatetimeIndex or "time" column containing multiple days.
             request: Original data request.
         """
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
@@ -460,25 +462,55 @@ class BarCacheAdapter:
         else:
             raw_data = data
 
-        # Group by date and save each day
-        grouped = raw_data.groupby(raw_data.index.date)
-        saved_count = 0
+        # Handle long format data with RangeIndex and "time" column
+        if isinstance(raw_data.index, pd.RangeIndex) and "time" in raw_data.columns:
+            # Convert "time" column to datetime and extract date
+            time_col = pd.to_datetime(raw_data["time"])
+            date_col = time_col.dt.date
 
-        for date, day_data in grouped:
-            if is_empty(day_data):
-                continue
+            # Group by date
+            saved_count = 0
+            for date in date_col.unique():
+                day_mask = date_col == date
+                day_data = raw_data[day_mask].copy()
 
-            # Use existing save_intraday which handles market timing checks
-            save_intraday(
-                data=day_data,
-                ticker=request.ticker,
-                dt=date,
-                typ=request.event_type,
-                interval=request.interval,
-                interval_has_seconds=request.interval_has_seconds,
-                **ctx_kwargs,
-            )
-            saved_count += 1
+                if is_empty(day_data):
+                    continue
+
+                # Convert to format expected by save_intraday (DatetimeIndex)
+                day_data_indexed = day_data.set_index(pd.DatetimeIndex(pd.to_datetime(day_data["time"])))
+                day_data_indexed = day_data_indexed.drop(columns=["time", "ticker"], errors="ignore")
+
+                save_intraday(
+                    data=day_data_indexed,
+                    ticker=request.ticker,
+                    dt=date,
+                    typ=request.event_type,
+                    interval=request.interval,
+                    interval_has_seconds=request.interval_has_seconds,
+                    **ctx_kwargs,
+                )
+                saved_count += 1
+        else:
+            # Standard format with DatetimeIndex
+            grouped = raw_data.groupby(raw_data.index.date)  # type: ignore[union-attr]
+            saved_count = 0
+
+            for date, day_data in grouped:
+                if is_empty(day_data):
+                    continue
+
+                # Use existing save_intraday which handles market timing checks
+                save_intraday(
+                    data=day_data,
+                    ticker=request.ticker,
+                    dt=date,
+                    typ=request.event_type,
+                    interval=request.interval,
+                    interval_has_seconds=request.interval_has_seconds,
+                    **ctx_kwargs,
+                )
+                saved_count += 1
 
         if saved_count > 0:
             logger.debug(
@@ -507,6 +539,299 @@ class TickCacheAdapter:
     ) -> None:
         """Save tick data (not implemented yet)."""
         ...
+
+
+# ============================================================================
+# Exchange Metadata Cache
+# ============================================================================
+
+
+def exchange_cache_file() -> str:
+    """Return path to exchange metadata cache file.
+
+    Returns:
+        str: Path to exchanges.parquet file, or empty string if cache root unavailable.
+    """
+    root = get_cache_root()
+    if not root:
+        return ""
+    return str(Path(root) / "cache" / "exchanges.parquet")
+
+
+def save_exchange_info(info: ExchangeInfo) -> None:
+    """Save single ExchangeInfo to cache (upsert by ticker).
+
+    Args:
+        info: ExchangeInfo dataclass to save.
+    """
+    save_exchange_infos([info])
+
+
+def save_exchange_infos(infos: list[ExchangeInfo]) -> None:
+    """Bulk save multiple ExchangeInfo entries.
+
+    Performs upsert: existing entries with matching tickers are replaced,
+    new entries are appended.
+
+    Args:
+        infos: List of ExchangeInfo dataclasses to save.
+    """
+    if not infos:
+        return
+
+    cache_file = exchange_cache_file()
+    if not cache_file:
+        logger.debug("Cache root not available, skipping exchange info save")
+        return
+
+    # Set cached_at timestamp for all entries
+    now = datetime.now(timezone.utc)
+
+    # Convert ExchangeInfo list to records
+    new_records = []
+    for info in infos:
+        new_records.append(
+            {
+                "ticker": info.ticker,
+                "mic": info.mic,
+                "exch_code": info.exch_code,
+                "timezone": info.timezone,
+                "utc_offset": info.utc_offset,
+                "sessions": json.dumps(info.sessions),
+                "source": info.source,
+                "cached_at": now,
+            }
+        )
+
+    new_df = pd.DataFrame(new_records)
+    new_tickers = set(new_df["ticker"].tolist())
+
+    # Load existing cache and merge
+    if files.exists(cache_file):
+        try:
+            existing_table = pq.read_table(cache_file)
+            existing_df = existing_table.to_pandas()
+            # Remove entries that will be replaced
+            existing_df = existing_df[~existing_df["ticker"].isin(new_tickers)]
+            # Concatenate
+            merged_df = pd.concat([existing_df, new_df], ignore_index=True)
+        except Exception as e:
+            logger.warning("Failed to read existing exchange cache, overwriting: %s", e)
+            merged_df = new_df
+    else:
+        merged_df = new_df
+
+    # Ensure directory exists
+    files.create_folder(cache_file, is_file=True)
+
+    # Write to parquet
+    table = pa.Table.from_pandas(merged_df, preserve_index=False)
+    pq.write_table(table, cache_file)
+    logger.debug("Saved %d exchange info entries to cache: %s", len(infos), cache_file)
+
+
+def load_exchange_info(ticker: str, max_age_hours: float = 24.0) -> ExchangeInfo | None:
+    """Load cached ExchangeInfo if exists and not stale.
+
+    Args:
+        ticker: Ticker symbol to look up.
+        max_age_hours: Maximum age in hours before cache is considered stale.
+            Use float('inf') to ignore staleness.
+
+    Returns:
+        ExchangeInfo if found and not stale, None otherwise.
+    """
+    from xbbg.markets.bloomberg import ExchangeInfo
+
+    cache_file = exchange_cache_file()
+    if not cache_file or not files.exists(cache_file):
+        return None
+
+    try:
+        table = pq.read_table(cache_file)
+        df = table.to_pandas()
+    except Exception as e:
+        logger.warning("Failed to read exchange cache: %s", e)
+        return None
+
+    if df.empty:
+        return None
+
+    # Filter by ticker
+    matches = df[df["ticker"] == ticker]
+    if matches.empty:
+        return None
+
+    row = matches.iloc[0]
+
+    # Check staleness
+    cached_at = row.get("cached_at")
+    if cached_at is not None and max_age_hours != float("inf"):
+        if pd.isna(cached_at):
+            return None
+        # Handle timezone-aware and naive timestamps
+        if hasattr(cached_at, "tzinfo") and cached_at.tzinfo is not None:
+            now = datetime.now(timezone.utc)
+        else:
+            cached_at = pd.Timestamp(cached_at).to_pydatetime()
+            now = datetime.now(timezone.utc)
+            cached_at = cached_at.replace(tzinfo=timezone.utc)
+        age_hours = (now - cached_at).total_seconds() / 3600
+        if age_hours > max_age_hours:
+            logger.debug("Exchange cache stale for %s (%.1f hours old)", ticker, age_hours)
+            return None
+
+    # Deserialize sessions from JSON
+    sessions_str = row.get("sessions", "{}")
+    try:
+        sessions = json.loads(sessions_str) if sessions_str else {}
+    except (json.JSONDecodeError, TypeError):
+        sessions = {}
+
+    # Convert sessions values to tuples
+    sessions_dict: dict[str, tuple[str, str]] = {}
+    for k, v in sessions.items():
+        if isinstance(v, (list, tuple)) and len(v) == 2:
+            sessions_dict[k] = (str(v[0]), str(v[1]))
+
+    return ExchangeInfo(
+        ticker=row["ticker"],
+        mic=row.get("mic") if pd.notna(row.get("mic")) else None,
+        exch_code=row.get("exch_code") if pd.notna(row.get("exch_code")) else None,
+        timezone=row.get("timezone", "UTC"),
+        utc_offset=float(row["utc_offset"]) if pd.notna(row.get("utc_offset")) else None,
+        sessions=sessions_dict,
+        source=row.get("source", "cache"),
+        cached_at=_parse_cached_at(cached_at),
+    )
+
+
+def _parse_cached_at(cached_at: object) -> datetime | None:
+    """Parse cached_at value to datetime, handling NaT and None."""
+    if cached_at is None:
+        return None
+    try:
+        if pd.isna(cached_at):  # type: ignore[arg-type]
+            return None
+        ts = pd.Timestamp(cached_at)  # type: ignore[arg-type]
+        if pd.isna(ts):
+            return None
+        result = ts.to_pydatetime()
+        # to_pydatetime can return NaT for NaT input
+        if pd.isna(result):  # type: ignore[arg-type]
+            return None
+        return result  # type: ignore[return-value]
+    except Exception:
+        return None
+
+
+def load_all_exchange_infos() -> dict[str, ExchangeInfo]:
+    """Load all cached exchange infos as dict keyed by ticker.
+
+    Returns:
+        Dict mapping ticker to ExchangeInfo. Empty dict if cache unavailable.
+    """
+    from xbbg.markets.bloomberg import ExchangeInfo
+
+    cache_file = exchange_cache_file()
+    if not cache_file or not files.exists(cache_file):
+        return {}
+
+    try:
+        table = pq.read_table(cache_file)
+        df = table.to_pandas()
+    except Exception as e:
+        logger.warning("Failed to read exchange cache: %s", e)
+        return {}
+
+    if df.empty:
+        return {}
+
+    result: dict[str, ExchangeInfo] = {}
+    for _, row in df.iterrows():
+        ticker = row["ticker"]
+
+        # Deserialize sessions from JSON
+        sessions_str = row.get("sessions", "{}")
+        try:
+            sessions = json.loads(sessions_str) if sessions_str else {}
+        except (json.JSONDecodeError, TypeError):
+            sessions = {}
+
+        # Convert sessions values to tuples
+        sessions_dict: dict[str, tuple[str, str]] = {}
+        for k, v in sessions.items():
+            if isinstance(v, (list, tuple)) and len(v) == 2:
+                sessions_dict[k] = (str(v[0]), str(v[1]))
+
+        cached_at = row.get("cached_at")
+        result[ticker] = ExchangeInfo(
+            ticker=ticker,
+            mic=row.get("mic") if pd.notna(row.get("mic")) else None,
+            exch_code=row.get("exch_code") if pd.notna(row.get("exch_code")) else None,
+            timezone=row.get("timezone", "UTC"),
+            utc_offset=float(row["utc_offset"]) if pd.notna(row.get("utc_offset")) else None,
+            sessions=sessions_dict,
+            source=row.get("source", "cache"),
+            cached_at=_parse_cached_at(cached_at),
+        )
+
+    return result
+
+
+def invalidate_exchange_cache(ticker: str | None = None) -> None:
+    """Invalidate cache for ticker, or entire cache if ticker is None.
+
+    Args:
+        ticker: Ticker to invalidate. If None, invalidates entire cache.
+    """
+    cache_file = exchange_cache_file()
+    if not cache_file:
+        return
+
+    if not files.exists(cache_file):
+        return
+
+    if ticker is None:
+        # Delete entire cache file
+        try:
+            Path(cache_file).unlink()
+            logger.info("Invalidated entire exchange cache: %s", cache_file)
+        except Exception as e:
+            logger.warning("Failed to delete exchange cache: %s", e)
+        return
+
+    # Remove specific ticker from cache
+    try:
+        table = pq.read_table(cache_file)
+        df = table.to_pandas()
+    except Exception as e:
+        logger.warning("Failed to read exchange cache for invalidation: %s", e)
+        return
+
+    if df.empty:
+        return
+
+    original_len = len(df)
+    df = df[df["ticker"] != ticker]
+
+    if len(df) == original_len:
+        logger.debug("Ticker %s not found in exchange cache", ticker)
+        return
+
+    if df.empty:
+        # No entries left, delete file
+        try:
+            Path(cache_file).unlink()
+            logger.info("Removed last entry, deleted exchange cache: %s", cache_file)
+        except Exception as e:
+            logger.warning("Failed to delete exchange cache: %s", e)
+        return
+
+    # Write updated cache
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    pq.write_table(table, cache_file)
+    logger.info("Invalidated exchange cache for ticker: %s", ticker)
 
 
 # ============================================================================

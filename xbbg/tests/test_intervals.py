@@ -441,13 +441,9 @@ class TestStandardSessions:
 
         assert isinstance(STANDARD_SESSIONS, set)
 
-    def test_standard_sessions_or_fallback(self):
-        """Test that _get_standard_sessions returns a set (may be empty or populated)."""
-        from xbbg.core.config.intervals import _get_standard_sessions
+    def test_standard_sessions_contains_expected_values(self):
+        """Test that STANDARD_SESSIONS contains the expected session names."""
+        from xbbg.core.config.intervals import STANDARD_SESSIONS
 
-        # The function should return a set, either from exch.yml or fallback
-        sessions = _get_standard_sessions()
-        assert isinstance(sessions, set)
-        # If the function returns sessions, they should be strings
-        for session in sessions:
-            assert isinstance(session, str)
+        expected = {"allday", "day", "am", "pm", "pre", "post", "night"}
+        assert expected == STANDARD_SESSIONS

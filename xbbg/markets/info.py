@@ -6,18 +6,17 @@ Provides functions to resolve exchange information, market timing, and asset con
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import pandas as pd
 
 from xbbg import const
 from xbbg.core.utils import timezone
-from xbbg.io import files, param
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "exch_info",
+    "exch_info_bloomberg",
     "market_info",
     "market_timing",
     "asset_config",
@@ -26,8 +25,86 @@ __all__ = [
 ]
 
 
+# =============================================================================
+# Bloomberg-backed exchange info
+# =============================================================================
+
+
+def exch_info_bloomberg(ticker: str, **kwargs) -> pd.Series:
+    """Get exchange info from Bloomberg API.
+
+    This function queries Bloomberg for exchange metadata and derives
+    trading session windows dynamically.
+
+    Args:
+        ticker: Bloomberg ticker (e.g., 'AAPL US Equity', 'ES1 Index')
+        **kwargs:
+            ref: Reference ticker (used if primary ticker fails)
+
+    Returns:
+        pd.Series with keys: tz, allday, day, pre, post, am, pm (where applicable)
+        Returns empty Series if Bloomberg data unavailable.
+
+    Examples:
+        >>> exch_info_bloomberg('AAPL US Equity')  # doctest: +SKIP
+        tz        America/New_York
+        allday      [04:00, 20:30]
+        day         [09:30, 16:30]
+        pre         [04:00, 09:30]
+        post        [16:31, 20:30]
+        dtype: object
+    """
+    from xbbg.markets.bloomberg import fetch_exchange_info
+    from xbbg.markets.sessions import derive_sessions
+
+    # Handle ref parameter - use reference ticker if provided
+    if ref := kwargs.get("ref"):
+        return exch_info_bloomberg(ticker=ref, **{k: v for k, v in kwargs.items() if k != "ref"})
+
+    try:
+        # Fetch from Bloomberg
+        bbg_info = fetch_exchange_info(ticker)
+
+        # If fallback (no Bloomberg data), return empty
+        if bbg_info.source == "fallback":
+            logger.debug("Bloomberg returned fallback for %s", ticker)
+            return pd.Series(dtype=object)
+
+        # Derive session windows
+        sessions = derive_sessions(bbg_info)
+
+        # Build result Series
+        result = {"tz": bbg_info.timezone}
+
+        # Add sessions as lists [start, end]
+        if sessions.allday:
+            result["allday"] = list(sessions.allday)
+        if sessions.day:
+            result["day"] = list(sessions.day)
+        if sessions.pre:
+            result["pre"] = list(sessions.pre)
+        if sessions.post:
+            result["post"] = list(sessions.post)
+        if sessions.am:
+            result["am"] = list(sessions.am)
+        if sessions.pm:
+            result["pm"] = list(sessions.pm)
+
+        # Use MIC or exch_code as the Series name
+        name = bbg_info.mic or bbg_info.exch_code or "Bloomberg"
+
+        return pd.Series(result, name=name)
+
+    except Exception as e:
+        logger.warning("Failed to get Bloomberg exchange info for %s: %s", ticker, e)
+        return pd.Series(dtype=object)
+
+
 def exch_info(ticker: str, **kwargs) -> pd.Series:
     """Exchange info for given ticker.
+
+    Queries Bloomberg API for exchange metadata including timezone and
+    trading session windows.
 
     Args:
         ticker: ticker or exchange
@@ -35,10 +112,9 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
             ref: reference ticker or exchange
                  used as supplement if exchange info is not defined for `ticker`
             original: original ticker (for logging)
-            config: info from exch.yml
 
     Returns:
-        pd.Series
+        pd.Series with keys: tz, allday, day, pre, post, am, pm (where applicable)
 
     Examples:
         >>> exch_info('SPY US Equity')  # doctest: +SKIP
@@ -47,215 +123,133 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         day         [09:30, 16:00]
         post        [16:01, 20:00]
         pre         [04:00, 09:30]
-        Name: EquityUS, dtype: object
-        >>> exch_info('SPY US Equity', ref='EquityUS')  # doctest: +SKIP
-        tz        America/New_York
-        allday      [04:00, 20:00]
-        day         [09:30, 16:00]
-        post        [16:01, 20:00]
-        pre         [04:00, 09:30]
-        Name: EquityUS, dtype: object
-        >>> exch_info('ES1 Index')  # doctest: +SKIP
-        tz        America/New_York
-        allday      [18:00, 17:00]
-        day         [08:00, 17:00]
-        Name: CME, dtype: object
-        >>> exch_info('ESM0 Index', ref='ES1 Index')  # doctest: +SKIP
-        tz        America/New_York
-        allday      [18:00, 17:00]
-        day         [08:00, 17:00]
-        Name: CME, dtype: object
-        >>> exch_info('Z 1 Index')  # doctest: +SKIP
-        tz         Europe/London
-        allday    [01:00, 21:00]
-        day       [01:00, 21:00]
-        Name: FuturesFinancialsICE, dtype: object
-        >>> exch_info('TESTTICKER Corp')  # doctest: +SKIP
-        Series([], dtype: object)
-        >>> exch_info('US')  # doctest: +SKIP
-        tz        America/New_York
-        allday      [04:00, 20:00]
-        day         [09:30, 16:00]
-        post        [16:01, 20:00]
-        pre         [04:00, 09:30]
-        Name: EquityUS, dtype: object
-        >>> exch_info('UXF1UXG1 Index')  # doctest: +SKIP
-        tz        America/New_York
-        allday      [18:00, 17:00]
-        day         [18:00, 17:00]
-        Name: FuturesCBOE, dtype: object
-        >>> exch_info('TESTTICKER Index', original='TESTTICKER Index').empty  # doctest: +SKIP
-        True
-        >>> exch_info('TESTTCK Index')  # doctest: +SKIP
-        Series([], dtype: object)
+        Name: XNGS, dtype: object
     """
+    # Handle ref parameter
     if ref := kwargs.get("ref"):
         return exch_info(ticker=ref, **{k: v for k, v in kwargs.items() if k != "ref"})
 
-    exch = kwargs.get("config", param.load_config(cat="exch"))
+    # Query Bloomberg for exchange info
+    result = exch_info_bloomberg(ticker, **kwargs)
+    if not result.empty:
+        return result
+
+    # Log if we got no data
     original = kwargs.get("original", "")
-
-    # Handle empty exchange config
-    if exch.empty:
-        if original:
-            logger.error("Exchange information not found for ticker: %s", original)
-        return pd.Series(dtype=object)
-
-    # Case 1: Use exchange directly
-    if ticker in exch.index:
-        info = exch.loc[ticker].dropna()
-        if info.reindex(["allday", "tz"]).dropna().size < 2:
-            logger.error(f"required info (allday + tz) cannot be found in {original or ticker} ...")
-            return pd.Series(dtype=object)
-        if "day" not in info:
-            info["day"] = info["allday"]
-        return info.dropna().apply(param.to_hours)
-
     if original:
-        logger.error("Exchange information not found for ticker: %s", original)
-        return pd.Series(dtype=object)
-
-    # Case 2: Use ticker to find exchange
-    if not (exch_name := market_info(ticker=ticker).get("exch", "")):
-        return pd.Series(dtype=object)
-    return exch_info(ticker=exch_name, original=ticker, config=exch)
+        logger.warning("Bloomberg exchange info not found for: %s", original)
+    return pd.Series(dtype=object)
 
 
 def market_info(ticker: str) -> pd.Series:
-    """Get info for given ticker.
+    """Get market info for given ticker using Bloomberg.
+
+    Queries Bloomberg for exchange code, timezone, and futures metadata.
 
     Args:
         ticker: Bloomberg full ticker
 
     Returns:
-        pd.Series
+        pd.Series with keys: exch, tz, freq (for futures), is_fut
 
     Examples:
-        >>> market_info('SHCOMP Index').exch  # doctest: +SKIP
-        'EquityChina'
         >>> market_info('SPY US Equity').exch  # doctest: +SKIP
-        'EquityUS'
-        >>> market_info('ICICIC=1 IS Equity').exch  # doctest: +SKIP
-        'EquityFuturesIndia'
-        >>> market_info('INT1 Curncy').exch  # doctest: +SKIP
-        'CurrencyIndia'
-        >>> market_info('CL1 Comdty').exch  # doctest: +SKIP
-        'NYME'
-        >>> incorrect_tickers = [  # doctest: +SKIP
-        ...     'C XX Equity', 'XXX Comdty', 'Bond_ISIN Corp',
-        ...     'XYZ Index', 'XYZ Curncy',
-        ... ]
-        >>> pd.concat([market_info(_) for _ in incorrect_tickers])  # doctest: +SKIP
-        Series([], dtype: object)
+        'US'
+        >>> market_info('7203 JT Equity').exch  # doctest: +SKIP
+        'JT'
+        >>> market_info('ES1 Index').freq  # doctest: +SKIP
+        'HMUZ'
+        >>> market_info('CL1 Comdty').freq  # doctest: +SKIP
+        'FGHJKMNQUVXZ'
     """
+    from xbbg.api.reference import bdp  # noqa: PLC0415
+
     t_info = ticker.split()
-    exch_only = len(ticker) == 2
+
+    # Handle invalid tickers
+    if len(t_info) < 2:
+        return pd.Series(dtype=object)
+
+    asset = t_info[-1]
+
     # Allow only supported asset types; special-case certain Corp tickers
-    if (not exch_only) and (t_info[-1] not in ["Equity", "Comdty", "Curncy", "Index"]):
-        # Minimal default for CDX generic CDS tickers (Corp asset)
-        # Example: 'CDX IG CDSI GEN 5Y Corp' → use IndexUS session as default hours
-        if t_info[-1] == "Corp" and len(t_info) >= 2 and t_info[0] == "CDX":
-            return pd.Series({"exch": "IndexUS"})
+    if asset not in ["Equity", "Comdty", "Curncy", "Index", "Corp"]:
         return pd.Series(dtype=object)
 
-    a_info = asset_config(asset="Equity" if exch_only else t_info[-1])
+    # Special case for CDX tickers
+    if asset == "Corp" and len(t_info) >= 2 and t_info[0] == "CDX":
+        return pd.Series({"exch": "US", "tz": "America/New_York"})
 
-    # Handle empty asset config (no config files or cache issues)
-    if a_info.empty:
+    # Query Bloomberg for market metadata
+    fields = ["EXCH_CODE", "ID_MIC_PRIM_EXCH", "IANA_TIME_ZONE"]
+
+    # For futures/generic tickers, also get cycle months
+    is_generic_future = (
+        asset in ["Index", "Comdty", "Curncy"]
+        and len(t_info[0]) >= 2
+        and t_info[0][-1].isdigit()
+        and t_info[0][-2:-1].isalpha()
+    )
+    if is_generic_future:
+        fields.append("FUT_GEN_MONTH")
+
+    try:
+        result = bdp(ticker, fields)
+    except Exception as e:
+        logger.warning("Failed to get market info from Bloomberg for %s: %s", ticker, e)
         return pd.Series(dtype=object)
 
-    # =========================================== #
-    #           Equity / Equity Futures           #
-    # =========================================== #
+    if result.empty:
+        return pd.Series(dtype=object)
 
-    if (t_info[-1] == "Equity") or exch_only:
-        is_fut = "==" if "=" in ticker else "!="
-        exch_sym = ticker if exch_only else t_info[-2]
-        return take_first(
-            data=a_info,
-            query=f'exch_codes == "{exch_sym}" and is_fut {is_fut} True',
-        )
+    row = result.iloc[0]
 
-    # ================================================ #
-    #           Currency / Commodity / Index           #
-    # ================================================ #
+    # Build the response Series
+    info = {}
 
-    if "tickers" in a_info.columns and t_info[0] in a_info.tickers.values:
-        symbol = t_info[0]
-    elif t_info[0][-1].isdigit():
-        # Strip year digits from futures ticker: TYH6 -> TY, TYH24 -> TY
-        # Futures format: ROOT + MONTH_CODE + YEAR (1 or 2 digits)
-        # Month codes are single letters (F,G,H,J,K,M,N,Q,U,V,X,Z)
-        ticker_part = t_info[0]
-        # Count trailing digits to determine year length (1 or 2)
-        year_digits = 0
-        for char in reversed(ticker_part):
-            if char.isdigit():
-                year_digits += 1
-            else:
-                break
-        # Strip year digits + 1 for month code
-        end_idx = year_digits + 1
-        symbol = ticker_part[:-end_idx].strip() if end_idx < len(ticker_part) else ticker_part
+    # Exchange code
+    exch_code = row.get("EXCH_CODE") or row.get("ID_MIC_PRIM_EXCH")
+    if exch_code:
+        info["exch"] = exch_code
+
+    # Timezone
+    tz = row.get("IANA_TIME_ZONE")
+    if tz:
+        info["tz"] = tz
+
+    # Futures cycle months (acts as freq indicator)
+    if "FUT_GEN_MONTH" in row and row.get("FUT_GEN_MONTH"):
+        info["freq"] = row["FUT_GEN_MONTH"]
+        info["is_fut"] = True
     else:
-        symbol = t_info[0].split("+")[0]
-    # Special contracts: map any UX* Index form (e.g., UXA, UX1, UXF1UXG1) to UX root
-    if (t_info[-1] == "Index") and symbol.startswith("UX"):
-        symbol = "UX"
-    return take_first(data=a_info, query=f'tickers == "{symbol}"')
+        info["is_fut"] = False
 
-
-def take_first(data: pd.DataFrame, query: str) -> pd.Series:
-    """Query and take the 1st row of result."""
-    if data.empty or (res := data.query(query)).empty:
-        return pd.Series(dtype=object)
-    return res.reset_index(drop=True).iloc[0]
+    return pd.Series(info)
 
 
 def asset_config(asset: str) -> pd.DataFrame:
-    """Load info for given asset.
+    """Get asset configuration.
+
+    .. deprecated::
+        This function is deprecated and returns empty DataFrame.
+        Use `market_info(ticker)` to get ticker metadata from Bloomberg directly,
+        or use Bloomberg fields like FUT_GEN_MONTH for futures cycle information.
 
     Args:
         asset: asset name
 
     Returns:
-        pd.DataFrame
+        pd.DataFrame: Empty DataFrame. This function is deprecated.
     """
-    cfg_files = param.config_files("assets")
-    if not cfg_files:
-        return pd.DataFrame()
-    cache_cfg = str(Path(const.PKG_PATH) / "markets" / "cached" / f"{asset}_cfg.parq")
-    if (
-        (last_mod := max(map(files.modified_time, cfg_files), default=0))
-        and files.exists(cache_cfg)
-        and files.modified_time(cache_cfg) > last_mod
-    ):
-        return pd.read_parquet(cache_cfg)
+    import warnings
 
-    if not cfg_files:
-        return pd.DataFrame()
-
-    logger.debug("Loading asset config for %s from %s", asset, cfg_files)
-
-    config = (
-        pd.concat(
-            [
-                explode(
-                    data=pd.DataFrame(list(param.load_yaml(cf).get(asset, []))),
-                    columns=const.ASSET_INFO[asset],
-                )
-                for cf in cfg_files
-            ],
-            sort=False,
-        )
-        .drop_duplicates(keep="last")
-        .reset_index(drop=True)
+    warnings.warn(
+        "asset_config() is deprecated. Use market_info(ticker) to get ticker metadata "
+        "from Bloomberg directly, or use bdp(ticker, 'FUT_GEN_MONTH') for futures cycles.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    if config.empty:
-        return pd.DataFrame()
-    files.create_folder(cache_cfg, is_file=True)
-    config.to_parquet(cache_cfg)
-    return config
+    return pd.DataFrame()
 
 
 def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
@@ -272,7 +266,7 @@ def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
         return pd.DataFrame()
 
     # Check if all required columns exist before attempting to explode
-    # This prevents KeyError when DataFrames are created from malformed YAML entries
+    # This prevents KeyError when DataFrames are created from malformed config entries
     # (e.g., empty dicts like Corp: [{}] which create DataFrames with no columns)
     missing_cols = [col for col in columns if col not in data.columns]
     if missing_cols:
@@ -297,54 +291,88 @@ def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
 def ccy_pair(local, base="USD") -> const.CurrencyPair:
     """Currency pair info.
 
+    Uses Bloomberg's INVERSE_QUOTED field to determine the quote direction.
+    Handles sub-unit currencies like GBp (pence) by checking for lowercase suffixes.
+
     Args:
         local: local currency
         base: base currency
 
     Returns:
-        CurrencyPair
+        CurrencyPair with ticker, factor, and power for FX conversion.
+        The FX rate can be calculated as: (BDP(ticker) / factor) ** power
 
     Examples:
-        >>> ccy_pair(local='HKD', base='USD')
+        >>> ccy_pair(local='HKD', base='USD')  # doctest: +SKIP
         CurrencyPair(ticker='HKD Curncy', factor=1.0, power=1.0)
-        >>> ccy_pair(local='GBp')
+        >>> ccy_pair(local='GBp')  # doctest: +SKIP
         CurrencyPair(ticker='GBP Curncy', factor=100.0, power=-1.0)
-        >>> ccy_pair(local='USD', base='GBp')
+        >>> ccy_pair(local='USD', base='GBp')  # doctest: +SKIP
         CurrencyPair(ticker='GBP Curncy', factor=0.01, power=1.0)
-        >>> ccy_pair(local='XYZ', base='USD')  # doctest: +SKIP
-        CurrencyPair(ticker='', factor=1.0, power=1.0)
-        >>> ccy_pair(local='GBP', base='GBp')
+        >>> ccy_pair(local='GBP', base='GBp')  # doctest: +SKIP
         CurrencyPair(ticker='', factor=0.01, power=1.0)
-        >>> ccy_pair(local='GBp', base='GBP')
+        >>> ccy_pair(local='GBp', base='GBP')  # doctest: +SKIP
         CurrencyPair(ticker='', factor=100.0, power=1.0)
     """
-    ccy_param = param.load_config(cat="ccy")
-    if f"{local}{base}" in ccy_param.index:
-        info = ccy_param.loc[f"{local}{base}"].dropna().to_dict()
+    # Handle same currency (e.g., GBP to GBp or vice versa)
+    if base.lower() == local.lower():
+        factor = 1.0
+        # Handle sub-unit conversions (e.g., GBp = pence, lowercase suffix)
+        if base[-1].islower():
+            factor /= 100.0
+        if local[-1].islower():
+            factor *= 100.0
+        return const.CurrencyPair(ticker="", factor=factor, power=1.0)
 
-    elif f"{base}{local}" in ccy_param.index:
-        info = ccy_param.loc[f"{base}{local}"].dropna().to_dict()
-        info["factor"] = 1.0 / info.get("factor", 1.0)
-        info["power"] = -info.get("power", 1.0)
+    # Determine factor for sub-unit currencies (lowercase suffix = sub-unit like pence)
+    local_factor = 100.0 if local[-1].islower() else 1.0
+    base_factor = 100.0 if base[-1].islower() else 1.0
 
-    elif base.lower() == local.lower():
-        info = {"ticker": ""}
-        info["factor"] = 1.0
-        if base[-1].lower() == base[-1]:
-            info["factor"] /= 100.0
-        if local[-1].lower() == local[-1]:
-            info["factor"] *= 100.0
+    # Normalize currency codes (uppercase)
+    local_norm = local.upper()
+    base_norm = base.upper()
 
-    else:
-        logger.error("Invalid currency pair configuration: local currency %s, base currency %s", local, base)
+    # Construct the Bloomberg ticker - use the local currency
+    ticker = f"{local_norm} Curncy"
+
+    # Query Bloomberg for quote direction
+    from xbbg.api.reference import bdp  # noqa: PLC0415
+
+    try:
+        result = bdp(ticker, ["INVERSE_QUOTED", "BASE_CRNCY"])
+    except Exception as e:
+        logger.error("Failed to query Bloomberg for currency %s: %s", ticker, e)
         return const.CurrencyPair(ticker="", factor=1.0, power=1.0)
 
-    info.setdefault("factor", 1.0)
-    info.setdefault("power", 1.0)
+    if result.empty:
+        logger.warning("No Bloomberg data for currency ticker: %s", ticker)
+        return const.CurrencyPair(ticker="", factor=1.0, power=1.0)
+
+    # Check if the ticker's base currency matches our base
+    ticker_base = result.iloc[0].get("BASE_CRNCY", "USD")
+    if ticker_base and ticker_base.upper() != base_norm:
+        # The ticker's base doesn't match our requested base
+        # For now, log a warning but still return what we have
+        logger.debug(
+            "Currency ticker %s has base %s, but requested base is %s",
+            ticker,
+            ticker_base,
+            base_norm,
+        )
+
+    # Determine power from INVERSE_QUOTED field
+    # INVERSE_QUOTED='Y' means quote is in LOCAL/BASE (e.g., EUR/USD = 1.18 means 1 EUR = 1.18 USD)
+    # INVERSE_QUOTED='N' means quote is in BASE/LOCAL (e.g., USD/JPY = 155 means 1 USD = 155 JPY)
+    inverse_quoted = result.iloc[0].get("INVERSE_QUOTED", "N")
+    power = -1.0 if inverse_quoted == "Y" else 1.0
+
+    # Calculate final factor accounting for sub-units
+    factor = local_factor / base_factor
+
     return const.CurrencyPair(
-        ticker=info.get("ticker", ""),
-        factor=float(info["factor"]),
-        power=float(info["power"]),
+        ticker=ticker,
+        factor=factor,
+        power=power,
     )
 
 
