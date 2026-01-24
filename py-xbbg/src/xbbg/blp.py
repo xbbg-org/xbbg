@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 import warnings
 
 import narwhals.stable.v1 as nw
@@ -33,13 +33,16 @@ from xbbg.services import (
     Service,
 )
 
+from narwhals.typing import IntoFrame
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import pandas as pd
 
 # Type alias for backend conversion return types
-DataFrameResult = nw.DataFrame | nw.LazyFrame | pa.Table | Any
+# Covers: nw.DataFrame, nw.LazyFrame (narwhals wrappers) + IntoFrame (all native types)
+DataFrameResult: TypeAlias = nw.DataFrame | nw.LazyFrame | IntoFrame
 
 logger = logging.getLogger(__name__)
 
