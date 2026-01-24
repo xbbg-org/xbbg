@@ -42,7 +42,8 @@ impl BulkDataState {
     pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
         let reply = self.reply;
-        let mut order = vec!["ticker"];
+        // Include "field" column to identify which bulk field was queried
+        let mut order = vec!["ticker", "field"];
         order.extend(self.subfield_names.iter().map(|s| s.as_str()));
         let result = self.columns.finish_with_order(&order);
         let _ = reply.send(result);
@@ -113,6 +114,7 @@ impl BulkDataState {
                 };
 
                 self.columns.append_str("ticker", ticker);
+                self.columns.append_str("field", &self.field_name);
 
                 // Discover sub-fields on first row
                 if self.subfield_names.is_empty() {

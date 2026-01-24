@@ -522,11 +522,11 @@ def _apply_wide_pivot_bdp(df) -> "pd.DataFrame":
 def _apply_wide_pivot_bdh(df) -> "pd.DataFrame":
     """Apply wide format pivot to BDH DataFrame for 0.7.7 compatibility.
 
-    Converts from current format [ticker, date, field1, field2, ...] to
+    Converts from Long format [ticker, date, field, value] to
     0.7.7 wide format with DatetimeIndex and MultiIndex columns (ticker, field).
 
     Args:
-        df: DataFrame with columns [ticker, date, <field_columns>...]
+        df: DataFrame with columns [ticker, date, field, value]
 
     Returns:
         pandas DataFrame with DatetimeIndex and MultiIndex columns
@@ -539,24 +539,9 @@ def _apply_wide_pivot_bdh(df) -> "pd.DataFrame":
     else:
         pdf = df
 
-    # Get field columns (everything except ticker and date)
-    field_cols = [c for c in pdf.columns if c not in ("ticker", "date")]
-
-    if not field_cols:
-        # No field columns, just set date as index
-        pdf["date"] = pd.to_datetime(pdf["date"])
-        return pdf.set_index("date")
-
-    # Melt to long format first: ticker, date, field, value
-    melted = pdf.melt(
-        id_vars=["ticker", "date"],
-        value_vars=field_cols,
-        var_name="field",
-        value_name="value",
-    )
-
-    # Pivot to wide format with MultiIndex columns
-    pivoted = melted.pivot_table(
+    # Data is already in Long format: [ticker, date, field, value]
+    # Just need to pivot to 0.7.7 Wide format
+    pivoted = pdf.pivot_table(
         index="date",
         columns=["ticker", "field"],
         values="value",

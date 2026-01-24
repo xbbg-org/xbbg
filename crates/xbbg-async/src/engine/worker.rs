@@ -419,7 +419,26 @@ impl RequestWorker {
                 ))
             }
             ExtractorType::HistData => {
-                UnifiedRequestState::HistData(HistDataState::with_types(fields, field_types, reply))
+                // Parse format parameter for long/wide mode
+                let (output_format, long_mode) = params
+                    .format
+                    .as_deref()
+                    .map(|s| match s {
+                        "wide" => (OutputFormat::Wide, LongMode::String),
+                        "long_typed" | "typed" => (OutputFormat::Long, LongMode::Typed),
+                        "long_metadata" | "metadata" | "with_metadata" => {
+                            (OutputFormat::Long, LongMode::WithMetadata)
+                        }
+                        _ => (OutputFormat::Long, LongMode::String),
+                    })
+                    .unwrap_or((OutputFormat::Long, LongMode::String));
+                UnifiedRequestState::HistData(HistDataState::with_format(
+                    fields,
+                    output_format,
+                    long_mode,
+                    field_types,
+                    reply,
+                ))
             }
             ExtractorType::BulkData => {
                 let field = fields.first().cloned().unwrap_or_default();
