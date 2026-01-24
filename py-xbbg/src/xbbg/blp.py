@@ -494,20 +494,80 @@ def _handle_deprecated_wide_format(
     return fmt, want_wide
 
 
-def _apply_wide_pivot(
-    nw_df: nw.DataFrame,
-    pivot_index: str | list[str],
-) -> nw.DataFrame:
-    """Apply wide format pivot to DataFrame.
+def _apply_wide_pivot_bdp(df) -> "pd.DataFrame":
+    """Apply wide format pivot to BDP DataFrame for 0.7.7 compatibility.
+
+    Converts from long format to wide format with ticker as index.
 
     Args:
-        nw_df: Narwhals DataFrame in long format
-        pivot_index: Column(s) to use as index when pivoting
+        df: DataFrame with columns [ticker, field, value]
 
     Returns:
-        Pivoted DataFrame in wide format
+        pandas DataFrame with ticker as index and fields as columns
     """
-    return nw_df.pivot(on="field", index=pivot_index, values="value")
+    import pandas as pd
+
+    # Convert to pandas if needed
+    if hasattr(df, "to_pandas"):
+        pdf = df.to_pandas()
+    else:
+        pdf = df
+
+    # Pivot: ticker as index, field as columns, value as values
+    result = pdf.pivot(index="ticker", columns="field", values="value")
+    result.columns.name = None  # Remove column name
+    return result
+
+
+def _apply_wide_pivot_bdh(df) -> "pd.DataFrame":
+    """Apply wide format pivot to BDH DataFrame for 0.7.7 compatibility.
+
+    Converts from current format [ticker, date, field1, field2, ...] to
+    0.7.7 wide format with DatetimeIndex and MultiIndex columns (ticker, field).
+
+    Args:
+        df: DataFrame with columns [ticker, date, <field_columns>...]
+
+    Returns:
+        pandas DataFrame with DatetimeIndex and MultiIndex columns
+    """
+    import pandas as pd
+
+    # Convert to pandas if needed
+    if hasattr(df, "to_pandas"):
+        pdf = df.to_pandas()
+    else:
+        pdf = df
+
+    # Get field columns (everything except ticker and date)
+    field_cols = [c for c in pdf.columns if c not in ("ticker", "date")]
+
+    if not field_cols:
+        # No field columns, just set date as index
+        pdf["date"] = pd.to_datetime(pdf["date"])
+        return pdf.set_index("date")
+
+    # Melt to long format first: ticker, date, field, value
+    melted = pdf.melt(
+        id_vars=["ticker", "date"],
+        value_vars=field_cols,
+        var_name="field",
+        value_name="value",
+    )
+
+    # Pivot to wide format with MultiIndex columns
+    pivoted = melted.pivot_table(
+        index="date",
+        columns=["ticker", "field"],
+        values="value",
+        aggfunc="first",  # In case of duplicates
+    )
+
+    # Convert index to DatetimeIndex
+    pivoted.index = pd.to_datetime(pivoted.index)
+    pivoted.index.name = None  # 0.7.7 style has no index name
+
+    return pivoted
 
 
 def _convert_backend(
@@ -876,7 +936,7 @@ async def abdp(
 
     # Handle deprecated wide format
     if want_wide:
-        nw_df = _apply_wide_pivot(nw_df, pivot_index="ticker")
+        return _apply_wide_pivot_bdp(nw_df)
 
     return _convert_backend(nw_df, backend)
 
@@ -989,7 +1049,7 @@ async def abdh(
 
     # Handle deprecated wide format
     if want_wide:
-        nw_df = _apply_wide_pivot(nw_df, pivot_index=["ticker", "date"])
+        return _apply_wide_pivot_bdh(nw_df)
 
     return _convert_backend(nw_df, backend)
 

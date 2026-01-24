@@ -119,9 +119,9 @@ def run_tests():
 
         traceback.print_exc()
 
-    # Test 2: BDH - Single Ticker
+    # Test 2: BDH - Single Ticker (Wide format for 0.7.7 compatibility)
     print("\n" + "=" * 80)
-    print("TEST 2: BDH - Single Ticker")
+    print("TEST 2: BDH - Single Ticker (format='wide')")
     print("=" * 80)
     try:
         result = xbbg.bdh(
@@ -129,6 +129,7 @@ def run_tests():
             flds=["PX_LAST"],
             start_date=start_date.strftime("%Y-%m-%d"),
             end_date=end_date.strftime("%Y-%m-%d"),
+            format="wide",  # Match 0.7.7 output structure
         )
         print(f"\nDataFrame Shape: {result.shape}")
         print(f"Index Type: {type(result.index)}")
@@ -151,9 +152,9 @@ def run_tests():
 
         traceback.print_exc()
 
-    # Test 3: BDH - Multiple Tickers
+    # Test 3: BDH - Multiple Tickers (Wide format for 0.7.7 compatibility)
     print("\n" + "=" * 80)
-    print("TEST 3: BDH - Multiple Tickers")
+    print("TEST 3: BDH - Multiple Tickers (format='wide')")
     print("=" * 80)
     try:
         result_multi = xbbg.bdh(
@@ -161,6 +162,7 @@ def run_tests():
             flds=["PX_LAST"],
             start_date=start_date.strftime("%Y-%m-%d"),
             end_date=end_date.strftime("%Y-%m-%d"),
+            format="wide",  # Match 0.7.7 output structure
         )
         print(f"\nDataFrame Shape: {result_multi.shape}")
         print(f"Index Type: {type(result_multi.index)}")
