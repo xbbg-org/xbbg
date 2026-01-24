@@ -72,28 +72,6 @@ pub enum BlpError {
 
     #[error("internal error")]
     Internal { detail: String },
-    // Schema errors (commented out until schema module is implemented)
-    // #[error("operation not found: {service}::{operation}")]
-    // SchemaOperationNotFound { service: String, operation: String },
-
-    // #[error("schema element not found: {parent}.{name}")]
-    // SchemaElementNotFound { parent: String, name: String },
-
-    // #[error("schema type mismatch at {element}: expected {expected:?}, found {found:?}")]
-    // SchemaTypeMismatch {
-    //     element: String,
-    //     expected: crate::schema::DataType,
-    //     found: crate::schema::DataType,
-    // },
-
-    // #[error("unsupported schema construct at {element}: {detail}")]
-    // SchemaUnsupported { element: String, detail: String },
-
-    // #[error("request validation failed: {message}")]
-    // Validation {
-    //     message: String,
-    //     errors: Vec<crate::schema::ValidationError>,
-    // },
 }
 
 impl BlpError {

@@ -74,6 +74,8 @@ impl CorrelationId {
     /// Uses Bloomberg's helper functions to properly initialize the CorrelationId struct,
     /// including the valueType bitfield.
     pub(crate) fn to_ffi(&self) -> crate::ffi::blpapi_CorrelationId_t {
+        // SAFETY: zeroed memory is valid for blpapi_CorrelationId_t, then we use
+        // Bloomberg's helper functions to properly initialize the struct.
         unsafe {
             let mut cid = std::mem::zeroed::<crate::ffi::blpapi_CorrelationId_t>();
             crate::ffi::blpapi_CorrelationId_init(&mut cid);
@@ -100,6 +102,8 @@ impl CorrelationId {
         const CORRELATION_TYPE_INT: i32 = 1;
         const CORRELATION_TYPE_POINTER: i32 = 2;
 
+        // SAFETY: cid is a valid pointer from Bloomberg API. We use Bloomberg's
+        // helper functions to read the valueType and extract the correct union member.
         unsafe {
             let value_type = crate::ffi::blpapi_CorrelationId_type(cid);
             match value_type {

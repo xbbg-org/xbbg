@@ -92,15 +92,12 @@ impl Request {
     /// ```
     pub fn append_string(&mut self, array_name: &Name, value: &str) -> Result<()> {
         let root = self.elements();
-
-        // Get the array element
         let array_elem = root
             .get(array_name)
             .ok_or_else(|| BlpError::InvalidArgument {
                 detail: format!("element '{}' not found", array_name.as_str()),
             })?;
 
-        // Append the value
         let c_value = CString::new(value).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid string value: {}", e),
         })?;
@@ -139,19 +136,18 @@ impl Request {
     /// ```
     pub fn append_str(&mut self, array_name: &str, value: &str) -> Result<()> {
         let root = self.elements();
-
-        // Get the array element by string name
         let array_elem = root
             .get_by_str(array_name)
             .ok_or_else(|| BlpError::InvalidArgument {
                 detail: format!("element '{}' not found", array_name),
             })?;
 
-        // Append the value
         let c_value = CString::new(value).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid string value: {}", e),
         })?;
 
+        // SAFETY: array_elem.as_ptr() is valid, c_value is a valid C string.
+        // BLPAPI_ELEMENT_INDEX_END indicates append operation.
         let rc = unsafe {
             crate::ffi::blpapi_Element_setValueString(
                 array_elem.as_ptr(),
@@ -232,8 +228,6 @@ impl Request {
     /// Gets the child element by name, then sets its value.
     pub fn set_i64(&mut self, name: &Name, value: i64) -> Result<()> {
         let root = self.elements();
-
-        // Get the child element by name
         let child = root.get(name).ok_or_else(|| BlpError::InvalidArgument {
             detail: format!("element '{}' not found", name.as_str()),
         })?;

@@ -160,21 +160,4 @@ mod tests {
             std::mem::align_of::<*mut ()>()
         );
     }
-
-    // Compile-time checks that Message is !Send and !Sync
-    // These are commented out because they should NOT compile.
-    // Uncomment to verify the trait bounds are working correctly.
-    //
-    // fn assert_send<T: Send>() {}
-    // fn assert_sync<T: Sync>() {}
-    //
-    // #[test]
-    // fn message_is_not_send() {
-    //     assert_send::<Message>();  // Should NOT compile
-    // }
-    //
-    // #[test]
-    // fn message_is_not_sync() {
-    //     assert_sync::<Message>();  // Should NOT compile
-    // }
 }

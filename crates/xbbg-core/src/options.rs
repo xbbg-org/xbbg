@@ -12,6 +12,7 @@ unsafe impl Sync for SessionOptions {}
 
 impl SessionOptions {
     pub fn new() -> Result<Self> {
+        // SAFETY: blpapi_SessionOptions_create allocates and returns a valid pointer or null.
         let ptr = unsafe { xbbg_sys::blpapi_SessionOptions_create() };
         if ptr.is_null() {
             return Err(BlpError::Internal {
@@ -25,11 +26,13 @@ impl SessionOptions {
         let cs = CString::new(host).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid host: {e}"),
         })?;
+        // SAFETY: self.ptr is valid (checked in new()), cs is a valid null-terminated C string.
         unsafe { xbbg_sys::blpapi_SessionOptions_setServerHost(self.ptr, cs.as_ptr()) };
         Ok(self)
     }
 
     pub fn set_server_port(&mut self, port: u16) -> &mut Self {
+        // SAFETY: self.ptr is valid (checked in new()).
         unsafe { xbbg_sys::blpapi_SessionOptions_setServerPort(self.ptr, port) };
         self
     }
@@ -258,6 +261,7 @@ impl SessionOptions {
 impl Drop for SessionOptions {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
+            // SAFETY: self.ptr is valid and we own it. Drop is called exactly once.
             unsafe { xbbg_sys::blpapi_SessionOptions_destroy(self.ptr) };
             self.ptr = std::ptr::null_mut();
         }
