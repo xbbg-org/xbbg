@@ -538,10 +538,7 @@ def pmc_session_for_date(
         ctx = split.infra
 
     # Use v2 resolver if use_mic is True, otherwise use original resolver
-    if use_mic:
-        cal_name = resolve_calendar_name_v2(ticker, ctx=ctx)
-    else:
-        cal_name = resolve_calendar_name(ticker, ctx=ctx)
+    cal_name = resolve_calendar_name_v2(ticker, ctx=ctx) if use_mic else resolve_calendar_name(ticker, ctx=ctx)
     if not cal_name:
         return None
 
