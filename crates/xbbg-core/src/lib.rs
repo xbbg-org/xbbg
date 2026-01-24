@@ -48,9 +48,3 @@ pub use service::Service;
 pub use session::{Session, SessionOptions};
 pub use subscription::SubscriptionList;
 pub use value::{OwnedValue, Value};
-
-/// Type alias for Message (compatibility with older code expecting MessageRef).
-///
-/// The Message type is already a reference-like wrapper around Bloomberg's
-/// message pointer. This alias is provided for migration purposes.
-pub type MessageRef<'a> = Message<'a>;
