@@ -30,6 +30,7 @@ pub mod errors;
 pub mod identity;
 pub mod options;
 pub mod request;
+pub mod schema;
 pub mod service;
 pub mod session;
 pub mod subscription;
@@ -49,3 +50,8 @@ pub use service::Service;
 pub use session::{Session, SessionOptions};
 pub use subscription::SubscriptionList;
 pub use value::{OwnedValue, Value};
+
+// Schema introspection types
+pub use schema::{
+    Constant, ConstantList, Operation, SchemaElementDefinition, SchemaStatus, SchemaTypeDefinition,
+};

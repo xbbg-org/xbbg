@@ -4,6 +4,7 @@ use std::ffi::CString;
 
 use crate::errors::{BlpError, Result};
 use crate::request::Request;
+use crate::schema::Operation;
 
 /// Service handle for creating requests.
 ///
@@ -105,7 +106,97 @@ impl Service {
             c_str.to_str().unwrap_or("")
         }
     }
+
+    /// Get a human-readable description of this service.
+    pub fn description(&self) -> &str {
+        unsafe {
+            let desc_ptr = crate::ffi::blpapi_Service_description(self.ptr);
+            if desc_ptr.is_null() {
+                return "";
+            }
+            std::ffi::CStr::from_ptr(desc_ptr).to_str().unwrap_or("")
+        }
+    }
+
+    /// Get the number of operations defined by this service.
+    ///
+    /// Operations include things like ReferenceDataRequest, HistoricalDataRequest, etc.
+    pub fn num_operations(&self) -> usize {
+        let count = unsafe { crate::ffi::blpapi_Service_numOperations(self.ptr) };
+        count.max(0) as usize
+    }
+
+    /// Get an operation by index.
+    ///
+    /// # Arguments
+    /// * `index` - The index of the operation (0 to num_operations - 1)
+    ///
+    /// # Returns
+    /// The operation at the specified index, or an error if out of bounds.
+    pub fn get_operation_at(&self, index: usize) -> Result<Operation> {
+        if index >= self.num_operations() {
+            return Err(BlpError::InvalidArgument {
+                detail: format!(
+                    "Operation index {} out of bounds (service has {} operations)",
+                    index,
+                    self.num_operations()
+                ),
+            });
+        }
+
+        let mut op_ptr: *mut crate::ffi::blpapi_Operation_t = std::ptr::null_mut();
+
+        let rc = unsafe { crate::ffi::blpapi_Service_getOperationAt(self.ptr, &mut op_ptr, index) };
+
+        if rc != 0 || op_ptr.is_null() {
+            return Err(BlpError::Internal {
+                detail: format!("Failed to get operation at index {}, rc={}", index, rc),
+            });
+        }
+
+        // SAFETY: We verified the pointer is non-null
+        unsafe { Operation::from_raw(op_ptr) }.ok_or_else(|| BlpError::Internal {
+            detail: "Received null operation pointer".into(),
+        })
+    }
+
+    /// Iterate over all operations in this service.
+    pub fn operations(&self) -> OperationIter<'_> {
+        OperationIter {
+            service: self,
+            index: 0,
+            count: self.num_operations(),
+        }
+    }
 }
+
+/// Iterator over operations in a service.
+pub struct OperationIter<'a> {
+    service: &'a Service,
+    index: usize,
+    count: usize,
+}
+
+impl<'a> Iterator for OperationIter<'a> {
+    type Item = Operation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.count {
+            return None;
+        }
+
+        let op = self.service.get_operation_at(self.index).ok();
+        self.index += 1;
+        op
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.count - self.index;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for OperationIter<'_> {}
 
 // Note: Service does NOT implement Drop
 // The service pointer is managed by the session and will be cleaned up

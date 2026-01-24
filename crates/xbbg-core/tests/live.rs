@@ -337,3 +337,166 @@ fn live_name_cache_works() {
     xbbg_core::clear_name_cache();
     assert_eq!(xbbg_core::name_cache_size(), 0);
 }
+
+// ============================================================================
+// Schema Introspection Tests
+// ============================================================================
+
+#[test]
+fn live_schema_introspection_service() {
+    let sess = create_session();
+    sess.start().expect("failed to start session");
+    wait_for_session_started(&sess, 5000);
+
+    sess.open_service("//blp/refdata")
+        .expect("failed to open refdata service");
+    let svc = sess
+        .get_service("//blp/refdata")
+        .expect("failed to get refdata service");
+
+    // Test service metadata
+    let name = svc.name();
+    let description = svc.description();
+    let num_ops = svc.num_operations();
+
+    println!("Service: {}", name);
+    println!("Description: {} (may be empty)", description);
+    println!("Number of operations: {}", num_ops);
+
+    assert_eq!(name, "//blp/refdata");
+    // Note: description may be empty for some services
+    assert!(num_ops > 0, "Service should have at least one operation");
+
+    // Verify we can iterate operations
+    let ops: Vec<_> = svc.operations().collect();
+    assert_eq!(ops.len(), num_ops);
+
+    sess.stop();
+}
+
+#[test]
+fn live_schema_introspection_operations() {
+    let sess = create_session();
+    sess.start().expect("failed to start session");
+    wait_for_session_started(&sess, 5000);
+
+    sess.open_service("//blp/refdata")
+        .expect("failed to open refdata service");
+    let svc = sess
+        .get_service("//blp/refdata")
+        .expect("failed to get refdata service");
+
+    // Find ReferenceDataRequest operation
+    let mut found_refdata_request = false;
+
+    for op in svc.operations() {
+        let op_name = op.name();
+        let op_desc = op.description();
+
+        println!("Operation: {} - {}", op_name, op_desc);
+
+        if op_name == "ReferenceDataRequest" {
+            found_refdata_request = true;
+
+            // Test request definition
+            let req_def = op
+                .request_definition()
+                .expect("should have request definition");
+            let req_type = req_def.type_definition();
+
+            println!("  Request type: {}", req_type.name_str());
+            println!("  Is complex: {}", req_type.is_complex_type());
+
+            assert!(req_type.is_complex_type(), "Request should be complex type");
+
+            // Iterate request elements
+            let num_elements = req_type.num_element_definitions();
+            println!("  Number of elements: {}", num_elements);
+            assert!(num_elements > 0, "Request should have elements");
+
+            for elem in req_type.element_definitions() {
+                let elem_name = elem.name_str();
+                let min_vals = elem.min_values();
+                let max_vals = elem.max_values();
+                let elem_type = elem.type_definition();
+
+                println!(
+                    "    - {} (min={}, max={}, type={})",
+                    elem_name,
+                    min_vals,
+                    max_vals,
+                    elem_type.name_str()
+                );
+            }
+
+            // Test response definitions
+            // Note: num_response_definitions may return 0 for some operations
+            // where the response schema is not pre-defined
+            let num_responses = op.num_response_definitions();
+            println!("  Number of response types: {}", num_responses);
+
+            for i in 0..num_responses {
+                if let Ok(resp_def) = op.response_definition(i) {
+                    println!("  Response[{}]: {}", i, resp_def.name_str());
+                }
+            }
+        }
+    }
+
+    assert!(
+        found_refdata_request,
+        "Should find ReferenceDataRequest operation"
+    );
+    sess.stop();
+}
+
+#[test]
+fn live_schema_introspection_element_details() {
+    let sess = create_session();
+    sess.start().expect("failed to start session");
+    wait_for_session_started(&sess, 5000);
+
+    sess.open_service("//blp/refdata")
+        .expect("failed to open refdata service");
+    let svc = sess
+        .get_service("//blp/refdata")
+        .expect("failed to get refdata service");
+
+    // Get ReferenceDataRequest operation
+    let op = svc
+        .get_operation_at(0)
+        .expect("should have at least one operation");
+
+    println!("First operation: {}", op.name());
+
+    if let Ok(req_def) = op.request_definition() {
+        let req_type = req_def.type_definition();
+
+        // Test element details
+        if let Some(first_elem) = req_type.element_definitions().next() {
+            let name = first_elem.name_str();
+            let desc = first_elem.description();
+            let min = first_elem.min_values();
+            let max = first_elem.max_values();
+            let is_optional = first_elem.is_optional();
+            let is_array = first_elem.is_array();
+
+            println!("First element: {}", name);
+            println!("  Description: {}", desc);
+            println!("  Min values: {}", min);
+            println!("  Max values: {}", max);
+            println!("  Is optional: {}", is_optional);
+            println!("  Is array: {}", is_array);
+
+            // Get nested type info
+            let elem_type = first_elem.type_definition();
+            println!("  Type name: {}", elem_type.name_str());
+            println!("  Is simple: {}", elem_type.is_simple_type());
+            println!("  Is complex: {}", elem_type.is_complex_type());
+            println!("  Is enumeration: {}", elem_type.is_enumeration_type());
+            println!("  Datatype: {:?}", elem_type.datatype());
+        }
+    }
+
+    sess.stop();
+}

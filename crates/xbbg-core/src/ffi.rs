@@ -9,6 +9,12 @@ pub use xbbg_sys::{
     blpapi_SessionOptions_t, blpapi_Session_t, blpapi_SubscriptionList_t,
 };
 
+// --- Schema opaque types ---
+pub use xbbg_sys::{
+    blpapi_ConstantList_t, blpapi_Constant_t, blpapi_Operation_t, blpapi_SchemaElementDefinition_t,
+    blpapi_SchemaTypeDefinition_t,
+};
+
 // --- Name functions ---
 pub use xbbg_sys::{
     blpapi_Name_create, blpapi_Name_destroy, blpapi_Name_duplicate, blpapi_Name_findName,
@@ -18,11 +24,11 @@ pub use xbbg_sys::{
 // --- Element functions ---
 pub use xbbg_sys::{
     blpapi_Element_datatype, blpapi_Element_getElement, blpapi_Element_getElementAt,
-    blpapi_Element_getValueAsBool, blpapi_Element_getValueAsElement,
-    blpapi_Element_getValueAsFloat64, blpapi_Element_getValueAsInt32,
-    blpapi_Element_getValueAsInt64, blpapi_Element_getValueAsString, blpapi_Element_isArray,
-    blpapi_Element_isNull, blpapi_Element_name, blpapi_Element_numElements,
-    blpapi_Element_numValues,
+    blpapi_Element_getValueAsBool, blpapi_Element_getValueAsBytes,
+    blpapi_Element_getValueAsElement, blpapi_Element_getValueAsFloat64,
+    blpapi_Element_getValueAsInt32, blpapi_Element_getValueAsInt64,
+    blpapi_Element_getValueAsString, blpapi_Element_isArray, blpapi_Element_isNull,
+    blpapi_Element_name, blpapi_Element_numElements, blpapi_Element_numValues,
 };
 
 // --- Element setters ---
@@ -54,6 +60,45 @@ pub use xbbg_sys::{
 
 // --- Service functions ---
 pub use xbbg_sys::{blpapi_Service_createRequest, blpapi_Service_name};
+
+// --- Service schema introspection ---
+pub use xbbg_sys::{
+    blpapi_Service_description, blpapi_Service_getOperationAt, blpapi_Service_numOperations,
+};
+
+// --- Operation functions ---
+pub use xbbg_sys::{
+    blpapi_Operation_description, blpapi_Operation_name, blpapi_Operation_numResponseDefinitions,
+    blpapi_Operation_requestDefinition, blpapi_Operation_responseDefinition,
+};
+
+// --- SchemaElementDefinition functions ---
+pub use xbbg_sys::{
+    blpapi_SchemaElementDefinition_description, blpapi_SchemaElementDefinition_maxValues,
+    blpapi_SchemaElementDefinition_minValues, blpapi_SchemaElementDefinition_name,
+    blpapi_SchemaElementDefinition_type,
+};
+
+#[cfg(feature = "live")]
+pub use xbbg_sys::blpapi_SchemaElementDefinition_status;
+
+// --- SchemaTypeDefinition functions ---
+pub use xbbg_sys::{
+    blpapi_SchemaTypeDefinition_datatype, blpapi_SchemaTypeDefinition_description,
+    blpapi_SchemaTypeDefinition_enumeration, blpapi_SchemaTypeDefinition_getElementDefinitionAt,
+    blpapi_SchemaTypeDefinition_isComplexType, blpapi_SchemaTypeDefinition_isEnumerationType,
+    blpapi_SchemaTypeDefinition_isSimpleType, blpapi_SchemaTypeDefinition_name,
+    blpapi_SchemaTypeDefinition_numElementDefinitions,
+};
+
+#[cfg(feature = "live")]
+pub use xbbg_sys::blpapi_SchemaTypeDefinition_status;
+
+// --- ConstantList/Constant functions ---
+pub use xbbg_sys::{
+    blpapi_ConstantList_getConstantAt, blpapi_ConstantList_numConstants,
+    blpapi_Constant_description, blpapi_Constant_name,
+};
 
 // --- Request functions ---
 pub use xbbg_sys::{blpapi_Request_destroy, blpapi_Request_elements};

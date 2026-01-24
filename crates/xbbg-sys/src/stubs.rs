@@ -98,11 +98,12 @@ pub extern "C" fn blpapi_Message_topicName(
 // Schema/Introspection stubs (return NULL/error)
 // ============================================================================
 
+/// SchemaElementDefinition name - returns blpapi_Name_t* (null in mock)
 #[no_mangle]
 pub extern "C" fn blpapi_SchemaElementDefinition_name(
     _def: *const std::ffi::c_void,
-) -> *const c_char {
-    ptr::null()
+) -> *mut crate::blpapi_Name_t {
+    ptr::null_mut()
 }
 
 #[no_mangle]
@@ -113,8 +114,28 @@ pub extern "C" fn blpapi_SchemaElementDefinition_description(
 }
 
 #[no_mangle]
-pub extern "C" fn blpapi_SchemaTypeDefinition_name(_def: *const std::ffi::c_void) -> *const c_char {
-    ptr::null()
+pub extern "C" fn blpapi_SchemaElementDefinition_type(
+    _def: *const std::ffi::c_void,
+) -> *mut std::ffi::c_void {
+    ptr::null_mut()
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaElementDefinition_minValues(_def: *const std::ffi::c_void) -> usize {
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaElementDefinition_maxValues(_def: *const std::ffi::c_void) -> usize {
+    1
+}
+
+/// SchemaTypeDefinition name - returns blpapi_Name_t* (null in mock)
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_name(
+    _def: *const std::ffi::c_void,
+) -> *mut crate::blpapi_Name_t {
+    ptr::null_mut()
 }
 
 #[no_mangle]
@@ -125,6 +146,50 @@ pub extern "C" fn blpapi_SchemaTypeDefinition_description(
 }
 
 #[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_datatype(_def: *const std::ffi::c_void) -> i32 {
+    0 // BLPAPI_DATATYPE_BOOL as default
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_isComplexType(_def: *const std::ffi::c_void) -> i32 {
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_isSimpleType(_def: *const std::ffi::c_void) -> i32 {
+    1
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_isEnumerationType(
+    _def: *const std::ffi::c_void,
+) -> i32 {
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_numElementDefinitions(
+    _def: *const std::ffi::c_void,
+) -> usize {
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_getElementDefinitionAt(
+    _def: *const std::ffi::c_void,
+    _index: usize,
+) -> *mut std::ffi::c_void {
+    ptr::null_mut()
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_SchemaTypeDefinition_enumeration(
+    _def: *const std::ffi::c_void,
+) -> *mut std::ffi::c_void {
+    ptr::null_mut()
+}
+
+#[no_mangle]
 pub extern "C" fn blpapi_Operation_name(_op: *const std::ffi::c_void) -> *const c_char {
     ptr::null()
 }
@@ -132,6 +197,75 @@ pub extern "C" fn blpapi_Operation_name(_op: *const std::ffi::c_void) -> *const 
 #[no_mangle]
 pub extern "C" fn blpapi_Operation_description(_op: *const std::ffi::c_void) -> *const c_char {
     ptr::null()
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_Operation_requestDefinition(
+    _op: *mut std::ffi::c_void,
+    _def: *mut *mut std::ffi::c_void,
+) -> i32 {
+    -1 // Error - not available in mock
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_Operation_numResponseDefinitions(_op: *mut std::ffi::c_void) -> i32 {
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_Operation_responseDefinition(
+    _op: *mut std::ffi::c_void,
+    _def: *mut *mut std::ffi::c_void,
+    _index: usize,
+) -> i32 {
+    -1 // Error - not available in mock
+}
+
+// ConstantList/Constant stubs
+#[no_mangle]
+pub extern "C" fn blpapi_ConstantList_numConstants(_list: *const std::ffi::c_void) -> i32 {
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_ConstantList_getConstantAt(
+    _list: *const std::ffi::c_void,
+    _index: usize,
+) -> *mut std::ffi::c_void {
+    ptr::null_mut()
+}
+
+/// Constant name - returns blpapi_Name_t* (null in mock)
+#[no_mangle]
+pub extern "C" fn blpapi_Constant_name(
+    _constant: *const std::ffi::c_void,
+) -> *mut crate::blpapi_Name_t {
+    ptr::null_mut()
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_Constant_description(_constant: *const std::ffi::c_void) -> *const c_char {
+    ptr::null()
+}
+
+// Service schema stubs
+#[no_mangle]
+pub extern "C" fn blpapi_Service_numOperations(_service: *mut std::ffi::c_void) -> i32 {
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_Service_description(_service: *mut std::ffi::c_void) -> *const c_char {
+    ptr::null()
+}
+
+#[no_mangle]
+pub extern "C" fn blpapi_Service_getOperationAt(
+    _service: *mut std::ffi::c_void,
+    _op: *mut *mut std::ffi::c_void,
+    _index: usize,
+) -> i32 {
+    -1 // Error - not available in mock
 }
 
 // ============================================================================
