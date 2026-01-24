@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - These are now correctly converted to the exchange's local timezone (e.g., Asia/Tokyo for Japanese equities)
   - Previously, Tokyo's 09:00-15:45 trading hours appeared as 19:00-01:45 (EST times misinterpreted as local)
   - `FUT_TRADING_HRS` is not converted (already in exchange local time)
+- **get_tz() no longer triggers Bloomberg lookup for timezone strings**: Direct timezone strings like `"America/New_York"` or `"UTC"` are now recognized without calling Bloomberg API
 
 ### Removed
 - **Trials mechanism removed**: Eliminated the retry-blocking system that caused silent failures
@@ -21,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Users had to manually clear SQLite database entries to retry
   - Pipeline caching already handles "don't re-fetch" use case properly
   - Deleted `xbbg/core/utils/trials.py` and related test files
+- **pandas-market-calendars dependency removed**: Simplified exchange metadata resolution
+  - Removed `PmcCalendarResolver` from resolver chain
+  - Exchange information now sourced exclusively from Bloomberg API with local caching
+  - Removed `pmc_extended` context option (no longer needed)
+  - Reduces package dependencies and improves consistency
+
+### Changed
+- **Internal class renames** (backward compatible aliases provided):
+  - `YamlMarketInfoProvider` → `MetadataProvider`
+  - `ExchangeYamlResolver` → `ExchangeMetadataResolver`
 
 ## [0.11.0b4] - 2026-01-24
 
