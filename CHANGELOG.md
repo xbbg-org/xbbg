@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Import without blpapi installed**: Fixed `AttributeError` when importing xbbg without blpapi installed (#200)
+  - Added `from __future__ import annotations` to defer type annotation evaluation in `conn.py`
+  - Guarded `blpapi.Name()` constants with `is_available()` check in `process.py`
 - **Japan/non-US timezone fix for bdib**: Fixed timezone conversion for non-US exchanges (#198)
   - Bloomberg returns `TRADING_DAY_START_TIME_EOD` and `TRADING_DAY_END_TIME_EOD` in EST (America/New_York)
   - These are now correctly converted to the exchange's local timezone (e.g., Asia/Tokyo for Japanese equities)
