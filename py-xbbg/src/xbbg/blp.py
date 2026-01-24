@@ -662,7 +662,7 @@ async def arequest(
         )
         # For BQL and bsrch services, pass overrides as generic elements (not Bloomberg field overrides)
         service_str = service.value if isinstance(service, Service) else service
-        if service_str in ("//blp/bqlsvc", "//blp/exrsvc"):
+        if service_str in (Service.BQLSVC.value, Service.EXRSVC.value):
             if elements_list:
                 elements_list.extend(override_tuples)
             else:
@@ -1716,7 +1716,7 @@ async def avwap(
 
     engine = _get_engine()
     py_sub = await engine.subscribe_with_options(
-        "//blp/mktvwap",
+        Service.MKTVWAP.value,
         ticker_list,
         field_list,
         options if options else None,
@@ -2291,8 +2291,8 @@ async def abta(
             **study_params,
         )
         params = RequestParams(
-            service="//blp/tasvc",
-            operation="studyRequest",
+            service=Service.TASVC,
+            operation=Operation.STUDY_REQUEST,
             extractor=ExtractorHint.GENERIC,
             json_elements=json.dumps(request_elements),
         )
@@ -2577,8 +2577,8 @@ async def abql(
 
     # Send BQL request via arequest with BQL extractor (parsed in Rust)
     nw_df = await arequest(
-        service="//blp/bqlsvc",
-        operation="sendQuery",
+        service=Service.BQLSVC,
+        operation=Operation.BQL_SEND_QUERY,
         overrides={"expression": expression},
         extractor=ExtractorHint.BQL,
         backend=None,
@@ -2664,8 +2664,8 @@ async def absrch(
 
     # Send bsrch request via arequest with BSRCH extractor (parsed in Rust)
     nw_df = await arequest(
-        service="//blp/exrsvc",
-        operation="ExcelGetGridRequest",
+        service=Service.EXRSVC,
+        operation=Operation.EXCEL_GET_GRID,
         overrides=overrides,
         extractor=ExtractorHint.BSRCH,
         backend=None,
