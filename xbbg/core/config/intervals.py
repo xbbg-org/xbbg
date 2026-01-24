@@ -26,33 +26,9 @@ class Session:
 SessNA = Session(None, None)
 
 
-def _get_standard_sessions() -> set[str]:
-    """Extract standard session names from exch.yml dynamically.
-
-    Sessions are extracted from all exchanges defined in exch.yml.
-    This allows new sessions to be added to exch.yml without code changes.
-
-    Returns:
-        Set of session names found in exch.yml (excluding 'tz' which is not a session).
-    """
-    try:
-        from xbbg.io import param  # noqa: PLC0415
-
-        exch = param.load_config(cat="exch")
-        sessions = set()
-        for idx in exch.index:
-            row = exch.loc[idx]
-            if hasattr(row, "index"):
-                # Extract all keys that are not 'tz' and have list/str values (session definitions)
-                sessions.update(k for k in row.index if k != "tz" and isinstance(row.get(k), (list, str)))
-        return sessions
-    except Exception:
-        # Fallback to known sessions if config loading fails
-        return {"allday", "day", "am", "pm", "pre", "post", "night"}
-
-
-# Cache the standard sessions (computed once at module load)
-STANDARD_SESSIONS = _get_standard_sessions()
+# Standard session names derived from Bloomberg exchange metadata.
+# These are the session types that can be returned by derive_sessions().
+STANDARD_SESSIONS = {"allday", "day", "am", "pm", "pre", "post", "night"}
 
 
 def get_interval(ticker, session, **kwargs) -> Session:

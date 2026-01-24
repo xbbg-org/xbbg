@@ -1,7 +1,7 @@
 """Core Bloomberg API processing and connection utilities.
 
 This package contains internal core functionality organized into subpackages:
-- utils: Supporting utilities (utils, timezone, trials)
+- utils: Supporting utilities (utils, timezone)
 - config: Bloomberg API configuration (overrides, intervals)
 - domain: Domain model & contracts (contracts, context)
 - infra: Infrastructure layer (conn, blpapi_logging)
@@ -14,7 +14,7 @@ from xbbg.core import pipeline, process
 from xbbg.core.config import intervals, overrides
 from xbbg.core.domain import context, contracts
 from xbbg.core.infra import blpapi_logging, conn
-from xbbg.core.utils import timezone, trials, utils
+from xbbg.core.utils import timezone, utils
 
 __all__ = [
     "process",
@@ -26,6 +26,5 @@ __all__ = [
     "blpapi_logging",
     "conn",
     "timezone",
-    "trials",
     "utils",
 ]

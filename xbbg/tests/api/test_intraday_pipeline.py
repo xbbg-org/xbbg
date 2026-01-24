@@ -192,5 +192,7 @@ class TestResolverChain:
         from xbbg.markets.resolver_chain import create_default_resolver_chain
 
         chain = create_default_resolver_chain()
-        assert len(chain) == 4
+        assert (
+            len(chain) == 5
+        )  # BloombergExchangeResolver, ExchangeYamlResolver, FuturesRollResolver, FixedIncomeDefaultResolver, PmcCalendarResolver
         assert all(hasattr(r, "can_resolve") and hasattr(r, "resolve") for r in chain)

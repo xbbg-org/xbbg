@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Japan/non-US timezone fix for bdib**: Fixed timezone conversion for non-US exchanges (#198)
+  - Bloomberg returns `TRADING_DAY_START_TIME_EOD` and `TRADING_DAY_END_TIME_EOD` in EST (America/New_York)
+  - These are now correctly converted to the exchange's local timezone (e.g., Asia/Tokyo for Japanese equities)
+  - Previously, Tokyo's 09:00-15:45 trading hours appeared as 19:00-01:45 (EST times misinterpreted as local)
+  - `FUT_TRADING_HRS` is not converted (already in exchange local time)
+
+### Removed
+- **Trials mechanism removed**: Eliminated the retry-blocking system that caused silent failures
+  - The trials system tracked failed API requests and blocked future attempts after 2 failures
+  - This caused issues when bugs were fixed (stale entries still blocked requests)
+  - Users had to manually clear SQLite database entries to retry
+  - Pipeline caching already handles "don't re-fetch" use case properly
+  - Deleted `xbbg/core/utils/trials.py` and related test files
+
 ## [0.11.0b4] - 2026-01-24
 
 ### Added

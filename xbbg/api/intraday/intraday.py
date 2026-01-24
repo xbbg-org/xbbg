@@ -430,7 +430,6 @@ def bdib(
     if dt is None and is_multi_day:
         dt = pd.Timestamp(start_datetime).strftime("%Y-%m-%d")
     from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, intraday_pipeline_config
-    from xbbg.core.utils import trials
 
     # Build request using RequestBuilder
     request = RequestBuilder.from_legacy_kwargs(
@@ -470,37 +469,9 @@ def bdib(
         if not is_fixed_income:
             raise KeyError(f"Cannot find exchange info for {ticker}")
 
-    # Check trial count (preserve legacy behavior) - skip for multi-day requests
-    if not is_multi_day:
-        trial_kw = {"ticker": ticker, "dt": dt, "typ": typ, "func": "bdib"}
-        num_trials = trials.num_trials(**trial_kw)
-        if num_trials >= 2:
-            if request.context and request.context.batch:
-                return pd.DataFrame()
-            if logger.isEnabledFor(logging.INFO):
-                cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
-                logger.info(
-                    "No data available after %d attempt(s) for %s / %s / %s",
-                    num_trials,
-                    ticker,
-                    cur_dt,
-                    typ,
-                )
-            return pd.DataFrame()
-    else:
-        num_trials = 0
-
     # Run pipeline
     pipeline = BloombergPipeline(config=intraday_pipeline_config())
-    result = pipeline.run(request)
-
-    # Update trial count if no data returned (only for single-day requests)
-    from xbbg.io.convert import is_empty
-
-    if is_empty(result) and not is_multi_day:
-        trials.update_trials(cnt=num_trials + 1, **trial_kw)
-
-    return result
+    return pipeline.run(request)
 
 
 def bdtick(

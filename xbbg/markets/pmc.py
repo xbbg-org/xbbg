@@ -32,6 +32,50 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PKG_PATH = files.abspath(__file__, 1)
+
+# MIC to PMC calendar mapping (for common MICs that need translation)
+# Many MIC codes directly match PMC calendar names, but some need explicit mapping
+MIC_TO_PMC_MAP: dict[str, str] = {
+    # US Markets
+    "XNYS": "NYSE",  # New York Stock Exchange
+    "XNAS": "NASDAQ",  # NASDAQ
+    "XNGS": "NASDAQ",  # NASDAQ Global Select
+    "XNMS": "NASDAQ",  # NASDAQ Global Market
+    "XNCM": "NASDAQ",  # NASDAQ Capital Market
+    "XASE": "NYSE",  # NYSE American (formerly AMEX)
+    "ARCX": "NYSE",  # NYSE Arca
+    "BATS": "NYSE",  # BATS (now Cboe BZX)
+    "IEXG": "NYSE",  # IEX
+    # Asia Pacific
+    "XTKS": "JPX_TSE",  # Tokyo Stock Exchange
+    "XJPX": "JPX_TSE",  # Japan Exchange Group
+    "XHKG": "HKEX",  # Hong Kong Stock Exchange
+    "XSES": "SGX",  # Singapore Exchange
+    "XASX": "ASX",  # Australian Securities Exchange
+    "XKRX": "XKRX",  # Korea Exchange
+    "XTAI": "XTAI",  # Taiwan Stock Exchange
+    "XBOM": "BSE",  # Bombay Stock Exchange
+    "XNSE": "NSE",  # National Stock Exchange of India
+    # Europe
+    "XLON": "LSE",  # London Stock Exchange
+    "XPAR": "EURONEXT",  # Euronext Paris
+    "XAMS": "EURONEXT",  # Euronext Amsterdam
+    "XBRU": "EURONEXT",  # Euronext Brussels
+    "XLIS": "EURONEXT",  # Euronext Lisbon
+    "XDUB": "EURONEXT",  # Euronext Dublin
+    "XMIL": "EURONEXT",  # Euronext Milan
+    "XETR": "XETR",  # Deutsche Börse Xetra
+    "XFRA": "XETR",  # Frankfurt Stock Exchange
+    "XSWX": "SIX",  # SIX Swiss Exchange
+    "XMAD": "BME",  # Bolsa de Madrid
+    # Americas (non-US)
+    "XTSE": "TSX",  # Toronto Stock Exchange
+    "XTSX": "TSX",  # TSX Venture Exchange
+    "XMEX": "BMV",  # Bolsa Mexicana de Valores
+    "BVMF": "BVMF",  # B3 (Brazil)
+    # Other
+    "XJSE": "JSE",  # Johannesburg Stock Exchange
+}
 _CACHE_FILE = str(Path(PKG_PATH) / "markets" / "cached" / "pmc_cache.json")
 
 
@@ -273,6 +317,42 @@ def _get_calendar_name_from_exch_code(exch_code: str) -> str:
     return mapping.get(exch_code.upper(), "") if exch_code else ""
 
 
+def _get_calendar_from_mic(mic: str) -> str | None:
+    """Try to resolve PMC calendar name from MIC code.
+
+    Resolution order:
+    1. Check MIC_TO_PMC_MAP for known translations
+    2. Try MIC directly as calendar name (many MICs match PMC names)
+    3. Return None if neither works
+
+    Args:
+        mic: MIC code (e.g., "XNYS", "XNAS", "XTKS").
+
+    Returns:
+        PMC calendar name if found, None otherwise.
+    """
+    if not mic:
+        return None
+
+    mic_upper = mic.upper().strip()
+    if not mic_upper:
+        return None
+
+    # 1. Check explicit mapping first
+    if mic_upper in MIC_TO_PMC_MAP:
+        calendar = MIC_TO_PMC_MAP[mic_upper]
+        if _validate_calendar_id(calendar):
+            logger.debug("MIC %s mapped to PMC calendar %s via MIC_TO_PMC_MAP", mic_upper, calendar)
+            return calendar
+
+    # 2. Try MIC directly as calendar name (some MICs match PMC names exactly)
+    if _validate_calendar_id(mic_upper):
+        logger.debug("MIC %s is a valid PMC calendar name directly", mic_upper)
+        return mic_upper
+
+    return None
+
+
 def resolve_calendar_name(
     ticker: str,
     ctx: BloombergContext | None = None,
@@ -314,6 +394,108 @@ def resolve_calendar_name(
     return cal
 
 
+def resolve_calendar_name_v2(
+    ticker: str,
+    ctx: BloombergContext | None = None,
+    **kwargs,
+) -> str:
+    """Enhanced calendar resolution using MIC first, then exch_code fallback.
+
+    This function provides improved calendar resolution by leveraging Bloomberg's
+    ID_MIC_PRIM_EXCH field, which often maps directly to PMC calendar names.
+
+    Resolution priority:
+    1. Check local cache for previously resolved calendar
+    2. Try cached ExchangeInfo.mic → PMC calendar
+    3. Query Bloomberg for MIC → PMC calendar
+    4. Fall back to exch_code → JSON mapping (existing behavior)
+
+    Args:
+        ticker: Ticker symbol (e.g., "AAPL US Equity").
+        ctx: Bloomberg context (infrastructure kwargs only). If None, will be
+            extracted from kwargs for backward compatibility.
+        **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
+
+    Returns:
+        PMC calendar name string, or empty string if resolution fails.
+
+    Examples:
+        >>> from xbbg.markets.pmc import resolve_calendar_name_v2
+        >>> cal = resolve_calendar_name_v2("AAPL US Equity")  # doctest: +SKIP
+        >>> print(cal)  # doctest: +SKIP
+        NASDAQ
+    """
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.io.cache import load_exchange_info
+    from xbbg.markets.bloomberg import fetch_exchange_info
+
+    # Check local PMC cache first
+    cache = _load_cache()
+    tkey = f"calendar::{ticker}"
+    if tkey in cache:
+        return cache[tkey]
+
+    # Extract context - prefer explicit ctx, otherwise extract from kwargs
+    if ctx is None:
+        split = split_kwargs(**kwargs)
+        ctx = split.infra
+
+    # Step 1: Try cached ExchangeInfo for MIC
+    cached_info = load_exchange_info(ticker)
+    if cached_info and cached_info.mic:
+        cal = _get_calendar_from_mic(cached_info.mic)
+        if cal:
+            logger.debug(
+                "Resolved calendar %s for %s via cached MIC %s",
+                cal,
+                ticker,
+                cached_info.mic,
+            )
+            cache[tkey] = cal
+            _save_cache(cache)
+            return cal
+
+    # Step 2: Query Bloomberg for MIC
+    try:
+        info = fetch_exchange_info(ticker, ctx=ctx)
+        if info and info.mic:
+            cal = _get_calendar_from_mic(info.mic)
+            if cal:
+                logger.debug(
+                    "Resolved calendar %s for %s via Bloomberg MIC %s",
+                    cal,
+                    ticker,
+                    info.mic,
+                )
+                cache[tkey] = cal
+                _save_cache(cache)
+                return cal
+    except Exception as e:
+        logger.debug("Failed to fetch exchange info for %s: %s", ticker, e)
+
+    # Step 3: Fall back to exch_code → JSON mapping (original behavior)
+    exch_code = _get_exch_code(ticker, ctx=ctx)
+    cal = _get_calendar_name_from_exch_code(exch_code)
+    if cal:
+        logger.debug(
+            "Resolved calendar %s for %s via exch_code %s (fallback)",
+            cal,
+            ticker,
+            exch_code,
+        )
+        cache[tkey] = cal
+        _save_cache(cache)
+        return cal
+
+    logger.warning(
+        "No PMC calendar found for %s (MIC: %s, exch_code: %s)",
+        ticker,
+        cached_info.mic if cached_info else "N/A",
+        exch_code,
+    )
+    return ""
+
+
 def _to_hhmm(ts: pd.Timestamp) -> str:
     return ts.strftime("%H:%M")
 
@@ -323,6 +505,7 @@ def pmc_session_for_date(
     dt,
     session: str = "day",
     include_extended: bool = False,
+    use_mic: bool = False,
     ctx: BloombergContext | None = None,
     **kwargs,
 ) -> PmcSession | None:
@@ -336,6 +519,9 @@ def pmc_session_for_date(
         dt: Date to compute session for.
         session: Session name ('day' or 'allday').
         include_extended: Whether to include extended hours.
+        use_mic: If True, use resolve_calendar_name_v2() which tries MIC-based
+            resolution first before falling back to exch_code mapping.
+            Default is False for backward compatibility.
         ctx: Bloomberg context (infrastructure kwargs only). If None, will be
             extracted from kwargs for backward compatibility.
         **kwargs: Legacy kwargs support. If ctx is provided, kwargs are ignored.
@@ -351,7 +537,11 @@ def pmc_session_for_date(
         split = split_kwargs(**kwargs)
         ctx = split.infra
 
-    cal_name = resolve_calendar_name(ticker, ctx=ctx)
+    # Use v2 resolver if use_mic is True, otherwise use original resolver
+    if use_mic:
+        cal_name = resolve_calendar_name_v2(ticker, ctx=ctx)
+    else:
+        cal_name = resolve_calendar_name(ticker, ctx=ctx)
     if not cal_name:
         return None
 
