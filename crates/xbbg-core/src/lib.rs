@@ -21,6 +21,7 @@ pub mod event;
 pub mod ffi;
 pub mod message;
 pub mod name;
+pub mod simd;
 pub mod value;
 
 // Session API
@@ -37,7 +38,7 @@ pub mod subscription;
 pub use correlation::CorrelationId;
 pub use datatype::DataType;
 pub use datetime::HighPrecisionDatetime;
-pub use element::Element;
+pub use element::{ChildrenIter, Element, ValuesIter};
 pub use errors::{BlpError, Result};
 pub use event::{Event, EventType};
 pub use identity::Identity;
