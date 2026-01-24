@@ -22,20 +22,24 @@ class MarketInfoProvider(Protocol):
         ...
 
 
-class YamlMarketInfoProvider:
-    """Provider using YAML configuration files."""
+class MetadataProvider:
+    """Provider using Bloomberg-backed metadata."""
 
     def get_exchange_info(self, ticker: str, **kwargs) -> pd.Series:
-        """Get exchange info from YAML config."""
+        """Get exchange info from Bloomberg metadata."""
         from xbbg.markets.info import exch_info
 
         return exch_info(ticker=ticker, **kwargs)
 
     def get_market_info(self, ticker: str) -> pd.Series:
-        """Get market info from YAML config."""
+        """Get market info from Bloomberg metadata."""
         from xbbg.markets.info import market_info
 
         return market_info(ticker=ticker)
+
+
+# Backward compatibility alias
+YamlMarketInfoProvider = MetadataProvider
 
 
 # Default provider instance (singleton pattern for performance)
@@ -46,5 +50,5 @@ def get_default_provider() -> MarketInfoProvider:
     """Get default market info provider."""
     global _default_provider
     if _default_provider is None:
-        _default_provider = YamlMarketInfoProvider()
+        _default_provider = MetadataProvider()
     return _default_provider

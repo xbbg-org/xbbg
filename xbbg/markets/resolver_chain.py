@@ -38,7 +38,7 @@ def _exchange_info_to_series(info: ExchangeInfo) -> pd.Series:
         data["mic"] = info.mic
     if info.exch_code:
         data["exch_code"] = info.exch_code
-    # Add sessions as lists (matching exch.yml format)
+    # Add sessions as lists
     for session_name, (start, end) in info.sessions.items():
         data[session_name] = [start, end]
     return pd.Series(data)
@@ -195,14 +195,14 @@ class BloombergExchangeResolver:
             )
 
 
-class ExchangeYamlResolver:
-    """Resolver using exch.yml configuration (primary resolver)."""
+class ExchangeMetadataResolver:
+    """Resolver using Bloomberg-backed exchange metadata (primary resolver)."""
 
     def __init__(self, info_provider: MarketInfoProvider | None = None):
         """Initialize resolver.
 
         Args:
-            info_provider: Market info provider (defaults to YAML provider).
+            info_provider: Market info provider (defaults to metadata provider).
         """
         if info_provider is None:
             from xbbg.markets.providers import get_default_provider
@@ -215,7 +215,7 @@ class ExchangeYamlResolver:
         return True
 
     def resolve(self, request: DataRequest) -> ResolverResult:
-        """Resolve using exch.yml."""
+        """Resolve using exchange metadata."""
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         ex_info = self._info_provider.get_exchange_info(ticker=request.ticker, **ctx_kwargs)
 
@@ -223,8 +223,12 @@ class ExchangeYamlResolver:
             resolved_ticker=request.ticker,
             exchange_info=ex_info,
             success=not ex_info.empty,
-            resolver_name="ExchangeYamlResolver",
+            resolver_name="ExchangeMetadataResolver",
         )
+
+
+# Backward compatibility alias
+ExchangeYamlResolver = ExchangeMetadataResolver
 
 
 class FuturesRollResolver:
@@ -339,61 +343,6 @@ class FixedIncomeDefaultResolver:
             )
 
 
-class PmcCalendarResolver:
-    """Resolver using pandas-market-calendars (PMC) as fallback."""
-
-    def can_resolve(self, request: DataRequest) -> bool:
-        """Only support 'day' and 'allday' sessions."""
-        return request.session in {"day", "allday"}
-
-    def resolve(self, request: DataRequest) -> ResolverResult:
-        """Resolve using PMC calendars."""
-        try:
-            from xbbg.markets.pmc import pmc_session_for_date
-
-            if not (
-                pmc_ss := pmc_session_for_date(
-                    ticker=request.ticker,
-                    dt=request.dt,
-                    session=request.session,
-                    include_extended=request.request_opts.get("pmc_extended", False),
-                    ctx=request.context,
-                )
-            ):
-                return ResolverResult(
-                    resolved_ticker=request.ticker,
-                    exchange_info=pd.Series(dtype=object),
-                    success=False,
-                    resolver_name="PmcCalendarResolver",
-                )
-
-            logger.warning(
-                "Exchange session metadata not available for %s (session=%s), falling back to pandas-market-calendars",
-                request.ticker,
-                request.session,
-            )
-
-            return ResolverResult(
-                resolved_ticker=request.ticker,
-                exchange_info=pd.Series(
-                    {
-                        "tz": pmc_ss.tz,
-                        request.session: [pmc_ss.start, pmc_ss.end],
-                    }
-                ),
-                success=True,
-                resolver_name="PmcCalendarResolver",
-            )
-        except Exception as e:
-            logger.debug("PMC resolver failed: %s", e)
-            return ResolverResult(
-                resolved_ticker=request.ticker,
-                exchange_info=pd.Series(dtype=object),
-                success=False,
-                resolver_name="PmcCalendarResolver",
-            )
-
-
 def create_default_resolver_chain(
     info_provider: MarketInfoProvider | None = None,
     max_cache_age_hours: float = 24.0,
@@ -401,7 +350,7 @@ def create_default_resolver_chain(
     """Create default resolver chain for intraday data.
 
     Args:
-        info_provider: Optional market info provider (defaults to YAML provider).
+        info_provider: Optional market info provider (defaults to metadata provider).
         max_cache_age_hours: Maximum age in hours for Bloomberg exchange cache.
 
     Returns:
@@ -409,8 +358,7 @@ def create_default_resolver_chain(
     """
     return [
         BloombergExchangeResolver(max_cache_age_hours=max_cache_age_hours),
-        ExchangeYamlResolver(info_provider),
+        ExchangeMetadataResolver(info_provider),
         FuturesRollResolver(info_provider),
         FixedIncomeDefaultResolver(),
-        PmcCalendarResolver(),
     ]

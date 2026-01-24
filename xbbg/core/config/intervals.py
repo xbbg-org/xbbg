@@ -36,9 +36,9 @@ def get_interval(ticker, session, **kwargs) -> Session:
 
     Args:
         ticker: ticker
-        session: Session name. Sessions are dynamically extracted from ``exch.yml``.
+        session: Session name. Sessions are dynamically resolved from Bloomberg.
             Common sessions include: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
-            Availability depends on exchange - check ``xbbg/markets/exch.yml`` for specific definitions.
+            Availability depends on exchange.
 
             Also supports compound sessions like ``day_open_30``, ``day_normal_30_20``, etc.
             Raises ``ValueError`` if session is not defined for the ticker's exchange.
@@ -92,7 +92,7 @@ def get_interval(ticker, session, **kwargs) -> Session:
             raise ValueError(
                 f'Session "{session}" is not defined for ticker {ticker}. '
                 f"Available sessions: {', '.join(sorted(available_sessions))}. "
-                f"See xbbg/markets/exch.yml for exchange-specific session definitions."
+                f"Use exch_info() to check available sessions for this exchange."
             )
         raise ValueError(
             f'Session "{session}" is not defined for ticker {ticker} and no sessions found. '

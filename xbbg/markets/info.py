@@ -26,7 +26,7 @@ __all__ = [
 
 
 # =============================================================================
-# Bloomberg-backed exchange info (replaces YAML)
+# Bloomberg-backed exchange info
 # =============================================================================
 
 
@@ -34,7 +34,7 @@ def exch_info_bloomberg(ticker: str, **kwargs) -> pd.Series:
     """Get exchange info from Bloomberg API.
 
     This function queries Bloomberg for exchange metadata and derives
-    trading session windows dynamically, replacing the static YAML config.
+    trading session windows dynamically.
 
     Args:
         ticker: Bloomberg ticker (e.g., 'AAPL US Equity', 'ES1 Index')
@@ -231,7 +231,7 @@ def asset_config(asset: str) -> pd.DataFrame:
     """Get asset configuration.
 
     .. deprecated::
-        This function previously loaded from assets.yml. Now returns empty DataFrame.
+        This function is deprecated and returns empty DataFrame.
         Use `market_info(ticker)` to get ticker metadata from Bloomberg directly,
         or use Bloomberg fields like FUT_GEN_MONTH for futures cycle information.
 
@@ -266,7 +266,7 @@ def explode(data: pd.DataFrame, columns: list) -> pd.DataFrame:
         return pd.DataFrame()
 
     # Check if all required columns exist before attempting to explode
-    # This prevents KeyError when DataFrames are created from malformed YAML entries
+    # This prevents KeyError when DataFrames are created from malformed config entries
     # (e.g., empty dicts like Corp: [{}] which create DataFrames with no columns)
     missing_cols = [col for col in columns if col not in data.columns]
     if missing_cols:

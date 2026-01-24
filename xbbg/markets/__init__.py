@@ -41,7 +41,6 @@ from xbbg.markets import (  # noqa: E402
     bloomberg,
     info,
     overrides,
-    pmc,
     providers,
     resolvers,  # noqa: E402
 )
@@ -72,7 +71,6 @@ __all__ = [
     "bloomberg",
     "info",
     "overrides",
-    "pmc",
     "providers",
     "resolvers",
 ]

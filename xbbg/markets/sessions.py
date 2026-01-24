@@ -3,7 +3,7 @@
 This module derives trading session windows (allday, day, pre, post, am, pm)
 from Bloomberg's regular trading hours based on market-specific rules.
 
-Replaces the static YAML configuration with dynamic derivation.
+Derives sessions dynamically from Bloomberg API data.
 """
 
 from __future__ import annotations
