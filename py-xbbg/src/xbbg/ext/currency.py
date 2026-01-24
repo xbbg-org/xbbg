@@ -119,7 +119,7 @@ async def aadjust_ccy(
     from xbbg import abdh, abdp
 
     # Convert to narwhals DataFrame
-    nw_df = nw.from_native(data)
+    nw_df: nw.DataFrame = nw.from_native(data)  # type: ignore[assignment]
 
     if len(nw_df) == 0:
         return nw_df.to_native()
@@ -153,7 +153,7 @@ async def aadjust_ccy(
     # Get currency for each ticker
     try:
         ccy_data = await abdp(tickers=tickers, flds="crncy", **kwargs)
-        ccy_nw = nw.from_native(ccy_data)
+        ccy_nw: nw.DataFrame = nw.from_native(ccy_data)
         ccy_nw = _pivot_bdp_to_wide(ccy_nw)
     except Exception:
         return nw_df.to_native()
@@ -205,7 +205,7 @@ async def aadjust_ccy(
                 end_date=end_date,
                 **kwargs,
             )
-            fx_nw = nw.from_native(fx_data)
+            fx_nw: nw.DataFrame = nw.from_native(fx_data)
         except Exception:
             return nw_df.to_native()
     else:

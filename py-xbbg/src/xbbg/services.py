@@ -325,7 +325,7 @@ class RequestParams:
         else:
             self._resolved_extractor = _get_default_extractor(
                 self.operation,
-                self.output,  # type: ignore[arg-type]
+                self.output,
             )
 
     def validate(self) -> None:

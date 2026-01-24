@@ -341,8 +341,9 @@ async def aearning(
             level_1_sum = sum(v for i, v in enumerate(values) if i in level_1_indices and v is not None)
             if level_1_sum and level_1_sum != 0:
                 for i in level_1_indices:
-                    if values[i] is not None:
-                        pct_values[i] = 100.0 * values[i] / level_1_sum
+                    val = values[i]
+                    if val is not None:
+                        pct_values[i] = 100.0 * val / level_1_sum
 
         # Calculate level 2 percentage (% of parent level 1 group)
         # Iterate backwards to group level 2 rows by their level 1 parent
@@ -359,8 +360,9 @@ async def aearning(
                     group_sum = sum(v for j, v in enumerate(values) if j in level_2_group and v is not None)
                     if group_sum and group_sum != 0:
                         for j in level_2_group:
-                            if values[j] is not None:
-                                pct_values[j] = 100.0 * values[j] / group_sum
+                            val = values[j]
+                            if val is not None:
+                                pct_values[j] = 100.0 * val / group_sum
                 level_2_group = []
 
         # Add percentage column using narwhals (backend-agnostic)
@@ -521,7 +523,7 @@ async def aturnover(
     # Apply currency conversion
     if ccy.lower() != "local":
         data = await aadjust_ccy(data, ccy=ccy)
-        nw_df = nw.from_native(data)
+        nw_df: nw.DataFrame = nw.from_native(data)  # type: ignore[assignment]
 
     # Apply factor
     if factor != 1.0:

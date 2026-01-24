@@ -36,6 +36,11 @@ from xbbg.services import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import pandas as pd
+
+# Type alias for backend conversion return types
+DataFrameResult = nw.DataFrame | nw.LazyFrame | pa.Table | Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -556,9 +561,9 @@ def _apply_wide_pivot_bdh(df) -> "pd.DataFrame":
 
 
 def _convert_backend(
-    nw_df: nw.DataFrame,
+    nw_df: Any,
     backend: Backend | str | None,
-) -> nw.DataFrame | nw.LazyFrame | pa.Table:
+) -> DataFrameResult:
     """Convert narwhals DataFrame to the requested backend.
 
     Args:
@@ -710,8 +715,8 @@ async def arequest(
         elements_list = list(elements)
 
     if overrides is not None:
-        override_tuples = (
-            [(k, str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
+        override_tuples: list[tuple[str, str]] = (
+            [(str(k), str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
         )
         # For BQL and bsrch services, pass overrides as generic elements (not Bloomberg field overrides)
         service_str = service.value if isinstance(service, Service) else service
@@ -725,7 +730,7 @@ async def arequest(
 
     options_list: list[tuple[str, str]] | None = None
     if options is not None:
-        options_list = [(k, str(v)) for k, v in options.items()] if isinstance(options, dict) else list(options)
+        options_list = [(str(k), str(v)) for k, v in options.items()] if isinstance(options, dict) else list(options)
 
     # Normalize extractor hint
     extractor_hint: ExtractorHint | None = None
@@ -2281,7 +2286,7 @@ async def abta(
     periodicity: str = "DAILY",
     interval: int | None = None,
     **study_params,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Get technical analysis study data (async).
 
     Uses Bloomberg //blp/tasvc service to calculate technical indicators.
@@ -2382,7 +2387,7 @@ def bta(
     periodicity: str = "DAILY",
     interval: int | None = None,
     **study_params,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Get technical analysis study data (sync).
 
     See abta() for full documentation.
@@ -2591,7 +2596,7 @@ async def abql(
     expression: str,
     *,
     backend: Backend | str | None = None,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg Query Language (BQL) request.
 
     BQL is Bloomberg's powerful query language for financial analytics.
@@ -2646,7 +2651,7 @@ def bql(
     expression: str,
     *,
     backend: Backend | str | None = None,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg Query Language (BQL) request.
 
     Sync wrapper around abql(). For async usage, use abql() directly.
@@ -2687,7 +2692,7 @@ async def absrch(
     *,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg Search (BSRCH) request.
 
     BSRCH executes saved Bloomberg searches and returns matching securities.
@@ -2734,7 +2739,7 @@ def bsrch(
     *,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg Search (BSRCH) request.
 
     Sync wrapper around absrch(). For async usage, use absrch() directly.
@@ -2769,7 +2774,7 @@ async def abfld(
     fields: str | Sequence[str],
     *,
     backend: Backend | str | None = None,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg Field Info (BFLD) request.
 
     Get metadata about specific Bloomberg fields including description,
@@ -2811,7 +2816,7 @@ def bfld(
     fields: str | Sequence[str],
     *,
     backend: Backend | str | None = None,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg Field Info (BFLD) request.
 
     Sync wrapper around abfld(). For async usage, use abfld() directly.
@@ -2850,7 +2855,7 @@ async def abeqs(
     group: str = "General",
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg Equity Screening (BEQS) request.
 
     Execute a saved Bloomberg equity screen and return matching securities.
@@ -2918,7 +2923,7 @@ def beqs(
     group: str = "General",
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg Equity Screening (BEQS) request.
 
     Sync wrapper around abeqs(). For async usage, use abeqs() directly.
@@ -2963,7 +2968,7 @@ async def ablkp(
     max_results: int = 20,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg security lookup (BLKP) request.
 
     Search for securities by company name or partial ticker.
@@ -3035,7 +3040,7 @@ def blkp(
     max_results: int = 20,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg security lookup (BLKP) request.
 
     Sync wrapper around ablkp(). For async usage, use ablkp() directly.
@@ -3094,7 +3099,7 @@ async def abport(
     *,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg portfolio data (BPORT) request.
 
     Get portfolio holdings and related data using PortfolioDataRequest.
@@ -3144,7 +3149,7 @@ def bport(
     *,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg portfolio data (BPORT) request.
 
     Sync wrapper around abport(). For async usage, use abport() directly.
@@ -3186,7 +3191,7 @@ async def abcurves(
     bbgid: str | None = None,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg yield curve list (BCURVES) request.
 
     Search for yield curves by country, currency, type, or other filters.
@@ -3268,7 +3273,7 @@ def bcurves(
     bbgid: str | None = None,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg yield curve list (BCURVES) request.
 
     Sync wrapper around abcurves(). For async usage, use abcurves() directly.
@@ -3324,7 +3329,7 @@ async def abgovts(
     partial_match: bool = True,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Async Bloomberg government securities list (BGOVTS) request.
 
     Search for government securities by ticker or name.
@@ -3384,7 +3389,7 @@ def bgovts(
     partial_match: bool = True,
     backend: Backend | str | None = None,
     **kwargs,
-) -> nw.DataFrame:
+) -> DataFrameResult:
     """Bloomberg government securities list (BGOVTS) request.
 
     Sync wrapper around abgovts(). For async usage, use abgovts() directly.
