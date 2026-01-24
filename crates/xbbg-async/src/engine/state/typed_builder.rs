@@ -430,6 +430,24 @@ impl ColumnSet {
     /// Columns not in `order` are appended at the end.
     /// Columns in `order` but not in the set are skipped.
     pub fn finish_with_order(mut self, order: &[&str]) -> Result<RecordBatch, BlpError> {
+        // If no data received but we have type hints, create empty columns from hints
+        if self.columns.is_empty() && !self.type_hints.is_empty() {
+            let mut fields = Vec::with_capacity(order.len());
+            let mut arrays: Vec<ArrayRef> = Vec::with_capacity(order.len());
+
+            for &name in order {
+                if let Some(arrow_type) = self.type_hints.get(name) {
+                    fields.push(Field::new(name, arrow_type.to_arrow_datatype(), true));
+                    arrays.push(TypedBuilder::new(*arrow_type).finish());
+                }
+            }
+
+            let schema = Arc::new(Schema::new(fields));
+            return RecordBatch::try_new(schema, arrays).map_err(|e| BlpError::Internal {
+                detail: format!("build empty RecordBatch from hints: {e}"),
+            });
+        }
+
         if self.columns.is_empty() {
             let schema = Arc::new(Schema::empty());
             return RecordBatch::try_new(schema, vec![]).map_err(|e| BlpError::Internal {

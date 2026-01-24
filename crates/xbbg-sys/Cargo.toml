@@ -8,7 +8,7 @@ description = "Unified FFI abstraction over blpapi-sys (real) and datamock (mock
 publish = false
 
 [features]
-default = ["mock"]
+default = ["live"]
 mock = ["datamock"]
 live = ["blpapi-sys"]
 

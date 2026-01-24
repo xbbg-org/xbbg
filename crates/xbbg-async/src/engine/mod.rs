@@ -15,6 +15,7 @@ mod worker;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
 
@@ -124,8 +125,10 @@ pub struct RequestParams {
     pub start_datetime: Option<String>,
     /// End datetime (ISO for intraday)
     pub end_datetime: Option<String>,
-    /// Event type (TRADE, BID, ASK for intraday)
+    /// Event type (TRADE, BID, ASK for intraday bars - singular)
     pub event_type: Option<String>,
+    /// Event types (TRADE, BID, ASK for intraday ticks - array)
+    pub event_types: Option<Vec<String>>,
     /// Bar interval in minutes (for bdib)
     pub interval: Option<u32>,
     /// Additional Bloomberg options
@@ -143,12 +146,12 @@ pub struct RequestParams {
 /// Validation mode for request validation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ValidationMode {
-    /// Error on invalid requests (default)
-    #[default]
+    /// Error on invalid fields/requests
     Strict,
     /// Warn but still send request
     Lenient,
-    /// Skip validation entirely
+    /// Skip validation entirely (default)
+    #[default]
     Disabled,
 }
 
@@ -423,6 +426,65 @@ impl Engine {
     /// Save the field type cache to disk.
     pub fn save_field_cache(&self) -> Result<(), String> {
         crate::field_cache::global_resolver().save_to_disk()
+    }
+
+    /// Validate Bloomberg field names.
+    ///
+    /// Queries `//blp/apiflds` for the given fields and returns a list of
+    /// invalid field names (fields that Bloomberg doesn't recognize).
+    ///
+    /// # Example
+    /// ```ignore
+    /// let invalid = engine.validate_fields(&["PX_LAST", "INVALID_FIELD"]).await?;
+    /// // invalid = ["INVALID_FIELD"]
+    /// ```
+    pub async fn validate_fields(&self, fields: &[String]) -> Result<Vec<String>, BlpAsyncError> {
+        if fields.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Query //blp/apiflds for the fields
+        let params = RequestParams {
+            service: "//blp/apiflds".to_string(),
+            operation: "FieldInfoRequest".to_string(),
+            extractor: ExtractorType::FieldInfo,
+            field_ids: Some(fields.to_vec()),
+            ..Default::default()
+        };
+
+        let batch = self.request(params).await?;
+
+        // Get the field column from the response
+        let field_col = batch
+            .column_by_name("field")
+            .and_then(|c| c.as_any().downcast_ref::<arrow::array::StringArray>());
+
+        let valid_fields: std::collections::HashSet<String> = match field_col {
+            Some(col) => (0..col.len())
+                .filter_map(|i| {
+                    if col.is_null(i) {
+                        None
+                    } else {
+                        Some(col.value(i).to_uppercase())
+                    }
+                })
+                .collect(),
+            None => std::collections::HashSet::new(),
+        };
+
+        // Find fields that weren't returned (invalid)
+        let invalid: Vec<String> = fields
+            .iter()
+            .filter(|f| !valid_fields.contains(&f.to_uppercase()))
+            .cloned()
+            .collect();
+
+        Ok(invalid)
+    }
+
+    /// Check if field validation is enabled based on validation mode.
+    pub fn is_field_validation_enabled(&self) -> bool {
+        self.config.validation_mode != ValidationMode::Disabled
     }
 
     // ─── Schema Introspection ─────────────────────────────────────────────────

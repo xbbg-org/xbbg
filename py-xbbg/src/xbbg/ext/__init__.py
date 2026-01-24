@@ -8,6 +8,13 @@ Extension Categories:
     - historical: dividend(), earning(), turnover(), etf_holdings()
     - futures: fut_ticker(), active_futures(), cdx_ticker(), active_cdx()
     - currency: adjust_ccy()
+    - fixed_income: yas(), preferreds(), corporate_bonds(), bqr()
+
+Async versions (primary implementations):
+    - historical: adividend(), aearning(), aturnover(), aetf_holdings()
+    - futures: afut_ticker(), aactive_futures(), acdx_ticker(), aactive_cdx()
+    - currency: aadjust_ccy()
+    - fixed_income: ayas(), apreferreds(), acorporate_bonds(), abqr()
 
 Example::
 
@@ -24,25 +31,76 @@ Example::
 
     # Convert currency
     df_usd = ext.adjust_ccy(df, ccy="USD")
+
+    # Yield & spread analysis for bonds
+    df = ext.yas("US912810TM69 Govt", "YAS_BOND_YLD")
+
+    # Find preferred stocks
+    df = ext.preferreds("BAC US Equity")
+
+    # Find corporate bonds
+    df = ext.corporate_bonds("AAPL")
+
+    # Async example
+    import asyncio
+
+
+    async def main():
+        df = await ext.adividend("AAPL US Equity")
+        print(df)
+
+
+    asyncio.run(main())
 """
 
 from __future__ import annotations
 
+# Sync functions
 from xbbg.ext.currency import adjust_ccy
+from xbbg.ext.fixed_income import YieldType, bqr, corporate_bonds, preferreds, yas
 from xbbg.ext.futures import active_cdx, active_futures, cdx_ticker, fut_ticker
 from xbbg.ext.historical import dividend, earning, etf_holdings, turnover
 
+# Async functions
+from xbbg.ext.currency import aadjust_ccy
+from xbbg.ext.fixed_income import abqr, acorporate_bonds, apreferreds, ayas
+from xbbg.ext.futures import aactive_cdx, aactive_futures, acdx_ticker, afut_ticker
+from xbbg.ext.historical import adividend, aearning, aetf_holdings, aturnover
+
 __all__ = [
-    # Historical extensions
+    # Historical extensions (sync)
     "dividend",
     "earning",
     "turnover",
     "etf_holdings",
-    # Futures extensions
+    # Historical extensions (async)
+    "adividend",
+    "aearning",
+    "aturnover",
+    "aetf_holdings",
+    # Futures extensions (sync)
     "fut_ticker",
     "active_futures",
     "cdx_ticker",
     "active_cdx",
-    # Currency extensions
+    # Futures extensions (async)
+    "afut_ticker",
+    "aactive_futures",
+    "acdx_ticker",
+    "aactive_cdx",
+    # Currency extensions (sync)
     "adjust_ccy",
+    # Currency extensions (async)
+    "aadjust_ccy",
+    # Fixed income extensions (sync)
+    "yas",
+    "YieldType",
+    "preferreds",
+    "corporate_bonds",
+    "bqr",
+    # Fixed income extensions (async)
+    "ayas",
+    "apreferreds",
+    "acorporate_bonds",
+    "abqr",
 ]

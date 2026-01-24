@@ -1,4 +1,6 @@
 [env]
 XBBG_DEV_SDK_ROOT = { value = "vendor/blpapi/blpapi_cpp", relative = true }
+LIBCLANG_PATH = "C:\\Program Files\\LLVM\\bin"
+PATH = "C:\\Program Files\\LLVM\\bin;${PATH}"
 # Note: PYO3_PYTHON is not set here - PyO3 auto-detects the Python interpreter.
 # For local dev with uv venv, activate the venv or set PYO3_PYTHON manually.

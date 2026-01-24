@@ -17,11 +17,14 @@ pyo3-log = "0.13"
 tokio = { version = "1.48", features = ["rt-multi-thread", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-log = "0.2"
 arrow = { version = "57.1.0", features = ["pyarrow"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 anyhow = "1.0"
 serde_json = "1.0"
 xbbg_core = { path = "../xbbg-core" }
 xbbg-async = { path = "../xbbg-async" }
+xbbg-ext = { path = "../xbbg-ext" }
 
 [build-dependencies]
 vergen-gitcl = { version = "1", features = ["build", "cargo"] }

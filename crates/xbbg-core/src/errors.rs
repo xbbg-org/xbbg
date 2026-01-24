@@ -70,7 +70,7 @@ pub enum BlpError {
         label: Option<String>,
     },
 
-    #[error("internal error")]
+    #[error("internal error: {detail}")]
     Internal { detail: String },
 
     // Schema validation errors

@@ -24,11 +24,8 @@ fn main() {
         .unwrap_or(&out_dir);
 
     // Search for datamock library in build outputs
-    for entry in std::fs::read_dir(target_dir.join("build"))
-        .into_iter()
-        .flatten()
-    {
-        if let Ok(entry) = entry {
+    if let Ok(entries) = std::fs::read_dir(target_dir.join("build")) {
+        for entry in entries.flatten() {
             let name = entry.file_name();
             if name.to_string_lossy().starts_with("datamock-") {
                 let lib_dir = entry.path().join("out");

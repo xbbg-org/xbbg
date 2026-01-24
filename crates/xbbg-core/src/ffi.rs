@@ -155,11 +155,59 @@ const _: () = {
     // parts(0) hours(1) minutes(2) seconds(3) milliseconds(4-5) month(6) day(7) year(8-9) offset(10-11) picoseconds(12-15)
 };
 
-// Declare datetime FFI using our local type (not blpapi-sys's)
+/// Bloomberg datetime structure (12 bytes).
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Default)]
+pub struct blpapi_Datetime_t {
+    pub parts: u8,
+    pub hours: u8,
+    pub minutes: u8,
+    pub seconds: u8,
+    pub milliseconds: u16,
+    pub month: u8,
+    pub day: u8,
+    pub year: u16,
+    pub offset: i16,
+}
+
+// Datetime parts bitmask constants
+pub const BLPAPI_DATETIME_YEAR_PART: u8 = 0x01;
+pub const BLPAPI_DATETIME_MONTH_PART: u8 = 0x02;
+pub const BLPAPI_DATETIME_DAY_PART: u8 = 0x04;
+pub const BLPAPI_DATETIME_HOURS_PART: u8 = 0x10;
+pub const BLPAPI_DATETIME_MINUTES_PART: u8 = 0x20;
+pub const BLPAPI_DATETIME_SECONDS_PART: u8 = 0x40;
+pub const BLPAPI_DATETIME_MILLISECONDS_PART: u8 = 0x80;
+pub const BLPAPI_DATETIME_DATE_PART: u8 =
+    BLPAPI_DATETIME_YEAR_PART | BLPAPI_DATETIME_MONTH_PART | BLPAPI_DATETIME_DAY_PART;
+pub const BLPAPI_DATETIME_TIME_PART: u8 = BLPAPI_DATETIME_HOURS_PART
+    | BLPAPI_DATETIME_MINUTES_PART
+    | BLPAPI_DATETIME_SECONDS_PART
+    | BLPAPI_DATETIME_MILLISECONDS_PART;
+
+// Compile-time layout verification
+const _: () = {
+    assert!(std::mem::size_of::<blpapi_Datetime_t>() == 12);
+};
+
+// Declare datetime FFI using our local types (not blpapi-sys's)
 extern "C" {
     pub fn blpapi_Element_getValueAsHighPrecisionDatetime(
         element: *mut blpapi_Element_t,
         buffer: *mut blpapi_HighPrecisionDatetime_t,
+        index: usize,
+    ) -> i32;
+
+    pub fn blpapi_Element_setElementDatetime(
+        element: *mut blpapi_Element_t,
+        name_string: *const std::os::raw::c_char,
+        name: *const blpapi_Name_t,
+        value: *const blpapi_Datetime_t,
+    ) -> i32;
+
+    pub fn blpapi_Element_setValueDatetime(
+        element: *mut blpapi_Element_t,
+        value: *const blpapi_Datetime_t,
         index: usize,
     ) -> i32;
 }

@@ -9,6 +9,9 @@ env.local
 # Sisyphus
 .sisyphus/
 
+# Benchmark dependencies (isolated Python env for benchmarks)
+.benchmark_deps/
+
 # Cargo / Rust
 .cargo/config.toml
 build_rust.bat
@@ -155,3 +158,6 @@ vendor/*.zip
 
 # Windows artifacts
 nul
+exploration/
+.crush/
+compile_commands.json

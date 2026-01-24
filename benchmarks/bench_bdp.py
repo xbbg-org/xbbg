@@ -5,6 +5,10 @@ Data usage: ~10-20 data points per run
 
 from __future__ import annotations
 
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+
 from dataclasses import dataclass
 import statistics
 import time

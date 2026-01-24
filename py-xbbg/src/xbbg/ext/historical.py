@@ -2,15 +2,34 @@
 
 Convenience wrappers around bds/bdh for common historical data queries.
 Returns DataFrame in the configured backend format.
+Uses high-performance Rust utilities from xbbg._core.
+
+Sync functions (wrap async with asyncio.run):
+    - dividend(): Get dividend and split history
+    - earning(): Get earnings breakdown
+    - turnover(): Get trading volume and turnover
+    - etf_holdings(): Get ETF holdings via BQL
+
+Async functions (primary implementation):
+    - adividend(): Async dividend history
+    - aearning(): Async earnings breakdown
+    - aturnover(): Async turnover data
+    - aetf_holdings(): Async ETF holdings
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
 
-from xbbg.ext.const import DVD_COLS, DVD_TYPES
+# Import Rust ext utilities for max performance
+from xbbg._core import (
+    ext_filter_equity_tickers,
+    ext_get_dvd_type,
+    ext_rename_dividend_columns,
+)
 
 if TYPE_CHECKING:
     from datetime import date
@@ -18,39 +37,55 @@ if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
 
 
-def _normalize_tickers(tickers: str | list[str]) -> list[str]:
-    """Normalize tickers to a list."""
-    if isinstance(tickers, str):
-        return [tickers]
-    return list(tickers)
-
-
 def _fmt_date(dt: str | date | None, fmt: str = "%Y%m%d") -> str | None:
-    """Format date to string."""
+    """Format date to string using Rust."""
     if dt is None:
         return None
     if isinstance(dt, str):
-        # Try to parse and reformat
-        import re
+        # Try to parse and reformat using Rust
+        from xbbg._core import ext_fmt_date, ext_parse_date
 
-        # Already in YYYYMMDD format
-        if re.match(r"^\d{8}$", dt):
-            return dt
-        # Try common formats
-        from datetime import datetime
-
-        for parse_fmt in ["%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"]:
-            try:
-                parsed = datetime.strptime(dt, parse_fmt)
-                return parsed.strftime(fmt)
-            except ValueError:
-                continue
-        return dt  # Return as-is if can't parse
+        try:
+            year, month, day = ext_parse_date(dt)
+            return ext_fmt_date(year, month, day, fmt)
+        except ValueError:
+            return dt  # Return as-is if can't parse
     # datetime or date object
-    return dt.strftime(fmt)
+    from xbbg._core import ext_fmt_date
+
+    return ext_fmt_date(dt.year, dt.month, dt.day, fmt)
 
 
-def dividend(
+def _get_empty_dataframe() -> IntoDataFrame:
+    """Return empty DataFrame using configured backend."""
+    from xbbg.blp import Backend, get_backend
+
+    backend = get_backend()
+    if backend == Backend.PANDAS:
+        import pandas as pd
+
+        return pd.DataFrame()
+    elif backend == Backend.PYARROW:
+        import pyarrow as pa
+
+        return pa.table({})
+    elif backend == Backend.DUCKDB:
+        import duckdb
+
+        return duckdb.query("SELECT 1 WHERE FALSE")
+    else:
+        # Default to polars for POLARS, POLARS_LAZY, NARWHALS, NARWHALS_LAZY, or None
+        import polars as pl
+
+        return pl.DataFrame()
+
+
+# =============================================================================
+# Async implementations (primary)
+# =============================================================================
+
+
+async def adividend(
     tickers: str | list[str],
     typ: str = "all",
     *,
@@ -58,9 +93,10 @@ def dividend(
     end_date: str | date | None = None,
     **kwargs,
 ) -> IntoDataFrame:
-    """Get dividend and split history for securities.
+    """Async get dividend and split history for securities.
 
-    Convenience wrapper around bds() for dividend data.
+    Convenience wrapper around abds() for dividend data.
+    Uses Rust for ticker filtering and column renaming.
 
     Args:
         tickers: Single ticker or list of tickers (must be Equity).
@@ -77,58 +113,51 @@ def dividend(
             - "projected": Projected dividends (BDVD_Pr_Ex_Dts_DVD_Amts_w_Ann)
         start_date: Start date for dividend history (optional).
         end_date: End date for dividend history (optional).
-        **kwargs: Additional arguments passed to bds().
+        **kwargs: Additional arguments passed to abds().
 
     Returns:
         DataFrame with dividend history (type depends on configured backend).
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.historical import adividend
 
-        # Get all dividend history
-        df = ext.dividend("AAPL US Equity")
 
-        # Get dividends for specific date range
-        df = ext.dividend("MSFT US Equity", start_date="2020-01-01", end_date="2024-01-01")
+        async def main():
+            # Get all dividend history
+            df = await adividend("AAPL US Equity")
 
-        # Get only splits
-        df = ext.dividend("TSLA US Equity", typ="split")
+            # Get dividends for specific date range
+            df = await adividend("MSFT US Equity", start_date="2020-01-01", end_date="2024-01-01")
+
+            # Get only splits
+            df = await adividend("TSLA US Equity", typ="split")
+
+
+        asyncio.run(main())
     """
-    from xbbg import bds
+    from xbbg import abds
 
     # Pop 'raw' kwarg if present (not used by bds)
     kwargs.pop("raw", None)
 
-    tickers_list = _normalize_tickers(tickers)
-    # Filter to equity tickers only
-    tickers_list = [t for t in tickers_list if "Equity" in t and "=" not in t]
+    # Normalize and filter tickers using Rust
+    if isinstance(tickers, str):
+        tickers_list = [tickers]
+    else:
+        tickers_list = list(tickers)
+
+    # Filter to equity tickers using Rust (high performance)
+    tickers_list = ext_filter_equity_tickers(tickers_list)
 
     if not tickers_list:
-        # Return empty DataFrame using configured backend
-        from xbbg.blp import Backend, get_backend
+        return _get_empty_dataframe()
 
-        backend = get_backend()
-        if backend == Backend.PANDAS:
-            import pandas as pd
-
-            return pd.DataFrame()
-        elif backend == Backend.PYARROW:
-            import pyarrow as pa
-
-            return pa.table({})
-        elif backend == Backend.DUCKDB:
-            import duckdb
-
-            return duckdb.query("SELECT 1 WHERE FALSE")
-        else:
-            # Default to polars for POLARS, POLARS_LAZY, NARWHALS, NARWHALS_LAZY, or None
-            import polars as pl
-
-            return pl.DataFrame()
-
-    # Get the Bloomberg field name
-    fld = DVD_TYPES.get(typ, typ)
+    # Get the Bloomberg field name using Rust
+    fld = ext_get_dvd_type(typ)
+    if fld is None:
+        fld = typ  # Use as-is if not in mapping
 
     # Special handling for adjustment factors
     if fld == "Eqy_DVD_Adjust_Fact" and "Corporate_Actions_Filter" not in kwargs:
@@ -140,8 +169,8 @@ def dividend(
     if end_date:
         kwargs["DVD_End_Dt"] = _fmt_date(end_date)
 
-    # Call bds - returns DataFrame in configured backend format
-    df = bds(tickers=tickers_list, flds=fld, **kwargs)
+    # Call abds - returns DataFrame in configured backend format
+    df = await abds(tickers=tickers_list, flds=fld, **kwargs)
 
     # Convert to narwhals for manipulation
     nw_df = nw.from_native(df)
@@ -149,16 +178,17 @@ def dividend(
     if len(nw_df) == 0:
         return df
 
-    # Rename columns using DVD_COLS mapping
-    rename_map = {old: new for old, new in DVD_COLS.items() if old in nw_df.columns}
-    if rename_map:
+    # Get column rename mapping from Rust (high performance)
+    rename_pairs = ext_rename_dividend_columns(list(nw_df.columns))
+    if rename_pairs:
+        rename_map = {old: new for old, new in rename_pairs}
         nw_df = nw_df.rename(rename_map)
         return nw_df.to_native()
 
     return df
 
 
-def earning(
+async def aearning(
     ticker: str,
     by: str = "Geo",
     typ: str = "Revenue",
@@ -169,9 +199,9 @@ def earning(
     periods: int | None = None,
     **kwargs,
 ) -> IntoDataFrame:
-    """Get earnings breakdown for a security.
+    """Async get earnings breakdown for a security.
 
-    Convenience wrapper around bds() for earnings data by geography or product.
+    Convenience wrapper around abds() for earnings data by geography or product.
 
     Args:
         ticker: Single ticker (e.g., "AMD US Equity").
@@ -186,25 +216,31 @@ def earning(
         level: Hierarchy level (optional).
         year: Fiscal year (e.g., 2023).
         periods: Number of periods to retrieve.
-        **kwargs: Additional arguments passed to bds().
+        **kwargs: Additional arguments passed to abds().
 
     Returns:
         DataFrame with earnings breakdown (type depends on configured backend).
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.historical import aearning
 
-        # Get geographic revenue breakdown
-        df = ext.earning("AMD US Equity", by="Geo")
 
-        # Get product revenue breakdown for specific year
-        df = ext.earning("AAPL US Equity", by="Product", year=2023)
+        async def main():
+            # Get geographic revenue breakdown
+            df = await aearning("AMD US Equity", by="Geo")
 
-        # Get operating income by geography
-        df = ext.earning("MSFT US Equity", by="Geo", typ="Operating_Income")
+            # Get product revenue breakdown for specific year
+            df = await aearning("AAPL US Equity", by="Product", year=2023)
+
+            # Get operating income by geography
+            df = await aearning("MSFT US Equity", by="Geo", typ="Operating_Income")
+
+
+        asyncio.run(main())
     """
-    from xbbg import bds
+    from xbbg import abds
 
     # Pop 'raw' kwarg if present (not used by bds)
     kwargs.pop("raw", None)
@@ -220,7 +256,7 @@ def earning(
         base_kwargs["Number_Of_Periods"] = periods
 
     # Get header first
-    header = bds(tickers=ticker, flds="PG_Bulk_Header", **base_kwargs, **kwargs)
+    header = await abds(tickers=ticker, flds="PG_Bulk_Header", **base_kwargs, **kwargs)
     header_nw = nw.from_native(header)
 
     # Add currency and level if specified
@@ -230,7 +266,7 @@ def earning(
         base_kwargs["PG_Hierarchy_Level"] = level
 
     # Get the actual data
-    data = bds(tickers=ticker, flds=f"PG_{typ}", **base_kwargs, **kwargs)
+    data = await abds(tickers=ticker, flds=f"PG_{typ}", **base_kwargs, **kwargs)
     data_nw = nw.from_native(data)
 
     if len(data_nw) == 0 or len(header_nw) == 0:
@@ -275,7 +311,7 @@ def earning(
 
         # Get level column as list for iteration, converting to int
         raw_levels = data_nw["level"].to_list()
-        levels = []
+        levels: list[int | None] = []
         for lvl in raw_levels:
             if lvl is None:
                 levels.append(None)
@@ -302,7 +338,7 @@ def earning(
         # Calculate level 1 percentage (% of total level 1)
         level_1_indices = [i for i, lvl in enumerate(levels) if lvl == 1]
         if level_1_indices:
-            level_1_sum = sum(values[i] for i in level_1_indices if values[i] is not None)
+            level_1_sum = sum(v for i, v in enumerate(values) if i in level_1_indices and v is not None)
             if level_1_sum and level_1_sum != 0:
                 for i in level_1_indices:
                     if values[i] is not None:
@@ -320,7 +356,7 @@ def earning(
             elif row_level == 1:
                 # Calculate percentage for this level 2 group
                 if level_2_group:
-                    group_sum = sum(values[j] for j in level_2_group if values[j] is not None)
+                    group_sum = sum(v for j, v in enumerate(values) if j in level_2_group and v is not None)
                     if group_sum and group_sum != 0:
                         for j in level_2_group:
                             if values[j] is not None:
@@ -345,7 +381,7 @@ def earning(
     return data_nw.to_native()
 
 
-def turnover(
+async def aturnover(
     tickers: str | list[str],
     *,
     start_date: str | date | None = None,
@@ -354,9 +390,9 @@ def turnover(
     factor: float = 1e6,
     **kwargs,
 ) -> IntoDataFrame:
-    """Get trading volume and turnover for securities.
+    """Async get trading volume and turnover for securities.
 
-    Convenience wrapper around bdh() for turnover data with optional
+    Convenience wrapper around abdh() for turnover data with optional
     currency conversion. For equities where the Turnover field is not available,
     calculates turnover as volume * VWAP (eqy_weighted_avg_px).
 
@@ -366,28 +402,34 @@ def turnover(
         end_date: End date for turnover data (default: yesterday).
         ccy: Currency for conversion (default: "USD"). Use "local" for no conversion.
         factor: Division factor (default: 1e6 for millions).
-        **kwargs: Additional arguments passed to bdh().
+        **kwargs: Additional arguments passed to abdh().
 
     Returns:
         DataFrame with turnover data (type depends on configured backend).
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.historical import aturnover
 
-        # Get turnover in millions USD
-        df = ext.turnover(["AAPL US Equity", "MSFT US Equity"], start_date="2024-01-01")
 
-        # Get turnover in local currency
-        df = ext.turnover("7203 JP Equity", ccy="local")
+        async def main():
+            # Get turnover in millions USD
+            df = await aturnover(["AAPL US Equity", "MSFT US Equity"], start_date="2024-01-01")
 
-        # Get turnover in EUR, in billions
-        df = ext.turnover("SAP GR Equity", ccy="EUR", factor=1e9)
+            # Get turnover in local currency
+            df = await aturnover("7203 JP Equity", ccy="local")
+
+            # Get turnover in EUR, in billions
+            df = await aturnover("SAP GR Equity", ccy="EUR", factor=1e9)
+
+
+        asyncio.run(main())
     """
     from datetime import datetime, timedelta
 
-    from xbbg import bdh
-    from xbbg.ext.currency import adjust_ccy
+    from xbbg import abdh
+    from xbbg.ext.currency import aadjust_ccy
 
     # Default dates
     if end_date is None:
@@ -402,10 +444,14 @@ def turnover(
             end_dt = end_date
         start_date = (end_dt - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    tickers_list = _normalize_tickers(tickers)
+    # Normalize tickers
+    if isinstance(tickers, str):
+        tickers_list = [tickers]
+    else:
+        tickers_list = list(tickers)
 
     # Get turnover data - returns DataFrame in configured backend format
-    data = bdh(
+    data = await abdh(
         tickers=tickers_list,
         flds="Turnover",
         start_date=start_date,
@@ -430,7 +476,7 @@ def turnover(
 
     if missing_tickers:
         try:
-            vol_data = bdh(
+            vol_data = await abdh(
                 tickers=missing_tickers,
                 flds=["eqy_weighted_avg_px", "volume"],
                 start_date=start_date,
@@ -474,7 +520,7 @@ def turnover(
 
     # Apply currency conversion
     if ccy.lower() != "local":
-        data = adjust_ccy(data, ccy=ccy)
+        data = await aadjust_ccy(data, ccy=ccy)
         nw_df = nw.from_native(data)
 
     # Apply factor
@@ -488,13 +534,13 @@ def turnover(
     return data
 
 
-def etf_holdings(
+async def aetf_holdings(
     etf_ticker: str,
     *,
     fields: list[str] | None = None,
     **kwargs,
 ) -> IntoDataFrame:
-    """Get ETF holdings using Bloomberg Query Language (BQL).
+    """Async get ETF holdings using Bloomberg Query Language (BQL).
 
     Retrieves holdings information for an ETF including ISIN, weights, and position IDs.
 
@@ -513,21 +559,28 @@ def etf_holdings(
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.historical import aetf_holdings
 
-        # Get holdings for an ETF
-        df = ext.etf_holdings("SPY US Equity")
 
-        # Get holdings with additional fields
-        df = ext.etf_holdings("SPY US Equity", fields=["name", "px_last"])
+        async def main():
+            # Get holdings for an ETF
+            df = await aetf_holdings("SPY US Equity")
 
-        # Ticker without suffix (will append ' US Equity')
-        df = ext.etf_holdings("SPY")
+            # Get holdings with additional fields
+            df = await aetf_holdings("SPY US Equity", fields=["name", "px_last"])
 
-        # Get holdings for a non-US ETF
-        df = ext.etf_holdings("VWRL LN Equity")
+            # Ticker without suffix (will append ' US Equity')
+            df = await aetf_holdings("SPY")
+
+            # Get holdings for a non-US ETF
+            df = await aetf_holdings("VWRL LN Equity")
+
+
+        asyncio.run(main())
     """
-    from xbbg import bql
+    from xbbg import abql
+    from xbbg._core import ext_rename_etf_columns
 
     # Normalize ticker format - ensure it has proper suffix
     if " " not in etf_ticker:
@@ -547,7 +600,7 @@ def etf_holdings(
     bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
 
     # Execute BQL query - returns DataFrame in configured backend format
-    df = bql(bql_query, **kwargs)
+    df = await abql(bql_query, **kwargs)
 
     # Convert to narwhals for manipulation
     nw_df = nw.from_native(df)
@@ -555,17 +608,129 @@ def etf_holdings(
     if len(nw_df) == 0:
         return df
 
-    # Clean up column names
-    # BQL returns 'id().position' which is awkward to access
-    rename_map = {}
-    for col in nw_df.columns:
-        if col == "id().position":
-            rename_map[col] = "position"
-        elif col == "ID":
-            rename_map[col] = "holding"
+    # Get column rename mapping from Rust
+    rename_pairs = ext_rename_etf_columns(list(nw_df.columns))
+
+    # Also handle special BQL columns
+    rename_map = {old: new for old, new in rename_pairs}
+    if "id().position" in nw_df.columns:
+        rename_map["id().position"] = "position"
+    if "ID" in nw_df.columns:
+        rename_map["ID"] = "holding"
 
     if rename_map:
         nw_df = nw_df.rename(rename_map)
         return nw_df.to_native()
 
     return df
+
+
+# =============================================================================
+# Sync wrappers
+# =============================================================================
+
+
+def dividend(
+    tickers: str | list[str],
+    typ: str = "all",
+    *,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+    **kwargs,
+) -> IntoDataFrame:
+    """Get dividend and split history for securities.
+
+    Sync wrapper for adividend(). See adividend() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        # Get all dividend history
+        df = ext.dividend("AAPL US Equity")
+
+        # Get only splits
+        df = ext.dividend("TSLA US Equity", typ="split")
+    """
+    return asyncio.run(adividend(tickers=tickers, typ=typ, start_date=start_date, end_date=end_date, **kwargs))
+
+
+def earning(
+    ticker: str,
+    by: str = "Geo",
+    typ: str = "Revenue",
+    *,
+    ccy: str | None = None,
+    level: int | None = None,
+    year: int | None = None,
+    periods: int | None = None,
+    **kwargs,
+) -> IntoDataFrame:
+    """Get earnings breakdown for a security.
+
+    Sync wrapper for aearning(). See aearning() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        # Get geographic revenue breakdown
+        df = ext.earning("AMD US Equity", by="Geo")
+
+        # Get product revenue breakdown for specific year
+        df = ext.earning("AAPL US Equity", by="Product", year=2023)
+    """
+    return asyncio.run(
+        aearning(ticker=ticker, by=by, typ=typ, ccy=ccy, level=level, year=year, periods=periods, **kwargs)
+    )
+
+
+def turnover(
+    tickers: str | list[str],
+    *,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+    ccy: str = "USD",
+    factor: float = 1e6,
+    **kwargs,
+) -> IntoDataFrame:
+    """Get trading volume and turnover for securities.
+
+    Sync wrapper for aturnover(). See aturnover() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        # Get turnover in millions USD
+        df = ext.turnover(["AAPL US Equity", "MSFT US Equity"], start_date="2024-01-01")
+
+        # Get turnover in local currency
+        df = ext.turnover("7203 JP Equity", ccy="local")
+    """
+    return asyncio.run(
+        aturnover(tickers=tickers, start_date=start_date, end_date=end_date, ccy=ccy, factor=factor, **kwargs)
+    )
+
+
+def etf_holdings(
+    etf_ticker: str,
+    *,
+    fields: list[str] | None = None,
+    **kwargs,
+) -> IntoDataFrame:
+    """Get ETF holdings using Bloomberg Query Language (BQL).
+
+    Sync wrapper for aetf_holdings(). See aetf_holdings() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        # Get holdings for an ETF
+        df = ext.etf_holdings("SPY US Equity")
+
+        # Get holdings with additional fields
+        df = ext.etf_holdings("SPY US Equity", fields=["name", "px_last"])
+    """
+    return asyncio.run(aetf_holdings(etf_ticker=etf_ticker, fields=fields, **kwargs))

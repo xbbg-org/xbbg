@@ -1,13 +1,27 @@
 """Currency conversion extension functions.
 
 Functions for converting Bloomberg data between currencies.
+Uses high-performance Rust utilities from xbbg._core.
+
+Sync functions (wrap async with asyncio.run):
+    - adjust_ccy(): Adjust DataFrame values to a target currency
+
+Async functions (primary implementation):
+    - aadjust_ccy(): Async adjust DataFrame values to a target currency
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
+
+# Import Rust ext utilities for max performance
+from xbbg._core import (
+    ext_build_fx_pair,
+    ext_same_currency,
+)
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -57,40 +71,52 @@ def _pivot_bdp_to_wide(nw_df: nw.DataFrame) -> nw.DataFrame:
     return result_df
 
 
-def adjust_ccy(
+# =============================================================================
+# Async implementations (primary)
+# =============================================================================
+
+
+async def aadjust_ccy(
     data: IntoDataFrame,
     ccy: str = "USD",
     **kwargs,
-) -> nw.DataFrame:
-    """Adjust DataFrame values to a target currency.
+) -> IntoDataFrame:
+    """Async adjust DataFrame values to a target currency.
 
     Converts price/value columns in a time-series DataFrame to the specified
-    currency using Bloomberg FX rates.
+    currency using Bloomberg FX rates. Uses Rust for FX pair building.
 
     Args:
         data: DataFrame with date index and ticker columns (from bdh, bdib, etc.).
             Expected to have a 'date' column and value columns.
             Accepts any DataFrame type supported by narwhals.
         ccy: Target currency code (default: "USD"). Use "local" for no adjustment.
-        **kwargs: Additional arguments passed to bdp/bdh for FX lookup.
+        **kwargs: Additional arguments passed to abdp/abdh for FX lookup.
 
     Returns:
         DataFrame with currency-adjusted values (same type as input).
 
     Example::
 
-        from xbbg import bdh, ext
+        import asyncio
+        from xbbg import abdh
+        from xbbg.ext.currency import aadjust_ccy
 
-        # Get historical data in local currency
-        df = bdh("VOD LN Equity", "PX_LAST", "2024-01-01", "2024-01-10")
 
-        # Convert to USD
-        df_usd = ext.adjust_ccy(df, ccy="USD")
+        async def main():
+            # Get historical data in local currency
+            df = await abdh("VOD LN Equity", "PX_LAST", "2024-01-01", "2024-01-10")
 
-        # Convert to EUR
-        df_eur = ext.adjust_ccy(df, ccy="EUR")
+            # Convert to USD
+            df_usd = await aadjust_ccy(df, ccy="USD")
+
+            # Convert to EUR
+            df_eur = await aadjust_ccy(df, ccy="EUR")
+
+
+        asyncio.run(main())
     """
-    from xbbg import bdh, bdp
+    from xbbg import abdh, abdp
 
     # Convert to narwhals DataFrame
     nw_df = nw.from_native(data)
@@ -126,7 +152,7 @@ def adjust_ccy(
 
     # Get currency for each ticker
     try:
-        ccy_data = bdp(tickers=tickers, flds="crncy", **kwargs)
+        ccy_data = await abdp(tickers=tickers, flds="crncy", **kwargs)
         ccy_nw = nw.from_native(ccy_data)
         ccy_nw = _pivot_bdp_to_wide(ccy_nw)
     except Exception:
@@ -135,8 +161,8 @@ def adjust_ccy(
     if len(ccy_nw) == 0 or "crncy" not in ccy_nw.columns:
         return nw_df.to_native()
 
-    # Build FX pair mapping
-    # ticker -> {ccy_pair: "USDGBP Curncy", factor: 1.0 or 100.0}
+    # Build FX pair mapping using Rust (high performance)
+    # ticker -> {fx_pair: "USDGBP Curncy", factor: 1.0 or 100.0}
     fx_info: dict[str, dict] = {}
     fx_pairs_needed: set[str] = set()
 
@@ -144,19 +170,17 @@ def adjust_ccy(
         ticker = row.get("ticker", "")
         local_ccy = row.get("crncy", "")
 
-        if not local_ccy or local_ccy.upper() == ccy.upper():
-            # Same currency, no conversion needed
+        if not local_ccy:
             continue
 
-        # Determine FX pair
-        # Factor handles GBp (pence) vs GBP
-        factor = 100.0 if local_ccy[-1].islower() else 1.0
-        local_ccy_upper = local_ccy.upper()
+        # Check if same currency using Rust
+        if ext_same_currency(local_ccy, ccy):
+            continue
 
-        # FX pair format: TARGETLOCAL Curncy (e.g., USDGBP Curncy for GBP -> USD)
-        fx_pair = f"{ccy.upper()}{local_ccy_upper} Curncy"
+        # Build FX pair using Rust (handles GBp/GBP factor, etc.)
+        fx_pair, factor, _from_ccy, _to_ccy = ext_build_fx_pair(local_ccy, ccy)
 
-        fx_info[ticker] = {"ccy_pair": fx_pair, "factor": factor}
+        fx_info[ticker] = {"fx_pair": fx_pair, "factor": factor}
         fx_pairs_needed.add(fx_pair)
 
     if not fx_pairs_needed:
@@ -174,7 +198,7 @@ def adjust_ccy(
 
     if start_date and end_date:
         try:
-            fx_data = bdh(
+            fx_data = await abdh(
                 tickers=list(fx_pairs_needed),
                 flds="PX_LAST",
                 start_date=start_date,
@@ -195,7 +219,7 @@ def adjust_ccy(
     result = nw_df
 
     for ticker, info in fx_info.items():
-        fx_pair = info["ccy_pair"]
+        fx_pair = info["fx_pair"]
         factor = info["factor"]
 
         # Find the FX column
@@ -223,3 +247,33 @@ def adjust_ccy(
                 result = result.drop(f"_fx_{ticker}")
 
     return result.to_native()
+
+
+# =============================================================================
+# Sync wrappers
+# =============================================================================
+
+
+def adjust_ccy(
+    data: IntoDataFrame,
+    ccy: str = "USD",
+    **kwargs,
+) -> IntoDataFrame:
+    """Adjust DataFrame values to a target currency.
+
+    Sync wrapper for aadjust_ccy(). See aadjust_ccy() for full documentation.
+
+    Example::
+
+        from xbbg import bdh, ext
+
+        # Get historical data in local currency
+        df = bdh("VOD LN Equity", "PX_LAST", "2024-01-01", "2024-01-10")
+
+        # Convert to USD
+        df_usd = ext.adjust_ccy(df, ccy="USD")
+
+        # Convert to EUR
+        df_eur = ext.adjust_ccy(df, ccy="EUR")
+    """
+    return asyncio.run(aadjust_ccy(data=data, ccy=ccy, **kwargs))

@@ -44,6 +44,8 @@ use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
 use xbbg_async::{BlpAsyncError, ValidationMode};
 use xbbg_core::BlpError;
 
+mod ext;
+
 // =============================================================================
 // Python Exception Hierarchy (mirrors py-xbbg/src/xbbg/exceptions.py)
 // =============================================================================
@@ -231,7 +233,7 @@ pub struct PyEngineConfig {
     /// Number of pre-warmed subscription sessions (default: 4)
     #[pyo3(get, set)]
     pub subscription_pool_size: usize,
-    /// Validation mode: "strict" (default), "lenient", or "disabled"
+    /// Validation mode: "disabled" (default), "strict", or "lenient"
     #[pyo3(get, set)]
     pub validation_mode: String,
     /// Number of ticks to buffer before flushing to Python (default: 1)
@@ -243,7 +245,7 @@ pub struct PyEngineConfig {
 impl PyEngineConfig {
     /// Create a new configuration with defaults.
     #[new]
-    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4, validation_mode="strict", subscription_flush_threshold=1))]
+    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4, validation_mode="disabled", subscription_flush_threshold=1))]
     fn new(
         host: &str,
         port: u16,
@@ -279,9 +281,9 @@ impl From<&PyEngineConfig> for EngineConfig {
             _ => {
                 warn!(
                     mode = %py_config.validation_mode,
-                    "Unknown validation mode, using strict"
+                    "Unknown validation mode, using disabled"
                 );
-                ValidationMode::Strict
+                ValidationMode::Disabled
             }
         };
 
@@ -485,6 +487,31 @@ impl PyEngine {
         self.engine
             .save_field_cache()
             .map_err(PyRuntimeError::new_err)
+    }
+
+    /// Validate Bloomberg field names.
+    ///
+    /// Queries Bloomberg's field info service to check if the given fields exist.
+    /// Returns a list of invalid field names (fields that Bloomberg doesn't recognize).
+    ///
+    /// Example:
+    ///     invalid = await engine.validate_fields(["PX_LAST", "INVALID_FIELD"])
+    ///     # invalid = ["INVALID_FIELD"]
+    fn validate_fields<'py>(
+        &self,
+        py: Python<'py>,
+        fields: Vec<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+
+        future_into_py(py, async move {
+            let invalid = engine
+                .validate_fields(&fields)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
+            Python::attach(|py| Ok(invalid.into_pyobject(py)?.into_any().unbind()))
+        })
     }
 
     // =========================================================================
@@ -1136,6 +1163,11 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
+    let event_types: Option<Vec<String>> = dict
+        .get_item("event_types")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     let interval: Option<u32> = dict
         .get_item("interval")?
         .map(|v| v.extract())
@@ -1181,6 +1213,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         start_datetime,
         end_datetime,
         event_type,
+        event_types,
         interval,
         options,
         field_types,
@@ -1214,9 +1247,43 @@ fn version() -> String {
 #[pymodule]
 #[pyo3(name = "_core")]
 fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Initialize pyo3-log to bridge Rust tracing to Python logging
-    // This allows Python's logging.basicConfig(level=logging.DEBUG) to capture Rust events
+    // Set up logging bridge: tracing -> log -> Python logging
+    //
+    // Architecture:
+    //   tracing::info!() -> tracing_subscriber -> tracing_log layer -> log crate -> pyo3_log -> Python
+    //
+    // Configure Python logging to see Rust events:
+    //   import logging
+    //   logging.basicConfig(level=logging.DEBUG, format='%(name)s %(levelname)s: %(message)s')
+    
+    // Initialize pyo3-log (log -> Python) - must be first
     pyo3_log::init();
+    
+    // Set up tracing subscriber with log bridge layer
+    // This creates: tracing events -> fmt layer (for direct output) + log layer (for Python)
+    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::fmt;
+    use tracing_log::LogTracer;
+    
+    // Install LogTracer to capture any log! macros and forward to tracing
+    let _ = LogTracer::init();
+    
+    // Build subscriber with tracing_subscriber that outputs to both stderr and log crate
+    let subscriber = tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_target(true)
+                .with_thread_ids(true)
+                .with_file(true)
+                .with_line_number(true)
+                .with_filter(tracing_subscriber::EnvFilter::from_default_env()
+                    .add_directive("pyo3_xbbg=info".parse().unwrap())
+                    .add_directive("xbbg_async=info".parse().unwrap())
+                    .add_directive("xbbg_core=info".parse().unwrap()))
+        );
+    
+    // Set as global default (ignore error if already set)
+    let _ = tracing::subscriber::set_global_default(subscriber);
 
     // Initialize tokio runtime for pyo3-async-runtimes
     // This creates a multi-threaded runtime that handles async Bloomberg operations
@@ -1252,6 +1319,9 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("BlpValidationError", _py.get_type::<BlpValidationError>())?;
     m.add("BlpTimeoutError", _py.get_type::<BlpTimeoutError>())?;
     m.add("BlpInternalError", _py.get_type::<BlpInternalError>())?;
+
+    // Register ext functions (date, pivot, ticker, futures, cdx, currency utilities)
+    ext::register_ext_module(m)?;
 
     Ok(())
 }

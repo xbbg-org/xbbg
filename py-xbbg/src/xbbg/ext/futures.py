@@ -1,33 +1,51 @@
 """Futures and CDX resolver extension functions.
 
 Functions for resolving generic futures/CDX tickers to specific contracts.
+Uses high-performance Rust utilities from xbbg._core for parsing and resolution.
+
+Sync functions (wrap async with asyncio.run):
+    - fut_ticker(): Resolve generic futures ticker to specific contract
+    - active_futures(): Get most active futures contract for a date
+    - cdx_ticker(): Resolve generic CDX ticker to specific series
+    - active_cdx(): Get most active CDX contract for a date
+
+Async functions (primary implementation):
+    - afut_ticker(): Async resolve generic futures ticker
+    - aactive_futures(): Async get most active futures contract
+    - acdx_ticker(): Async resolve generic CDX ticker
+    - aactive_cdx(): Async get most active CDX contract
 """
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
-import re
 from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
 
-from xbbg.ext.const import FUTURES_MONTHS
+# Import Rust ext utilities for max performance
+from xbbg._core import (
+    ext_contract_index,
+    ext_cdx_gen_to_specific,
+    ext_generate_futures_candidates,
+    ext_parse_date,
+    ext_previous_cdx_series,
+    ext_validate_generic_ticker,
+)
 
 if TYPE_CHECKING:
     from datetime import date
 
 
 def _parse_date(dt: str | date) -> datetime:
-    """Parse date string or date object to datetime."""
+    """Parse date string or date object to datetime using Rust."""
     if isinstance(dt, datetime):
         return dt
     if isinstance(dt, str):
-        for fmt in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                return datetime.strptime(dt, fmt)
-            except ValueError:
-                continue
-    # Try using the date object directly
+        year, month, day = ext_parse_date(dt)
+        return datetime(year, month, day)
+    # date object
     if hasattr(dt, "year"):
         return datetime(dt.year, dt.month, dt.day)
     raise ValueError(f"Cannot parse date: {dt}")
@@ -89,101 +107,89 @@ def _pivot_bdp_to_wide(nw_df: nw.DataFrame) -> nw.DataFrame:
     return result_df
 
 
-def fut_ticker(
+# =============================================================================
+# Async implementations (primary)
+# =============================================================================
+
+
+async def afut_ticker(
     gen_ticker: str,
     dt: str | date,
     freq: str = "M",
     **kwargs,
 ) -> str:
-    """Resolve generic futures ticker to specific contract.
+    """Async resolve generic futures ticker to specific contract.
 
     Maps a generic futures ticker (e.g., 'ES1 Index') to the specific
-    contract for a given date.
+    contract for a given date. Uses Rust for candidate generation.
 
     Args:
         gen_ticker: Generic futures ticker (e.g., 'ES1 Index', 'CL1 Comdty').
         dt: Reference date for contract resolution.
         freq: Roll frequency - 'M' (monthly), 'Q' (quarterly).
-        **kwargs: Additional arguments passed to bdp.
+        **kwargs: Additional arguments passed to abdp.
 
     Returns:
         Specific contract ticker (e.g., 'ESH24 Index').
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.futures import afut_ticker
 
-        # Get March 2024 E-mini S&P contract
-        ticker = ext.fut_ticker("ES1 Index", "2024-01-15")
-        # Returns: 'ESH24 Index'
 
-        # Get quarterly contract
-        ticker = ext.fut_ticker("ES1 Index", "2024-01-15", freq="Q")
+        async def main():
+            # Get March 2024 E-mini S&P contract
+            ticker = await afut_ticker("ES1 Index", "2024-01-15")
+            # Returns: 'ESH24 Index'
+
+            # Get quarterly contract
+            ticker = await afut_ticker("ES1 Index", "2024-01-15", freq="Q")
+
+
+        asyncio.run(main())
     """
-    from xbbg import bdp
+    from xbbg import abdp
 
-    dt = _parse_date(dt)
+    dt_parsed = _parse_date(dt)
+
+    # Get contract index (0-based) using Rust
+    try:
+        idx = ext_contract_index(gen_ticker)
+    except ValueError:
+        return ""
+
+    # Determine asset type for candidate count
     t_info = gen_ticker.split()
-    pre_dt = datetime.now()
-    same_month = (pre_dt.month == dt.month) and (pre_dt.year == dt.year)
-
-    asset = t_info[-1]
-    if asset in ["Index", "Curncy", "Comdty"]:
-        ticker = " ".join(t_info[:-1])
-        prefix, idx, postfix = ticker[:-1], int(ticker[-1]) - 1, asset
-    elif asset == "Equity":
-        ticker = t_info[0]
-        prefix, idx, postfix = ticker[:-1], int(ticker[-1]) - 1, " ".join(t_info[1:])
-    else:
-        return ""
-
-    # Generate candidate months
+    asset = t_info[-1] if t_info else ""
     month_ext = 4 if asset == "Comdty" else 2
-    eff_freq = (freq or "").strip().upper()
-    if not eff_freq:
-        eff_freq = "M"
+    count = max(idx + month_ext, 3)
 
-    # Generate future months
-    if eff_freq == "M":
-        # Monthly
-        months = []
-        current = dt.replace(day=1)
-        for _ in range(max(idx + month_ext, 3)):
-            months.append(current)
-            # Move to next month
-            if current.month == 12:
-                current = current.replace(year=current.year + 1, month=1)
-            else:
-                current = current.replace(month=current.month + 1)
-    elif eff_freq in ["Q", "QE"]:
-        # Quarterly (Mar, Jun, Sep, Dec)
-        quarter_months = [3, 6, 9, 12]
-        months = []
-        current = dt
-        while len(months) < max(idx + month_ext, 3):
-            for qm in quarter_months:
-                if current.year < dt.year or (current.year == dt.year and qm >= dt.month):
-                    months.append(datetime(current.year, qm, 1))
-                    if len(months) >= max(idx + month_ext, 3):
-                        break
-            current = current.replace(year=current.year + 1)
-    else:
+    # Generate futures candidates using Rust (high performance)
+    try:
+        candidates = ext_generate_futures_candidates(
+            gen_ticker,
+            dt_parsed.year,
+            dt_parsed.month,
+            dt_parsed.day,
+            freq.upper(),
+            count,
+        )
+    except ValueError:
         return ""
 
-    def to_fut(month: datetime) -> str:
-        month_code = FUTURES_MONTHS[month.strftime("%b")]
-        year_str = month.strftime("%y")[-1 if same_month else -2 :]
-        return f"{prefix}{month_code}{year_str} {postfix}"
+    if not candidates:
+        return ""
 
-    fut_candidates = [to_fut(m) for m in months]
+    fut_candidates = [c[0] for c in candidates]  # Extract ticker strings
 
     # Get maturity dates from Bloomberg
     try:
-        fut_matu = bdp(tickers=fut_candidates, flds="last_tradeable_dt", **kwargs)
+        fut_matu = await abdp(tickers=fut_candidates, flds="last_tradeable_dt", **kwargs)
     except Exception:
         # Try with fewer candidates
         try:
-            fut_matu = bdp(tickers=fut_candidates[:-1], flds="last_tradeable_dt", **kwargs)
+            fut_matu = await abdp(tickers=fut_candidates[:-1], flds="last_tradeable_dt", **kwargs)
         except Exception:
             return ""
 
@@ -205,7 +211,7 @@ def fut_ticker(
             continue
         try:
             matu_dt = _parse_date(matu_str)
-            if matu_dt > dt:
+            if matu_dt > dt_parsed:
                 valid_contracts.append((ticker_val, matu_dt))
         except (ValueError, TypeError):
             continue
@@ -218,12 +224,12 @@ def fut_ticker(
     return valid_contracts[idx][0]
 
 
-def active_futures(
+async def aactive_futures(
     ticker: str,
     dt: str | date,
     **kwargs,
 ) -> str:
-    """Get the most active futures contract for a date.
+    """Async get the most active futures contract for a date.
 
     Selects the most active contract based on volume, typically choosing
     between the front month and second month contract.
@@ -232,7 +238,7 @@ def active_futures(
         ticker: Generic futures ticker (e.g., 'ES1 Index', 'CL1 Comdty').
             Must be a generic contract (e.g., 'ES1'), not specific (e.g., 'ESH24').
         dt: Reference date.
-        **kwargs: Additional arguments passed to bdp/bdh.
+        **kwargs: Additional arguments passed to abdp/abdh.
 
     Returns:
         Most active contract ticker based on recent volume.
@@ -242,34 +248,23 @@ def active_futures(
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.futures import aactive_futures
 
-        # Get most active E-mini S&P contract
-        ticker = ext.active_futures("ES1 Index", "2024-01-15")
+
+        async def main():
+            # Get most active E-mini S&P contract
+            ticker = await aactive_futures("ES1 Index", "2024-01-15")
+
+
+        asyncio.run(main())
     """
-    from xbbg import bdh, bdp
+    from xbbg import abdh, abdp
 
-    # Validate that ticker is generic (not specific)
-    month_codes = set(FUTURES_MONTHS.values())
-    ticker_base = ticker.rsplit(" ", 1)[0]
+    # Validate that ticker is generic using Rust
+    ext_validate_generic_ticker(ticker)
 
-    # Check for specific contract pattern: [prefix][month_code][1-2 digits]
-    month_code_pattern = rf"[{''.join(month_codes)}]"
-    match = re.search(rf"(.+)({month_code_pattern})(\d{{1,2}})$", ticker_base)
-    if match:
-        _prefix, _month_char, digits = match.groups()
-        if len(digits) == 2:
-            raise ValueError(
-                f"'{ticker}' appears to be a specific futures contract, not generic. "
-                f"Use a generic ticker like 'ES1 Index' instead of 'ESH24 Index'."
-            )
-        if len(digits) == 1 and len(ticker_base) > 3:
-            raise ValueError(
-                f"'{ticker}' appears to be a specific futures contract, not generic. "
-                f"Use a generic ticker like 'ES1 Index' instead of 'ESH4 Index'."
-            )
-
-    dt = _parse_date(dt)
+    dt_parsed = _parse_date(dt)
 
     # Parse ticker components
     t_info = ticker.split()
@@ -281,8 +276,8 @@ def active_futures(
 
     # Resolve to specific contracts
     freq = kwargs.pop("freq", "M")
-    fut_1 = fut_ticker(gen_ticker=f1, dt=dt, freq=freq, **kwargs)
-    fut_2 = fut_ticker(gen_ticker=f2, dt=dt, freq=freq, **kwargs)
+    fut_1 = await afut_ticker(gen_ticker=f1, dt=dt_parsed, freq=freq, **kwargs)
+    fut_2 = await afut_ticker(gen_ticker=f2, dt=dt_parsed, freq=freq, **kwargs)
 
     if not fut_1:
         return ""
@@ -291,7 +286,7 @@ def active_futures(
         return fut_1
 
     # Get maturity dates
-    fut_tk = bdp(tickers=[fut_1, fut_2], flds="last_tradeable_dt", **kwargs)
+    fut_tk = await abdp(tickers=[fut_1, fut_2], flds="last_tradeable_dt", **kwargs)
     nw_tk = nw.from_native(fut_tk)
     nw_tk = _pivot_bdp_to_wide(nw_tk)
 
@@ -304,12 +299,12 @@ def active_futures(
         first_matu = first_row["last_tradeable_dt"][0]
         if isinstance(first_matu, str):
             first_matu = _parse_date(first_matu)
-        if hasattr(first_matu, "month") and dt.month < first_matu.month:
+        if hasattr(first_matu, "month") and dt_parsed.month < first_matu.month:
             return fut_1
 
     # Otherwise, compare volume over last 10 days
-    start = dt - timedelta(days=10)
-    volume = bdh(tickers=[fut_1, fut_2], flds="volume", start_date=start, end_date=dt, **kwargs)
+    start = dt_parsed - timedelta(days=10)
+    volume = await abdh(tickers=[fut_1, fut_2], flds="volume", start_date=start, end_date=dt_parsed, **kwargs)
     nw_vol = nw.from_native(volume)
 
     if len(nw_vol) == 0:
@@ -338,38 +333,43 @@ def active_futures(
     return best_ticker
 
 
-def cdx_ticker(
+async def acdx_ticker(
     gen_ticker: str,
     dt: str | date,
     **kwargs,
 ) -> str:
-    """Resolve generic CDX ticker to specific series.
+    """Async resolve generic CDX ticker to specific series.
 
     Maps a generic CDX index ticker to the specific series for a date.
+    Uses Rust for CDX ticker parsing and series resolution.
 
     Args:
         gen_ticker: Generic CDX ticker (e.g., 'CDX IG CDSI GEN 5Y Corp').
         dt: Reference date.
-        **kwargs: Additional arguments passed to bdp.
+        **kwargs: Additional arguments passed to abdp.
 
     Returns:
         Specific series ticker (e.g., 'CDX IG CDSI S45 5Y Corp').
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.futures import acdx_ticker
 
-        ticker = ext.cdx_ticker("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
+
+        async def main():
+            ticker = await acdx_ticker("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
+
+
+        asyncio.run(main())
     """
-    from contextlib import suppress
+    from xbbg import abdp
 
-    from xbbg import bdp
-
-    dt = _parse_date(dt)
+    dt_parsed = _parse_date(dt)
 
     # Get CDX metadata
     try:
-        info = bdp(
+        info = await abdp(
             tickers=gen_ticker,
             flds=["rolling_series", "on_the_run_current_bd_indicator", "cds_first_accrual_start_date"],
             **kwargs,
@@ -384,38 +384,40 @@ def cdx_ticker(
         return ""
 
     series = nw_info["rolling_series"][0]
-    with suppress(ValueError, TypeError):
+    try:
         series = int(series)
-
-    # Replace GEN with series number
-    tokens = gen_ticker.split()
-    if "GEN" not in tokens:
+    except (ValueError, TypeError):
         return ""
 
-    tokens[tokens.index("GEN")] = f"S{series}"
-    resolved = " ".join(tokens)
+    # Convert generic to specific using Rust
+    try:
+        resolved = ext_cdx_gen_to_specific(gen_ticker, series)
+    except ValueError:
+        return ""
 
     # Check if dt is before first accrual date of current series
     if "cds_first_accrual_start_date" in nw_info.columns:
         try:
             start_dt = _parse_date(nw_info["cds_first_accrual_start_date"][0])
-            if dt < start_dt and isinstance(series, int) and series > 1:
-                # Use prior series
-                tokens[tokens.index(f"S{series}")] = f"S{series - 1}"
-                resolved = " ".join(tokens)
+            if dt_parsed < start_dt and series > 1:
+                # Use prior series via Rust
+                try:
+                    resolved = ext_cdx_gen_to_specific(gen_ticker, series - 1)
+                except ValueError:
+                    pass
         except Exception:
             pass
 
     return resolved
 
 
-def active_cdx(
+async def aactive_cdx(
     gen_ticker: str,
     dt: str | date,
     lookback_days: int = 10,
     **kwargs,
 ) -> str:
-    """Get the most active CDX contract for a date.
+    """Async get the most active CDX contract for a date.
 
     Selects the most active CDX series based on recent trading activity.
 
@@ -423,58 +425,59 @@ def active_cdx(
         gen_ticker: Generic CDX ticker (e.g., 'CDX IG CDSI GEN 5Y Corp').
         dt: Reference date.
         lookback_days: Number of days to look back for activity (default: 10).
-        **kwargs: Additional arguments passed to bdp/bdh.
+        **kwargs: Additional arguments passed to abdp/abdh.
 
     Returns:
         Most active CDX series ticker.
 
     Example::
 
-        from xbbg import ext
+        import asyncio
+        from xbbg.ext.futures import aactive_cdx
 
-        ticker = ext.active_cdx("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
+
+        async def main():
+            ticker = await aactive_cdx("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
+
+
+        asyncio.run(main())
     """
-    from xbbg import bdh, bdp
+    from xbbg import abdh, abdp
 
     # Get current series
-    cur = cdx_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs)
+    cur = await acdx_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs)
     if not cur:
         return ""
 
-    dt = _parse_date(dt)
+    dt_parsed = _parse_date(dt)
 
-    # Compute previous series candidate
-    parts = cur.split()
-    prev = ""
-    for i, tok in enumerate(parts):
-        if tok.startswith("S") and tok[1:].isdigit():
-            s = int(tok[1:])
-            if s > 1:
-                parts[i] = f"S{s - 1}"
-                prev = " ".join(parts)
-            break
+    # Get previous series using Rust
+    try:
+        prev = ext_previous_cdx_series(cur)
+    except ValueError:
+        prev = None
 
     if not prev:
         return cur
 
     # Check if dt is before current series' accrual start
     try:
-        cur_meta = bdp(cur, ["cds_first_accrual_start_date"], **kwargs)
+        cur_meta = await abdp(cur, ["cds_first_accrual_start_date"], **kwargs)
         nw_meta = nw.from_native(cur_meta)
         nw_meta = _pivot_bdp_to_wide(nw_meta)
         if len(nw_meta) > 0 and "cds_first_accrual_start_date" in nw_meta.columns:
             cur_start = _parse_date(nw_meta["cds_first_accrual_start_date"][0])
-            if dt < cur_start:
+            if dt_parsed < cur_start:
                 return prev
     except Exception:
         pass
 
     # Compare activity based on PX_LAST availability
-    end = dt
-    start = dt - timedelta(days=lookback_days)
+    end = dt_parsed
+    start = dt_parsed - timedelta(days=lookback_days)
 
     try:
-        px = bdh([cur, prev], ["PX_LAST"], start_date=start, end_date=end, **kwargs)
+        px = await abdh([cur, prev], ["PX_LAST"], start_date=start, end_date=end, **kwargs)
         nw_px = nw.from_native(px)
 
         if len(nw_px) == 0:
@@ -492,3 +495,84 @@ def active_cdx(
         pass
 
     return cur
+
+
+# =============================================================================
+# Sync wrappers
+# =============================================================================
+
+
+def fut_ticker(
+    gen_ticker: str,
+    dt: str | date,
+    freq: str = "M",
+    **kwargs,
+) -> str:
+    """Resolve generic futures ticker to specific contract.
+
+    Sync wrapper for afut_ticker(). See afut_ticker() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        # Get March 2024 E-mini S&P contract
+        ticker = ext.fut_ticker("ES1 Index", "2024-01-15")
+    """
+    return asyncio.run(afut_ticker(gen_ticker=gen_ticker, dt=dt, freq=freq, **kwargs))
+
+
+def active_futures(
+    ticker: str,
+    dt: str | date,
+    **kwargs,
+) -> str:
+    """Get the most active futures contract for a date.
+
+    Sync wrapper for aactive_futures(). See aactive_futures() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        # Get most active E-mini S&P contract
+        ticker = ext.active_futures("ES1 Index", "2024-01-15")
+    """
+    return asyncio.run(aactive_futures(ticker=ticker, dt=dt, **kwargs))
+
+
+def cdx_ticker(
+    gen_ticker: str,
+    dt: str | date,
+    **kwargs,
+) -> str:
+    """Resolve generic CDX ticker to specific series.
+
+    Sync wrapper for acdx_ticker(). See acdx_ticker() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        ticker = ext.cdx_ticker("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
+    """
+    return asyncio.run(acdx_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs))
+
+
+def active_cdx(
+    gen_ticker: str,
+    dt: str | date,
+    lookback_days: int = 10,
+    **kwargs,
+) -> str:
+    """Get the most active CDX contract for a date.
+
+    Sync wrapper for aactive_cdx(). See aactive_cdx() for full documentation.
+
+    Example::
+
+        from xbbg import ext
+
+        ticker = ext.active_cdx("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
+    """
+    return asyncio.run(aactive_cdx(gen_ticker=gen_ticker, dt=dt, lookback_days=lookback_days, **kwargs))

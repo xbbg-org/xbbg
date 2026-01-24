@@ -149,6 +149,12 @@ impl UnifiedRequestState {
     }
 }
 
+/// Threshold for warning about slow Bloomberg responses (30 seconds).
+const SLOW_REQUEST_WARN_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How often to check for slow requests (every 1000 poll iterations ≈ 10 seconds).
+const SLOW_REQUEST_CHECK_INTERVAL: u32 = 1000;
+
 /// A pre-warmed request worker with a Bloomberg session.
 struct RequestWorker {
     /// Worker ID for debugging/metrics.
@@ -165,6 +171,10 @@ struct RequestWorker {
     config: Arc<EngineConfig>,
     /// Send times for round-trip measurement.
     send_times: HashMap<usize, std::time::Instant>,
+    /// Track which requests we've already warned about (to avoid log spam).
+    warned_requests: std::collections::HashSet<usize>,
+    /// Counter for slow request check interval.
+    poll_counter: u32,
 }
 
 impl RequestWorker {
@@ -191,6 +201,8 @@ impl RequestWorker {
             services: HashMap::new(),
             config,
             send_times: HashMap::new(),
+            warned_requests: std::collections::HashSet::new(),
+            poll_counter: 0,
         };
 
         // Pre-warm commonly used services
@@ -258,7 +270,31 @@ impl RequestWorker {
             // 2. Poll Bloomberg (short timeout for responsiveness)
             match self.session.next_event(Some(10)) {
                 Ok(ev) => self.dispatch_event(ev),
-                Err(_) => continue,
+                Err(_) => {}
+            }
+
+            // 3. Periodically check for slow requests and warn
+            self.poll_counter += 1;
+            if self.poll_counter >= SLOW_REQUEST_CHECK_INTERVAL {
+                self.poll_counter = 0;
+                self.check_slow_requests();
+            }
+        }
+    }
+
+    /// Check for requests that have been waiting too long and emit warnings.
+    fn check_slow_requests(&mut self) {
+        let now = std::time::Instant::now();
+        for (&key, &send_time) in &self.send_times {
+            let elapsed = now.duration_since(send_time);
+            if elapsed > SLOW_REQUEST_WARN_THRESHOLD && !self.warned_requests.contains(&key) {
+                tracing::warn!(
+                    worker_id = self.id,
+                    request_key = key,
+                    elapsed_secs = elapsed.as_secs(),
+                    "request waiting for Bloomberg response longer than expected"
+                );
+                self.warned_requests.insert(key);
             }
         }
     }
@@ -315,14 +351,30 @@ impl RequestWorker {
         );
 
         // Create state based on extractor type
+        tracing::debug!(
+            worker_id = self.id,
+            extractor = ?params.extractor,
+            fields = ?params.fields,
+            "creating request state"
+        );
         let state = self.create_request_state(&params, reply)?;
+        tracing::debug!(worker_id = self.id, "request state created");
 
         let key = self.requests.insert(state);
         let cid = CorrelationId::Int(key as i64);
 
         // Build request from params
         let service = self.services.get(&params.service).unwrap();
+        tracing::debug!(
+            worker_id = self.id,
+            operation = %params.operation,
+            securities = ?params.securities,
+            start_date = ?params.start_date,
+            end_date = ?params.end_date,
+            "building request"
+        );
         let request = self.build_request_from_params(service, &params)?;
+        tracing::debug!(worker_id = self.id, "request built");
 
         let t_send = std::time::Instant::now();
         self.session.send_request(&request, None, Some(&cid))?;
@@ -454,22 +506,28 @@ impl RequestWorker {
         service: &Service,
         params: &RequestParams,
     ) -> Result<xbbg_core::Request, BlpError> {
+        tracing::trace!(operation = %params.operation, "creating request");
         let mut request = service.create_request(&params.operation)?;
+        tracing::trace!("request created");
 
         // Set securities (multi or single)
         if let Some(ref securities) = params.securities {
             for sec in securities {
+                tracing::trace!(element = "securities", value = %sec, "appending");
                 request.append_str("securities", sec)?;
             }
         }
         if let Some(ref security) = params.security {
-            // For intraday requests, use "security" element
+            // For intraday requests, "security" is a scalar element (use set_str)
+            // For other requests, add to "securities" array (use append_str)
             if matches!(
                 params.extractor,
                 ExtractorType::IntradayBar | ExtractorType::IntradayTick
             ) {
-                request.append_str("security", security)?;
+                tracing::trace!(element = "security", value = %security, "setting scalar");
+                request.set_str("security", security)?;
             } else {
+                tracing::trace!(element = "securities", value = %security, "appending");
                 request.append_str("securities", security)?;
             }
         }
@@ -477,38 +535,65 @@ impl RequestWorker {
         // Set fields
         if let Some(ref fields) = params.fields {
             for field in fields {
+                tracing::trace!(element = "fields", value = %field, "appending");
                 request.append_str("fields", field)?;
             }
         }
 
-        // Set date range (for historical)
+        // Set date range (for historical) - scalar elements use set_str
         if let Some(ref start) = params.start_date {
-            request.append_str("startDate", start)?;
+            tracing::trace!(element = "startDate", value = %start, "setting");
+            request.set_str("startDate", start)?;
         }
         if let Some(ref end) = params.end_date {
-            request.append_str("endDate", end)?;
+            tracing::trace!(element = "endDate", value = %end, "setting");
+            request.set_str("endDate", end)?;
         }
 
-        // Set datetime range (for intraday)
+        // Set datetime range (for intraday) - use proper datetime type
         if let Some(ref start) = params.start_datetime {
-            request.append_str("startDateTime", start)?;
+            tracing::trace!(element = "startDateTime", value = %start, "setting datetime");
+            request.set_datetime("startDateTime", start)?;
         }
         if let Some(ref end) = params.end_datetime {
-            request.append_str("endDateTime", end)?;
+            tracing::trace!(element = "endDateTime", value = %end, "setting datetime");
+            request.set_datetime("endDateTime", end)?;
         }
 
-        // Set event type and interval (for intraday bars)
+        // Set event type (singular, for intraday bars)
         if let Some(ref event_type) = params.event_type {
-            request.append_str("eventType", event_type)?;
+            request.set_str("eventType", event_type)?;
         }
+        // Set event types (array, for intraday ticks)
+        if let Some(ref event_types) = params.event_types {
+            for et in event_types {
+                request.append_str("eventTypes", et)?;
+            }
+        }
+        // Set interval (for intraday bars)
         if let Some(interval) = params.interval {
-            request.append_str("interval", &interval.to_string())?;
+            request.set_int("interval", interval as i32)?;
         }
 
         // Set generic elements (for BQL, bsrch, options, etc.)
+        // - Dotted paths (e.g., "priceSource.securityName") use set_nested_str for nested elements
+        // - Non-dotted names try set_str first (for scalars), fall back to append_str (for arrays)
         if let Some(ref elements) = params.elements {
             for (name, value) in elements {
-                request.append_str(name, value)?;
+                if name.contains('.') {
+                    // Nested element path - use set_nested_str
+                    // Try as string first, then try as integer if it looks like a number
+                    if let Ok(int_val) = value.parse::<i32>() {
+                        request.set_nested_int(name, int_val)?;
+                    } else {
+                        request.set_nested_str(name, value)?;
+                    }
+                } else {
+                    // Non-nested: try scalar set first, fall back to append for arrays
+                    if request.set_str(name, value).is_err() {
+                        request.append_str(name, value)?;
+                    }
+                }
             }
         }
 
@@ -568,7 +653,7 @@ impl RequestWorker {
         for i in 0..n {
             if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
                 if self.requests.contains(key as usize) {
-                    // Log round-trip time
+                    // Log round-trip time and clean up tracking
                     if let Some(t_send) = self.send_times.remove(&(key as usize)) {
                         let rtt_ms = t_send.elapsed().as_micros() as f64 / 1000.0;
                         tracing::info!(
@@ -578,6 +663,7 @@ impl RequestWorker {
                             "bloomberg_roundtrip"
                         );
                     }
+                    self.warned_requests.remove(&(key as usize));
                     let state = self.requests.remove(key as usize);
                     state.finish_and_reply(msg);
                     tracing::debug!(worker_id = self.id, key = key, "response completed");
@@ -596,6 +682,9 @@ impl RequestWorker {
                 if msg_type == "RequestFailure" {
                     tracing::error!(worker_id = self.id, key = key, "request failed");
                     if self.requests.contains(key as usize) {
+                        // Clean up tracking
+                        self.send_times.remove(&(key as usize));
+                        self.warned_requests.remove(&(key as usize));
                         let state = self.requests.remove(key as usize);
                         state.fail(BlpError::Internal {
                             detail: "RequestFailure".into(),

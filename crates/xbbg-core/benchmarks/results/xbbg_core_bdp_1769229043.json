@@ -1,0 +1,26 @@
+{
+  "timestamp": 1769229043,
+  "crate": "xbbg-core",
+  "benchmarks": [
+    {
+      "name": "bdp_1t_1f",
+      "iterations": 10,
+      "cold_start_us": 154711,
+      "warm_mean_us": 155743,
+      "warm_min_us": 114831,
+      "warm_max_us": 249150,
+      "warm_std_us": 38697.44,
+      "fields_extracted": 0
+    },
+    {
+      "name": "bdp_1t_5f",
+      "iterations": 10,
+      "cold_start_us": 146776,
+      "warm_mean_us": 147342,
+      "warm_min_us": 130977,
+      "warm_max_us": 193834,
+      "warm_std_us": 18922.57,
+      "fields_extracted": 0
+    }
+  ]
+}
