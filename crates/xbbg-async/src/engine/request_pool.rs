@@ -111,6 +111,29 @@ impl RequestWorkerPool {
         self.workers.len()
     }
 
+    /// Introspect a service's schema via a worker.
+    pub async fn introspect_schema(
+        &self,
+        service: String,
+    ) -> Result<crate::schema::ServiceSchema, BlpAsyncError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+
+        let worker = self.next_worker();
+        worker
+            .cmd_tx
+            .send(WorkerCommand::IntrospectSchema {
+                service,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+
+        reply_rx
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?
+            .map_err(BlpAsyncError::BlpError)
+    }
+
     /// Graceful shutdown of all workers.
     pub fn shutdown(&mut self) {
         tracing::info!(pool_size = self.workers.len(), "shutting down request pool");

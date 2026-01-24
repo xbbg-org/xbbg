@@ -64,7 +64,7 @@ pyo3::create_exception!(xbbg._core, BlpInternalError, BlpErrorBase);
 fn blp_error_to_pyerr(e: BlpError) -> PyErr {
     match e {
         BlpError::SessionStart { source, label } => {
-            let msg = format_error_msg("Session start failed", label.as_deref(), source.as_ref());
+            let msg = format_error_msg("Session start failed", label.as_deref(), source.as_deref());
             BlpSessionError::new_err(msg)
         }
         BlpError::OpenService {
@@ -75,7 +75,7 @@ fn blp_error_to_pyerr(e: BlpError) -> PyErr {
             let msg = format!(
                 "Failed to open service '{}': {}",
                 service,
-                format_error_msg("", label.as_deref(), source.as_ref())
+                format_error_msg("", label.as_deref(), source.as_deref())
             );
             BlpSessionError::new_err(msg)
         }
@@ -192,7 +192,7 @@ fn blp_async_error_to_pyerr(e: BlpAsyncError) -> PyErr {
 }
 
 /// Helper to format error messages with optional label and source.
-fn format_error_msg(base: &str, label: Option<&str>, source: Option<&anyhow::Error>) -> String {
+fn format_error_msg(base: &str, label: Option<&str>, source: Option<&(dyn std::error::Error + Send + Sync)>) -> String {
     let mut msg = base.to_string();
     if let Some(l) = label {
         if !msg.is_empty() {

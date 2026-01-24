@@ -7,7 +7,7 @@ repository.workspace = true
 description = "PyO3 bindings for xbbg Bloomberg engine"
 
 [lib]
-name = "xbbg_core"
+name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -26,4 +26,8 @@ xbbg-async = { path = "../xbbg-async" }
 [build-dependencies]
 vergen-gitcl = { version = "1", features = ["build", "cargo"] }
 
+[features]
+default = ["live"]
+mock = ["xbbg-async/mock"]
+live = ["xbbg-async/live"]
 

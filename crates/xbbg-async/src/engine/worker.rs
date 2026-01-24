@@ -41,6 +41,11 @@ pub enum WorkerCommand {
         params: RequestParams,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     },
+    /// Introspect a service's schema.
+    IntrospectSchema {
+        service: String,
+        reply: oneshot::Sender<Result<crate::schema::ServiceSchema, BlpError>>,
+    },
     /// Shutdown the worker gracefully.
     Shutdown,
 }
@@ -238,6 +243,10 @@ impl RequestWorker {
                             tracing::error!(worker_id = self.id, error = %e, "stream request error");
                         }
                     }
+                    Ok(WorkerCommand::IntrospectSchema { service, reply }) => {
+                        let result = self.introspect_schema(&service);
+                        let _ = reply.send(result);
+                    }
                     Err(mpsc::error::TryRecvError::Empty) => break,
                     Err(mpsc::error::TryRecvError::Disconnected) => {
                         tracing::info!(worker_id = self.id, "command channel closed");
@@ -261,6 +270,34 @@ impl RequestWorker {
             self.services.insert(name.to_string(), svc);
         }
         Ok(())
+    }
+
+    /// Introspect a service's schema.
+    fn introspect_schema(
+        &mut self,
+        service_uri: &str,
+    ) -> Result<crate::schema::ServiceSchema, BlpError> {
+        tracing::debug!(worker_id = self.id, service = %service_uri, "introspecting schema");
+
+        self.ensure_service(service_uri)?;
+
+        let service = self
+            .services
+            .get(service_uri)
+            .ok_or_else(|| BlpError::Internal {
+                detail: format!("Service {} not found after ensure_service", service_uri),
+            })?;
+
+        let schema = crate::schema::introspect_service(service, service_uri);
+
+        tracing::debug!(
+            worker_id = self.id,
+            service = %service_uri,
+            operations = schema.operations.len(),
+            "schema introspection complete"
+        );
+
+        Ok(schema)
     }
 
     /// Unified request handler - routes to correct state based on extractor type.

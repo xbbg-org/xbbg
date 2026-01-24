@@ -211,6 +211,8 @@ pub struct Engine {
     rt: Arc<tokio::runtime::Runtime>,
     /// Configuration
     config: Arc<EngineConfig>,
+    /// Schema cache (in-memory + disk)
+    schema_cache: crate::schema::SchemaCache,
 }
 
 impl Engine {
@@ -247,6 +249,7 @@ impl Engine {
             subscription_pool,
             rt,
             config,
+            schema_cache: crate::schema::SchemaCache::new(),
         })
     }
 
@@ -420,6 +423,100 @@ impl Engine {
     /// Save the field type cache to disk.
     pub fn save_field_cache(&self) -> Result<(), String> {
         crate::field_cache::global_resolver().save_to_disk()
+    }
+
+    // ─── Schema Introspection ─────────────────────────────────────────────────
+
+    /// Get the schema for a Bloomberg service.
+    ///
+    /// Checks the cache first; if not cached, introspects the service via a worker
+    /// and caches the result both in memory and on disk.
+    pub async fn get_schema(
+        &self,
+        service: &str,
+    ) -> Result<Arc<crate::schema::ServiceSchema>, BlpAsyncError> {
+        // Check cache first
+        if let Some(schema) = self.schema_cache.get(service) {
+            return Ok(schema);
+        }
+
+        // Introspect via worker
+        let schema = self.request_pool.introspect_schema(service.to_string()).await?;
+
+        // Cache and return
+        Ok(self.schema_cache.insert(service, schema))
+    }
+
+    /// Get a specific operation's schema from a service.
+    ///
+    /// This is a convenience method that gets the full service schema and
+    /// extracts the requested operation.
+    pub async fn get_operation(
+        &self,
+        service: &str,
+        operation: &str,
+    ) -> Result<crate::schema::OperationSchema, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+
+        schema
+            .get_operation(operation)
+            .cloned()
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: format!("Operation '{}' not found in service '{}'", operation, service),
+            })
+    }
+
+    /// List all operations for a service.
+    pub async fn list_operations(&self, service: &str) -> Result<Vec<String>, BlpAsyncError> {
+        let schema = self.get_schema(service).await?;
+        Ok(schema.operation_names())
+    }
+
+    /// Get cached schema without triggering introspection.
+    ///
+    /// Returns None if the schema is not in the cache.
+    pub fn get_cached_schema(&self, service: &str) -> Option<Arc<crate::schema::ServiceSchema>> {
+        self.schema_cache.get(service)
+    }
+
+    /// Invalidate a cached schema (removes from memory and disk).
+    pub fn invalidate_schema(&self, service: &str) {
+        self.schema_cache.invalidate(service);
+    }
+
+    /// Clear all cached schemas.
+    pub fn clear_schema_cache(&self) {
+        self.schema_cache.clear();
+    }
+
+    /// List all cached service URIs.
+    pub fn list_cached_schemas(&self) -> Vec<String> {
+        self.schema_cache.list()
+    }
+
+    /// Get valid enum values for a request element.
+    ///
+    /// Returns None if the element is not an enum or doesn't exist.
+    pub async fn get_enum_values(
+        &self,
+        service: &str,
+        operation: &str,
+        element: &str,
+    ) -> Result<Option<Vec<String>>, BlpAsyncError> {
+        let op_schema = self.get_operation(service, operation).await?;
+        Ok(op_schema.find_request_enum_values(element))
+    }
+
+    /// List all valid element names for a request.
+    ///
+    /// Returns None if the operation doesn't exist.
+    pub async fn list_valid_elements(
+        &self,
+        service: &str,
+        operation: &str,
+    ) -> Result<Option<Vec<String>>, BlpAsyncError> {
+        let op_schema = self.get_operation(service, operation).await?;
+        Ok(Some(op_schema.request_element_names()))
     }
 
     // ─── Pool Info ──────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ mod router;
 // mod subscriptions;  // Uses dispatcher
 pub mod engine;
 mod metrics;
+pub mod schema;
 mod status;
 
 pub use config::{AsyncOptions, BackpressurePolicy};
@@ -22,6 +23,9 @@ pub use router::{Envelope, Router};
 
 // New worker pool Engine - the main API
 pub use engine::{Engine, EngineConfig, SlabKey, ValidationMode};
+
+// Schema introspection and caching
+pub use schema::{ElementInfo, OperationSchema, SchemaCache, ServiceSchema};
 
 // AsyncSession is deprecated in favor of Engine
 // It requires Arc<Session> to be Send, which requires Session to be Sync

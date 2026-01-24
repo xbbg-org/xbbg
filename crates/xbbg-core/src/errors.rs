@@ -72,6 +72,43 @@ pub enum BlpError {
 
     #[error("internal error")]
     Internal { detail: String },
+
+    // Schema validation errors
+    #[error("operation not found: {service}::{operation}")]
+    SchemaOperationNotFound { service: String, operation: String },
+
+    #[error("schema element not found: {parent}.{name}")]
+    SchemaElementNotFound { parent: String, name: String },
+
+    #[error("schema type mismatch at {element}: expected {expected}, found {found}")]
+    SchemaTypeMismatch {
+        element: String,
+        expected: String,
+        found: String,
+    },
+
+    #[error("unsupported schema construct at {element}: {detail}")]
+    SchemaUnsupported { element: String, detail: String },
+
+    #[error("validation error: {message}")]
+    Validation {
+        message: String,
+        errors: Vec<ValidationError>,
+    },
+}
+
+/// Individual validation error with optional suggestion.
+#[derive(Debug, Clone)]
+pub struct ValidationError {
+    pub path: String,
+    pub message: String,
+    pub suggestion: Option<String>,
+}
+
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.path, self.message)
+    }
 }
 
 impl BlpError {
