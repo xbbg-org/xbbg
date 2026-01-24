@@ -30,6 +30,8 @@ def get_tz(tz) -> str:
         'America/New_York'
         >>> get_tz(TimeZone.NY)
         'America/New_York'
+        >>> get_tz('America/New_York')
+        'America/New_York'
         >>> get_tz('BHP AU Equity')  # doctest: +SKIP
         'Australia/Sydney'
     """
@@ -42,7 +44,14 @@ def get_tz(tz) -> str:
     if isinstance(tz, str):
         if hasattr(TimeZone, tz):
             to_tz = getattr(TimeZone, tz)
+        elif tz.upper() == "UTC":
+            # Handle UTC directly
+            to_tz = "UTC"
+        elif "/" in tz and " " not in tz:
+            # Already a timezone string like "America/New_York" or "Asia/Tokyo"
+            to_tz = tz
         else:
+            # Assume it's a ticker, try to get timezone from exchange info
             exch = exch_info(ticker=tz)
             if "tz" in exch.index:
                 to_tz = exch.tz
