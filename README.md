@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.11.0b3 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3))
+Latest release: xbbg==0.11.0b4 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b4))
 <!-- xbbg:latest-release-end -->
 
 ## Table of Contents
@@ -1482,3 +1482,28 @@ v0.11.0b3
 - Slow Bloomberg fields no longer timeout prematurely - TIMEOUT events handled correctly (#193)
 
 - Pipeline data types: Preserve original data types in pipeline output instead of converting to strings (#191)
+
+_0.11.0b4_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b4)
+
+### Added
+
+- **yas()**: New Bloomberg YAS (Yield Analysis) wrapper for fixed income analytics
+  - Provides convenient interface to Bloomberg's YAS calculator via `bdp()` overrides
+  - `YieldType` enum for yield calculation type (`YTM=1`, `YTC=2`)
+  - Supports settlement date, spread, yield, price, and benchmark overrides
+  - Parameter mapping: `settle_dt` → `SETTLE_DT`, `yield_type` → `YAS_YLD_FLAG`, etc.
+  - Available via `blp.yas()` or `from xbbg.api.fixed_income import yas, YieldType`
+
+- **Treasury & SOFR futures support**: Added TY, ZN, ZB, ZF, ZT, UB, TN (Treasury), SFR, SR1, SR3 (SOFR), and ED (Eurodollar) futures to assets.yml (#198)
+
+### Fixed
+
+- **stream() field values**: Subscribed field values are now always included in output dict (#199)
+  - Previously, fields not in `const.LIVE_INFO` (like `RT_BN_SURVEY_MEDIAN`) were filtered out
+  - Output would show `FIELD='RT_BN_SURVEY_MEDIAN'` but contain `LAST_PRICE` value instead
+  - Fix ensures the subscribed field's value is always present regardless of info filter
+
+- **Futures symbol parsing for bdib**: Fixed `market_info()` to correctly parse futures symbols like `TYH6` → `TY` (#198)
+  - Previously failed to identify root symbol when ticker had single-digit year suffix
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.0b3...v0.11.0b4
