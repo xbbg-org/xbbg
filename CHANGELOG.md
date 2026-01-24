@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0b4] - 2026-01-24
+
 ### Added
 - **yas()**: New Bloomberg YAS (Yield Analysis) wrapper for fixed income analytics
   - Provides convenient interface to Bloomberg's YAS calculator via `bdp()` overrides
@@ -252,7 +254,10 @@ See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b4...HEAD
+[0.11.0b4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b4
+[0.11.0b3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3
+[0.11.0b2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2
 [0.11.0b1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b1
 [0.10.3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.3
 [0.10.2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.2
