@@ -63,10 +63,9 @@ pub use xbbg_sys::{
     blpapi_SubscriptionList_add, blpapi_SubscriptionList_create, blpapi_SubscriptionList_destroy,
 };
 
-// --- CorrelationId helpers ---
+// --- CorrelationId constants ---
 pub use xbbg_sys::{
-    blpapi_CorrelationId_asInt, blpapi_CorrelationId_asPointer, blpapi_CorrelationId_init,
-    blpapi_CorrelationId_setInt, blpapi_CorrelationId_setPointer, blpapi_CorrelationId_type,
+    BLPAPI_CORRELATION_TYPE_INT, BLPAPI_CORRELATION_TYPE_POINTER, BLPAPI_CORRELATION_TYPE_UNSET,
 };
 
 // --- SessionOptions functions ---
@@ -80,8 +79,16 @@ pub use xbbg_sys::{
 /// Bloomberg high-precision datetime structure.
 ///
 /// This is ALWAYS defined locally (not re-exported from blpapi-sys) to guarantee
-/// exact layout control. 16 bytes, packed representation.
-#[repr(C, packed)]
+/// exact layout control. 16 bytes with natural C alignment.
+///
+/// # Layout
+/// Matches the C struct from blpapi_datetime.h (no packing pragma):
+/// - blpapi_Datetime_t (12 bytes): parts, hours, minutes, seconds, milliseconds, month, day, year, offset
+/// - picoseconds (4 bytes, aligned to 4)
+///
+/// The fields happen to be naturally aligned, so #[repr(C)] produces identical
+/// layout to the C struct without the UB risks of #[repr(C, packed)].
+#[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct blpapi_HighPrecisionDatetime_t {
     pub parts: u8,
@@ -96,7 +103,12 @@ pub struct blpapi_HighPrecisionDatetime_t {
     pub picoseconds: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<blpapi_HighPrecisionDatetime_t>() == 16);
+// Compile-time layout verification matching Bloomberg C header
+const _: () = {
+    assert!(std::mem::size_of::<blpapi_HighPrecisionDatetime_t>() == 16);
+    // Verify field offsets match C struct layout
+    // parts(0) hours(1) minutes(2) seconds(3) milliseconds(4-5) month(6) day(7) year(8-9) offset(10-11) picoseconds(12-15)
+};
 
 // Declare datetime FFI using our local type (not blpapi-sys's)
 extern "C" {

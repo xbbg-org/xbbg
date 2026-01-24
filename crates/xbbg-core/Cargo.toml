@@ -10,7 +10,7 @@ description = "Rust core for xbbg Python package (PyO3)"
 name = "xbbg_core"
 
 [features]
-default = ["mock"]
+default = ["live"]
 mock = ["xbbg-sys/mock"]
 live = ["xbbg-sys/live"]
 event-log = []
@@ -19,6 +19,7 @@ schema-debug = []
 [dependencies]
 thiserror = "2.0"
 xbbg-sys = { path = "../xbbg-sys", default-features = false }
+rustc-hash = "2.0"  # Fast non-cryptographic hashing for Name cache
 
 [dev-dependencies]
 criterion = "0.5"

@@ -5,21 +5,37 @@
 //!
 //! **Performance**: Use `Name::get_or_intern()` for automatic caching. First call
 //! does FFI + caches, subsequent calls return from Rust cache (no FFI).
+//!
+//! # Hot Path Optimization
+//!
+//! For maximum performance in tight loops, pre-intern names and pass by reference:
+//!
+//! ```ignore
+//! // Setup (once, before hot loop)
+//! let px_last = Name::get_or_intern("PX_LAST");
+//!
+//! // Hot loop - pass &Name (no clone, no FFI overhead)
+//! for msg in messages {
+//!     if let Some(elem) = root.get(&px_last) { ... }
+//! }
+//! ```
 
 use crate::ffi;
+use rustc_hash::FxHashMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::hash::{Hash, Hasher};
+
 use std::ptr::NonNull;
 
 // Thread-local cache for interned names.
-// Avoids FFI calls for repeated lookups of the same name string.
+// Uses FxHashMap for faster hashing (non-cryptographic, ~2-5x faster than SipHash).
+// Box<str> keys avoid per-lookup String allocation.
 //
 // NOTE: This cache grows unbounded. Call `clear_name_cache()` periodically
 // in long-running applications that use many distinct field names.
 thread_local! {
-    static NAME_CACHE: RefCell<HashMap<String, Name>> = RefCell::new(HashMap::new());
+    static NAME_CACHE: RefCell<FxHashMap<Box<str>, Name>> = RefCell::new(FxHashMap::default());
 }
 
 /// Clear the thread-local Name cache.
@@ -121,12 +137,19 @@ impl Name {
     #[inline]
     pub fn get_or_intern(s: &str) -> Self {
         NAME_CACHE.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            if let Some(name) = cache.get(s) {
-                return name.clone();
+            // Phase 1: Immutable check (fast path - no FFI on cache hit)
+            {
+                let cache_ref = cache.borrow();
+                if let Some(name) = cache_ref.get(s) {
+                    // Clone increments refcount via FFI, but we found it in cache
+                    return name.clone();
+                }
             }
+            // Phase 2: Create Name outside borrow (FFI call)
             let name = Self::new(s).expect("failed to intern name");
-            cache.insert(s.to_string(), name.clone());
+
+            // Phase 3: Short mutable borrow for insert only
+            cache.borrow_mut().insert(s.into(), name.clone());
             name
         })
     }
@@ -138,12 +161,18 @@ impl Name {
     #[inline]
     pub fn try_get_or_intern(s: &str) -> Option<Self> {
         NAME_CACHE.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            if let Some(name) = cache.get(s) {
-                return Some(name.clone());
+            // Phase 1: Immutable check (fast path)
+            {
+                let cache_ref = cache.borrow();
+                if let Some(name) = cache_ref.get(s) {
+                    return Some(name.clone());
+                }
             }
+            // Phase 2: Create Name outside borrow
             let name = Self::new(s)?;
-            cache.insert(s.to_string(), name.clone());
+
+            // Phase 3: Short mutable borrow for insert
+            cache.borrow_mut().insert(s.into(), name.clone());
             Some(name)
         })
     }
@@ -179,7 +208,7 @@ impl Name {
 
     /// Get raw pointer for FFI calls.
     #[inline(always)]
-    pub(crate) fn as_ptr(&self) -> *mut ffi::blpapi_Name_t {
+    pub fn as_ptr(&self) -> *mut ffi::blpapi_Name_t {
         self.0.as_ptr()
     }
 }

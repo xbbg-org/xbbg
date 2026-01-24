@@ -148,7 +148,8 @@ impl<'a> Message<'a> {
     #[inline(always)]
     pub fn num_correlation_ids(&self) -> usize {
         // SAFETY: self.ptr is valid for the lifetime 'a
-        unsafe { ffi::blpapi_Message_numCorrelationIds(self.ptr) }
+        let count = unsafe { ffi::blpapi_Message_numCorrelationIds(self.ptr) };
+        count.max(0) as usize
     }
 
     /// Get the correlation ID at the specified index.
@@ -166,15 +167,11 @@ impl<'a> Message<'a> {
             return None;
         }
 
-        // SAFETY: We've verified index is in bounds, and self.ptr is valid
+        // SAFETY: We've verified index is in bounds, and self.ptr is valid.
+        // blpapi_Message_correlationId returns the CorrelationId by value.
         unsafe {
-            let mut cid = std::mem::zeroed::<ffi::blpapi_CorrelationId_t>();
-            let rc = ffi::blpapi_Message_correlationId(self.ptr, &mut cid, index);
-            if rc == 0 {
-                Some(CorrelationId::from_ffi(&mut cid))
-            } else {
-                None
-            }
+            let cid = ffi::blpapi_Message_correlationId(self.ptr, index);
+            Some(CorrelationId::from_ffi(&cid))
         }
     }
 }
