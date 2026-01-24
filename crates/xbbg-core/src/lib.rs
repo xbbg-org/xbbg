@@ -1,16 +1,12 @@
-//! xbbg-core: Zero-allocation Bloomberg API wrapper (REWRITE IN PROGRESS)
+//! xbbg-core: Zero-allocation Bloomberg API wrapper
 //!
-//! This crate provides high-performance Rust wrappers around the Bloomberg C++ SDK.
-//! The rewrite focuses on:
+//! High-performance Rust bindings for the Bloomberg C++ SDK.
+//!
 //! - Zero-allocation hot paths
 //! - Direct typed access (no JSON serialization)
 //! - Sub-microsecond field extraction
 
-// Allow large error types - BlpError contains rich context for debugging
 #![allow(clippy::result_large_err)]
-// Allow unused_unsafe: Mock backend (datamock) declares FFI functions as safe,
-// but real backend (blpapi-sys) requires unsafe. The unsafe blocks are correct
-// for production use with the real Bloomberg API.
 #![allow(unused_unsafe)]
 
 pub fn version() -> &'static str {
@@ -22,20 +18,20 @@ pub mod datatype;
 pub mod datetime;
 pub mod element;
 pub mod event;
-pub mod ffi; // FFI bindings
+pub mod ffi;
 pub mod message;
 pub mod name;
-pub mod value; // Dynamic value type for typed extraction
+pub mod value;
 
-// Session/Service/Request API (Task 9)
-pub mod correlation; // Task 9
-pub mod errors; // Task 9 (already existed)
-pub mod identity; // Task 9
-pub mod options; // Task 9 (already existed)
-pub mod request; // Task 9
-pub mod service; // Task 9
-pub mod session; // Task 9
-pub mod subscription; // Task 9
+// Session API
+pub mod correlation;
+pub mod errors;
+pub mod identity;
+pub mod options;
+pub mod request;
+pub mod service;
+pub mod session;
+pub mod subscription;
 
 // Re-exports for convenience
 pub use correlation::CorrelationId;
