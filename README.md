@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.11.0b4 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b4))
+Latest release: xbbg==0.11.0b5 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b5))
 <!-- xbbg:latest-release-end -->
 
 ## Table of Contents
@@ -1507,3 +1507,42 @@ _0.11.0b4_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/ta
   - Previously failed to identify root symbol when ticker had single-digit year suffix
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.0b3...v0.11.0b4
+
+_0.11.0b5_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b5)
+
+### Fixed
+
+- **Import without blpapi installed**: Fixed `AttributeError` when importing xbbg without blpapi installed (#200)
+  - Added `from __future__ import annotations` to defer type annotation evaluation in `conn.py`
+  - Guarded `blpapi.Name()` constants with `is_available()` check in `process.py`
+
+- **Japan/non-US timezone fix for bdib**: Fixed timezone conversion for non-US exchanges (#198)
+  - Bloomberg returns `TRADING_DAY_START_TIME_EOD` and `TRADING_DAY_END_TIME_EOD` in EST (America/New_York)
+  - These are now correctly converted to the exchange's local timezone (e.g., Asia/Tokyo for Japanese equities)
+  - Previously, Tokyo's 09:00-15:45 trading hours appeared as 19:00-01:45 (EST times misinterpreted as local)
+  - `FUT_TRADING_HRS` is not converted (already in exchange local time)
+
+- **get_tz() no longer triggers Bloomberg lookup for timezone strings**: Direct timezone strings like `"America/New_York"` or `"UTC"` are now recognized without calling Bloomberg API
+
+### Removed
+
+- **Trials mechanism removed**: Eliminated the retry-blocking system that caused silent failures
+  - The trials system tracked failed API requests and blocked future attempts after 2 failures
+  - This caused issues when bugs were fixed (stale entries still blocked requests)
+  - Users had to manually clear SQLite database entries to retry
+  - Pipeline caching already handles "don't re-fetch" use case properly
+  - Deleted `xbbg/core/utils/trials.py` and related test files
+
+- **pandas-market-calendars dependency removed**: Simplified exchange metadata resolution
+  - Removed `PmcCalendarResolver` from resolver chain
+  - Exchange information now sourced exclusively from Bloomberg API with local caching
+  - Removed `pmc_extended` context option (no longer needed)
+  - Reduces package dependencies and improves consistency
+
+### Changed
+
+- **Internal class renames** (backward compatible aliases provided):
+  - `YamlMarketInfoProvider` → `MetadataProvider`
+  - `ExchangeYamlResolver` → `ExchangeMetadataResolver`
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0b5
