@@ -276,16 +276,20 @@ def _make_live_handler(
                 # This fixes issue #199 where subscribed fields not in LIVE_INFO
                 # (like RT_BN_SURVEY_MEDIAN) were being filtered out
                 field_value = process.elem_value(msg.getElement(fld))
+
+                # Build base dict with other elements first, then add the subscribed field
+                # to ensure it's never overwritten (fixes issue #199 for INTRADAY updates)
+                other_elements = {
+                    str(elem.name()): process.elem_value(elem)
+                    for elem in msg.asElement().elements()
+                    if str(elem.name()).upper() != fld.upper() and (True if not info else str(elem.name()) in info)
+                }
                 outq.put(
                     {
                         "TICKER": msg.correlationIds()[0].value(),
                         "FIELD": fld,
-                        fld: field_value,  # Always include the subscribed field's value
-                        **{
-                            str(elem.name()): process.elem_value(elem)
-                            for elem in msg.asElement().elements()
-                            if str(elem.name()) != fld and (True if not info else str(elem.name()) in info)
-                        },
+                        **other_elements,
+                        fld: field_value,  # Add LAST to ensure it's never overwritten
                     }
                 )
                 msg_count += 1
