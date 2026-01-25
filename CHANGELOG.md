@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0b5] - 2026-01-25
+
 ### Fixed
 - **Import without blpapi installed**: Fixed `AttributeError` when importing xbbg without blpapi installed (#200)
   - Added `from __future__ import annotations` to defer type annotation evaluation in `conn.py`
@@ -283,7 +285,8 @@ See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b4...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b5...HEAD
+[0.11.0b5]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b5
 [0.11.0b4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b4
 [0.11.0b3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3
 [0.11.0b2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2
