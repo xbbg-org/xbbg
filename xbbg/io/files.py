@@ -4,12 +4,15 @@ Functions include existence checks, absolute path resolution, folder
 creation, file/folder listing with filters, and utility getters.
 """
 
+import logging
 import os
 from pathlib import Path
 import re
 import time
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 DATE_FMT = r"\d{4}-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])"
 
@@ -46,7 +49,13 @@ def create_folder(path_name: str, is_file=False):
         is_file: whether input is name of file
     """
     p = Path(path_name).parent if is_file else Path(path_name)
-    p.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        logger.debug("Creating directory: %s", p)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.error("Failed to create directory %s: %s", p, e)
+        raise
 
 
 def all_files(path_name, keyword="", ext="", full_path=True, has_date=False, date_fmt=DATE_FMT) -> list[str]:
@@ -151,9 +160,6 @@ def latest_file(path_name, keyword="", ext="", **kwargs) -> str:
     files = sort_by_modified(all_files(path_name=path_name, keyword=keyword, ext=ext, full_path=True))
 
     if not files:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.debug("No files found in directory: %s", path_name)
         return ""
 

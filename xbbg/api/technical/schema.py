@@ -304,7 +304,7 @@ def save_cache(studies: dict[str, dict[str, Any]]) -> None:
     with open(CACHE_FILE, "w") as f:
         json.dump(serializable, f, indent=2)
 
-    logger.info(f"Saved {len(studies)} studies to {CACHE_FILE}")
+    logger.info("Saved %d studies to %s", len(studies), CACHE_FILE)
 
 
 def load_cache() -> dict[str, dict[str, Any]] | None:
@@ -359,7 +359,7 @@ def get_studies(refresh: bool = False) -> dict[str, dict[str, Any]]:
         save_cache(studies)
         return studies
     except Exception as e:
-        logger.warning(f"Could not discover studies from service: {e}")
+        logger.warning("Could not discover studies from service: %s", e)
 
         # Try to load from cache as fallback
         cached = load_cache()

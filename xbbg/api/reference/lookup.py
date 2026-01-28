@@ -294,7 +294,7 @@ def lookupSecurity(
     request.set(blpapi.Name("maxResults"), max_results)
 
     if verbose:
-        logger.info(f"Sending lookup request: {request}")
+        logger.info("Sending lookup request: %s", request)
 
     session.sendRequest(request)
 
@@ -334,7 +334,7 @@ def _process_lookup_event(
     for msg in event:
         if msg.hasElement(blpapi.Name("responseError")):
             error_msg = msg.getElement(blpapi.Name("responseError"))
-            logger.error(f"REQUEST FAILED: {error_msg}")
+            logger.error("REQUEST FAILED: %s", error_msg)
             continue
 
         response = msg.asElement()
@@ -345,7 +345,7 @@ def _process_lookup_event(
         num_items = response_results.numValues()
 
         if verbose:
-            logger.debug(f"Response contains {num_items} items")
+            logger.debug("Response contains %d items", num_items)
 
         for i in range(num_items):
             item = response_results.getValueAsElement(i)
@@ -353,7 +353,7 @@ def _process_lookup_event(
             description = item.getElementAsString(blpapi.Name("description"))
 
             if verbose:
-                logger.debug(f"{security}\t\t{description}")
+                logger.debug("%s\t\t%s", security, description)
 
             results.append(
                 {

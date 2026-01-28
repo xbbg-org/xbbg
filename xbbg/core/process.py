@@ -429,6 +429,7 @@ def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     ):
         data = msg.getElement(blpapi.Name("data")).getElement(blpapi.Name("securityData"))
     if not data:
+        logger.debug("No securityData found in reference message - returning empty result")
         return iter([])
 
     for sec in data.values():
@@ -462,6 +463,7 @@ def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
     """
     kwargs.pop("(>_<)", None)
     if not msg.hasElement(blpapi.Name("securityData")):
+        logger.debug("No securityData found in historical message - returning empty result")
         return {}
     ticker = msg.getElement(blpapi.Name("securityData")).getElement(blpapi.Name("security")).getValue()
     for val in msg.getElement(blpapi.Name("securityData")).getElement(blpapi.Name("fieldData")).values():
@@ -493,9 +495,11 @@ def check_error(msg):
     """Check error in message."""
     if msg.hasElement(RESPONSE_ERROR):
         error = msg.getElement(RESPONSE_ERROR)
-        raise ValueError(
-            f"[Intraday Bar Error] {error.getElementAsString(CATEGORY)}: {error.getElementAsString(MESSAGE)}"
-        )
+        category = error.getElementAsString(CATEGORY)
+        message = error.getElementAsString(MESSAGE)
+        # Log error before raising - ensures diagnostic info is captured even if exception is swallowed
+        logger.error("Bloomberg API error: category=%s, message=%s", category, message)
+        raise ValueError(f"[Intraday Bar Error] {category}: {message}")
 
 
 def elem_value(element: blpapi.Element):
@@ -811,7 +815,7 @@ def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
             yield row
 
     except Exception as e:
-        logger.error("Error processing BSRCH GridResponse: %s", e, exc_info=True)
+        logger.exception("Error processing BSRCH GridResponse: %s", e)
         return iter([])
 
 
@@ -876,7 +880,7 @@ def process_tasvc(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
             yield row
 
     except Exception as e:
-        logger.error("Error processing TASVC studyResponse: %s", e, exc_info=True)
+        logger.exception("Error processing TASVC studyResponse: %s", e)
         return iter([])
 
 
@@ -934,5 +938,5 @@ def process_bqr(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
             yield row
 
     except Exception as e:
-        logger.error("Error processing BQR tick response: %s", e, exc_info=True)
+        logger.exception("Error processing BQR tick response: %s", e)
         return iter([])

@@ -43,7 +43,7 @@ class TestGetCacheRoot:
             else:
                 test_home = Path("/test/home")
             with patch("pathlib.Path.home", return_value=test_home):
-                with caplog.at_level(logging.INFO, logger="xbbg.io.cache"):
+                with caplog.at_level(logging.WARNING, logger="xbbg.io.cache"):
                     result = get_cache_root()
 
                 # Should return a default path
@@ -52,13 +52,15 @@ class TestGetCacheRoot:
                 result_path = Path(result)
                 assert result_path.as_posix()  # Just verify it's a valid path string
 
-                # Should log INFO message about default location
-                info_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
+                # Should log WARNING message about default location
+                warning_messages = [record.message for record in caplog.records if record.levelname == "WARNING"]
                 default_cache_msgs = [
-                    msg for msg in info_messages if "default cache location" in msg.lower() or "BBG_ROOT not set" in msg
+                    msg
+                    for msg in warning_messages
+                    if "default cache location" in msg.lower() or "BBG_ROOT not set" in msg
                 ]
                 assert len(default_cache_msgs) > 0, (
-                    f"Expected INFO message about default cache location. Got: {info_messages}"
+                    f"Expected WARNING message about default cache location. Got: {warning_messages}"
                 )
 
 

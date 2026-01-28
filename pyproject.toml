@@ -98,6 +98,8 @@ select = [
   "SIM", # flake8-simplify
   "RET", # flake8-return
   "ISC", # implicit string concatenation
+  "LOG", # flake8-logging - logging best practices
+  "G",   # flake8-logging-format - logging format strings
 ]
 ignore = [
   "E701", # multiple statements on one line (colon)
@@ -106,6 +108,7 @@ ignore = [
   "D107", # Missing docstring in __init__
   "UP031", # Use format specifiers instead of percent format (intentionally using % for performance in logging)
   "S110", # try/except/pass detected (intentional in logging code to avoid recursion, and in fallback logic)
+  "G004", # Logging statement uses f-string (we prefer % formatting but allow f-string in some cases)
 ]
 
 [tool.ruff.lint.per-file-ignores]

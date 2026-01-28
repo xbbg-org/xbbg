@@ -1470,7 +1470,7 @@ class BtaRequestBuilder:
         for param_name, param_value in study_params.items():
             study_elem.setElement(param_name, param_value)
 
-        logger.debug(f"Sending TASVC studyRequest for {request.ticker} with {study} study")
+        logger.debug("Sending TASVC studyRequest for %s with %s study", request.ticker, study)
 
         return blp_request, ctx_kwargs
 

@@ -103,6 +103,7 @@ class SessionManager:
             session = self._sessions[con_key]
             # Check if session handle is still valid
             if getattr(session, "_Session__handle", None) is None:
+                logger.info("Removing stale Bloomberg session (handle invalidated): %s", con_key)
                 del self._sessions[con_key]
             else:
                 return session
@@ -120,6 +121,7 @@ class SessionManager:
         """
         con_key = f"//{server_host}:{port}"
         if con_key in self._sessions:
+            logger.info("Removing Bloomberg session from manager: %s", con_key)
             del self._sessions[con_key]
 
     def get_service(self, service: str, port: int = _PORT_, **kwargs) -> blpapi.Service:
@@ -141,14 +143,17 @@ class SessionManager:
             svc = self._services[serv_key]
             # Check if service handle is still valid
             if getattr(svc, "_Service__handle", None) is None:
+                logger.info("Removing stale Bloomberg service (handle invalidated): %s", serv_key)
                 del self._services[serv_key]
             else:
                 return svc
 
         # Create new service
         session = self.get_session(port=port, **kwargs)
+        logger.debug("Opening Bloomberg service: %s", service)
         session.openService(service)
         self._services[serv_key] = session.getService(service)
+        logger.debug("Successfully opened Bloomberg service: %s", serv_key)
         return self._services[serv_key]
 
 

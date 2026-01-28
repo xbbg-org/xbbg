@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Logging coverage improvements**: Comprehensive logging audit and enhancements across critical paths
+  - Added `logger.error()` before raising exceptions in `process.py` for better error traceability
+  - Added INFO logging for stale session/service handle removal in `conn.py`
+  - Added DEBUG logging for Bloomberg service lifecycle events
+  - Added ERROR logging with re-raise for directory creation failures in `files.py`
+  - New `xbbg/tests/test_logging.py` with 9 tests covering critical logging paths
+
+### Changed
+- **Logging level adjustments** for consistency:
+  - `BBG_ROOT not set` message promoted from INFO → WARNING (meaningful configuration issue)
+  - Cache save "skipping due to market timing" demoted from INFO → DEBUG (internal policy decision)
+  - Cache load failures for corrupt files now log WARNING (previously DEBUG)
+
+### Fixed
+- **Logging format compliance**: Fixed 10 f-string logging statements to use %-formatting (G004 compliance)
+  - `xbbg/api/reference/lookup.py` (4 fixes)
+  - `xbbg/api/screening/screening.py` (3 fixes)
+  - `xbbg/api/technical/schema.py` (2 fixes)
+  - `xbbg/core/pipeline.py` (1 fix)
+- **Logging best practices**: Changed `.error(..., exc_info=True)` to `.exception()` in `process.py` (G201 compliance)
+
+### Developer
+- **CI logging enforcement**: Added `LOG` (flake8-logging) and `G` (flake8-logging-format) rules to ruff configuration in `pyproject.toml`
+
 ## [0.11.0b5] - 2026-01-25
 
 ### Fixed
