@@ -72,9 +72,9 @@ def get_cache_root() -> str:
         cache_dir = home / ".cache"
         default_cache = cache_dir / "xbbg" if cache_dir.exists() else home / ".xbbg"
 
-    # Log once when default is first used
+    # Log once when default is first used (WARNING because caching behavior may be unexpected)
     if not _default_cache_logged:
-        logger.info(
+        logger.warning(
             "BBG_ROOT not set. Using default cache location: %s. "
             "Set BBG_ROOT environment variable to use a custom location.",
             default_cache,
@@ -253,7 +253,10 @@ def save_intraday(
 
     if end_time > now:
         logger.debug(
-            "Skipping save: market close time %s is less than 1 hour ago (%s), data may be incomplete", end_time, now
+            "Skipping cache save for %s: market close time %s is less than 1 hour ago (%s), data may be incomplete",
+            info,
+            end_time,
+            now,
         )
         return
 
@@ -317,7 +320,7 @@ class BarCacheAdapter:
                 logger.debug("Loading cached Bloomberg intraday data from: %s", data_file)
                 return res
         except Exception as e:
-            logger.debug("Cache load failed: %s", e)
+            logger.warning("Cache load failed for %s (file may be corrupt): %s", data_file, e)
 
         return None
 
@@ -371,7 +374,7 @@ class BarCacheAdapter:
                 df = table.to_pandas()
                 dfs.append(df)
             except Exception as e:
-                logger.debug("Failed to load cache file %s: %s", path, e)
+                logger.warning("Failed to load cache file %s (file may be corrupt): %s", path, e)
                 return None  # Fail entire load if any file is corrupt
 
         if not dfs:

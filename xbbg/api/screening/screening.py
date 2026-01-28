@@ -359,7 +359,7 @@ def etf_holdings(
     fields_str = ", ".join(all_fields)
     bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
 
-    logger.debug(f"ETF holdings BQL query: {bql_query}")
+    logger.debug("ETF holdings BQL query: %s", bql_query)
 
     # Execute BQL query
     res = bql(query=bql_query, backend=backend, format=format, **kwargs)
@@ -441,7 +441,7 @@ def preferreds(
         f"SRCH_ASSET_CLASS=='Preferreds'))"
     )
 
-    logger.debug(f"Preferreds BQL query: {bql_query}")
+    logger.debug("Preferreds BQL query: %s", bql_query)
 
     # Execute BQL query
     res = bql(query=bql_query, backend=backend, format=format, **kwargs)
@@ -522,7 +522,7 @@ def corporate_bonds(
         f"SRCH_ASSET_CLASS=='Corporates' AND TICKER=='{ticker}' AND CRNCY=='{ccy}'))"
     )
 
-    logger.debug(f"Corporate bonds BQL query: {bql_query}")
+    logger.debug("Corporate bonds BQL query: %s", bql_query)
 
     # Execute BQL query
     res = bql(query=bql_query, backend=backend, format=format, **kwargs)
