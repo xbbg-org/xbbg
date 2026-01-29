@@ -57,7 +57,7 @@ impl IntradayTickStreamState {
 
     /// Process an IntradayTickResponse message using Element API.
     ///
-    /// Bloomberg structure:
+    /// Bloomberg structure (core fields only):
     /// ```text
     /// IntradayTickResponse {
     ///   tickData {
@@ -66,11 +66,12 @@ impl IntradayTickStreamState {
     ///       type: "TRADE"
     ///       value: 150.0
     ///       size: 100
-    ///       conditionCodes: "R"
     ///     }
     ///   }
     /// }
     /// ```
+    /// Note: Optional fields like conditionCodes require includeConditionCodes=true
+    /// in the request. For those, use the non-streaming API with elements param.
     fn process_message(&mut self, msg: &Message) -> Option<RecordBatch> {
         let root = msg.elements();
 
@@ -84,13 +85,12 @@ impl IntradayTickStreamState {
             return None;
         }
 
-        // Create builders
+        // Create builders for core fields only
         let mut ticker_builder = StringBuilder::new();
         let mut time_builder = TimestampMicrosecondBuilder::new();
         let mut type_builder = StringBuilder::new();
         let mut value_builder = Float64Builder::new();
         let mut size_builder = Int64Builder::new();
-        let mut condition_codes_builder = StringBuilder::new();
 
         for i in 0..n {
             let Some(tick) = tick_data.get_element(i) else {
@@ -144,20 +144,9 @@ impl IntradayTickStreamState {
             } else {
                 size_builder.append_null();
             }
-
-            // Condition codes
-            if let Some(cc_elem) = tick.get_by_str("conditionCodes") {
-                if let Some(cc) = cc_elem.get_str(0) {
-                    condition_codes_builder.append_value(cc);
-                } else {
-                    condition_codes_builder.append_null();
-                }
-            } else {
-                condition_codes_builder.append_null();
-            }
         }
 
-        // Build schema if not cached
+        // Build schema if not cached (core fields only)
         let schema = self.schema.get_or_insert_with(|| {
             Arc::new(Schema::new(vec![
                 Field::new("ticker", DataType::Utf8, false),
@@ -169,7 +158,6 @@ impl IntradayTickStreamState {
                 Field::new("type", DataType::Utf8, true),
                 Field::new("value", DataType::Float64, true),
                 Field::new("size", DataType::Int64, true),
-                Field::new("conditionCodes", DataType::Utf8, true),
             ]))
         });
 
@@ -179,7 +167,6 @@ impl IntradayTickStreamState {
             Arc::new(type_builder.finish()),
             Arc::new(value_builder.finish()),
             Arc::new(size_builder.finish()),
-            Arc::new(condition_codes_builder.finish()),
         ];
 
         RecordBatch::try_new(schema.clone(), columns).ok()

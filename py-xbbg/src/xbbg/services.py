@@ -170,12 +170,6 @@ class ExtractorHint(str, Enum):
     GENERIC = "generic"
     """Generic flattener: [path, type, value_str, value_num, value_date]"""
 
-    RAW_JSON = "raw_json"
-    """Raw JSON output: [json] - DEPRECATED, use JSON_ARROW instead."""
-
-    JSON_ARROW = "json_arrow"
-    """JSON to Arrow: Parse JSON in Rust and return Arrow columns."""
-
     BQL = "bql"
     """BQL: Bloomberg Query Language responses."""
 
@@ -230,15 +224,15 @@ _OPERATION_TO_EXTRACTOR: dict[str, ExtractorHint] = {
     Operation.HISTORICAL_DATA.value: ExtractorHint.HISTDATA,
     Operation.INTRADAY_BAR.value: ExtractorHint.INTRADAY_BAR,
     Operation.INTRADAY_TICK.value: ExtractorHint.INTRADAY_TICK,
-    Operation.BEQS.value: ExtractorHint.JSON_ARROW,
+    Operation.BEQS.value: ExtractorHint.GENERIC,
     Operation.PORTFOLIO_DATA.value: ExtractorHint.GENERIC,
     # Field metadata operations
     Operation.FIELD_INFO.value: ExtractorHint.FIELD_INFO,
     Operation.FIELD_SEARCH.value: ExtractorHint.GENERIC,
     # Instruments operations
-    Operation.INSTRUMENT_LIST.value: ExtractorHint.JSON_ARROW,
-    Operation.CURVE_LIST.value: ExtractorHint.JSON_ARROW,
-    Operation.GOVT_LIST.value: ExtractorHint.JSON_ARROW,
+    Operation.INSTRUMENT_LIST.value: ExtractorHint.GENERIC,
+    Operation.CURVE_LIST.value: ExtractorHint.GENERIC,
+    Operation.GOVT_LIST.value: ExtractorHint.GENERIC,
     # BQL/Search operations
     Operation.BQL_SEND_QUERY.value: ExtractorHint.BQL,
     Operation.EXCEL_GET_GRID.value: ExtractorHint.BSRCH,
@@ -249,8 +243,7 @@ _OPERATION_TO_EXTRACTOR: dict[str, ExtractorHint] = {
 
 def _get_default_extractor(operation: str, output: OutputMode) -> ExtractorHint:
     """Get the default extractor hint for an operation."""
-    if output == OutputMode.JSON:
-        return ExtractorHint.RAW_JSON
+    # Note: JSON output mode removed - use GENERIC extractor for raw data
     return _OPERATION_TO_EXTRACTOR.get(operation, ExtractorHint.GENERIC)
 
 
@@ -278,6 +271,7 @@ class RequestParams:
         start_datetime: Start datetime for intraday requests (ISO format).
         end_datetime: End datetime for intraday requests (ISO format).
         event_type: Event type for intraday bars (TRADE, BID, ASK, etc.).
+        event_types: Event types for intraday ticks (TRADE, BID, ASK, etc.).
         interval: Bar interval in minutes for intraday bars.
         options: Additional Bloomberg options as (key, value) tuples.
         field_types: Manual type overrides for fields (for issue #168).
@@ -299,6 +293,7 @@ class RequestParams:
     start_datetime: str | None = None
     end_datetime: str | None = None
     event_type: str | None = None
+    event_types: Sequence[str] | None = None
     interval: int | None = None
     options: Sequence[tuple[str, str]] | None = None
     field_types: dict[str, str] | None = None
@@ -440,6 +435,8 @@ class RequestParams:
             result["end_datetime"] = self.end_datetime
         if self.event_type is not None:
             result["event_type"] = self.event_type
+        if self.event_types is not None:
+            result["event_types"] = list(self.event_types)
         if self.interval is not None:
             result["interval"] = self.interval
         if self.options is not None:

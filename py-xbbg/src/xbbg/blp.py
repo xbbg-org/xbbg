@@ -636,6 +636,7 @@ async def arequest(
     start_datetime: str | None = None,
     end_datetime: str | None = None,
     event_type: str | None = None,
+    event_types: Sequence[str] | None = None,
     interval: int | None = None,
     options: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
     field_types: dict[str, str] | None = None,
@@ -763,6 +764,7 @@ async def arequest(
         start_datetime=start_datetime,
         end_datetime=end_datetime,
         event_type=event_type,
+        event_types=list(event_types) if event_types else None,
         interval=interval,
         options=options_list,
         field_types=field_types,
@@ -1183,6 +1185,7 @@ async def abdtick(
     start_datetime: str,
     end_datetime: str,
     *,
+    event_types: Sequence[str] | None = None,
     backend: Backend | str | None = None,
     **kwargs,
 ):
@@ -1192,6 +1195,8 @@ async def abdtick(
         ticker: Ticker name.
         start_datetime: Start datetime.
         end_datetime: End datetime.
+        event_types: Event types to retrieve. Defaults to ["TRADE"].
+            Options: TRADE, BID, ASK, BID_BEST, ASK_BEST, MID_PRICE, AT_TRADE, BEST_BID, BEST_ASK.
         backend: DataFrame backend to return. If None, uses global default.
         **kwargs: Additional options.
 
@@ -1201,15 +1206,22 @@ async def abdtick(
     Example::
 
         df = await abdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00")
+        df = await abdtick(
+            "AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", event_types=["TRADE", "BID", "ASK"]
+        )
         df = await abdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", backend="polars")
     """
     s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
     e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
 
+    # Default to TRADE events if not specified
+    if event_types is None:
+        event_types = ["TRADE"]
+
     # Route kwargs to elements using schema introspection
     elements, _overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
 
-    logger.debug("abdtick: ticker=%s start=%s end=%s", ticker, s_dt, e_dt)
+    logger.debug("abdtick: ticker=%s start=%s end=%s event_types=%s", ticker, s_dt, e_dt, event_types)
 
     # Use generic arequest with IntradayTickRequest
     nw_df = await arequest(
@@ -1218,6 +1230,7 @@ async def abdtick(
         security=ticker,
         start_datetime=s_dt,
         end_datetime=e_dt,
+        event_types=list(event_types),
         elements=elements if elements else None,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
@@ -2911,13 +2924,13 @@ async def abeqs(
     # Add routed elements
     elements.extend(routed_elements)
 
-    # Send BEQS request via arequest with JSON_ARROW extractor (parsed in Rust)
+    # Send BEQS request via arequest with GENERIC extractor (parsed in Rust)
     nw_df = await arequest(
         service=Service.REFDATA,
         operation=Operation.BEQS,
         elements=elements,
         overrides=overrides if overrides else None,
-        extractor=ExtractorHint.JSON_ARROW,
+        extractor=ExtractorHint.GENERIC,
         backend=None,
     )
 
@@ -3029,12 +3042,12 @@ async def ablkp(
     # Add routed elements
     elements.extend(routed_elements)
 
-    # Send request via arequest with JSON_ARROW extractor (parsed in Rust)
+    # Send request via arequest with GENERIC extractor (parsed in Rust)
     nw_df = await arequest(
         service=Service.INSTRUMENTS,
         operation=Operation.INSTRUMENT_LIST,
         elements=elements,
-        extractor=ExtractorHint.JSON_ARROW,
+        extractor=ExtractorHint.GENERIC,
         backend=None,
     )
 
@@ -3260,12 +3273,12 @@ async def abcurves(
     # Add routed elements
     elements.extend(routed_elements)
 
-    # Send request via arequest with JSON_ARROW extractor
+    # Send request via arequest with GENERIC extractor
     nw_df = await arequest(
         service=Service.INSTRUMENTS,
         operation=Operation.CURVE_LIST,
         elements=elements if elements else None,
-        extractor=ExtractorHint.JSON_ARROW,
+        extractor=ExtractorHint.GENERIC,
         backend=None,
     )
 
@@ -3380,12 +3393,12 @@ async def abgovts(
     # Add routed elements
     elements.extend(routed_elements)
 
-    # Send request via arequest with JSON_ARROW extractor
+    # Send request via arequest with GENERIC extractor
     nw_df = await arequest(
         service=Service.INSTRUMENTS,
         operation=Operation.GOVT_LIST,
         elements=elements if elements else None,
-        extractor=ExtractorHint.JSON_ARROW,
+        extractor=ExtractorHint.GENERIC,
         backend=None,
     )
 

@@ -29,7 +29,9 @@ impl IntradayTickState {
         columns.set_type_hint("type", ArrowType::String);
         columns.set_type_hint("value", ArrowType::Float64);
         columns.set_type_hint("size", ArrowType::Int64);
-        columns.set_type_hint("conditionCodes", ArrowType::String);
+        // Note: conditionCodes and exchangeCode are optional - only returned when
+        // includeConditionCodes=true or includeExchangeCodes=true is set in request.
+        // Users should use the generic extractor or elements param if they need these.
 
         Self {
             ticker,
@@ -47,20 +49,15 @@ impl IntradayTickState {
     pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
         let reply = self.reply;
-        let result = self.columns.finish_with_order(&[
-            "ticker",
-            "time",
-            "type",
-            "value",
-            "size",
-            "conditionCodes",
-        ]);
+        let result = self
+            .columns
+            .finish_with_order(&["ticker", "time", "type", "value", "size"]);
         let _ = reply.send(result);
     }
 
     /// Process an IntradayTickResponse message using Element API.
     ///
-    /// Bloomberg structure:
+    /// Bloomberg structure (core fields only):
     /// ```text
     /// IntradayTickResponse {
     ///   tickData {
@@ -69,11 +66,12 @@ impl IntradayTickState {
     ///       type: "TRADE"
     ///       value: 150.0
     ///       size: 100
-    ///       conditionCodes: "R"
     ///     }
     ///   }
     /// }
     /// ```
+    /// Note: For optional fields like conditionCodes, exchangeCode, etc.,
+    /// pass them via elements param which triggers GENERIC extractor.
     fn process_message(&mut self, msg: &Message) {
         let root = msg.elements();
 
@@ -109,9 +107,6 @@ impl IntradayTickState {
 
             // Get size
             self.append_field(&tick, "size");
-
-            // Get condition codes (may not always be present)
-            self.append_field(&tick, "conditionCodes");
 
             self.columns.end_row();
         }

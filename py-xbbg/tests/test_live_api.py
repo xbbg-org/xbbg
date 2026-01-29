@@ -393,38 +393,58 @@ class TestAbdib:
 
 
 class TestBdtick:
-    """Tests for bdtick() - Bloomberg Intraday Ticks."""
+    """Tests for bdtick() - Bloomberg Intraday Ticks.
 
-    def test_bdtick_short_window(self):
-        """BDTICK: short time window."""
+    Note: Tick data requires the eventTypes parameter and has limited
+    data retention. Use full trading day window for reliable results.
+
+    IMPORTANT: Bloomberg intraday requests use UTC times.
+    US market open: 9:30 ET = 14:30 UTC
+    """
+
+    def test_bdtick_one_hour(self):
+        """BDTICK: one hour window at market open (UTC times)."""
+        from datetime import datetime
+
         from xbbg import bdtick
 
-        trading_day = get_recent_trading_day()
+        # Use today for reliable tick data
+        # IMPORTANT: Bloomberg uses UTC times for intraday requests
+        # 14:30-15:30 UTC = 9:30-10:30 ET (market open)
+        trading_day = datetime.now().strftime("%Y-%m-%d")
         df = bdtick(
             CONFIG.equity_single,
-            start_datetime=f"{trading_day} 10:00:00",
-            end_datetime=f"{trading_day} 10:05:00",
+            start_datetime=f"{trading_day}T14:30:00",
+            end_datetime=f"{trading_day}T15:30:00",
         )
 
-        print(f"  Got {len(df)} ticks (5-minute window)")
+        print(f"  Got {len(df)} ticks (1-hour at open, UTC)")
 
 
 class TestAbdtick:
-    """Tests for abdtick() - async BDTICK."""
+    """Tests for abdtick() - async BDTICK.
+
+    IMPORTANT: Bloomberg intraday requests use UTC times.
+    """
 
     @pytest.mark.asyncio
     async def test_abdtick_basic(self):
-        """ABDTICK: basic async call."""
+        """ABDTICK: basic async call at market open (UTC times)."""
+        from datetime import datetime
+
         from xbbg import abdtick
 
-        trading_day = get_recent_trading_day()
+        # Use today at market open for reliable tick data
+        # IMPORTANT: Bloomberg uses UTC times for intraday requests
+        # 14:30-15:30 UTC = 9:30-10:30 ET (market open)
+        trading_day = datetime.now().strftime("%Y-%m-%d")
         df = await abdtick(
             CONFIG.equity_single,
-            start_datetime=f"{trading_day} 10:00:00",
-            end_datetime=f"{trading_day} 10:05:00",
+            start_datetime=f"{trading_day}T14:30:00",
+            end_datetime=f"{trading_day}T15:30:00",
         )
 
-        print(f"  Async result: {len(df)} ticks")
+        print(f"  Async result: {len(df)} ticks (UTC)")
 
 
 # =============================================================================

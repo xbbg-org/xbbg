@@ -61,10 +61,6 @@ pub enum ExtractorType {
     IntradayTick,
     /// Generic flattener: [path, type, value_str, value_num, value_date]
     Generic,
-    /// Raw JSON output: [json] (string column, parsed in Python - deprecated)
-    RawJson,
-    /// JSON to Arrow: Parse JSON and convert to Arrow columns in Rust
-    JsonArrow,
     /// BQL: Bloomberg Query Language responses
     Bql,
     /// BSRCH: Bloomberg Search responses
@@ -83,8 +79,6 @@ impl ExtractorType {
             "intraday_bar" => Some(Self::IntradayBar),
             "intraday_tick" => Some(Self::IntradayTick),
             "generic" => Some(Self::Generic),
-            "raw_json" => Some(Self::RawJson),
-            "json_arrow" => Some(Self::JsonArrow),
             "bql" => Some(Self::Bql),
             "bsrch" => Some(Self::Bsrch),
             "fieldinfo" => Some(Self::FieldInfo),

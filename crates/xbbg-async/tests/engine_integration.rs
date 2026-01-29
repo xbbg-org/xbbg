@@ -401,13 +401,13 @@ async fn test_bdib_1min_bars() {
         event_type: Some("TRADE".to_string()),
         interval: Some(1),
         start_datetime: Some("2025-12-23T14:00:00".to_string()),
-        end_datetime: Some("2025-12-23T15:00:00".to_string()),
+        end_datetime: Some("2025-12-23T14:30:00".to_string()),
         ..Default::default()
     };
 
     let batch = engine.request(params).await.expect("bdib request");
 
-    print_batch_summary("BDIB (1-min bars, 1 hour)", &batch);
+    print_batch_summary("BDIB (1-min bars, 30 min)", &batch);
     // Request succeeded if we get here (may have bars if market was open)
 
     std::mem::forget(engine);
@@ -426,13 +426,13 @@ async fn test_bdib_5min_bars() {
         event_type: Some("TRADE".to_string()),
         interval: Some(5),
         start_datetime: Some("2025-12-23T14:00:00".to_string()),
-        end_datetime: Some("2025-12-23T15:00:00".to_string()),
+        end_datetime: Some("2025-12-23T14:30:00".to_string()),
         ..Default::default()
     };
 
     let batch = engine.request(params).await.expect("bdib request");
 
-    print_batch_summary("BDIB (5-min bars)", &batch);
+    print_batch_summary("BDIB (5-min bars, 30 min)", &batch);
     // Request succeeded if we get here (may have bars if market was open)
 
     std::mem::forget(engine);
@@ -447,20 +447,29 @@ async fn test_bdtick_short_window() {
     init_tracing();
     let engine = create_engine();
 
+    // Use today's date for tick data availability
+    // IMPORTANT: Bloomberg intraday requests use UTC times
+    // US market open: 9:30 ET = 14:30 UTC
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
     let params = RequestParams {
         service: "//blp/refdata".to_string(),
         operation: "IntradayTickRequest".to_string(),
         extractor: ExtractorType::IntradayTick,
         security: Some("IBM US Equity".to_string()),
-        start_datetime: Some("2025-12-23T14:00:00".to_string()),
-        end_datetime: Some("2025-12-23T14:05:00".to_string()),
+        // UTC times: 14:30-15:00 UTC = 9:30-10:00 ET (market open)
+        start_datetime: Some(format!("{}T14:30:00", today)),
+        end_datetime: Some(format!("{}T15:00:00", today)),
+        // eventTypes is REQUIRED for IntradayTickRequest
+        event_types: Some(vec!["TRADE".to_string()]),
         ..Default::default()
     };
 
     let batch = engine.request(params).await.expect("bdtick request");
 
-    print_batch_summary("BDTICK (5 min window)", &batch);
-    // Request succeeded if we get here (may have ticks if market was active)
+    print_batch_summary("BDTICK (30 min window with eventTypes, UTC)", &batch);
+    // Should have ticks during market hours
+    println!("  Tick count: {}", batch.num_rows());
 
     std::mem::forget(engine);
 }
@@ -521,82 +530,9 @@ async fn test_generic_with_overrides() {
 // Raw JSON Extractor Tests
 // =============================================================================
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_raw_json_output() {
-    init_tracing();
-    let engine = create_engine();
-
-    let params = RequestParams {
-        service: "//blp/refdata".to_string(),
-        operation: "ReferenceDataRequest".to_string(),
-        extractor: ExtractorType::RawJson,
-        securities: Some(vec!["IBM US Equity".to_string()]),
-        fields: Some(vec!["PX_LAST".to_string()]),
-        ..Default::default()
-    };
-
-    let batch = engine.request(params).await.expect("raw json request");
-
-    print_batch_summary("Raw JSON", &batch);
-    assert!(batch.num_rows() >= 1, "Should have JSON data");
-    assert!(
-        batch.schema().column_with_name("json").is_some(),
-        "Should have json column"
-    );
-
-    // Print the actual JSON content
-    if let Some((idx, _)) = batch.schema().column_with_name("json") {
-        let col = batch.column(idx);
-        if let Some(arr) = col.as_any().downcast_ref::<StringArray>() {
-            for i in 0..arr.len().min(3) {
-                if !arr.is_null(i) {
-                    println!("\n=== JSON Row {} ===\n{}", i, arr.value(i));
-                }
-            }
-        }
-    }
-
-    std::mem::forget(engine);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_raw_json_intraday_bar() {
-    init_tracing();
-    let engine = create_engine();
-
-    let params = RequestParams {
-        service: "//blp/refdata".to_string(),
-        operation: "IntradayBarRequest".to_string(),
-        extractor: ExtractorType::RawJson,
-        security: Some("IBM US Equity".to_string()),
-        event_type: Some("TRADE".to_string()),
-        interval: Some(5),
-        start_datetime: Some("2025-12-23T14:00:00".to_string()),
-        end_datetime: Some("2025-12-23T15:00:00".to_string()),
-        ..Default::default()
-    };
-
-    let batch = engine
-        .request(params)
-        .await
-        .expect("raw json intraday request");
-
-    print_batch_summary("Raw JSON (Intraday Bar)", &batch);
-
-    // Print the actual JSON content to debug
-    if let Some((idx, _)) = batch.schema().column_with_name("json") {
-        let col = batch.column(idx);
-        if let Some(arr) = col.as_any().downcast_ref::<StringArray>() {
-            for i in 0..arr.len().min(5) {
-                if !arr.is_null(i) {
-                    println!("\n=== JSON Row {} ===\n{}", i, arr.value(i));
-                }
-            }
-        }
-    }
-
-    std::mem::forget(engine);
-}
+// NOTE: RawJson and JsonArrow extractors have been removed.
+// Use Generic extractor for flattened path/type/value output,
+// or use specialized extractors (RefData, HistData, etc.) for structured output.
 
 // =============================================================================
 // Error Handling Tests

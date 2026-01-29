@@ -444,27 +444,35 @@ impl RequestWorker {
                 let field = fields.first().cloned().unwrap_or_default();
                 UnifiedRequestState::BulkData(BulkDataState::new(field, reply))
             }
-            ExtractorType::Generic | ExtractorType::RawJson | ExtractorType::JsonArrow => {
-                // RawJson and JsonArrow now use Generic (Element-based flattener)
-                UnifiedRequestState::Generic(GenericState::new(reply))
-            }
+            ExtractorType::Generic => UnifiedRequestState::Generic(GenericState::new(reply)),
             ExtractorType::Bql => UnifiedRequestState::Bql(BqlState::new(reply)),
             ExtractorType::Bsrch => UnifiedRequestState::Bsrch(BsrchState::new(reply)),
             ExtractorType::FieldInfo => UnifiedRequestState::FieldInfo(FieldInfoState::new(reply)),
             ExtractorType::IntradayBar => {
-                let ticker = params.security.clone().unwrap_or_default();
-                let event_type = params
-                    .event_type
-                    .clone()
-                    .unwrap_or_else(|| "TRADE".to_string());
-                let interval = params.interval.unwrap_or(1);
-                UnifiedRequestState::IntradayBar(IntradayBarState::new(
-                    ticker, event_type, interval, reply,
-                ))
+                // If user specified extra elements, use GENERIC extractor
+                if params.elements.as_ref().map_or(false, |e| !e.is_empty()) {
+                    UnifiedRequestState::Generic(GenericState::new(reply))
+                } else {
+                    let ticker = params.security.clone().unwrap_or_default();
+                    let event_type = params
+                        .event_type
+                        .clone()
+                        .unwrap_or_else(|| "TRADE".to_string());
+                    let interval = params.interval.unwrap_or(1);
+                    UnifiedRequestState::IntradayBar(IntradayBarState::new(
+                        ticker, event_type, interval, reply,
+                    ))
+                }
             }
             ExtractorType::IntradayTick => {
-                let ticker = params.security.clone().unwrap_or_default();
-                UnifiedRequestState::IntradayTick(IntradayTickState::new(ticker, reply))
+                // If user specified extra elements (e.g., includeConditionCodes=true),
+                // use GENERIC extractor for dynamic column discovery
+                if params.elements.as_ref().map_or(false, |e| !e.is_empty()) {
+                    UnifiedRequestState::Generic(GenericState::new(reply))
+                } else {
+                    let ticker = params.security.clone().unwrap_or_default();
+                    UnifiedRequestState::IntradayTick(IntradayTickState::new(ticker, reply))
+                }
             }
         };
 
@@ -586,6 +594,7 @@ impl RequestWorker {
         // Set event types (array, for intraday ticks)
         if let Some(ref event_types) = params.event_types {
             for et in event_types {
+                tracing::trace!(element = "eventTypes", value = %et, "appending event type");
                 request.append_str("eventTypes", et)?;
             }
         }

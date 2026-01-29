@@ -54,10 +54,12 @@ impl ElementInfo {
         }
     }
 
-    /// Get all element names recursively (for validation).
+    /// Get all child element names recursively (for validation).
+    /// Does not include the root element's name itself.
     pub fn all_element_names(&self) -> Vec<String> {
-        let mut names = vec![self.name.clone()];
+        let mut names = Vec::new();
         for child in &self.children {
+            names.push(child.name.clone());
             names.extend(child.all_element_names());
         }
         names

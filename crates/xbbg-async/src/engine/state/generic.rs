@@ -66,26 +66,26 @@ impl GenericState {
     fn flatten_element(&mut self, path: &str, elem: &Element<'_>) {
         match elem.datatype() {
             DataType::Sequence => {
-                // Sequence with named children - iterate over children
-                for child in elem.children() {
-                    let child_name = child.name();
-                    let child_path = if path.is_empty() {
-                        child_name.as_str().to_string()
-                    } else {
-                        format!("{}.{}", path, child_name.as_str())
-                    };
-
-                    // Check if child is an array
-                    if child.is_array() {
-                        // Iterate through array values
-                        let n = child.len();
-                        for i in 0..n {
-                            if let Some(item) = child.get_element(i) {
-                                let item_path = format!("{}[{}]", child_path, i);
-                                self.flatten_element(&item_path, &item);
-                            }
+                // Check if this sequence is an array (iterate by index)
+                // vs a struct with named children (iterate by children)
+                if elem.is_array() {
+                    // Array of elements - iterate by index using len()
+                    let n = elem.len();
+                    for i in 0..n {
+                        if let Some(item) = elem.get_element(i) {
+                            let item_path = format!("{}[{}]", path, i);
+                            self.flatten_element(&item_path, &item);
                         }
-                    } else {
+                    }
+                } else {
+                    // Sequence with named children - iterate over children
+                    for child in elem.children() {
+                        let child_name = child.name();
+                        let child_path = if path.is_empty() {
+                            child_name.as_str().to_string()
+                        } else {
+                            format!("{}.{}", path, child_name.as_str())
+                        };
                         self.flatten_element(&child_path, &child);
                     }
                 }
