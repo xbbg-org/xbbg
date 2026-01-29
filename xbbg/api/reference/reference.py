@@ -39,34 +39,12 @@ def bdp(
     Returns:
         pd.DataFrame: Reference data with tickers as index and fields as columns.
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, reference_pipeline_config
+    from xbbg.core.request import request
+    from xbbg.core.pipeline import reference_pipeline_config
 
-    # Normalize tickers to list
-    ticker_list = utils.normalize_tickers(tickers)
-    # Ensure primary_ticker is always a string (use first ticker or convert single string)
-    primary_ticker = ticker_list[0] if ticker_list else (tickers if isinstance(tickers, str) else "")
-    fld_list = utils.normalize_flds(flds)
-
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-
-    # Build request
-    request = (
-        RequestBuilder()
-        .ticker(primary_ticker)
-        .date("today")  # Reference data doesn't use dates, but DataRequest requires one
-        .context(split.infra)
-        .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
-        .request_opts(tickers=ticker_list, flds=fld_list)
-        .override_kwargs(**split.override_like)
-        .with_output(backend, format)
-        .build()
+    return request(
+        config=reference_pipeline_config, tickers=tickers, fields=flds, backend=backend, format=format, **kwargs
     )
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=reference_pipeline_config())
-    return pipeline.run(request)
 
 
 def bds(
@@ -91,36 +69,20 @@ def bds(
     Returns:
         pd.DataFrame: Block data with multi-row results per ticker.
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, block_data_pipeline_config
+    from xbbg.core.request import request
+    from xbbg.core.pipeline import block_data_pipeline_config
 
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-    ticker_list = utils.normalize_tickers(tickers)
-
-    # Process each ticker using pipeline
-    def _process_ticker(ticker: str):
-        request = (
-            RequestBuilder()
-            .ticker(ticker)
-            .date("today")
-            .context(split.infra)
-            .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
-            .request_opts(fld=flds, use_port=use_port)
-            .override_kwargs(**split.override_like)
-            .with_output(backend, format)
-            .build()
-        )
-
-        pipeline = BloombergPipeline(config=block_data_pipeline_config())
-        return pipeline.run(request)
-
-    results = [_process_ticker(t) for t in ticker_list]
-
-    # Use backend-agnostic concat
-    from xbbg.io.convert import concat_frames
-
-    return concat_frames(results, backend)
+    return request(
+        config=block_data_pipeline_config,
+        tickers=tickers,
+        fields=flds,
+        fields_key="fld",
+        per_ticker=True,
+        request_opts={"use_port": use_port},
+        backend=backend,
+        format=format,
+        **kwargs,
+    )
 
 
 async def abdp(
@@ -157,7 +119,12 @@ async def abdp(
         >>> #     blp.abdp('MSFT US Equity', ['PX_LAST']),
         >>> # )
     """
-    return await asyncio.to_thread(bdp, tickers=tickers, flds=flds, backend=backend, format=format, **kwargs)
+    from xbbg.core.request import arequest
+    from xbbg.core.pipeline import reference_pipeline_config
+
+    return await arequest(
+        config=reference_pipeline_config, tickers=tickers, fields=flds, backend=backend, format=format, **kwargs
+    )
 
 
 async def abds(
@@ -196,6 +163,17 @@ async def abds(
         >>> #     blp.abds('MSFT US Equity', 'DVD_Hist_All'),
         >>> # )
     """
-    return await asyncio.to_thread(
-        bds, tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs
+    from xbbg.core.request import arequest
+    from xbbg.core.pipeline import block_data_pipeline_config
+
+    return await arequest(
+        config=block_data_pipeline_config,
+        tickers=tickers,
+        fields=flds,
+        fields_key="fld",
+        per_ticker=True,
+        request_opts={"use_port": use_port},
+        backend=backend,
+        format=format,
+        **kwargs,
     )

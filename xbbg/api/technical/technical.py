@@ -156,8 +156,8 @@ def bta(
         ...                period=20, upperBand=2.0, lowerBand=2.0,
         ...                start_date='2024-01-01')  # doctest: +SKIP
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bta_pipeline_config
+    from xbbg.core.request import request
+    from xbbg.core.pipeline import bta_pipeline_config
 
     study_types = _get_study_types()
 
@@ -169,37 +169,27 @@ def bta(
 
     study_info = study_types[study_upper]
 
-    # Split kwargs into infrastructure and study params
-    split = split_kwargs(**kwargs)
-
     # Build study parameters with defaults
     study_params = {}
     for param_name, param_info in study_info["params"].items():
         # Check if provided in kwargs, otherwise use default
-        if param_name in split.override_like:
-            study_params[param_name] = split.override_like[param_name]
+        if param_name in kwargs:
+            study_params[param_name] = kwargs[param_name]
         else:
             study_params[param_name] = param_info["default"]
 
-    # Build request
-    request = (
-        RequestBuilder()
-        .ticker(ticker)
-        .date(end_date if end_date else "today")
-        .context(split.infra)
-        .cache_policy(enabled=False)  # TA typically not cached
-        .request_opts(
-            study=study_upper,
-            study_attribute=study_info["attribute"],
-            study_params=study_params,
-            start_date=start_date,
-            end_date=end_date,
-            periodicity=periodicity,
-        )
-        .with_output(backend=backend, format=None)
-        .build()
+    return request(
+        config=bta_pipeline_config,
+        tickers=ticker,
+        fields=None,
+        start_date=start_date,
+        end_date=end_date,
+        request_opts={
+            "study": study_upper,
+            "study_attribute": study_info["attribute"],
+            "study_params": study_params,
+            "periodicity": periodicity,
+        },
+        backend=backend,
+        **kwargs,
     )
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=bta_pipeline_config())
-    return pipeline.run(request)

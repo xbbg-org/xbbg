@@ -129,6 +129,9 @@ xbbg/tests/data/**/TRADE/*.parq
 # Claude Code
 .claude/
 
+# Sisyphus development artifacts
+.sisyphus/
+
 # SQLite WAL files
 *.db-shm
 *.db-wal

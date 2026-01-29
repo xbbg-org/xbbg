@@ -56,46 +56,20 @@ def bdh(
     Returns:
         pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, historical_pipeline_config
+    from xbbg.core.pipeline import historical_pipeline_config
+    from xbbg.core.request import request
 
-    # Normalize tickers to list
-    ticker_list = utils.normalize_tickers(tickers)
-    primary_ticker = str(ticker_list[0] if ticker_list else tickers)
-
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-
-    # Build request - use first ticker as primary, store all in request_opts
-    if flds is None:
-        flds = ["Last_Price"]
-
-    e_dt = utils.fmt_dt(end_date, fmt="%Y%m%d")
-    if start_date is None:
-        start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
-    s_dt = utils.fmt_dt(start_date, fmt="%Y%m%d")
-
-    request = (
-        RequestBuilder()
-        .ticker(primary_ticker)
-        .date(end_date)  # Use end_date as primary date
-        .context(split.infra)
-        .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
-        .request_opts(
-            tickers=ticker_list,
-            flds=flds,
-            start_date=s_dt,
-            end_date=e_dt,
-            adjust=adjust,
-        )
-        .override_kwargs(**split.override_like)
-        .with_output(backend, format)
-        .build()
+    return request(
+        config=historical_pipeline_config,
+        tickers=tickers,
+        fields=flds,
+        start_date=start_date,
+        end_date=end_date or "today",
+        request_opts={"adjust": adjust} if adjust is not None else None,
+        backend=backend,
+        format=format,
+        **kwargs,
     )
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=historical_pipeline_config())
-    return pipeline.run(request)
 
 
 def earning(
@@ -332,13 +306,15 @@ async def abdh(
         >>> #     blp.abdh('MSFT US Equity', start_date='2024-01-01'),
         >>> # )
     """
-    return await asyncio.to_thread(
-        bdh,
+    from xbbg.core.request import arequest
+    from xbbg.core.pipeline import historical_pipeline_config
+
+    return await arequest(
+        config=historical_pipeline_config,
         tickers=tickers,
-        flds=flds,
+        fields=flds,
         start_date=start_date,
-        end_date=end_date,
-        adjust=adjust,
+        end_date=end_date or "today",
         backend=backend,
         format=format,
         **kwargs,

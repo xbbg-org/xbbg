@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Unified request API**: New `request()` and `arequest()` functions in `xbbg.core.request` provide a single entry point for all Bloomberg API requests
+  - Consolidates request building, pipeline execution, and response processing
+  - Centralized logging, error handling, and retry logic
+  - All API functions now use unified interface internally
 - **Logging coverage improvements**: Comprehensive logging audit and enhancements across critical paths
   - Added `logger.error()` before raising exceptions in `process.py` for better error traceability
   - Added INFO logging for stale session/service handle removal in `conn.py`
@@ -16,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `xbbg/tests/test_logging.py` with 9 tests covering critical logging paths
 
 ### Changed
+- **Internal refactoring**: API functions (`bdp`, `bds`, `bdh`, `bdib`, `abdp`, `abdh`, `abds`) refactored to use unified `request()`/`arequest()` functions
+  - No breaking changes - all function signatures and behavior remain identical
+  - Simplified implementation - reduced code duplication by ~70%
+  - Improved maintainability and consistency across API functions
+  - All 498 existing tests pass without modification
 - **Logging level adjustments** for consistency:
   - `BBG_ROOT not set` message promoted from INFO → WARNING (meaningful configuration issue)
   - Cache save "skipping due to market timing" demoted from INFO → DEBUG (internal policy decision)

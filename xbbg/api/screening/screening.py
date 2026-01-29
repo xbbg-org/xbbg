@@ -45,37 +45,23 @@ def beqs(
     Returns:
         pd.DataFrame.
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, beqs_pipeline_config
+    from xbbg.core.request import request
+    from xbbg.core.pipeline import beqs_pipeline_config
 
-    # Preserve retry mechanism
-    trial = kwargs.get("trial", 0)
-
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-
-    # Build request - use a dummy ticker since BEQS doesn't use tickers
-    request = (
-        RequestBuilder()
-        .ticker("DUMMY")  # BEQS doesn't use ticker, but DataRequest requires one
-        .date(asof if asof else "today")
-        .context(split.infra)
-        .cache_policy(enabled=False)  # BEQS typically not cached
-        .request_opts(screen=screen, asof=asof, typ=typ, group=group)
-        .override_kwargs(**split.override_like)
-        .with_output(backend, format)
-        .build()
+    return request(
+        config=beqs_pipeline_config,
+        tickers=None,
+        fields=None,
+        primary_ticker="DUMMY",
+        tickers_key=None,
+        fields_key=None,
+        asof=asof,
+        cache_enabled=False,
+        request_opts={"screen": screen, "asof": asof, "typ": typ, "group": group},
+        backend=backend,
+        format=format,
+        **kwargs,
     )
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=beqs_pipeline_config())
-    result = pipeline.run(request)
-
-    # Handle retry logic
-    if is_empty(result) and trial == 0:
-        return beqs(screen=screen, asof=asof, typ=typ, group=group, backend=backend, format=format, trial=1, **kwargs)
-
-    return result
 
 
 def bsrch(
@@ -128,28 +114,22 @@ def bsrch(
         ...     }
         ... )  # doctest: +SKIP
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bsrch_pipeline_config
+    from xbbg.core.request import request
+    from xbbg.core.pipeline import bsrch_pipeline_config
 
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-
-    # Build request
-    request = (
-        RequestBuilder()
-        .ticker("DUMMY")  # BSRCH doesn't use ticker
-        .date("today")
-        .context(split.infra)
-        .cache_policy(enabled=False)  # BSRCH typically not cached
-        .request_opts(domain=domain, overrides=overrides)
-        .override_kwargs(**split.override_like)
-        .with_output(backend, format)
-        .build()
+    return request(
+        config=bsrch_pipeline_config,
+        tickers=None,
+        fields=None,
+        primary_ticker="DUMMY",
+        tickers_key=None,
+        fields_key=None,
+        cache_enabled=False,
+        request_opts={"domain": domain, "overrides": overrides},
+        backend=backend,
+        format=format,
+        **kwargs,
     )
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=bsrch_pipeline_config())
-    return pipeline.run(request)
 
 
 def bql(
@@ -277,28 +257,22 @@ def bql(
         ...     "get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
         ... )
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bql_pipeline_config
+    from xbbg.core.request import request
+    from xbbg.core.pipeline import bql_pipeline_config
 
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-
-    # Build request
-    request = (
-        RequestBuilder()
-        .ticker("DUMMY")  # BQL doesn't use ticker
-        .date("today")
-        .context(split.infra)
-        .cache_policy(enabled=False)  # BQL typically not cached
-        .request_opts(query=query, params=params, overrides=overrides)
-        .override_kwargs(**split.override_like)
-        .with_output(backend, format)
-        .build()
+    return request(
+        config=bql_pipeline_config,
+        tickers=None,
+        fields=None,
+        primary_ticker="DUMMY",
+        tickers_key=None,
+        fields_key=None,
+        cache_enabled=False,
+        request_opts={"query": query, "params": params, "overrides": overrides},
+        backend=backend,
+        format=format,
+        **kwargs,
     )
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=bql_pipeline_config())
-    return pipeline.run(request)
 
 
 def etf_holdings(
@@ -626,38 +600,26 @@ def bqr(
         - Broker codes (broker_buy, broker_sell) are only available with MSG1 source
         - For Excel compatibility, this emulates: =BQR("ticker", "-2d", "", "View=AllQuotes")
     """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bqr_pipeline_config
+    from xbbg.core.request import request
+    from xbbg.core.pipeline import bqr_pipeline_config
 
-    # Default event types
-    if event_types is None:
-        event_types = ["BID", "ASK"]
-
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-
-    # Build request
-    request = (
-        RequestBuilder()
-        .ticker(ticker)
-        .date("today")  # Required by builder, but not used by BQR
-        .context(split.infra)
-        .cache_policy(enabled=False)  # BQR typically not cached
-        .request_opts(
-            ticker=ticker,
-            date_offset=date_offset,
-            start_date=start_date,
-            end_date=end_date,
-            event_types=event_types,
-            include_broker_codes=include_broker_codes,
-            include_condition_codes=include_condition_codes,
-            include_exchange_codes=include_exchange_codes,
-        )
-        .override_kwargs(**split.override_like)
-        .with_output(backend, format)
-        .build()
+    return request(
+        config=bqr_pipeline_config,
+        tickers=ticker,
+        fields=None,
+        fields_key=None,
+        cache_enabled=False,
+        request_opts={
+            "ticker": ticker,
+            "date_offset": date_offset,
+            "start_date": start_date,
+            "end_date": end_date,
+            "event_types": event_types or ["BID", "ASK"],
+            "include_broker_codes": include_broker_codes,
+            "include_condition_codes": include_condition_codes,
+            "include_exchange_codes": include_exchange_codes,
+        },
+        backend=backend,
+        format=format,
+        **kwargs,
     )
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=bqr_pipeline_config())
-    return pipeline.run(request)

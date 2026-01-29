@@ -358,20 +358,8 @@ def bdib(
     # For multi-day requests without dt, use start_datetime's date as fallback
     if dt is None and is_multi_day:
         dt = pd.Timestamp(start_datetime).strftime("%Y-%m-%d")
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, intraday_pipeline_config
-
-    # Build request using RequestBuilder
-    request = RequestBuilder.from_legacy_kwargs(
-        ticker=ticker,
-        dt=dt,
-        session=session,
-        typ=typ,
-        start_datetime=start_datetime,
-        end_datetime=end_datetime,
-        backend=backend,
-        format=format,
-        **kwargs,
-    )
+    from xbbg.core.pipeline import intraday_pipeline_config
+    from xbbg.core.request import request
 
     # Preserve legacy KeyError behavior: check if exchange info exists
     # (pipeline will handle resolution, but we want to raise KeyError early for non-fixed-income)
@@ -398,9 +386,22 @@ def bdib(
         if not is_fixed_income:
             raise KeyError(f"Cannot find exchange info for {ticker}")
 
-    # Run pipeline
-    pipeline = BloombergPipeline(config=intraday_pipeline_config())
-    return pipeline.run(request)
+    interval = kwargs.get("interval", 1)
+
+    return request(
+        config=intraday_pipeline_config,
+        tickers=ticker,
+        fields=None,
+        dt=dt,
+        session=session,
+        typ=typ,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+        request_opts={"interval": interval},
+        backend=backend,
+        format=format,
+        **kwargs,
+    )
 
 
 def bdtick(
