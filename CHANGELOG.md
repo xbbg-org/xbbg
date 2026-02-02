@@ -8,9 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Highlights
-
-**v0.11.0** is a major release featuring a complete rewrite of the internal data pipeline using PyArrow, multi-backend output support, and several new API functions for fixed income and technical analysis.
-
 - **Arrow-first pipeline**: Complete rewrite of internal data processing using PyArrow for improved performance
 - **Multi-backend support**: Output to pandas, Polars, PyArrow, DuckDB, or narwhals with the new `Backend` enum
 - **New API functions**: `bta()` for technical analysis, `bqr()` for dealer quotes, `yas()` for fixed income analytics
@@ -19,69 +16,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **v1.0 migration path**: Deprecation warnings and forward-compatible APIs prepare for the upcoming v1.0 release
 
 ### Added
-
-#### Core Architecture
 - **Arrow-first pipeline**: Complete rewrite of internal data processing using PyArrow
 - **Multi-backend support**: New `Backend` enum supporting narwhals, pandas, polars, polars_lazy, pyarrow, duckdb
 - **Output format control**: New `Format` enum with long, semi_long, wide options
-- `set_backend()`, `get_backend()`, `set_format()`, `get_format()` configuration functions
-- All API functions now accept `backend` and `format` parameters
-
-#### New API Functions
 - **bta()**: Bloomberg Technical Analysis function for 50+ technical indicators (#175)
-- **bqr()**: Bloomberg Quote Request function emulating Excel `=BQR()` for dealer quote data (#22)
-  - Retrieves tick-level quotes with broker/dealer attribution from MSG1 pricing sources
-  - Supports date offsets (`-2d`, `-1w`) and explicit date ranges
-  - Includes broker codes (`broker_buy`, `broker_sell`) for dealer identification
-- **yas()**: Bloomberg YAS (Yield Analysis) wrapper for fixed income analytics
-  - `YieldType` enum for yield calculation type (`YTM=1`, `YTC=2`)
-  - Supports settlement date, spread, yield, price, and benchmark overrides
+- **bqr()**: Bloomberg Quote Request function emulating Excel `=BQR()` for dealer quote data with broker attribution (#22)
+- **yas()**: Bloomberg YAS (Yield Analysis) wrapper for fixed income analytics with `YieldType` enum
 - **preferreds()**: BQL convenience function to find preferred stocks for an equity ticker
 - **corporate_bonds()**: BQL convenience function to find active corporate bonds for a ticker
-
-#### Infrastructure & Configuration
+- `set_backend()`, `get_backend()`, `set_format()`, `get_format()` configuration functions
 - `get_sdk_info()` as replacement for deprecated `getBlpapiVersion()`
 - v1.0-compatible exception classes (`BlpError`, `BlpSessionError`, `BlpRequestError`, etc.)
 - `EngineConfig` dataclass and `configure()` function for engine configuration
 - `Service` and `Operation` enums for Bloomberg service URIs
-- **Treasury & SOFR futures support**: Added TY, ZN, ZB, ZF, ZT, UB, TN (Treasury), SFR, SR1, SR3 (SOFR), and ED (Eurodollar) futures to assets.yml (#198)
-
-#### Logging & Observability
-- Comprehensive logging audit and enhancements across critical paths
-- Added `logger.error()` before raising exceptions in `process.py` for better error traceability
-- Added INFO logging for stale session/service handle removal in `conn.py`
-- Added DEBUG logging for Bloomberg service lifecycle events
-- Added ERROR logging with re-raise for directory creation failures in `files.py`
-- New `xbbg/tests/test_logging.py` with 9 tests covering critical logging paths
-
-#### Documentation
-- CONTRIBUTING.md with comprehensive contribution guidelines
-- CODE_OF_CONDUCT.md for community standards
+- Treasury & SOFR futures support: TY, ZN, ZB, ZF, ZT, UB, TN, SFR, SR1, SR3, ED futures (#198)
+- Comprehensive logging improvements across critical paths with better error traceability
+- CONTRIBUTING.md and CODE_OF_CONDUCT.md for community standards
 
 ### Changed
-
-#### Breaking Changes
-- **Intraday cache now includes interval in path** (#80)
-  - Different bar intervals (1m, 5m, 10s, etc.) are now cached separately
-  - Cache path format: `{BBG_ROOT}/{asset}/{ticker}/{typ}/{interval}/{date}.parq`
-  - Existing cached data without interval folder will be cache misses (first request will re-fetch)
-
-#### Internal Changes
+- All API functions now accept `backend` and `format` parameters
 - Internal pipeline uses PyArrow tables with narwhals transformations
 - Removed pytz dependency (using stdlib `datetime.timezone`)
-- Updated SECURITY.md to reference current supported versions
-- Internal class renames with backward compatible aliases:
-  - `YamlMarketInfoProvider` → `MetadataProvider`
-  - `ExchangeYamlResolver` → `ExchangeMetadataResolver`
-
-#### Logging Adjustments
-- `BBG_ROOT not set` message promoted from INFO → WARNING (meaningful configuration issue)
-- Cache save "skipping due to market timing" demoted from INFO → DEBUG (internal policy decision)
-- Cache load failures for corrupt files now log WARNING (previously DEBUG)
+- **Intraday cache now includes interval in path** (#80) - different bar intervals cached separately (**breaking**: existing cache will miss)
+- Internal class renames with backward compatible aliases (`YamlMarketInfoProvider` → `MetadataProvider`)
+- Logging level adjustments: `BBG_ROOT not set` promoted to WARNING, cache timing demoted to DEBUG
 
 ### Deprecated
-
-The following functions will be renamed or reorganized in v1.0:
 - `connect()` / `disconnect()` - engine auto-initializes in v1.0
 - `getBlpapiVersion()` - use `get_sdk_info()` instead
 - `lookupSecurity()` - will become `blkp()` in v1.0
@@ -92,59 +52,22 @@ The following functions will be renamed or reorganized in v1.0:
 - Futures/CDX utilities (`fut_ticker()`, `active_futures()`, `cdx_ticker()`, `active_cdx()`) moving to `xbbg.ext` in v1.0
 
 ### Removed
-- **Trials mechanism**: Eliminated the retry-blocking system that caused silent failures
-  - The trials system tracked failed API requests and blocked future attempts after 2 failures
-  - This caused issues when bugs were fixed (stale entries still blocked requests)
-  - Pipeline caching already handles "don't re-fetch" use case properly
-  - Deleted `xbbg/core/utils/trials.py` and related test files
-- **pandas-market-calendars dependency**: Simplified exchange metadata resolution
-  - Removed `PmcCalendarResolver` from resolver chain
-  - Exchange information now sourced exclusively from Bloomberg API with local caching
-  - Removed `pmc_extended` context option (no longer needed)
+- **Trials mechanism**: Eliminated retry-blocking system that caused silent failures after 2 failed attempts
+- **pandas-market-calendars dependency**: Exchange info now sourced exclusively from Bloomberg API with local caching
 
 ### Fixed
-
-#### Critical Fixes
-- **Import without blpapi installed**: Fixed `AttributeError` when importing xbbg without blpapi installed (#200)
-- **Japan/non-US timezone fix for bdib**: Fixed timezone conversion for non-US exchanges (#198)
-  - Bloomberg returns trading hours in EST; now correctly converted to exchange's local timezone
-- **stream() field values**: Subscribed field values are now always included in output dict (#199)
-  - Previously, fields not in `const.LIVE_INFO` were filtered out incorrectly
-- **Slow Bloomberg fields no longer timeout prematurely** (#193)
-  - Bloomberg TIMEOUT events now handled correctly; requests wait for response
-  - Added `slow_warn_seconds` parameter (default: 15s) to warn without aborting
-
-#### Data & Pipeline Fixes
-- **Pipeline data types**: Preserve original data types in pipeline output instead of converting to strings (#191)
-- **Backend/format attributes**: Preserve backend/format attributes in DataRequest pipeline helpers
-- **Futures symbol parsing for bdib**: Fixed `market_info()` to correctly parse futures symbols like `TYH6` → `TY` (#198)
-- **get_tz() optimization**: Direct timezone strings like `"America/New_York"` or `"UTC"` are now recognized without calling Bloomberg API
-
-#### Tick Data Fixes
-- **bdtick timezone fix**: Pass exchange timezone to `time_range()` to fix blank results for non-UTC exchanges (#185)
-- **bdtick timeout defaults**: Increased timeout from 10s to 2 minutes for tick data requests
-
-#### Other Fixes
+- **Import without blpapi installed**: Fixed `AttributeError` when importing xbbg without blpapi (#200)
+- **Japan/non-US timezone fix for bdib**: Trading hours now correctly converted to exchange's local timezone (#198)
+- **stream() field values**: Subscribed field values now always included in output dict (#199)
+- **Slow Bloomberg fields**: TIMEOUT events handled correctly; requests wait for response with `slow_warn_seconds` warning (#193)
+- **Pipeline data types**: Preserve original data types instead of converting to strings (#191)
+- **Futures symbol parsing**: Fixed `market_info()` to correctly parse symbols like `TYH6` → `TY` (#198)
+- **get_tz() optimization**: Direct timezone strings recognized without Bloomberg API call
+- **bdtick timezone fix**: Pass exchange timezone to fix blank results for non-UTC exchanges (#185)
+- **bdtick timeout**: Increased from 10s to 2 minutes for tick data requests
 - Extended BDS test date range to 120 days for quarterly dividends
 - Helper functions now work correctly with LONG format output
-- String concatenation in WIDE format conversion using `concat_str`
-- Fixed 10 f-string logging statements to use %-formatting (G004 compliance)
-- Changed `.error(..., exc_info=True)` to `.exception()` in `process.py` (G201 compliance)
-
-### Developer
-- **CI logging enforcement**: Added `LOG` (flake8-logging) and `G` (flake8-logging-format) rules to ruff configuration
-
----
-
-## Beta Release History
-
-The following beta releases were made during v0.11.0 development:
-
-- **v0.11.0b5** (2026-01-25): Import fix without blpapi, timezone fixes, removed trials/PMC
-- **v0.11.0b4** (2026-01-24): Added yas(), Treasury/SOFR futures, stream() fix (#199)
-- **v0.11.0b3** (2026-01-21): Added bqr(), timeout handling, cache interval fix (#80)
-- **v0.11.0b2** (2026-01-19): Added preferreds()/corporate_bonds(), bdtick fixes
-- **v0.11.0b1** (2026-01-10): Arrow-first pipeline, multi-backend support, bta()
+- Logging format compliance fixes (G004, G201)
 
 ## [0.10.3] - 2024-01-07
 
