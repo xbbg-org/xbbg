@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-02-02
+
 ### Highlights
 - **Arrow-first pipeline**: Complete rewrite of internal data processing using PyArrow for improved performance
 - **Multi-backend support**: Output to pandas, Polars, PyArrow, DuckDB, or narwhals with the new `Backend` enum
@@ -221,7 +223,8 @@ See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b5...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0
 [0.11.0b5]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b5
 [0.11.0b4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b4
 [0.11.0b3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3
