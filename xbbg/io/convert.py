@@ -122,7 +122,8 @@ def concat_frames(frames: list[Any], backend: Backend | None = None) -> Any:
     if _is_pandas_frame(first):
         import pandas as pd
 
-        return pd.concat(non_empty, ignore_index=True)
+        # Preserve index (important for BDS data where ticker is the index)
+        return pd.concat(non_empty, ignore_index=False)
 
     # Try narwhals concat
     try:
@@ -614,6 +615,34 @@ def to_output(
                 return _pivot_reference_data_wide(nw_frame, ticker_col, backend)
             # For LONG/SEMI_LONG, return as-is
             return _convert_backend(nw_frame, backend)
+
+        # BDS data case: has ticker, field, and data columns (no 'value' column)
+        # This is block data like INDX_MEMBERS which returns structured array data
+        if "field" in columns:
+            if format == Format.WIDE or format is None:
+                # v0.10.x backward compatible format:
+                # - Drop 'field' column (it's redundant for single-field BDS queries)
+                # - Use ticker as index (for pandas) or column (for other backends)
+                # Note: Column names are already snake_case from BlockDataTransformer
+                pdf = nw_frame.to_pandas()
+
+                # Drop the field column
+                if "field" in pdf.columns:
+                    pdf = pdf.drop(columns=["field"])
+
+                # Convert to requested backend
+                if backend == Backend.PANDAS:
+                    # For pandas: set ticker as index (v0.10.x behavior)
+                    if ticker_col in pdf.columns:
+                        pdf = pdf.set_index(ticker_col)
+                        pdf.index.name = None  # Remove index name for cleaner output
+                    return pdf
+                # For other backends: keep ticker as a column
+                return _convert_backend(nw.from_native(pdf), backend)
+
+            # For LONG format, return as-is (new v0.11.x behavior)
+            return _convert_backend(nw_frame, backend)
+
         # Data has ticker but no standard field/value structure - passthrough
         return _convert_backend(nw_frame, backend)
 
