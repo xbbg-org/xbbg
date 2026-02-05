@@ -380,10 +380,9 @@ def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
     if backend_value == "ibis":
         import ibis
 
-        # Create an in-memory Ibis table from Arrow
-        # Uses DuckDB backend by default for in-memory operations
-        con = ibis.duckdb.connect()
-        return con.read_in_memory(arrow_table)
+        # Create an in-memory Ibis table from Arrow using memtable
+        # This creates a lazy table expression that can be computed on any backend
+        return ibis.memtable(arrow_table)
 
     if backend_value == "pyspark":
         from pyspark.sql import SparkSession
@@ -397,7 +396,7 @@ def _convert_backend(nw_frame: nw.DataFrame, backend: Backend) -> Any:
     if backend_value == "sqlframe":
         # SQLFrame wraps various SQL engines
         # Use DuckDB backend for in-memory operations
-        from sqlframe import DuckDBSession
+        from sqlframe.duckdb import DuckDBSession
 
         session = DuckDBSession()
         pdf = arrow_table.to_pandas()

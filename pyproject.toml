@@ -39,13 +39,14 @@ dependencies = [
 # Eager backends (full API support)
 pandas = ["pandas>=2.0"]
 polars = ["polars>=0.20"]
-cudf = ["cudf-cu12>=24.10"]  # NVIDIA RAPIDS GPU acceleration
-modin = ["modin[all]>=0.25"]  # Distributed pandas
+# cudf requires NVIDIA GPU + CUDA + Linux - install manually if needed:
+#   pip install --extra-index-url https://pypi.nvidia.com cudf-cu12
+modin = ["modin[dask]>=0.25"]  # Distributed pandas
 # Lazy backends (deferred execution)
 duckdb = ["duckdb>=1.0"]
 dask = ["dask[dataframe]>=2024.1"]
 ibis = ["ibis-framework>=6.0"]
-pyspark = ["pyspark>=3.5"]
+# pyspark requires Java - install manually if needed
 sqlframe = ["sqlframe>=3.22"]
 # Convenience extras
 all-backends = [
@@ -54,12 +55,6 @@ all-backends = [
   "duckdb>=1.0",
   "dask[dataframe]>=2024.1",
   "ibis-framework>=6.0",
-]
-all-backends-gpu = [
-  "pandas>=2.0",
-  "polars>=0.20",
-  "duckdb>=1.0",
-  "cudf-cu12>=24.10",
 ]
 # Dev/test tooling - managed via uv dependency groups below
 test = ["pytest", "pytest-cov", "coverage", "codecov"]
@@ -86,6 +81,9 @@ exclude = ["xbbg.tests*"]
 [tool.setuptools.package-data]
 xbbg = ["markets/*.yml"]
 
+
+[tool.uv]
+# No numpy constraint - let resolver find compatible version per Python version
 
 [[tool.uv.index]]
 name = "bloomberg"
@@ -176,7 +174,15 @@ log_cli_date_format = "%H:%M:%S"
 dev = [
     "blpapi",
     "coverage>=7.11.0",
-    "pandas>=2.0",  # Needed for tests and ext module
+    "dask[dataframe]>=2026.1.2",
+    "duckdb>=1.4.4",
+    "ibis-framework>=11.0.0",
+    "modin[dask]>=0.37.1",
+    "pandas>=2.0", # Needed for tests and ext module
+    "polars",
+    "pyarrow-hotfix>=0.7",
     "pytest-cov>=7.0.0",
+    "rich>=14.3.2",
     "ruff>=0.14.3",
+    "sqlframe>=3.46.2",
 ]
