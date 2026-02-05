@@ -37,7 +37,7 @@ jobs:
     - name: Sync dependencies with uv
       run: |
         uv --version
-        uv sync --locked --extra dev --extra test --extra docs
+        uv sync --locked --group dev --extra docs
     - name: Lint with Ruff
       run: |
         uv run ruff check --output-format=github xbbg
