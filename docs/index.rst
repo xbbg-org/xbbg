@@ -146,6 +146,15 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.11.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.1>`__
+
+### Fixed
+
+- **Field names now lowercase**: Restored v0.10.x behavior where `bdp()`, `bdh()`, and `bds()` return field/column names as lowercase (#206)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.0...v0.11.1
+
+
 *0.11.0* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0>`__
 
 ### Highlights
