@@ -369,8 +369,14 @@ impl SubscriptionWorkerHandle {
         })
     }
 
-    fn shutdown(&mut self) {
+    /// Signal shutdown without waiting (non-blocking).
+    fn signal_shutdown(&self) {
         let _ = self.cmd_tx.try_send(SubscriptionCommand::Shutdown);
+    }
+
+    /// Shutdown and wait for thread to finish (blocking).
+    fn shutdown_blocking(&mut self) {
+        self.signal_shutdown();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -379,7 +385,8 @@ impl SubscriptionWorkerHandle {
 
 impl Drop for SubscriptionWorkerHandle {
     fn drop(&mut self) {
-        self.shutdown();
+        // Non-blocking: just signal, don't wait
+        self.signal_shutdown();
     }
 }
 
@@ -477,19 +484,33 @@ impl SubscriptionSessionPool {
         self.available.lock().len()
     }
 
-    /// Graceful shutdown of all workers.
-    pub fn shutdown(&self) {
-        let mut available = self.available.lock();
-        tracing::info!(count = available.len(), "shutting down subscription pool");
-        for handle in available.drain(..) {
-            drop(handle); // Drop triggers shutdown
+    /// Signal shutdown to all available workers (non-blocking).
+    ///
+    /// Note: Only signals workers currently in the pool. Claimed sessions
+    /// will be signaled when they're returned to the pool and dropped.
+    pub fn signal_shutdown(&self) {
+        let available = self.available.lock();
+        tracing::info!(count = available.len(), "signaling subscription pool shutdown");
+        for handle in available.iter() {
+            handle.signal_shutdown();
         }
+    }
+
+    /// Graceful shutdown - waits for all workers to finish (blocking).
+    pub fn shutdown_blocking(&self) {
+        let mut available = self.available.lock();
+        tracing::info!(count = available.len(), "shutting down subscription pool (blocking)");
+        for handle in available.iter_mut() {
+            handle.shutdown_blocking();
+        }
+        available.clear();
     }
 }
 
 impl Drop for SubscriptionSessionPool {
     fn drop(&mut self) {
-        self.shutdown();
+        // Non-blocking: just signal, don't wait
+        self.signal_shutdown();
     }
 }
 

@@ -365,6 +365,10 @@ __all__ = [
     "configure",
     "set_backend",
     "get_backend",
+    # Lifecycle
+    "shutdown",
+    "reset",
+    "is_connected",
     # Schema introspection (user-facing)
     "bops",
     "abops",
@@ -512,6 +516,10 @@ def __getattr__(name: str):
         "configure",
         "set_backend",
         "get_backend",
+        # Lifecycle
+        "shutdown",
+        "reset",
+        "is_connected",
         "Service",
         "Operation",
         "OutputMode",

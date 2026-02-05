@@ -134,17 +134,31 @@ impl RequestWorkerPool {
             .map_err(BlpAsyncError::BlpError)
     }
 
-    /// Graceful shutdown of all workers.
-    pub fn shutdown(&mut self) {
-        tracing::info!(pool_size = self.workers.len(), "shutting down request pool");
+    /// Signal shutdown to all workers (non-blocking).
+    ///
+    /// Workers will terminate when they see the shutdown signal.
+    /// Used by Drop to avoid blocking during interpreter shutdown.
+    pub fn signal_shutdown(&self) {
+        tracing::info!(pool_size = self.workers.len(), "signaling request pool shutdown");
+        for worker in &self.workers {
+            worker.signal_shutdown();
+        }
+    }
+
+    /// Graceful shutdown - waits for all workers to finish (blocking).
+    ///
+    /// Use this for clean shutdown when you can afford to wait.
+    pub fn shutdown_blocking(&mut self) {
+        tracing::info!(pool_size = self.workers.len(), "shutting down request pool (blocking)");
         for worker in &mut self.workers {
-            worker.shutdown();
+            worker.shutdown_blocking();
         }
     }
 }
 
 impl Drop for RequestWorkerPool {
     fn drop(&mut self) {
-        self.shutdown();
+        // Non-blocking: just signal, don't wait
+        self.signal_shutdown();
     }
 }

@@ -589,11 +589,24 @@ impl Engine {
 
     // ─── Admin ───────────────────────────────────────────────────────────────
 
-    /// Graceful shutdown of all workers.
-    pub fn shutdown(mut self) {
-        tracing::info!("Engine shutdown requested");
-        self.request_pool.shutdown();
-        self.subscription_pool.shutdown();
+    /// Signal shutdown to all workers (non-blocking).
+    ///
+    /// Workers will terminate when they see the shutdown signal.
+    /// Used by Drop and Python atexit to avoid blocking.
+    pub fn signal_shutdown(&self) {
+        tracing::info!("Engine signal_shutdown requested");
+        self.request_pool.signal_shutdown();
+        self.subscription_pool.signal_shutdown();
+    }
+
+    /// Graceful shutdown - waits for all workers to finish (blocking).
+    ///
+    /// Use this for clean shutdown when you can afford to wait.
+    /// Consumes the Engine.
+    pub fn shutdown_blocking(mut self) {
+        tracing::info!("Engine shutdown_blocking requested");
+        self.request_pool.shutdown_blocking();
+        self.subscription_pool.shutdown_blocking();
     }
 
     /// Get the tokio runtime (for spawning tasks).

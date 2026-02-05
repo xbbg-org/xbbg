@@ -785,9 +785,19 @@ impl WorkerHandle {
         })
     }
 
-    /// Send a shutdown command and wait for the thread to finish.
-    pub fn shutdown(&mut self) {
+    /// Signal shutdown without waiting (non-blocking).
+    ///
+    /// Used by Drop to avoid blocking during interpreter shutdown.
+    pub fn signal_shutdown(&self) {
         let _ = self.cmd_tx.try_send(WorkerCommand::Shutdown);
+    }
+
+    /// Send a shutdown command and wait for the thread to finish (blocking).
+    ///
+    /// Use this for clean shutdown when you can afford to wait.
+    /// GIL should be released before calling this from Python.
+    pub fn shutdown_blocking(&mut self) {
+        self.signal_shutdown();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -796,6 +806,8 @@ impl WorkerHandle {
 
 impl Drop for WorkerHandle {
     fn drop(&mut self) {
-        self.shutdown();
+        // Non-blocking: just signal, don't wait
+        // Thread will terminate when it sees Shutdown or when process exits
+        self.signal_shutdown();
     }
 }

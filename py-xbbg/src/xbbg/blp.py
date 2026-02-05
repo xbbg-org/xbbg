@@ -13,6 +13,7 @@ API Design:
 from __future__ import annotations
 
 import asyncio
+import atexit
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -177,6 +178,99 @@ _config: EngineConfig | None = None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
+
+
+# =============================================================================
+# Engine Lifecycle Management
+# =============================================================================
+
+
+def _atexit_cleanup() -> None:
+    """Release engine reference during interpreter shutdown.
+
+    This is called automatically by atexit. The Rust Drop chain handles
+    actual cleanup (signaling worker threads to stop).
+
+    Non-blocking: just releases the reference, doesn't wait for threads.
+    """
+    global _engine
+    if _engine is not None:
+        try:
+            _engine.signal_shutdown()
+        except Exception:
+            pass  # Best effort during interpreter shutdown
+        _engine = None
+
+
+# Register cleanup handler
+atexit.register(_atexit_cleanup)
+
+
+def shutdown() -> None:
+    """Signal the Bloomberg engine to shutdown.
+
+    Signals all worker threads to stop. They will terminate when they
+    finish their current work or see the shutdown signal.
+
+    This is called automatically during Python interpreter shutdown.
+    You usually don't need to call this directly.
+
+    Example::
+
+        import xbbg
+
+        df = xbbg.bdp("AAPL US Equity", "PX_LAST")
+
+        # Explicit shutdown (optional - happens automatically on exit)
+        xbbg.shutdown()
+    """
+    global _engine
+    if _engine is not None:
+        _engine.signal_shutdown()
+        _engine = None
+
+
+def reset() -> None:
+    """Reset the engine to allow reconfiguration.
+
+    Shuts down the current engine (if any) and clears configuration.
+    The next Bloomberg request will create a fresh engine.
+
+    Example::
+
+        import xbbg
+
+        # Initial usage
+        df = xbbg.bdp("AAPL US Equity", "PX_LAST")
+
+        # Need different config? Reset first
+        xbbg.reset()
+        xbbg.configure(port=9999)
+        df = xbbg.bdp("AAPL US Equity", "PX_LAST")  # Uses new config
+    """
+    global _engine, _config
+    shutdown()
+    _config = None
+
+
+def is_connected() -> bool:
+    """Check if the Bloomberg engine is initialized.
+
+    Returns True if the engine exists. Note that this doesn't guarantee
+    Bloomberg is still connected - a request might still fail if the
+    connection was lost.
+
+    Example::
+
+        import xbbg
+
+        print(xbbg.is_connected())  # False - not initialized yet
+
+        df = xbbg.bdp("AAPL US Equity", "PX_LAST")
+
+        print(xbbg.is_connected())  # True - engine created
+    """
+    return _engine is not None
 
 
 def configure(

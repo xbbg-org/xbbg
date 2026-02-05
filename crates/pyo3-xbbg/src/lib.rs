@@ -816,6 +816,31 @@ impl PyEngine {
             })
         })
     }
+
+    // =========================================================================
+    // Lifecycle Management
+    // =========================================================================
+
+    /// Signal engine shutdown (non-blocking).
+    ///
+    /// Signals all worker threads to stop. They will terminate when they
+    /// finish their current work or see the shutdown signal.
+    ///
+    /// This is called automatically during Python interpreter shutdown via atexit.
+    /// You usually don't need to call this directly.
+    fn signal_shutdown(&self) {
+        info!("PyEngine: signal_shutdown called");
+        self.engine.signal_shutdown();
+    }
+
+    /// Check if engine is available.
+    ///
+    /// Returns True if the engine exists. Note that this doesn't guarantee
+    /// Bloomberg is still connected - a request might still fail.
+    fn is_available(&self) -> bool {
+        // Engine exists if we have it
+        true
+    }
 }
 
 // =============================================================================
