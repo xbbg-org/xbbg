@@ -549,6 +549,11 @@ class ReferenceTransformer:
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         col_maps = ctx_kwargs.get("col_maps", {}) or {}
 
+        # Lowercase field names for backwards compatibility with v0.10.x
+        # Bloomberg returns field names in uppercase, but v0.10 always lowercased them
+        if "field" in df.columns:
+            df = df.with_columns(nw.col("field").str.to_lowercase().alias("field"))
+
         # Get original ticker order from request for sorting
         original_tickers = request.request_opts.get("tickers", [request.ticker])
         original_tickers = utils_module.normalize_tickers(original_tickers)
@@ -675,6 +680,13 @@ class HistoricalTransformer:
 
         # Wrap with narwhals for transformations
         df = nw.from_native(raw_data, eager_only=True)
+
+        # Lowercase field column names for backwards compatibility with v0.10.x
+        # Bloomberg returns field names in uppercase, but v0.10 always lowercased them
+        # Skip 'ticker' and 'date' columns which should stay as-is
+        rename_map = {col: col.lower() for col in df.columns if col not in ("ticker", "date")}
+        if rename_map:
+            df = df.rename(rename_map)
 
         # Sort by ticker and date for consistent output
         df = df.sort("ticker", "date")
@@ -880,7 +892,20 @@ class BlockDataTransformer:
 
         df = nw.from_native(raw_data, eager_only=True)
 
-        # Block data is already in a good format, just wrap and return
+        # Get column name mappings from context (if provided via col_maps kwarg)
+        ctx_kwargs = request.context.to_kwargs() if request.context else {}
+        col_maps = ctx_kwargs.get("col_maps", {}) or {}
+
+        # Standardize column names to snake_case (backwards compatibility with v0.10.x)
+        # e.g., "Declared Date" -> "declared_date"
+        def standardize_col_name(name: str) -> str:
+            if name in col_maps:
+                return col_maps[name]
+            return name.lower().replace(" ", "_").replace("-", "_")
+
+        rename_map = {col: standardize_col_name(col) for col in df.columns}
+        df = df.rename(rename_map)
+
         return nw.to_native(df)
 
 
