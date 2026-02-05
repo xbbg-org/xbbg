@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ibis backend**: Updated to use `ibis.memtable()` instead of deprecated `con.read_in_memory()`
 - **sqlframe backend**: Fixed import path to use `sqlframe.duckdb.DuckDBSession`
 
+## [0.11.2] - 2026-02-05
+
+### Fixed
+
+- **BDS output format**: Restored v0.10.x backward compatibility for `bds()` output format (#209)
+  - Default `format='wide'` now returns single data column with ticker as index (pandas) or column (other backends)
+  - Field column dropped for cleaner output matching v0.10.x behavior
+  - Users can opt-in to new 3-column format with `format='long'`
+
 ## [0.11.1] - 2026-02-05
 
 ### Fixed
