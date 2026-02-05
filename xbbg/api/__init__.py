@@ -10,6 +10,9 @@ This package contains the main Bloomberg API functions organized into logical mo
 - helpers: Shared utility functions (currency conversion, etc.)
 """
 
+# Import submodules to make them accessible as attributes (needed for mocking in tests)
+from xbbg.api import helpers, historical, intraday, realtime, reference, screening, technical
+
 # Re-export all public functions for convenience
 from xbbg.api.helpers import adjust_ccy
 from xbbg.api.historical import abdh, bdh, dividend, earning, turnover
