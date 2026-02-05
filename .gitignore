@@ -144,3 +144,6 @@ nul
 
 # Backup files
 *.backup
+# Local agent/orchestration config
+.omc/
+.sisyphus/
