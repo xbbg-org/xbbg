@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.11.0 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0))
+Latest release: xbbg==0.11.1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.1))
 <!-- xbbg:latest-release-end -->
 
 ## Table of Contents
@@ -1662,3 +1662,11 @@ _0.11.0_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/
 - Logging format compliance fixes (G004, G201)
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0
+
+_0.11.1_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.1)
+
+### Fixed
+
+- **Field names now lowercase**: Restored v0.10.x behavior where `bdp()`, `bdh()`, and `bds()` return field/column names as lowercase (#206)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.0...v0.11.1
