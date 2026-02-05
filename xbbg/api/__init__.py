@@ -10,6 +10,9 @@ This package contains the main Bloomberg API functions organized into logical mo
 - helpers: Shared utility functions (currency conversion, etc.)
 """
 
+# Import submodules to make them accessible as attributes (needed for mocking in tests)
+from xbbg.api import helpers, historical, intraday, realtime, reference, screening, technical
+
 # Re-export all public functions for convenience
 from xbbg.api.helpers import adjust_ccy
 from xbbg.api.historical import abdh, bdh, dividend, earning, turnover
@@ -20,6 +23,11 @@ from xbbg.api.reference import (
     abds,
     bdp,
     bds,
+    # v1.0 names
+    bfld,
+    blkp,
+    bport,
+    # legacy names
     fieldInfo,
     fieldSearch,
     getBlpapiVersion,
@@ -27,7 +35,7 @@ from xbbg.api.reference import (
     lookupSecurity,
 )
 from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
-from xbbg.api.technical import bta, bta_studies, refresh_studies
+from xbbg.api.technical import bta, bta_studies, refresh_studies, ta_studies
 
 __all__ = [
     "bdp",
@@ -43,6 +51,12 @@ __all__ = [
     "beqs",
     "bsrch",
     "bta",
+    # v1.0 names
+    "ta_studies",
+    "bfld",
+    "blkp",
+    "bport",
+    # legacy names (backward compatible)
     "bta_studies",
     "refresh_studies",
     "live",

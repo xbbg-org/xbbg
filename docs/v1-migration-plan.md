@@ -64,8 +64,8 @@ We need to mirror this in pure Python so the API is identical.
 
 - [x] Remove unused dependencies (pytest, python-stdnum from runtime)
 - [x] Replace pytz with stdlib datetime.timezone
-- [ ] Add narwhals as dependency
-- [ ] Keep pyarrow (already present)
+- [x] Add narwhals as dependency
+- [x] Keep pyarrow (already present)
 
 ### 1.2 Add Backend Enum (matching Rust v1)
 
@@ -466,6 +466,42 @@ def bdh(tickers, flds, ..., backend=None, format=None):
 
 ---
 
+### 1.9 Extension Module (`xbbg.ext`)
+
+The `xbbg.ext` module provides a forward-compatible import path for helper functions
+that will be removed from the `blp` namespace in v1.0.
+
+**Module Structure:**
+```
+xbbg/ext/
+├── __init__.py      # Main exports
+├── currency.py      # adjust_ccy()
+├── dividends.py     # dividend()
+├── earnings.py      # earning()
+├── turnover.py      # turnover()
+├── holdings.py      # etf_holdings(), preferreds(), corporate_bonds()
+├── futures.py       # fut_ticker(), active_futures()
+├── cdx.py           # cdx_ticker(), active_cdx()
+└── yas.py           # yas(), YieldType
+```
+
+**Import Paths:**
+
+| v0.x (deprecated) | v1.0 (recommended) |
+|-------------------|-------------------|
+| `from xbbg import blp; blp.dividend(...)` | `from xbbg.ext import dividend` |
+| `from xbbg import blp; blp.fut_ticker(...)` | `from xbbg.ext import fut_ticker` |
+| `from xbbg import blp; blp.adjust_ccy(...)` | `from xbbg.ext import adjust_ccy` |
+| `from xbbg import blp; blp.yas(...)` | `from xbbg.ext import yas` |
+
+**Backwards Compatibility:**
+
+- Old import paths still work in v0.11.x with deprecation warnings
+- `xbbg.markets.resolvers` re-exports from `xbbg.ext.futures` and `xbbg.ext.cdx`
+- In v1.0, old paths will be removed
+
+---
+
 ## Phase 2: v0.12 — Warnings
 
 ### 2.1 Enable Warnings
@@ -558,19 +594,30 @@ date             │         │           │         │           │
 ## Migration Checklist
 
 ### v0.11
-- [ ] Remove unused deps (pytest, python-stdnum, pytz)
-- [ ] Add narwhals dependency
-- [ ] Create `xbbg/options.py`
-- [ ] Create `xbbg/deprecation.py`
-- [ ] Create `xbbg/io/convert.py`
-- [ ] Refactor `bdh()` to use Arrow internally
-- [ ] Refactor `bdib()` to use Arrow internally
-- [ ] Refactor `bdp()` to use Arrow internally
-- [ ] Refactor `bds()` to use Arrow internally
-- [ ] Add backend/format parameters to all API functions
-- [ ] Write conversion tests
-- [ ] Write regression tests
-- [ ] Update type hints
+- [x] Remove unused deps (pytest, python-stdnum, pytz)
+- [x] Add narwhals dependency
+- [x] Create `xbbg/options.py` (now `xbbg/backend.py`)
+- [x] Create `xbbg/deprecation.py`
+- [x] Create `xbbg/io/convert.py`
+- [x] Refactor `bdh()` to use Arrow internally
+- [x] Refactor `bdib()` to use Arrow internally
+- [x] Refactor `bdp()` to use Arrow internally
+- [x] Refactor `bds()` to use Arrow internally
+- [x] Add backend/format parameters to all API functions
+- [x] Write conversion tests
+- [x] Write regression tests
+- [x] Update type hints
+- [x] Create `xbbg/ext/` module for v1.0 function migration:
+  - [x] `xbbg/ext/__init__.py` - main exports
+  - [x] `xbbg/ext/currency.py` - `adjust_ccy()`
+  - [x] `xbbg/ext/dividends.py` - `dividend()`
+  - [x] `xbbg/ext/earnings.py` - `earning()`
+  - [x] `xbbg/ext/turnover.py` - `turnover()`
+  - [x] `xbbg/ext/holdings.py` - `etf_holdings()`, `preferreds()`, `corporate_bonds()`
+  - [x] `xbbg/ext/futures.py` - `fut_ticker()`, `active_futures()`
+  - [x] `xbbg/ext/cdx.py` - `cdx_ticker()`, `active_cdx()`
+  - [x] `xbbg/ext/yas.py` - `yas()`, `YieldType`
+- [x] Update `xbbg/markets/resolvers.py` to re-export from `xbbg.ext`
 
 ### v0.12
 - [ ] Enable deprecation warnings

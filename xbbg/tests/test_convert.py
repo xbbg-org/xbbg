@@ -451,17 +451,31 @@ class TestBackendEnum:
 
     def test_backend_values(self):
         """Test that Backend enum has expected values."""
+        # Eager backends
         assert Backend.NARWHALS.value == "narwhals"
         assert Backend.PANDAS.value == "pandas"
         assert Backend.POLARS.value == "polars"
-        assert Backend.POLARS_LAZY.value == "polars_lazy"
         assert Backend.PYARROW.value == "pyarrow"
+        assert Backend.CUDF.value == "cudf"
+        assert Backend.MODIN.value == "modin"
+        # Lazy backends
+        assert Backend.NARWHALS_LAZY.value == "narwhals_lazy"
+        assert Backend.POLARS_LAZY.value == "polars_lazy"
         assert Backend.DUCKDB.value == "duckdb"
+        assert Backend.DASK.value == "dask"
+        assert Backend.IBIS.value == "ibis"
+        assert Backend.PYSPARK.value == "pyspark"
+        assert Backend.SQLFRAME.value == "sqlframe"
 
     def test_backend_is_string_enum(self):
         """Test that Backend inherits from str."""
         assert isinstance(Backend.PANDAS, str)
         assert Backend.PANDAS == "pandas"
+
+    def test_all_backends_counted(self):
+        """Test that we have all expected backends."""
+        # 6 eager + 7 lazy = 13 total backends
+        assert len(Backend) == 13
 
 
 class TestFormatEnum:

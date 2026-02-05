@@ -10,7 +10,8 @@ Bloomberg API calls. Use Bloomberg API directly for market metadata:
 - Currency pairs: bdp(ticker, ['INVERSE_QUOTED', 'BASE_CRNCY'])
 """
 
-import numpy as np
+import numbers
+
 import pandas as pd
 
 from xbbg.io import files
@@ -92,7 +93,7 @@ def load_yaml(yaml_file: str) -> pd.Series:
     return pd.Series(dtype=object)
 
 
-def to_hours(num_ts: str | list | int | float | np.integer | np.floating) -> str | list:
+def to_hours(num_ts: str | list | numbers.Real) -> str | list:
     """Convert numeric time to hours format (HH:MM).
 
     Args:
@@ -116,7 +117,7 @@ def to_hours(num_ts: str | list | int | float | np.integer | np.floating) -> str
     if isinstance(num_ts, str):
         return num_ts
     # Handle numpy scalar types (int64, int32, float64, etc.)
-    if isinstance(num_ts, (int, float, np.integer, np.floating)):
+    if isinstance(num_ts, numbers.Real):
         num_val = float(num_ts)
         return f"{int(num_val / 100):02d}:{int(num_val % 100):02d}"
     # Handle list-like types (list, tuple, array, etc.)

@@ -20,7 +20,7 @@ from xbbg.options import get_backend
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["bta", "bta_studies", "refresh_studies"]
+__all__ = ["bta", "ta_studies", "bta_studies", "refresh_studies"]
 
 
 def _get_study_types() -> dict[str, dict[str, Any]]:
@@ -28,7 +28,7 @@ def _get_study_types() -> dict[str, dict[str, Any]]:
     return get_studies()
 
 
-def bta_studies(
+def ta_studies(
     study: str | None = None,
     *,
     backend: Backend | None = None,
@@ -107,7 +107,11 @@ def refresh_studies(*, backend: Backend | None = None) -> Any:
         DataFrame: Updated list of available studies.
     """
     refresh_cache()
-    return bta_studies(backend=backend)
+    return ta_studies(backend=backend)
+
+
+# Backward compatibility alias (deprecated in v1.0)
+bta_studies = ta_studies
 
 
 def bta(

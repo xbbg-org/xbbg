@@ -468,14 +468,41 @@ Starting with v0.11.0, xbbg is **DataFrame-library agnostic**. You can get outpu
 
 #### Supported Backends
 
-| Backend | Output Type | Best For |
-|---------|-------------|----------|
-| `pandas` | `pd.DataFrame` | Traditional workflows, compatibility |
-| `polars` | `pl.DataFrame` | High performance, large datasets |
-| `polars_lazy` | `pl.LazyFrame` | Deferred execution, query optimization |
-| `pyarrow` | `pa.Table` | Zero-copy interop, memory efficiency |
-| `duckdb` | DuckDB relation | SQL analytics, OLAP queries |
-| `narwhals` | Narwhals DataFrame | Library-agnostic code |
+| Backend | Type | Output | Best For |
+|---------|------|--------|----------|
+| **Eager Backends** ||||
+| `pandas` | Eager | `pd.DataFrame` | Traditional workflows, compatibility |
+| `polars` | Eager | `pl.DataFrame` | High performance, large datasets |
+| `pyarrow` | Eager | `pa.Table` | Zero-copy interop, memory efficiency |
+| `narwhals` | Eager | Narwhals DataFrame | Library-agnostic code |
+| `modin` | Eager | Modin DataFrame | Pandas API with parallel execution |
+| `cudf` | Eager | cuDF DataFrame | GPU-accelerated processing (NVIDIA) |
+| **Lazy Backends** ||||
+| `polars_lazy` | Lazy | `pl.LazyFrame` | Deferred execution, query optimization |
+| `narwhals_lazy` | Lazy | Narwhals LazyFrame | Library-agnostic lazy evaluation |
+| `duckdb` | Lazy | DuckDB relation | SQL analytics, OLAP queries |
+| `dask` | Lazy | Dask DataFrame | Out-of-core and distributed computing |
+| `ibis` | Lazy | Ibis Table | Unified interface to many backends |
+| `pyspark` | Lazy | Spark DataFrame | Big data processing (requires Java) |
+| `sqlframe` | Lazy | SQLFrame DataFrame | SQL-first DataFrame operations |
+
+**Note:** Lazy backends only support `LONG` and `SEMI_LONG` output formats (not `WIDE`).
+
+#### Check Backend Availability
+
+```python
+from xbbg import get_available_backends, print_backend_status, is_backend_available
+
+# List installed backends
+print(get_available_backends())  # ['pandas', 'polars', 'pyarrow', ...]
+
+# Check if a specific backend is available
+if is_backend_available('polars'):
+    print("Polars is installed!")
+
+# Print detailed status of all backends
+print_backend_status()
+```
 
 #### Usage
 

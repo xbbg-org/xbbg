@@ -7,7 +7,6 @@ for an instrument's predefined sessions based on exchange metadata.
 from dataclasses import dataclass
 import logging
 
-import numpy as np
 import pandas as pd
 
 from xbbg import const
@@ -139,7 +138,8 @@ def shift_time(start_time, mins) -> str:
         End time in terms of HH:MM string.
     """
     s_time = pd.Timestamp(start_time)
-    e_time = s_time + np.sign(mins) * pd.Timedelta(f"00:{abs(mins)}:00")
+    sign = 1 if mins > 0 else (-1 if mins < 0 else 0)
+    e_time = s_time + sign * pd.Timedelta(f"00:{abs(mins)}:00")
     return e_time.strftime("%H:%M")
 
 
