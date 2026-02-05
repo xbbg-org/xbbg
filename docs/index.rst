@@ -146,6 +146,62 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.11.2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.2>`__
+
+### Added
+
+- **Extended multi-backend support**: Added 6 new backends matching narwhals' full backend support:
+  - **Eager backends**: `cudf` (GPU-accelerated via NVIDIA RAPIDS), `modin` (distributed pandas)
+  - **Lazy backends**: `dask` (parallel computing), `ibis` (portable DataFrame expressions), `pyspark` (Apache Spark), `sqlframe` (SQL-based DataFrames)
+  - Total: 13 backends (6 eager + 7 lazy)
+
+- **Backend availability checking**: New functions to check and validate backend availability with helpful error messages:
+  - `is_backend_available(backend)` - Check if a backend package is installed
+  - `check_backend(backend)` - Check availability with version validation, raises helpful errors
+  - `get_available_backends()` - List all currently available backends
+  - `print_backend_status()` - Diagnostic function showing all backend statuses
+
+- **Format compatibility checking**: New functions to validate format support per backend:
+  - `is_format_supported(backend, format)` - Check if a format works with a backend
+  - `get_supported_formats(backend)` - Get set of supported formats for a backend
+  - `check_format_compatibility(backend, format)` - Validate with helpful errors
+  - `validate_backend_format(backend, format)` - Combined validation for API functions
+
+- **`xbbg.ext` module**: New extension module for v1.0 migration containing helper functions that will be removed from `blp` namespace
+  - `xbbg.ext.currency` - `adjust_ccy()` for currency conversion
+  - `xbbg.ext.dividends` - `dividend()` for dividend history
+  - `xbbg.ext.earnings` - `earning()` for earnings breakdowns
+  - `xbbg.ext.turnover` - `turnover()` for trading volume
+  - `xbbg.ext.holdings` - `etf_holdings()`, `preferreds()`, `corporate_bonds()` BQL helpers
+  - `xbbg.ext.futures` - `fut_ticker()`, `active_futures()` for futures resolution
+  - `xbbg.ext.cdx` - `cdx_ticker()`, `active_cdx()` for CDX index resolution
+  - `xbbg.ext.yas` - `yas()`, `YieldType` for fixed income analytics
+
+- New v1.0-compatible import path: `from xbbg.ext import dividend, fut_ticker, ...` (no deprecation warnings)
+
+- **Pandas removed as required dependency**: `xbbg.ext` modules now use only stdlib datetime and narwhals, making pandas fully optional
+
+### Changed
+
+- **Backend enum reorganized**: Backends now categorized as eager (full API) vs lazy (deferred execution)
+
+- **Format restrictions**: WIDE format only available for eager backends (pandas, polars, pyarrow, narwhals, cudf, modin); lazy backends limited to LONG and SEMI_LONG
+
+- **Version requirements updated**: Minimum versions now match narwhals requirements (duckdb>=1.0, dask>=2024.1)
+
+- `xbbg/markets/resolvers.py` now re-exports from `xbbg.ext.futures` and `xbbg.ext.cdx` for backwards compatibility
+
+- Internal implementations moved to `xbbg/ext/` module; old import paths still work with deprecation warnings
+
+### Fixed
+
+- **ibis backend**: Updated to use `ibis.memtable()` instead of deprecated `con.read_in_memory()`
+
+- **sqlframe backend**: Fixed import path to use `sqlframe.duckdb.DuckDBSession`
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.1...v0.11.2
+
+
 *0.11.1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.1>`__
 
 ### Fixed
