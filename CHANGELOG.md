@@ -2,23 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ## [0.11.0] - 2026-02-02
 
-### Highlights
-- **Arrow-first pipeline**: Complete rewrite of internal data processing using PyArrow for improved performance
-- **Multi-backend support**: Output to pandas, Polars, PyArrow, DuckDB, or narwhals with the new `Backend` enum
-- **New API functions**: `bta()` for technical analysis, `bqr()` for dealer quotes, `yas()` for fixed income analytics
-- **BQL helpers**: `preferreds()` and `corporate_bonds()` convenience functions
-- **Dependency cleanup**: Removed pandas-market-calendars and the trials mechanism for a leaner install
-- **v1.0 migration path**: Deprecation warnings and forward-compatible APIs prepare for the upcoming v1.0 release
-
 ### Added
-- **Arrow-first pipeline**: Complete rewrite of internal data processing using PyArrow
+
+- **Arrow-first pipeline**: Complete rewrite of internal data processing using PyArrow for improved performance
 - **Multi-backend support**: New `Backend` enum supporting narwhals, pandas, polars, polars_lazy, pyarrow, duckdb
 - **Output format control**: New `Format` enum with long, semi_long, wide options
 - **bta()**: Bloomberg Technical Analysis function for 50+ technical indicators (#175)
@@ -36,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CONTRIBUTING.md and CODE_OF_CONDUCT.md for community standards
 
 ### Changed
+
 - All API functions now accept `backend` and `format` parameters
 - Internal pipeline uses PyArrow tables with narwhals transformations
 - Removed pytz dependency (using stdlib `datetime.timezone`)
@@ -44,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logging level adjustments: `BBG_ROOT not set` promoted to WARNING, cache timing demoted to DEBUG
 
 ### Deprecated
+
 - `connect()` / `disconnect()` - engine auto-initializes in v1.0
 - `getBlpapiVersion()` - use `get_sdk_info()` instead
 - `lookupSecurity()` - will become `blkp()` in v1.0
@@ -54,10 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Futures/CDX utilities (`fut_ticker()`, `active_futures()`, `cdx_ticker()`, `active_cdx()`) moving to `xbbg.ext` in v1.0
 
 ### Removed
+
 - **Trials mechanism**: Eliminated retry-blocking system that caused silent failures after 2 failed attempts
 - **pandas-market-calendars dependency**: Exchange info now sourced exclusively from Bloomberg API with local caching
 
 ### Fixed
+
 - **Import without blpapi installed**: Fixed `AttributeError` when importing xbbg without blpapi (#200)
 - **Japan/non-US timezone fix for bdib**: Trading hours now correctly converted to exchange's local timezone (#198)
 - **stream() field values**: Subscribed field values now always included in output dict (#199)
@@ -71,181 +68,243 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Helper functions now work correctly with LONG format output
 - Logging format compliance fixes (G004, G201)
 
-## [0.10.3] - 2024-01-07
+## [0.10.3] - 2025-12-29
 
 ### Fixed
+
 - Extended BDS test date range to 120 days for quarterly dividends
 - Helper functions now work correctly with LONG format output
 
 ### Changed
+
 - Re-enabled futures and CDX resolver tests
 - Updated live endpoint tests for LONG format output
-
-### Improved
 - Code style improvements using contextlib.suppress instead of try-except-pass
 
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.2...v0.10.3
-
-## [0.10.2] - 2024-01-06
+## [0.10.2] - 2025-12-29
 
 ### Changed
+
 - CI/CD improvements with reusable workflows (workflow_call) for release automation
 - Separated pypi_upload workflow for trusted publisher compatibility
 
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.1...v0.10.2
-
-## [0.10.1] - 2024-01-05
+## [0.10.1] - 2025-12-29
 
 ### Fixed
+
 - Persist blp.connect() session for subsequent API calls (#165)
 
 ### Changed
-- Trigger release workflows via release event instead of workflow_dispatch
 
-### Documentation
+- Trigger release workflows via release event instead of workflow_dispatch
 - Removed Gitter badge (replaced by Discord)
 - Added Discord community link and badge
 
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.10.0...v0.10.1
-
-## [0.10.0] - 2024-01-04
+## [0.10.0] - 2025-12-25
 
 ### Added
+
 - Updated polars-bloomberg support for BQL, BDIB and BSRCH (#155)
 
 ### Fixed
+
 - Add identifier type prefix to B-Pipe subscription topics (#156)
 - Remove pandas version cap to support Python 3.14 (#161)
 - Resolve RST formatting warning in index.rst (#162)
 - Update Japan equity market hours for TSE trading extension (#163)
 
-### Contributors
-- @MarekOzana made their first contribution in #155
-
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.9.1...v0.10.0
-
-## [0.9.1] - 2023-12-15
+## [0.9.1] - 2025-12-11
 
 ### Fixed
+
 - Fix BQL returning only one row for multi-value results (#152)
 
-### Documentation
-- Add blank lines around latest-release markers in index.rst
+### Changed
 
-### CI/CD
+- Add blank lines around latest-release markers in index.rst
 - Remove redundant release triggers from workflows
 - Trigger release workflows explicitly from semantic_version
 
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.9.0...v0.9.1
-
-## [0.9.0] - 2023-12-10
+## [0.9.0] - 2025-12-02
 
 ### Added
+
 - Add etf_holdings() function for retrieving ETF holdings via BQL (#147)
 - Add multi-day support to bdib() (#148)
 - Add multi-day cache support for bdib() (#149)
 
 ### Fixed
+
 - Resolve RST duplicate link targets and Sphinx build warnings
 
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.2...v0.9.0
+## [0.8.2] - 2025-11-19
 
-## [0.8.2] - 2023-11-20
+### Fixed
 
-See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2
+- Fix BQL options chain metadata issues (#146)
 
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
-
-## [0.8.1] - 2023-11-15
-
-See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.8.1
-
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.8.0...v0.8.1
-
-## [0.8.0] - 2023-11-10
-
-See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.8.0
-
-**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.7.11...v0.8.0
-
-## [0.7.11] - 2023-10-20
-
-See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.11
-
-## [0.7.10] - 2023-10-15
-
-See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.10
-
-## [0.7.9] - 2023-10-10
-
-See release notes: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9
-
-## [0.7.2] - 2023-08-15
+## [0.8.1] - 2025-11-17
 
 ### Changed
+
+- CI/CD workflow improvements for trusted publisher compatibility
+
+## [0.8.0] - 2025-11-16
+
+### Added
+
+- **bsrch()**: Bloomberg SRCH queries for fixed income, commodities, and weather data (#137)
+- **Fixed income securities support**: ISIN/CUSIP/SEDOL identifiers for bdib (#136)
+- **Server host parameter**: Connect to remote Bloomberg servers via `server` parameter (#138)
+- **Interval parameter for subscribe()/live()**: Configurable update intervals for real-time feeds
+- Semantic versioning workflow for automated releases
+- Support for GY (Xetra), IM (Borsa Italiana), and SE (SIX) exchanges (#140)
+- Comprehensive bar interval selection guide for bdib function
+
+### Changed
+
+- Comprehensive codebase cleanup and restructuring (#144)
+- Improved logging with blpapi integration and performance optimizations (#135)
+- Enhanced BEQS timeout handling with configurable `timeout` and `max_timeouts` parameters
+- Updated README with comparison table, quickstart guide, and examples
+
+### Fixed
+
+- Fix BQL syntax documentation and error handling (#141, #142)
+- Remove 1-minute offset for bare session names in bdtick (#139)
+- Resolve Sphinx build errors and RST formatting issues
+
+## [0.7.11] - 2025-11-12
+
+### Added
+
+- **BQL support**: Bloomberg Query Language with QueryRequest and result parsing
+- **Sub-minute intervals for bdib**: 10-second bars via `intervalHasSeconds=True` flag
+- pandas-market-calendars integration for exchange session resolution
+
+### Changed
+
+- Standardized Google-style docstrings across codebase
+- Migrate to uv for development with PEP 621 pyproject.toml
+- Switch to PyPI Trusted Publishing (OIDC)
+- Exclude tests from wheel and sdist distributions
+
+### Fixed
+
+- Fix BQL to use correct service name and handle JSON response format
+- Normalize UX* Index symbols; fix pandas 'M' deprecation to 'ME' in fut_ticker
+
+## [0.7.10] - 2025-11-05
+
+### Added
+
+- Enhanced Bloomberg connection handling with alternative connection methods
+- Market resolvers for active futures and CDX tickers
+
+### Changed
+
+- Replace flake8 with ruff for linting
+- Update Python version requirements and dependencies
+- Clean up CI workflows and documentation
+
+## [0.7.9] - 2025-04-15
+
+### Fixed
+
+- Corrected typo (thanks to @ShiyuanSchonfeld)
+- Pin pandas version due to pd.to_datetime behaviour change in format_raw
+- Fix TLS Options typo when creating a new connection
+
+### Changed
+
+- Add exchanges support
+- CI/CD configuration updates
+
+## [0.7.2] - 2020-12-16
+
+### Added
+
+- Logo image for project branding
+
+### Changed
+
 - Use `async` for live data feeds
+- Speed up by caching files
+- Change logic of exchange lookup and market timing
+- Push all values from live subscription
+- Support for Python 3.8
 
-## [0.7.0] - 2023-08-01
+### Fixed
+
+- Proper caching implementation
+
+## [0.7.0] - 2020-08-02
 
 ### Changed
+
 - `bdh` preserves column orders (both tickers and flds)
 - `timeout` argument is available for all queries
 - `bdtick` usually takes longer to respond - can use `timeout=1000` for example if keep getting empty DataFrame
 
-## [0.6.6] - 2023-07-15
+## [0.6.7] - 2020-05-17
 
 ### Added
+
 - Add flexibility to use reference exchange as market hour definition
 - No longer necessary to add `.yml` for new tickers, provided that the exchange was defined in `/xbbg/markets/exch.yml`
 
-## [0.6.0] - 2023-06-01
+### Changed
+
+- Switch CI from Travis to GitHub Actions
+
+## [0.6.0] - 2020-01-23
 
 ### Added
-- Tick data availability
 
-### Improved
-- Speed improvements
-
-## [0.5.0] - 2023-04-01
+- Tick data availability via bdtick()
 
 ### Changed
+
+- Speed improvements by removing intermediate layer of generator for processing Bloomberg responses
+
+## [0.5.0] - 2020-01-08
+
+### Changed
+
 - Rewritten library to add subscription, BEQS, simplify interface and remove dependency of `pdblp`
 
-## [0.1.22] - 2022-12-01
+## [0.1.22] - 2019-09-15
 
 ### Security
+
 - Remove PyYAML dependency due to security vulnerability
 
-## [0.1.17] - 2022-10-01
+## [0.1.17] - 2019-07-01
 
 ### Added
+
 - Add `adjust` argument in `bdh` for easier dividend / split adjustments
 
 ---
 
 [Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.0...HEAD
-[0.11.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0
-[0.11.0b5]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b5
-[0.11.0b4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b4
-[0.11.0b3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3
-[0.11.0b2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b2
-[0.11.0b1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b1
-[0.10.3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.3
-[0.10.2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.2
-[0.10.1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.1
-[0.10.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.10.0
-[0.9.1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.9.1
-[0.9.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.9.0
-[0.8.2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.8.2
-[0.8.1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.8.1
-[0.8.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.8.0
-[0.7.11]: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.11
-[0.7.10]: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.10
-[0.7.9]: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.9
-[0.7.2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.2
-[0.7.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.7.0
-[0.6.6]: https://github.com/alpha-xone/xbbg/releases/tag/v0.6.6
-[0.6.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.6.0
-[0.5.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.5.0
+[0.11.0]: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0
+[0.10.3]: https://github.com/alpha-xone/xbbg/compare/v0.10.2...v0.10.3
+[0.10.2]: https://github.com/alpha-xone/xbbg/compare/v0.10.1...v0.10.2
+[0.10.1]: https://github.com/alpha-xone/xbbg/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/alpha-xone/xbbg/compare/v0.9.1...v0.10.0
+[0.9.1]: https://github.com/alpha-xone/xbbg/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/alpha-xone/xbbg/compare/v0.8.2...v0.9.0
+[0.8.2]: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
+[0.8.1]: https://github.com/alpha-xone/xbbg/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/alpha-xone/xbbg/compare/v0.7.11...v0.8.0
+[0.7.11]: https://github.com/alpha-xone/xbbg/compare/v0.7.10...v0.7.11
+[0.7.10]: https://github.com/alpha-xone/xbbg/compare/v0.7.9...v0.7.10
+[0.7.9]: https://github.com/alpha-xone/xbbg/compare/v0.7.2...v0.7.9
+[0.7.2]: https://github.com/alpha-xone/xbbg/compare/v0.7.0...v0.7.2
+[0.7.0]: https://github.com/alpha-xone/xbbg/compare/v0.6.7...v0.7.0
+[0.6.7]: https://github.com/alpha-xone/xbbg/compare/v0.6.0...v0.6.7
+[0.6.0]: https://github.com/alpha-xone/xbbg/compare/v0.5.1...v0.6.0
+[0.5.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.5.1
 [0.1.22]: https://github.com/alpha-xone/xbbg/releases/tag/v0.1.22
 [0.1.17]: https://github.com/alpha-xone/xbbg/releases/tag/v0.1.17
