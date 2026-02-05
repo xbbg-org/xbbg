@@ -18,7 +18,20 @@ logger.addHandler(logging.NullHandler())
 logger.setLevel(logging.WARNING)
 
 # Backend and format configuration (matching Rust v1 API)
-from xbbg.backend import Backend, EngineConfig, Format, configure  # noqa: E402, F401
+from xbbg.backend import (  # noqa: E402, F401
+    Backend,
+    EngineConfig,
+    Format,
+    check_backend,
+    check_format_compatibility,
+    configure,
+    get_available_backends,
+    get_supported_formats,
+    is_backend_available,
+    is_format_supported,
+    print_backend_status,
+    validate_backend_format,
+)
 
 # Exception classes (v1.0 compatible)
 from xbbg.exceptions import (  # noqa: E402, F401
@@ -59,6 +72,15 @@ try:
         "set_backend",
         "get_format",
         "set_format",
+        # Backend availability
+        "check_backend",
+        "check_format_compatibility",
+        "get_available_backends",
+        "get_supported_formats",
+        "is_backend_available",
+        "is_format_supported",
+        "print_backend_status",
+        "validate_backend_format",
         # Exceptions
         "BlpError",
         "BlpFieldError",
@@ -92,6 +114,15 @@ except ImportError:
         "set_backend",
         "get_format",
         "set_format",
+        # Backend availability
+        "check_backend",
+        "check_format_compatibility",
+        "get_available_backends",
+        "get_supported_formats",
+        "is_backend_available",
+        "is_format_supported",
+        "print_backend_status",
+        "validate_backend_format",
         # Exceptions
         "BlpError",
         "BlpFieldError",

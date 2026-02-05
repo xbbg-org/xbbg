@@ -20,7 +20,16 @@ from xbbg.options import get_backend
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["fieldInfo", "fieldSearch", "lookupSecurity", "getPortfolio", "getBlpapiVersion"]
+__all__ = [
+    "bfld",
+    "fieldInfo",
+    "fieldSearch",
+    "blkp",
+    "lookupSecurity",
+    "bport",
+    "getPortfolio",
+    "getBlpapiVersion",
+]
 
 
 def fieldInfo(
@@ -408,6 +417,55 @@ def getPortfolio(
         all_kwargs.update(overrides)
 
     return bds(security, field, use_port=True, verbose=verbose, backend=backend, format=format, **all_kwargs)
+
+
+def bfld(
+    fields: str | list[str] | None = None,
+    *,
+    search_spec: str | None = None,
+    backend: Backend | None = None,
+    **kwargs,
+) -> Any:
+    """Get field metadata or search for fields.
+
+    This is the v1.0 unified field function that combines fieldInfo and fieldSearch.
+
+    Args:
+        fields: Single field or list of fields to get metadata for.
+            Mutually exclusive with search_spec.
+        search_spec: Search term to find fields by name/description.
+            Mutually exclusive with fields.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        **kwargs: Infrastructure options (e.g., port, server).
+
+    Returns:
+        DataFrame: Field information or search results.
+
+    Raises:
+        ValueError: If neither fields nor search_spec is provided, or both are provided.
+
+    Examples:
+        >>> from xbbg import blp
+        >>> # Get info for specific fields
+        >>> info = blp.bfld(fields=['PX_LAST', 'VOLUME'])  # doctest: +SKIP
+        >>> # Search for fields by keyword
+        >>> results = blp.bfld(search_spec='vwap')  # doctest: +SKIP
+    """
+    if fields is not None and search_spec is not None:
+        raise ValueError("Cannot specify both 'fields' and 'search_spec'. Use one or the other.")
+    if fields is None and search_spec is None:
+        raise ValueError("Must specify either 'fields' or 'search_spec'.")
+
+    if search_spec is not None:
+        return fieldSearch(search_spec, backend=backend, **kwargs)
+    # fields is guaranteed non-None here due to check above
+    assert fields is not None
+    return fieldInfo(fields, backend=backend, **kwargs)
+
+
+# Backward compatibility aliases (v1.0 names)
+blkp = lookupSecurity
+bport = getPortfolio
 
 
 def getBlpapiVersion(**kwargs) -> dict[str, str]:

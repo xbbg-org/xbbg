@@ -11,7 +11,6 @@ from itertools import starmap
 import logging
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import pandas as pd
 
 from xbbg import const
@@ -517,8 +516,9 @@ def elem_value(element: blpapi.Element):
         value = element.getValue()
     except ValueError:
         return None
-    if isinstance(value, np.bool_):
-        return bool(value)
+    # Handle numpy scalar types (bool_, int64, float64, etc.) without importing numpy
+    if hasattr(value, "item") and hasattr(type(value), "__module__") and "numpy" in str(type(value).__module__):
+        return value.item()
     if isinstance(value, blpapi.Name):
         return str(value)
     return value
@@ -726,7 +726,7 @@ def earning_pct(data: pd.DataFrame, yr):
     Optimized implementation using vectorized operations where possible.
     """
     pct = f"{yr}_pct"
-    data.loc[:, pct] = np.nan
+    data.loc[:, pct] = float("nan")
 
     # Calculate level 1 percentage (vectorized)
     level_1_mask = data.level == 1

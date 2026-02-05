@@ -31,14 +31,37 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
   "narwhals>=2.14.0",
-  "numpy>=2.2.6",
-  "pandas>=2.0",
   "pyarrow>=22.0.0",
 ]
 
 [project.optional-dependencies]
-# Kept for compatibility if consumers expect extras, but dev/test tooling
-# is managed via uv dependency groups below.
+# DataFrame backends - install what you need
+# Eager backends (full API support)
+pandas = ["pandas>=2.0"]
+polars = ["polars>=0.20"]
+cudf = ["cudf-cu12>=24.10"]  # NVIDIA RAPIDS GPU acceleration
+modin = ["modin[all]>=0.25"]  # Distributed pandas
+# Lazy backends (deferred execution)
+duckdb = ["duckdb>=1.0"]
+dask = ["dask[dataframe]>=2024.1"]
+ibis = ["ibis-framework>=6.0"]
+pyspark = ["pyspark>=3.5"]
+sqlframe = ["sqlframe>=3.22"]
+# Convenience extras
+all-backends = [
+  "pandas>=2.0",
+  "polars>=0.20",
+  "duckdb>=1.0",
+  "dask[dataframe]>=2024.1",
+  "ibis-framework>=6.0",
+]
+all-backends-gpu = [
+  "pandas>=2.0",
+  "polars>=0.20",
+  "duckdb>=1.0",
+  "cudf-cu12>=24.10",
+]
+# Dev/test tooling - managed via uv dependency groups below
 test = ["pytest", "pytest-cov", "coverage", "codecov"]
 dev = ["ruff", "ipykernel", "build", "twine", "pre-commit"]
 docs = ["sphinx>=5.3.0", "sphinx-rtd-theme>=2.0.0", "sphinx-llms-txt>=0.7.0"]
@@ -153,6 +176,7 @@ log_cli_date_format = "%H:%M:%S"
 dev = [
     "blpapi",
     "coverage>=7.11.0",
+    "pandas>=2.0",  # Needed for tests and ext module
     "pytest-cov>=7.0.0",
     "ruff>=0.14.3",
 ]

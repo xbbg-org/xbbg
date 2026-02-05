@@ -24,6 +24,11 @@ from xbbg.api.reference import (
     abds,
     bdp,
     bds,
+    # v1.0 names (no deprecation)
+    bfld,
+    blkp,
+    bport,
+    # legacy names (for deprecation wrappers)
     fieldInfo as _fieldInfo,
     fieldSearch as _fieldSearch,
     getBlpapiVersion as _getBlpapiVersion,
@@ -39,7 +44,7 @@ from xbbg.api.screening import (
     etf_holdings as _etf_holdings,
     preferreds as _preferreds,
 )
-from xbbg.api.technical import bta, bta_studies as _bta_studies, refresh_studies as _refresh_studies
+from xbbg.api.technical import bta, bta_studies as _bta_studies, refresh_studies as _refresh_studies, ta_studies
 from xbbg.core.infra.conn import connect as _connect, disconnect as _disconnect
 from xbbg.deprecation import (
     warn_active_cdx,
@@ -360,4 +365,9 @@ __all__ = [
     "bqr",
     "bta",
     "stream",
+    # v1.0 names (new, no deprecation)
+    "ta_studies",
+    "bfld",
+    "blkp",
+    "bport",
 ]
