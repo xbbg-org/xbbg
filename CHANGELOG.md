@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.11.2] - 2026-02-05
-
 ### Added
 
 - **Extended multi-backend support**: Added 6 new backends matching narwhals' full backend support:
