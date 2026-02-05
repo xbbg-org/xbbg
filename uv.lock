@@ -307,6 +307,19 @@ wheels = [
 ]
 
 [[package]]
+name = "codecov"
+version = "2.1.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "coverage" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2c/bb/594b26d2c85616be6195a64289c578662678afa4910cef2d3ce8417cf73e/codecov-2.1.13.tar.gz", hash = "sha256:2362b685633caeaf45b9951a9b76ce359cd3581dd515b430c6c3f5dfb4d92a8c", size = 21416, upload-time = "2023-04-17T23:11:39.779Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/02/18785edcdf6266cdd6c6dc7635f1cbeefd9a5b4c3bb8aff8bd681e9dd095/codecov-2.1.13-py2.py3-none-any.whl", hash = "sha256:c2ca5e51bba9ebb43644c43d0690148a55086f7f5e6fd36170858fa4206744d5", size = 16512, upload-time = "2023-04-17T23:11:37.344Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -752,7 +765,7 @@ name = "importlib-metadata"
 version = "8.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f3/49/3b30cad09e7771a4982d9975a8cbf64f00d4a1ececb53297f1d9a7be1b10/importlib_metadata-8.7.1.tar.gz", hash = "sha256:49fef1ae6440c182052f407c8d34a68f72efc36db9ca90dc0113398f2fdde8bb", size = 57107, upload-time = "2025-12-21T10:00:19.278Z" }
 wheels = [
@@ -2548,6 +2561,7 @@ sqlframe = [
 dev = [
     { name = "blpapi" },
     { name = "build" },
+    { name = "codecov" },
     { name = "coverage" },
     { name = "dask", extra = ["dataframe"] },
     { name = "duckdb" },
@@ -2592,6 +2606,7 @@ provides-extras = ["pandas", "polars", "modin", "duckdb", "dask", "ibis", "sqlfr
 dev = [
     { name = "blpapi", index = "https://blpapi.bloomberg.com/repository/releases/python/simple/" },
     { name = "build", specifier = ">=1.0" },
+    { name = "codecov", specifier = ">=2.1" },
     { name = "coverage", specifier = ">=7.11.0" },
     { name = "dask", extras = ["dataframe"], specifier = ">=2026.1.2" },
     { name = "duckdb", specifier = ">=1.4.4" },

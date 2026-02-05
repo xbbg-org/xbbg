@@ -179,6 +179,7 @@ log_cli_date_format = "%H:%M:%S"
 dev = [
     "blpapi",
     "build>=1.0",
+    "codecov>=2.1",
     "coverage>=7.11.0",
     "dask[dataframe]>=2026.1.2",
     "duckdb>=1.4.4",
