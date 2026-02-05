@@ -307,19 +307,6 @@ wheels = [
 ]
 
 [[package]]
-name = "codecov"
-version = "2.1.13"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "coverage" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2c/bb/594b26d2c85616be6195a64289c578662678afa4910cef2d3ce8417cf73e/codecov-2.1.13.tar.gz", hash = "sha256:2362b685633caeaf45b9951a9b76ce359cd3581dd515b430c6c3f5dfb4d92a8c", size = 21416, upload-time = "2023-04-17T23:11:39.779Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/02/18785edcdf6266cdd6c6dc7635f1cbeefd9a5b4c3bb8aff8bd681e9dd095/codecov-2.1.13-py2.py3-none-any.whl", hash = "sha256:c2ca5e51bba9ebb43644c43d0690148a55086f7f5e6fd36170858fa4206744d5", size = 16512, upload-time = "2023-04-17T23:11:37.344Z" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -765,7 +752,7 @@ name = "importlib-metadata"
 version = "8.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.12'" },
+    { name = "zipp" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f3/49/3b30cad09e7771a4982d9975a8cbf64f00d4a1ececb53297f1d9a7be1b10/importlib_metadata-8.7.1.tar.gz", hash = "sha256:49fef1ae6440c182052f407c8d34a68f72efc36db9ca90dc0113398f2fdde8bb", size = 57107, upload-time = "2025-12-21T10:00:19.278Z" }
 wheels = [
@@ -2531,13 +2518,6 @@ all-backends = [
 dask = [
     { name = "dask", extra = ["dataframe"] },
 ]
-dev = [
-    { name = "build" },
-    { name = "ipykernel" },
-    { name = "pre-commit" },
-    { name = "ruff" },
-    { name = "twine" },
-]
 docs = [
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
@@ -2563,76 +2543,71 @@ polars = [
 sqlframe = [
     { name = "sqlframe" },
 ]
-test = [
-    { name = "codecov" },
-    { name = "coverage" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
 
 [package.dev-dependencies]
 dev = [
     { name = "blpapi" },
+    { name = "build" },
     { name = "coverage" },
     { name = "dask", extra = ["dataframe"] },
     { name = "duckdb" },
     { name = "ibis-framework" },
+    { name = "ipykernel" },
     { name = "modin", extra = ["dask"] },
     { name = "pandas" },
     { name = "polars" },
+    { name = "pre-commit" },
     { name = "pyarrow-hotfix" },
+    { name = "pytest" },
     { name = "pytest-cov" },
     { name = "rich" },
     { name = "ruff" },
     { name = "sqlframe" },
+    { name = "twine" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "build", marker = "extra == 'dev'" },
-    { name = "codecov", marker = "extra == 'test'" },
-    { name = "coverage", marker = "extra == 'test'" },
     { name = "dask", extras = ["dataframe"], marker = "extra == 'all-backends'", specifier = ">=2024.1" },
     { name = "dask", extras = ["dataframe"], marker = "extra == 'dask'", specifier = ">=2024.1" },
     { name = "duckdb", marker = "extra == 'all-backends'", specifier = ">=1.0" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.0" },
     { name = "ibis-framework", marker = "extra == 'all-backends'", specifier = ">=6.0" },
     { name = "ibis-framework", marker = "extra == 'ibis'", specifier = ">=6.0" },
-    { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "modin", extras = ["dask"], marker = "extra == 'modin'", specifier = ">=0.25" },
     { name = "narwhals", specifier = ">=2.14.0" },
     { name = "pandas", marker = "extra == 'all-backends'", specifier = ">=2.0" },
     { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.0" },
     { name = "polars", marker = "extra == 'all-backends'", specifier = ">=0.20" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=0.20" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pyarrow", specifier = ">=22.0.0" },
-    { name = "pytest", marker = "extra == 'test'" },
-    { name = "pytest-cov", marker = "extra == 'test'" },
-    { name = "ruff", marker = "extra == 'dev'" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=5.3.0" },
     { name = "sphinx-llms-txt", marker = "extra == 'docs'", specifier = ">=0.7.0" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=2.0.0" },
     { name = "sqlframe", marker = "extra == 'sqlframe'", specifier = ">=3.22" },
-    { name = "twine", marker = "extra == 'dev'" },
 ]
-provides-extras = ["pandas", "polars", "modin", "duckdb", "dask", "ibis", "sqlframe", "all-backends", "test", "dev", "docs"]
+provides-extras = ["pandas", "polars", "modin", "duckdb", "dask", "ibis", "sqlframe", "all-backends", "docs"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "blpapi", index = "https://blpapi.bloomberg.com/repository/releases/python/simple/" },
+    { name = "build", specifier = ">=1.0" },
     { name = "coverage", specifier = ">=7.11.0" },
     { name = "dask", extras = ["dataframe"], specifier = ">=2026.1.2" },
     { name = "duckdb", specifier = ">=1.4.4" },
     { name = "ibis-framework", specifier = ">=11.0.0" },
+    { name = "ipykernel", specifier = ">=6.0" },
     { name = "modin", extras = ["dask"], specifier = ">=0.37.1" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "polars" },
+    { name = "pre-commit", specifier = ">=3.0" },
     { name = "pyarrow-hotfix", specifier = ">=0.7" },
+    { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "rich", specifier = ">=14.3.2" },
     { name = "ruff", specifier = ">=0.14.3" },
     { name = "sqlframe", specifier = ">=3.46.2" },
+    { name = "twine", specifier = ">=6.0" },
 ]
 
 [[package]]
