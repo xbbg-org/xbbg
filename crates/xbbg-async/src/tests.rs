@@ -2,7 +2,6 @@
 //!
 //! These tests don't require a Bloomberg connection.
 
-use crate::config::{AsyncOptions, BackpressurePolicy};
 use crate::engine::{EngineConfig, OutputFormat, OverflowPolicy};
 
 // =========================================================================
@@ -98,56 +97,6 @@ fn test_output_format_clone() {
     let format = OutputFormat::Wide;
     let cloned = format;
     assert_eq!(format, cloned);
-}
-
-// =========================================================================
-// AsyncOptions configuration tests
-// =========================================================================
-
-#[test]
-fn test_async_options_default() {
-    let opts = AsyncOptions::default();
-
-    assert_eq!(opts.shards, 32);
-    assert_eq!(opts.request_queue, 256);
-    assert_eq!(opts.subscription_data_queue, 4096);
-    assert_eq!(opts.subscription_status_queue, 1024);
-    assert_eq!(opts.template_status_queue, 1024);
-    assert_eq!(opts.template_batch_limit, 50);
-    assert!(matches!(opts.policy_data, BackpressurePolicy::Block));
-    assert!(matches!(opts.policy_status, BackpressurePolicy::Block));
-}
-
-#[test]
-fn test_async_options_clone() {
-    let opts = AsyncOptions::default();
-    let cloned = opts.clone();
-
-    assert_eq!(opts.shards, cloned.shards);
-    assert_eq!(opts.request_queue, cloned.request_queue);
-}
-
-// =========================================================================
-// Backpressure policy tests
-// =========================================================================
-
-#[test]
-fn test_backpressure_policy_variants() {
-    let block = BackpressurePolicy::Block;
-    let drop_oldest = BackpressurePolicy::DropOldest;
-    let error = BackpressurePolicy::Error;
-
-    // Test debug output
-    assert!(format!("{:?}", block).contains("Block"));
-    assert!(format!("{:?}", drop_oldest).contains("DropOldest"));
-    assert!(format!("{:?}", error).contains("Error"));
-}
-
-#[test]
-fn test_backpressure_policy_clone() {
-    let policy = BackpressurePolicy::DropOldest;
-    let cloned = policy.clone();
-    assert!(matches!(cloned, BackpressurePolicy::DropOldest));
 }
 
 // =========================================================================
