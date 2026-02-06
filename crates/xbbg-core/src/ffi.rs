@@ -116,7 +116,19 @@ pub use xbbg_sys::{
 // --- SessionOptions functions ---
 pub use xbbg_sys::{
     blpapi_SessionOptions_create, blpapi_SessionOptions_destroy,
+    blpapi_SessionOptions_maxEventQueueSize, blpapi_SessionOptions_setBandwidthSaveModeDisabled,
+    blpapi_SessionOptions_setConnectTimeout,
+    blpapi_SessionOptions_setDefaultKeepAliveInactivityTime,
+    blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout,
+    blpapi_SessionOptions_setDefaultSubscriptionService,
+    blpapi_SessionOptions_setDefaultTopicPrefix,
+    blpapi_SessionOptions_setFlushPublishedEventsTimeout,
+    blpapi_SessionOptions_setKeepAliveEnabled, blpapi_SessionOptions_setMaxEventQueueSize,
+    blpapi_SessionOptions_setRecordSubscriptionDataReceiveTimes,
     blpapi_SessionOptions_setServerHost, blpapi_SessionOptions_setServerPort,
+    blpapi_SessionOptions_setServiceCheckTimeout, blpapi_SessionOptions_setServiceDownloadTimeout,
+    blpapi_SessionOptions_setSlowConsumerWarningHiWaterMark,
+    blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark,
 };
 
 // --- HighPrecisionDatetime (defined locally for layout control) ---

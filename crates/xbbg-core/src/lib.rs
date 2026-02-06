@@ -7,7 +7,6 @@
 //! - Sub-microsecond field extraction
 
 #![allow(clippy::result_large_err)]
-#![allow(unused_unsafe)]
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

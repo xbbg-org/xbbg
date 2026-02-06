@@ -1,35 +1,15 @@
-//! Cached message parsing benchmark with Tracy profiling.
+//! Cached message parsing benchmark.
 //!
 //! This benchmark isolates CPU-bound parsing from network latency by:
 //! 1. Making ONE network request to get real Bloomberg data
 //! 2. Caching the event in memory
 //! 3. Parsing the cached data thousands of times
 //!
-//! Run with Tracy:
-//!   1. Start Tracy profiler GUI
-//!   2. cargo bench --package xbbg_core --bench parse_cached --features live,tracy
-//!
-//! Run without Tracy (timing only):
+//! Run:
 //!   cargo bench --package xbbg_core --bench parse_cached --features live
 
-#[cfg(feature = "tracy")]
-use std::time::Duration;
 use std::time::Instant;
 use xbbg_core::{Event, EventType, Name, Session, SessionOptions};
-
-// Tracy integration - no-op when tracy feature is disabled
-#[cfg(feature = "tracy")]
-use tracy_client::Client;
-
-/// Tracy span macro that properly captures the span guard
-macro_rules! tracy_span {
-    ($name:expr) => {
-        #[cfg(feature = "tracy")]
-        let _span = tracy_client::span!($name);
-        #[cfg(not(feature = "tracy"))]
-        let _ = $name;
-    };
-}
 
 /// Pre-interned names for hot path.
 struct FieldNames {
@@ -496,19 +476,8 @@ fn parse_with_str_fast(event: &Event, names: &FieldNames) -> usize {
 }
 
 fn main() {
-    println!("xbbg-core Cached Parse Benchmark (Tracy-enabled)");
+    println!("xbbg-core Cached Parse Benchmark");
     println!("=================================================\n");
-
-    #[cfg(feature = "tracy")]
-    {
-        // Initialize Tracy client
-        Client::start();
-        println!("Tracy profiler enabled - connect Tracy GUI now!\n");
-        std::thread::sleep(Duration::from_secs(2)); // Give time to connect
-    }
-
-    #[cfg(not(feature = "tracy"))]
-    println!("Tracy not enabled. Run with --features tracy for profiling.\n");
 
     let iterations: usize = std::env::var("BENCH_ITERATIONS")
         .ok()
@@ -1001,12 +970,6 @@ fn main() {
 
     // Cleanup
     sess.stop();
-
-    #[cfg(feature = "tracy")]
-    {
-        println!("Waiting for Tracy to capture final frames...");
-        std::thread::sleep(Duration::from_secs(2));
-    }
 
     println!("=================================================");
     println!("Benchmark complete.");

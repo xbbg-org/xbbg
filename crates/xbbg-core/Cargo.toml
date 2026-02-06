@@ -13,21 +13,16 @@ name = "xbbg_core"
 default = ["live"]
 mock = ["xbbg-sys/mock"]
 live = ["xbbg-sys/live"]
-event-log = []
-schema-debug = []
-tracy = ["dep:tracy-client"]  # Enable Tracy profiler instrumentation
 
 [dependencies]
 thiserror = "2.0"
 xbbg-sys = { path = "../xbbg-sys", default-features = false }
 xbbg-log = { path = "../xbbg-log" }
 rustc-hash = "2.0"  # Fast non-cryptographic hashing for Name cache
-tracy-client = { version = "0.18", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
 dhat = "0.3"
-tracy-client = "0.18"  # Always available for benchmarks
 
 # =============================================================================
 # Benchmarks
@@ -75,8 +70,8 @@ harness = false
 name = "alloc_criterion"
 harness = false
 
-# Cached message parsing with Tracy profiling (no network in hot path)
-# Run with: cargo bench --package xbbg_core --bench parse_cached --features live,tracy
+# Cached message parsing (no network in hot path)
+# Run with: cargo bench --package xbbg_core --bench parse_cached --features live
 [[bench]]
 name = "parse_cached"
 harness = false

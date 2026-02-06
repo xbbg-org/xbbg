@@ -1,10 +1,11 @@
 use std::ffi::CString;
 
 use crate::errors::{BlpError, Result};
+use crate::ffi;
 
 /// Safe wrapper around `blpapi_SessionOptions_t`.
 pub struct SessionOptions {
-    ptr: *mut xbbg_sys::blpapi_SessionOptions_t,
+    ptr: *mut ffi::blpapi_SessionOptions_t,
 }
 
 unsafe impl Send for SessionOptions {}
@@ -13,7 +14,7 @@ unsafe impl Sync for SessionOptions {}
 impl SessionOptions {
     pub fn new() -> Result<Self> {
         // SAFETY: blpapi_SessionOptions_create allocates and returns a valid pointer or null.
-        let ptr = unsafe { xbbg_sys::blpapi_SessionOptions_create() };
+        let ptr = unsafe { ffi::blpapi_SessionOptions_create() };
         if ptr.is_null() {
             return Err(BlpError::Internal {
                 detail: "blpapi_SessionOptions_create returned null".into(),
@@ -27,13 +28,13 @@ impl SessionOptions {
             detail: format!("invalid host: {e}"),
         })?;
         // SAFETY: self.ptr is valid (checked in new()), cs is a valid null-terminated C string.
-        unsafe { xbbg_sys::blpapi_SessionOptions_setServerHost(self.ptr, cs.as_ptr()) };
+        unsafe { ffi::blpapi_SessionOptions_setServerHost(self.ptr, cs.as_ptr()) };
         Ok(self)
     }
 
     pub fn set_server_port(&mut self, port: u16) -> &mut Self {
         // SAFETY: self.ptr is valid (checked in new()).
-        unsafe { xbbg_sys::blpapi_SessionOptions_setServerPort(self.ptr, port) };
+        unsafe { ffi::blpapi_SessionOptions_setServerPort(self.ptr, port) };
         self
     }
 
@@ -43,7 +44,7 @@ impl SessionOptions {
         })?;
         // SAFETY: FFI call with valid pointers
         unsafe {
-            xbbg_sys::blpapi_SessionOptions_setDefaultSubscriptionService(self.ptr, cs.as_ptr());
+            ffi::blpapi_SessionOptions_setDefaultSubscriptionService(self.ptr, cs.as_ptr());
         }
         Ok(self)
     }
@@ -54,7 +55,7 @@ impl SessionOptions {
         })?;
         // SAFETY: FFI call with valid pointers
         unsafe {
-            xbbg_sys::blpapi_SessionOptions_setDefaultTopicPrefix(self.ptr, cs.as_ptr());
+            ffi::blpapi_SessionOptions_setDefaultTopicPrefix(self.ptr, cs.as_ptr());
         }
         Ok(self)
     }
@@ -62,7 +63,7 @@ impl SessionOptions {
     pub fn set_record_subscription_receive_times(&mut self, record: bool) -> &mut Self {
         // SAFETY: FFI call with valid pointer
         unsafe {
-            xbbg_sys::blpapi_SessionOptions_setRecordSubscriptionDataReceiveTimes(
+            ffi::blpapi_SessionOptions_setRecordSubscriptionDataReceiveTimes(
                 self.ptr,
                 record as i32,
             );
@@ -72,7 +73,7 @@ impl SessionOptions {
 
     pub fn set_connect_timeout_ms(&mut self, timeout_ms: u32) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
-        let rc = unsafe { xbbg_sys::blpapi_SessionOptions_setConnectTimeout(self.ptr, timeout_ms) };
+        let rc = unsafe { ffi::blpapi_SessionOptions_setConnectTimeout(self.ptr, timeout_ms) };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
                 detail: format!("connect timeout invalid: rc={rc}"),
@@ -83,8 +84,7 @@ impl SessionOptions {
 
     pub fn set_service_check_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
-        let rc =
-            unsafe { xbbg_sys::blpapi_SessionOptions_setServiceCheckTimeout(self.ptr, timeout_ms) };
+        let rc = unsafe { ffi::blpapi_SessionOptions_setServiceCheckTimeout(self.ptr, timeout_ms) };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
                 detail: format!("service check timeout invalid: rc={rc}"),
@@ -95,9 +95,8 @@ impl SessionOptions {
 
     pub fn set_service_download_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
-        let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setServiceDownloadTimeout(self.ptr, timeout_ms)
-        };
+        let rc =
+            unsafe { ffi::blpapi_SessionOptions_setServiceDownloadTimeout(self.ptr, timeout_ms) };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
                 detail: format!("service download timeout invalid: rc={rc}"),
@@ -115,7 +114,7 @@ impl SessionOptions {
     pub fn set_max_event_queue_size(&mut self, size: usize) -> &mut Self {
         // SAFETY: FFI call with valid pointer
         unsafe {
-            xbbg_sys::blpapi_SessionOptions_setMaxEventQueueSize(self.ptr, size);
+            ffi::blpapi_SessionOptions_setMaxEventQueueSize(self.ptr, size);
         }
         self
     }
@@ -123,7 +122,7 @@ impl SessionOptions {
     /// Get the current maximum event queue size.
     pub fn max_event_queue_size(&self) -> usize {
         // SAFETY: FFI call with valid pointer
-        unsafe { xbbg_sys::blpapi_SessionOptions_maxEventQueueSize(self.ptr) }
+        unsafe { ffi::blpapi_SessionOptions_maxEventQueueSize(self.ptr) }
     }
 
     /// Set the high watermark for slow consumer warnings (0.0 to 1.0).
@@ -136,10 +135,7 @@ impl SessionOptions {
     ) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
         let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setSlowConsumerWarningHiWaterMark(
-                self.ptr,
-                hi_watermark,
-            )
+            ffi::blpapi_SessionOptions_setSlowConsumerWarningHiWaterMark(self.ptr, hi_watermark)
         };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
@@ -159,10 +155,7 @@ impl SessionOptions {
     ) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
         let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark(
-                self.ptr,
-                lo_watermark,
-            )
+            ffi::blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark(self.ptr, lo_watermark)
         };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
@@ -177,9 +170,8 @@ impl SessionOptions {
     /// Keep-alive helps detect dead connections. Enabled by default.
     pub fn set_keep_alive_enabled(&mut self, enabled: bool) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
-        let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setKeepAliveEnabled(self.ptr, enabled as i32)
-        };
+        let rc =
+            unsafe { ffi::blpapi_SessionOptions_setKeepAliveEnabled(self.ptr, enabled as i32) };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
                 detail: format!("keep alive enabled invalid: rc={rc}"),
@@ -194,7 +186,7 @@ impl SessionOptions {
     pub fn set_keep_alive_inactivity_time_ms(&mut self, time_ms: i32) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
         let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setDefaultKeepAliveInactivityTime(self.ptr, time_ms)
+            ffi::blpapi_SessionOptions_setDefaultKeepAliveInactivityTime(self.ptr, time_ms)
         };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
@@ -210,7 +202,7 @@ impl SessionOptions {
     pub fn set_keep_alive_response_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
         let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout(self.ptr, timeout_ms)
+            ffi::blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout(self.ptr, timeout_ms)
         };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
@@ -227,7 +219,7 @@ impl SessionOptions {
     pub fn set_bandwidth_save_mode_disabled(&mut self, disabled: bool) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
         let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setBandwidthSaveModeDisabled(self.ptr, disabled as i32)
+            ffi::blpapi_SessionOptions_setBandwidthSaveModeDisabled(self.ptr, disabled as i32)
         };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
@@ -243,7 +235,7 @@ impl SessionOptions {
     pub fn set_flush_published_events_timeout_ms(&mut self, timeout_ms: i32) -> Result<&mut Self> {
         // SAFETY: FFI call with valid pointer
         let rc = unsafe {
-            xbbg_sys::blpapi_SessionOptions_setFlushPublishedEventsTimeout(self.ptr, timeout_ms)
+            ffi::blpapi_SessionOptions_setFlushPublishedEventsTimeout(self.ptr, timeout_ms)
         };
         if rc != 0 {
             return Err(BlpError::InvalidArgument {
@@ -253,7 +245,7 @@ impl SessionOptions {
         Ok(self)
     }
 
-    pub(crate) fn as_raw(&self) -> *mut xbbg_sys::blpapi_SessionOptions_t {
+    pub(crate) fn as_raw(&self) -> *mut ffi::blpapi_SessionOptions_t {
         self.ptr
     }
 }
@@ -262,7 +254,7 @@ impl Drop for SessionOptions {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
             // SAFETY: self.ptr is valid and we own it. Drop is called exactly once.
-            unsafe { xbbg_sys::blpapi_SessionOptions_destroy(self.ptr) };
+            unsafe { ffi::blpapi_SessionOptions_destroy(self.ptr) };
             self.ptr = std::ptr::null_mut();
         }
     }
