@@ -1,9 +1,10 @@
 //! Profiled BDP benchmark - breaks down timing for each phase.
 //!
-//! Run with: cargo bench --package xbbg_core --bench live_bdp_profiled --no-default-features --features live
+//! Run with: cargo bench --package xbbg-bench --bench live_bdp_profiled
 
 use std::time::Instant;
-use xbbg_core::{EventType, Name, Session, SessionOptions};
+use xbbg_bench::{env_iterations, open_service, setup_session, FieldNames};
+use xbbg_core::EventType;
 
 /// Timing breakdown for a single BDP request.
 #[derive(Debug, Default, Clone)]
@@ -109,55 +110,8 @@ impl PhaseTimings {
     }
 }
 
-/// Pre-interned names for hot path.
-struct FieldNames {
-    securities: Name,
-    fields: Name,
-    security_data: Name,
-    field_data: Name,
-    px_last: Name,
-}
-
-impl FieldNames {
-    fn new() -> Self {
-        Self {
-            securities: Name::get_or_intern("securities"),
-            fields: Name::get_or_intern("fields"),
-            security_data: Name::get_or_intern("securityData"),
-            field_data: Name::get_or_intern("fieldData"),
-            px_last: Name::get_or_intern("PX_LAST"),
-        }
-    }
-}
-
-fn setup_session() -> Session {
-    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8194);
-
-    let mut opts = SessionOptions::new().expect("failed to create session options");
-    opts.set_server_host(&host).expect("failed to set host");
-    opts.set_server_port(port);
-
-    let sess = Session::new(&opts).expect("failed to create session");
-    sess.start().expect("failed to start session");
-
-    // Wait for SessionStarted
-    loop {
-        if let Ok(ev) = sess.next_event(Some(5000)) {
-            if ev.event_type() == EventType::SessionStatus {
-                break;
-            }
-        }
-    }
-
-    sess
-}
-
 /// Profiled BDP request - returns timing for each phase.
-fn bench_bdp_profiled(sess: &Session, names: &FieldNames, ticker: &str) -> PhaseTimings {
+fn bench_bdp_profiled(sess: &xbbg_core::Session, names: &FieldNames, ticker: &str) -> PhaseTimings {
     let mut timings = PhaseTimings::default();
     let total_start = Instant::now();
 
@@ -226,10 +180,7 @@ fn main() {
     println!("xbbg-core Profiled BDP Benchmark");
     println!("=================================\n");
 
-    let iterations: usize = std::env::var("BENCH_ITERATIONS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10);
+    let iterations = env_iterations("BENCH_ITERATIONS", 10);
 
     println!("Running {} iterations...\n", iterations);
 
@@ -239,8 +190,7 @@ fn main() {
 
     // Open refdata service once
     let t = Instant::now();
-    sess.open_service("//blp/refdata")
-        .expect("failed to open service");
+    open_service(&sess, "//blp/refdata");
     println!("Service open time: {} μs\n", t.elapsed().as_micros());
 
     // Run profiled benchmarks

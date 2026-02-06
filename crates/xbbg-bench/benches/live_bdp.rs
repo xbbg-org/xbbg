@@ -8,14 +8,13 @@
 //!
 //! **Requires Bloomberg connection** - writes results to benchmarks/results/
 //!
-//! Run with: cargo bench --package xbbg_core --bench live_bdp --features live
+//! Run with: cargo bench --package xbbg-bench --bench live_bdp
 
-use std::fs::{self, File};
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use xbbg_core::{EventType, Name, Session, SessionOptions};
+use xbbg_bench::{env_iterations, open_service, setup_session, write_json, FieldNames};
+use xbbg_core::{EventType, Name};
 
 /// Benchmark result for a single run.
 #[derive(Debug)]
@@ -30,64 +29,9 @@ struct BenchResult {
     fields_extracted: usize,
 }
 
-/// Pre-interned names for hot path.
-struct FieldNames {
-    securities: Name,
-    fields: Name,
-    security_data: Name,
-    field_data: Name,
-    px_last: Name,
-    px_open: Name,
-    px_high: Name,
-    px_low: Name,
-    volume: Name,
-}
-
-impl FieldNames {
-    fn new() -> Self {
-        Self {
-            securities: Name::get_or_intern("securities"),
-            fields: Name::get_or_intern("fields"),
-            security_data: Name::get_or_intern("securityData"),
-            field_data: Name::get_or_intern("fieldData"),
-            px_last: Name::get_or_intern("PX_LAST"),
-            px_open: Name::get_or_intern("PX_OPEN"),
-            px_high: Name::get_or_intern("PX_HIGH"),
-            px_low: Name::get_or_intern("PX_LOW"),
-            volume: Name::get_or_intern("VOLUME"),
-        }
-    }
-}
-
-fn setup_session() -> Session {
-    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8194);
-
-    let mut opts = SessionOptions::new().expect("failed to create session options");
-    opts.set_server_host(&host).expect("failed to set host");
-    opts.set_server_port(port);
-
-    let sess = Session::new(&opts).expect("failed to create session");
-    sess.start().expect("failed to start session");
-
-    // Wait for SessionStarted
-    loop {
-        if let Ok(ev) = sess.next_event(Some(5000)) {
-            if ev.event_type() == EventType::SessionStatus {
-                break;
-            }
-        }
-    }
-
-    sess
-}
-
 /// Measure full BDP round-trip: build request, send, receive, extract.
 fn bench_bdp_roundtrip(
-    sess: &Session,
+    sess: &xbbg_core::Session,
     names: &FieldNames,
     ticker: &str,
     field_names: &[&Name],
@@ -245,11 +189,7 @@ fn write_results(results: &[BenchResult], output_path: &PathBuf) {
             .join(",\n")
     );
 
-    let mut file = File::create(output_path).expect("failed to create output file");
-    file.write_all(json.as_bytes())
-        .expect("failed to write results");
-
-    println!("\nResults written to: {}", output_path.display());
+    write_json(output_path, &json);
 }
 
 fn print_results(results: &[BenchResult]) {
@@ -277,10 +217,7 @@ fn main() {
     println!("xbbg-core Live BDP Benchmark");
     println!("============================\n");
 
-    let iterations: usize = std::env::var("BENCH_ITERATIONS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10);
+    let iterations = env_iterations("BENCH_ITERATIONS", 10);
 
     let warmup: usize = std::env::var("BENCH_WARMUP")
         .ok()
@@ -294,8 +231,7 @@ fn main() {
     let sess = setup_session();
 
     // Open refdata service once
-    sess.open_service("//blp/refdata")
-        .expect("failed to open service");
+    open_service(&sess, "//blp/refdata");
 
     let mut results = Vec::new();
 
@@ -337,9 +273,8 @@ fn main() {
     // Print and save results
     print_results(&results);
 
-    // Create results directory and write
+    // Write results
     let results_dir = PathBuf::from("benchmarks/results");
-    fs::create_dir_all(&results_dir).expect("failed to create results directory");
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

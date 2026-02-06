@@ -3,10 +3,7 @@
 //! Uses tracking_allocator to measure allocations alongside timing.
 //! This integrates allocation metrics into standard Criterion benchmarks.
 //!
-//! Run with: cargo bench --package xbbg_core --bench alloc_criterion
-//!
-//! For live Bloomberg:
-//!   cargo bench --package xbbg_core --bench alloc_criterion --no-default-features --features live
+//! Run with: cargo bench --package xbbg-bench --bench alloc_criterion
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::alloc::{GlobalAlloc, Layout, System};

@@ -19,9 +19,4 @@ phf = { version = "0.11", features = ["macros"] }
 # Error handling
 thiserror = "2"
 
-[dev-dependencies]
-criterion = "0.5"
-
-[[bench]]
-name = "pivot"
-harness = false
+# Benchmarks have been consolidated into crates/xbbg-bench.

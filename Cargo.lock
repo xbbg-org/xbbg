@@ -2306,12 +2306,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "xbbg-bench"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "dhat",
+ "xbbg-ext",
+ "xbbg_core",
+]
+
+[[package]]
 name = "xbbg-ext"
 version = "0.0.0"
 dependencies = [
  "arrow",
  "chrono",
- "criterion",
  "phf 0.11.3",
  "thiserror",
 ]
@@ -2339,8 +2348,6 @@ dependencies = [
 name = "xbbg_core"
 version = "0.0.0"
 dependencies = [
- "criterion",
- "dhat",
  "rustc-hash 2.1.1",
  "thiserror",
  "xbbg-log",

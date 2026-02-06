@@ -1,8 +1,8 @@
 //! Benchmarks for HighPrecisionDatetime
 //!
-//! These benchmarks do NOT require Bloomberg connection (pure Rust computation).
+//! Pure Rust computation — no Bloomberg connection required.
 //!
-//! Run with: cargo bench --package xbbg_core --bench datetime
+//! Run: cargo bench --package xbbg-bench --bench datetime
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use xbbg_core::datetime::HighPrecisionDatetime;

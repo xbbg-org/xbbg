@@ -6,92 +6,15 @@
 //! 3. Parsing the cached data thousands of times
 //!
 //! Run:
-//!   cargo bench --package xbbg_core --bench parse_cached --features live
+//!   cargo bench --package xbbg-bench --bench parse_cached
 
 use std::time::Instant;
-use xbbg_core::{Event, EventType, Name, Session, SessionOptions};
-
-/// Pre-interned names for hot path.
-struct FieldNames {
-    securities: Name,
-    fields: Name,
-    security_data: Name,
-    field_data: Name,
-    security: Name,
-    px_last: Name,
-    px_open: Name,
-    px_high: Name,
-    px_low: Name,
-    volume: Name,
-    cur_mkt_cap: Name,
-    eqy_weighted_avg_px: Name,
-    px_bid: Name,
-    px_ask: Name,
-    last_trade: Name,
-}
-
-impl FieldNames {
-    fn new() -> Self {
-        Self {
-            securities: Name::get_or_intern("securities"),
-            fields: Name::get_or_intern("fields"),
-            security_data: Name::get_or_intern("securityData"),
-            field_data: Name::get_or_intern("fieldData"),
-            security: Name::get_or_intern("security"),
-            px_last: Name::get_or_intern("PX_LAST"),
-            px_open: Name::get_or_intern("PX_OPEN"),
-            px_high: Name::get_or_intern("PX_HIGH"),
-            px_low: Name::get_or_intern("PX_LOW"),
-            volume: Name::get_or_intern("VOLUME"),
-            cur_mkt_cap: Name::get_or_intern("CUR_MKT_CAP"),
-            eqy_weighted_avg_px: Name::get_or_intern("EQY_WEIGHTED_AVG_PX"),
-            px_bid: Name::get_or_intern("PX_BID"),
-            px_ask: Name::get_or_intern("PX_ASK"),
-            last_trade: Name::get_or_intern("LAST_TRADE"),
-        }
-    }
-}
-
-fn setup_session() -> Session {
-    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8194);
-
-    let mut opts = SessionOptions::new().expect("failed to create session options");
-    opts.set_server_host(&host).expect("failed to set host");
-    opts.set_server_port(port);
-
-    let sess = Session::new(&opts).expect("failed to create session");
-    sess.start().expect("failed to start session");
-
-    // Wait for SessionStarted
-    loop {
-        if let Ok(ev) = sess.next_event(Some(5000)) {
-            if ev.event_type() == EventType::SessionStatus {
-                break;
-            }
-        }
-    }
-
-    // Open refdata service
-    sess.open_service("//blp/refdata")
-        .expect("failed to open service");
-    loop {
-        if let Ok(ev) = sess.next_event(Some(5000)) {
-            if ev.event_type() == EventType::ServiceStatus {
-                break;
-            }
-        }
-    }
-
-    sess
-}
+use xbbg_bench::{env_iterations, open_service, setup_session, FieldNames};
+use xbbg_core::Event;
 
 /// Fetch a BDP response and return the event (keeps data in memory).
 fn fetch_bdp_response(
-    sess: &Session,
+    sess: &xbbg_core::Session,
     names: &FieldNames,
     tickers: &[&str],
     fields: &[&str],
@@ -118,7 +41,7 @@ fn fetch_bdp_response(
     // Wait for Response event
     loop {
         if let Ok(ev) = sess.next_event(Some(10000)) {
-            if ev.event_type() == EventType::Response {
+            if ev.event_type() == xbbg_core::EventType::Response {
                 return ev;
             }
         }
@@ -129,31 +52,22 @@ fn fetch_bdp_response(
 /// BASELINE: Uses N separate get(&name) lookups per security.
 #[inline(never)]
 fn parse_all_fields(event: &Event, names: &FieldNames) -> (usize, usize) {
-    tracy_span!("parse_all_fields");
-
     let mut securities_parsed = 0;
     let mut fields_extracted = 0;
 
     for msg in event.messages() {
-        tracy_span!("process_message");
-
         let root = msg.elements();
 
         if let Some(security_data) = root.get(&names.security_data) {
-            tracy_span!("iterate_securities");
-
             for i in 0..security_data.len() {
                 if let Some(sec) = security_data.get_element(i) {
                     securities_parsed += 1;
 
                     // Get security ticker
-                    tracy_span!("get_ticker");
                     let _ticker = sec.get(&names.security).and_then(|e| e.get_str(0));
 
                     // Get field data
                     if let Some(fd) = sec.get(&names.field_data) {
-                        tracy_span!("extract_fields");
-
                         // Extract all fields - 10 separate get() calls
                         if fd.get(&names.px_last).and_then(|e| e.get_f64(0)).is_some() {
                             fields_extracted += 1;
@@ -210,8 +124,6 @@ fn parse_all_fields(event: &Event, names: &FieldNames) -> (usize, usize) {
 /// From exploration/ULTIMATE_OPTIMIZATION_GUIDE.md
 #[inline(never)]
 fn parse_all_fields_optimized(event: &Event, names: &FieldNames) -> (usize, usize) {
-    tracy_span!("parse_all_fields_optimized");
-
     let mut securities_parsed = 0;
     let mut fields_extracted = 0;
 
@@ -267,8 +179,6 @@ fn parse_all_fields_optimized(event: &Event, names: &FieldNames) -> (usize, usiz
 /// If we only care about counting fields (not which ones), this is fastest.
 #[inline(never)]
 fn parse_all_fields_by_datatype(event: &Event, names: &FieldNames) -> (usize, usize) {
-    tracy_span!("parse_all_fields_by_datatype");
-
     let mut securities_parsed = 0;
     let mut fields_extracted = 0;
 
@@ -441,8 +351,6 @@ fn parse_all_fields_minimal_ffi(event: &Event, names: &FieldNames) -> (usize, us
 #[inline(never)]
 #[allow(dead_code)]
 fn parse_with_str_fast(event: &Event, names: &FieldNames) -> usize {
-    tracy_span!("parse_with_str_fast");
-
     let mut fields_extracted = 0;
 
     for msg in event.messages() {
@@ -479,10 +387,7 @@ fn main() {
     println!("xbbg-core Cached Parse Benchmark");
     println!("=================================================\n");
 
-    let iterations: usize = std::env::var("BENCH_ITERATIONS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10_000);
+    let iterations = env_iterations("BENCH_ITERATIONS", 10_000);
 
     // Tickers and fields to request
     let tickers = &[
@@ -513,6 +418,7 @@ fn main() {
     // Setup session and fetch data ONCE (network call)
     println!("Connecting to Bloomberg...");
     let sess = setup_session();
+    open_service(&sess, "//blp/refdata");
 
     println!("Fetching data (single network call)...");
     let fetch_start = Instant::now();
@@ -544,7 +450,6 @@ fn main() {
     let start = Instant::now();
     let mut total_fields = 0;
     for _ in 0..iterations {
-        tracy_span!("iteration_baseline");
         let (_, fields) = parse_all_fields(&cached_event, &names);
         total_fields += fields;
     }
@@ -554,7 +459,6 @@ fn main() {
     let start = Instant::now();
     let mut total_fields_opt = 0;
     for _ in 0..iterations {
-        tracy_span!("iteration_optimized");
         let (_, fields) = parse_all_fields_optimized(&cached_event, &names);
         total_fields_opt += fields;
     }
@@ -564,7 +468,6 @@ fn main() {
     let start = Instant::now();
     let mut total_fields_dtype = 0;
     for _ in 0..iterations {
-        tracy_span!("iteration_datatype");
         let (_, fields) = parse_all_fields_by_datatype(&cached_event, &names);
         total_fields_dtype += fields;
     }
@@ -671,7 +574,6 @@ fn main() {
     // 1. Standard get_str (CStr::from_ptr + UTF-8 validation)
     let start = Instant::now();
     for _ in 0..iterations {
-        tracy_span!("bench_get_str");
         for msg in cached_event.messages() {
             let root = msg.elements();
             if let Some(security_data) = root.get(&names.security_data) {
@@ -690,7 +592,6 @@ fn main() {
     // 2. get_str_unchecked (no UTF-8 validation - unsafe)
     let start = Instant::now();
     for _ in 0..iterations {
-        tracy_span!("bench_get_str_unchecked");
         for msg in cached_event.messages() {
             let root = msg.elements();
             if let Some(security_data) = root.get(&names.security_data) {
@@ -931,7 +832,6 @@ fn main() {
 
     let start = Instant::now();
     for _ in 0..iterations {
-        tracy_span!("pack_validity");
         xbbg_core::simd::pack_validity(&validity_bytes, &mut bitmap);
     }
     let elapsed = start.elapsed();
@@ -944,7 +844,6 @@ fn main() {
     let ascii_data = b"IBM US Equity - International Business Machines Corporation";
     let start = Instant::now();
     for _ in 0..iterations {
-        tracy_span!("is_ascii");
         let _ = xbbg_core::simd::is_ascii_runtime(ascii_data);
     }
     let elapsed = start.elapsed();
@@ -958,7 +857,6 @@ fn main() {
     let mut floats = vec![0.0f64; 100];
     let start = Instant::now();
     for _ in 0..iterations {
-        tracy_span!("i32_to_f64");
         xbbg_core::simd::i32_to_f64_runtime(&ints, &mut floats);
     }
     let elapsed = start.elapsed();

@@ -6,10 +6,7 @@
 //! - Peak memory usage
 //! - Allocation patterns by call site
 //!
-//! Run with: cargo bench --package xbbg_core --bench alloc_profile --no-default-features --features live
-//!
-//! For mock mode (no Bloomberg):
-//!   cargo bench --package xbbg_core --bench alloc_profile
+//! Run with: cargo bench --package xbbg-bench --bench alloc_profile
 //!
 //! Output: dhat-heap.json (view at https://nnethercote.github.io/dh_view/dh_view.html)
 
@@ -17,7 +14,8 @@
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 use std::time::Instant;
-use xbbg_core::{EventType, Name, Session, SessionOptions};
+use xbbg_bench::{env_iterations, open_service, setup_session, FieldNames};
+use xbbg_core::{EventType, Name};
 
 /// Allocation stats for a single operation.
 #[derive(Debug, Clone)]
@@ -52,60 +50,17 @@ impl AllocStats {
     }
 }
 
-/// Pre-interned names for hot path.
-#[allow(dead_code)]
-struct FieldNames {
-    securities: Name,
-    fields: Name,
-    security_data: Name,
-    field_data: Name,
-    px_last: Name,
-    px_open: Name,
-    px_high: Name,
-    px_low: Name,
-    volume: Name,
-}
-
-impl FieldNames {
-    fn new() -> Self {
-        Self {
-            securities: Name::get_or_intern("securities"),
-            fields: Name::get_or_intern("fields"),
-            security_data: Name::get_or_intern("securityData"),
-            field_data: Name::get_or_intern("fieldData"),
-            px_last: Name::get_or_intern("PX_LAST"),
-            px_open: Name::get_or_intern("PX_OPEN"),
-            px_high: Name::get_or_intern("PX_HIGH"),
-            px_low: Name::get_or_intern("PX_LOW"),
-            volume: Name::get_or_intern("VOLUME"),
-        }
-    }
-}
-
-fn setup_session() -> Session {
-    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8194);
-
-    let mut opts = SessionOptions::new().expect("failed to create session options");
-    opts.set_server_host(&host).expect("failed to set host");
-    opts.set_server_port(port);
-
-    let sess = Session::new(&opts).expect("failed to create session");
-    sess.start().expect("failed to start session");
-
-    // Wait for SessionStarted
-    loop {
-        if let Ok(ev) = sess.next_event(Some(5000)) {
-            if ev.event_type() == EventType::SessionStatus {
-                break;
-            }
-        }
-    }
-
-    sess
+/// Simple random u64 for unique name generation.
+fn rand_u64() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::SystemTime;
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64
+        ^ c
 }
 
 /// Profile allocations for a closure, running it `iterations` times.
@@ -144,7 +99,11 @@ where
 }
 
 /// Profile BDP request phases individually.
-fn profile_bdp_phases(sess: &Session, names: &FieldNames, iterations: usize) -> Vec<AllocStats> {
+fn profile_bdp_phases(
+    sess: &xbbg_core::Session,
+    names: &FieldNames,
+    iterations: usize,
+) -> Vec<AllocStats> {
     let mut results = Vec::new();
 
     // Phase 1: Get service (should be cached after first call)
@@ -202,7 +161,7 @@ fn profile_bdp_phases(sess: &Session, names: &FieldNames, iterations: usize) -> 
 
 /// Profile response parsing allocations.
 fn profile_response_parsing(
-    sess: &Session,
+    sess: &xbbg_core::Session,
     names: &FieldNames,
     iterations: usize,
 ) -> Vec<AllocStats> {
@@ -302,20 +261,6 @@ fn profile_name_operations(iterations: usize) -> Vec<AllocStats> {
     results
 }
 
-/// Simple random u64 for unique name generation.
-fn rand_u64() -> u64 {
-    use std::time::SystemTime;
-    static mut COUNTER: u64 = 0;
-    unsafe {
-        COUNTER = COUNTER.wrapping_add(1);
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64
-            ^ COUNTER
-    }
-}
-
 fn main() {
     // Initialize dhat profiler - will output dhat-heap.json on exit
     let _profiler = dhat::Profiler::new_heap();
@@ -326,10 +271,7 @@ fn main() {
     println!("\nNote: Rust has no GC. This tracks heap allocations only.");
     println!("      Memory is freed deterministically when values drop.\n");
 
-    let iterations: usize = std::env::var("ALLOC_ITERATIONS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100);
+    let iterations = env_iterations("ALLOC_ITERATIONS", 100);
 
     println!("Iterations per operation: {}", iterations);
 
@@ -345,8 +287,7 @@ fn main() {
     let names = FieldNames::new();
     let sess = setup_session();
 
-    sess.open_service("//blp/refdata")
-        .expect("failed to open service");
+    open_service(&sess, "//blp/refdata");
 
     // Profile request building
     println!("\n--- Request Building ---");

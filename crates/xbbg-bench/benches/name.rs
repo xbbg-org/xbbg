@@ -1,8 +1,8 @@
 //! Benchmarks for Name type
 //!
-//! These benchmarks require a Bloomberg connection (the DLL must be loaded).
+//! Requires Bloomberg DLL to be loadable (Name uses the C SDK internally).
 //!
-//! Run with: cargo bench --package xbbg_core --bench name
+//! Run: cargo bench --package xbbg-bench --bench name
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use xbbg_core::Name;

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/xbbg-core", "crates/pyo3-xbbg", "crates/blpapi-sys", "crates/xbbg-async", "crates/datamock", "crates/datamock-sys", "crates/xbbg-sys", "crates/xbbg-ext", "crates/xbbg-log"]
+members = ["crates/xbbg-core", "crates/pyo3-xbbg", "crates/blpapi-sys", "crates/xbbg-async", "crates/datamock", "crates/datamock-sys", "crates/xbbg-sys", "crates/xbbg-ext", "crates/xbbg-log", "crates/xbbg-bench"]
 resolver = "2"
 
 [workspace.package]

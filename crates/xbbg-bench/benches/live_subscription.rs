@@ -8,14 +8,13 @@
 //!
 //! **Requires Bloomberg connection** - writes results to benchmarks/results/
 //!
-//! Run with: cargo bench --package xbbg_core --bench live_subscription --features live
+//! Run with: cargo bench --package xbbg-bench --bench live_subscription
 
-use std::fs::{self, File};
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use xbbg_core::{CorrelationId, EventType, Name, Session, SessionOptions, SubscriptionList};
+use xbbg_bench::{open_service, setup_session, write_json, FieldNames};
+use xbbg_core::{CorrelationId, EventType, SubscriptionList};
 
 /// Benchmark result for subscription tests.
 #[derive(Debug)]
@@ -28,52 +27,9 @@ struct SubBenchResult {
     fields_per_tick: f64,
 }
 
-/// Pre-interned names for hot path.
-struct FieldNames {
-    last_price: Name,
-    bid: Name,
-    ask: Name,
-}
-
-impl FieldNames {
-    fn new() -> Self {
-        Self {
-            last_price: Name::get_or_intern("LAST_PRICE"),
-            bid: Name::get_or_intern("BID"),
-            ask: Name::get_or_intern("ASK"),
-        }
-    }
-}
-
-fn setup_session() -> Session {
-    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("BLP_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8194);
-
-    let mut opts = SessionOptions::new().expect("failed to create session options");
-    opts.set_server_host(&host).expect("failed to set host");
-    opts.set_server_port(port);
-
-    let sess = Session::new(&opts).expect("failed to create session");
-    sess.start().expect("failed to start session");
-
-    // Wait for SessionStarted
-    loop {
-        if let Ok(ev) = sess.next_event(Some(5000)) {
-            if ev.event_type() == EventType::SessionStatus {
-                break;
-            }
-        }
-    }
-
-    sess
-}
-
 /// Measure subscription setup and time to first data.
 fn bench_subscription_setup(
-    sess: &Session,
+    sess: &xbbg_core::Session,
     names: &FieldNames,
     ticker: &str,
     fields: &[&str],
@@ -174,7 +130,7 @@ fn bench_subscription_setup(
 
 /// Measure multi-ticker subscription.
 fn bench_multi_subscription(
-    sess: &Session,
+    sess: &xbbg_core::Session,
     names: &FieldNames,
     tickers: &[&str],
     fields: &[&str],
@@ -305,11 +261,7 @@ fn write_results(results: &[SubBenchResult], output_path: &PathBuf) {
             .join(",\n")
     );
 
-    let mut file = File::create(output_path).expect("failed to create output file");
-    file.write_all(json.as_bytes())
-        .expect("failed to write results");
-
-    println!("\nResults written to: {}", output_path.display());
+    write_json(output_path, &json);
 }
 
 fn print_results(results: &[SubBenchResult]) {
@@ -352,8 +304,7 @@ fn main() {
     let sess = setup_session();
 
     // Open mktdata service
-    sess.open_service("//blp/mktdata")
-        .expect("failed to open mktdata service");
+    open_service(&sess, "//blp/mktdata");
 
     let mut results = Vec::new();
 
@@ -388,9 +339,8 @@ fn main() {
     // Print and save results
     print_results(&results);
 
-    // Create results directory and write
+    // Write results
     let results_dir = PathBuf::from("benchmarks/results");
-    fs::create_dir_all(&results_dir).expect("failed to create results directory");
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

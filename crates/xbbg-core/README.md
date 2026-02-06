@@ -55,19 +55,4 @@ src/
 
 ## Benchmarks
 
-All benchmarks are in `benches/`. Those prefixed with `live_` require a Bloomberg connection.
-
-```bash
-# Pure Rust benchmarks (no Bloomberg needed)
-cargo bench --package xbbg_core --bench datetime
-cargo bench --package xbbg_core --bench name
-
-# Live benchmarks (require Bloomberg connection)
-cargo bench --package xbbg_core --bench live_bdp --features live
-cargo bench --package xbbg_core --bench live_subscription --features live
-cargo bench --package xbbg_core --bench parse_cached --features live
-
-# Allocation profiling
-cargo bench --package xbbg_core --bench alloc_profile --features live
-cargo bench --package xbbg_core --bench alloc_criterion --features live
-```
+All benchmarks have been consolidated into the `xbbg-bench` crate. See `crates/xbbg-bench/README.md`.
