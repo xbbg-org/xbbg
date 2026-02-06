@@ -77,14 +77,6 @@ fn main() {
     bindings
         .write_to_file(&bindings_out)
         .unwrap_or_else(|e| panic!("Failed to write bindings: {}", e));
-
-    // Compile C shim for CorrelationId helpers
-    println!("cargo:rerun-if-changed=src/xb_ext.c");
-    cc::Build::new()
-        .file("src/xb_ext.c")
-        .include(&include_dir)
-        .warnings(false)
-        .compile("blpapiext_cid");
 }
 
 fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {

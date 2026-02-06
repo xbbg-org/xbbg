@@ -18,7 +18,6 @@ cty = "0.2"
 
 [build-dependencies]
 bindgen = { version = "0.69", default-features = false, features = ["runtime"] }
-cc = "1.0"
 
 [package.metadata.docs.rs]
 all-features = true
