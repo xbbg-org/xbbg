@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.11.3 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.3))
+Latest release: xbbg==0.11.4 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.4))
 <!-- xbbg:latest-release-end -->
 
 ## Table of Contents
@@ -1768,3 +1768,17 @@ _0.11.3_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/
 - **Resource leak on start failure**: `connect_bbg()` did not stop the session before raising `ConnectionError` when `.start()` failed, leaking C++ resources allocated by the `Session()` constructor
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.2...v0.11.3
+
+_0.11.4_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.11.4)
+
+### Fixed
+
+- **`bdtick` Arrow conversion failure**: Object columns containing `blpapi.Name` instances caused `pa.Table.from_pandas()` to fail; now stringified before conversion
+
+- **`adjust_ccy` field name mismatch**: Looked for `"Last_Price"` but `bdh` returns lowercase `"last_price"` since v0.11.1, causing `KeyError`
+
+- **`active_futures` two failures**: Used `nw.coalesce()` with a column (`last_tradeable_dt`) not present in SEMI_LONG format, and called `.height` (not valid on narwhals DataFrame) instead of `.shape[0]`
+
+- **Live test assertions**: Updated 10 tests in `test_live_endpoints.py` to match WIDE format default (active since v0.7.x)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.3...v0.11.4
