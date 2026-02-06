@@ -10,7 +10,6 @@ Tests Bloomberg session/connection management including:
 
 from __future__ import annotations
 
-import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -38,7 +37,7 @@ class TestBugRegressions:
         """
         from xbbg.core.infra.conn import SessionManager, bbg_session
 
-        manager = SessionManager()
+        SessionManager()
 
         mock_session = MagicMock()
         mock_session._Session__handle = "valid_handle"
@@ -56,7 +55,7 @@ class TestBugRegressions:
         """
         from xbbg.core.infra.conn import SessionManager, bbg_service
 
-        manager = SessionManager()
+        SessionManager()
 
         mock_session = MagicMock()
         mock_session._Session__handle = "valid_handle"
@@ -355,7 +354,7 @@ class TestPublicFunctions:
         """bbg_session with sess=existing_session returns it directly."""
         from xbbg.core.infra.conn import SessionManager, bbg_session
 
-        manager = SessionManager()
+        SessionManager()
 
         # Create a mock that passes isinstance check for blpapi.Session
         mock_session = MagicMock(spec=blpapi.Session)
