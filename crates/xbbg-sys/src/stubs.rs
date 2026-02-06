@@ -69,22 +69,18 @@ pub extern "C" fn blpapi_Message_numCorrelationIds(
     1 // Mock: return 1 correlation ID
 }
 
-/// Get correlation ID at index (mock: return the correlation ID with value 0)
+/// Get correlation ID at index (mock: return a zeroed correlation ID)
+///
+/// Real Bloomberg signature (blpapi_message.h):
+///   blpapi_CorrelationId_t blpapi_Message_correlationId(
+///       const blpapi_Message_t *message, size_t index);
 #[no_mangle]
 pub extern "C" fn blpapi_Message_correlationId(
-    _message: *mut crate::blpapi_Message_t,
-    result: *mut crate::blpapi_CorrelationId_t,
+    _message: *const crate::blpapi_Message_t,
     _index: usize,
-) -> i32 {
-    if result.is_null() {
-        return -1;
-    }
-    // Initialize to a default Int(0) correlation ID
-    unsafe {
-        crate::blpapi_CorrelationId_init(result);
-        crate::blpapi_CorrelationId_setInt(result, 0);
-    }
-    0 // Success
+) -> crate::blpapi_CorrelationId_t {
+    // Return a zeroed (UNSET type) correlation ID
+    unsafe { std::mem::zeroed() }
 }
 
 /// Get topic name for subscription messages (mock: return NULL)

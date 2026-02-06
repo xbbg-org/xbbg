@@ -1,16 +1,21 @@
 //! Unified FFI abstraction over blpapi-sys (real) and datamock (mock).
 //!
-//! Default: mock mode (datamock backend)
-//! Feature "live": real backend (blpapi-sys)
+//! Default: live mode (blpapi-sys backend)
+//! Feature "mock": datamock backend (not yet production-ready)
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-#![allow(dead_code)]
+// Note: #[allow(dead_code)] is applied to the stubs module below, not crate-wide.
+// The #[no_mangle] stubs satisfy the linker (not Rust), so Rust considers them unused.
 
-// Mutual exclusivity check
-#[cfg(all(feature = "mock", feature = "live"))]
-compile_error!("Features 'mock' and 'live' are mutually exclusive");
+// The mock backend (datamock) is not yet production-ready.
+// ABI mismatches and missing stubs remain. Use 'live' only for now.
+#[cfg(feature = "mock")]
+compile_error!(
+    "The 'mock' feature (datamock backend) is not yet production-ready. \
+     Use the 'live' feature instead."
+);
 
 #[cfg(not(any(feature = "mock", feature = "live")))]
 compile_error!("Must enable either 'mock' or 'live' feature");
@@ -47,7 +52,9 @@ pub use mock_backend::*;
 pub use live_backend::*;
 
 // Stubs module (only compiled in mock mode)
+// Allow dead_code: these #[no_mangle] functions are linker symbols, not called from Rust.
 #[cfg(feature = "mock")]
+#[allow(dead_code)]
 mod stubs;
 
 // Shim module (only compiled in mock mode)
