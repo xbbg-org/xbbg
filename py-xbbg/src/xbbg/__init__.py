@@ -369,6 +369,9 @@ __all__ = [
     "shutdown",
     "reset",
     "is_connected",
+    # Logging control
+    "set_log_level",
+    "get_log_level",
     # Schema introspection (user-facing)
     "bops",
     "abops",
@@ -464,6 +467,11 @@ def __getattr__(name: str):
             raise
         finally:
             _importing_core = False
+    # Logging control (direct from _core, no blp dependency)
+    if name in ("set_log_level", "get_log_level"):
+        from . import _core
+
+        return getattr(_core, name)
     # blp module exports
     if name in (
         "Backend",

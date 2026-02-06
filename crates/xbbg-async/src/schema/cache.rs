@@ -9,7 +9,7 @@ use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use tracing::{debug, info, warn};
+use xbbg_log::{debug, info, warn};
 
 use super::types::ServiceSchema;
 

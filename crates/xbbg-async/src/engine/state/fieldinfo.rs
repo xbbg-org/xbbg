@@ -14,7 +14,7 @@ use arrow::array::StringBuilder;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
-use tracing::trace;
+use xbbg_log::trace;
 
 use crate::field_cache::BlpFieldType;
 use xbbg_core::{BlpError, Message};

@@ -79,7 +79,7 @@ pub fn convert_operation(op: &Operation) -> OperationSchema {
     let request = match op.request_definition() {
         Ok(req_def) => convert_element_def(&req_def),
         Err(e) => {
-            tracing::warn!(op = op.name(), error = %e, "Failed to get request definition");
+            xbbg_log::warn!(op = op.name(), error = %e, "Failed to get request definition");
             ElementInfo::empty()
         }
     };

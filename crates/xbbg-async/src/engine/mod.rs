@@ -224,7 +224,7 @@ impl Engine {
                 .map_err(|e| BlpAsyncError::Internal(format!("tokio runtime: {e}")))?,
         );
 
-        tracing::info!(
+        xbbg_log::info!(
             request_pool_size = config.request_pool_size,
             subscription_pool_size = config.subscription_pool_size,
             "starting Engine with worker pools"
@@ -239,7 +239,7 @@ impl Engine {
             config.clone(),
         )?);
 
-        tracing::info!("Engine started with worker pools");
+        xbbg_log::info!("Engine started with worker pools");
 
         Ok(Self {
             request_pool,
@@ -371,7 +371,7 @@ impl Engine {
 
         // Query //blp/apiflds for uncached fields
         if !uncached.is_empty() {
-            tracing::debug!(fields = ?uncached, "Querying //blp/apiflds for field types");
+            xbbg_log::debug!(fields = ?uncached, "Querying //blp/apiflds for field types");
 
             let params = RequestParams {
                 service: "//blp/apiflds".to_string(),
@@ -388,12 +388,12 @@ impl Engine {
                     let resolver_clone = resolver.clone();
                     self.rt.spawn(async move {
                         if let Err(e) = resolver_clone.save_to_disk() {
-                            tracing::warn!(error = %e, "Failed to save field cache");
+                            xbbg_log::warn!(error = %e, "Failed to save field cache");
                         }
                     });
                 }
                 Err(e) => {
-                    tracing::warn!(error = %e, "Failed to query field types, using defaults");
+                    xbbg_log::warn!(error = %e, "Failed to query field types, using defaults");
                 }
             }
         }
@@ -594,7 +594,7 @@ impl Engine {
     /// Workers will terminate when they see the shutdown signal.
     /// Used by Drop and Python atexit to avoid blocking.
     pub fn signal_shutdown(&self) {
-        tracing::info!("Engine signal_shutdown requested");
+        xbbg_log::info!("Engine signal_shutdown requested");
         self.request_pool.signal_shutdown();
         self.subscription_pool.signal_shutdown();
     }
@@ -604,7 +604,7 @@ impl Engine {
     /// Use this for clean shutdown when you can afford to wait.
     /// Consumes the Engine.
     pub fn shutdown_blocking(mut self) {
-        tracing::info!("Engine shutdown_blocking requested");
+        xbbg_log::info!("Engine shutdown_blocking requested");
         self.request_pool.shutdown_blocking();
         self.subscription_pool.shutdown_blocking();
     }
@@ -676,7 +676,7 @@ impl SubscriptionStream {
             return Ok(());
         }
 
-        tracing::debug!(topics = ?new_topics, "adding topics to subscription");
+        xbbg_log::debug!(topics = ?new_topics, "adding topics to subscription");
 
         // Add new topics using the same stream sender
         let new_keys = claim
@@ -724,7 +724,7 @@ impl SubscriptionStream {
             return Ok(());
         }
 
-        tracing::debug!(topics = ?topics, keys = ?keys_to_remove, "removing topics from subscription");
+        xbbg_log::debug!(topics = ?topics, keys = ?keys_to_remove, "removing topics from subscription");
 
         claim.unsubscribe(keys_to_remove).await
     }

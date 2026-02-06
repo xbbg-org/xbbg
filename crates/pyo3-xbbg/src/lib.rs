@@ -22,12 +22,19 @@
 //!
 //! # Logging
 //!
-//! Rust tracing events are bridged to Python's logging module via pyo3-log.
-//! Configure Python logging to see Rust-side events:
+//! Rust tracing events are output to stderr via a non-blocking writer.
+//! The log level is controlled from Python without any GIL acquisition:
 //!
 //! ```python
-//! import logging
-//! logging.basicConfig(level=logging.DEBUG)
+//! import xbbg
+//! xbbg.set_log_level("debug")   # sets atomic level, no GIL on log path
+//! xbbg.set_log_level("warn")    # default — quiet for end users
+//! ```
+//!
+//! For per-crate control, set `RUST_LOG` before importing xbbg:
+//!
+//! ```bash
+//! RUST_LOG=xbbg_core=trace,xbbg_async=debug python my_script.py
 //! ```
 
 use std::collections::HashMap;
@@ -38,7 +45,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes::tokio::future_into_py;
 use tokio::sync::Mutex;
-use tracing::{debug, info, warn};
+use xbbg_log::{debug, info, warn};
 
 use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
 use xbbg_async::{BlpAsyncError, ValidationMode};
@@ -1272,43 +1279,11 @@ fn version() -> String {
 #[pymodule]
 #[pyo3(name = "_core")]
 fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Set up logging bridge: tracing -> log -> Python logging
+    // Initialize zero-GIL logging: tracing -> AtomicLevelFilter -> non-blocking stderr
     //
-    // Architecture:
-    //   tracing::info!() -> tracing_subscriber -> tracing_log layer -> log crate -> pyo3_log -> Python
-    //
-    // Configure Python logging to see Rust events:
-    //   import logging
-    //   logging.basicConfig(level=logging.DEBUG, format='%(name)s %(levelname)s: %(message)s')
-    
-    // Initialize pyo3-log (log -> Python) - must be first
-    pyo3_log::init();
-    
-    // Set up tracing subscriber with log bridge layer
-    // This creates: tracing events -> fmt layer (for direct output) + log layer (for Python)
-    use tracing_subscriber::prelude::*;
-    use tracing_subscriber::fmt;
-    use tracing_log::LogTracer;
-    
-    // Install LogTracer to capture any log! macros and forward to tracing
-    let _ = LogTracer::init();
-    
-    // Build subscriber with tracing_subscriber that outputs to both stderr and log crate
-    let subscriber = tracing_subscriber::registry()
-        .with(
-            fmt::layer()
-                .with_target(true)
-                .with_thread_ids(true)
-                .with_file(true)
-                .with_line_number(true)
-                .with_filter(tracing_subscriber::EnvFilter::from_default_env()
-                    .add_directive("pyo3_xbbg=info".parse().unwrap())
-                    .add_directive("xbbg_async=info".parse().unwrap())
-                    .add_directive("xbbg_core=info".parse().unwrap()))
-        );
-    
-    // Set as global default (ignore error if already set)
-    let _ = tracing::subscriber::set_global_default(subscriber);
+    // Python controls via xbbg.set_log_level("debug").
+    // Developers override with RUST_LOG=xbbg_core=trace,xbbg_async=debug.
+    xbbg_log::init();
 
     // Initialize tokio runtime for pyo3-async-runtimes
     // This creates a multi-threaded runtime that handles async Bloomberg operations
@@ -1345,8 +1320,47 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("BlpTimeoutError", _py.get_type::<BlpTimeoutError>())?;
     m.add("BlpInternalError", _py.get_type::<BlpInternalError>())?;
 
+    // Logging control (zero-GIL)
+    m.add_function(wrap_pyfunction!(set_log_level, m)?)?;
+    m.add_function(wrap_pyfunction!(get_log_level, m)?)?;
+
     // Register ext functions (date, pivot, ticker, futures, cdx, currency utilities)
     ext::register_ext_module(m)?;
 
     Ok(())
+}
+
+// =============================================================================
+// Logging control — Python-facing functions
+// =============================================================================
+
+/// Set the Rust log level.
+///
+/// Accepts: "trace", "debug", "info", "warn", "error".
+/// Default is "warn" (quiet for end users).
+///
+/// This sets an atomic integer — no GIL is held on the logging hot path.
+/// For per-crate control, use the RUST_LOG environment variable instead.
+#[pyfunction]
+fn set_log_level(level: &str) -> PyResult<()> {
+    let lvl = xbbg_log::parse_level(level).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "Invalid log level '{}'. Expected: trace, debug, info, warn, error",
+            level
+        ))
+    })?;
+    xbbg_log::set_level(lvl);
+    Ok(())
+}
+
+/// Get the current Rust log level as a string.
+#[pyfunction]
+fn get_log_level() -> &'static str {
+    match xbbg_log::current_level() {
+        xbbg_log::Level::TRACE => "trace",
+        xbbg_log::Level::DEBUG => "debug",
+        xbbg_log::Level::INFO => "info",
+        xbbg_log::Level::WARN => "warn",
+        xbbg_log::Level::ERROR => "error",
+    }
 }

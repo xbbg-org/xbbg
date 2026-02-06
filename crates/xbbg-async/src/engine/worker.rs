@@ -217,7 +217,7 @@ impl RequestWorker {
         let services_to_warm: Vec<String> = self.config.warmup_services.clone();
         for service_name in &services_to_warm {
             if let Err(e) = self.ensure_service(service_name) {
-                tracing::warn!(
+                xbbg_log::warn!(
                     worker_id = self.id,
                     service = %service_name,
                     error = %e,
@@ -225,7 +225,7 @@ impl RequestWorker {
                 );
             }
         }
-        tracing::info!(
+        xbbg_log::info!(
             worker_id = self.id,
             services = ?self.services.keys().collect::<Vec<_>>(),
             "worker pre-warmed"
@@ -235,24 +235,24 @@ impl RequestWorker {
 
     /// Main pump loop.
     fn run(&mut self) -> Result<(), BlpError> {
-        tracing::info!(worker_id = self.id, "RequestWorker started");
+        xbbg_log::info!(worker_id = self.id, "RequestWorker started");
 
         loop {
             // 1. Drain commands (non-blocking)
             loop {
                 match self.cmd_rx.try_recv() {
                     Ok(WorkerCommand::Shutdown) => {
-                        tracing::info!(worker_id = self.id, "RequestWorker shutting down");
+                        xbbg_log::info!(worker_id = self.id, "RequestWorker shutting down");
                         return Ok(());
                     }
                     Ok(WorkerCommand::Request { params, reply }) => {
                         if let Err(e) = self.send_request(params, reply) {
-                            tracing::error!(worker_id = self.id, error = %e, "request error");
+                            xbbg_log::error!(worker_id = self.id, error = %e, "request error");
                         }
                     }
                     Ok(WorkerCommand::RequestStream { params, stream }) => {
                         if let Err(e) = self.send_request_stream(params, stream) {
-                            tracing::error!(worker_id = self.id, error = %e, "stream request error");
+                            xbbg_log::error!(worker_id = self.id, error = %e, "stream request error");
                         }
                     }
                     Ok(WorkerCommand::IntrospectSchema { service, reply }) => {
@@ -261,7 +261,7 @@ impl RequestWorker {
                     }
                     Err(mpsc::error::TryRecvError::Empty) => break,
                     Err(mpsc::error::TryRecvError::Disconnected) => {
-                        tracing::info!(worker_id = self.id, "command channel closed");
+                        xbbg_log::info!(worker_id = self.id, "command channel closed");
                         return Ok(());
                     }
                 }
@@ -288,7 +288,7 @@ impl RequestWorker {
         for (&key, &send_time) in &self.send_times {
             let elapsed = now.duration_since(send_time);
             if elapsed > SLOW_REQUEST_WARN_THRESHOLD && !self.warned_requests.contains(&key) {
-                tracing::warn!(
+                xbbg_log::warn!(
                     worker_id = self.id,
                     request_key = key,
                     elapsed_secs = elapsed.as_secs(),
@@ -313,7 +313,7 @@ impl RequestWorker {
         &mut self,
         service_uri: &str,
     ) -> Result<crate::schema::ServiceSchema, BlpError> {
-        tracing::debug!(worker_id = self.id, service = %service_uri, "introspecting schema");
+        xbbg_log::debug!(worker_id = self.id, service = %service_uri, "introspecting schema");
 
         self.ensure_service(service_uri)?;
 
@@ -326,7 +326,7 @@ impl RequestWorker {
 
         let schema = crate::schema::introspect_service(service, service_uri);
 
-        tracing::debug!(
+        xbbg_log::debug!(
             worker_id = self.id,
             service = %service_uri,
             operations = schema.operations.len(),
@@ -344,28 +344,28 @@ impl RequestWorker {
     ) -> Result<(), BlpError> {
         let t0 = std::time::Instant::now();
         self.ensure_service(&params.service)?;
-        tracing::debug!(
+        xbbg_log::debug!(
             worker_id = self.id,
             elapsed_us = t0.elapsed().as_micros(),
             "ensure_service"
         );
 
         // Create state based on extractor type
-        tracing::debug!(
+        xbbg_log::debug!(
             worker_id = self.id,
             extractor = ?params.extractor,
             fields = ?params.fields,
             "creating request state"
         );
         let state = self.create_request_state(&params, reply)?;
-        tracing::debug!(worker_id = self.id, "request state created");
+        xbbg_log::debug!(worker_id = self.id, "request state created");
 
         let key = self.requests.insert(state);
         let cid = CorrelationId::Int(key as i64);
 
         // Build request from params
         let service = self.services.get(&params.service).unwrap();
-        tracing::debug!(
+        xbbg_log::debug!(
             worker_id = self.id,
             operation = %params.operation,
             securities = ?params.securities,
@@ -374,13 +374,13 @@ impl RequestWorker {
             "building request"
         );
         let request = self.build_request_from_params(service, &params)?;
-        tracing::debug!(worker_id = self.id, "request built");
+        xbbg_log::debug!(worker_id = self.id, "request built");
 
         let t_send = std::time::Instant::now();
         self.session.send_request(&request, None, Some(&cid))?;
         self.send_times.insert(key, t_send);
 
-        tracing::debug!(
+        xbbg_log::debug!(
             worker_id = self.id,
             key = key,
             service = %params.service,
@@ -517,7 +517,7 @@ impl RequestWorker {
         let request = self.build_request_from_params(service, &params)?;
 
         self.session.send_request(&request, None, Some(&cid))?;
-        tracing::debug!(
+        xbbg_log::debug!(
             worker_id = self.id,
             key = key,
             service = %params.service,
@@ -533,14 +533,14 @@ impl RequestWorker {
         service: &Service,
         params: &RequestParams,
     ) -> Result<xbbg_core::Request, BlpError> {
-        tracing::trace!(operation = %params.operation, "creating request");
+        xbbg_log::trace!(operation = %params.operation, "creating request");
         let mut request = service.create_request(&params.operation)?;
-        tracing::trace!("request created");
+        xbbg_log::trace!("request created");
 
         // Set securities (multi or single)
         if let Some(ref securities) = params.securities {
             for sec in securities {
-                tracing::trace!(element = "securities", value = %sec, "appending");
+                xbbg_log::trace!(element = "securities", value = %sec, "appending");
                 request.append_str("securities", sec)?;
             }
         }
@@ -551,10 +551,10 @@ impl RequestWorker {
                 params.extractor,
                 ExtractorType::IntradayBar | ExtractorType::IntradayTick
             ) {
-                tracing::trace!(element = "security", value = %security, "setting scalar");
+                xbbg_log::trace!(element = "security", value = %security, "setting scalar");
                 request.set_str("security", security)?;
             } else {
-                tracing::trace!(element = "securities", value = %security, "appending");
+                xbbg_log::trace!(element = "securities", value = %security, "appending");
                 request.append_str("securities", security)?;
             }
         }
@@ -562,28 +562,28 @@ impl RequestWorker {
         // Set fields
         if let Some(ref fields) = params.fields {
             for field in fields {
-                tracing::trace!(element = "fields", value = %field, "appending");
+                xbbg_log::trace!(element = "fields", value = %field, "appending");
                 request.append_str("fields", field)?;
             }
         }
 
         // Set date range (for historical) - scalar elements use set_str
         if let Some(ref start) = params.start_date {
-            tracing::trace!(element = "startDate", value = %start, "setting");
+            xbbg_log::trace!(element = "startDate", value = %start, "setting");
             request.set_str("startDate", start)?;
         }
         if let Some(ref end) = params.end_date {
-            tracing::trace!(element = "endDate", value = %end, "setting");
+            xbbg_log::trace!(element = "endDate", value = %end, "setting");
             request.set_str("endDate", end)?;
         }
 
         // Set datetime range (for intraday) - use proper datetime type
         if let Some(ref start) = params.start_datetime {
-            tracing::trace!(element = "startDateTime", value = %start, "setting datetime");
+            xbbg_log::trace!(element = "startDateTime", value = %start, "setting datetime");
             request.set_datetime("startDateTime", start)?;
         }
         if let Some(ref end) = params.end_datetime {
-            tracing::trace!(element = "endDateTime", value = %end, "setting datetime");
+            xbbg_log::trace!(element = "endDateTime", value = %end, "setting datetime");
             request.set_datetime("endDateTime", end)?;
         }
 
@@ -594,7 +594,7 @@ impl RequestWorker {
         // Set event types (array, for intraday ticks)
         if let Some(ref event_types) = params.event_types {
             for et in event_types {
-                tracing::trace!(element = "eventTypes", value = %et, "appending event type");
+                xbbg_log::trace!(element = "eventTypes", value = %et, "appending event type");
                 request.append_str("eventTypes", et)?;
             }
         }
@@ -670,7 +670,7 @@ impl RequestWorker {
             if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
                 if let Some(state) = self.requests.get_mut(key as usize) {
                     state.on_partial(msg);
-                    tracing::trace!(worker_id = self.id, key = key, "partial response");
+                    xbbg_log::trace!(worker_id = self.id, key = key, "partial response");
                 }
             }
         }
@@ -684,7 +684,7 @@ impl RequestWorker {
                     // Log round-trip time and clean up tracking
                     if let Some(t_send) = self.send_times.remove(&(key as usize)) {
                         let rtt_ms = t_send.elapsed().as_micros() as f64 / 1000.0;
-                        tracing::info!(
+                        xbbg_log::info!(
                             worker_id = self.id,
                             rtt_ms = rtt_ms,
                             key = key,
@@ -694,7 +694,7 @@ impl RequestWorker {
                     self.warned_requests.remove(&(key as usize));
                     let state = self.requests.remove(key as usize);
                     state.finish_and_reply(msg);
-                    tracing::debug!(worker_id = self.id, key = key, "response completed");
+                    xbbg_log::debug!(worker_id = self.id, key = key, "response completed");
                 }
             }
         }
@@ -708,7 +708,7 @@ impl RequestWorker {
         for i in 0..n {
             if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
                 if msg_type == "RequestFailure" {
-                    tracing::error!(worker_id = self.id, key = key, "request failed");
+                    xbbg_log::error!(worker_id = self.id, key = key, "request failed");
                     if self.requests.contains(key as usize) {
                         // Clean up tracking
                         self.send_times.remove(&(key as usize));
@@ -728,13 +728,13 @@ impl RequestWorker {
         let msg_type = msg_type_name.as_str();
         match msg_type {
             "SessionStarted" => {
-                tracing::info!(worker_id = self.id, "session started");
+                xbbg_log::info!(worker_id = self.id, "session started");
             }
             "SessionTerminated" | "SessionConnectionDown" => {
-                tracing::error!(worker_id = self.id, "session terminated/down");
+                xbbg_log::error!(worker_id = self.id, "session terminated/down");
             }
             _ => {
-                tracing::debug!(worker_id = self.id, msg_type = msg_type, "session status");
+                xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
             }
         }
     }
@@ -742,7 +742,7 @@ impl RequestWorker {
     fn handle_service_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
-        tracing::debug!(worker_id = self.id, msg_type = msg_type, "service status");
+        xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "service status");
     }
 }
 
@@ -767,11 +767,11 @@ impl WorkerHandle {
             .spawn(move || match RequestWorker::new(id, config_clone, cmd_rx) {
                 Ok(mut worker) => {
                     if let Err(e) = worker.run() {
-                        tracing::error!(worker_id = id, error = %e, "worker error");
+                        xbbg_log::error!(worker_id = id, error = %e, "worker error");
                     }
                 }
                 Err(e) => {
-                    tracing::error!(worker_id = id, error = %e, "worker creation failed");
+                    xbbg_log::error!(worker_id = id, error = %e, "worker creation failed");
                 }
             })
             .map_err(|e| BlpError::Internal {

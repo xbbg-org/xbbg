@@ -12,7 +12,7 @@ use arrow::array::{ArrayRef, Date32Builder, Float64Builder, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
-use tracing::trace;
+use xbbg_log::trace;
 
 use xbbg_core::{BlpError, Message};
 

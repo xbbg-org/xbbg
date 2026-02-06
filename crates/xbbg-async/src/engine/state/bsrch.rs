@@ -20,7 +20,7 @@ use std::sync::Arc;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
-use tracing::trace;
+use xbbg_log::trace;
 
 use super::typed_builder::ColumnSet;
 use xbbg_core::{BlpError, Message};

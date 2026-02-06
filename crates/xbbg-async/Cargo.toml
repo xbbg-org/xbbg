@@ -12,7 +12,7 @@ xbbg_core = { path = "../xbbg-core" }
 thiserror = "2.0"
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream = "0.1"
-tracing = "0.1"
+xbbg-log = { path = "../xbbg-log" }
 once_cell = "1.19"
 ahash = "0.8"
 slab = "0.4"
@@ -28,12 +28,10 @@ default = ["live"]
 mock = ["xbbg_core/mock"]
 live = ["xbbg_core/live"]
 
-# cargo-udeps false positives (tracing macros not detected)
+# cargo-udeps false positives (xbbg-log re-exports tracing macros)
 [package.metadata.cargo-udeps.ignore]
-normal = ["tracing"]
-development = ["tracing-subscriber"]
+normal = ["xbbg-log"]
 
 [dev-dependencies]
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 blpapi-sys = { path = "../blpapi-sys" }
 tempfile = "3.15"

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
-use tracing::trace;
+use xbbg_log::trace;
 
 use super::refdata::{LongMode, OutputFormat};
 use super::typed_builder::{ArrowType, ColumnSet};

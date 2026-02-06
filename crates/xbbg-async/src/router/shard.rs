@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use super::Envelope;
 use crate::config::AsyncOptions;
 use crate::metrics::ShardMetrics;
-use tracing::{trace, warn};
+use xbbg_log::{trace, warn};
 
 pub struct Shard {
     inner: Mutex<AHashMap<u64, Vec<mpsc::Sender<Envelope>>>>,

@@ -40,7 +40,7 @@ if sys.platform == "win32":
 
 
 @dataclass
-class TestConfig:
+class LiveTestConfig:
     """Test configuration with safe defaults."""
 
     # Liquid equities for testing
@@ -69,7 +69,7 @@ class TestConfig:
             self.equity_multi = ["AAPL US Equity", "MSFT US Equity"]
 
 
-CONFIG = TestConfig()
+CONFIG = LiveTestConfig()
 
 
 def get_recent_trading_day() -> str:

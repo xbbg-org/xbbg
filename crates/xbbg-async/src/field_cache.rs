@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 use arrow::array::{Array, RecordBatch, StringArray};
 use arrow::datatypes::DataType;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use xbbg_log::{debug, info, warn};
 
 /// Bloomberg field type as returned by //blp/apiflds.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -7,7 +7,7 @@ use xbbg_core::EventType;
 use xbbg_core::{CorrelationId, SubscriptionList};
 
 use crate::{BlpAsyncError, Router};
-use tracing::{info, trace};
+use xbbg_log::{info, trace};
 
 pub struct SubscriptionHandle {
     data_rx: mpsc::Receiver<crate::router::Envelope>,

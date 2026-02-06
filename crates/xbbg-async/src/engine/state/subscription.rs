@@ -129,7 +129,7 @@ impl SubscriptionState {
     /// Handle DATALOSS indicator.
     pub fn on_dataloss(&mut self) {
         self.slow_consumer = true;
-        tracing::warn!(topic = %self.topic, "DATALOSS detected - slow consumer");
+        xbbg_log::warn!(topic = %self.topic, "DATALOSS detected - slow consumer");
     }
 
     /// Flush pending rows as a RecordBatch.
@@ -172,7 +172,7 @@ impl SubscriptionState {
                 self.send_batch(batch);
             }
             Err(e) => {
-                tracing::error!(topic = %self.topic, error = %e, "failed to create RecordBatch");
+                xbbg_log::error!(topic = %self.topic, error = %e, "failed to create RecordBatch");
             }
         }
 
@@ -186,7 +186,7 @@ impl SubscriptionState {
                 // Non-blocking: drop the batch if stream is full
                 if self.stream.try_send(batch).is_err() {
                     self.dropped_batches += 1;
-                    tracing::warn!(
+                    xbbg_log::warn!(
                         topic = %self.topic,
                         dropped = self.dropped_batches,
                         "stream full - dropping newest batch"
@@ -203,14 +203,14 @@ impl SubscriptionState {
                         // Since we can't access the receiver here, we fall back to
                         // dropping newest with a warning
                         self.dropped_batches += 1;
-                        tracing::warn!(
+                        xbbg_log::warn!(
                             topic = %self.topic,
                             dropped = self.dropped_batches,
                             "stream full - DropOldest policy (dropping newest as fallback)"
                         );
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
-                        tracing::warn!(topic = %self.topic, "stream closed");
+                        xbbg_log::warn!(topic = %self.topic, "stream closed");
                     }
                 }
             }
@@ -220,7 +220,7 @@ impl SubscriptionState {
                 // Fall back to try_send with a warning
                 if self.stream.try_send(batch).is_err() {
                     self.dropped_batches += 1;
-                    tracing::warn!(
+                    xbbg_log::warn!(
                         topic = %self.topic,
                         dropped = self.dropped_batches,
                         "stream full - Block policy (non-blocking fallback)"

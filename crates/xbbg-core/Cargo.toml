@@ -20,6 +20,7 @@ tracy = ["dep:tracy-client"]  # Enable Tracy profiler instrumentation
 [dependencies]
 thiserror = "2.0"
 xbbg-sys = { path = "../xbbg-sys", default-features = false }
+xbbg-log = { path = "../xbbg-log" }
 rustc-hash = "2.0"  # Fast non-cryptographic hashing for Name cache
 tracy-client = { version = "0.18", optional = true }
 

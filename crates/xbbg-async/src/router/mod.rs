@@ -7,7 +7,7 @@ use xbbg_core::CorrelationId;
 use crate::config::AsyncOptions;
 use crate::metrics::RouterMetrics;
 use shard::Shard;
-use tracing::trace;
+use xbbg_log::trace;
 
 #[derive(Clone, Debug)]
 pub struct Envelope {

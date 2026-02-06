@@ -3,7 +3,7 @@ use xbbg_core::session::Session;
 
 use crate::router::{Envelope, Router};
 use std::time::Duration;
-use tracing::{debug, info, trace, warn};
+use xbbg_log::{debug, info, trace, warn};
 
 pub fn run_pump(session: Arc<Session>, router: Arc<Router>) {
     info!("dispatcher: pump thread started");

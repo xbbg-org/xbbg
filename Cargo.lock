@@ -68,15 +68,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
-name = "arc-swap"
-version = "1.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51d03449bb8ca2cc2ef70869af31463d1ae5ccc8fa3e334b307203fbf815207e"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "arrow"
 version = "57.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -620,6 +611,15 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.5",
+]
+
+[[package]]
+name = "crossbeam-channel"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -1568,17 +1568,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pyo3-log"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f8bae9ad5ba08b0b0ed2bb9c2bdbaeccc69cafca96d78cf0fbcea0d45d122bb"
-dependencies = [
- "arc-swap",
- "log",
- "pyo3",
-]
-
-[[package]]
 name = "pyo3-macros"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1612,15 +1601,12 @@ dependencies = [
  "chrono",
  "pyo3",
  "pyo3-async-runtimes",
- "pyo3-log",
  "serde_json",
  "tokio",
- "tracing",
- "tracing-log",
- "tracing-subscriber",
  "vergen-gitcl",
  "xbbg-async",
  "xbbg-ext",
+ "xbbg-log",
  "xbbg_core",
 ]
 
@@ -2044,6 +2030,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-appender"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "786d480bce6247ab75f005b14ae1624ad978d3029d9113f0a22fa1ac773faeaf"
+dependencies = [
+ "crossbeam-channel",
+ "thiserror",
+ "time",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tracing-attributes"
 version = "0.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2423,8 +2421,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
- "tracing",
- "tracing-subscriber",
+ "xbbg-log",
  "xbbg_core",
 ]
 
@@ -2437,6 +2434,16 @@ dependencies = [
  "criterion",
  "phf 0.11.3",
  "thiserror",
+]
+
+[[package]]
+name = "xbbg-log"
+version = "0.0.0"
+dependencies = [
+ "tracing",
+ "tracing-appender",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2457,6 +2464,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "thiserror",
  "tracy-client",
+ "xbbg-log",
  "xbbg-sys",
 ]
 

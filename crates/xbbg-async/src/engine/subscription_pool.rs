@@ -82,7 +82,7 @@ impl SubscriptionWorker {
         let mut open_services = std::collections::HashSet::new();
         open_services.insert("//blp/mktdata".to_string());
 
-        tracing::info!(worker_id = id, "subscription worker pre-warmed");
+        xbbg_log::info!(worker_id = id, "subscription worker pre-warmed");
 
         Ok(Self {
             id,
@@ -97,7 +97,7 @@ impl SubscriptionWorker {
     /// Ensure a service is open, opening it on demand if needed.
     fn ensure_service(&mut self, service: &str) -> Result<(), BlpError> {
         if !self.open_services.contains(service) {
-            tracing::info!(
+            xbbg_log::info!(
                 worker_id = self.id,
                 service = service,
                 "opening service on demand"
@@ -109,14 +109,14 @@ impl SubscriptionWorker {
     }
 
     fn run(&mut self) -> Result<(), BlpError> {
-        tracing::info!(worker_id = self.id, "SubscriptionWorker started");
+        xbbg_log::info!(worker_id = self.id, "SubscriptionWorker started");
 
         loop {
             // 1. Drain commands (non-blocking)
             loop {
                 match self.cmd_rx.try_recv() {
                     Ok(SubscriptionCommand::Shutdown) => {
-                        tracing::info!(worker_id = self.id, "SubscriptionWorker shutting down");
+                        xbbg_log::info!(worker_id = self.id, "SubscriptionWorker shutting down");
                         return Ok(());
                     }
                     Ok(SubscriptionCommand::Subscribe {
@@ -129,7 +129,7 @@ impl SubscriptionWorker {
                     }) => {
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
-                            tracing::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
+                            xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
                             let _ = reply.send(vec![]);
                             continue;
                         }
@@ -146,7 +146,7 @@ impl SubscriptionWorker {
                     }) => {
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
-                            tracing::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
+                            xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
                             let _ = reply.send(vec![]);
                             continue;
                         }
@@ -159,7 +159,7 @@ impl SubscriptionWorker {
                     }
                     Err(mpsc::error::TryRecvError::Empty) => break,
                     Err(mpsc::error::TryRecvError::Disconnected) => {
-                        tracing::info!(worker_id = self.id, "command channel closed");
+                        xbbg_log::info!(worker_id = self.id, "command channel closed");
                         return Ok(());
                     }
                 }
@@ -201,14 +201,14 @@ impl SubscriptionWorker {
             let options_str = options.join(",");
             if let Err(e) = sub_list.add(topic, &field_refs, &options_str, &cid)
             {
-                tracing::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
+                xbbg_log::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
             }
 
-            tracing::debug!(worker_id = self.id, topic = %topic, key = key, "subscription added");
+            xbbg_log::debug!(worker_id = self.id, topic = %topic, key = key, "subscription added");
         }
 
         if let Err(e) = self.session.subscribe(&sub_list, None) {
-            tracing::error!(worker_id = self.id, error = %e, "subscribe failed");
+            xbbg_log::error!(worker_id = self.id, error = %e, "subscribe failed");
         }
 
         keys
@@ -218,7 +218,7 @@ impl SubscriptionWorker {
         for key in keys {
             if self.subs.contains(key) {
                 self.subs.remove(key);
-                tracing::debug!(worker_id = self.id, key = key, "subscription removed");
+                xbbg_log::debug!(worker_id = self.id, key = key, "subscription removed");
             }
         }
     }
@@ -282,22 +282,22 @@ impl SubscriptionWorker {
             if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
                 match msg_type {
                     "SubscriptionStarted" => {
-                        tracing::debug!(worker_id = self.id, key = key, "subscription started");
+                        xbbg_log::debug!(worker_id = self.id, key = key, "subscription started");
                     }
                     "SubscriptionFailure" => {
-                        tracing::error!(worker_id = self.id, key = key, "subscription failed");
+                        xbbg_log::error!(worker_id = self.id, key = key, "subscription failed");
                         if self.subs.contains(key as usize) {
                             self.subs.remove(key as usize);
                         }
                     }
                     "SubscriptionTerminated" => {
-                        tracing::info!(worker_id = self.id, key = key, "subscription terminated");
+                        xbbg_log::info!(worker_id = self.id, key = key, "subscription terminated");
                         if self.subs.contains(key as usize) {
                             self.subs.remove(key as usize);
                         }
                     }
                     _ => {
-                        tracing::trace!(
+                        xbbg_log::trace!(
                             worker_id = self.id,
                             key = key,
                             msg_type = msg_type,
@@ -314,13 +314,13 @@ impl SubscriptionWorker {
         let msg_type = msg_type_name.as_str();
         match msg_type {
             "SessionStarted" => {
-                tracing::info!(worker_id = self.id, "session started");
+                xbbg_log::info!(worker_id = self.id, "session started");
             }
             "SessionTerminated" | "SessionConnectionDown" => {
-                tracing::error!(worker_id = self.id, "session terminated/down");
+                xbbg_log::error!(worker_id = self.id, "session terminated/down");
             }
             _ => {
-                tracing::debug!(worker_id = self.id, msg_type = msg_type, "session status");
+                xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
             }
         }
     }
@@ -328,7 +328,7 @@ impl SubscriptionWorker {
     fn handle_service_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
-        tracing::debug!(worker_id = self.id, msg_type = msg_type, "service status");
+        xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "service status");
     }
 }
 
@@ -350,11 +350,11 @@ impl SubscriptionWorkerHandle {
                 match SubscriptionWorker::new(id, config_clone, cmd_rx) {
                     Ok(mut worker) => {
                         if let Err(e) = worker.run() {
-                            tracing::error!(worker_id = id, error = %e, "subscription worker error");
+                            xbbg_log::error!(worker_id = id, error = %e, "subscription worker error");
                         }
                     }
                     Err(e) => {
-                        tracing::error!(worker_id = id, error = %e, "subscription worker creation failed");
+                        xbbg_log::error!(worker_id = id, error = %e, "subscription worker creation failed");
                     }
                 }
             })
@@ -405,7 +405,7 @@ pub struct SubscriptionSessionPool {
 impl SubscriptionSessionPool {
     /// Create a new pool with the specified number of pre-warmed sessions.
     pub fn new(size: usize, config: Arc<EngineConfig>) -> Result<Self, BlpAsyncError> {
-        tracing::info!(pool_size = size, "creating subscription session pool");
+        xbbg_log::info!(pool_size = size, "creating subscription session pool");
 
         let mut available = Vec::with_capacity(size);
         for id in 0..size {
@@ -417,7 +417,7 @@ impl SubscriptionSessionPool {
             available.push(handle);
         }
 
-        tracing::info!(pool_size = size, "subscription session pool ready");
+        xbbg_log::info!(pool_size = size, "subscription session pool ready");
 
         Ok(Self {
             available: Mutex::new(available),
@@ -437,7 +437,7 @@ impl SubscriptionSessionPool {
         let handle = {
             let mut available = self.available.lock();
             if let Some(handle) = available.pop() {
-                tracing::debug!(
+                xbbg_log::debug!(
                     worker_id = handle.id,
                     remaining = available.len(),
                     "claimed session from pool"
@@ -448,7 +448,7 @@ impl SubscriptionSessionPool {
 
                 // Pool exhausted - create new session dynamically
                 let new_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-                tracing::warn!(
+                xbbg_log::warn!(
                     worker_id = new_id,
                     initial_size = self.initial_size,
                     "subscription pool exhausted, creating new session"
@@ -471,7 +471,7 @@ impl SubscriptionSessionPool {
     /// Release a session back to the pool.
     fn release(&self, handle: SubscriptionWorkerHandle) {
         let mut available = self.available.lock();
-        tracing::debug!(
+        xbbg_log::debug!(
             worker_id = handle.id,
             pool_size = available.len() + 1,
             "session returned to pool"
@@ -490,7 +490,7 @@ impl SubscriptionSessionPool {
     /// will be signaled when they're returned to the pool and dropped.
     pub fn signal_shutdown(&self) {
         let available = self.available.lock();
-        tracing::info!(count = available.len(), "signaling subscription pool shutdown");
+        xbbg_log::info!(count = available.len(), "signaling subscription pool shutdown");
         for handle in available.iter() {
             handle.signal_shutdown();
         }
@@ -499,7 +499,7 @@ impl SubscriptionSessionPool {
     /// Graceful shutdown - waits for all workers to finish (blocking).
     pub fn shutdown_blocking(&self) {
         let mut available = self.available.lock();
-        tracing::info!(count = available.len(), "shutting down subscription pool (blocking)");
+        xbbg_log::info!(count = available.len(), "shutting down subscription pool (blocking)");
         for handle in available.iter_mut() {
             handle.shutdown_blocking();
         }

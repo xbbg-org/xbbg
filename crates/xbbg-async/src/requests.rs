@@ -5,7 +5,7 @@ use tokio_stream::Stream;
 use xbbg_core::{CorrelationId, Request, Service};
 
 use crate::{AsyncSession, BlpAsyncError};
-use tracing::{info, trace};
+use xbbg_log::{info, trace};
 
 pub struct RequestHandle {
     _cid: CorrelationId,
