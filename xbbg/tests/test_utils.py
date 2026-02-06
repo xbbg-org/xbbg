@@ -212,6 +212,16 @@ class TestNormalizeFlds:
         result = utils.normalize_flds(None)
         assert result == []
 
+    def test_normalize_flds_empty_string(self):
+        """Issue #75: bds('TSLA US Equity', flds='') — empty field should normalize gracefully."""
+        result = utils.normalize_flds("")
+        assert result == [""]
+
+    def test_normalize_flds_whitespace_string(self):
+        """Edge case: whitespace-only field string."""
+        result = utils.normalize_flds("  ")
+        assert result == ["  "]
+
 
 class TestCheckEmptyResult:
     """Test empty result checking utility function."""

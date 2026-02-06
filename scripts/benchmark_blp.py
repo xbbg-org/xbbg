@@ -14,9 +14,9 @@ Requires Bloomberg Terminal connection.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from statistics import mean, stdev
+import time
 
 # Check Bloomberg availability first
 try:
@@ -35,21 +35,26 @@ class BenchmarkResult:
 
     @property
     def mean_ms(self) -> float:
+        """Mean benchmark time in milliseconds."""
         return mean(self.times) * 1000
 
     @property
     def stdev_ms(self) -> float:
+        """Standard deviation of benchmark times in milliseconds."""
         return stdev(self.times) * 1000 if len(self.times) > 1 else 0
 
     @property
     def min_ms(self) -> float:
+        """Minimum benchmark time in milliseconds."""
         return min(self.times) * 1000
 
     @property
     def max_ms(self) -> float:
+        """Maximum benchmark time in milliseconds."""
         return max(self.times) * 1000
 
     def __str__(self) -> str:
+        """Format benchmark result as a summary line."""
         return (
             f"{self.name:40} "
             f"mean={self.mean_ms:8.2f}ms  "
@@ -77,6 +82,7 @@ def benchmark(name: str, func, warmup: int = 1, iterations: int = 5) -> Benchmar
 
 
 def main():
+    """Run all Bloomberg API benchmarks and print results."""
     print("=" * 80)
     print("xbbg Bloomberg API Benchmark")
     print("=" * 80)

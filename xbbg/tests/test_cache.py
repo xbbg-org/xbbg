@@ -200,6 +200,24 @@ class TestBarFileInterval:
             assert path_5m != path_10s
 
 
+class TestMultiDayBarFilesEdgeCases:
+    """Edge-case tests for multi_day_bar_files() from issue #70."""
+
+    def test_multi_day_bar_files_same_start_end_returns_one_file(self, tmp_path):
+        """Issue #70: single-date range should return exactly 1 file entry."""
+        with patch.dict(os.environ, {"BBG_ROOT": str(tmp_path)}):
+            result = multi_day_bar_files(
+                ticker="AAPL US Equity",
+                start_datetime="2025-01-15",
+                end_datetime="2025-01-15",
+                typ="TRADE",
+            )
+            assert len(result) == 1
+            date_str, path = result[0]
+            assert "2025-01-15" in date_str
+            assert path.endswith(".parq")
+
+
 class TestMultiDayBarFilesInterval:
     """Test that multi_day_bar_files() includes interval in cache paths."""
 

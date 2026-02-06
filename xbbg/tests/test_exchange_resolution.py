@@ -1214,3 +1214,21 @@ class TestEdgeCases:
             t.join()
 
         assert len(errors) == 0, f"Concurrent access errors: {errors}"
+
+    def test_japan_close_time_override(self):
+        """Issue #160: Japan market close moved from 15:00 to 15:30 (Nov 2024).
+
+        Users need to override session times when exchange hours change.
+        Verify the override system can handle updated Japan market hours.
+        """
+        updated_sessions = {
+            "am": ("09:00", "11:30"),
+            "pm": ("12:30", "15:30"),  # New close: 15:30 instead of 15:00
+        }
+        set_exchange_override("7203 JP Equity", sessions=updated_sessions, timezone="Asia/Tokyo")
+
+        info = get_exchange_override("7203 JP Equity")
+        assert info is not None
+        assert info.sessions["pm"] == ("12:30", "15:30")
+        assert info.sessions["am"] == ("09:00", "11:30")
+        assert info.timezone == "Asia/Tokyo"

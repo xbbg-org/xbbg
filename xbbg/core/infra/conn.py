@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 _PORT_ = 8194
 
 
+def _stop_session_quietly(session: blpapi.Session) -> None:
+    """Stop a Bloomberg session, suppressing any errors."""
+    try:
+        session.stop()
+    except Exception:  # noqa: BLE001
+        logger.debug("Error stopping Bloomberg session (ignored)", exc_info=True)
+
+
 class SessionManager:
     """Manages Bloomberg sessions and services (Singleton pattern).
 
@@ -66,8 +74,15 @@ class SessionManager:
         return self._default_session
 
     def clear_default_session(self) -> None:
-        """Clear the default session."""
+        """Clear the default session and stop it."""
+        session = self._default_session
         self._default_session = None
+        # Also remove from _sessions cache (set_default_session stores it in both)
+        if session is not None:
+            keys_to_remove = [k for k, v in self._sessions.items() if v is session]
+            for k in keys_to_remove:
+                del self._sessions[k]
+            _stop_session_quietly(session)
 
     def get_session(self, port: int = _PORT_, **kwargs) -> blpapi.Session:
         """Get or create a Bloomberg session.
@@ -105,6 +120,7 @@ class SessionManager:
             if getattr(session, "_Session__handle", None) is None:
                 logger.info("Removing stale Bloomberg session (handle invalidated): %s", con_key)
                 del self._sessions[con_key]
+                _stop_session_quietly(session)
             else:
                 return session
 
@@ -113,16 +129,20 @@ class SessionManager:
         return self._sessions[con_key]
 
     def remove_session(self, port: int = _PORT_, server_host: str = "localhost") -> None:
-        """Remove a session from the manager.
+        """Remove a session from the manager and stop it.
 
         Args:
             port: Port number (default 8194).
             server_host: Server hostname (default 'localhost').
         """
         con_key = f"//{server_host}:{port}"
-        if con_key in self._sessions:
+        session = self._sessions.pop(con_key, None)
+        if session is not None:
             logger.info("Removing Bloomberg session from manager: %s", con_key)
-            del self._sessions[con_key]
+            # Also clear default if it's the same session object
+            if self._default_session is session:
+                self._default_session = None
+            _stop_session_quietly(session)
 
     def get_service(self, service: str, port: int = _PORT_, **kwargs) -> blpapi.Service:
         """Get or create a Bloomberg service.
@@ -306,17 +326,19 @@ def connect_bbg(**kwargs) -> blpapi.Session:
         logger.debug("Reusing existing Bloomberg session: %s", session)
     else:
         sess_opts = blpapi.SessionOptions()
-        server_host = kwargs.get("server") or kwargs.get("server_host", "localhost")
+        server_host = kwargs.get("server_host") or kwargs.get("server", "localhost")
         sess_opts.setServerHost(server_host)
         sess_opts.setServerPort(kwargs.get("port", _PORT_))
         session = blpapi.Session(sess_opts)
 
-    server_host = kwargs.get("server") or kwargs.get("server_host", "localhost")
+    server_host = kwargs.get("server_host") or kwargs.get("server", "localhost")
     port = kwargs.get("port", _PORT_)
     logger.debug("Establishing connection to Bloomberg Terminal (%s:%d)", server_host, port)
     if session.start():
         logger.debug("Successfully connected to Bloomberg Terminal")
         return session
+    # start() failed — clean up the session before raising
+    _stop_session_quietly(session)
     logger.error(
         "Failed to start Bloomberg session - check Terminal is running and %s:%d is accessible", server_host, port
     )
@@ -341,7 +363,7 @@ def bbg_session(**kwargs) -> blpapi.Session:
     if isinstance(kwargs.get("sess"), blpapi.Session):
         return kwargs["sess"]
 
-    port = kwargs.get("port", _PORT_)
+    port = kwargs.pop("port", _PORT_)
     return _session_manager.get_session(port=port, **kwargs)
 
 
@@ -358,7 +380,7 @@ def bbg_service(service: str, **kwargs) -> blpapi.Service:
     Returns:
         Bloomberg service
     """
-    port = kwargs.get("port", _PORT_)
+    port = kwargs.pop("port", _PORT_)
     return _session_manager.get_service(service=service, port=port, **kwargs)
 
 
@@ -405,7 +427,8 @@ def send_request(request: blpapi.Request, **kwargs):
 
         # Remove invalid session and retry
         port = kwargs.get("port", _PORT_)
-        _session_manager.remove_session(port=port)
+        server_host = kwargs.get("server_host") or kwargs.get("server", "localhost")
+        _session_manager.remove_session(port=port, server_host=server_host)
 
         sess = bbg_session(**kwargs)
         sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)

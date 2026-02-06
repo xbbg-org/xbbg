@@ -14,10 +14,10 @@ Usage:
 
 from __future__ import annotations
 
-import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from statistics import mean
+import time
 
 import pandas as pd
 import pyarrow as pa
@@ -30,20 +30,24 @@ class TimingAccumulator:
     stages: dict[str, list[float]] = field(default_factory=dict)
 
     def record(self, stage: str, duration: float):
+        """Record a timing measurement for a pipeline stage."""
         if stage not in self.stages:
             self.stages[stage] = []
         self.stages[stage].append(duration)
 
     @contextmanager
     def time_stage(self, stage: str):
+        """Context manager that times a code block and records the duration."""
         start = time.perf_counter()
         yield
         self.record(stage, time.perf_counter() - start)
 
     def summary(self) -> dict[str, float]:
+        """Return mean time in milliseconds for each stage."""
         return {stage: mean(times) * 1000 for stage, times in self.stages.items()}
 
     def reset(self):
+        """Clear all accumulated timing data."""
         self.stages.clear()
 
 
@@ -53,11 +57,10 @@ TIMINGS = TimingAccumulator()
 
 def benchmark_bdp_stages():
     """Benchmark bdp with stage-level timing."""
+    from xbbg.backend import Backend
     from xbbg.core.domain.context import split_kwargs
     from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, reference_pipeline_config
     from xbbg.core.utils import utils
-    from xbbg.io.convert import to_output
-    from xbbg.backend import Backend
 
     tickers = ["AAPL US Equity", "MSFT US Equity", "GOOGL US Equity"]
     flds = ["PX_LAST", "PX_OPEN", "PX_HIGH", "PX_LOW", "VOLUME"]
@@ -91,16 +94,13 @@ def benchmark_bdp_stages():
         # Stage 3: Output conversion (Arrow -> pandas)
         with TIMINGS.time_stage("3_to_pandas"):
             if isinstance(result, pa.Table):
-                df = result.to_pandas()
+                result.to_pandas()
 
     return TIMINGS.summary()
 
 
 def benchmark_parsing_only():
     """Benchmark just the parsing stage with mock data."""
-    from xbbg.core.process import process_ref
-    from xbbg.core.infra.blpapi_wrapper import blpapi
-
     # We can't easily mock Bloomberg messages, so let's measure
     # the Arrow/pandas conversion overhead instead
 
@@ -126,7 +126,7 @@ def benchmark_parsing_only():
 
         # Arrow -> DataFrame
         with TIMINGS.time_stage("arrow_to_dataframe"):
-            df2 = table.to_pandas()
+            table.to_pandas()
 
     return TIMINGS.summary()
 
@@ -153,12 +153,13 @@ def benchmark_large_data():
                 table = pa.Table.from_pandas(df)
 
             with TIMINGS.time_stage(f"arrow_to_pd_{size}"):
-                df2 = table.to_pandas()
+                table.to_pandas()
 
     return TIMINGS.summary()
 
 
 def main():
+    """Run all detailed pipeline benchmarks and print results."""
     print("=" * 80)
     print("Detailed xbbg Pipeline Benchmark")
     print("=" * 80)
