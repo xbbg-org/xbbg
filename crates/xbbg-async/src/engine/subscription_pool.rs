@@ -215,6 +215,32 @@ impl SubscriptionWorker {
     }
 
     fn unsubscribe(&mut self, keys: Vec<SlabKey>) {
+        // Build a SubscriptionList with correlation IDs so Bloomberg stops sending data.
+        // Without this, the SDK continues delivering events for removed subscriptions,
+        // wasting bandwidth and risking stale correlation ID reuse.
+        let mut unsub_list = SubscriptionList::new();
+        let mut unsub_count = 0usize;
+        for &key in &keys {
+            if self.subs.contains(key) {
+                let state = &self.subs[key];
+                let cid = CorrelationId::Int(key as i64);
+                // Topic and empty fields/options are sufficient for unsubscribe —
+                // Bloomberg matches on correlation ID.
+                if let Err(e) = unsub_list.add(&state.topic, &[], "", &cid) {
+                    xbbg_log::error!(worker_id = self.id, key = key, error = %e, "failed to build unsub list entry");
+                } else {
+                    unsub_count += 1;
+                }
+            }
+        }
+
+        if unsub_count > 0 {
+            if let Err(e) = self.session.unsubscribe(&unsub_list) {
+                xbbg_log::error!(worker_id = self.id, error = %e, "session.unsubscribe failed");
+            }
+        }
+
+        // Now remove from slab
         for key in keys {
             if self.subs.contains(key) {
                 self.subs.remove(key);

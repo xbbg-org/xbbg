@@ -24,7 +24,7 @@ use xbbg_core::BlpError;
 use crate::errors::BlpAsyncError;
 
 pub use request_pool::RequestWorkerPool;
-pub use state::{OutputFormat, RequestState, SubscriptionState};
+pub use state::{OutputFormat, SubscriptionState};
 pub use subscription_pool::{SessionClaim, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
 
@@ -615,6 +615,14 @@ impl Engine {
     }
 }
 
+impl Drop for Engine {
+    fn drop(&mut self) {
+        // Non-blocking: signal all workers to shut down.
+        // For blocking shutdown, call shutdown_blocking() explicitly before dropping.
+        self.signal_shutdown();
+    }
+}
+
 /// Stream for receiving real-time market data with dynamic subscription control.
 ///
 /// Provides async iteration over incoming data and methods to dynamically
@@ -783,7 +791,7 @@ impl SubscriptionStream {
     /// Consumes self without running Drop (since we're taking ownership of parts).
     #[allow(clippy::type_complexity)]
     pub fn into_parts(
-        mut self,
+        self,
     ) -> (
         mpsc::Receiver<RecordBatch>,
         mpsc::Sender<RecordBatch>,
@@ -793,24 +801,26 @@ impl SubscriptionStream {
         String,      // service
         Vec<String>, // options
     ) {
-        use std::mem;
+        use std::mem::ManuallyDrop;
+        use std::ptr;
 
-        // Take ownership of each field, replacing with empty/None values
-        let rx = mem::replace(&mut self.rx, mpsc::channel(1).1); // dummy receiver
-        let tx = mem::replace(&mut self.tx, mpsc::channel(1).0); // dummy sender
-        let claim = self
-            .claim
-            .take()
-            .expect("into_parts called on already-closed stream");
-        let keys = mem::take(&mut self.keys);
-        let topic_to_key = mem::take(&mut self.topic_to_key);
-        let service = mem::take(&mut self.service);
-        let options = mem::take(&mut self.options);
+        // Prevent Drop from running — we're taking ownership of each field individually.
+        let mut this = ManuallyDrop::new(self);
 
-        // Prevent Drop from running (we've taken ownership of everything important)
-        mem::forget(self);
+        // SAFETY: We read each field exactly once from the ManuallyDrop wrapper.
+        // The wrapper prevents the destructor from running, so no double-free.
+        unsafe {
+            let rx = ptr::read(&this.rx);
+            let tx = ptr::read(&this.tx);
+            let claim = ptr::read(&mut this.claim)
+                .expect("into_parts called on already-closed stream");
+            let keys = ptr::read(&this.keys);
+            let topic_to_key = ptr::read(&this.topic_to_key);
+            let service = ptr::read(&this.service);
+            let options = ptr::read(&this.options);
 
-        (rx, tx, claim, keys, topic_to_key, service, options)
+            (rx, tx, claim, keys, topic_to_key, service, options)
+        }
     }
 }
 

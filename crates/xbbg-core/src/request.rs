@@ -425,6 +425,77 @@ impl Request {
         Ok(())
     }
 
+    /// Append a new element to a sequence/array element and return a mutable handle.
+    ///
+    /// This is used for Bloomberg override arrays where each entry is a sub-element
+    /// with "fieldId" and "value" children.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Get the overrides array
+    /// let overrides_ptr = req.get_or_create_element("overrides")?;
+    /// // Append a new override entry
+    /// let entry_ptr = req.append_element(overrides_ptr)?;
+    /// // Set fieldId and value on the entry
+    /// req.set_element_string(entry_ptr, "fieldId", "BEST_FPERIOD_OVERRIDE")?;
+    /// req.set_element_string(entry_ptr, "value", "1FY")?;
+    /// ```
+    pub fn append_element(
+        &mut self,
+        array_element: *mut crate::ffi::blpapi_Element_t,
+    ) -> Result<*mut crate::ffi::blpapi_Element_t> {
+        let mut appended = std::mem::MaybeUninit::uninit();
+
+        let rc = unsafe {
+            crate::ffi::blpapi_Element_appendElement(array_element, appended.as_mut_ptr())
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Element_appendElement failed with rc={}", rc),
+            });
+        }
+
+        Ok(unsafe { appended.assume_init() })
+    }
+
+    /// Set a string value on an element pointer by name.
+    ///
+    /// This is the low-level version that operates on a raw element pointer
+    /// rather than the request root. Used for setting fields on sub-elements
+    /// returned by `append_element()`.
+    pub fn set_element_string(
+        &mut self,
+        element: *mut crate::ffi::blpapi_Element_t,
+        name: &str,
+        value: &str,
+    ) -> Result<()> {
+        let c_name = CString::new(name).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid name: {}", e),
+        })?;
+        let c_value = CString::new(value).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid value: {}", e),
+        })?;
+
+        // SAFETY: element is a valid pointer from get_or_create_element/append_element
+        let rc = unsafe {
+            crate::ffi::blpapi_Element_setElementString(
+                element,
+                c_name.as_ptr(),
+                std::ptr::null(),
+                c_value.as_ptr(),
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("set_element_string('{}') failed with rc={}", name, rc),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Get or create a child element by name.
     ///
     /// For sequence/choice elements, this will create the sub-element if it doesn't exist.

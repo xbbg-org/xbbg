@@ -33,7 +33,7 @@ pub use xbbg_sys::{
 
 // --- Element setters ---
 pub use xbbg_sys::{
-    blpapi_Element_setElementFloat64, blpapi_Element_setElementInt32,
+    blpapi_Element_appendElement, blpapi_Element_setElementFloat64, blpapi_Element_setElementInt32,
     blpapi_Element_setElementString, blpapi_Element_setValueFloat64, blpapi_Element_setValueInt32,
     blpapi_Element_setValueInt64, blpapi_Element_setValueString, BLPAPI_ELEMENT_INDEX_END,
 };

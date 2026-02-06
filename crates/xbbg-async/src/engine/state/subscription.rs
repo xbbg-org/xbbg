@@ -180,52 +180,31 @@ impl SubscriptionState {
     }
 
     /// Send a batch according to the configured overflow policy.
+    ///
+    /// NOTE: `DropOldest` and `Block` currently degrade to `DropNewest` behavior.
+    /// - `DropOldest` requires receiver-side cooperation (ring buffer) not yet implemented.
+    /// - `Block` requires async context, but the subscription worker runs on a sync thread.
+    /// TODO: Implement proper DropOldest with a ring buffer channel.
+    /// TODO: Implement proper Block using tokio::sync::mpsc::Sender::blocking_send.
     fn send_batch(&mut self, batch: RecordBatch) {
-        match self.overflow_policy {
-            OverflowPolicy::DropNewest => {
-                // Non-blocking: drop the batch if stream is full
-                if self.stream.try_send(batch).is_err() {
-                    self.dropped_batches += 1;
-                    xbbg_log::warn!(
-                        topic = %self.topic,
-                        dropped = self.dropped_batches,
-                        "stream full - dropping newest batch"
-                    );
-                }
+        match self.stream.try_send(batch) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.dropped_batches += 1;
+                let policy_label = match self.overflow_policy {
+                    OverflowPolicy::DropNewest => "DropNewest",
+                    OverflowPolicy::DropOldest => "DropOldest (degraded to DropNewest)",
+                    OverflowPolicy::Block => "Block (degraded to DropNewest)",
+                };
+                xbbg_log::warn!(
+                    topic = %self.topic,
+                    dropped = self.dropped_batches,
+                    policy = policy_label,
+                    "stream full - dropping batch"
+                );
             }
-            OverflowPolicy::DropOldest => {
-                // Try to send; if full, fall back to dropping newest with warning
-                // (true DropOldest would require receiver cooperation)
-                match self.stream.try_send(batch.clone()) {
-                    Ok(()) => {}
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        // For DropOldest, we need the receiver to drop old messages
-                        // Since we can't access the receiver here, we fall back to
-                        // dropping newest with a warning
-                        self.dropped_batches += 1;
-                        xbbg_log::warn!(
-                            topic = %self.topic,
-                            dropped = self.dropped_batches,
-                            "stream full - DropOldest policy (dropping newest as fallback)"
-                        );
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        xbbg_log::warn!(topic = %self.topic, "stream closed");
-                    }
-                }
-            }
-            OverflowPolicy::Block => {
-                // Blocking send - use blocking_send in a sync context
-                // Since we're in a sync context (pump thread), we can't use async
-                // Fall back to try_send with a warning
-                if self.stream.try_send(batch).is_err() {
-                    self.dropped_batches += 1;
-                    xbbg_log::warn!(
-                        topic = %self.topic,
-                        dropped = self.dropped_batches,
-                        "stream full - Block policy (non-blocking fallback)"
-                    );
-                }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                xbbg_log::warn!(topic = %self.topic, "stream closed");
             }
         }
     }

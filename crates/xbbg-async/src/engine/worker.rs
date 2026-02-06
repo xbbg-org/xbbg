@@ -632,8 +632,27 @@ impl RequestWorker {
             }
         }
 
-        // Note: overrides, json_elements, and search_spec require more complex handling
-        // TODO: Implement override and complex element support when needed
+        // Set overrides (fieldId/value pairs on the "overrides" sequence element)
+        if let Some(ref overrides) = params.overrides {
+            if !overrides.is_empty() {
+                let overrides_ptr = request.get_or_create_element("overrides")?;
+                for (field_id, value) in overrides {
+                    let entry_ptr = request.append_element(overrides_ptr)?;
+                    request.set_element_string(entry_ptr, "fieldId", field_id)?;
+                    request.set_element_string(entry_ptr, "value", value)?;
+                }
+                xbbg_log::debug!(
+                    worker_id = self.id,
+                    count = overrides.len(),
+                    "overrides applied"
+                );
+            }
+        }
+
+        // Set search spec (for FieldSearchRequest)
+        if let Some(ref search_spec) = params.search_spec {
+            request.set_str("searchSpec", search_spec)?;
+        }
 
         Ok(request)
     }
@@ -731,7 +750,19 @@ impl RequestWorker {
                 xbbg_log::info!(worker_id = self.id, "session started");
             }
             "SessionTerminated" | "SessionConnectionDown" => {
-                xbbg_log::error!(worker_id = self.id, "session terminated/down");
+                let in_flight = self.requests.len();
+                xbbg_log::error!(
+                    worker_id = self.id,
+                    in_flight_requests = in_flight,
+                    "session terminated/down"
+                );
+                if in_flight > 0 {
+                    xbbg_log::warn!(
+                        worker_id = self.id,
+                        count = in_flight,
+                        "in-flight requests will not receive Bloomberg responses"
+                    );
+                }
             }
             _ => {
                 xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
