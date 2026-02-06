@@ -1,39 +1,61 @@
 # blpapi-sys
 
-Unsafe, zero-policy FFI bindings to Bloomberg's C API (blpapi_*), generated at build time.
+Unsafe, zero-policy FFI bindings to Bloomberg's C API (`blpapi_*`), generated at build time.
 
-- Exposes raw types, constants, and functions only
-- No allocation, no wrappers, no ownership logic
-- Bindings generated locally via bindgen; no Bloomberg headers or generated bindings are checked in
+- `#![no_std]` — no runtime dependencies beyond the Bloomberg SDK
+- Bindings auto-generated via bindgen from SDK headers; nothing checked in
+- Exposes raw types, constants, and functions only — no wrappers, no ownership logic
+
+## Crate structure
+
+```
+blpapi-sys/
+├── Cargo.toml      Features (static/dynamic), bindgen + cty deps
+├── build.rs        SDK discovery, bindgen generation, link directives
+└── src/
+    └── lib.rs      include!(bindings.rs) — 9 lines
+```
 
 ## Linking
 
-- Default dynamic linking; `--features static` opts in to static
+- Default: dynamic linking
+- `--features static`: static linking
 - Link name defaults:
-  - Windows: `blpapi3_64`
-  - Unix/macOS: `blpapi3`
-- Override with `BLPAPI_LINK_LIB_NAME`
+  - Windows x64: `blpapi3_64`
+  - Windows x86: `blpapi3_32`
+  - Linux/macOS: `blpapi3`
+- Override with `BLPAPI_LINK_LIB_NAME` env var
 
 ## SDK discovery (precedence)
 
-1. `BLPAPI_INCLUDE_DIR` and `BLPAPI_LIB_DIR`
-2. `BLPAPI_ROOT` (derive `include/` and `lib/`)
-3. `XBBG_DEV_SDK_ROOT` (dev-only, derive `include/` and `lib/`)
+| Priority | Environment variable(s) | Notes |
+|----------|------------------------|-------|
+| 1 | `BLPAPI_INCLUDE_DIR` + `BLPAPI_LIB_DIR` | Explicit paths (CI/prod) |
+| 2 | `BLPAPI_ROOT` | Derives `include/` and `lib/` from root |
+| 3 | `XBBG_DEV_SDK_ROOT` | Dev-only, same derivation as above |
 
-Build requires SDK headers and the import library. The runtime DLL/so/dylib is not required at build time.
+The build script tries these layouts under a root directory:
+- `<root>/include` + `<root>/lib`
+- `<root>/include` + `<root>/lib/win64` (or `win32`)
+- `<root>/Include` + `<root>/Lib`
+
+Build requires SDK **headers** and the **import library**. The runtime DLL/so/dylib is not required at build time.
 
 ## Dev / CI usage
 
-- Dev: set `XBBG_DEV_SDK_ROOT` to the SDK root; then build the workspace.
-- CI build: set `BLPAPI_ROOT` or `BLPAPI_INCLUDE_DIR`/`BLPAPI_LIB_DIR` (these can be loaded via your `.env` loader before invoking Cargo).
-- CI runtime/tests: install the official `blpapi` Python package and add its binary directory to the loader path before importing your extension.
-  - `uv pip install --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi`
-  - Or: `pip install --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi`
-  - Windows (Py>=3.8): `os.add_dll_directory(<package_dir>)`
-  - Linux/macOS: add the package directory to `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`
+**Dev**: set `XBBG_DEV_SDK_ROOT` to the SDK root, then build the workspace.
+
+**CI build**: set `BLPAPI_ROOT` or `BLPAPI_INCLUDE_DIR`/`BLPAPI_LIB_DIR`.
+
+**CI runtime/tests**: install the official `blpapi` Python package and add its binary directory to the loader path:
+
+```bash
+uv pip install --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
+```
+
+- Windows (Py≥3.8): `os.add_dll_directory(<package_dir>)`
+- Linux/macOS: add the package directory to `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`
 
 ## Safety
 
-All APIs are unsafe and follow the C ABI. Nothing is marked Send/Sync unless guaranteed by the C API.
-
-
+All APIs are `unsafe` and follow the C ABI. Nothing is marked `Send`/`Sync` unless guaranteed by the C SDK.
