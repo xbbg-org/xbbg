@@ -146,6 +146,23 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.11.3* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.3>`__
+
+### Fixed
+
+- **Duplicate `port` keyword argument**: `bbg_service()` and `bbg_session()` used `.get()` to extract `port` then forwarded `**kwargs` still containing it, causing `TypeError: got multiple values for keyword argument 'port'` on non-default ports (e.g., B-Pipe connections) (#212)
+
+- **Session resource leak**: `clear_default_session()` set `_default_session = None` without calling `session.stop()`, leaking OS file descriptors over repeated connect/disconnect cycles (#211)
+
+- **Wrong session removed on retry**: `send_request()` retry path called `remove_session(port=port)` without `server_host`, always targeting `//localhost:{port}` even for remote hosts
+
+- **Inconsistent `server_host` extraction**: `get_session()` / `get_service()` checked `server_host` before `server`, but `connect_bbg()` did the opposite, causing different code paths to resolve different hosts when both keys were present
+
+- **Resource leak on start failure**: `connect_bbg()` did not stop the session before raising `ConnectionError` when `.start()` failed, leaking C++ resources allocated by the `Session()` constructor
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.2...v0.11.3
+
+
 *0.11.2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.2>`__
 
 ### Added
