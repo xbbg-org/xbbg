@@ -432,3 +432,312 @@ class TestServiceManagement:
 
         mock_session.openService.assert_not_called()
         assert result is mock_service
+
+
+class TestEdgeCasesFromIssues:
+    """Edge case tests from GitHub issues #164, #154, #53 and general coverage gaps."""
+
+    def setup_method(self):
+        """Reset SessionManager state before each test."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+        manager._sessions.clear()
+        manager._services.clear()
+        manager._default_session = None
+
+    def test_connect_stores_session_as_default(self):
+        """Issue #164: connect(sess=mock_session) stores session as default.
+
+        Verifies that a user-provided session is stored as the default
+        and subsequent bbg_session() calls return it.
+        """
+        from xbbg.core.infra.conn import _session_manager, bbg_session, connect
+
+        # Create a mock that is an instance of the mock blpapi.Session
+        mock_session = MagicMock(spec=blpapi.Session)
+        mock_session.start.return_value = True
+        mock_session._Session__handle = "valid_handle"
+
+        result = connect(sess=mock_session)
+
+        assert result is mock_session
+        assert _session_manager._default_session is mock_session
+        # Subsequent call should return the same session (via default session)
+        assert bbg_session() is mock_session
+
+    def test_connect_with_existing_session_reuses_it(self):
+        """Issue #164: connect(sess=existing) reuses it without creating new session.
+
+        Verifies that when an existing session is passed, no new session is created
+        and the existing session's start() is called.
+        """
+        from xbbg.core.infra.conn import connect
+
+        # Create a mock session that passes isinstance check
+        mock_session = MagicMock(spec=blpapi.Session)
+        mock_session.start.return_value = True
+
+        # Patch only Session class constructor, not the whole module
+        with patch("xbbg.core.infra.conn.blpapi.SessionOptions") as mock_opts_class:
+            result = connect(sess=mock_session)
+
+        # Should not create SessionOptions (no new session created)
+        mock_opts_class.assert_not_called()
+        # Should call start on the provided session
+        mock_session.start.assert_called_once()
+        assert result is mock_session
+
+    def test_disconnect_resets_state(self):
+        """Issue #164: disconnect() clears default session and removes from cache.
+
+        Verifies that disconnect() properly resets all session state.
+        """
+        from xbbg.core.infra.conn import _session_manager, disconnect
+
+        mock_session = MagicMock()
+        _session_manager.set_default_session(mock_session, server_host="localhost", port=8194)
+
+        # Verify setup
+        assert _session_manager._default_session is mock_session
+        assert "//localhost:8194" in _session_manager._sessions
+
+        disconnect()
+
+        # Verify cleanup
+        assert _session_manager._default_session is None
+        assert "//localhost:8194" not in _session_manager._sessions
+
+    def test_connect_auth_method_user(self):
+        """Issue #154: connect(auth_method='user') uses AuthUser.createWithLogonName.
+
+        Verifies that user authentication is properly configured.
+        """
+        from xbbg.core.infra.conn import connect
+
+        mock_opts = MagicMock()
+        mock_session = MagicMock()
+        mock_session.start.return_value = True
+        mock_user = MagicMock()
+        mock_auth = MagicMock()
+
+        mock_blpapi = MagicMock()
+        mock_blpapi.SessionOptions.return_value = mock_opts
+        mock_blpapi.Session.return_value = mock_session
+        mock_blpapi.AuthUser.createWithLogonName.return_value = mock_user
+        mock_blpapi.AuthOptions.createWithUser.return_value = mock_auth
+        # Preserve real type for isinstance check (no sess passed, so Session type not used)
+        mock_blpapi.Session = blpapi.Session
+        mock_blpapi.TlsOptions = blpapi.TlsOptions
+
+        # Use a callable that returns mock_session when blpapi.Session is instantiated
+        class MockSessionClass(blpapi.Session):
+            def __new__(cls, *args, **kwargs):
+                return mock_session
+
+        mock_blpapi.Session = MockSessionClass
+
+        with patch("xbbg.core.infra.conn.blpapi", mock_blpapi):
+            connect(auth_method="user")
+
+        mock_blpapi.AuthUser.createWithLogonName.assert_called_once()
+        mock_blpapi.AuthOptions.createWithUser.assert_called_once_with(user=mock_user)
+        mock_opts.setSessionIdentityOptions.assert_called_once_with(authOptions=mock_auth)
+
+    def test_connect_auth_method_app(self):
+        """Issue #154: connect(auth_method='app', app_name='myapp') uses createWithApp.
+
+        Verifies that application authentication is properly configured.
+        """
+        from xbbg.core.infra.conn import connect
+
+        mock_opts = MagicMock()
+        mock_session = MagicMock()
+        mock_session.start.return_value = True
+        mock_auth = MagicMock()
+
+        mock_blpapi = MagicMock()
+        mock_blpapi.SessionOptions.return_value = mock_opts
+        mock_blpapi.AuthOptions.createWithApp.return_value = mock_auth
+        mock_blpapi.TlsOptions = blpapi.TlsOptions
+
+        class MockSessionClass(blpapi.Session):
+            def __new__(cls, *args, **kwargs):
+                return mock_session
+
+        mock_blpapi.Session = MockSessionClass
+
+        with patch("xbbg.core.infra.conn.blpapi", mock_blpapi):
+            connect(auth_method="app", app_name="myapp")
+
+        mock_blpapi.AuthOptions.createWithApp.assert_called_once_with(appName="myapp")
+        mock_opts.setSessionIdentityOptions.assert_called_once_with(authOptions=mock_auth)
+
+    def test_connect_invalid_auth_method_raises(self):
+        """Issue #154: connect(auth_method='invalid') raises ValueError.
+
+        Verifies that invalid auth methods are rejected with a clear error message.
+        """
+        from xbbg.core.infra.conn import connect
+
+        mock_opts = MagicMock()
+        mock_blpapi = MagicMock()
+        mock_blpapi.SessionOptions.return_value = mock_opts
+        mock_blpapi.Session = blpapi.Session  # Real type for isinstance
+        mock_blpapi.TlsOptions = blpapi.TlsOptions
+
+        with (
+            patch("xbbg.core.infra.conn.blpapi", mock_blpapi),
+            pytest.raises(ValueError, match="auth_method must be one of"),
+        ):
+            connect(auth_method="invalid")
+
+    def test_connect_bbg_custom_server_ip(self):
+        """Issue #53: connect_bbg(server_host='192.168.1.100', port=18194) sets custom host/port.
+
+        Verifies that custom server IP and port are properly configured.
+        """
+        from xbbg.core.infra.conn import connect_bbg
+
+        mock_opts = MagicMock()
+        mock_session = MagicMock()
+        mock_session.start.return_value = True
+
+        class MockSessionClass(blpapi.Session):
+            def __new__(cls, *args, **kwargs):
+                return mock_session
+
+        mock_blpapi = MagicMock()
+        mock_blpapi.Session = MockSessionClass
+        mock_blpapi.SessionOptions.return_value = mock_opts
+
+        with patch("xbbg.core.infra.conn.blpapi", mock_blpapi):
+            connect_bbg(server_host="192.168.1.100", port=18194)
+
+        mock_opts.setServerHost.assert_called_once_with("192.168.1.100")
+        mock_opts.setServerPort.assert_called_once_with(18194)
+
+    def test_get_service_stale_handle_recreates(self):
+        """General: Stale service with _Service__handle=None triggers recreation.
+
+        Verifies that a cached service with an invalid handle is recreated.
+        """
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid_handle"
+        manager._sessions["//localhost:8194"] = mock_session
+
+        # Create a stale service with handle=None
+        mock_stale_service = MagicMock()
+        mock_stale_service._Service__handle = None
+        manager._services["//localhost:8194//blp/refdata"] = mock_stale_service
+
+        # New service to be returned
+        mock_new_service = MagicMock()
+        mock_new_service._Service__handle = "valid_service_handle"
+        mock_session.getService.return_value = mock_new_service
+
+        result = manager.get_service("//blp/refdata", port=8194, server_host="localhost")
+
+        # Should have called openService to recreate
+        mock_session.openService.assert_called_once_with("//blp/refdata")
+        assert result is mock_new_service
+
+    def test_send_request_retry_returns_valid_dict(self):
+        """General: send_request returns dict with 'event_queue' and 'correlation_id'.
+
+        Verifies the return value structure after retry logic.
+        """
+        from xbbg.core.infra.conn import SessionManager, send_request
+
+        SessionManager()
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid_handle"
+        call_count = 0
+
+        def send_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise blpapi.InvalidStateException("Session not started", 0)
+
+        mock_session.sendRequest.side_effect = send_side_effect
+        mock_request = MagicMock()
+
+        with patch("xbbg.core.infra.conn.bbg_session", return_value=mock_session):
+            result = send_request(mock_request, port=8194)
+
+        assert "event_queue" in result
+        assert "correlation_id" in result
+        assert result["event_queue"] is not None
+        assert result["correlation_id"] is not None
+
+    def test_event_types_returns_dict(self):
+        """General: event_types() returns a dict.
+
+        Verifies that the event_types function returns the expected type.
+        """
+        from xbbg.core.infra.conn import event_types
+
+        result = event_types()
+
+        assert isinstance(result, dict)
+
+    def test_connect_with_tls_options(self):
+        """B-Pipe: connect(tls_options=mock_tls) calls setTlsOptions.
+
+        Verifies that TLS options are properly configured for B-Pipe connections.
+        """
+        from xbbg.core.infra.conn import connect
+
+        mock_opts = MagicMock()
+        mock_session = MagicMock()
+        mock_session.start.return_value = True
+        mock_tls = MagicMock(spec=blpapi.TlsOptions)
+
+        mock_blpapi = MagicMock()
+        mock_blpapi.SessionOptions.return_value = mock_opts
+        mock_blpapi.TlsOptions = blpapi.TlsOptions  # Real type for isinstance check
+
+        class MockSessionClass(blpapi.Session):
+            def __new__(cls, *args, **kwargs):
+                return mock_session
+
+        mock_blpapi.Session = MockSessionClass
+
+        with patch("xbbg.core.infra.conn.blpapi", mock_blpapi):
+            connect(tls_options=mock_tls)
+
+        mock_opts.setTlsOptions.assert_called_once_with(tlsOptions=mock_tls)
+
+    def test_connect_start_failure_raises_connection_error(self):
+        """General: connect() raises ConnectionError when session.start() returns False.
+
+        Verifies proper error handling when connection fails.
+        """
+        from xbbg.core.infra.conn import connect
+
+        mock_opts = MagicMock()
+        mock_session = MagicMock()
+        mock_session.start.return_value = False
+
+        mock_blpapi = MagicMock()
+        mock_blpapi.SessionOptions.return_value = mock_opts
+        mock_blpapi.Session = blpapi.Session  # Real type for isinstance
+        mock_blpapi.TlsOptions = blpapi.TlsOptions
+
+        class MockSessionClass(blpapi.Session):
+            def __new__(cls, *args, **kwargs):
+                return mock_session
+
+        mock_blpapi.Session = MockSessionClass
+
+        with (
+            patch("xbbg.core.infra.conn.blpapi", mock_blpapi),
+            pytest.raises(ConnectionError),
+        ):
+            connect()
