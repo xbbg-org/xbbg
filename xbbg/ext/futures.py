@@ -229,14 +229,11 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     nw_fut = nw.from_native(fut_tk, eager_only=True)
     first_matu = None
 
-    # Filter for fut_1 ticker and get the value column
-    fut_1_data = (
-        nw_fut.filter(nw.col("ticker") == fut_1)
-        .select(nw.coalesce(nw.col("value"), nw.col("last_tradeable_dt")).alias("exp_date"))
-        .head(1)
-    )
+    # Filter for fut_1 ticker and get the expiry date value
+    # SEMI_LONG format returns columns: ticker, field, value
+    fut_1_data = nw_fut.filter(nw.col("ticker") == fut_1).select(nw.col("value").alias("exp_date")).head(1)
 
-    if fut_1_data.height > 0:
+    if fut_1_data.shape[0] > 0:
         val = fut_1_data.item(0, 0)
         if val:
             with contextlib.suppress(ValueError, TypeError):

@@ -580,6 +580,10 @@ def bdtick(
     # Convert to Arrow and then to requested backend/format
     # Reset index to include time as a column for conversion
     result_reset = result.reset_index()
+    # Stringify object columns that may contain blpapi.Name or other non-Arrow types
+    for col in result_reset.columns:
+        if result_reset[col].dtype == object:
+            result_reset[col] = result_reset[col].astype(str)
     arrow_table = pa.Table.from_pandas(result_reset)
 
     return to_output(

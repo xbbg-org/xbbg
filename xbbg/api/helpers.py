@@ -31,12 +31,12 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
     Examples:
         >>> from xbbg import blp  # doctest: +SKIP
         >>> # Works with historical data
-        >>> hist_data = blp.bdh('AAPL US Equity', start_date='2024-01-01')  # doctest: +SKIP
-        >>> adjusted = blp.adjust_ccy(hist_data, ccy='EUR')  # doctest: +SKIP
+        >>> hist_data = blp.bdh("AAPL US Equity", start_date="2024-01-01")  # doctest: +SKIP
+        >>> adjusted = blp.adjust_ccy(hist_data, ccy="EUR")  # doctest: +SKIP
         >>>
         >>> # Could also work with intraday data
-        >>> intraday_data = blp.bdib('AAPL US Equity', dt='2024-01-01')  # doctest: +SKIP
-        >>> adjusted_intraday = blp.adjust_ccy(intraday_data, ccy='EUR')  # doctest: +SKIP
+        >>> intraday_data = blp.bdib("AAPL US Equity", dt="2024-01-01")  # doctest: +SKIP
+        >>> adjusted_intraday = blp.adjust_ccy(intraday_data, ccy="EUR")  # doctest: +SKIP
     """
     from xbbg.api.historical import bdh  # noqa: PLC0415
     from xbbg.api.reference import bdp  # noqa: PLC0415
@@ -67,9 +67,11 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
 
     if not is_empty(adj):
         # Use WIDE format to get MultiIndex columns for .xs() access
-        fx = bdh(tickers=adj.ccy.unique(), start_date=start_date, end_date=end_date, format=Format.WIDE).xs(
-            "Last_Price", axis=1, level=1
-        )
+        fx_data = bdh(tickers=adj.ccy.unique(), start_date=start_date, end_date=end_date, format=Format.WIDE)
+        # Field names are lowercased since v0.11.1; handle both cases for robustness
+        field_level = fx_data.columns.get_level_values(1)
+        price_col = "last_price" if "last_price" in field_level else "Last_Price"
+        fx = fx_data.xs(price_col, axis=1, level=1)
     else:
         fx = pd.DataFrame()
 
