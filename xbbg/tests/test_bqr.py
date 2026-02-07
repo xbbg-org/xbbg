@@ -6,12 +6,8 @@ import pytest
 from xbbg import blp
 from xbbg.core import process
 from xbbg.core.infra import conn
-from xbbg.core.pipeline import BqrRequestBuilder, BqrTransformer, bqr_pipeline_config
-
-
-@pytest.fixture
-def fake_handle():
-    return {"event_queue": object(), "correlation_id": object()}
+from xbbg.core.pipeline_factories import bqr_pipeline_config
+from xbbg.core.strategies import BqrRequestBuilder, BqrTransformer
 
 
 @pytest.fixture(autouse=True)

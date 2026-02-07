@@ -7,6 +7,12 @@ import pytest
 from xbbg.deprecation import XbbgFutureWarning
 
 
+@pytest.fixture
+def fake_handle():
+    """Shared fake Bloomberg request handle for mocked API tests."""
+    return {"event_queue": object(), "correlation_id": object()}
+
+
 def pytest_addoption(parser):
     parser.addoption("--with_bbg", action="store_true", default=False, help="Run tests with Bloomberg connections")
     parser.addoption(

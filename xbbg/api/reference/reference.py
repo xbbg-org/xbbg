@@ -40,7 +40,9 @@ def bdp(
         pd.DataFrame: Reference data with tickers as index and fields as columns.
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, reference_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import reference_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Normalize tickers to list
     ticker_list = utils.normalize_tickers(tickers)
@@ -92,7 +94,9 @@ def bds(
         pd.DataFrame: Block data with multi-row results per ticker.
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, block_data_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import block_data_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Split kwargs
     split = split_kwargs(**kwargs)

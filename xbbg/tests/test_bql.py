@@ -6,11 +6,6 @@ from xbbg.core import process
 from xbbg.core.infra import conn
 
 
-@pytest.fixture
-def fake_handle():
-    return {"event_queue": object(), "correlation_id": object()}
-
-
 @pytest.fixture(autouse=True)
 def stub_bbg_service(monkeypatch):
     class _FakeParamElem:

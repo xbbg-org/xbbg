@@ -358,7 +358,9 @@ def bdib(
     # For multi-day requests without dt, use start_datetime's date as fallback
     if dt is None and is_multi_day:
         dt = pd.Timestamp(start_datetime).strftime("%Y-%m-%d")
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, intraday_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import intraday_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Build request using RequestBuilder
     request = RequestBuilder.from_legacy_kwargs(
@@ -369,7 +371,7 @@ def bdib(
         start_datetime=start_datetime,
         end_datetime=end_datetime,
         backend=backend,
-        format=format,
+        output_format=format,
         **kwargs,
     )
 

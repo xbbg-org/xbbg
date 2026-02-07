@@ -161,7 +161,9 @@ def bta(
         ...                start_date='2024-01-01')  # doctest: +SKIP
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bta_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import bta_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     study_types = _get_study_types()
 

@@ -7,13 +7,14 @@ series tickers and selecting active CDX contracts.
 from __future__ import annotations
 
 import contextlib
-from datetime import datetime, timedelta
+from datetime import timedelta
 import logging
 from typing import TYPE_CHECKING
 
 import narwhals as nw
 
 from xbbg.backend import Backend, Format
+from xbbg.core.utils.dates import parse_date as _parse_date
 from xbbg.io.convert import is_empty
 
 if TYPE_CHECKING:
@@ -22,25 +23,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = ["cdx_ticker", "active_cdx"]
-
-
-def _parse_date(dt) -> datetime:
-    """Parse various date formats to datetime."""
-    if isinstance(dt, datetime):
-        return dt
-    if isinstance(dt, str):
-        # Try ISO format first
-        try:
-            return datetime.fromisoformat(dt.replace("/", "-"))
-        except ValueError:
-            pass
-        # Try YYYYMMDD format
-        if len(dt) == 8 and dt.isdigit():
-            return datetime(int(dt[:4]), int(dt[4:6]), int(dt[6:8]))
-    # Try to handle date objects
-    if hasattr(dt, "year") and hasattr(dt, "month") and hasattr(dt, "day"):
-        return datetime(dt.year, dt.month, dt.day)
-    raise ValueError(f"Cannot parse date: {dt}")
 
 
 def cdx_ticker(

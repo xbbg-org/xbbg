@@ -5,7 +5,7 @@ Tests all constant definitions in xbbg/const.py including:
 - CurrencyPair dataclass
 - ValidSessions list
 - ASSET_INFO mapping
-- DVD_TPYES mapping
+- DVD_TYPES mapping
 - DVD_COLS mapping
 - LIVE_INFO, LIVE_CHG, LIVE_VOL, LIVE_RATIO sets
 - PKG_PATH validation
@@ -158,10 +158,10 @@ class TestAssetInfo:
 
 
 class TestDvdTypes:
-    """Test DVD_TPYES mapping."""
+    """Test DVD_TYPES mapping."""
 
     def test_dvd_types_has_expected_keys(self):
-        """Test that DVD_TPYES contains expected dividend type keys."""
+        """Test that DVD_TYPES contains expected dividend type keys."""
         expected_keys = [
             "all",
             "dvd",
@@ -175,27 +175,27 @@ class TestDvdTypes:
             "projected",
         ]
         for key in expected_keys:
-            assert key in const.DVD_TPYES
+            assert key in const.DVD_TYPES
 
     def test_dvd_types_all_mapping(self):
         """Test 'all' dividend type mapping."""
-        assert const.DVD_TPYES["all"] == "DVD_Hist_All"
+        assert const.DVD_TYPES["all"] == "DVD_Hist_All"
 
     def test_dvd_types_dvd_mapping(self):
         """Test 'dvd' dividend type mapping."""
-        assert const.DVD_TPYES["dvd"] == "DVD_Hist"
+        assert const.DVD_TYPES["dvd"] == "DVD_Hist"
 
     def test_dvd_types_split_mapping(self):
         """Test 'split' dividend type mapping."""
-        assert const.DVD_TPYES["split"] == "Eqy_DVD_Hist_Splits"
+        assert const.DVD_TYPES["split"] == "Eqy_DVD_Hist_Splits"
 
     def test_dvd_types_projected_mapping(self):
         """Test 'projected' dividend type mapping."""
-        assert const.DVD_TPYES["projected"] == "BDVD_Pr_Ex_Dts_DVD_Amts_w_Ann"
+        assert const.DVD_TYPES["projected"] == "BDVD_Pr_Ex_Dts_DVD_Amts_w_Ann"
 
     def test_dvd_types_values_are_strings(self):
-        """Test that all DVD_TPYES values are strings."""
-        for value in const.DVD_TPYES.values():
+        """Test that all DVD_TYPES values are strings."""
+        for value in const.DVD_TYPES.values():
             assert isinstance(value, str)
 
 

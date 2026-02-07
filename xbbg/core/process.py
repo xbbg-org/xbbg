@@ -127,6 +127,11 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
     for fld in flds:
         request.append(blpapi.Name("fields"), fld)
 
+    # Pop explicit ovrds to prevent proc_ovrds from treating the key itself
+    # as a Bloomberg override field.  create_request() (which is always called
+    # before init_request) already applies ovrds to the request correctly.
+    kwargs.pop("ovrds", None)
+
     adjust = kwargs.pop("adjust", None)
     if isinstance(adjust, str) and adjust:
         if adjust == "all":
@@ -208,7 +213,7 @@ def _normalize_dest_tz(tz: str) -> str:
     """Normalize destination timezone aliases (e.g., 'NY' -> full tz)."""
     try:
         return timezone.get_tz(tz)
-    except Exception:  # noqa: BLE001
+    except (ValueError, KeyError, TypeError):
         return tz
 
 
@@ -228,7 +233,7 @@ def _time_range_from_exch_metadata(
     except ValueError:
         # ValueError from get_interval means session is not defined - propagate
         raise
-    except Exception:  # noqa: BLE001
+    except (KeyError, AttributeError, TypeError, IndexError):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "Primary session resolution failed for %s on %s; falling back to PMC",

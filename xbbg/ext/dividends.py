@@ -54,7 +54,7 @@ def dividend(
     tickers = utils.normalize_tickers(tickers)
     tickers = [t for t in tickers if ("Equity" in t) and ("=" not in t)]
 
-    fld = const.DVD_TPYES.get(typ, typ)
+    fld = const.DVD_TYPES.get(typ, typ)
 
     if (fld == "Eqy_DVD_Adjust_Fact") and ("Corporate_Actions_Filter" not in kwargs):
         kwargs["Corporate_Actions_Filter"] = "NORMAL_CASH|ABNORMAL_CASH|CAPITAL_CHANGE"

@@ -58,88 +58,50 @@ from xbbg.streaming import Subscription, Tick  # noqa: E402, F401
 # Backward compatibility: re-export pipeline from utils
 from xbbg.utils import pipeline  # noqa: E402, F401
 
+__all__ = [
+    "__version__",
+    # Backend and format
+    "Backend",
+    "EngineConfig",
+    "Format",
+    "configure",
+    "get_backend",
+    "set_backend",
+    "get_format",
+    "set_format",
+    # Backend availability
+    "check_backend",
+    "check_format_compatibility",
+    "get_available_backends",
+    "get_supported_formats",
+    "is_backend_available",
+    "is_format_supported",
+    "print_backend_status",
+    "validate_backend_format",
+    # Exceptions
+    "BlpError",
+    "BlpFieldError",
+    "BlpInternalError",
+    "BlpRequestError",
+    "BlpSecurityError",
+    "BlpSessionError",
+    "BlpTimeoutError",
+    "BlpValidationError",
+    # SDK utilities
+    "get_sdk_info",
+    # Service definitions
+    "Operation",
+    "Service",
+    # Streaming types
+    "Subscription",
+    "Tick",
+    # Other
+    "pipeline",
+]
+
 try:
     from xbbg.core.infra import blpapi_logging  # noqa: F401
 
-    __all__ = [
-        "__version__",
-        # Backend and format
-        "Backend",
-        "EngineConfig",
-        "Format",
-        "configure",
-        "get_backend",
-        "set_backend",
-        "get_format",
-        "set_format",
-        # Backend availability
-        "check_backend",
-        "check_format_compatibility",
-        "get_available_backends",
-        "get_supported_formats",
-        "is_backend_available",
-        "is_format_supported",
-        "print_backend_status",
-        "validate_backend_format",
-        # Exceptions
-        "BlpError",
-        "BlpFieldError",
-        "BlpInternalError",
-        "BlpRequestError",
-        "BlpSecurityError",
-        "BlpSessionError",
-        "BlpTimeoutError",
-        "BlpValidationError",
-        # SDK utilities
-        "get_sdk_info",
-        # Service definitions
-        "Operation",
-        "Service",
-        # Streaming types
-        "Subscription",
-        "Tick",
-        # Other
-        "blpapi_logging",
-        "pipeline",
-    ]
+    __all__.append("blpapi_logging")
 except ImportError:
-    __all__ = [
-        "__version__",
-        # Backend and format
-        "Backend",
-        "EngineConfig",
-        "Format",
-        "configure",
-        "get_backend",
-        "set_backend",
-        "get_format",
-        "set_format",
-        # Backend availability
-        "check_backend",
-        "check_format_compatibility",
-        "get_available_backends",
-        "get_supported_formats",
-        "is_backend_available",
-        "is_format_supported",
-        "print_backend_status",
-        "validate_backend_format",
-        # Exceptions
-        "BlpError",
-        "BlpFieldError",
-        "BlpInternalError",
-        "BlpRequestError",
-        "BlpSecurityError",
-        "BlpSessionError",
-        "BlpTimeoutError",
-        "BlpValidationError",
-        # SDK utilities
-        "get_sdk_info",
-        # Service definitions
-        "Operation",
-        "Service",
-        # Streaming types
-        "Subscription",
-        "Tick",
-        # Other
-        "pipeline",
-    ]
+    pass
