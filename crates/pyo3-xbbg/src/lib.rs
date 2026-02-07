@@ -48,7 +48,7 @@ use tokio::sync::Mutex;
 use xbbg_log::{debug, info, warn};
 
 use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
-use xbbg_async::{BlpAsyncError, ValidationMode};
+use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
 
 mod ext;
@@ -225,6 +225,9 @@ fn format_error_msg(base: &str, label: Option<&str>, source: Option<&(dyn std::e
 /// Python configuration for the xbbg Engine.
 ///
 /// All settings have sensible defaults - you only need to specify what you want to change.
+///
+/// The defaults are derived from `EngineConfig::default()` in xbbg-async, so they
+/// stay in sync automatically.
 #[pyclass]
 #[derive(Clone)]
 pub struct PyEngineConfig {
@@ -246,63 +249,100 @@ pub struct PyEngineConfig {
     /// Number of ticks to buffer before flushing to Python (default: 1)
     #[pyo3(get, set)]
     pub subscription_flush_threshold: usize,
+    /// Bloomberg SDK event queue size (default: 10000)
+    #[pyo3(get, set)]
+    pub max_event_queue_size: usize,
+    /// Internal command channel capacity (default: 256)
+    #[pyo3(get, set)]
+    pub command_queue_size: usize,
+    /// Subscription stream backpressure capacity (default: 256)
+    #[pyo3(get, set)]
+    pub subscription_stream_capacity: usize,
+    /// Overflow policy for slow consumers: "drop_newest" (default), "drop_oldest", "block"
+    #[pyo3(get, set)]
+    pub overflow_policy: String,
+    /// Services to pre-warm on startup (default: ["//blp/refdata", "//blp/apiflds"])
+    #[pyo3(get, set)]
+    pub warmup_services: Vec<String>,
 }
 
 #[pymethods]
 impl PyEngineConfig {
     /// Create a new configuration with defaults.
+    ///
+    /// All defaults are derived from the Rust EngineConfig to stay in sync.
     #[new]
-    #[pyo3(signature = (host="localhost", port=8194, request_pool_size=2, subscription_pool_size=4, validation_mode="disabled", subscription_flush_threshold=1))]
-    fn new(
-        host: &str,
-        port: u16,
-        request_pool_size: usize,
-        subscription_pool_size: usize,
-        validation_mode: &str,
-        subscription_flush_threshold: usize,
-    ) -> Self {
-        Self {
-            host: host.to_string(),
-            port,
-            request_pool_size,
-            subscription_pool_size,
-            validation_mode: validation_mode.to_string(),
-            subscription_flush_threshold,
+    #[pyo3(signature = (**kwargs))]
+    fn new(kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
+        let defaults = EngineConfig::default();
+        let mut config = Self {
+            host: defaults.server_host,
+            port: defaults.server_port,
+            request_pool_size: defaults.request_pool_size,
+            subscription_pool_size: defaults.subscription_pool_size,
+            validation_mode: defaults.validation_mode.to_string(),
+            subscription_flush_threshold: defaults.subscription_flush_threshold,
+            max_event_queue_size: defaults.max_event_queue_size,
+            command_queue_size: defaults.command_queue_size,
+            subscription_stream_capacity: defaults.subscription_stream_capacity,
+            overflow_policy: defaults.overflow_policy.to_string(),
+            warmup_services: defaults.warmup_services,
+        };
+
+        if let Some(kw) = kwargs {
+            if let Some(v) = kw.get_item("host")? { config.host = v.extract()?; }
+            if let Some(v) = kw.get_item("port")? { config.port = v.extract()?; }
+            if let Some(v) = kw.get_item("request_pool_size")? { config.request_pool_size = v.extract()?; }
+            if let Some(v) = kw.get_item("subscription_pool_size")? { config.subscription_pool_size = v.extract()?; }
+            if let Some(v) = kw.get_item("validation_mode")? { config.validation_mode = v.extract()?; }
+            if let Some(v) = kw.get_item("subscription_flush_threshold")? { config.subscription_flush_threshold = v.extract()?; }
+            if let Some(v) = kw.get_item("max_event_queue_size")? { config.max_event_queue_size = v.extract()?; }
+            if let Some(v) = kw.get_item("command_queue_size")? { config.command_queue_size = v.extract()?; }
+            if let Some(v) = kw.get_item("subscription_stream_capacity")? { config.subscription_stream_capacity = v.extract()?; }
+            if let Some(v) = kw.get_item("overflow_policy")? { config.overflow_policy = v.extract()?; }
+            if let Some(v) = kw.get_item("warmup_services")? { config.warmup_services = v.extract()?; }
         }
+
+        Ok(config)
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, validation_mode='{}', subscription_flush_threshold={})",
-            self.host, self.port, self.request_pool_size, self.subscription_pool_size, self.validation_mode, self.subscription_flush_threshold
+            "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, \
+             validation_mode='{}', overflow_policy='{}', warmup_services={:?})",
+            self.host, self.port, self.request_pool_size, self.subscription_pool_size,
+            self.validation_mode, self.overflow_policy, self.warmup_services
         )
     }
 }
 
-impl From<&PyEngineConfig> for EngineConfig {
-    fn from(py_config: &PyEngineConfig) -> Self {
-        let validation_mode = match py_config.validation_mode.to_lowercase().as_str() {
-            "strict" => ValidationMode::Strict,
-            "lenient" => ValidationMode::Lenient,
-            "disabled" | "off" | "none" => ValidationMode::Disabled,
-            _ => {
-                warn!(
-                    mode = %py_config.validation_mode,
-                    "Unknown validation mode, using disabled"
-                );
-                ValidationMode::Disabled
-            }
-        };
+impl TryFrom<&PyEngineConfig> for EngineConfig {
+    type Error = PyErr;
 
-        EngineConfig {
+    fn try_from(py_config: &PyEngineConfig) -> Result<Self, Self::Error> {
+        let validation_mode: ValidationMode = py_config
+            .validation_mode
+            .parse()
+            .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?;
+
+        let overflow_policy: OverflowPolicy = py_config
+            .overflow_policy
+            .parse()
+            .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?;
+
+        Ok(EngineConfig {
             server_host: py_config.host.clone(),
             server_port: py_config.port,
             request_pool_size: py_config.request_pool_size,
             subscription_pool_size: py_config.subscription_pool_size,
             validation_mode,
             subscription_flush_threshold: py_config.subscription_flush_threshold,
-            ..Default::default()
-        }
+            max_event_queue_size: py_config.max_event_queue_size,
+            command_queue_size: py_config.command_queue_size,
+            subscription_stream_capacity: py_config.subscription_stream_capacity,
+            overflow_policy,
+            warmup_services: py_config.warmup_services.clone(),
+        })
     }
 }
 
@@ -333,17 +373,7 @@ impl PyEngine {
             ..Default::default()
         };
 
-        // Release GIL during blocking Engine::start()
-        let engine = py.detach(|| Engine::start(config)).map_err(|e| {
-            warn!(error = %e, "PyEngine: connection failed");
-            blp_async_error_to_pyerr(e)
-        })?;
-
-        info!("PyEngine: connected successfully");
-
-        Ok(Self {
-            engine: Arc::new(engine),
-        })
+        Self::start_engine(py, config)
     }
 
     /// Create a new Engine with full configuration.
@@ -357,6 +387,7 @@ impl PyEngine {
     ///     port=8194,
     ///     request_pool_size=4,
     ///     subscription_pool_size=8,
+    ///     overflow_policy="drop_newest",
     /// )
     /// engine = Engine.with_config(config)
     /// ```
@@ -370,19 +401,9 @@ impl PyEngine {
             "PyEngine: connecting with custom config"
         );
 
-        let rust_config: EngineConfig = config.into();
+        let rust_config: EngineConfig = config.try_into()?;
 
-        // Release GIL during blocking Engine::start()
-        let engine = py.detach(|| Engine::start(rust_config)).map_err(|e| {
-            warn!(error = %e, "PyEngine: connection failed");
-            blp_async_error_to_pyerr(e)
-        })?;
-
-        info!("PyEngine: connected successfully");
-
-        Ok(Self {
-            engine: Arc::new(engine),
-        })
+        Self::start_engine(py, rust_config)
     }
 
     // =========================================================================
@@ -850,6 +871,25 @@ impl PyEngine {
     }
 }
 
+impl PyEngine {
+    /// Shared helper: release GIL and start Engine on a blocking thread.
+    fn start_engine(py: Python<'_>, config: EngineConfig) -> PyResult<Self> {
+        // Release GIL during blocking Engine::start().
+        // Engine::start() creates Bloomberg sessions and waits for them to connect,
+        // which can take seconds — must not hold GIL during this.
+        let engine = py.detach(|| Engine::start(config)).map_err(|e| {
+            warn!(error = %e, "PyEngine: connection failed");
+            blp_async_error_to_pyerr(e)
+        })?;
+
+        info!("PyEngine: connected successfully");
+
+        Ok(Self {
+            engine: Arc::new(engine),
+        })
+    }
+}
+
 // =============================================================================
 // PySubscription - Async iterator for real-time market data
 // =============================================================================
@@ -1285,18 +1325,13 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Developers override with RUST_LOG=xbbg_core=trace,xbbg_async=debug.
     xbbg_log::init();
 
-    // Initialize tokio runtime for pyo3-async-runtimes
-    // This creates a multi-threaded runtime that handles async Bloomberg operations
-    // The runtime is leaked to create a &'static reference as required by the API
-    let runtime = Box::leak(Box::new(
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime"),
-    ));
-    pyo3_async_runtimes::tokio::init_with_runtime(runtime)
-        .map_err(|_| PyRuntimeError::new_err("Failed to init tokio runtime"))?;
+    // Initialize tokio runtime for pyo3-async-runtimes (future_into_py).
+    //
+    // pyo3-async-runtimes creates its own runtime on first use via get_runtime()
+    // if we don't call init_with_runtime(). This is fine — the Engine also has
+    // its own runtime for worker threads. The pyo3-async-runtimes runtime only
+    // handles the Python↔Rust async bridge (future_into_py scheduling), while
+    // the Engine's runtime handles Bloomberg SDK I/O.
 
     info!("xbbg._core module initialized");
 

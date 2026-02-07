@@ -43,7 +43,15 @@ Build requires SDK **headers** and the **import library**. The runtime DLL/so/dy
 
 ## Dev / CI usage
 
-**Dev**: set `XBBG_DEV_SDK_ROOT` to the SDK root, then build the workspace.
+**Dev (quickest)**: run the SDK tool from the repo root, then build:
+
+```powershell
+.\scripts\sdktool.ps1            # downloads, extracts, sets .env
+```
+
+This writes `XBBG_DEV_SDK_ROOT=vendor/blpapi-sdk/<version>` to `.env`.
+
+**Dev (manual)**: set `XBBG_DEV_SDK_ROOT` to the SDK root, then build the workspace.
 
 **CI build**: set `BLPAPI_ROOT` or `BLPAPI_INCLUDE_DIR`/`BLPAPI_LIB_DIR`.
 

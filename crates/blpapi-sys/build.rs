@@ -98,9 +98,21 @@ fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {
         return Ok((inc, lib));
     }
 
-    // 3) Dev-only SDK root
+    // 3) Dev-only SDK root (may be relative to workspace root)
     if let Some(root) = env::var_os("XBBG_DEV_SDK_ROOT") {
-        let root = PathBuf::from(root);
+        let mut root = PathBuf::from(root);
+        // Resolve relative paths against the workspace root (CARGO_MANIFEST_DIR's grandparent)
+        if root.is_relative() {
+            if let Some(manifest_dir) = env::var_os("CARGO_MANIFEST_DIR") {
+                // crates/blpapi-sys -> repo root (two levels up)
+                let workspace_root = PathBuf::from(manifest_dir)
+                    .parent()
+                    .and_then(|p| p.parent())
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_default();
+                root = workspace_root.join(&root);
+            }
+        }
         let (inc, lib) = derive_include_lib(&root)?;
         validate_header_exists(&inc)?;
         return Ok((inc, lib));
