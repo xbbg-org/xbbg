@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.26", features = ["extension-module"] }
 pyo3-async-runtimes = { version = "0.26", features = ["tokio-runtime"] }
-tokio = { version = "1.48", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1.48", features = ["sync"] }
 xbbg-log = { path = "../xbbg-log" }
 arrow = { version = "57.1.0", features = ["pyarrow"] }
 chrono = { version = "0.4", default-features = false, features = ["std"] }

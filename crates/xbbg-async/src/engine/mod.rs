@@ -43,6 +43,32 @@ pub enum OverflowPolicy {
     Block,
 }
 
+impl std::str::FromStr for OverflowPolicy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "drop_newest" | "dropnewest" => Ok(Self::DropNewest),
+            "drop_oldest" | "dropoldest" => Ok(Self::DropOldest),
+            "block" => Ok(Self::Block),
+            _ => Err(format!(
+                "unknown overflow policy '{}': expected drop_newest, drop_oldest, or block",
+                s
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for OverflowPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DropNewest => write!(f, "drop_newest"),
+            Self::DropOldest => write!(f, "drop_oldest"),
+            Self::Block => write!(f, "block"),
+        }
+    }
+}
+
 /// Extractor type hint for Arrow conversion.
 ///
 /// Tells the pump which Arrow schema/extractor to use for the response.
@@ -149,6 +175,32 @@ pub enum ValidationMode {
     Disabled,
 }
 
+impl std::str::FromStr for ValidationMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "strict" => Ok(Self::Strict),
+            "lenient" => Ok(Self::Lenient),
+            "disabled" | "off" | "none" => Ok(Self::Disabled),
+            _ => Err(format!(
+                "unknown validation mode '{}': expected strict, lenient, or disabled",
+                s
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for ValidationMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Strict => write!(f, "strict"),
+            Self::Lenient => write!(f, "lenient"),
+            Self::Disabled => write!(f, "disabled"),
+        }
+    }
+}
+
 /// Configuration for the Engine.
 #[derive(Clone)]
 pub struct EngineConfig {
@@ -188,7 +240,10 @@ impl Default for EngineConfig {
             overflow_policy: OverflowPolicy::default(),
             request_pool_size: 2,
             subscription_pool_size: 4,
-            warmup_services: vec!["//blp/refdata".to_string(), "//blp/apiflds".to_string()],
+            warmup_services: vec![
+                crate::services::REFDATA.to_string(),
+                crate::services::APIFLDS.to_string(),
+            ],
             validation_mode: ValidationMode::default(),
         }
     }
@@ -283,7 +338,7 @@ impl Engine {
         topics: Vec<String>,
         fields: Vec<String>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
-        self.subscribe_with_options("//blp/mktdata".to_string(), topics, fields, vec![])
+        self.subscribe_with_options(crate::services::MKTDATA.to_string(), topics, fields, vec![])
             .await
     }
 
@@ -374,7 +429,7 @@ impl Engine {
             xbbg_log::debug!(fields = ?uncached, "Querying //blp/apiflds for field types");
 
             let params = RequestParams {
-                service: "//blp/apiflds".to_string(),
+                service: crate::services::APIFLDS.to_string(),
                 operation: "FieldInfoRequest".to_string(),
                 extractor: ExtractorType::FieldInfo,
                 field_ids: Some(uncached.clone()),
@@ -439,7 +494,7 @@ impl Engine {
 
         // Query //blp/apiflds for the fields
         let params = RequestParams {
-            service: "//blp/apiflds".to_string(),
+            service: crate::services::APIFLDS.to_string(),
             operation: "FieldInfoRequest".to_string(),
             extractor: ExtractorType::FieldInfo,
             field_ids: Some(fields.to_vec()),

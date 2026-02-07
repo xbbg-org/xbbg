@@ -78,9 +78,9 @@ impl SubscriptionWorker {
         session.start()?;
 
         // Pre-open the mktdata service (most common)
-        session.open_service("//blp/mktdata")?;
+        session.open_service(crate::services::MKTDATA)?;
         let mut open_services = std::collections::HashSet::new();
-        open_services.insert("//blp/mktdata".to_string());
+        open_services.insert(crate::services::MKTDATA.to_string());
 
         xbbg_log::info!(worker_id = id, "subscription worker pre-warmed");
 
