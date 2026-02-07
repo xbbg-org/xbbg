@@ -1,15 +1,18 @@
-"""Raw blpapi profiled benchmark - compare with Rust."""
+"""Raw blpapi profiled benchmark — phase-level timing comparison with Rust."""
 
+import logging
 import sys
 import time
 
 sys.stdout.reconfigure(encoding="utf-8")
 import blpapi
 
+logger = logging.getLogger(__name__)
+
 
 def main():
-    print("Raw blpapi Profiled BDP Benchmark")
-    print("=" * 40)
+    logger.info("Raw blpapi Profiled BDP Benchmark")
+    logger.info("=" * 40)
 
     # Setup session
     options = blpapi.SessionOptions()
@@ -20,21 +23,21 @@ def main():
 
     t = time.perf_counter()
     session.start()
-    print(f"Session start: {(time.perf_counter() - t) * 1e6:.0f} μs")
+    logger.info(f"Session start: {(time.perf_counter() - t) * 1e6:.0f} μs")
 
     t = time.perf_counter()
     session.openService("//blp/refdata")
-    print(f"Open service: {(time.perf_counter() - t) * 1e6:.0f} μs")
+    logger.info(f"Open service: {(time.perf_counter() - t) * 1e6:.0f} μs")
 
     refdata = session.getService("//blp/refdata")
 
     iterations = 10
-    print(f"\nRunning {iterations} iterations...\n")
+    logger.info(f"\nRunning {iterations} iterations...\n")
 
-    print(
+    logger.info(
         f"{'get_svc':>12} {'create_req':>12} {'append':>12} {'send_req':>12} {'wait_resp':>12} {'parse':>12} {'TOTAL':>12}"
     )
-    print("-" * 96)
+    logger.info("-" * 96)
 
     all_timings = []
 
@@ -83,7 +86,7 @@ def main():
 
         timings["total"] = (time.perf_counter() - total_start) * 1e6
 
-        print(
+        logger.info(
             f"{timings['get_svc']:>12.0f} {timings['create_req']:>12.0f} {timings['append']:>12.0f} "
             f"{timings['send_req']:>12.0f} {timings['wait_resp']:>12.0f} {timings['parse']:>12.0f} {timings['total']:>12.0f}"
         )
@@ -91,27 +94,28 @@ def main():
         all_timings.append(timings)
 
     # Print averages
-    print("-" * 96)
+    logger.info("-" * 96)
     avg = {k: sum(t[k] for t in all_timings) / len(all_timings) for k in all_timings[0]}
-    print(
+    logger.info(
         f"{'AVG:':>4} {avg['get_svc']:>8.0f} {avg['create_req']:>12.0f} {avg['append']:>12.0f} "
         f"{avg['send_req']:>12.0f} {avg['wait_resp']:>12.0f} {avg['parse']:>12.0f} {avg['total']:>12.0f}"
     )
 
-    print(f"\nPhase breakdown (% of total):")
-    print(f"  get_service:     {avg['get_svc'] / avg['total'] * 100:>6.2f}%  ({avg['get_svc']:>8.0f} μs)")
-    print(f"  create_request:  {avg['create_req'] / avg['total'] * 100:>6.2f}%  ({avg['create_req']:>8.0f} μs)")
-    print(f"  append:          {avg['append'] / avg['total'] * 100:>6.2f}%  ({avg['append']:>8.0f} μs)")
-    print(f"  send_request:    {avg['send_req'] / avg['total'] * 100:>6.2f}%  ({avg['send_req']:>8.0f} μs)")
-    print(
+    logger.info(f"\nPhase breakdown (% of total):")
+    logger.info(f"  get_service:     {avg['get_svc'] / avg['total'] * 100:>6.2f}%  ({avg['get_svc']:>8.0f} μs)")
+    logger.info(f"  create_request:  {avg['create_req'] / avg['total'] * 100:>6.2f}%  ({avg['create_req']:>8.0f} μs)")
+    logger.info(f"  append:          {avg['append'] / avg['total'] * 100:>6.2f}%  ({avg['append']:>8.0f} μs)")
+    logger.info(f"  send_request:    {avg['send_req'] / avg['total'] * 100:>6.2f}%  ({avg['send_req']:>8.0f} μs)")
+    logger.info(
         f"  wait_response:   {avg['wait_resp'] / avg['total'] * 100:>6.2f}%  ({avg['wait_resp']:>8.0f} μs)  <-- NETWORK + BLOOMBERG"
     )
-    print(f"  parse_response:  {avg['parse'] / avg['total'] * 100:>6.2f}%  ({avg['parse']:>8.0f} μs)")
+    logger.info(f"  parse_response:  {avg['parse'] / avg['total'] * 100:>6.2f}%  ({avg['parse']:>8.0f} μs)")
 
     session.stop()
-    print("\n" + "=" * 40)
-    print("Complete.")
+    logger.info("\n" + "=" * 40)
+    logger.info("Complete.")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     main()

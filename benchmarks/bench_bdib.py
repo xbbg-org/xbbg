@@ -5,10 +5,13 @@ Data usage: ~50-100 data points per run (30 minutes of 5-min bars)
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 import statistics
 import time
 import tracemalloc
+
+logger = logging.getLogger(__name__)
 
 from config import (
     BDIB_DATE,
@@ -129,7 +132,7 @@ def run_xbbg_legacy(ticker, event_type, date, start_time, end_time, interval):
 
         return xbbg_legacy.bdib(ticker, event_type, date, start_time, end_time, interval)
     except ImportError:
-        print("Warning: xbbg legacy not installed")
+        logger.warning("xbbg legacy not installed")
         return None
 
 
@@ -151,34 +154,34 @@ def run_pdblp(ticker, event_type, date, start_time, end_time, interval):
         con.stop()
         return result
     except ImportError:
-        print("Warning: pdblp not installed")
+        logger.warning("pdblp not installed")
         return None
     except Exception as e:
-        print(f"Warning: pdblp error: {e}")
+        logger.warning(f"pdblp error: {e}")
         return None
 
 
 def main():
     """Run all BDIB benchmarks."""
-    print("=" * 70)
-    print("BDIB (Intraday Bars) Benchmark")
-    print("=" * 70)
-    print(f"\nIterations: {ITERATIONS}")
-    print(f"Warmup: {WARMUP_ITERATIONS}")
-    print(f"Date: {BDIB_DATE}")
-    print(f"Time range: {BDIB_START_TIME} to {BDIB_END_TIME}")
-    print(f"Interval: {BDIB_INTERVAL} minutes")
+    logger.info("=" * 70)
+    logger.info("BDIB (Intraday Bars) Benchmark")
+    logger.info("=" * 70)
+    logger.info(f"\nIterations: {ITERATIONS}")
+    logger.info(f"Warmup: {WARMUP_ITERATIONS}")
+    logger.info(f"Date: {BDIB_DATE}")
+    logger.info(f"Time range: {BDIB_START_TIME} to {BDIB_END_TIME}")
+    logger.info(f"Interval: {BDIB_INTERVAL} minutes")
 
     results = []
 
     event_types = ["TRADE"]  # Could also test BID, ASK, BEST_BID, BEST_ASK
 
     for event_type in event_types:
-        print(f"\n\nTest: {event_type} events")
-        print("-" * 70)
+        logger.info(f"\n\nTest: {event_type} events")
+        logger.info("-" * 70)
 
         if True:  # xbbg Rust
-            print("Running xbbg (Rust)...")
+            logger.info("Running xbbg (Rust)...")
             try:
                 result = benchmark_bdib(
                     "xbbg-rust",
@@ -191,14 +194,14 @@ def main():
                     BDIB_INTERVAL,
                 )
                 results.append(result)
-                print(
+                logger.info(
                     f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
                 )
             except Exception as e:
-                print(f"  ✗ Error: {e}")
+                logger.error(f"  ✗ Error: {e}")
 
         if True:  # xbbg Legacy
-            print("Running xbbg (legacy)...")
+            logger.info("Running xbbg (legacy)...")
             try:
                 result = benchmark_bdib(
                     "xbbg-legacy",
@@ -212,14 +215,14 @@ def main():
                 )
                 if result:
                     results.append(result)
-                    print(
+                    logger.info(
                         f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
                     )
             except Exception as e:
-                print(f"  ✗ Error: {e}")
+                logger.error(f"  ✗ Error: {e}")
 
         if True:  # pdblp
-            print("Running pdblp...")
+            logger.info("Running pdblp...")
             try:
                 result = benchmark_bdib(
                     "pdblp",
@@ -233,24 +236,24 @@ def main():
                 )
                 if result:
                     results.append(result)
-                    print(
+                    logger.info(
                         f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
                     )
             except Exception as e:
-                print(f"  ✗ Error: {e}")
+                logger.error(f"  ✗ Error: {e}")
 
     # Print summary
-    print("\n\n" + "=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
+    logger.info("\n\n" + "=" * 70)
+    logger.info("SUMMARY")
+    logger.info("=" * 70)
 
     for result in results:
-        print(f"\n{result.package} - {result.operation}")
-        print(f"  Cold start: {result.cold_start_ms:.2f}ms")
-        print(f"  Warm mean:  {result.warm_mean_ms:.2f}ms ± {result.warm_std_ms:.2f}ms")
-        print(f"  Warm p95:   {result.warm_p95_ms:.2f}ms")
-        print(f"  Memory:     {result.memory_peak_mb:.2f}MB")
-        print(f"  Shape:      {result.data_shape}")
+        logger.info(f"\n{result.package} - {result.operation}")
+        logger.info(f"  Cold start: {result.cold_start_ms:.2f}ms")
+        logger.info(f"  Warm mean:  {result.warm_mean_ms:.2f}ms ± {result.warm_std_ms:.2f}ms")
+        logger.info(f"  Warm p95:   {result.warm_p95_ms:.2f}ms")
+        logger.info(f"  Memory:     {result.memory_peak_mb:.2f}MB")
+        logger.info(f"  Shape:      {result.data_shape}")
 
     # Calculate speedups
     xbbg_rust_results = [r for r in results if r.package == "xbbg-rust"]
@@ -261,12 +264,13 @@ def main():
         legacy_time = sum(r.warm_mean_ms for r in legacy_results)
         speedup = legacy_time / rust_time if rust_time > 0 else 0
 
-        print(f"\n\n{'=' * 70}")
-        print(f"xbbg Rust vs Legacy Speedup: {speedup:.2f}x faster")
-        print(f"{'=' * 70}")
+        logger.info(f"\n\n{'=' * 70}")
+        logger.info(f"xbbg Rust vs Legacy Speedup: {speedup:.2f}x faster")
+        logger.info(f"{'=' * 70}")
 
     return results
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     main()

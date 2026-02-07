@@ -19,6 +19,7 @@ Async functions (primary implementation):
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,9 @@ from xbbg._core import (
     ext_previous_cdx_series,
     ext_validate_generic_ticker,
 )
+from xbbg.ext._utils import _pivot_bdp_to_wide
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from datetime import date
@@ -51,65 +55,45 @@ def _parse_date(dt: str | date) -> datetime:
     raise ValueError(f"Cannot parse date: {dt}")
 
 
-def _pivot_bdp_to_wide(nw_df: nw.DataFrame) -> nw.DataFrame:
-    """Pivot bdp result from long format (ticker, field, value) to wide format.
-
-    If the dataframe already has the expected columns (not in long format),
-    returns it unchanged.
-    """
-    # Check if already in wide format (has columns other than ticker/field/value)
-    if set(nw_df.columns) != {"ticker", "field", "value"}:
-        return nw_df
-
-    if len(nw_df) == 0:
-        return nw_df
-
-    # Pivot from long to wide: each unique field becomes a column
-    # Group by ticker and create dict of field -> value
-    rows_by_ticker: dict[str, dict[str, str]] = {}
-    for row in nw_df.iter_rows(named=True):
-        ticker = row["ticker"]
-        field = row["field"]
-        value = row["value"]
-        if ticker not in rows_by_ticker:
-            rows_by_ticker[ticker] = {"ticker": ticker}
-        rows_by_ticker[ticker][field] = value
-
-    # Build wide dataframe
-    if not rows_by_ticker:
-        return nw_df
-
-    # Get all unique fields for column names
-    all_fields = set()
-    for row_data in rows_by_ticker.values():
-        all_fields.update(k for k in row_data if k != "ticker")
-
-    # Create lists for each column
-    columns: dict[str, list] = {"ticker": []}
-    for field in all_fields:
-        columns[field] = []
-
-    for ticker, row_data in rows_by_ticker.items():
-        columns["ticker"].append(ticker)
-        for field in all_fields:
-            columns[field].append(row_data.get(field))
-
-    # Create new dataframe using native namespace
-    native_ns = nw.get_native_namespace(nw_df)
-    result_cols = {k: nw.new_series(k, v, native_namespace=native_ns) for k, v in columns.items()}
-
-    # Build dataframe from series
-    first_series = next(iter(result_cols.values()))
-    result_df = first_series.to_frame()
-    for _name, series in list(result_cols.items())[1:]:
-        result_df = result_df.with_columns(series)
-
-    return result_df
-
-
 # =============================================================================
 # Async implementations (primary)
 # =============================================================================
+
+
+def _filter_valid_contracts(
+    nw_df: nw.DataFrame,
+    dt_parsed: datetime,
+) -> list[tuple[str, datetime]]:
+    """Filter and sort futures contracts by maturity date.
+
+    Parses maturity dates from a pivoted BDP DataFrame, keeps only contracts
+    whose maturity falls after *dt_parsed*, and returns them sorted by date.
+
+    Args:
+        nw_df: Pivoted DataFrame with ``ticker`` and ``last_tradeable_dt`` columns.
+        dt_parsed: Reference date; contracts maturing on or before this date
+            are excluded.
+
+    Returns:
+        Sorted list of ``(ticker, maturity_datetime)`` tuples for contracts
+        maturing after *dt_parsed*.
+    """
+    matu_dates = nw_df["last_tradeable_dt"].to_list()
+    tickers = nw_df["ticker"].to_list()
+
+    valid_contracts: list[tuple[str, datetime]] = []
+    for ticker_val, matu_str in zip(tickers, matu_dates, strict=False):
+        if matu_str is None:
+            continue
+        try:
+            matu_dt = _parse_date(matu_str)
+            if matu_dt > dt_parsed:
+                valid_contracts.append((ticker_val, matu_dt))
+        except (ValueError, TypeError):
+            continue
+
+    valid_contracts.sort(key=lambda x: x[1])
+    return valid_contracts
 
 
 async def afut_ticker(
@@ -186,11 +170,13 @@ async def afut_ticker(
     # Get maturity dates from Bloomberg
     try:
         fut_matu = await abdp(tickers=fut_candidates, flds="last_tradeable_dt", **kwargs)
-    except Exception:
+    except (ValueError, TypeError, KeyError):
+        logger.warning("Failed to get maturity data for futures candidates")
         # Try with fewer candidates
         try:
             fut_matu = await abdp(tickers=fut_candidates[:-1], flds="last_tradeable_dt", **kwargs)
-        except Exception:
+        except (ValueError, TypeError, KeyError):
+            logger.warning("Failed to get maturity data with fewer candidates")
             return ""
 
     # Convert to narwhals and pivot from long to wide format
@@ -200,27 +186,12 @@ async def afut_ticker(
     if len(nw_df) == 0 or "last_tradeable_dt" not in nw_df.columns:
         return ""
 
-    # Parse maturity dates and filter to those after dt
-    matu_dates = nw_df["last_tradeable_dt"].to_list()
-    tickers = nw_df["ticker"].to_list()
-
-    # Build list of (ticker, parsed_date) and filter/sort
-    valid_contracts: list[tuple[str, datetime]] = []
-    for ticker_val, matu_str in zip(tickers, matu_dates, strict=False):
-        if matu_str is None:
-            continue
-        try:
-            matu_dt = _parse_date(matu_str)
-            if matu_dt > dt_parsed:
-                valid_contracts.append((ticker_val, matu_dt))
-        except (ValueError, TypeError):
-            continue
+    # Parse maturity dates, filter to those after dt, and sort
+    valid_contracts = _filter_valid_contracts(nw_df, dt_parsed)
 
     if len(valid_contracts) <= idx:
         return ""
 
-    # Sort by maturity date and return the contract at idx
-    valid_contracts.sort(key=lambda x: x[1])
     return valid_contracts[idx][0]
 
 
@@ -374,7 +345,8 @@ async def acdx_ticker(
             flds=["rolling_series", "on_the_run_current_bd_indicator", "cds_first_accrual_start_date"],
             **kwargs,
         )
-    except Exception:
+    except (ValueError, TypeError, KeyError):
+        logger.warning("Failed to get CDX info")
         return ""
 
     nw_info = nw.from_native(info)
@@ -405,8 +377,8 @@ async def acdx_ticker(
                     resolved = ext_cdx_gen_to_specific(gen_ticker, series - 1)
                 except ValueError:
                     pass
-        except Exception:
-            pass
+        except (ValueError, TypeError):
+            logger.debug("Failed to parse first accrual date")
 
     return resolved
 
@@ -469,8 +441,8 @@ async def aactive_cdx(
             cur_start = _parse_date(nw_meta["cds_first_accrual_start_date"][0])
             if dt_parsed < cur_start:
                 return prev
-    except Exception:
-        pass
+    except (ValueError, TypeError):
+        logger.debug("Failed to check CDX metadata")
 
     # Compare activity based on PX_LAST availability
     end = dt_parsed
@@ -491,8 +463,8 @@ async def aactive_cdx(
             if prev in col and last_row[col][0] is not None:
                 return prev
 
-    except Exception:
-        pass
+    except (ValueError, TypeError, KeyError):
+        logger.debug("Failed to compare CDX activity")
 
     return cur
 

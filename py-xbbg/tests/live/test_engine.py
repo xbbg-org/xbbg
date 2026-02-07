@@ -1,19 +1,22 @@
 #!/usr/bin/env python
-"""Live Bloomberg API test script.
+"""Live Bloomberg engine test script.
 
-Tests each API endpoint with real Bloomberg data.
-Control which tests run via command line arguments.
+Tests each API endpoint at the Rust engine level (PyEngine) with real
+Bloomberg data. For high-level public API tests, see test_api.py.
 
 Usage:
-    python tests/live_test.py              # Run all tests
-    python tests/live_test.py bdp bdh      # Run only bdp and bdh tests
-    python tests/live_test.py --list       # List available tests
+    python tests/live/test_engine.py              # Run all tests
+    python tests/live/test_engine.py bdp bdh      # Run only bdp and bdh tests
+    python tests/live/test_engine.py --list       # List available tests
 """
 
 import argparse
 import asyncio
+import logging
 import sys
 from datetime import date, timedelta
+
+logger = logging.getLogger(__name__)
 
 # Ensure UTF-8 output on Windows
 if sys.platform == "win32":
@@ -29,8 +32,8 @@ def get_engine():
 
 async def test_bdp(engine):
     """Test Reference Data (bdp) - single point data."""
-    print("Testing: bdp (Reference Data)")
-    print("-" * 40)
+    logger.info("Testing: bdp (Reference Data)")
+    logger.info("-" * 40)
 
     params = {
         "service": "//blp/refdata",
@@ -42,8 +45,8 @@ async def test_bdp(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     # Group by ticker for display
     tickers = result["ticker"].to_pylist()
@@ -53,18 +56,18 @@ async def test_bdp(engine):
     current_ticker = None
     for t, f, v in zip(tickers, fields, values):
         if t != current_ticker:
-            print(f"\n  {t}:")
+            logger.debug(f"\n  {t}:")
             current_ticker = t
-        print(f"    {f}: {v}")
+        logger.debug(f"    {f}: {v}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bdh(engine):
     """Test Historical Data (bdh) - time series data."""
-    print("Testing: bdh (Historical Data)")
-    print("-" * 40)
+    logger.info("Testing: bdh (Historical Data)")
+    logger.info("-" * 40)
 
     # Get last 5 trading days
     end_date = date.today()
@@ -82,29 +85,29 @@ async def test_bdh(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
-    print()
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
+    logger.debug("")
 
     # Display as table
     dates = result["date"].to_pylist()
     px_last = result["PX_LAST"].to_pylist()
     volume = result["VOLUME"].to_pylist()
 
-    print("  Date        | PX_LAST  | Volume")
-    print("  " + "-" * 35)
+    logger.info("  Date        | PX_LAST  | Volume")
+    logger.info("  " + "-" * 35)
     for d, p, v in zip(dates, px_last, volume):
         vol_str = f"{v / 1e6:.1f}M" if v else "N/A"
-        print(f"  {d}  | {p:8.2f} | {vol_str}")
+        logger.debug(f"  {d}  | {p:8.2f} | {vol_str}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bdh_multi(engine):
     """Test Historical Data with multiple securities."""
-    print("Testing: bdh_multi (Historical Data - Multiple Securities)")
-    print("-" * 40)
+    logger.info("Testing: bdh_multi (Historical Data - Multiple Securities)")
+    logger.info("-" * 40)
 
     end_date = date.today()
     start_date = end_date - timedelta(days=5)
@@ -121,7 +124,7 @@ async def test_bdh_multi(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     tickers = result["ticker"].to_pylist()
     dates = result["date"].to_pylist()
@@ -130,18 +133,18 @@ async def test_bdh_multi(engine):
     current_ticker = None
     for t, d, p in zip(tickers, dates, prices):
         if t != current_ticker:
-            print(f"\n  {t}:")
+            logger.debug(f"\n  {t}:")
             current_ticker = t
-        print(f"    {d}: {p:.2f}")
+        logger.debug(f"    {d}: {p:.2f}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bds(engine):
     """Test Bulk Data (bds) - bulk reference data."""
-    print("Testing: bds (Bulk Data)")
-    print("-" * 40)
+    logger.info("Testing: bds (Bulk Data)")
+    logger.info("-" * 40)
 
     params = {
         "service": "//blp/refdata",
@@ -153,23 +156,23 @@ async def test_bds(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=60.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Top 5 holders:")
+        logger.info("\n  Top 5 holders:")
         for i, col in enumerate(result.schema.names[:5]):
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bdib(engine):
     """Test Intraday Bars (bdib) - intraday OHLCV bars."""
-    print("Testing: bdib (Intraday Bars)")
-    print("-" * 40)
+    logger.info("Testing: bdib (Intraday Bars)")
+    logger.info("-" * 40)
 
     # Get bars from yesterday (market hours in UTC)
     # US market: 9:30 AM - 4:00 PM ET = 14:30 - 21:00 UTC
@@ -190,26 +193,26 @@ async def test_bdib(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  First 5 bars:")
+        logger.info("\n  First 5 bars:")
         times = result["time"].to_pylist()[:5] if "time" in result.schema.names else []
         opens = result["open"].to_pylist()[:5] if "open" in result.schema.names else []
         closes = result["close"].to_pylist()[:5] if "close" in result.schema.names else []
 
         for t, o, c in zip(times, opens, closes):
-            print(f"    {t}: open={o:.2f}, close={c:.2f}")
+            logger.debug(f"    {t}: open={o:.2f}, close={c:.2f}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bdtick(engine):
     """Test Intraday Ticks (bdtick) - tick-level data."""
-    print("Testing: bdtick (Intraday Ticks)")
-    print("-" * 40)
+    logger.info("Testing: bdtick (Intraday Ticks)")
+    logger.info("-" * 40)
 
     # Get ticks from yesterday (market hours in UTC)
     # US market opens at 9:30 AM ET = 14:30 UTC
@@ -229,23 +232,23 @@ async def test_bdtick(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print(f"\n  First 5 ticks (of {result.num_rows}):")
+        logger.info(f"\n  First 5 ticks (of {result.num_rows}):")
         for col in result.schema.names[:4]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_field_info(engine):
     """Test Field Info - get field metadata."""
-    print("Testing: field_info (Field Metadata)")
-    print("-" * 40)
+    logger.info("Testing: field_info (Field Metadata)")
+    logger.info("-" * 40)
 
     params = {
         "service": "//blp/apiflds",
@@ -256,42 +259,42 @@ async def test_field_info(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Field info:")
+        logger.info("\n  Field info:")
         for col in result.schema.names:
             values = result[col].to_pylist()
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_schema_introspection(engine):
     """Test Schema Introspection - get service schema."""
-    print("Testing: schema (Service Introspection)")
-    print("-" * 40)
+    logger.info("Testing: schema (Service Introspection)")
+    logger.info("-" * 40)
 
     # List operations for //blp/refdata
     ops = await engine.list_operations("//blp/refdata")
-    print(f"  Operations in //blp/refdata: {len(ops)}")
-    print(f"  Available: {', '.join(ops[:5])}...")
+    logger.info(f"  Operations in //blp/refdata: {len(ops)}")
+    logger.info(f"  Available: {', '.join(ops[:5])}...")
 
     # Get valid elements for HistoricalDataRequest
     elements = await engine.list_valid_elements("//blp/refdata", "HistoricalDataRequest")
-    print(f"\n  Elements for HistoricalDataRequest: {len(elements)}")
-    print(f"  Sample: {', '.join(sorted(elements)[:8])}...")
+    logger.info(f"\n  Elements for HistoricalDataRequest: {len(elements)}")
+    logger.info(f"  Sample: {', '.join(sorted(elements)[:8])}...")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_ext_functions(engine):
     """Test Extension Functions from xbbg-ext."""
-    print("Testing: ext (Extension Functions)")
-    print("-" * 40)
+    logger.info("Testing: ext (Extension Functions)")
+    logger.info("-" * 40)
 
     from xbbg._core import (
         ext_parse_date,
@@ -305,44 +308,44 @@ async def test_ext_functions(engine):
 
     # Date parsing
     parsed = ext_parse_date("2024-03-15")
-    print(f"  parse_date('2024-03-15'): {parsed}")
+    logger.info(f"  parse_date('2024-03-15'): {parsed}")
 
     formatted = ext_fmt_date(2024, 3, 15, "%Y%m%d")
-    print(f"  fmt_date(2024, 3, 15): {formatted}")
+    logger.info(f"  fmt_date(2024, 3, 15): {formatted}")
 
     # Ticker utilities
     is_specific = ext_is_specific_contract("ESH24 Index")
-    print(f"  is_specific_contract('ESH24 Index'): {is_specific}")
+    logger.info(f"  is_specific_contract('ESH24 Index'): {is_specific}")
 
     is_generic = ext_is_specific_contract("ES1 Index")
-    print(f"  is_specific_contract('ES1 Index'): {is_generic}")
+    logger.info(f"  is_specific_contract('ES1 Index'): {is_generic}")
 
     # Futures candidates
     candidates = ext_generate_futures_candidates("ES1 Index", 2024, 3, 15, "Q", 4)
-    print(f"  generate_futures_candidates('ES1 Index', Q, 4):")
+    logger.info(f"  generate_futures_candidates('ES1 Index', Q, 4):")
     for ticker, year, month in candidates:
-        print(f"    {ticker} ({year}-{month:02d})")
+        logger.debug(f"    {ticker} ({year}-{month:02d})")
 
     # FX pair building
     fx = ext_build_fx_pair("GBp", "USD")
-    print(f"  build_fx_pair('GBp', 'USD'): {fx}")
+    logger.info(f"  build_fx_pair('GBp', 'USD'): {fx}")
 
     # Currency comparison
     same = ext_same_currency("GBP", "GBp")
-    print(f"  same_currency('GBP', 'GBp'): {same}")
+    logger.info(f"  same_currency('GBP', 'GBp'): {same}")
 
     # Constants
     months = ext_get_futures_months()
-    print(f"  futures_months: {dict(list(months.items())[:6])}...")
+    logger.info(f"  futures_months: {dict(list(months.items())[:6])}...")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bql(engine):
     """Test Bloomberg Query Language (bql) - BQL queries."""
-    print("Testing: bql (Bloomberg Query Language)")
-    print("-" * 40)
+    logger.info("Testing: bql (Bloomberg Query Language)")
+    logger.info("-" * 40)
 
     # BQL request via //blp/bqlsvc service
     params = {
@@ -354,16 +357,16 @@ async def test_bql(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=60.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  BQL Results:")
+        logger.info("\n  BQL Results:")
         for col in result.schema.names[:5]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
@@ -374,8 +377,8 @@ async def test_bsrch(engine):
     user-created screens. The test uses a generic domain that may return 0 results
     if no matching saved searches exist.
     """
-    print("Testing: bsrch (Bloomberg Search)")
-    print("-" * 40)
+    logger.info("Testing: bsrch (Bloomberg Search)")
+    logger.info("-" * 40)
 
     # BSRCH request via //blp/exrsvc service
     # Note: Domain must be a valid saved search name (user-specific)
@@ -389,29 +392,29 @@ async def test_bsrch(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=60.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Response:")
+        logger.info("\n  Response:")
         for col in result.schema.names[:5]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
     # Check for error message in response
     if "path" in result.schema.names:
         paths = result["path"].to_pylist()
         if "Error" in paths:
-            print("\n  Note: Domain may not be valid for this Bloomberg account")
+            logger.debug("\n  Note: Domain may not be valid for this Bloomberg account")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_blkp(engine):
     """Test Security Lookup (blkp) - search for securities."""
-    print("Testing: blkp (Security Lookup)")
-    print("-" * 40)
+    logger.info("Testing: blkp (Security Lookup)")
+    logger.info("-" * 40)
 
     # instrumentListRequest via //blp/instruments service
     params = {
@@ -427,23 +430,23 @@ async def test_blkp(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Search results:")
+        logger.info("\n  Search results:")
         for col in result.schema.names[:3]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bcurves(engine):
     """Test Yield Curve List (bcurves) - search for curves."""
-    print("Testing: bcurves (Yield Curve List)")
-    print("-" * 40)
+    logger.info("Testing: bcurves (Yield Curve List)")
+    logger.info("-" * 40)
 
     # curveListRequest via //blp/instruments service
     # Use 'query' parameter for text search (required for results)
@@ -459,23 +462,23 @@ async def test_bcurves(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Curves found:")
+        logger.info("\n  Curves found:")
         for col in result.schema.names[:5]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bgovts(engine):
     """Test Government Securities List (bgovts) - search for govt bonds."""
-    print("Testing: bgovts (Government Securities List)")
-    print("-" * 40)
+    logger.info("Testing: bgovts (Government Securities List)")
+    logger.info("-" * 40)
 
     # govtListRequest via //blp/instruments service
     # Use 'query' parameter for text search (required for results)
@@ -491,23 +494,23 @@ async def test_bgovts(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=30.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Government securities found:")
+        logger.info("\n  Government securities found:")
         for col in result.schema.names[:5]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_beqs(engine):
     """Test Equity Screening (beqs) - run saved screens."""
-    print("Testing: beqs (Equity Screening)")
-    print("-" * 40)
+    logger.info("Testing: beqs (Equity Screening)")
+    logger.info("-" * 40)
 
     # BeqsRequest via //blp/refdata service
     # Using a Bloomberg GLOBAL screen that should exist
@@ -524,23 +527,23 @@ async def test_beqs(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=60.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Screen results:")
+        logger.info("\n  Screen results:")
         for col in result.schema.names[:3]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_bta(engine):
     """Test Technical Analysis (bta) - technical study data."""
-    print("Testing: bta (Technical Analysis)")
-    print("-" * 40)
+    logger.info("Testing: bta (Technical Analysis)")
+    logger.info("-" * 40)
 
     # Get dates for the study
     end_date = date.today() - timedelta(days=1)
@@ -566,23 +569,23 @@ async def test_bta(engine):
 
     result = await asyncio.wait_for(engine.request(params), timeout=60.0)
 
-    print(f"  Schema: {result.schema}")
-    print(f"  Rows: {result.num_rows}")
+    logger.info(f"  Schema: {result.schema}")
+    logger.info(f"  Rows: {result.num_rows}")
 
     if result.num_rows > 0:
-        print("\n  Technical Analysis results:")
+        logger.info("\n  Technical Analysis results:")
         for col in result.schema.names[:5]:
             values = result[col].to_pylist()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_yas(engine):
     """Test Yield & Spread Analysis (yas) - bond yield calculations."""
-    print("Testing: yas (Yield & Spread Analysis)")
-    print("-" * 40)
+    logger.info("Testing: yas (Yield & Spread Analysis)")
+    logger.info("-" * 40)
 
     from xbbg import abdp
 
@@ -594,24 +597,24 @@ async def test_yas(engine):
         ["YAS_BOND_YLD", "YAS_MOD_DUR", "YLD_YTM_MID"],
     )
 
-    print(f"  Rows: {len(df)}")
-    print(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
+    logger.info(f"  Rows: {len(df)}")
+    logger.debug(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
 
     # Display results
     if len(df) > 0:
-        print("\n  YAS Results:")
+        logger.info("\n  YAS Results:")
         for col in df.columns[:5]:
             values = df[col].to_list()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_etf_holdings(engine):
     """Test ETF Holdings (etf_holdings) - get ETF constituents via BQL."""
-    print("Testing: etf_holdings (ETF Holdings)")
-    print("-" * 40)
+    logger.info("Testing: etf_holdings (ETF Holdings)")
+    logger.info("-" * 40)
 
     from xbbg import abql
 
@@ -620,24 +623,24 @@ async def test_etf_holdings(engine):
     bql_query = "get(id_isin, weights, id().position) for(holdings('SPY US Equity'))"
     df = await abql(bql_query)
 
-    print(f"  Rows: {len(df)}")
-    print(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
+    logger.info(f"  Rows: {len(df)}")
+    logger.debug(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
 
     # Display first few holdings
     if len(df) > 0:
-        print("\n  Top 5 Holdings:")
+        logger.info("\n  Top 5 Holdings:")
         for col in df.columns[:4]:
             values = df[col].to_list()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_preferreds(engine):
     """Test Preferred Stocks (preferreds) - find preferreds via BQL."""
-    print("Testing: preferreds (Preferred Stocks)")
-    print("-" * 40)
+    logger.info("Testing: preferreds (Preferred Stocks)")
+    logger.info("-" * 40)
 
     from xbbg import abql
 
@@ -648,24 +651,24 @@ async def test_preferreds(engine):
     )
     df = await abql(bql_query)
 
-    print(f"  Rows: {len(df)}")
-    print(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
+    logger.info(f"  Rows: {len(df)}")
+    logger.debug(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
 
     # Display results
     if len(df) > 0:
-        print("\n  Preferred Stocks:")
+        logger.info("\n  Preferred Stocks:")
         for col in df.columns[:3]:
             values = df[col].to_list()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_corporate_bonds(engine):
     """Test Corporate Bonds (corporate_bonds) - find bonds via BQL."""
-    print("Testing: corporate_bonds (Corporate Bonds)")
-    print("-" * 40)
+    logger.info("Testing: corporate_bonds (Corporate Bonds)")
+    logger.info("-" * 40)
 
     from xbbg import abql
 
@@ -678,76 +681,76 @@ async def test_corporate_bonds(engine):
     )
     df = await abql(bql_query)
 
-    print(f"  Rows: {len(df)}")
-    print(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
+    logger.info(f"  Rows: {len(df)}")
+    logger.debug(f"  Columns: {list(df.columns) if hasattr(df, 'columns') else 'N/A'}")
 
     # Display results
     if len(df) > 0:
-        print("\n  Corporate Bonds:")
+        logger.info("\n  Corporate Bonds:")
         for col in df.columns[:3]:
             values = df[col].to_list()[:5]
-            print(f"    {col}: {values}")
+            logger.debug(f"    {col}: {values}")
 
-    print()
+    logger.debug("")
     return True
 
 
 async def test_ext_async(engine):
     """Test async extension functions (ayas, aetf_holdings, etc.)."""
-    print("Testing: ext_async (Async Extension Functions)")
-    print("-" * 40)
+    logger.info("Testing: ext_async (Async Extension Functions)")
+    logger.info("-" * 40)
 
     from xbbg import ext
 
     # Test ayas - async yield & spread analysis
-    print("  Testing ayas()...")
+    logger.info("  Testing ayas()...")
     try:
         df = await ext.ayas("GT10 Govt", ["YAS_BOND_YLD", "YAS_MOD_DUR"])
-        print(f"    ayas: {len(df)} rows")
+        logger.info(f"    ayas: {len(df)} rows")
     except Exception as e:
-        print(f"    ayas: Error - {e}")
+        logger.info(f"    ayas: Error - {e}")
 
     # Test aetf_holdings - async ETF holdings
-    print("  Testing aetf_holdings()...")
+    logger.info("  Testing aetf_holdings()...")
     try:
         df = await ext.aetf_holdings("SPY US Equity")
-        print(f"    aetf_holdings: {len(df)} rows")
+        logger.info(f"    aetf_holdings: {len(df)} rows")
     except Exception as e:
-        print(f"    aetf_holdings: Error - {e}")
+        logger.info(f"    aetf_holdings: Error - {e}")
 
     # Test apreferreds - async find preferred stocks
-    print("  Testing apreferreds()...")
+    logger.info("  Testing apreferreds()...")
     try:
         df = await ext.apreferreds("BAC US Equity")
-        print(f"    apreferreds: {len(df)} rows")
+        logger.info(f"    apreferreds: {len(df)} rows")
     except Exception as e:
-        print(f"    apreferreds: Error - {e}")
+        logger.info(f"    apreferreds: Error - {e}")
 
     # Test acorporate_bonds - async find corporate bonds
-    print("  Testing acorporate_bonds()...")
+    logger.info("  Testing acorporate_bonds()...")
     try:
         df = await ext.acorporate_bonds("AAPL")
-        print(f"    acorporate_bonds: {len(df)} rows")
+        logger.info(f"    acorporate_bonds: {len(df)} rows")
     except Exception as e:
-        print(f"    acorporate_bonds: Error - {e}")
+        logger.info(f"    acorporate_bonds: Error - {e}")
 
     # Test adividend - async dividend history
-    print("  Testing adividend()...")
+    logger.info("  Testing adividend()...")
     try:
         df = await ext.adividend("AAPL US Equity", start_date="2024-01-01")
-        print(f"    adividend: {len(df)} rows")
+        logger.info(f"    adividend: {len(df)} rows")
     except Exception as e:
-        print(f"    adividend: Error - {e}")
+        logger.info(f"    adividend: Error - {e}")
 
     # Test afut_ticker - async futures ticker resolution
-    print("  Testing afut_ticker()...")
+    logger.info("  Testing afut_ticker()...")
     try:
         ticker = await ext.afut_ticker("ES1 Index", "2024-06-15")
-        print(f"    afut_ticker: {ticker}")
+        logger.info(f"    afut_ticker: {ticker}")
     except Exception as e:
-        print(f"    afut_ticker: Error - {e}")
+        logger.info(f"    afut_ticker: Error - {e}")
 
-    print()
+    logger.debug("")
     return True
 
 
@@ -789,34 +792,36 @@ async def run_tests(test_names: list[str]):
 
     for name in test_names:
         if name not in TESTS:
-            print(f"Unknown test: {name}")
+            logger.warning(f"Unknown test: {name}")
             skipped += 1
             continue
 
         try:
-            print(f"\n{'=' * 50}")
+            logger.debug(f"\n{'=' * 50}")
             success = await TESTS[name](engine)
             if success:
                 passed += 1
-                print(f"PASSED: {name}")
+                logger.info(f"PASSED: {name}")
             else:
                 failed += 1
-                print(f"FAILED: {name}")
+                logger.error(f"FAILED: {name}")
         except asyncio.TimeoutError:
             failed += 1
-            print(f"TIMEOUT: {name}")
+            logger.warning(f"TIMEOUT: {name}")
         except Exception as e:
             failed += 1
-            print(f"ERROR: {name} - {e}")
+            logger.error(f"ERROR: {name} - {e}")
 
-    print(f"\n{'=' * 50}")
-    print(f"Results: {passed} passed, {failed} failed, {skipped} skipped")
-    print(f"{'=' * 50}")
+    logger.info(f"\n{'=' * 50}")
+    logger.info(f"Results: {passed} passed, {failed} failed, {skipped} skipped")
+    logger.info(f"{'=' * 50}")
 
     return failed == 0
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     parser = argparse.ArgumentParser(description="Live Bloomberg API tests")
     parser.add_argument(
         "tests",
@@ -833,16 +838,16 @@ def main():
     args = parser.parse_args()
 
     if args.list:
-        print("Available tests:")
+        logger.info("Available tests:")
         for name, func in TESTS.items():
             doc = func.__doc__.split("\n")[0] if func.__doc__ else ""
-            print(f"  {name:12} - {doc}")
+            logger.info(f"  {name:12} - {doc}")
         return 0
 
-    print("=" * 50)
-    print("XBBG Live Bloomberg API Tests")
-    print("=" * 50)
-    print(f"Running tests: {', '.join(args.tests)}")
+    logger.info("=" * 50)
+    logger.info("XBBG Live Bloomberg API Tests")
+    logger.info("=" * 50)
+    logger.info(f"Running tests: {', '.join(args.tests)}")
 
     success = asyncio.run(run_tests(args.tests))
     return 0 if success else 1

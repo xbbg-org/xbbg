@@ -5,6 +5,7 @@ Data usage: ~10-20 data points per run
 
 from __future__ import annotations
 
+import logging
 import sys
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 import statistics
 import time
 import tracemalloc
+
+logger = logging.getLogger(__name__)
 
 from config import (
     FIELDS_MULTI,
@@ -128,7 +131,7 @@ def run_xbbg_legacy(tickers, fields):
 
         return xbbg_legacy.bdp(tickers, fields)
     except ImportError:
-        print("Warning: xbbg legacy not installed (pip install xbbg==0.10.3)")
+        logger.warning("xbbg legacy not installed (pip install xbbg==0.10.3)")
         return None
 
 
@@ -189,7 +192,7 @@ def run_pdblp(tickers, fields):
         con.stop()
         return result
     except ImportError:
-        print("Warning: pdblp not installed (pip install pdblp)")
+        logger.warning("pdblp not installed (pip install pdblp)")
         return None
 
 
@@ -200,101 +203,101 @@ def run_bbg_fetch(tickers, fields):
 
         # bbg-fetch has different API, adapt as needed
         # This is a placeholder - adjust based on actual bbg-fetch API
-        print("Warning: bbg-fetch wrapper not implemented yet")
+        logger.warning("bbg-fetch wrapper not implemented yet")
         return
     except ImportError:
-        print("Warning: bbg-fetch not installed (pip install bbg-fetch)")
+        logger.warning("bbg-fetch not installed (pip install bbg-fetch)")
         return
 
 
 def main():
     """Run all BDP benchmarks."""
-    print("=" * 70)
-    print("BDP (Reference Data) Benchmark")
-    print("=" * 70)
-    print(f"\nIterations: {ITERATIONS}")
-    print(f"Warmup: {WARMUP_ITERATIONS}")
+    logger.info("=" * 70)
+    logger.info("BDP (Reference Data) Benchmark")
+    logger.info("=" * 70)
+    logger.info(f"\nIterations: {ITERATIONS}")
+    logger.info(f"Warmup: {WARMUP_ITERATIONS}")
 
     results = []
 
     # Test 1: Single ticker, single field
-    print("\n\nTest 1: Single ticker, single field")
-    print("-" * 70)
+    logger.info("\n\nTest 1: Single ticker, single field")
+    logger.info("-" * 70)
 
     if True:  # xbbg Rust
-        print("Running xbbg (Rust)...")
+        logger.info("Running xbbg (Rust)...")
         try:
             result = benchmark_bdp("xbbg-rust", run_xbbg_rust, TICKERS_SINGLE[0], FIELDS_SINGLE[0])
             results.append(result)
-            print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+            logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     if True:  # xbbg Legacy
-        print("Running xbbg (legacy)...")
+        logger.info("Running xbbg (legacy)...")
         try:
             result = benchmark_bdp("xbbg-legacy", run_xbbg_legacy, TICKERS_SINGLE[0], FIELDS_SINGLE[0])
             if result:
                 results.append(result)
-                print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+                logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     if True:  # pdblp
-        print("Running pdblp...")
+        logger.info("Running pdblp...")
         try:
             result = benchmark_bdp("pdblp", run_pdblp, TICKERS_SINGLE[0], FIELDS_SINGLE[0])
             if result:
                 results.append(result)
-                print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+                logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     # Test 2: Multiple tickers, multiple fields
-    print("\n\nTest 2: Multiple tickers, multiple fields")
-    print("-" * 70)
+    logger.info("\n\nTest 2: Multiple tickers, multiple fields")
+    logger.info("-" * 70)
 
     if True:  # xbbg Rust
-        print("Running xbbg (Rust)...")
+        logger.info("Running xbbg (Rust)...")
         try:
             result = benchmark_bdp("xbbg-rust", run_xbbg_rust, TICKERS_MULTI, FIELDS_MULTI)
             results.append(result)
-            print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+            logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     if True:  # xbbg Legacy
-        print("Running xbbg (legacy)...")
+        logger.info("Running xbbg (legacy)...")
         try:
             result = benchmark_bdp("xbbg-legacy", run_xbbg_legacy, TICKERS_MULTI, FIELDS_MULTI)
             if result:
                 results.append(result)
-                print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+                logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     if True:  # pdblp
-        print("Running pdblp...")
+        logger.info("Running pdblp...")
         try:
             result = benchmark_bdp("pdblp", run_pdblp, TICKERS_MULTI, FIELDS_MULTI)
             if result:
                 results.append(result)
-                print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+                logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     # Print summary
-    print("\n\n" + "=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
+    logger.info("\n\n" + "=" * 70)
+    logger.info("SUMMARY")
+    logger.info("=" * 70)
 
     for result in results:
-        print(f"\n{result.package} - {result.operation}")
-        print(f"  Cold start: {result.cold_start_ms:.2f}ms")
-        print(f"  Warm mean:  {result.warm_mean_ms:.2f}ms ± {result.warm_std_ms:.2f}ms")
-        print(f"  Warm p95:   {result.warm_p95_ms:.2f}ms")
-        print(f"  Memory:     {result.memory_peak_mb:.2f}MB")
-        print(f"  Shape:      {result.data_shape}")
+        logger.info(f"\n{result.package} - {result.operation}")
+        logger.info(f"  Cold start: {result.cold_start_ms:.2f}ms")
+        logger.info(f"  Warm mean:  {result.warm_mean_ms:.2f}ms ± {result.warm_std_ms:.2f}ms")
+        logger.info(f"  Warm p95:   {result.warm_p95_ms:.2f}ms")
+        logger.info(f"  Memory:     {result.memory_peak_mb:.2f}MB")
+        logger.info(f"  Shape:      {result.data_shape}")
 
     # Calculate speedups
     xbbg_rust_results = [r for r in results if r.package == "xbbg-rust"]
@@ -305,12 +308,13 @@ def main():
         legacy_time = sum(r.warm_mean_ms for r in legacy_results)
         speedup = legacy_time / rust_time if rust_time > 0 else 0
 
-        print(f"\n\n{'=' * 70}")
-        print(f"xbbg Rust vs Legacy Speedup: {speedup:.2f}x faster")
-        print(f"{'=' * 70}")
+        logger.info(f"\n\n{'=' * 70}")
+        logger.info(f"xbbg Rust vs Legacy Speedup: {speedup:.2f}x faster")
+        logger.info(f"{'=' * 70}")
 
     return results
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     main()

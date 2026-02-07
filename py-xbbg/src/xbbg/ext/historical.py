@@ -20,6 +20,7 @@ Async functions (primary implementation):
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
@@ -30,30 +31,14 @@ from xbbg._core import (
     ext_get_dvd_type,
     ext_rename_dividend_columns,
 )
+from xbbg.ext._utils import _fmt_date
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from datetime import date
 
     from narwhals.typing import IntoDataFrame
-
-
-def _fmt_date(dt: str | date | None, fmt: str = "%Y%m%d") -> str | None:
-    """Format date to string using Rust."""
-    if dt is None:
-        return None
-    if isinstance(dt, str):
-        # Try to parse and reformat using Rust
-        from xbbg._core import ext_fmt_date, ext_parse_date
-
-        try:
-            year, month, day = ext_parse_date(dt)
-            return ext_fmt_date(year, month, day, fmt)
-        except ValueError:
-            return dt  # Return as-is if can't parse
-    # datetime or date object
-    from xbbg._core import ext_fmt_date
-
-    return ext_fmt_date(dt.year, dt.month, dt.day, fmt)
 
 
 def _get_empty_dataframe() -> IntoDataFrame:
@@ -188,6 +173,138 @@ async def adividend(
     return df
 
 
+def _build_earning_header_rename(
+    header_nw: nw.DataFrame,
+    data_nw: nw.DataFrame,
+) -> dict[str, str]:
+    """Build column rename mapping from earnings header values.
+
+    Maps data column names (e.g., "Period X Value") to human-readable names
+    derived from the header row (e.g., "fy2023").
+
+    Args:
+        header_nw: Header DataFrame from PG_Bulk_Header BDS call.
+        data_nw: Data DataFrame from PG_{typ} BDS call.
+
+    Returns:
+        Dict mapping original column names to cleaned header-based names.
+    """
+    header_row = dict(next(header_nw.iter_rows(named=True)))
+    rename_map: dict[str, str] = {}
+
+    for data_col in data_nw.columns:
+        if data_col == "ticker":
+            continue
+
+        # Determine the corresponding header column name
+        if data_col.endswith(" Value"):
+            # "Period X Value" -> "Period X Header"
+            header_col = data_col.replace(" Value", " Header")
+        else:
+            # "Metric Name" -> "Metric Name Header"
+            header_col = f"{data_col} Header"
+
+        # Get the header value and clean it
+        if header_col in header_row:
+            new_name = str(header_row[header_col]).lower().replace(" ", "_").replace("_20", "20")
+            rename_map[data_col] = new_name
+
+    return rename_map
+
+
+def _compute_earning_percentages(
+    data_nw: nw.DataFrame,
+    fy_cols: list[str],
+) -> nw.DataFrame:
+    """Compute percentage columns for each fiscal year in earnings data.
+
+    For level 1 rows, computes percentage of total level 1 sum.
+    For level 2 rows, computes percentage of parent level 1 group sum.
+
+    Args:
+        data_nw: Earnings DataFrame (already renamed) containing a "level" column.
+        fy_cols: List of fiscal year column names (e.g., ["fy2022", "fy2023"]).
+
+    Returns:
+        DataFrame with ``{fy}_pct`` columns inserted after each fiscal year column.
+    """
+    for yr in fy_cols:
+        pct_col = f"{yr}_pct"
+
+        # Get level column as list for iteration, converting to int
+        raw_levels = data_nw["level"].to_list()
+        levels: list[int | None] = []
+        for lvl in raw_levels:
+            if lvl is None:
+                levels.append(None)
+            else:
+                try:
+                    levels.append(int(lvl))
+                except (ValueError, TypeError):
+                    levels.append(None)
+
+        # Get fiscal year values, converting to float
+        raw_values = data_nw[yr].to_list()
+        values: list[float | None] = []
+        for val in raw_values:
+            if val is None:
+                values.append(None)
+            else:
+                try:
+                    values.append(float(val))
+                except (ValueError, TypeError):
+                    values.append(None)
+
+        pct_values: list[float | None] = [None] * len(levels)
+
+        # Calculate level 1 percentage (% of total level 1)
+        level_1_indices = [i for i, lvl in enumerate(levels) if lvl == 1]
+        if level_1_indices:
+            level_1_sum = sum(v for i, v in enumerate(values) if i in level_1_indices and v is not None)
+            if level_1_sum and level_1_sum != 0:
+                for i in level_1_indices:
+                    val = values[i]
+                    if val is not None:
+                        pct_values[i] = 100.0 * val / level_1_sum
+
+        # Calculate level 2 percentage (% of parent level 1 group)
+        # Iterate backwards to group level 2 rows by their level 1 parent
+        level_2_group: list[int] = []
+        for i in range(len(levels) - 1, -1, -1):
+            row_level = levels[i]
+            if row_level is None or row_level > 2:
+                continue
+            if row_level == 2:
+                level_2_group.append(i)
+            elif row_level == 1:
+                # Calculate percentage for this level 2 group
+                if level_2_group:
+                    group_sum = sum(v for j, v in enumerate(values) if j in level_2_group and v is not None)
+                    if group_sum and group_sum != 0:
+                        for j in level_2_group:
+                            val = values[j]
+                            if val is not None:
+                                pct_values[j] = 100.0 * val / group_sum
+                level_2_group = []
+
+        # Add percentage column using narwhals (backend-agnostic)
+        native_namespace = nw.get_native_namespace(data_nw)
+        pct_series = nw.new_series(pct_col, pct_values, native_namespace=native_namespace)
+
+        # Insert after the year column
+        yr_idx = data_nw.columns.index(yr)
+        cols_before = data_nw.columns[: yr_idx + 1]
+        cols_after = data_nw.columns[yr_idx + 1 :]
+
+        data_nw = data_nw.with_columns(pct_series)
+
+        # Reorder columns to place pct after year
+        new_order = [*list(cols_before), pct_col, *list(cols_after)]
+        data_nw = data_nw.select(new_order)
+
+    return data_nw
+
+
 async def aearning(
     ticker: str,
     by: str = "Geo",
@@ -273,27 +390,7 @@ async def aearning(
         return data
 
     # Build column rename mapping from header
-    # Data columns like "Period X Value" map to Header columns "Period X Header"
-    # Header values become the new column names
-    header_row = dict(next(header_nw.iter_rows(named=True)))
-    rename_map: dict[str, str] = {}
-
-    for data_col in data_nw.columns:
-        if data_col == "ticker":
-            continue
-
-        # Determine the corresponding header column name
-        if data_col.endswith(" Value"):
-            # "Period X Value" -> "Period X Header"
-            header_col = data_col.replace(" Value", " Header")
-        else:
-            # "Metric Name" -> "Metric Name Header"
-            header_col = f"{data_col} Header"
-
-        # Get the header value and clean it
-        if header_col in header_row:
-            new_name = str(header_row[header_col]).lower().replace(" ", "_").replace("_20", "20")
-            rename_map[data_col] = new_name
+    rename_map = _build_earning_header_rename(header_nw, data_nw)
 
     # Apply renaming
     if rename_map:
@@ -306,81 +403,71 @@ async def aearning(
     # Find fiscal year columns (start with 'fy')
     fy_cols = [c for c in data_nw.columns if c.startswith("fy") and not c.endswith("_pct")]
 
-    for yr in fy_cols:
-        pct_col = f"{yr}_pct"
-
-        # Get level column as list for iteration, converting to int
-        raw_levels = data_nw["level"].to_list()
-        levels: list[int | None] = []
-        for lvl in raw_levels:
-            if lvl is None:
-                levels.append(None)
-            else:
-                try:
-                    levels.append(int(lvl))
-                except (ValueError, TypeError):
-                    levels.append(None)
-
-        # Get fiscal year values, converting to float
-        raw_values = data_nw[yr].to_list()
-        values: list[float | None] = []
-        for val in raw_values:
-            if val is None:
-                values.append(None)
-            else:
-                try:
-                    values.append(float(val))
-                except (ValueError, TypeError):
-                    values.append(None)
-
-        pct_values: list[float | None] = [None] * len(levels)
-
-        # Calculate level 1 percentage (% of total level 1)
-        level_1_indices = [i for i, lvl in enumerate(levels) if lvl == 1]
-        if level_1_indices:
-            level_1_sum = sum(v for i, v in enumerate(values) if i in level_1_indices and v is not None)
-            if level_1_sum and level_1_sum != 0:
-                for i in level_1_indices:
-                    val = values[i]
-                    if val is not None:
-                        pct_values[i] = 100.0 * val / level_1_sum
-
-        # Calculate level 2 percentage (% of parent level 1 group)
-        # Iterate backwards to group level 2 rows by their level 1 parent
-        level_2_group: list[int] = []
-        for i in range(len(levels) - 1, -1, -1):
-            row_level = levels[i]
-            if row_level is None or row_level > 2:
-                continue
-            if row_level == 2:
-                level_2_group.append(i)
-            elif row_level == 1:
-                # Calculate percentage for this level 2 group
-                if level_2_group:
-                    group_sum = sum(v for j, v in enumerate(values) if j in level_2_group and v is not None)
-                    if group_sum and group_sum != 0:
-                        for j in level_2_group:
-                            val = values[j]
-                            if val is not None:
-                                pct_values[j] = 100.0 * val / group_sum
-                level_2_group = []
-
-        # Add percentage column using narwhals (backend-agnostic)
-        native_namespace = nw.get_native_namespace(data_nw)
-        pct_series = nw.new_series(pct_col, pct_values, native_namespace=native_namespace)
-
-        # Insert after the year column
-        yr_idx = data_nw.columns.index(yr)
-        cols_before = data_nw.columns[: yr_idx + 1]
-        cols_after = data_nw.columns[yr_idx + 1 :]
-
-        data_nw = data_nw.with_columns(pct_series)
-
-        # Reorder columns to place pct after year
-        new_order = [*list(cols_before), pct_col, *list(cols_after)]
-        data_nw = data_nw.select(new_order)
+    data_nw = _compute_earning_percentages(data_nw, fy_cols)
 
     return data_nw.to_native()
+
+
+async def _calc_turnover_from_volume(
+    missing_tickers: list[str],
+    start_date: str | date,
+    end_date: str | date,
+    nw_df: nw.DataFrame,
+    **kwargs,
+) -> tuple[nw.DataFrame, IntoDataFrame]:
+    """Fetch volume × VWAP for tickers missing direct Turnover data.
+
+    For each ticker in *missing_tickers*, retrieves ``eqy_weighted_avg_px``
+    and ``volume`` via ``abdh``, computes turnover as their product, and
+    joins the result into the main DataFrame.
+
+    Args:
+        missing_tickers: Tickers that had no Turnover column in the initial fetch.
+        start_date: Start date for the historical query.
+        end_date: End date for the historical query.
+        nw_df: Current narwhals DataFrame (may be empty).
+        **kwargs: Additional arguments forwarded to ``abdh``.
+
+    Returns:
+        Tuple of (updated narwhals DataFrame, updated native DataFrame).
+    """
+    from xbbg import abdh
+
+    vol_data = await abdh(
+        tickers=missing_tickers,
+        flds=["eqy_weighted_avg_px", "volume"],
+        start_date=start_date,
+        end_date=end_date,
+        **kwargs,
+    )
+    vol_nw = nw.from_native(vol_data)
+
+    if len(vol_nw) > 0:
+        # Calculate turnover = volume * VWAP for each ticker
+        for t in missing_tickers:
+            vwap_col = None
+            vol_col = None
+            for col in vol_nw.columns:
+                if t in col and "eqy_weighted_avg_px" in col.lower():
+                    vwap_col = col
+                elif t in col and "volume" in col.lower():
+                    vol_col = col
+
+            if vwap_col and vol_col:
+                # Calculate turnover
+                turnover_col = f"{t}|Turnover"
+                vol_nw = vol_nw.with_columns((nw.col(vwap_col) * nw.col(vol_col)).alias(turnover_col))
+
+                # Add to main dataframe
+                if "date" in nw_df.columns and "date" in vol_nw.columns:
+                    # Join on date
+                    turnover_series = vol_nw.select(["date", turnover_col])
+                    nw_df = nw_df.join(turnover_series, on="date", how="outer")
+                elif len(nw_df) == 0:
+                    # Main df is empty, use vol_nw
+                    nw_df = vol_nw.select(["date"] + [c for c in vol_nw.columns if "|Turnover" in c])
+
+    return nw_df, nw_df.to_native()
 
 
 async def aturnover(
@@ -478,44 +565,10 @@ async def aturnover(
 
     if missing_tickers:
         try:
-            vol_data = await abdh(
-                tickers=missing_tickers,
-                flds=["eqy_weighted_avg_px", "volume"],
-                start_date=start_date,
-                end_date=end_date,
-                **kwargs,
-            )
-            vol_nw = nw.from_native(vol_data)
-
-            if len(vol_nw) > 0:
-                # Calculate turnover = volume * VWAP for each ticker
-                for t in missing_tickers:
-                    vwap_col = None
-                    vol_col = None
-                    for col in vol_nw.columns:
-                        if t in col and "eqy_weighted_avg_px" in col.lower():
-                            vwap_col = col
-                        elif t in col and "volume" in col.lower():
-                            vol_col = col
-
-                    if vwap_col and vol_col:
-                        # Calculate turnover
-                        turnover_col = f"{t}|Turnover"
-                        vol_nw = vol_nw.with_columns((nw.col(vwap_col) * nw.col(vol_col)).alias(turnover_col))
-
-                        # Add to main dataframe
-                        if "date" in nw_df.columns and "date" in vol_nw.columns:
-                            # Join on date
-                            turnover_series = vol_nw.select(["date", turnover_col])
-                            nw_df = nw_df.join(turnover_series, on="date", how="outer")
-                        elif len(nw_df) == 0:
-                            # Main df is empty, use vol_nw
-                            nw_df = vol_nw.select(["date"] + [c for c in vol_nw.columns if "|Turnover" in c])
-
-                data = nw_df.to_native()
-        except Exception:
+            nw_df, data = await _calc_turnover_from_volume(missing_tickers, start_date, end_date, nw_df, **kwargs)
+        except (ValueError, TypeError, KeyError):
             # If fallback fails, continue with original data
-            pass
+            logger.debug("Turnover volume fallback failed")
 
     if len(nw_df) == 0:
         return data

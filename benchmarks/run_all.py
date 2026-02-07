@@ -15,8 +15,11 @@ from __future__ import annotations
 
 from datetime import datetime
 import json
+import logging
 from pathlib import Path
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Create results directory
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -50,19 +53,19 @@ def get_xbbg_version():
 
 def run_benchmark_module(module_name: str):
     """Run a benchmark module and return results."""
-    print(f"\n{'=' * 70}")
-    print(f"Running {module_name}")
-    print(f"{'=' * 70}\n")
+    logger.info(f"\n{'=' * 70}")
+    logger.info(f"Running {module_name}")
+    logger.info(f"{'=' * 70}\n")
 
     try:
         module = __import__(module_name)
         if hasattr(module, "main"):
             return module.main()
         else:
-            print(f"Warning: {module_name} has no main() function")
+            logger.warning(f"{module_name} has no main() function")
             return []
     except Exception as e:
-        print(f"Error running {module_name}: {e}")
+        logger.error(f"Error running {module_name}: {e}")
         import traceback
 
         traceback.print_exc()
@@ -178,15 +181,15 @@ def generate_json_report(all_results: dict, output_path: Path, version: str, tim
 
 def main():
     """Run all benchmarks and generate reports."""
-    print("=" * 70)
-    print("xbbg Comprehensive Benchmark Suite")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("xbbg Comprehensive Benchmark Suite")
+    logger.info("=" * 70)
 
     # Get version
     version = get_xbbg_version()
-    print(f"\nxbbg version: {version}")
-    print("\nRunning benchmarks with live Bloomberg data...")
-    print("Estimated data usage: ~200-350 data points\n")
+    logger.info(f"\nxbbg version: {version}")
+    logger.info("\nRunning benchmarks with live Bloomberg data...")
+    logger.info("Estimated data usage: ~200-350 data points\n")
 
     all_results = {}
 
@@ -204,7 +207,7 @@ def main():
             results = run_benchmark_module(module_name)
             all_results[description] = results
         except Exception as e:
-            print(f"Failed to run {module_name}: {e}")
+            logger.error(f"Failed to run {module_name}: {e}")
             all_results[description] = []
 
     # Generate reports with version-based naming
@@ -219,24 +222,24 @@ def main():
     archive_json = RESULTS_DIR / f"benchmark_v{version}_{timestamp_short}.json"
     archive_md = RESULTS_DIR / f"benchmark_v{version}_{timestamp_short}.md"
 
-    print(f"\n\n{'=' * 70}")
-    print("Generating Reports")
-    print(f"{'=' * 70}\n")
+    logger.info(f"\n\n{'=' * 70}")
+    logger.info("Generating Reports")
+    logger.info(f"{'=' * 70}\n")
 
     # Generate version-specific files (overwrites)
     generate_json_report(all_results, version_json, version, timestamp_full)
-    print(f"✓ Version JSON: {version_json}")
+    logger.info(f"✓ Version JSON: {version_json}")
 
     generate_markdown_report(all_results, version_md, version, timestamp_full)
-    print(f"✓ Version MD:   {version_md}")
+    logger.info(f"✓ Version MD:   {version_md}")
 
     # Generate timestamped archives
     import shutil
 
     shutil.copy(version_json, archive_json)
     shutil.copy(version_md, archive_md)
-    print(f"✓ Archive JSON: {archive_json}")
-    print(f"✓ Archive MD:   {archive_md}")
+    logger.info(f"✓ Archive JSON: {archive_json}")
+    logger.info(f"✓ Archive MD:   {archive_md}")
 
     # Update latest symlinks/copies
     latest_json = RESULTS_DIR / "latest.json"
@@ -250,24 +253,25 @@ def main():
     try:
         latest_json.symlink_to(version_json.name)
         latest_md.symlink_to(version_md.name)
-        print("✓ Latest symlinks updated")
+        logger.info("✓ Latest symlinks updated")
     except OSError:
         # Windows may not support symlinks, just copy
         shutil.copy(version_json, latest_json)
         shutil.copy(version_md, latest_md)
-        print("✓ Latest files copied (symlinks not supported)")
+        logger.info("✓ Latest files copied (symlinks not supported)")
 
-    print(f"\n{'=' * 70}")
-    print("Benchmarks Complete!")
-    print(f"{'=' * 70}\n")
-    print("Results saved:")
-    print(f"  - Version-specific (overwrites): {version_md}")
-    print(f"  - Timestamped archive (keeps):   {archive_md}")
-    print("  - Latest:                        latest.md")
-    print("\nCommit these files to git for version tracking.")
+    logger.info(f"\n{'=' * 70}")
+    logger.info("Benchmarks Complete!")
+    logger.info(f"{'=' * 70}\n")
+    logger.info("Results saved:")
+    logger.info(f"  - Version-specific (overwrites): {version_md}")
+    logger.info(f"  - Timestamped archive (keeps):   {archive_md}")
+    logger.info("  - Latest:                        latest.md")
+    logger.info("\nCommit these files to git for version tracking.")
 
     return 0
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     sys.exit(main())

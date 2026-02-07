@@ -26,10 +26,9 @@ from typing import TYPE_CHECKING
 
 # Import Rust ext utilities for max performance
 from xbbg._core import (
-    ext_fmt_date,
     ext_normalize_tickers,
-    ext_parse_date,
 )
+from xbbg.ext._utils import _fmt_date
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -141,23 +140,6 @@ def _normalize_tickers(tickers: str | list[str]) -> list[str]:
     if isinstance(tickers, str):
         return ext_normalize_tickers([tickers])
     return ext_normalize_tickers(tickers)
-
-
-def _fmt_date(dt: str | date | None, fmt: str = "%Y%m%d") -> str | None:
-    """Format date to string using Rust."""
-    if dt is None:
-        return None
-    if isinstance(dt, str):
-        # Parse and reformat using Rust
-        try:
-            year, month, day = ext_parse_date(dt)
-            return ext_fmt_date(year, month, day, fmt)
-        except ValueError:
-            return dt  # Return as-is if can't parse
-    # datetime or date object
-    if hasattr(dt, "year"):
-        return ext_fmt_date(dt.year, dt.month, dt.day, fmt)
-    return None
 
 
 # =============================================================================

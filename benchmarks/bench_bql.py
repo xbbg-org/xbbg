@@ -5,10 +5,13 @@ Data usage: ~10-20 data points per run
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 import statistics
 import time
 import tracemalloc
+
+logger = logging.getLogger(__name__)
 
 from config import BQL_MULTI, BQL_SIMPLE, ITERATIONS, WARMUP_ITERATIONS
 
@@ -117,14 +120,14 @@ def run_xbbg_legacy(query: str):
 
         return xbbg_legacy.bql(query)
     except ImportError:
-        print("Warning: xbbg legacy not installed")
+        logger.warning("xbbg legacy not installed")
         return None
 
 
 def run_pdblp(query: str):
     """Benchmark pdblp."""
     # pdblp does not support BQL directly
-    print("Warning: pdblp does not support BQL")
+    logger.warning("pdblp does not support BQL")
     return
 
 
@@ -134,87 +137,91 @@ def run_bbg_fetch(query: str):
         import bbg_fetch  # noqa: F401
 
         # bbg-fetch may not support BQL
-        print("Warning: bbg-fetch BQL support needs verification")
+        logger.warning("bbg-fetch BQL support needs verification")
         return
     except ImportError:
-        print("Warning: bbg-fetch not installed")
+        logger.warning("bbg-fetch not installed")
         return
 
 
 def main():
     """Run all BQL benchmarks."""
-    print("=" * 70)
-    print("BQL (Bloomberg Query Language) Benchmark")
-    print("=" * 70)
-    print(f"\nIterations: {ITERATIONS}")
-    print(f"Warmup: {WARMUP_ITERATIONS}")
+    logger.info("=" * 70)
+    logger.info("BQL (Bloomberg Query Language) Benchmark")
+    logger.info("=" * 70)
+    logger.info(f"\nIterations: {ITERATIONS}")
+    logger.info(f"Warmup: {WARMUP_ITERATIONS}")
 
     results = []
 
     # Test 1: Simple query
-    print("\n\nTest 1: Simple BQL query")
-    print("-" * 70)
-    print(f"Query: {BQL_SIMPLE}")
+    logger.info("\n\nTest 1: Simple BQL query")
+    logger.info("-" * 70)
+    logger.info(f"Query: {BQL_SIMPLE}")
 
     if True:  # xbbg Rust
-        print("\nRunning xbbg (Rust)...")
+        logger.info("\nRunning xbbg (Rust)...")
         try:
             result = benchmark_bql("xbbg-rust", run_xbbg_rust, BQL_SIMPLE)
             results.append(result)
-            print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}")
+            logger.info(
+                f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
+            )
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     if True:  # xbbg Legacy
-        print("Running xbbg (legacy)...")
+        logger.info("Running xbbg (legacy)...")
         try:
             result = benchmark_bql("xbbg-legacy", run_xbbg_legacy, BQL_SIMPLE)
             if result:
                 results.append(result)
-                print(
+                logger.info(
                     f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
                 )
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     # Test 2: Multi-security query
-    print("\n\nTest 2: Multi-security BQL query")
-    print("-" * 70)
-    print(f"Query: {BQL_MULTI}")
+    logger.info("\n\nTest 2: Multi-security BQL query")
+    logger.info("-" * 70)
+    logger.info(f"Query: {BQL_MULTI}")
 
     if True:  # xbbg Rust
-        print("\nRunning xbbg (Rust)...")
+        logger.info("\nRunning xbbg (Rust)...")
         try:
             result = benchmark_bql("xbbg-rust", run_xbbg_rust, BQL_MULTI)
             results.append(result)
-            print(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}")
+            logger.info(
+                f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
+            )
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     if True:  # xbbg Legacy
-        print("Running xbbg (legacy)...")
+        logger.info("Running xbbg (legacy)...")
         try:
             result = benchmark_bql("xbbg-legacy", run_xbbg_legacy, BQL_MULTI)
             if result:
                 results.append(result)
-                print(
+                logger.info(
                     f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
                 )
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  ✗ Error: {e}")
 
     # Print summary
-    print("\n\n" + "=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
+    logger.info("\n\n" + "=" * 70)
+    logger.info("SUMMARY")
+    logger.info("=" * 70)
 
     for result in results:
-        print(f"\n{result.package} - {result.operation}")
-        print(f"  Cold start: {result.cold_start_ms:.2f}ms")
-        print(f"  Warm mean:  {result.warm_mean_ms:.2f}ms ± {result.warm_std_ms:.2f}ms")
-        print(f"  Warm p95:   {result.warm_p95_ms:.2f}ms")
-        print(f"  Memory:     {result.memory_peak_mb:.2f}MB")
-        print(f"  Shape:      {result.data_shape}")
+        logger.info(f"\n{result.package} - {result.operation}")
+        logger.info(f"  Cold start: {result.cold_start_ms:.2f}ms")
+        logger.info(f"  Warm mean:  {result.warm_mean_ms:.2f}ms ± {result.warm_std_ms:.2f}ms")
+        logger.info(f"  Warm p95:   {result.warm_p95_ms:.2f}ms")
+        logger.info(f"  Memory:     {result.memory_peak_mb:.2f}MB")
+        logger.info(f"  Shape:      {result.data_shape}")
 
     # Calculate speedups
     xbbg_rust_results = [r for r in results if r.package == "xbbg-rust"]
@@ -225,12 +232,13 @@ def main():
         legacy_time = sum(r.warm_mean_ms for r in legacy_results)
         speedup = legacy_time / rust_time if rust_time > 0 else 0
 
-        print(f"\n\n{'=' * 70}")
-        print(f"xbbg Rust vs Legacy Speedup: {speedup:.2f}x faster")
-        print(f"{'=' * 70}")
+        logger.info(f"\n\n{'=' * 70}")
+        logger.info(f"xbbg Rust vs Legacy Speedup: {speedup:.2f}x faster")
+        logger.info(f"{'=' * 70}")
 
     return results
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     main()

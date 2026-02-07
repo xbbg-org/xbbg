@@ -3,13 +3,14 @@
 
 These tests exercise the complete Python → Rust → Bloomberg → Rust → Python
 data flow using the user-facing API functions (bdp, bdh, bds, etc.).
+For low-level engine tests, see test_engine.py.
 
 Run with:
-    pytest tests/test_live_api.py -v --tb=short
+    pytest tests/live/test_api.py -v --tb=short
 
 Or as a standalone script:
-    python tests/test_live_api.py [test_names...]
-    python tests/test_live_api.py --list  # List available tests
+    python tests/live/test_api.py [test_names...]
+    python tests/live/test_api.py --list  # List available tests
 
 Environment:
     Requires Bloomberg Terminal or B-PIPE connection.
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -28,6 +30,8 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 # Ensure UTF-8 output on Windows
 if sys.platform == "win32":
@@ -116,7 +120,7 @@ class TestBdp:
         assert row["field"] == CONFIG.price_field
         assert row["value"] is not None
 
-        print(f"  {row['ticker']}: {row['field']} = {row['value']}")
+        logger.info(f"  {row['ticker']}: {row['field']} = {row['value']}")
 
     def test_bdp_single_ticker_multi_field(self):
         """BDP: single ticker, multiple fields."""
@@ -131,9 +135,9 @@ class TestBdp:
         returned_fields = set(pdf["field"].tolist())
         assert returned_fields == set(fields)
 
-        print(f"  Got {len(df)} field values")
+        logger.info(f"  Got {len(df)} field values")
         for _, row in pdf.iterrows():
-            print(f"    {row['field']}: {row['value']}")
+            logger.info(f"    {row['field']}: {row['value']}")
 
     def test_bdp_multi_ticker_single_field(self):
         """BDP: multiple tickers, single field."""
@@ -149,7 +153,7 @@ class TestBdp:
         for expected in CONFIG.equity_multi:
             assert any(expected in t for t in returned_tickers)
 
-        print(f"  Got prices for {len(df)} tickers")
+        logger.info(f"  Got prices for {len(df)} tickers")
 
     def test_bdp_multi_ticker_multi_field(self):
         """BDP: multiple tickers, multiple fields."""
@@ -161,7 +165,7 @@ class TestBdp:
         expected_rows = len(CONFIG.equity_multi) * len(fields)
         assert len(df) == expected_rows
 
-        print(f"  Got {len(df)} rows ({len(CONFIG.equity_multi)} tickers × {len(fields)} fields)")
+        logger.info(f"  Got {len(df)} rows ({len(CONFIG.equity_multi)} tickers × {len(fields)} fields)")
 
     def test_bdp_with_override(self):
         """BDP: with Bloomberg override."""
@@ -175,7 +179,7 @@ class TestBdp:
         )
 
         assert len(df) == 1
-        print(f"  Price in EUR: {df.to_pandas().iloc[0]['value']}")
+        logger.info(f"  Price in EUR: {df.to_pandas().iloc[0]['value']}")
 
 
 class TestAbdp:
@@ -189,7 +193,7 @@ class TestAbdp:
         df = await abdp(CONFIG.equity_single, CONFIG.price_field)
 
         assert len(df) == 1
-        print(f"  Async result: {df.to_pandas().iloc[0]['value']}")
+        logger.info(f"  Async result: {df.to_pandas().iloc[0]['value']}")
 
     @pytest.mark.asyncio
     async def test_abdp_concurrent(self):
@@ -203,7 +207,7 @@ class TestAbdp:
 
         assert len(results) == 2
         assert all(len(df) == 1 for df in results)
-        print(f"  Concurrent results: {[df.to_pandas().iloc[0]['value'] for df in results]}")
+        logger.info(f"  Concurrent results: {[df.to_pandas().iloc[0]['value'] for df in results]}")
 
 
 # =============================================================================
@@ -226,7 +230,7 @@ class TestBdh:
         assert "date" in df.columns
         assert "field" in df.columns
 
-        print(f"  Got {len(df)} data points from {start} to {end}")
+        logger.info(f"  Got {len(df)} data points from {start} to {end}")
 
     def test_bdh_multi_ticker(self):
         """BDH: multiple tickers."""
@@ -241,7 +245,7 @@ class TestBdh:
         unique_tickers = pdf["ticker"].nunique()
         assert unique_tickers == len(CONFIG.equity_multi)
 
-        print(f"  Got {len(df)} rows for {unique_tickers} tickers")
+        logger.info(f"  Got {len(df)} rows for {unique_tickers} tickers")
 
     def test_bdh_multi_field(self):
         """BDH: multiple fields."""
@@ -255,7 +259,7 @@ class TestBdh:
         unique_fields = pdf["field"].nunique()
         assert unique_fields == len(fields)
 
-        print(f"  Got {len(df)} rows for {unique_fields} fields")
+        logger.info(f"  Got {len(df)} rows for {unique_fields} fields")
 
     def test_bdh_with_adjustments(self):
         """BDH: with split/dividend adjustments."""
@@ -271,7 +275,7 @@ class TestBdh:
         )
 
         assert len(df) >= 1
-        print(f"  Got {len(df)} adjusted prices")
+        logger.info(f"  Got {len(df)} adjusted prices")
 
 
 class TestAbdh:
@@ -286,7 +290,7 @@ class TestAbdh:
         df = await abdh(CONFIG.equity_single, CONFIG.price_field, start_date=start, end_date=end)
 
         assert len(df) >= 1
-        print(f"  Async result: {len(df)} rows")
+        logger.info(f"  Async result: {len(df)} rows")
 
 
 # =============================================================================
@@ -307,7 +311,7 @@ class TestBds:
         assert len(df) == 30
         assert "ticker" in df.columns
 
-        print(f"  Got {len(df)} index members")
+        logger.info(f"  Got {len(df)} index members")
 
     def test_bds_dividend_history(self):
         """BDS: dividend history."""
@@ -318,7 +322,7 @@ class TestBds:
         # Should have some dividend history (IBM pays dividends)
         assert len(df) >= 0  # May be empty for some tickers
 
-        print(f"  Got {len(df)} dividend records")
+        logger.info(f"  Got {len(df)} dividend records")
 
 
 class TestAbds:
@@ -332,7 +336,7 @@ class TestAbds:
         df = await abds(CONFIG.index_ticker, "INDX_MEMBERS")
 
         assert len(df) == 30
-        print(f"  Async result: {len(df)} members")
+        logger.info(f"  Async result: {len(df)} members")
 
 
 # =============================================================================
@@ -356,7 +360,7 @@ class TestBdib:
 
         # Should have bars if market was open
         # Note: May be empty if market was closed
-        print(f"  Got {len(df)} bars for {trading_day}")
+        logger.info(f"  Got {len(df)} bars for {trading_day}")
 
     def test_bdib_with_datetime_range(self):
         """BDIB: explicit datetime range."""
@@ -370,7 +374,7 @@ class TestBdib:
             interval=5,
         )
 
-        print(f"  Got {len(df)} bars (10:00-11:00)")
+        logger.info(f"  Got {len(df)} bars (10:00-11:00)")
 
 
 class TestAbdib:
@@ -384,7 +388,7 @@ class TestAbdib:
         trading_day = get_recent_trading_day()
         df = await abdib(CONFIG.equity_single, dt=trading_day, interval=5)
 
-        print(f"  Async result: {len(df)} bars")
+        logger.info(f"  Async result: {len(df)} bars")
 
 
 # =============================================================================
@@ -418,7 +422,7 @@ class TestBdtick:
             end_datetime=f"{trading_day}T15:30:00",
         )
 
-        print(f"  Got {len(df)} ticks (1-hour at open, UTC)")
+        logger.info(f"  Got {len(df)} ticks (1-hour at open, UTC)")
 
 
 class TestAbdtick:
@@ -444,7 +448,7 @@ class TestAbdtick:
             end_datetime=f"{trading_day}T15:30:00",
         )
 
-        print(f"  Async result: {len(df)} ticks (UTC)")
+        logger.info(f"  Async result: {len(df)} ticks (UTC)")
 
 
 # =============================================================================
@@ -464,7 +468,7 @@ class TestBackendConversion:
         df = bdp(CONFIG.equity_single, CONFIG.price_field)
 
         assert isinstance(df, nw.DataFrame)
-        print(f"  Narwhals DataFrame: {type(df)}")
+        logger.info(f"  Narwhals DataFrame: {type(df)}")
 
     def test_backend_pandas(self):
         """Backend: pandas."""
@@ -475,7 +479,7 @@ class TestBackendConversion:
         df = bdp(CONFIG.equity_single, CONFIG.price_field, backend="pandas")
 
         assert isinstance(df, pd.DataFrame)
-        print(f"  Pandas DataFrame: {type(df)}")
+        logger.info(f"  Pandas DataFrame: {type(df)}")
 
     def test_backend_polars(self):
         """Backend: polars."""
@@ -487,7 +491,7 @@ class TestBackendConversion:
         df = bdp(CONFIG.equity_single, CONFIG.price_field, backend="polars")
 
         assert isinstance(df, pl.DataFrame)
-        print(f"  Polars DataFrame: {type(df)}")
+        logger.info(f"  Polars DataFrame: {type(df)}")
 
     def test_backend_pyarrow(self):
         """Backend: pyarrow."""
@@ -498,7 +502,7 @@ class TestBackendConversion:
         table = bdp(CONFIG.equity_single, CONFIG.price_field, backend="pyarrow")
 
         assert isinstance(table, pa.Table)
-        print(f"  PyArrow Table: {type(table)}")
+        logger.info(f"  PyArrow Table: {type(table)}")
 
     def test_global_backend_setting(self):
         """Backend: global setting."""
@@ -511,7 +515,7 @@ class TestBackendConversion:
             set_backend("pandas")
             df = bdp(CONFIG.equity_single, CONFIG.price_field)
             assert isinstance(df, pd.DataFrame)
-            print("  Global backend setting works")
+            logger.info("  Global backend setting works")
         finally:
             set_backend(original)
 
@@ -536,16 +540,16 @@ class TestStreaming:
             nonlocal ticks_received
             async for tick in astream(CONFIG.equity_single, ["LAST_PRICE", "BID", "ASK"]):
                 ticks_received += 1
-                print(f"    Tick: {tick}")
+                logger.debug(f"    Tick: {tick}")
                 if ticks_received >= 3:
                     break
 
         try:
             await asyncio.wait_for(collect_ticks(), timeout=timeout_seconds)
         except asyncio.TimeoutError:
-            print(f"  Timeout after {timeout_seconds}s (got {ticks_received} ticks)")
+            logger.warning(f"  Timeout after {timeout_seconds}s (got {ticks_received} ticks)")
 
-        print(f"  Received {ticks_received} ticks")
+        logger.info(f"  Received {ticks_received} ticks")
 
     @pytest.mark.asyncio
     async def test_subscribe_and_unsubscribe(self):
@@ -563,7 +567,7 @@ class TestStreaming:
         finally:
             await sub.unsubscribe()
 
-        print(f"  Received {ticks_received} ticks before unsubscribe")
+        logger.info(f"  Received {ticks_received} ticks before unsubscribe")
 
 
 # =============================================================================
@@ -580,7 +584,7 @@ class TestExtensions:
 
         df = ext.dividend(CONFIG.equity_single, start_date="2024-01-01")
 
-        print(f"  Got {len(df)} dividend records")
+        logger.info(f"  Got {len(df)} dividend records")
 
     def test_ext_etf_holdings(self):
         """Ext: ETF holdings."""
@@ -589,7 +593,7 @@ class TestExtensions:
         df = ext.etf_holdings(CONFIG.etf_ticker)
 
         assert len(df) > 0
-        print(f"  Got {len(df)} ETF holdings")
+        logger.info(f"  Got {len(df)} ETF holdings")
 
     def test_ext_fut_ticker(self):
         """Ext: futures ticker resolution."""
@@ -598,7 +602,7 @@ class TestExtensions:
         ticker = ext.fut_ticker(CONFIG.futures_generic, "2024-06-15")
 
         assert ticker is not None
-        print(f"  Resolved {CONFIG.futures_generic} → {ticker}")
+        logger.info(f"  Resolved {CONFIG.futures_generic} → {ticker}")
 
     def test_ext_yas(self):
         """Ext: yield & spread analysis."""
@@ -607,7 +611,7 @@ class TestExtensions:
         df = ext.yas(CONFIG.bond_ticker, ["YAS_BOND_YLD", "YAS_MOD_DUR"])
 
         assert len(df) > 0
-        print(f"  Got {len(df)} YAS values")
+        logger.info(f"  Got {len(df)} YAS values")
 
 
 class TestExtensionsAsync:
@@ -620,7 +624,7 @@ class TestExtensionsAsync:
 
         df = await ext.adividend(CONFIG.equity_single, start_date="2024-01-01")
 
-        print(f"  Async result: {len(df)} dividend records")
+        logger.info(f"  Async result: {len(df)} dividend records")
 
     @pytest.mark.asyncio
     async def test_ext_aetf_holdings(self):
@@ -630,7 +634,7 @@ class TestExtensionsAsync:
         df = await ext.aetf_holdings(CONFIG.etf_ticker)
 
         assert len(df) > 0
-        print(f"  Async result: {len(df)} holdings")
+        logger.info(f"  Async result: {len(df)} holdings")
 
     @pytest.mark.asyncio
     async def test_ext_afut_ticker(self):
@@ -640,7 +644,7 @@ class TestExtensionsAsync:
         ticker = await ext.afut_ticker(CONFIG.futures_generic, "2024-06-15")
 
         assert ticker is not None
-        print(f"  Async result: {ticker}")
+        logger.info(f"  Async result: {ticker}")
 
 
 # =============================================================================
@@ -657,14 +661,14 @@ class TestRawOutput:
 
         df = bdp(CONFIG.equity_single, [CONFIG.price_field, CONFIG.name_field], backend="pandas")
 
-        print(f"\n  Raw DataFrame:")
-        print(f"  {df.to_string()}")
-        print(f"\n  Columns: {list(df.columns)}")
-        print(f"  Dtypes:\n{df.dtypes}")
-        print(f"\n  Sample values:")
+        logger.debug(f"\n  Raw DataFrame:")
+        logger.debug(f"  {df.to_string()}")
+        logger.debug(f"\n  Columns: {list(df.columns)}")
+        logger.debug(f"  Dtypes:\n{df.dtypes}")
+        logger.debug(f"\n  Sample values:")
         for col in df.columns:
             val = df[col].iloc[0]
-            print(f"    {col}: {val!r} (type: {type(val).__name__})")
+            logger.debug(f"    {col}: {val!r} (type: {type(val).__name__})")
 
     def test_bdh_raw_output(self):
         """Show raw BDH output structure."""
@@ -673,14 +677,14 @@ class TestRawOutput:
         start, end = get_date_range(5)
         df = bdh(CONFIG.equity_single, CONFIG.price_field, start_date=start, end_date=end, backend="pandas")
 
-        print(f"\n  Raw DataFrame (first 5 rows):")
-        print(f"  {df.head().to_string()}")
-        print(f"\n  Columns: {list(df.columns)}")
-        print(f"  Dtypes:\n{df.dtypes}")
-        print(f"\n  Sample values:")
+        logger.debug(f"\n  Raw DataFrame (first 5 rows):")
+        logger.debug(f"  {df.head().to_string()}")
+        logger.debug(f"\n  Columns: {list(df.columns)}")
+        logger.debug(f"  Dtypes:\n{df.dtypes}")
+        logger.debug(f"\n  Sample values:")
         for col in df.columns:
             val = df[col].iloc[0]
-            print(f"    {col}: {val!r} (type: {type(val).__name__})")
+            logger.debug(f"    {col}: {val!r} (type: {type(val).__name__})")
 
     def test_bds_raw_output(self):
         """Show raw BDS output structure."""
@@ -688,10 +692,10 @@ class TestRawOutput:
 
         df = bds(CONFIG.index_ticker, "INDX_MEMBERS", backend="pandas")
 
-        print(f"\n  Raw DataFrame (first 5 rows):")
-        print(f"  {df.head().to_string()}")
-        print(f"\n  Columns: {list(df.columns)}")
-        print(f"  Dtypes:\n{df.dtypes}")
+        logger.debug(f"\n  Raw DataFrame (first 5 rows):")
+        logger.debug(f"  {df.head().to_string()}")
+        logger.debug(f"\n  Columns: {list(df.columns)}")
+        logger.debug(f"  Dtypes:\n{df.dtypes}")
 
 
 class TestDataValidation:
@@ -710,7 +714,7 @@ class TestDataValidation:
 
         assert isinstance(value, (int, float))
         assert value > 0
-        print(f"  Price: {value} (positive ✓)")
+        logger.info(f"  Price: {value} (positive ✓)")
 
     def test_name_is_string(self):
         """Validate: name should be a string."""
@@ -721,7 +725,7 @@ class TestDataValidation:
 
         assert isinstance(value, str)
         assert len(value) > 0
-        print(f"  Name: {value}")
+        logger.info(f"  Name: {value}")
 
     def test_historical_dates_ordered(self):
         """Validate: historical dates should be ordered."""
@@ -733,7 +737,7 @@ class TestDataValidation:
         if len(df) > 1:
             dates = df["date"].tolist()
             assert dates == sorted(dates), "Dates should be in chronological order"
-            print(f"  {len(dates)} dates in order ✓")
+            logger.info(f"  {len(dates)} dates in order ✓")
 
 
 # =============================================================================
@@ -790,14 +794,14 @@ def run_tests(test_names: list[str]) -> bool:
 
     for name in test_names:
         if name not in TESTS:
-            print(f"Unknown test: {name}")
+            logger.warning(f"Unknown test: {name}")
             skipped += 1
             continue
 
         try:
-            print(f"\n{'=' * 60}")
-            print(f"TEST: {name}")
-            print("-" * 60)
+            logger.info(f"\n{'=' * 60}")
+            logger.info(f"TEST: {name}")
+            logger.info("-" * 60)
 
             test_func = TESTS[name]
 
@@ -820,25 +824,27 @@ def run_tests(test_names: list[str]) -> bool:
                     asyncio.run(result)
 
             passed += 1
-            print(f"PASSED ✓")
+            logger.info(f"PASSED ✓")
         except pytest.skip.Exception as e:
             skipped += 1
-            print(f"SKIPPED: {e}")
+            logger.warning(f"SKIPPED: {e}")
         except Exception as e:
             failed += 1
-            print(f"FAILED ✗: {e}")
+            logger.error(f"FAILED ✗: {e}")
             import traceback
 
             traceback.print_exc()
 
-    print(f"\n{'=' * 60}")
-    print(f"RESULTS: {passed} passed, {failed} failed, {skipped} skipped")
-    print(f"{'=' * 60}")
+    logger.info(f"\n{'=' * 60}")
+    logger.info(f"RESULTS: {passed} passed, {failed} failed, {skipped} skipped")
+    logger.info(f"{'=' * 60}")
 
     return failed == 0
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     parser = argparse.ArgumentParser(description="xbbg Front-to-Back Live API Tests")
     parser.add_argument(
         "tests",
@@ -855,15 +861,15 @@ def main():
     args = parser.parse_args()
 
     if args.list:
-        print("Available tests:")
+        logger.info("Available tests:")
         for name in sorted(TESTS.keys()):
-            print(f"  {name}")
+            logger.info(f"  {name}")
         return 0
 
-    print("=" * 60)
-    print("xbbg Front-to-Back Live API Tests")
-    print("=" * 60)
-    print(f"Running {len(args.tests)} tests...")
+    logger.info("=" * 60)
+    logger.info("xbbg Front-to-Back Live API Tests")
+    logger.info("=" * 60)
+    logger.info(f"Running {len(args.tests)} tests...")
 
     success = run_tests(args.tests)
     return 0 if success else 1

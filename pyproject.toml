@@ -59,15 +59,10 @@ blpapi = { index = "bloomberg" }
 target-version = "py310"
 line-length = 120
 exclude = [
-  "xbbg/feeds/*",
-  "feeds/**",
   "docs/_build",
-  "docs/conf.py",
-  "Examples.ipynb",
   "dist",
   "venv",
   ".venv",
-  "backfill_changelog.py",
 ]
 
 [tool.ruff.format]
@@ -110,9 +105,6 @@ ignore = [
 "py-xbbg/src/xbbg/__init__.py" = ["F401", "E402"]
 "py-xbbg/src/xbbg/**/__init__.py" = ["F401"]
 "py-xbbg/tests/**" = ["D", "PT"]
-"xbbg/__init__.py" = ["F401"]
-"xbbg/**/__init__.py" = ["F401"]
-"xbbg/tests/**" = ["D"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]
@@ -128,8 +120,6 @@ convention = "google"
 
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = ["pydantic.BaseModel"]
-
-
 
 
 

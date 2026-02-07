@@ -13,6 +13,7 @@ Async functions (primary implementation):
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
@@ -22,53 +23,12 @@ from xbbg._core import (
     ext_build_fx_pair,
     ext_same_currency,
 )
+from xbbg.ext._utils import _pivot_bdp_to_wide
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
-
-
-def _pivot_bdp_to_wide(nw_df: nw.DataFrame) -> nw.DataFrame:
-    """Pivot bdp result from long format (ticker, field, value) to wide format."""
-    if set(nw_df.columns) != {"ticker", "field", "value"}:
-        return nw_df
-
-    if len(nw_df) == 0:
-        return nw_df
-
-    rows_by_ticker: dict[str, dict[str, str]] = {}
-    for row in nw_df.iter_rows(named=True):
-        ticker = row["ticker"]
-        field = row["field"]
-        value = row["value"]
-        if ticker not in rows_by_ticker:
-            rows_by_ticker[ticker] = {"ticker": ticker}
-        rows_by_ticker[ticker][field] = value
-
-    if not rows_by_ticker:
-        return nw_df
-
-    all_fields = set()
-    for row_data in rows_by_ticker.values():
-        all_fields.update(k for k in row_data if k != "ticker")
-
-    columns: dict[str, list] = {"ticker": []}
-    for field in all_fields:
-        columns[field] = []
-
-    for ticker, row_data in rows_by_ticker.items():
-        columns["ticker"].append(ticker)
-        for field in all_fields:
-            columns[field].append(row_data.get(field))
-
-    native_ns = nw.get_native_namespace(nw_df)
-    result_cols = {k: nw.new_series(k, v, native_namespace=native_ns) for k, v in columns.items()}
-
-    first_series = next(iter(result_cols.values()))
-    result_df = first_series.to_frame()
-    for _name, series in list(result_cols.items())[1:]:
-        result_df = result_df.with_columns(series)
-
-    return result_df
 
 
 # =============================================================================
@@ -155,7 +115,8 @@ async def aadjust_ccy(
         ccy_data = await abdp(tickers=tickers, flds="crncy", **kwargs)
         ccy_nw: nw.DataFrame = nw.from_native(ccy_data)
         ccy_nw = _pivot_bdp_to_wide(ccy_nw)
-    except Exception:
+    except (ValueError, TypeError, KeyError):
+        logger.warning("Failed to get currency data for tickers")
         return nw_df.to_native()
 
     if len(ccy_nw) == 0 or "crncy" not in ccy_nw.columns:
@@ -206,7 +167,8 @@ async def aadjust_ccy(
                 **kwargs,
             )
             fx_nw: nw.DataFrame = nw.from_native(fx_data)
-        except Exception:
+        except (ValueError, TypeError, KeyError):
+            logger.warning("Failed to get FX rate data")
             return nw_df.to_native()
     else:
         # No date range, can't get FX history

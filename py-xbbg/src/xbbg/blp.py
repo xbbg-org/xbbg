@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import functools
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -1339,6 +1340,16 @@ async def abdtick(
 # =============================================================================
 
 
+def _sync_wrapper(async_func):
+    """Create a sync wrapper for an async function."""
+
+    @functools.wraps(async_func)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(async_func(*args, **kwargs))
+
+    return wrapper
+
+
 def bdp(
     tickers: str | Sequence[str],
     flds: str | Sequence[str] | None = None,
@@ -1347,7 +1358,7 @@ def bdp(
     format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
     **kwargs,
-):
+) -> DataFrameResult:
     """Bloomberg reference data (BDP).
 
     Sync wrapper around abdp(). For async usage, use abdp() directly.
@@ -1368,7 +1379,14 @@ def bdp(
         df = bdp("AAPL US Equity", ["PX_LAST", "VOLUME"])
         df = bdp(["AAPL US Equity", "MSFT US Equity"], "PX_LAST", backend="polars")
     """
-    return asyncio.run(abdp(tickers, flds, backend=backend, format=format, field_types=field_types, **kwargs))
+    ...
+
+
+_bdp_doc = bdp.__doc__
+_bdp_annotations = bdp.__annotations__
+bdp = _sync_wrapper(abdp)
+bdp.__doc__ = _bdp_doc
+bdp.__annotations__ = _bdp_annotations
 
 
 def bdh(
@@ -1381,7 +1399,7 @@ def bdh(
     format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
     **kwargs,
-):
+) -> DataFrameResult:
     """Bloomberg historical data (BDH).
 
     Sync wrapper around abdh(). For async usage, use abdh() directly.
@@ -1404,9 +1422,14 @@ def bdh(
         df = bdh("AAPL US Equity", "PX_LAST", start_date="2024-01-01")
         df = bdh(["AAPL", "MSFT"], ["PX_LAST", "VOLUME"], backend="polars")
     """
-    return asyncio.run(
-        abdh(tickers, flds, start_date, end_date, backend=backend, format=format, field_types=field_types, **kwargs)
-    )
+    ...
+
+
+_bdh_doc = bdh.__doc__
+_bdh_annotations = bdh.__annotations__
+bdh = _sync_wrapper(abdh)
+bdh.__doc__ = _bdh_doc
+bdh.__annotations__ = _bdh_annotations
 
 
 def bds(
@@ -1415,7 +1438,7 @@ def bds(
     *,
     backend: Backend | str | None = None,
     **kwargs,
-):
+) -> DataFrameResult:
     """Bloomberg bulk data (BDS).
 
     Sync wrapper around abds(). For async usage, use abds() directly.
@@ -1434,7 +1457,14 @@ def bds(
         df = bds("AAPL US Equity", "DVD_Hist_All")
         df = bds("SPX Index", "INDX_MEMBERS", backend="polars")
     """
-    return asyncio.run(abds(tickers, flds, backend=backend, **kwargs))
+    ...
+
+
+_bds_doc = bds.__doc__
+_bds_annotations = bds.__annotations__
+bds = _sync_wrapper(abds)
+bds.__doc__ = _bds_doc
+bds.__annotations__ = _bds_annotations
 
 
 def bdib(
@@ -1448,7 +1478,7 @@ def bdib(
     interval: int = 1,
     backend: Backend | str | None = None,
     **kwargs,
-):
+) -> DataFrameResult:
     """Bloomberg intraday bar data (BDIB).
 
     Sync wrapper around abdib(). For async usage, use abdib() directly.
@@ -1478,19 +1508,14 @@ def bdib(
             backend="polars",
         )
     """
-    return asyncio.run(
-        abdib(
-            ticker,
-            dt,
-            session,
-            typ,
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            interval=interval,
-            backend=backend,
-            **kwargs,
-        )
-    )
+    ...
+
+
+_bdib_doc = bdib.__doc__
+_bdib_annotations = bdib.__annotations__
+bdib = _sync_wrapper(abdib)
+bdib.__doc__ = _bdib_doc
+bdib.__annotations__ = _bdib_annotations
 
 
 def bdtick(
@@ -1500,7 +1525,7 @@ def bdtick(
     *,
     backend: Backend | str | None = None,
     **kwargs,
-):
+) -> DataFrameResult:
     """Bloomberg tick data (BDTICK).
 
     Sync wrapper around abdtick(). For async usage, use abdtick() directly.
@@ -1520,7 +1545,14 @@ def bdtick(
         df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00")
         df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", backend="polars")
     """
-    return asyncio.run(abdtick(ticker, start_datetime, end_datetime, backend=backend, **kwargs))
+    ...
+
+
+_bdtick_doc = bdtick.__doc__
+_bdtick_annotations = bdtick.__annotations__
+bdtick = _sync_wrapper(abdtick)
+bdtick.__doc__ = _bdtick_doc
+bdtick.__annotations__ = _bdtick_annotations
 
 
 # =============================================================================
@@ -1728,7 +1760,14 @@ def subscribe(
 
     See asubscribe() for full documentation.
     """
-    return asyncio.run(asubscribe(tickers, fields, raw=raw, backend=backend))
+    ...
+
+
+_subscribe_doc = subscribe.__doc__
+_subscribe_annotations = subscribe.__annotations__
+subscribe = _sync_wrapper(asubscribe)
+subscribe.__doc__ = _subscribe_doc
+subscribe.__annotations__ = _subscribe_annotations
 
 
 async def astream(
@@ -2797,7 +2836,14 @@ def bql(
         # Index members with filter
         df = bql("get(px_last, pe_ratio) for(members('SPX Index')) with(pe_ratio > 20)")
     """
-    return asyncio.run(abql(expression, backend=backend))
+    ...
+
+
+_bql_doc = bql.__doc__
+_bql_annotations = bql.__annotations__
+bql = _sync_wrapper(abql)
+bql.__doc__ = _bql_doc
+bql.__annotations__ = _bql_annotations
 
 
 # =============================================================================
@@ -2880,7 +2926,14 @@ def bsrch(
         # With additional parameters
         df = bsrch("COMDTY:WEATHER", LOCATION="NYC", MODEL="GFS")
     """
-    return asyncio.run(absrch(domain, backend=backend, **kwargs))
+    ...
+
+
+_bsrch_doc = bsrch.__doc__
+_bsrch_annotations = bsrch.__annotations__
+bsrch = _sync_wrapper(absrch)
+bsrch.__doc__ = _bsrch_doc
+bsrch.__annotations__ = _bsrch_annotations
 
 
 # =============================================================================
@@ -2957,7 +3010,14 @@ def bfld(
         # Get info for multiple fields
         df = bfld(["PX_LAST", "VOLUME", "NAME"])
     """
-    return asyncio.run(abfld(fields, backend=backend))
+    ...
+
+
+_bfld_doc = bfld.__doc__
+_bfld_annotations = bfld.__annotations__
+bfld = _sync_wrapper(abfld)
+bfld.__doc__ = _bfld_doc
+bfld.__annotations__ = _bfld_annotations
 
 
 # =============================================================================
@@ -3070,7 +3130,14 @@ def beqs(
         # Run a Bloomberg global screen
         df = beqs("TOP_DECL_DVD", screen_type="GLOBAL")
     """
-    return asyncio.run(abeqs(screen, asof=asof, screen_type=screen_type, group=group, backend=backend, **kwargs))
+    ...
+
+
+_beqs_doc = beqs.__doc__
+_beqs_annotations = beqs.__annotations__
+beqs = _sync_wrapper(abeqs)
+beqs.__doc__ = _beqs_doc
+beqs.__annotations__ = _beqs_annotations
 
 
 # =============================================================================
@@ -3194,16 +3261,14 @@ def blkp(
         # Get more results
         df = blkp("Microsoft", max_results=50)
     """
-    return asyncio.run(
-        ablkp(
-            query,
-            yellowkey=yellowkey,
-            language=language,
-            max_results=max_results,
-            backend=backend,
-            **kwargs,
-        )
-    )
+    ...
+
+
+_blkp_doc = blkp.__doc__
+_blkp_annotations = blkp.__annotations__
+blkp = _sync_wrapper(ablkp)
+blkp.__doc__ = _blkp_doc
+blkp.__annotations__ = _blkp_annotations
 
 
 # =============================================================================
@@ -3291,7 +3356,14 @@ def bport(
         # Get multiple fields
         df = bport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
     """
-    return asyncio.run(abport(portfolio, fields, backend=backend, **kwargs))
+    ...
+
+
+_bport_doc = bport.__doc__
+_bport_annotations = bport.__annotations__
+bport = _sync_wrapper(abport)
+bport.__doc__ = _bport_doc
+bport.__annotations__ = _bport_annotations
 
 
 # =============================================================================
@@ -3422,18 +3494,14 @@ def bcurves(
         # Look up specific curve
         df = bcurves(curveid="YCSW0023 Index")
     """
-    return asyncio.run(
-        abcurves(
-            country=country,
-            currency=currency,
-            curve_type=curve_type,
-            subtype=subtype,
-            curveid=curveid,
-            bbgid=bbgid,
-            backend=backend,
-            **kwargs,
-        )
-    )
+    ...
+
+
+_bcurves_doc = bcurves.__doc__
+_bcurves_annotations = bcurves.__annotations__
+bcurves = _sync_wrapper(abcurves)
+bcurves.__doc__ = _bcurves_doc
+bcurves.__annotations__ = _bcurves_annotations
 
 
 # =============================================================================
@@ -3534,14 +3602,14 @@ def bgovts(
         # Exact match only
         df = bgovts("T 2.5 05/15/24", partial_match=False)
     """
-    return asyncio.run(
-        abgovts(
-            query,
-            partial_match=partial_match,
-            backend=backend,
-            **kwargs,
-        )
-    )
+    ...
+
+
+_bgovts_doc = bgovts.__doc__
+_bgovts_annotations = bgovts.__annotations__
+bgovts = _sync_wrapper(abgovts)
+bgovts.__doc__ = _bgovts_doc
+bgovts.__annotations__ = _bgovts_annotations
 
 
 # ─── Schema Introspection API ────────────────────────────────────────────────
@@ -3591,7 +3659,14 @@ def bops(service: str | Service = Service.REFDATA) -> list[str]:
         >>> bops("//blp/instruments")
         ['InstrumentListRequest', ...]
     """
-    return asyncio.run(abops(service))
+    ...
+
+
+_bops_doc = bops.__doc__
+_bops_annotations = bops.__annotations__
+bops = _sync_wrapper(abops)
+bops.__doc__ = _bops_doc
+bops.__annotations__ = _bops_annotations
 
 
 async def abschema(
@@ -3690,7 +3765,14 @@ def bschema(
         >>> [c['name'] for c in op['request']['children']]
         ['securities', 'fields', 'overrides', ...]
     """
-    return asyncio.run(abschema(service, operation))
+    ...
+
+
+_bschema_doc = bschema.__doc__
+_bschema_annotations = bschema.__annotations__
+bschema = _sync_wrapper(abschema)
+bschema.__doc__ = _bschema_doc
+bschema.__annotations__ = _bschema_annotations
 
 
 def _element_to_dict(elem) -> dict:
