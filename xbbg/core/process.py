@@ -127,6 +127,11 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
     for fld in flds:
         request.append(blpapi.Name("fields"), fld)
 
+    # Pop explicit ovrds to prevent proc_ovrds from treating the key itself
+    # as a Bloomberg override field.  create_request() (which is always called
+    # before init_request) already applies ovrds to the request correctly.
+    kwargs.pop("ovrds", None)
+
     adjust = kwargs.pop("adjust", None)
     if isinstance(adjust, str) and adjust:
         if adjust == "all":
