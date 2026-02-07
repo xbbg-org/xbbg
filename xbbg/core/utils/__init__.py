@@ -1,10 +1,11 @@
 """Core utility functions for Bloomberg API processing.
 
 This package contains supporting utilities:
-- utils: General utility functions (flatten, fmt_dt, normalize_tickers, etc.)
+- dates: Date parsing utilities
 - timezone: Timezone utilities and conversion
+- utils: General utility functions (flatten, fmt_dt, normalize_tickers, etc.)
 """
 
-from . import timezone, utils
+from . import dates, timezone, utils
 
-__all__ = ["utils", "timezone"]
+__all__ = ["dates", "timezone", "utils"]

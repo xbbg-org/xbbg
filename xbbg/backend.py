@@ -479,14 +479,14 @@ def get_available_backends() -> list[Backend]:
 
 
 def print_backend_status() -> None:
-    """Print the status of all backends for diagnostic purposes.
+    """Log the status of all backends for diagnostic purposes.
 
     Shows which backends are available, their versions, and minimum
     requirements. Useful for troubleshooting backend issues.
     """
-    print("xbbg Backend Status")
-    print("=" * 60)
-    print()
+    logger.info("xbbg Backend Status")
+    logger.info("=" * 60)
+    logger.info("")
 
     for backend in Backend:
         status = "?"
@@ -517,10 +517,10 @@ def print_backend_status() -> None:
             package = PACKAGE_NAMES.get(backend, module_name or "?")
             version_info = f"pip install {package}"
 
-        print(f"  {backend.value:15} {status:15} {version_info}")
+        logger.info("  %s %s %s", f"{backend.value:15}", f"{status:15}", version_info)
 
-    print()
-    print("=" * 60)
+    logger.info("")
+    logger.info("=" * 60)
 
 
 # =============================================================================

@@ -208,7 +208,7 @@ def _normalize_dest_tz(tz: str) -> str:
     """Normalize destination timezone aliases (e.g., 'NY' -> full tz)."""
     try:
         return timezone.get_tz(tz)
-    except Exception:  # noqa: BLE001
+    except (ValueError, KeyError, TypeError):
         return tz
 
 
@@ -228,7 +228,7 @@ def _time_range_from_exch_metadata(
     except ValueError:
         # ValueError from get_interval means session is not defined - propagate
         raise
-    except Exception:  # noqa: BLE001
+    except (KeyError, AttributeError, TypeError, IndexError):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "Primary session resolution failed for %s on %s; falling back to PMC",

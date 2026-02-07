@@ -9,11 +9,6 @@ from xbbg.core.infra import conn
 from xbbg.core.pipeline import BqrRequestBuilder, BqrTransformer, bqr_pipeline_config
 
 
-@pytest.fixture
-def fake_handle():
-    return {"event_queue": object(), "correlation_id": object()}
-
-
 @pytest.fixture(autouse=True)
 def stub_bbg_service(monkeypatch):
     """Stub Bloomberg service to avoid real API calls."""
