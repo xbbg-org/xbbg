@@ -81,18 +81,18 @@ class RequestBuilder:
         self._override_kwargs.update(kwargs)
         return self
 
-    def with_output(self, backend: str, format: str) -> RequestBuilder:
+    def with_output(self, backend: str, output_format: str) -> RequestBuilder:
         """Set output backend and format.
 
         Args:
             backend: Output backend (e.g., 'pandas', 'polars').
-            format: Output format (e.g., 'dataframe', 'series').
+            output_format: Output format (e.g., 'dataframe', 'series').
 
         Returns:
             Self for method chaining.
         """
         self._backend = backend
-        self._format = format
+        self._format = output_format
         return self
 
     def build(self) -> DataRequest:
@@ -136,7 +136,7 @@ class RequestBuilder:
         start_datetime=None,
         end_datetime=None,
         backend: str | None = None,
-        format: str | None = None,
+        output_format: str | None = None,
         **kwargs,
     ) -> DataRequest:
         """Build from legacy function signature.
@@ -149,7 +149,7 @@ class RequestBuilder:
             start_datetime: Optional explicit start datetime for multi-day requests.
             end_datetime: Optional explicit end datetime for multi-day requests.
             backend: Backend for data processing (e.g., 'pandas', 'polars').
-            format: Output format for the data (e.g., 'long', 'wide').
+            output_format: Output format for the data (e.g., 'long', 'wide').
             **kwargs: Legacy kwargs (will be split).
 
         Returns:
@@ -178,7 +178,7 @@ class RequestBuilder:
         builder.override_kwargs(**split.override_like)
 
         # Set output backend and format if provided
-        if backend is not None or format is not None:
-            builder.with_output(backend, format)
+        if backend is not None or output_format is not None:
+            builder.with_output(backend, output_format)
 
         return builder.build()

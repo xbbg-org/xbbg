@@ -371,7 +371,7 @@ def bdib(
         start_datetime=start_datetime,
         end_datetime=end_datetime,
         backend=backend,
-        format=format,
+        output_format=format,
         **kwargs,
     )
 
