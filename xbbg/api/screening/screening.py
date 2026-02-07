@@ -46,7 +46,9 @@ def beqs(
         pd.DataFrame.
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, beqs_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import beqs_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Preserve retry mechanism
     trial = kwargs.get("trial", 0)
@@ -129,7 +131,9 @@ def bsrch(
         ... )  # doctest: +SKIP
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bsrch_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import bsrch_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Split kwargs
     split = split_kwargs(**kwargs)
@@ -278,7 +282,9 @@ def bql(
         ... )
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bql_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import bql_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Split kwargs
     split = split_kwargs(**kwargs)
@@ -627,7 +633,9 @@ def bqr(
         - For Excel compatibility, this emulates: =BQR("ticker", "-2d", "", "View=AllQuotes")
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, bqr_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import bqr_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Default event types
     if event_types is None:

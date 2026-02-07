@@ -59,7 +59,9 @@ def benchmark_bdp_stages():
     """Benchmark bdp with stage-level timing."""
     from xbbg.backend import Backend
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, reference_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import reference_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
     from xbbg.core.utils import utils
 
     tickers = ["AAPL US Equity", "MSFT US Equity", "GOOGL US Equity"]

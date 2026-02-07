@@ -57,7 +57,9 @@ def bdh(
         pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
     """
     from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline import BloombergPipeline, RequestBuilder, historical_pipeline_config
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import historical_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
 
     # Normalize tickers to list
     ticker_list = utils.normalize_tickers(tickers)

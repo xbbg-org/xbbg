@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from xbbg.core.domain.contracts import CachePolicy, DataRequest
-from xbbg.core.pipeline import RequestBuilder
+from xbbg.core.request_builder import RequestBuilder
 
 
 class TestRequestBuilder:
