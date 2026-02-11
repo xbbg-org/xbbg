@@ -1,17 +1,18 @@
 """Bloomberg reference data API (BDP/BDS).
 
 Provides functions for single point-in-time reference data (BDP) and
-bulk/block data (BDS) queries.
+bulk/block data (BDS) queries. Async versions are the source of truth;
+sync versions wrap them via _run_sync().
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 import pandas as pd
 
 from xbbg.backend import Backend, Format
+from xbbg.core.infra.conn import _run_sync
 from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["bdp", "bds", "abdp", "abds"]
 
 
-def bdp(
+async def abdp(
     tickers: str | list[str],
     flds: str | list[str],
     *,
@@ -27,7 +28,10 @@ def bdp(
     format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Bloomberg reference data.
+    """Async Bloomberg reference data (source of truth).
+
+    Truly non-blocking — uses async event polling via arequest().
+    Use ``bdp()`` for synchronous usage.
 
     Args:
         tickers: Single ticker or list of tickers.
@@ -38,6 +42,17 @@ def bdp(
 
     Returns:
         pd.DataFrame: Reference data with tickers as index and fields as columns.
+
+    Examples:
+        >>> import asyncio
+        >>> # Single request
+        >>> # df = await blp.abdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+        >>>
+        >>> # Concurrent requests (true async — single thread, cooperative polling)
+        >>> # results = await asyncio.gather(
+        >>> #     blp.abdp('AAPL US Equity', ['PX_LAST']),
+        >>> #     blp.abdp('MSFT US Equity', ['PX_LAST']),
+        >>> # )
     """
     from xbbg.core.domain.context import split_kwargs
     from xbbg.core.pipeline_core import BloombergPipeline
@@ -66,68 +81,12 @@ def bdp(
         .build()
     )
 
-    # Run pipeline
+    # Run pipeline (async)
     pipeline = BloombergPipeline(config=reference_pipeline_config())
-    return pipeline.run(request)
+    return await pipeline.arun(request)
 
 
-def bds(
-    tickers: str | list[str],
-    flds: str,
-    use_port: bool = False,
-    *,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg block data.
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Field name.
-        use_port: Whether to use `PortfolioDataRequest` instead of `ReferenceDataRequest`.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
-        **kwargs: Other overrides for query.
-
-    Returns:
-        pd.DataFrame: Block data with multi-row results per ticker.
-    """
-    from xbbg.core.domain.context import split_kwargs
-    from xbbg.core.pipeline_core import BloombergPipeline
-    from xbbg.core.pipeline_factories import block_data_pipeline_config
-    from xbbg.core.request_builder import RequestBuilder
-
-    # Split kwargs
-    split = split_kwargs(**kwargs)
-    ticker_list = utils.normalize_tickers(tickers)
-
-    # Process each ticker using pipeline
-    def _process_ticker(ticker: str):
-        request = (
-            RequestBuilder()
-            .ticker(ticker)
-            .date("today")
-            .context(split.infra)
-            .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
-            .request_opts(fld=flds, use_port=use_port)
-            .override_kwargs(**split.override_like)
-            .with_output(backend, format)
-            .build()
-        )
-
-        pipeline = BloombergPipeline(config=block_data_pipeline_config())
-        return pipeline.run(request)
-
-    results = [_process_ticker(t) for t in ticker_list]
-
-    # Use backend-agnostic concat
-    from xbbg.io.convert import concat_frames
-
-    return concat_frames(results, backend)
-
-
-async def abdp(
+def bdp(
     tickers: str | list[str],
     flds: str | list[str],
     *,
@@ -135,10 +94,7 @@ async def abdp(
     format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Async Bloomberg reference data.
-
-    Non-blocking async version of `bdp()`. Use this in async contexts to avoid
-    blocking the event loop.
+    """Bloomberg reference data. Sync wrapper around abdp().
 
     Args:
         tickers: Single ticker or list of tickers.
@@ -149,19 +105,8 @@ async def abdp(
 
     Returns:
         pd.DataFrame: Reference data with tickers as index and fields as columns.
-
-    Examples:
-        >>> import asyncio
-        >>> # Single request
-        >>> # df = await blp.abdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
-        >>>
-        >>> # Concurrent requests
-        >>> # results = await asyncio.gather(
-        >>> #     blp.abdp('AAPL US Equity', ['PX_LAST']),
-        >>> #     blp.abdp('MSFT US Equity', ['PX_LAST']),
-        >>> # )
     """
-    return await asyncio.to_thread(bdp, tickers=tickers, flds=flds, backend=backend, format=format, **kwargs)
+    return _run_sync(abdp(tickers=tickers, flds=flds, backend=backend, format=format, **kwargs))
 
 
 async def abds(
@@ -173,10 +118,10 @@ async def abds(
     format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Async Bloomberg block data.
+    """Async Bloomberg block data (source of truth).
 
-    Non-blocking async version of `bds()`. Use this in async contexts to avoid
-    blocking the event loop.
+    Truly non-blocking — uses async event polling via arequest().
+    Use ``bds()`` for synchronous usage.
 
     Args:
         tickers: Single ticker or list of tickers.
@@ -200,6 +145,62 @@ async def abds(
         >>> #     blp.abds('MSFT US Equity', 'DVD_Hist_All'),
         >>> # )
     """
-    return await asyncio.to_thread(
-        bds, tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs
-    )
+    from xbbg.core.domain.context import split_kwargs
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import block_data_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
+
+    # Split kwargs
+    split = split_kwargs(**kwargs)
+    ticker_list = utils.normalize_tickers(tickers)
+
+    # Process each ticker using pipeline (async)
+    async def _process_ticker(ticker: str):
+        request = (
+            RequestBuilder()
+            .ticker(ticker)
+            .date("today")
+            .context(split.infra)
+            .cache_policy(enabled=split.infra.cache, reload=split.infra.reload)
+            .request_opts(fld=flds, use_port=use_port)
+            .override_kwargs(**split.override_like)
+            .with_output(backend, format)
+            .build()
+        )
+
+        pipeline = BloombergPipeline(config=block_data_pipeline_config())
+        return await pipeline.arun(request)
+
+    results = []
+    for t in ticker_list:
+        results.append(await _process_ticker(t))
+
+    # Use backend-agnostic concat
+    from xbbg.io.convert import concat_frames
+
+    return concat_frames(results, backend)
+
+
+def bds(
+    tickers: str | list[str],
+    flds: str,
+    use_port: bool = False,
+    *,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Bloomberg block data. Sync wrapper around abds().
+
+    Args:
+        tickers: Single ticker or list of tickers.
+        flds: Field name.
+        use_port: Whether to use `PortfolioDataRequest` instead of `ReferenceDataRequest`.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
+        **kwargs: Other overrides for query.
+
+    Returns:
+        pd.DataFrame: Block data with multi-row results per ticker.
+    """
+    return _run_sync(abds(tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs))

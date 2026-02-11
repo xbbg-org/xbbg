@@ -4,6 +4,11 @@ This module provides Bloomberg reference data functionality using a pipeline-bas
 """
 
 from xbbg.api.reference.lookup import (
+    abfld,
+    ablkp,
+    afieldInfo,
+    afieldSearch,
+    alookupSecurity,
     bfld,
     blkp,
     bport,
@@ -22,8 +27,14 @@ __all__ = [
     "abds",
     # v1.0 names
     "bfld",
+    "abfld",
     "blkp",
+    "ablkp",
     "bport",
+    # async variants
+    "afieldInfo",
+    "afieldSearch",
+    "alookupSecurity",
     # legacy names (backward compatible)
     "fieldInfo",
     "fieldSearch",
