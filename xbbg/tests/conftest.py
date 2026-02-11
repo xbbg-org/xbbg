@@ -7,6 +7,23 @@ import pytest
 from xbbg.deprecation import XbbgFutureWarning
 
 
+@pytest.fixture(autouse=True)
+def _reset_session_manager():
+    """Reset the SessionManager singleton after every test.
+
+    Prevents MagicMock sessions from leaking across tests (e.g., test_conn.py
+    stores mock sessions in the singleton, which causes stack overflows in
+    later tests that call real Bloomberg API paths like active_futures).
+    """
+    yield
+    from xbbg.core.infra.conn import SessionManager
+
+    manager = SessionManager()
+    manager._sessions.clear()
+    manager._services.clear()
+    manager._default_session = None
+
+
 @pytest.fixture
 def fake_handle():
     """Shared fake Bloomberg request handle for mocked API tests."""
