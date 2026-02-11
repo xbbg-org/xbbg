@@ -17,14 +17,19 @@ from xbbg.api.fixed_income import yas as _yas
 # Import implementations with underscore prefix for wrapping
 from xbbg.api.helpers import adjust_ccy as _adjust_ccy
 from xbbg.api.historical import abdh, bdh, dividend as _dividend, earning as _earning, turnover as _turnover
-from xbbg.api.intraday import bdib, bdtick
+from xbbg.api.intraday import abdib, abdtick, bdib, bdtick
 from xbbg.api.realtime import live as _live, stream, subscribe as _subscribe
 from xbbg.api.reference import (
     abdp,
     abds,
+    # v1.0 names (no deprecation)
+    abfld,
+    ablkp,
+    afieldInfo,
+    afieldSearch,
+    alookupSecurity,
     bdp,
     bds,
-    # v1.0 names (no deprecation)
     bfld,
     blkp,
     bport,
@@ -36,6 +41,10 @@ from xbbg.api.reference import (
     lookupSecurity as _lookupSecurity,
 )
 from xbbg.api.screening import (
+    abeqs,
+    abql,
+    abqr,
+    absrch,
     beqs,
     bql,
     bqr,
@@ -44,7 +53,7 @@ from xbbg.api.screening import (
     etf_holdings as _etf_holdings,
     preferreds as _preferreds,
 )
-from xbbg.api.technical import bta, bta_studies as _bta_studies, refresh_studies as _refresh_studies, ta_studies
+from xbbg.api.technical import abta, bta, bta_studies as _bta_studies, refresh_studies as _refresh_studies, ta_studies
 from xbbg.core.infra.conn import connect as _connect, disconnect as _disconnect
 from xbbg.deprecation import (
     warn_active_cdx,
@@ -358,16 +367,29 @@ __all__ = [
     "bdh",
     "abdh",
     "bdib",
+    "abdib",
     "bdtick",
+    "abdtick",
     "beqs",
+    "abeqs",
     "bsrch",
+    "absrch",
     "bql",
+    "abql",
     "bqr",
+    "abqr",
     "bta",
+    "abta",
     "stream",
     # v1.0 names (new, no deprecation)
     "ta_studies",
     "bfld",
+    "abfld",
     "blkp",
+    "ablkp",
     "bport",
+    # async variants
+    "afieldInfo",
+    "afieldSearch",
+    "alookupSecurity",
 ]
