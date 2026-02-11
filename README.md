@@ -75,7 +75,7 @@ xbbg is a comprehensive Bloomberg API wrapper for Python, providing a clean, Pyt
 <td width="50%">
 
 **Production-Grade Features**
-- Intelligent Parquet-based caching
+- Parquet caching for intraday bars
 - Async/await support for non-blocking operations
 - **Multi-backend output** (pandas, Polars, PyArrow, DuckDB)
 - Full type hints for IDE integration
@@ -138,7 +138,7 @@ xbbg is the **only Python library** that provides:
 
 ### 📊 Production-Grade Features
 
-- **Intelligent caching**: Automatic Parquet-based storage reduces API calls by 80%+
+- **Intraday caching**: Automatic Parquet storage for `bdib()` bar data
 - **Async/await support**: Non-blocking operations for modern Python applications
 - **Exchange-aware sessions**: Precise market hour handling for 50+ global exchanges
 - **Type safety**: Full type hints for IDE autocomplete and static analysis
@@ -179,7 +179,7 @@ xbbg is the **only Python library** that provides:
 | Excel-compatible syntax | ✅ | ❌ | ❌ | ❌ |
 | Sub-minute intervals (10s bars) | ✅ | ❌ | ❌ | ❌ |
 | Async/await support | ✅ | ❌ | ❌ | ❌ |
-| Local Parquet caching | ✅ | ❌ | ❌ | ❌ |
+| Intraday bar caching (Parquet) | ✅ | ❌ | ❌ | ❌ |
 | Multi-backend output | ✅ | ❌ | ❌ | ❌ |
 | **Utilities** | | | | |
 | Currency conversion | ✅ | ❌ | ❌ | ❌ |
@@ -266,7 +266,7 @@ xbbg is the **only Python library** that provides:
 
 ### Additional Features
 
-- **Smart Caching**: Automatic Parquet storage reduces API calls
+- **Intraday Caching**: Automatic Parquet storage for `bdib()` bar data
 - **Timezone Support**: Exchange-aware market hours for 50+ global exchanges
 - **Configurable Logging**: Debug mode for troubleshooting
 - **Batch Processing**: Efficient multi-ticker queries
@@ -411,7 +411,7 @@ divs = blp.dividend('AAPL US Equity', start_date='2024-01-01', end_date='2024-12
 ### Best Practices
 
 - **Excel users**: Use the same field names and date formats as Bloomberg Excel
-- **Performance**: Enable caching with `os.environ['BBG_ROOT'] = '/path/to/cache'`
+- **Performance**: `bdib()` caches intraday bars as Parquet files automatically (see [Data Storage](#data-storage))
 - **Async operations**: Use `abdp()`, `abdh()`, `abds()` for non-blocking requests
 - **Debugging**: Set `logging.getLogger('xbbg').setLevel(logging.DEBUG)` for detailed logs
 
@@ -1227,18 +1227,60 @@ Out[18]:
 
 ## Data Storage
 
-If `BBG_ROOT` is provided in `os.environ`, data can be saved locally in Parquet format. By default, local storage is preferred over blpapi for all queries.
+### What gets cached
 
-**Setup**:
+Currently, only **`bdib()` intraday bar data** is cached as local Parquet files. Other functions (`bdp`, `bds`, `bdh`, `bql`, `beqs`, `bsrch`, `bta`, `bqr`) always make live Bloomberg API calls — they are not cached.
+
+When `bdib()` fetches intraday bars, it will:
+
+1. **Check the cache first** — if a Parquet file exists for that ticker/date/interval, return it instead of calling Bloomberg.
+2. **Save results to cache** — after a successful Bloomberg fetch, save the bars as a Parquet file (only once the trading session has ended, to avoid saving incomplete data).
+
+Exchange metadata (timezone, session hours) is also cached locally to avoid repeated lookups.
+
+### Cache location
+
+By default, xbbg uses a platform-specific cache directory:
+
+| Platform | Default location |
+|----------|-----------------|
+| Windows | `%APPDATA%\xbbg` |
+| Linux/macOS | `~/.cache/xbbg` or `~/.xbbg` |
+
+To use a custom location, set `BBG_ROOT` before importing xbbg:
 
 ```python
 import os
-os.environ['BBG_ROOT'] = '/path/to/your/data/directory'
+os.environ['BBG_ROOT'] = '/path/to/your/cache/directory'
 ```
 
-Once configured, xbbg will automatically save and retrieve data from local Parquet files, reducing blpapi calls and improving performance.
+### Cache structure
 
-**Important**: Local data usage must be compliant with Bloomberg Datafeed Addendum (full description in `DAPI<GO>`):
+Intraday bar files are organized as:
+
+```
+{BBG_ROOT}/{asset_class}/{ticker}/{event_type}/{interval}/{date}.parq
+```
+
+For example, 1-minute TRADE bars for AAPL on 2024-01-15:
+
+```
+/path/to/cache/Equity/AAPL US Equity/TRADE/1m/2024-01-15.parq
+```
+
+### Controlling cache behavior
+
+```python
+# Disable cache for a specific call (always fetch from Bloomberg)
+blp.bdib('AAPL US Equity', dt='2024-01-15', cache=False)
+
+# Force reload (fetch from Bloomberg even if cached, then overwrite cache)
+blp.bdib('AAPL US Equity', dt='2024-01-15', reload=True)
+```
+
+### Bloomberg data license compliance
+
+Local data usage must be compliant with the Bloomberg Datafeed Addendum (see `DAPI<GO>`):
 
 > To access Bloomberg data via the API (and use that data in Microsoft Excel), your company must sign the 'Datafeed Addendum' to the Bloomberg Agreement. This legally binding contract describes the terms and conditions of your use of the data and information available via the API (the "Data"). The most fundamental requirement regarding your use of Data is that it cannot leave the local PC you use to access the BLOOMBERG PROFESSIONAL service.
 
