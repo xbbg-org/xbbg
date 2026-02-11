@@ -7,17 +7,18 @@ Bloomberg event streams, and parse reference, historical, and intraday data.
 from __future__ import annotations
 
 from collections.abc import Iterator
+import importlib
 from itertools import starmap
 import logging
 from typing import TYPE_CHECKING, Any
 
-import pandas as pd
+pd = importlib.import_module("pandas")
 
-from xbbg import const
-from xbbg.core.config import intervals, overrides
-from xbbg.core.infra import conn
-from xbbg.core.infra.blpapi_wrapper import blpapi, is_available
-from xbbg.core.utils import timezone, utils as utils_module
+from xbbg import const  # noqa: E402
+from xbbg.core.config import intervals, overrides  # noqa: E402
+from xbbg.core.infra import conn  # noqa: E402
+from xbbg.core.infra.blpapi_wrapper import blpapi, is_available  # noqa: E402
+from xbbg.core.utils import timezone, utils as utils_module  # noqa: E402
 
 if TYPE_CHECKING:
     from xbbg.core.domain.context import BloombergContext
@@ -33,47 +34,30 @@ except ImportError:
 
 # Pre-create blpapi.Name objects for performance (avoid repeated string lookups)
 # Guard with is_available() to allow import when blpapi is not installed
-if is_available():
-    RESPONSE_ERROR = blpapi.Name("responseError")
-    SESSION_TERMINATED = blpapi.Name("SessionTerminated")
-    CATEGORY = blpapi.Name("category")
-    MESSAGE = blpapi.Name("message")
-    BAR_DATA = blpapi.Name("barData")
-    BAR_TICK = blpapi.Name("barTickData")
-    TICK_DATA = blpapi.Name("tickData")
-    RESULTS = blpapi.Name("results")
-    TABLE = blpapi.Name("table")
-    COLUMNS = blpapi.Name("columns")
-    ROWS = blpapi.Name("rows")
-    VALUES = blpapi.Name("values")
-    NAME = blpapi.Name("name")
-    FIELD = blpapi.Name("field")
-else:
-    # Placeholders when blpapi unavailable - will fail at runtime if used
-    RESPONSE_ERROR = None  # type: ignore[assignment]
-    SESSION_TERMINATED = None  # type: ignore[assignment]
-    CATEGORY = None  # type: ignore[assignment]
-    MESSAGE = None  # type: ignore[assignment]
-    BAR_DATA = None  # type: ignore[assignment]
-    BAR_TICK = None  # type: ignore[assignment]
-    TICK_DATA = None  # type: ignore[assignment]
-    RESULTS = None  # type: ignore[assignment]
-    TABLE = None  # type: ignore[assignment]
-    COLUMNS = None  # type: ignore[assignment]
-    ROWS = None  # type: ignore[assignment]
-    VALUES = None  # type: ignore[assignment]
-    NAME = None  # type: ignore[assignment]
-    FIELD = None  # type: ignore[assignment]
+RESPONSE_ERROR = blpapi.Name("responseError") if is_available() else None
+SESSION_TERMINATED = blpapi.Name("SessionTerminated") if is_available() else None
+CATEGORY = blpapi.Name("category") if is_available() else None
+MESSAGE = blpapi.Name("message") if is_available() else None
+BAR_DATA = blpapi.Name("barData") if is_available() else None
+BAR_TICK = blpapi.Name("barTickData") if is_available() else None
+TICK_DATA = blpapi.Name("tickData") if is_available() else None
+RESULTS = blpapi.Name("results") if is_available() else None
+TABLE = blpapi.Name("table") if is_available() else None
+COLUMNS = blpapi.Name("columns") if is_available() else None
+ROWS = blpapi.Name("rows") if is_available() else None
+VALUES = blpapi.Name("values") if is_available() else None
+NAME = blpapi.Name("name") if is_available() else None
+FIELD = blpapi.Name("field") if is_available() else None
 
 
 def create_request(
     service: str,
     request: str,
-    settings: list | None = None,
-    ovrds: list | None = None,
-    append: dict | None = None,
+    settings: list[tuple[str, Any]] | None = None,
+    ovrds: list[tuple[str, Any]] | None = None,
+    append: dict[str, Any] | None = None,
     **kwargs,
-) -> blpapi.Request:
+) -> Any:
     """Create a Bloomberg request for a given service and request type.
 
     Args:
@@ -106,7 +90,7 @@ def create_request(
     return req
 
 
-def init_request(request: blpapi.Request, tickers, flds, **kwargs):
+def init_request(request: Any, tickers, flds, **kwargs):
     """Initiate a Bloomberg request instance.
 
     Args:
@@ -116,9 +100,6 @@ def init_request(request: blpapi.Request, tickers, flds, **kwargs):
         **kwargs: Overrides and element options; supports shorthand keys
             parsed by ``overrides.proc_elms`` and ``overrides.proc_ovrds``.
     """
-    while conn.bbg_session(**kwargs).tryNextEvent():
-        pass
-
     tickers = utils_module.normalize_tickers(tickers)
     for ticker in tickers:
         request.append(blpapi.Name("securities"), ticker)
@@ -222,7 +203,7 @@ def _time_range_from_exch_metadata(
     ticker: str,
     session: str,
     tz: str,
-    session_kwargs: dict,
+    session_kwargs: dict[str, Any],
 ) -> intervals.Session | None:
     """Resolve time range using exchange metadata, or return None on failure."""
     logger = logging.getLogger(__name__)
@@ -271,150 +252,8 @@ def _time_range_from_exch_metadata(
     )
 
 
-def _process_response_event(ev: blpapi.Event, func, **kwargs):
-    """Process RESPONSE or PARTIAL_RESPONSE event.
 
-    Args:
-        ev: Bloomberg event.
-        func: Generator function yielding parsed messages.
-        **kwargs: Arguments forwarded to func.
-
-    Yields:
-        Elements from func.
-
-    Returns:
-        True if final RESPONSE received (should stop), False otherwise.
-    """
-    msg_count = 0
-    for msg in ev:
-        msg_count += 1
-        if blpapi_logging:
-            blpapi_logging.log_message_info(msg, context="rec_events")
-        yield from func(msg=msg, **kwargs)
-
-    if logger.isEnabledFor(logging.DEBUG):
-        event_type_str = "RESPONSE" if ev.eventType() == blpapi.Event.RESPONSE else "PARTIAL_RESPONSE"
-        logger.debug("Processed %d message(s) from %s event", msg_count, event_type_str)
-
-    is_final = ev.eventType() == blpapi.Event.RESPONSE
-    if is_final and logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Received final RESPONSE event, completing event processing")
-    # Return value from generator - will be available via StopIteration.value
-    return is_final
-
-
-def _handle_timeout(elapsed_seconds: float, slow_warn_seconds: float, warned: bool) -> bool:
-    """Handle timeout event with time-based warning.
-
-    Bloomberg TIMEOUT events are not errors - they just mean "no data yet, still working".
-    We never give up on timeouts; we only warn if the request is taking longer than expected.
-
-    Args:
-        elapsed_seconds: Time elapsed since request started.
-        slow_warn_seconds: Threshold for warning about slow requests.
-        warned: Whether we've already warned about this request.
-
-    Returns:
-        True if we should warn (and haven't already), False otherwise.
-    """
-    if not warned and elapsed_seconds > slow_warn_seconds:
-        logger.warning(
-            "Bloomberg request taking %.1f seconds (still waiting for response)...",
-            elapsed_seconds,
-        )
-        return True  # Signal that we've now warned
-    return warned  # Return current warned state
-
-
-def _handle_other_event(ev: blpapi.Event) -> bool:
-    """Handle other event types (e.g., SESSION_TERMINATED).
-
-    Args:
-        ev: Bloomberg event.
-
-    Returns:
-        True if should stop processing, False otherwise.
-    """
-    for _ in ev:
-        if getattr(ev, "messageType", lambda: None)() is SESSION_TERMINATED:
-            logger.warning("Session terminated event received, stopping event processing")
-            return True
-    return False
-
-
-def rec_events(func, event_queue: blpapi.EventQueue | None = None, **kwargs):
-    """Receive and iterate events from Bloomberg.
-
-    Bloomberg TIMEOUT events are not errors - they indicate the request is still
-    being processed. This function will wait indefinitely for a response, only
-    stopping when:
-    - RESPONSE event received (success)
-    - responseError in message (Bloomberg error)
-    - SESSION_TERMINATED event (connection lost)
-
-    Args:
-        func: Generator function yielding parsed messages.
-        event_queue: Optional queue to read events from; defaults to session queue.
-        **kwargs: Arguments forwarded to ``func`` and session access.
-            slow_warn_seconds: Threshold for warning about slow requests (default: 15.0)
-
-    Yields:
-        Elements of Bloomberg responses.
-    """
-    import time
-
-    responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
-    slow_warn_seconds = kwargs.pop("slow_warn_seconds", 15.0)
-    # Poll interval - how often to check for events (1 second is reasonable)
-    poll_interval_ms = 1000
-
-    start_time = time.time()
-    warned = False
-
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Starting Bloomberg event processing (slow_warn_seconds=%.1f)", slow_warn_seconds)
-    while True:
-        try:
-            if event_queue is not None:
-                ev = event_queue.nextEvent(timeout=poll_interval_ms)
-            else:
-                ev = conn.bbg_session(**kwargs).nextEvent(timeout=poll_interval_ms)
-        except blpapi.InvalidStateException as e:
-            logger.error("Bloomberg session in invalid state: %s", e)
-            raise
-        except blpapi.Exception as e:
-            logger.error("Bloomberg API error during event retrieval: %s", e)
-            raise
-
-        if blpapi_logging and logger.isEnabledFor(logging.DEBUG):
-            blpapi_logging.log_event_info(ev, context="rec_events")
-
-        if ev.eventType() in responses:
-            # Process response event (generator that yields messages)
-            gen = _process_response_event(ev, func, **kwargs)
-            # Yield all values from the generator
-            try:
-                while True:
-                    yield next(gen)
-            except StopIteration as e:
-                # Generator exhausted, check return value
-                if e.value:  # True if final RESPONSE
-                    break
-            except (ValueError, blpapi.Exception) as e:
-                # Message processing errors (e.g., from check_error or blpapi exceptions)
-                logger.error("Error processing Bloomberg message: %s", e)
-                raise
-        elif ev.eventType() == blpapi.Event.TIMEOUT:
-            # TIMEOUT is not an error - Bloomberg is still working on the request
-            elapsed = time.time() - start_time
-            warned = _handle_timeout(elapsed, slow_warn_seconds, warned)
-            # Continue waiting - never give up on timeouts
-        else:
-            if _handle_other_event(ev):
-                break
-
-
-def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
+def process_ref(msg: Any, **kwargs) -> Iterator[dict[str, Any]]:
     """Process reference messages from Bloomberg.
 
     Args:
@@ -455,7 +294,7 @@ def process_ref(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
                 )
 
 
-def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
+def process_hist(msg: Any, **kwargs) -> Iterator[dict[str, Any]]:
     """Process historical data messages from Bloomberg.
 
     Args:
@@ -475,7 +314,7 @@ def process_hist(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
             yield dict([("ticker", ticker)] + [(str(elem.name()), elem.getValue()) for elem in val.elements()])
 
 
-def process_bar(msg: blpapi.Message, typ="bar", **kwargs) -> Iterator[dict]:
+def process_bar(msg: Any, typ="bar", **kwargs) -> Iterator[dict[str, Any]]:
     """Process Bloomberg intraday bar messages.
 
     Args:
@@ -506,7 +345,7 @@ def check_error(msg):
         raise ValueError(f"[Intraday Bar Error] {category}: {message}")
 
 
-def elem_value(element: blpapi.Element):
+def elem_value(element: Any):
     """Get value from element.
 
     Args:
@@ -529,7 +368,7 @@ def elem_value(element: blpapi.Element):
     return value
 
 
-def _flatten_element(element: blpapi.Element) -> dict[str, Any]:
+def _flatten_element(element: Any) -> dict[str, Any]:
     """Recursively flatten a generic Bloomberg element to a dict."""
     out: dict[str, Any] = {}
     for elem in element.elements():
@@ -543,7 +382,7 @@ def _flatten_element(element: blpapi.Element) -> dict[str, Any]:
     return out
 
 
-def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
+def process_bql(msg: Any, **kwargs) -> Iterator[dict[str, Any]]:
     """Process BQL response messages into row dictionaries.
 
     Attempts to parse tabular BQL results; falls back to flattened dicts.
@@ -577,7 +416,7 @@ def process_bql(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
         yield from _iter_bql_structured_rows(msg)
 
 
-def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
+def _iter_bql_json_rows(msg: Any) -> Iterator[dict[str, Any]]:
     """Iterate rows from JSON-string BQL result payload, if present.
 
     Merges multiple fields by ID to avoid duplicate rows when multiple fields
@@ -680,7 +519,7 @@ def _iter_bql_json_rows(msg: blpapi.Message) -> Iterator[dict]:
         return iter(())
 
 
-def _flatten_dict(d: dict, parent_key: str = "", sep: str = "_") -> dict:
+def _flatten_dict(d: dict[str, Any], parent_key: str = "", sep: str = "_") -> dict[str, Any]:
     """Flatten a nested dict using ``sep`` between levels."""
     items: list[tuple[str, Any]] = []
     for k, v in d.items():
@@ -692,7 +531,7 @@ def _flatten_dict(d: dict, parent_key: str = "", sep: str = "_") -> dict:
     return dict(items)
 
 
-def _iter_bql_structured_rows(msg: blpapi.Message) -> Iterator[dict]:
+def _iter_bql_structured_rows(msg: Any) -> Iterator[dict[str, Any]]:
     """Iterate rows from structured ``RESULTS/TABLE`` BQL format."""
     for res in msg.getElement(RESULTS).values():
         if not res.hasElement(TABLE):
@@ -725,7 +564,7 @@ def _iter_bql_structured_rows(msg: blpapi.Message) -> Iterator[dict]:
             yield dict(zip(cols, values, strict=False))
 
 
-def earning_pct(data: pd.DataFrame, yr):
+def earning_pct(data: Any, yr):
     """Calculate % of earnings by year.
 
     Optimized implementation using vectorized operations where possible.
@@ -769,7 +608,7 @@ def earning_pct(data: pd.DataFrame, yr):
             data.loc[level_2_idx, pct] = 100 * data.loc[level_2_idx, yr] / group_sum
 
 
-def process_bsrch(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
+def process_bsrch(msg: Any, **kwargs) -> Iterator[dict[str, Any]]:
     """Process BSRCH GridResponse messages from Bloomberg Excel service.
 
     Args:
@@ -838,7 +677,7 @@ def check_current(dt, logger, **kwargs) -> bool:
     return True
 
 
-def process_tasvc(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
+def process_tasvc(msg: Any, **kwargs) -> Iterator[dict[str, Any]]:
     """Process TASVC (Technical Analysis) studyResponse messages.
 
     Args:
@@ -889,7 +728,7 @@ def process_tasvc(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
         return iter([])
 
 
-def process_bqr(msg: blpapi.Message, **kwargs) -> Iterator[dict]:
+def process_bqr(msg: Any, **kwargs) -> Iterator[dict[str, Any]]:
     """Process BQR (Quote Request) tick messages with broker codes.
 
     BQR is implemented as an IntradayTickRequest with BID/ASK event types

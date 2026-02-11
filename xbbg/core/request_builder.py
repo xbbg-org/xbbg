@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import cast
+
+from xbbg.backend import Backend, Format
 from xbbg.core.domain.context import split_kwargs
 from xbbg.core.domain.contracts import CachePolicy, DataRequest
 
@@ -81,7 +84,7 @@ class RequestBuilder:
         self._override_kwargs.update(kwargs)
         return self
 
-    def with_output(self, backend: str, output_format: str) -> RequestBuilder:
+    def with_output(self, backend: str | None = None, output_format: str | None = None) -> RequestBuilder:
         """Set output backend and format.
 
         Args:
@@ -122,8 +125,8 @@ class RequestBuilder:
             cache_policy=self._cache_policy,
             request_opts=self._request_opts,
             override_kwargs=self._override_kwargs,
-            backend=self._backend,
-            format=self._format,
+            backend=cast(Backend | None, self._backend),
+            format=cast(Format | None, self._format),
         )
 
     @classmethod
