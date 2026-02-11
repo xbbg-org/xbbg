@@ -431,35 +431,55 @@ The `server` parameter (or `server_host`) can be passed through any function tha
 
 ### Async Functions
 
-xbbg provides async versions of reference and historical data functions for non-blocking, concurrent requests. Use `abdp()`, `abds()`, and `abdh()` in async contexts:
+Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. The async versions are the real implementations; the sync functions are thin wrappers.
+
+#### In scripts (no existing event loop)
 
 ```python
 import asyncio
 from xbbg import blp
 
-# Single async request
 async def get_data():
-    df = await blp.abdp(tickers='TICKER US Equity', flds=['PX_LAST', 'VOLUME'])
+    df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
     return df
 
-# Concurrent requests for multiple tickers
 async def get_multiple():
+    # Concurrent requests — runs in parallel on a single thread
     results = await asyncio.gather(
-        blp.abdp(tickers='TICKER1 US Equity', flds=['PX_LAST']),
-        blp.abdp(tickers='TICKER2 US Equity', flds=['PX_LAST']),
-        blp.abdh(tickers='TICKER3 US Equity', start_date='2024-01-01'),
+        blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST']),
+        blp.abdp(tickers='MSFT US Equity', flds=['PX_LAST']),
+        blp.abdh(tickers='GOOGL US Equity', start_date='2024-01-01'),
     )
     return results
 
-# Run async functions
 data = asyncio.run(get_data())
 multiple = asyncio.run(get_multiple())
 ```
 
+#### In Jupyter notebooks
+
+Jupyter already runs an event loop, so `asyncio.run()` will raise `RuntimeError: asyncio.run() cannot be called from a running event loop`. Use `await` directly in notebook cells instead:
+
+```python
+from xbbg import blp
+
+# Just await directly — Jupyter cells are already async
+df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
+
+# Concurrent requests work the same way
+import asyncio
+results = await asyncio.gather(
+    blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST']),
+    blp.abdp(tickers='MSFT US Equity', flds=['PX_LAST']),
+)
+```
+
+> **Tip:** If you don't need async, the sync functions (`bdp`, `bdh`, `bdib`, etc.) work everywhere — scripts, notebooks, and async contexts — without any special handling.
+
 **Benefits:**
 - Non-blocking: doesn't block the event loop
 - Concurrent: use `asyncio.gather()` for parallel requests
-- Compatible: works with async web frameworks and async codebases
+- Compatible: works with async web frameworks, Jupyter, and async codebases
 - Same API: identical parameters to sync versions (`bdp`, `bds`, `bdh`)
 
 ### Multi-Backend Support
