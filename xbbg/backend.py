@@ -229,13 +229,6 @@ def configure(
         )
 
 
-def get_config() -> EngineConfig:
-    """Get the current engine configuration."""
-    if _config is None:
-        return EngineConfig()
-    return _config
-
-
 # =============================================================================
 # Backend Availability Checking
 # =============================================================================

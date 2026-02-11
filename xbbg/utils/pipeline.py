@@ -45,7 +45,7 @@ def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) ->
         pd.DataFrame
 
     Examples:
-        >>> dvd = pd.read_pickle('xbbg/tests/data/sample_dvd_mc_raw.pkl').iloc[:, :4]
+        >>> dvd = pd.read_pickle("xbbg/tests/data/sample_dvd_mc_raw.pkl").iloc[:, :4]
         >>> dvd
                      Declared Date     Ex-Date Record Date Payable Date
         MC FP Equity    2019-07-24  2019-12-06  2019-12-09   2019-12-10
@@ -58,7 +58,7 @@ def standard_cols(data: pd.DataFrame, col_maps: dict[str, str] | None = None) ->
         MC FP Equity    2019-01-29  2019-04-25  2019-04-26   2019-04-29
         MC FP Equity    2018-07-24  2018-12-04  2018-12-05   2018-12-06
         MC FP Equity    2018-01-25  2018-04-17  2018-04-18   2018-04-19
-        >>> dvd.pipe(standard_cols, col_maps={'Declared Date': 'dec_date'})
+        >>> dvd.pipe(standard_cols, col_maps={"Declared Date": "dec_date"})
                         dec_date     ex_date record_date payable_date
         MC FP Equity  2019-07-24  2019-12-06  2019-12-09   2019-12-10
         MC FP Equity  2019-01-29  2019-04-25  2019-04-26   2019-04-29
@@ -89,13 +89,13 @@ def apply_fx(
     Examples:
         >>> pd.options.display.precision = 2
         >>> rms = (
-        ...     pd.read_pickle('xbbg/tests/data/sample_rms_ib1.pkl')
-        ...     .pipe(get_series, col='close')
+        ...     pd.read_pickle("xbbg/tests/data/sample_rms_ib1.pkl")
+        ...     .pipe(get_series, col="close")
         ...     .apply(pd.to_numeric)
         ...     .rename_axis(columns=None)
         ...     .pipe(dropna)
         ... ).tail()
-        >>> eur = pd.read_pickle('xbbg/tests/data/sample_eur_ib.pkl')
+        >>> eur = pd.read_pickle("xbbg/tests/data/sample_eur_ib.pkl")
         >>> rms
                                    RMS FP Equity
         2020-01-17 16:26:00+00:00          725.4
@@ -129,7 +129,7 @@ def apply_fx(
     return data.mul(add_fx.iloc[:, -1].pow(power), axis=0).dropna(how="all")
 
 
-def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
+def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.Series | pd.DataFrame:
     """Daily stats for given data.
 
     Args:
@@ -137,18 +137,21 @@ def daily_stats(data: pd.Series | pd.DataFrame, **kwargs) -> pd.DataFrame:
         **kwargs: Additional arguments passed to describe().
 
     Returns:
-        pd.DataFrame with daily statistics.
+        pd.Series or pd.DataFrame with daily statistics.
 
     Examples:
         >>> pd.options.display.precision = 2
         >>> (
-        ...     pd.concat([
-        ...         pd.read_pickle('xbbg/tests/data/sample_rms_ib0.pkl'),
-        ...         pd.read_pickle('xbbg/tests/data/sample_rms_ib1.pkl'),
-        ...     ], sort=False)
-        ...     .pipe(get_series, col='close')
+        ...     pd.concat(
+        ...         [
+        ...             pd.read_pickle("xbbg/tests/data/sample_rms_ib0.pkl"),
+        ...             pd.read_pickle("xbbg/tests/data/sample_rms_ib1.pkl"),
+        ...         ],
+        ...         sort=False,
+        ...     )
+        ...     .pipe(get_series, col="close")
         ...     .pipe(daily_stats)
-        ... )['RMS FP Equity'].iloc[:, :5]
+        ... )["RMS FP Equity"].iloc[:, :5]
                                    count    mean   std    min    10%
         2020-01-16 00:00:00+00:00  434.0  711.16  1.11  708.6  709.6
         2020-01-17 00:00:00+00:00  437.0  721.53  1.66  717.0  719.0
@@ -190,7 +193,7 @@ def format_raw(data: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame with datetime columns converted where possible.
 
     Examples:
-        >>> dvd = pd.read_pickle('xbbg/tests/data/sample_dvd_mc_raw.pkl')
+        >>> dvd = pd.read_pickle("xbbg/tests/data/sample_dvd_mc_raw.pkl")
         >>> dvd.dtypes
         Declared Date          object
         Ex-Date                object
@@ -256,9 +259,9 @@ def add_ticker(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
     Examples:
         >>> (
-        ...     pd.read_parquet('xbbg/tests/data/sample_bdib.parq')
-        ...     .pipe(add_ticker, ticker='SPY US Equity')
-        ...     .pipe(get_series, col='close')
+        ...     pd.read_parquet("xbbg/tests/data/sample_bdib.parq")
+        ...     .pipe(add_ticker, ticker="SPY US Equity")
+        ...     .pipe(get_series, col="close")
         ... )
                                    SPY US Equity
         2018-12-28 09:30:00-05:00         249.67
@@ -287,13 +290,13 @@ def since_year(data: pd.DataFrame, year: int) -> pd.DataFrame:
         >>> pd.options.display.width = 120
         >>> pd.options.display.max_columns = 10
         >>> pd.options.display.precision = 2
-        >>> amzn = pd.read_pickle('xbbg/tests/data/sample_earning_amzn.pkl')
-        >>> amzn.query('level == 1').pipe(since_year, year=2017)
+        >>> amzn = pd.read_pickle("xbbg/tests/data/sample_earning_amzn.pkl")
+        >>> amzn.query("level == 1").pipe(since_year, year=2017)
                          segment_name  level    fy2018    fy2017  fy2018_pct  fy2017_pct
         AMZN US Equity  North America      1  141366.0  106110.0       60.70       59.66
         AMZN US Equity  International      1   65866.0   54297.0       28.28       30.53
         AMZN US Equity            AWS      1   25655.0   17459.0       11.02        9.82
-        >>> amzn.query('level == 1').pipe(since_year, year=2018)
+        >>> amzn.query("level == 1").pipe(since_year, year=2018)
                          segment_name  level    fy2018  fy2018_pct
         AMZN US Equity  North America      1  141366.0       60.70
         AMZN US Equity  International      1   65866.0       28.28
@@ -314,11 +317,12 @@ def perf(data: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
     Examples:
         >>> import numpy as np
         >>> (
-        ...     pd.DataFrame({
-        ...         's1': [1., np.nan, 1.01, 1.03, .99],
-        ...         's2': [np.nan, 1., .99, 1.04, 1.1],
-        ...     })
-        ...     .pipe(perf)
+        ...     pd.DataFrame(
+        ...         {
+        ...             "s1": [1.0, np.nan, 1.01, 1.03, 0.99],
+        ...             "s2": [np.nan, 1.0, 0.99, 1.04, 1.1],
+        ...         }
+        ...     ).pipe(perf)
         ... )
               s1     s2
         0  100.0    NaN

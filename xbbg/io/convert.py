@@ -561,7 +561,7 @@ def to_output(
     format: Format,
     ticker_col: str,
     date_col: str,
-    field_cols: list[str],
+    field_cols: list[str] | None = None,
 ) -> Any:
     """Convert an Arrow table to the requested backend and format.
 

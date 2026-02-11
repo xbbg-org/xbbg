@@ -5,12 +5,8 @@ creation, file/folder listing with filters, and utility getters.
 """
 
 import logging
-import os
 from pathlib import Path
 import re
-import time
-
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -86,93 +82,3 @@ def all_files(path_name, keyword="", ext="", full_path=True, has_date=False, dat
         for f in p.glob(keyword)
         if f.is_file() and (f.name[0] != "~") and ((not has_date) or r.match(f.name))
     ]
-
-
-def all_folders(path_name, keyword="", has_date=False, date_fmt=DATE_FMT) -> list[str]:
-    """Search all folders with criteria.
-
-    Returned list will be sorted by last modified.
-
-    Args:
-        path_name: full path name
-        keyword: keyword to search
-        has_date: whether has date in file name (default False)
-        date_fmt: date format to check for has_date parameter
-
-    Returns:
-        list: All folder names fulfilled criteria.
-    """
-    p = Path(path_name)
-    if not p.is_dir():
-        return []
-
-    r = re.compile(f".*{date_fmt}.*")
-    return [
-        f.as_posix()
-        for f in p.glob(f"*{keyword}*" if keyword else "*")
-        if f.is_dir() and (f.name[0] != "~") and ((not has_date) or r.match(f.name))
-    ]
-
-
-def sort_by_modified(files_or_folders: list) -> list:
-    """Sort files or folders by modified time.
-
-    Args:
-        files_or_folders: list of files or folders
-
-    Returns:
-        list
-    """
-    return sorted(files_or_folders, key=os.path.getmtime, reverse=True)
-
-
-def filter_by_dates(files_or_folders: list, date_fmt=DATE_FMT) -> list:
-    """Filter files or dates by date patterns.
-
-    Args:
-        files_or_folders: list of files or folders
-        date_fmt: date format
-
-    Returns:
-        list
-    """
-    r = re.compile(f".*{date_fmt}.*")
-    return list(
-        filter(
-            lambda v: r.match(Path(v).name) is not None,
-            files_or_folders,
-        )
-    )
-
-
-def latest_file(path_name, keyword="", ext="", **kwargs) -> str:
-    """Latest modified file in folder.
-
-    Args:
-        path_name: full path name
-        keyword: keyword to search
-        ext: file extension
-        **kwargs: Additional options; supports ``log`` for logger level.
-
-    Returns:
-        str: Latest file name.
-    """
-    files = sort_by_modified(all_files(path_name=path_name, keyword=keyword, ext=ext, full_path=True))
-
-    if not files:
-        logger.debug("No files found in directory: %s", path_name)
-        return ""
-
-    return Path(files[0]).as_posix()
-
-
-def modified_time(file_name):
-    """File modified time in python.
-
-    Args:
-        file_name: file name
-
-    Returns:
-        pd.Timestamp
-    """
-    return pd.to_datetime(time.ctime(os.path.getmtime(filename=file_name)))
