@@ -28,10 +28,10 @@ def test_bdib_uses_cached_parquet_when_available(monkeypatch):
 
     monkeypatch.setattr(bloomberg, "fetch_exchange_info", mock_fetch_exchange_info)
 
-    def _fail(*args, **kwargs):  # pragma: no cover - defensive
-        raise AssertionError("send_request should not be called when cache file exists")
+    async def _fail(*args, **kwargs):  # pragma: no cover - defensive
+        raise AssertionError("arequest should not be called when cache file exists")
 
-    monkeypatch.setattr(conn, "send_request", _fail)
+    monkeypatch.setattr(conn, "arequest", _fail)
 
     df = intraday.bdib(
         ticker="AAPL US Equity",

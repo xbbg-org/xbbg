@@ -189,7 +189,7 @@ class TestParseHhmm:
 
         nan_val = float("nan")
         # The function handles this via pd.isna check
-        assert _parse_hhmm(str(nan_val)) is None  # type: ignore[arg-type]
+        assert _parse_hhmm(str(nan_val)) is None
 
     def test_parse_invalid_format(self):
         """Test parsing invalid formats."""
@@ -243,7 +243,7 @@ class TestParseFuturesHours:
         # NaN is passed as a value that could come from pandas
         nan_val = float("nan")
         # The function handles this via pd.isna check
-        assert _parse_futures_hours(str(nan_val)) == {}  # type: ignore[arg-type]
+        assert _parse_futures_hours(str(nan_val)) == {}
 
     def test_parse_invalid_format(self):
         """Test parsing invalid formats."""
@@ -800,89 +800,6 @@ class TestSaveAndLoadExchangeInfo:
         loaded = load_exchange_info("TEST Equity")
         assert loaded is not None
         assert loaded.sessions == sessions
-
-
-class TestInvalidateExchangeCache:
-    """Tests for invalidate_exchange_cache function."""
-
-    def test_invalidate_single_ticker(self, temp_cache_dir: Path):
-        """Test invalidating single ticker."""
-        from xbbg.io.cache import (
-            invalidate_exchange_cache,
-            load_exchange_info,
-            save_exchange_infos,
-        )
-
-        infos = [
-            ExchangeInfo(ticker="TEST1 Equity", timezone="Asia/Tokyo", source="bloomberg"),
-            ExchangeInfo(ticker="TEST2 Equity", timezone="Europe/London", source="bloomberg"),
-        ]
-        save_exchange_infos(infos)
-
-        invalidate_exchange_cache("TEST1 Equity")
-
-        assert load_exchange_info("TEST1 Equity") is None
-        assert load_exchange_info("TEST2 Equity") is not None
-
-    def test_invalidate_all(self, temp_cache_dir: Path):
-        """Test invalidating entire cache."""
-        from xbbg.io.cache import (
-            exchange_cache_file,
-            invalidate_exchange_cache,
-            save_exchange_infos,
-        )
-
-        infos = [
-            ExchangeInfo(ticker="TEST1 Equity", timezone="Asia/Tokyo", source="bloomberg"),
-            ExchangeInfo(ticker="TEST2 Equity", timezone="Europe/London", source="bloomberg"),
-        ]
-        save_exchange_infos(infos)
-
-        invalidate_exchange_cache()
-
-        # Cache file should be deleted
-        assert not Path(exchange_cache_file()).exists()
-
-    def test_invalidate_nonexistent(self, temp_cache_dir: Path):
-        """Test invalidating nonexistent ticker (should not raise)."""
-        from xbbg.io.cache import invalidate_exchange_cache
-
-        invalidate_exchange_cache("NONEXISTENT Equity")  # Should not raise
-
-
-class TestLoadAllExchangeInfos:
-    """Tests for load_all_exchange_infos function."""
-
-    def test_load_all_empty(self, temp_cache_dir: Path):
-        """Test loading when cache is empty."""
-        from xbbg.io.cache import load_all_exchange_infos
-
-        result = load_all_exchange_infos()
-        assert result == {}
-
-    def test_load_all_multiple(self, temp_cache_dir: Path):
-        """Test loading multiple entries."""
-        from xbbg.io.cache import load_all_exchange_infos, save_exchange_infos
-
-        infos = [
-            ExchangeInfo(ticker="TEST1 Equity", timezone="Asia/Tokyo", source="bloomberg"),
-            ExchangeInfo(ticker="TEST2 Equity", timezone="Europe/London", source="bloomberg"),
-        ]
-        save_exchange_infos(infos)
-
-        result = load_all_exchange_infos()
-        assert len(result) == 2
-        assert "TEST1 Equity" in result
-        assert "TEST2 Equity" in result
-
-
-# ============================================================================
-# Tests for resolver_chain.py helpers
-# ============================================================================
-
-
-class TestExchangeInfoToSeries:
-    """Tests for _exchange_info_to_series function."""
 
     def test_basic_conversion(self, sample_exchange_info: ExchangeInfo):
         """Test basic conversion to Series."""

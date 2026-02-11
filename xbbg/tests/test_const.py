@@ -88,7 +88,7 @@ class TestCurrencyPair:
         """Test that CurrencyPair is immutable (frozen)."""
         pair = const.CurrencyPair(ticker="GBPUSD Curncy", factor=1.0, power=1.0)
         with pytest.raises(FrozenInstanceError):
-            pair.ticker = "USDJPY Curncy"
+            pair.ticker = "USDJPY Curncy"  # type: ignore[invalid-assignment]
 
     def test_currency_pair_with_different_values(self):
         """Test CurrencyPair with non-default factor and power."""

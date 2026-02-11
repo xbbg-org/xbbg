@@ -86,7 +86,7 @@ class TestBarCacheAdapter:
                 # Create a test request
                 request = DataRequest(
                     ticker="AAPL US Equity",
-                    dt=datetime(2025, 11, 19),
+                    dt=pd.Timestamp(datetime(2025, 11, 19)),
                     event_type="TRADE",
                 )
 
@@ -123,7 +123,7 @@ class TestBarCacheAdapter:
         # Create a test request
         request = DataRequest(
             ticker="AAPL US Equity",
-            dt=datetime(2025, 11, 19),
+            dt=pd.Timestamp(datetime(2025, 11, 19)),
             event_type="TRADE",
         )
 

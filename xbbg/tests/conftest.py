@@ -66,7 +66,7 @@ def pytest_configure(config):
             logging.getLogger().setLevel(log_level)
 
     print(config)
-    sys.pytest_call = True  # type: ignore[attr-defined]  # Dynamic attribute for pytest session tracking
+    sys.__dict__["pytest_call"] = True
     # Store prompt option globally for use in hooks
     config._prompt_between_tests = config.getoption("--prompt-between-tests", default=False)
 
@@ -88,5 +88,4 @@ def pytest_collection_modifyitems(config, items):
 
 def pytest_unconfigure(config):
     print(config)
-    if hasattr(sys, "pytest_call"):
-        del sys.pytest_call  # type: ignore[attr-defined]
+    sys.__dict__.pop("pytest_call", None)

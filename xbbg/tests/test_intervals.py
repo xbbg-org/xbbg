@@ -37,7 +37,7 @@ class TestSession:
         """Test that Session is immutable (frozen)."""
         session = Session(start_time="09:00", end_time="16:00")
         with pytest.raises(AttributeError):
-            session.start_time = "10:00"
+            session.start_time = "10:00"  # type: ignore[invalid-assignment]
 
     def test_session_with_none_values(self):
         """Test Session with None values."""

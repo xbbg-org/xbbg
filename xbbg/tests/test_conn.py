@@ -4,7 +4,7 @@ Tests Bloomberg session/connection management including:
 - SessionManager singleton and caching behavior
 - bbg_session and bbg_service public functions
 - connect_bbg connection handling
-- send_request retry logic
+
 - Regression tests for bug fixes
 """
 
@@ -146,36 +146,6 @@ class TestBugRegressions:
             manager.get_session(port=8194)
 
         mock_stale_session.stop.assert_called_once()
-
-    def test_send_request_retry_passes_server_host(self):
-        """Bug 5: send_request retry must pass server_host to remove_session."""
-        from xbbg.core.infra.conn import SessionManager, send_request
-
-        manager = SessionManager()
-
-        # Create mock session that raises on first sendRequest, succeeds on second
-        mock_session = MagicMock()
-        call_count = 0
-
-        def send_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise blpapi.InvalidStateException("Session not started", 0)
-
-        mock_session.sendRequest.side_effect = send_side_effect
-        mock_session._Session__handle = "valid_handle"
-
-        mock_request = MagicMock()
-
-        with (
-            patch("xbbg.core.infra.conn.bbg_session", return_value=mock_session),
-            patch.object(manager, "remove_session") as mock_remove,
-        ):
-            send_request(mock_request, port=8195, server_host="bpipe.example.com")
-
-        # Verify remove_session was called with BOTH port AND server_host
-        mock_remove.assert_called_once_with(port=8195, server_host="bpipe.example.com")
 
     def test_connect_bbg_stops_session_on_start_failure(self):
         """Bug 6: connect_bbg must call .stop() on session if start() returns False."""
@@ -339,7 +309,7 @@ class TestSessionManagerSingleton:
 
 
 class TestPublicFunctions:
-    """Test public module functions: bbg_session, bbg_service, send_request, etc."""
+    """Test public module functions: bbg_session, bbg_service, etc."""
 
     def setup_method(self):
         """Reset SessionManager state before each test."""
@@ -645,36 +615,6 @@ class TestEdgeCasesFromIssues:
         # Should have called openService to recreate
         mock_session.openService.assert_called_once_with("//blp/refdata")
         assert result is mock_new_service
-
-    def test_send_request_retry_returns_valid_dict(self):
-        """General: send_request returns dict with 'event_queue' and 'correlation_id'.
-
-        Verifies the return value structure after retry logic.
-        """
-        from xbbg.core.infra.conn import SessionManager, send_request
-
-        SessionManager()
-
-        mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
-        call_count = 0
-
-        def send_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise blpapi.InvalidStateException("Session not started", 0)
-
-        mock_session.sendRequest.side_effect = send_side_effect
-        mock_request = MagicMock()
-
-        with patch("xbbg.core.infra.conn.bbg_session", return_value=mock_session):
-            result = send_request(mock_request, port=8194)
-
-        assert "event_queue" in result
-        assert "correlation_id" in result
-        assert result["event_queue"] is not None
-        assert result["correlation_id"] is not None
 
     def test_event_types_returns_dict(self):
         """General: event_types() returns a dict.

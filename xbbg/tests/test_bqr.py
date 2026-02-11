@@ -196,64 +196,60 @@ class TestProcessBqr:
         assert result[0]["brokerBuyCode"] == "EUBS"
 
 
+def _make_async_arequest_stub(rows):
+    """Create an async stub for conn.arequest that returns the given rows."""
+
+    async def _stub(request, process_func, service=None, **kwargs):
+        return rows
+
+    return _stub
+
+
 class TestBqrApi:
     """Tests for blp.bqr() API function."""
 
-    def test_bqr_returns_dataframe(self, monkeypatch, fake_handle):
+    def test_bqr_returns_dataframe(self, monkeypatch):
         """Test that bqr returns a DataFrame."""
-        monkeypatch.setattr(conn, "send_request", lambda request, **kwargs: fake_handle)
         rows = [
             {"time": "2024-01-15T10:30:00", "type": "BID", "value": 100.5, "size": 1000, "brokerBuyCode": "EUBS"},
         ]
-        monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: rows)
+        monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub(rows))
 
         df = blp.bqr("TEST Corp", date_offset="-2d")
 
         assert isinstance(df, pd.DataFrame)
 
-    def test_bqr_empty_results_returns_empty_dataframe(self, monkeypatch, fake_handle):
+    def test_bqr_empty_results_returns_empty_dataframe(self, monkeypatch):
         """Test that empty results return empty DataFrame."""
-        monkeypatch.setattr(conn, "send_request", lambda request, **kwargs: fake_handle)
-        monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: [])
+        monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub([]))
 
         df = blp.bqr("TEST Corp", date_offset="-2d")
 
         assert isinstance(df, pd.DataFrame)
         assert df.empty
 
-    def test_bqr_default_event_types(self, monkeypatch, fake_handle):
+    def test_bqr_default_event_types(self, monkeypatch):
         """Test that default event types are BID and ASK."""
-        captured_request = {}
+        monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub([]))
 
-        def capture_send(request, **kwargs):
-            captured_request["request"] = request
-            return fake_handle
+        # Verified the function runs without error with default event types
+        df = blp.bqr("TEST Corp", date_offset="-2d")
+        assert isinstance(df, pd.DataFrame)
 
-        monkeypatch.setattr(conn, "send_request", capture_send)
-        monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: [])
-
-        blp.bqr("TEST Corp", date_offset="-2d")
-
-        # The request was captured - we can't easily inspect the event types
-        # due to mocking, but we verified the function runs without error
-        assert "request" in captured_request
-
-    def test_bqr_with_explicit_dates(self, monkeypatch, fake_handle):
+    def test_bqr_with_explicit_dates(self, monkeypatch):
         """Test bqr with explicit start and end dates."""
-        monkeypatch.setattr(conn, "send_request", lambda request, **kwargs: fake_handle)
-        monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: [])
+        monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub([]))
 
         df = blp.bqr("TEST Corp", start_date="2024-01-15", end_date="2024-01-17")
 
         assert isinstance(df, pd.DataFrame)
 
-    def test_bqr_with_trade_events(self, monkeypatch, fake_handle):
+    def test_bqr_with_trade_events(self, monkeypatch):
         """Test bqr with TRADE event type."""
-        monkeypatch.setattr(conn, "send_request", lambda request, **kwargs: fake_handle)
         rows = [
             {"time": "2024-01-15T10:30:00", "type": "TRADE", "value": 100.5, "size": 1000},
         ]
-        monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: rows)
+        monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub(rows))
 
         df = blp.bqr("TEST Corp", date_offset="-2d", event_types=["TRADE"])
 

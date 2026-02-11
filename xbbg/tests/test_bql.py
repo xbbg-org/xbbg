@@ -38,11 +38,19 @@ def stub_bbg_service(monkeypatch):
     monkeypatch.setattr(conn, "bbg_service", lambda service, **kwargs: _FakeService())
 
 
-def test_bql_returns_dataframe_from_rows(monkeypatch, fake_handle):
-    # Arrange: stub send_request and rec_events to avoid real blpapi calls
-    monkeypatch.setattr(conn, "send_request", lambda request, **kwargs: fake_handle)
+def _make_async_arequest_stub(rows):
+    """Create an async stub for conn.arequest that returns the given rows."""
+
+    async def _stub(request, process_func, service=None, **kwargs):
+        return rows
+
+    return _stub
+
+
+def test_bql_returns_dataframe_from_rows(monkeypatch):
+    # Arrange: stub arequest to return rows directly (pipeline now uses arequest)
     rows = [{"col1": 1, "col2": "a"}, {"col1": 2, "col2": "b"}]
-    monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: rows)
+    monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub(rows))
 
     # Act
     df = blp.bql("get(foo, bar)")
@@ -53,9 +61,8 @@ def test_bql_returns_dataframe_from_rows(monkeypatch, fake_handle):
     assert df.shape == (2, 2)
 
 
-def test_bql_empty_results_returns_empty_dataframe(monkeypatch, fake_handle):
-    monkeypatch.setattr(conn, "send_request", lambda request, **kwargs: fake_handle)
-    monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: [])
+def test_bql_empty_results_returns_empty_dataframe(monkeypatch):
+    monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub([]))
 
     df = blp.bql("get(foo)")
 
@@ -63,9 +70,8 @@ def test_bql_empty_results_returns_empty_dataframe(monkeypatch, fake_handle):
     assert df.empty
 
 
-def test_bql_accepts_params(monkeypatch, fake_handle):
-    monkeypatch.setattr(conn, "send_request", lambda request, **kwargs: fake_handle)
-    monkeypatch.setattr(process, "rec_events", lambda func, event_queue=None, **kwargs: [{"x": 1}])
+def test_bql_accepts_params(monkeypatch):
+    monkeypatch.setattr(conn, "arequest", _make_async_arequest_stub([{"x": 1}]))
 
     df = blp.bql("get(foo)", params={"p": 1, "q": "abc"})
 
