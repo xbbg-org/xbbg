@@ -4,13 +4,18 @@ Tests Bloomberg session/connection management including:
 - SessionManager singleton and caching behavior
 - bbg_session and bbg_service public functions
 - connect_bbg connection handling
-
+- arequest / request async I/O pipeline
+- aget_session / aget_service async session management
+- _run_sync sync-to-async bridge
+- End-to-end connection flow tests
 - Regression tests for bug fixes
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import asyncio
+import logging
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -681,3 +686,604 @@ class TestEdgeCasesFromIssues:
             pytest.raises(ConnectionError),
         ):
             connect()
+
+
+class TestArequest:
+    """Tests for arequest() — the async foundation for all Bloomberg I/O."""
+
+    def setup_method(self):
+        """Reset SessionManager state before each test."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+        manager._sessions.clear()
+        manager._services.clear()
+        manager._default_session = None
+
+    def _make_event(self, event_type, messages):
+        """Create a mock Bloomberg event with given type and messages."""
+        ev = MagicMock()
+        ev.eventType.return_value = event_type
+        ev.__iter__ = MagicMock(return_value=iter(messages))
+        return ev
+
+    def test_arequest_happy_path(self):
+        """arequest sends request, polls events, returns processed results."""
+        from xbbg.core.infra.conn import arequest
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        mock_request = MagicMock()
+
+        # Simulate: first tryNextEvent returns None (polling), then RESPONSE
+        msg = MagicMock()
+        response_event = self._make_event(blpapi.Event.RESPONSE, [msg])
+
+        mock_queue = MagicMock()
+        mock_queue.tryNextEvent.side_effect = [None, response_event]
+
+        def process_func(msg, **kwargs):
+            return [{"ticker": "SPX Index", "PX_LAST": 5000.0}]
+
+        with (
+            patch("xbbg.core.infra.conn._session_manager") as mock_mgr,
+            patch("xbbg.core.infra.conn.blpapi") as mock_blpapi,
+        ):
+            mock_mgr.aget_session = AsyncMock(return_value=mock_session)
+            mock_blpapi.EventQueue.return_value = mock_queue
+            mock_blpapi.CorrelationId.return_value = MagicMock()
+            mock_blpapi.Event.PARTIAL_RESPONSE = blpapi.Event.PARTIAL_RESPONSE
+            mock_blpapi.Event.RESPONSE = blpapi.Event.RESPONSE
+            mock_blpapi.Event.TIMEOUT = blpapi.Event.TIMEOUT
+
+            results = asyncio.run(arequest(mock_request, process_func, service="//blp/refdata"))
+
+        assert results == [{"ticker": "SPX Index", "PX_LAST": 5000.0}]
+        mock_session.sendRequest.assert_called_once()
+
+    def test_arequest_partial_then_response(self):
+        """arequest accumulates results across PARTIAL_RESPONSE and RESPONSE events."""
+        from xbbg.core.infra.conn import arequest
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        mock_request = MagicMock()
+        msg1 = MagicMock()
+        msg2 = MagicMock()
+
+        partial_event = self._make_event(blpapi.Event.PARTIAL_RESPONSE, [msg1])
+        final_event = self._make_event(blpapi.Event.RESPONSE, [msg2])
+
+        mock_queue = MagicMock()
+        mock_queue.tryNextEvent.side_effect = [partial_event, final_event]
+
+        call_count = [0]
+
+        def process_func(msg, **kwargs):
+            call_count[0] += 1
+            return [{"row": call_count[0]}]
+
+        with (
+            patch("xbbg.core.infra.conn._session_manager") as mock_mgr,
+            patch("xbbg.core.infra.conn.blpapi") as mock_blpapi,
+        ):
+            mock_mgr.aget_session = AsyncMock(return_value=mock_session)
+            mock_blpapi.EventQueue.return_value = mock_queue
+            mock_blpapi.CorrelationId.return_value = MagicMock()
+            mock_blpapi.Event.PARTIAL_RESPONSE = blpapi.Event.PARTIAL_RESPONSE
+            mock_blpapi.Event.RESPONSE = blpapi.Event.RESPONSE
+            mock_blpapi.Event.TIMEOUT = blpapi.Event.TIMEOUT
+
+            results = asyncio.run(arequest(mock_request, process_func))
+
+        assert results == [{"row": 1}, {"row": 2}]
+
+    def test_arequest_retries_on_invalid_state(self):
+        """arequest removes stale session and retries on InvalidStateException."""
+        from xbbg.core.infra.conn import arequest
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        # blpapi exceptions expect (description, errorCode) in __str__
+        exc = blpapi.InvalidStateException("Session not started", 0)
+
+        # First sendRequest raises, second succeeds
+        mock_session.sendRequest.side_effect = [exc, None]
+
+        mock_request = MagicMock()
+        msg = MagicMock()
+        response_event = self._make_event(blpapi.Event.RESPONSE, [msg])
+
+        mock_queue = MagicMock()
+        mock_queue.tryNextEvent.return_value = response_event
+
+        def process_func(msg, **kwargs):
+            return [{"retried": True}]
+
+        with (
+            patch("xbbg.core.infra.conn._session_manager") as mock_mgr,
+            patch("xbbg.core.infra.conn.blpapi") as mock_blpapi,
+        ):
+            mock_mgr.aget_session = AsyncMock(return_value=mock_session)
+            mock_mgr.remove_session = MagicMock()
+            mock_blpapi.EventQueue.return_value = mock_queue
+            mock_blpapi.CorrelationId.return_value = MagicMock()
+            mock_blpapi.InvalidStateException = blpapi.InvalidStateException
+            mock_blpapi.Event.PARTIAL_RESPONSE = blpapi.Event.PARTIAL_RESPONSE
+            mock_blpapi.Event.RESPONSE = blpapi.Event.RESPONSE
+            mock_blpapi.Event.TIMEOUT = blpapi.Event.TIMEOUT
+
+            results = asyncio.run(arequest(mock_request, process_func))
+
+        mock_mgr.remove_session.assert_called_once()
+        assert results == [{"retried": True}]
+
+    def test_arequest_skips_timeout_events(self):
+        """arequest ignores TIMEOUT events and continues polling."""
+        from xbbg.core.infra.conn import arequest
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        mock_request = MagicMock()
+        msg = MagicMock()
+
+        timeout_event = self._make_event(blpapi.Event.TIMEOUT, [])
+        response_event = self._make_event(blpapi.Event.RESPONSE, [msg])
+
+        mock_queue = MagicMock()
+        mock_queue.tryNextEvent.side_effect = [timeout_event, response_event]
+
+        def process_func(msg, **kwargs):
+            return [{"data": 42}]
+
+        with (
+            patch("xbbg.core.infra.conn._session_manager") as mock_mgr,
+            patch("xbbg.core.infra.conn.blpapi") as mock_blpapi,
+        ):
+            mock_mgr.aget_session = AsyncMock(return_value=mock_session)
+            mock_blpapi.EventQueue.return_value = mock_queue
+            mock_blpapi.CorrelationId.return_value = MagicMock()
+            mock_blpapi.Event.PARTIAL_RESPONSE = blpapi.Event.PARTIAL_RESPONSE
+            mock_blpapi.Event.RESPONSE = blpapi.Event.RESPONSE
+            mock_blpapi.Event.TIMEOUT = blpapi.Event.TIMEOUT
+
+            results = asyncio.run(arequest(mock_request, process_func))
+
+        assert results == [{"data": 42}]
+
+    def test_arequest_handles_session_terminated(self):
+        """arequest returns partial results on SessionTerminated event."""
+        from xbbg.core.infra.conn import arequest
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        mock_request = MagicMock()
+
+        # Create a SessionTerminated message
+        term_msg = MagicMock()
+        term_msg.messageType.return_value = blpapi.Name("SessionTerminated")
+
+        # Use an event type that's not RESPONSE/PARTIAL_RESPONSE/TIMEOUT
+        # to hit the else branch
+        terminated_event = MagicMock()
+        terminated_event.eventType.return_value = 999  # Unknown event type
+        terminated_event.__iter__ = MagicMock(return_value=iter([term_msg]))
+
+        mock_queue = MagicMock()
+        mock_queue.tryNextEvent.return_value = terminated_event
+
+        def process_func(msg, **kwargs):
+            return []
+
+        with (
+            patch("xbbg.core.infra.conn._session_manager") as mock_mgr,
+            patch("xbbg.core.infra.conn.blpapi") as mock_blpapi,
+        ):
+            mock_mgr.aget_session = AsyncMock(return_value=mock_session)
+            mock_blpapi.EventQueue.return_value = mock_queue
+            mock_blpapi.CorrelationId.return_value = MagicMock()
+            mock_blpapi.Event.PARTIAL_RESPONSE = blpapi.Event.PARTIAL_RESPONSE
+            mock_blpapi.Event.RESPONSE = blpapi.Event.RESPONSE
+            mock_blpapi.Event.TIMEOUT = blpapi.Event.TIMEOUT
+            mock_blpapi.Name = blpapi.Name
+
+            results = asyncio.run(arequest(mock_request, process_func))
+
+        assert results == []
+
+    def test_arequest_slow_request_warning(self, caplog):
+        """arequest logs a warning when response takes longer than slow_warn_seconds."""
+        from xbbg.core.infra.conn import arequest
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        mock_request = MagicMock()
+        msg = MagicMock()
+        response_event = self._make_event(blpapi.Event.RESPONSE, [msg])
+
+        call_count = [0]
+
+        def mock_try_next():
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return None  # Simulate polling
+            return response_event
+
+        mock_queue = MagicMock()
+        mock_queue.tryNextEvent.side_effect = mock_try_next
+
+        def process_func(msg, **kwargs):
+            return [{"result": True}]
+
+        with (
+            patch("xbbg.core.infra.conn._session_manager") as mock_mgr,
+            patch("xbbg.core.infra.conn.blpapi") as mock_blpapi,
+            patch("time.time") as mock_time,
+            caplog.at_level(logging.WARNING, logger="xbbg.core.infra.conn"),
+        ):
+            # Simulate time passing: start=0, then 0, then 20s (past slow_warn), then 20s
+            mock_time.side_effect = [0.0, 0.0, 20.0, 20.0]
+            mock_mgr.aget_session = AsyncMock(return_value=mock_session)
+            mock_blpapi.EventQueue.return_value = mock_queue
+            mock_blpapi.CorrelationId.return_value = MagicMock()
+            mock_blpapi.Event.PARTIAL_RESPONSE = blpapi.Event.PARTIAL_RESPONSE
+            mock_blpapi.Event.RESPONSE = blpapi.Event.RESPONSE
+            mock_blpapi.Event.TIMEOUT = blpapi.Event.TIMEOUT
+
+            results = asyncio.run(arequest(mock_request, process_func, slow_warn_seconds=15.0))
+
+        assert results == [{"result": True}]
+        assert any("taking" in r.message and "seconds" in r.message for r in caplog.records)
+
+
+class TestRequestSync:
+    """Tests for request() — the synchronous wrapper around arequest()."""
+
+    def setup_method(self):
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+        manager._sessions.clear()
+        manager._services.clear()
+        manager._default_session = None
+
+    def test_request_calls_arequest_via_run_sync(self):
+        """request() delegates to arequest() via _run_sync()."""
+        from xbbg.core.infra.conn import request
+
+        mock_request = MagicMock()
+
+        def process_func(msg, **kwargs):
+            return [{"sync": True}]
+
+        # Patch arequest to return a real coroutine that yields the expected result
+        async def fake_arequest(*args, **kwargs):
+            return [{"sync": True}]
+
+        with patch("xbbg.core.infra.conn.arequest", side_effect=fake_arequest):
+            result = request(mock_request, process_func, service="//blp/refdata")
+
+        assert result == [{"sync": True}]
+
+
+class TestAgetSession:
+    """Tests for aget_session / aget_service — async session management."""
+
+    def setup_method(self):
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+        manager._sessions.clear()
+        manager._services.clear()
+        manager._default_session = None
+
+    def test_aget_session_creates_new(self):
+        """aget_session() creates new session when cache is empty."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
+            result = asyncio.run(manager.aget_session(port=8194))
+
+        assert result is mock_session
+        assert "//localhost:8194" in manager._sessions
+
+    def test_aget_session_returns_cached(self):
+        """aget_session() returns cached session without creating a new one."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+        manager._sessions["//localhost:8194"] = mock_session
+
+        with patch("xbbg.core.infra.conn.connect_bbg") as mock_connect:
+            result = asyncio.run(manager.aget_session(port=8194))
+
+        mock_connect.assert_not_called()
+        assert result is mock_session
+
+    def test_aget_session_replaces_stale(self):
+        """aget_session() replaces stale session (handle=None) with a new one."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_stale = MagicMock()
+        mock_stale._Session__handle = None
+        manager._sessions["//localhost:8194"] = mock_stale
+
+        mock_new = MagicMock()
+        mock_new._Session__handle = "valid"
+
+        with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_new):
+            result = asyncio.run(manager.aget_session(port=8194))
+
+        mock_stale.stop.assert_called_once()
+        assert result is mock_new
+
+    def test_aget_session_uses_default(self):
+        """aget_session() returns default session when no server specified."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_default = MagicMock()
+        mock_default._Session__handle = "valid"
+        manager._default_session = mock_default
+
+        with patch("xbbg.core.infra.conn.connect_bbg") as mock_connect:
+            result = asyncio.run(manager.aget_session(port=8194))
+
+        mock_connect.assert_not_called()
+        assert result is mock_default
+
+    def test_aget_service_creates_and_caches(self):
+        """aget_service() creates session, opens service, and caches it."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+        mock_service = MagicMock()
+        mock_service._Service__handle = "valid_svc"
+        mock_session.getService.return_value = mock_service
+
+        with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
+            result = asyncio.run(manager.aget_service("//blp/refdata", port=8194))
+
+        mock_session.openService.assert_called_once_with("//blp/refdata")
+        assert result is mock_service
+        assert "//localhost:8194//blp/refdata" in manager._services
+
+    def test_aget_service_returns_cached(self):
+        """aget_service() returns cached service with valid handle."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+        manager._sessions["//localhost:8194"] = mock_session
+
+        mock_service = MagicMock()
+        mock_service._Service__handle = "valid_svc"
+        manager._services["//localhost:8194//blp/refdata"] = mock_service
+
+        result = asyncio.run(manager.aget_service("//blp/refdata", port=8194))
+
+        mock_session.openService.assert_not_called()
+        assert result is mock_service
+
+    def test_aget_service_replaces_stale(self):
+        """aget_service() recreates stale service (handle=None)."""
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+        manager._sessions["//localhost:8194"] = mock_session
+
+        mock_stale_svc = MagicMock()
+        mock_stale_svc._Service__handle = None
+        manager._services["//localhost:8194//blp/refdata"] = mock_stale_svc
+
+        mock_new_svc = MagicMock()
+        mock_new_svc._Service__handle = "valid_svc"
+        mock_session.getService.return_value = mock_new_svc
+
+        result = asyncio.run(manager.aget_service("//blp/refdata", port=8194))
+
+        mock_session.openService.assert_called_once_with("//blp/refdata")
+        assert result is mock_new_svc
+
+
+class TestRunSync:
+    """Tests for _run_sync() — the sync-to-async bridge."""
+
+    def test_run_sync_executes_coroutine(self):
+        """_run_sync runs a coroutine and returns its result."""
+        from xbbg.core.infra.conn import _run_sync
+
+        async def coro():
+            return 42
+
+        assert _run_sync(coro()) == 42
+
+    def test_run_sync_with_timeout(self):
+        """_run_sync passes timeout to asyncio.wait_for."""
+        from xbbg.core.infra.conn import _run_sync
+
+        async def fast_coro():
+            return "fast"
+
+        assert _run_sync(fast_coro(), timeout=5.0) == "fast"
+
+    def test_run_sync_timeout_raises(self):
+        """_run_sync raises TimeoutError when coroutine exceeds timeout."""
+        from xbbg.core.infra.conn import _run_sync
+
+        async def slow_coro():
+            await asyncio.sleep(10)
+            return "never"
+
+        with pytest.raises((asyncio.TimeoutError, TimeoutError)):
+            _run_sync(slow_coro(), timeout=0.01)
+
+
+class TestConnectionFlows:
+    """End-to-end flow tests: connect → use → disconnect lifecycle."""
+
+    def setup_method(self):
+        from xbbg.core.infra.conn import SessionManager
+
+        manager = SessionManager()
+        manager._sessions.clear()
+        manager._services.clear()
+        manager._default_session = None
+
+    def test_connect_then_bbg_session_uses_default(self):
+        """After connect(), bbg_session() returns the same session without creating a new one."""
+        from xbbg.core.infra.conn import bbg_session, connect
+
+        mock_session = MagicMock(spec=blpapi.Session)
+        mock_session.start.return_value = True
+        mock_session._Session__handle = "valid"
+
+        session = connect(sess=mock_session)
+
+        with patch("xbbg.core.infra.conn.connect_bbg") as mock_connect:
+            result = bbg_session()
+
+        mock_connect.assert_not_called()
+        assert result is session
+
+    def test_connect_disconnect_reconnect(self):
+        """After disconnect(), a new bbg_session() call creates a fresh session."""
+        from xbbg.core.infra.conn import _session_manager, bbg_session, connect, disconnect
+
+        # Connect
+        mock_session1 = MagicMock(spec=blpapi.Session)
+        mock_session1.start.return_value = True
+        mock_session1._Session__handle = "valid"
+        connect(sess=mock_session1)
+
+        assert bbg_session() is mock_session1
+
+        # Disconnect
+        disconnect()
+        assert _session_manager._default_session is None
+
+        # Reconnect — should create a new session
+        mock_session2 = MagicMock()
+        mock_session2._Session__handle = "valid_new"
+
+        with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session2):
+            result = bbg_session()
+
+        assert result is mock_session2
+        assert result is not mock_session1
+
+    def test_bbg_service_auto_creates_session(self):
+        """bbg_service() creates a session automatically if none exists."""
+        from xbbg.core.infra.conn import bbg_service
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+        mock_service = MagicMock()
+        mock_service._Service__handle = "valid_svc"
+        mock_session.getService.return_value = mock_service
+
+        with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
+            result = bbg_service("//blp/refdata")
+
+        mock_session.openService.assert_called_once_with("//blp/refdata")
+        assert result is mock_service
+
+    def test_multiple_services_share_session(self):
+        """Multiple bbg_service() calls reuse the same underlying session."""
+        from xbbg.core.infra.conn import _session_manager, bbg_service
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+        mock_refdata = MagicMock()
+        mock_refdata._Service__handle = "valid_ref"
+        mock_mktbar = MagicMock()
+        mock_mktbar._Service__handle = "valid_mkt"
+
+        mock_session.getService.side_effect = [mock_refdata, mock_mktbar]
+
+        with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session) as mock_connect:
+            svc1 = bbg_service("//blp/refdata")
+            svc2 = bbg_service("//blp/mktbar")
+
+        # connect_bbg called only once (session reused)
+        mock_connect.assert_called_once()
+        assert svc1 is mock_refdata
+        assert svc2 is mock_mktbar
+        # Same session for both
+        assert len(_session_manager._sessions) == 1
+
+    def test_connect_with_bpipe_server_stores_correct_key(self):
+        """connect() with server_host stores session under correct cache key."""
+        from xbbg.core.infra.conn import _session_manager, connect
+
+        mock_session = MagicMock(spec=blpapi.Session)
+        mock_session.start.return_value = True
+        mock_session._Session__handle = "valid"
+
+        connect(sess=mock_session, server_host="bpipe.corp.com", server_port=8195)
+
+        assert "//bpipe.corp.com:8195" in _session_manager._sessions
+        assert _session_manager._default_session is mock_session
+
+    def test_arequest_full_flow_with_session_creation(self):
+        """arequest() creates session, sends request, processes response end-to-end."""
+        from xbbg.core.infra.conn import arequest
+
+        mock_session = MagicMock()
+        mock_session._Session__handle = "valid"
+
+        mock_request = MagicMock()
+        msg = MagicMock()
+
+        response_event = MagicMock()
+        response_event.eventType.return_value = blpapi.Event.RESPONSE
+        response_event.__iter__ = MagicMock(return_value=iter([msg]))
+
+        mock_queue = MagicMock()
+        mock_queue.tryNextEvent.return_value = response_event
+
+        def process_func(msg, **kwargs):
+            return [{"field": "PX_LAST", "value": 100.0}]
+
+        with (
+            patch("xbbg.core.infra.conn._session_manager") as mock_mgr,
+            patch("xbbg.core.infra.conn.blpapi") as mock_blpapi,
+        ):
+            mock_mgr.aget_session = AsyncMock(return_value=mock_session)
+            mock_blpapi.EventQueue.return_value = mock_queue
+            mock_blpapi.CorrelationId.return_value = MagicMock()
+            mock_blpapi.InvalidStateException = blpapi.InvalidStateException
+            mock_blpapi.Event.PARTIAL_RESPONSE = blpapi.Event.PARTIAL_RESPONSE
+            mock_blpapi.Event.RESPONSE = blpapi.Event.RESPONSE
+            mock_blpapi.Event.TIMEOUT = blpapi.Event.TIMEOUT
+
+            results = asyncio.run(arequest(mock_request, process_func))
+
+        assert len(results) == 1
+        assert results[0]["field"] == "PX_LAST"
+        assert results[0]["value"] == 100.0

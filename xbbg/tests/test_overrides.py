@@ -156,3 +156,53 @@ class TestInfoQry:
         result = overrides.info_qry(tickers=["AAPL US Equity"], flds=[])
         assert "tickers: ['AAPL US Equity']" in result
         assert "fields:  []" in result
+
+
+class TestIssue145Regression:
+    """Regression tests for #145: interval leaked as Bloomberg override field.
+
+    When calling bdib(session='open'), the `interval` parameter was being passed
+    through to proc_ovrds() and sent as a Bloomberg override, causing:
+        "Invalid override field: interval"
+
+    Fixed by adding 'interval' to PRSV_COLS so it's excluded from overrides.
+    """
+
+    def test_interval_excluded_from_overrides(self):
+        """interval must not appear in proc_ovrds() output (#145)."""
+        result = list(overrides.proc_ovrds(interval=1, DVD_Start_Dt="20180101"))
+        keys = [k for k, _ in result]
+        assert "interval" not in keys
+        assert "DVD_Start_Dt" in keys
+
+    def test_interval_excluded_from_elements(self):
+        """interval must not appear in proc_elms() output either."""
+        result = list(overrides.proc_elms(interval=1, Per="W"))
+        keys = [k for k, _ in result]
+        assert "interval" not in keys
+        assert "periodicitySelection" in keys
+
+    def test_bdib_session_params_excluded_from_overrides(self):
+        """All bdib-specific params (interval, typ, session, etc.) must be excluded."""
+        bdib_kwargs = {
+            "interval": 1,
+            "typ": "TRADE",
+            "intervalHasSeconds": True,
+            "time_range": ("09:30", "16:00"),
+            "batch": False,
+            "reload": False,
+            "DVD_Start_Dt": "20180101",  # This IS a real override
+        }
+        result = list(overrides.proc_ovrds(**bdib_kwargs))
+        keys = [k for k, _ in result]
+        # Only the real Bloomberg override should remain
+        assert keys == ["DVD_Start_Dt"]
+
+    def test_preserved_cols_contains_interval(self):
+        """PRSV_COLS must include 'interval' to prevent override leakage."""
+        assert "interval" in overrides.PRSV_COLS
+
+    def test_preserved_cols_contains_all_bdib_params(self):
+        """PRSV_COLS must include all bdib-specific parameters."""
+        for param in ["interval", "typ", "types", "intervalHasSeconds", "time_range", "batch", "reload"]:
+            assert param in overrides.PRSV_COLS, f"'{param}' missing from PRSV_COLS"
