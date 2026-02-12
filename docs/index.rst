@@ -146,6 +146,59 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.12.0b1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b1>`__
+
+### Changed
+
+- **Async-first architecture**: All Bloomberg API functions (`bdp`, `bds`, `bdh`, `bdib`, `bdtick`, `bql`, `beqs`, `bsrch`, `bqr`, `bta`) now have async counterparts (`abdp`, `abds`, `abdh`, etc.) as the source of truth; sync wrappers delegate via `_run_sync()` (#218)
+
+- **Unified I/O layer**: All Bloomberg requests now flow through a single `arequest()` async entry point in `conn.py`, replacing scattered session/service management across modules (#218)
+
+- **Pipeline and process modules**: Adapted `pipeline_core`, `process`, and `request_builder` to work with the async `arequest()` foundation (#218)
+
+- **Top-level async exports**: All async API variants (`abdp`, `abds`, `abdh`, `abdib`, `abdtick`, `abql`, `abeqs`, `absrch`, `abqr`, `abta`) exported from `xbbg.blp` (#218)
+
+- **IO module cleanup**: Removed dead code and fixed type annotations across `xbbg/io/` (#218)
+
+- **Test coverage expanded**: 571 tests total (up from 543), covering all connection-related GitHub issues and all previously untested paths in `conn.py`
+
+### Fixed
+
+- **Mock session leak in tests**: Added autouse `_reset_session_manager` fixture in `conftest.py` to prevent `MagicMock` sessions from persisting in the `SessionManager` singleton across test modules, which caused infinite `__getattr__` → `_get_child_mock` recursion and stack overflow on Windows (#213)
+
+- **`interval` parameter leaked as Bloomberg override**: `interval` was not in `PRSV_COLS`, causing it to be sent to Bloomberg as an override field instead of being used locally for bar sizing (#145)
+
+- **README Data Storage section**: Clarified that only `bdib()` (intraday bars) has caching via `BarCacheAdapter`; all other functions always make live Bloomberg API calls (#215)
+
+- **README async example for Jupyter**: Fixed `asyncio.run()` example that fails in notebooks (which already have a running event loop) by adding `await`-based and `nest_asyncio` alternatives (#216)
+
+- **Unused imports in tests**: Removed `import os` from `test_intraday_api.py` and `import pytest` from `test_logging.py` that caused Ruff F401 lint failures in CI
+
+### Removed
+
+- **`xbbg/io/db.py`**: SQLite database helper module (zero imports across codebase) (#218)
+
+- **`xbbg/io/param.py`**: Legacy parameter/configuration module (zero imports across codebase) (#218)
+
+- **`xbbg/io/files.py`**: File path utility module (zero imports after replacing 6 usages in `cache.py` and `const.py` with `pathlib.Path`) (#218)
+
+- **`xbbg/tests/test_param.py`**: Tests for deleted `param` module (7 tests) (#218)
+
+- **`xbbg/markets/cached/pmc_cache.json`**: Stale pandas-market-calendars cache file (pmc dependency removed in v0.11.0) (#218)
+
+- **`xbbg/tests/__init__.py`**, **`examples/feeds/__init__.py`**: Empty `__init__` files (#218)
+
+- **`xbbg/tests/xone.db`**: Stale SQLite test database (#218)
+
+- **`regression_testing/`**: Standalone v0.7.7 regression test directory (6 files); all 9 test scenarios already covered by `xbbg/tests/test_live_endpoints.py` with stricter assertions (#218)
+
+### Security
+
+- **Bump `cryptography` from 46.0.4 to 46.0.5**: Fixes CVE-2026-26007 — subgroup attack due to missing validation for SECT binary elliptic curves (#217)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.4...v0.12.0b1
+
+
 *0.11.4* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.4>`__
 
 ### Fixed
