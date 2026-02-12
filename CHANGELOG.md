@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0b1] - 2026-02-12
+
 ### Changed
 
 - **Async-first architecture**: All Bloomberg API functions (`bdp`, `bds`, `bdh`, `bdib`, `bdtick`, `bql`, `beqs`, `bsrch`, `bqr`, `bta`) now have async counterparts (`abdp`, `abds`, `abdh`, etc.) as the source of truth; sync wrappers delegate via `_run_sync()` (#218)
@@ -391,7 +393,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.11.4...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b1...HEAD
+[0.12.0b1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b1
 [0.11.4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.4
 [0.11.3]: https://github.com/alpha-xone/xbbg/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.2
