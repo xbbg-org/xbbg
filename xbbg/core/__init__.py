@@ -19,7 +19,7 @@ from xbbg.core.infra import blpapi_logging, conn
 from xbbg.core.utils import timezone, utils
 
 # Make utils subpackage accessible as xbbg.core.utils
-utils = core_utils  # noqa: F811 - intentional reassignment for backward compat
+utils = core_utils  # noqa: F811  # type: ignore[invalid-assignment] - intentional reassignment for backward compat
 
 __all__ = [
     "process",

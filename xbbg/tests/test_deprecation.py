@@ -264,7 +264,7 @@ class TestDeprecatedAlias:
             pass
 
         alias = deprecated_alias("legacy_function", new_func, warning_func)
-        assert alias.__name__ == "legacy_function"
+        assert alias.__name__ == "legacy_function"  # type: ignore[unresolved-attribute]
 
     def test_deprecated_alias_has_deprecation_docstring(self):
         """Test that deprecated_alias wrapper has deprecation docstring."""
@@ -276,6 +276,7 @@ class TestDeprecatedAlias:
             pass
 
         alias = deprecated_alias("old_func", new_func, warning_func)
+        assert alias.__doc__ is not None
         assert "DEPRECATED" in alias.__doc__
 
     def test_deprecated_alias_issues_warning_on_call(self):

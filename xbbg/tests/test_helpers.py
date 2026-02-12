@@ -40,7 +40,7 @@ class TestAdjustCcy:
         df.columns = pd.MultiIndex.from_tuples(df.columns)
 
         # Mock bdp to return same currency (no adjustment needed)
-        mock_bdp.return_value = pd.DataFrame({"crncy": ["USD"]}, index=["AAPL US Equity"])
+        mock_bdp.return_value = pd.DataFrame({"crncy": ["USD"]}, index=pd.Index(["AAPL US Equity"]))
         mock_bdh.return_value = pd.DataFrame()  # No FX needed
 
         result = helpers.adjust_ccy(df, ccy="USD")
@@ -59,7 +59,7 @@ class TestAdjustCcy:
         # Mock bdp to return EUR currency, but with 'ccy' field that matches target
         # This means no adjustment needed (ccy will be None in the adj DataFrame)
         # This avoids the complex FX DataFrame mocking
-        mock_bdp.return_value = pd.DataFrame({"crncy": ["USD"]}, index=["EURUSD Curncy"])
+        mock_bdp.return_value = pd.DataFrame({"crncy": ["USD"]}, index=pd.Index(["EURUSD Curncy"]))
         mock_bdh.return_value = pd.DataFrame()  # Won't be called since adj will be empty
 
         result = helpers.adjust_ccy(df, ccy="USD")

@@ -1,11 +1,12 @@
 """Bloomberg historical data API (BDH).
 
 Provides functions for end-of-day historical data, dividends, earnings, and turnover.
+Async versions are the source of truth; sync versions wrap them via _run_sync().
 """
 
 from __future__ import annotations
 
-import asyncio
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -17,6 +18,7 @@ from xbbg import const
 from xbbg.api.reference import bds
 from xbbg.backend import Backend, Format
 from xbbg.core import process
+from xbbg.core.infra.conn import _run_sync
 from xbbg.core.utils import utils
 from xbbg.io.convert import _convert_backend, is_empty
 from xbbg.options import get_backend
@@ -26,17 +28,20 @@ logger = logging.getLogger(__name__)
 __all__ = ["bdh", "dividend", "earning", "turnover", "abdh"]
 
 
-def bdh(
+async def abdh(
     tickers: str | list[str],
     flds: str | list[str] | None = None,
-    start_date: str | pd.Timestamp | None = None,
-    end_date: str | pd.Timestamp = "today",
+    start_date: str | pd.Timestamp | datetime | None = None,
+    end_date: str | pd.Timestamp | datetime = "today",
     adjust: str | None = None,
     backend: Backend | None = None,
     format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Bloomberg historical data.
+    """Async Bloomberg historical data (source of truth).
+
+    Truly non-blocking — uses async event polling via arequest().
+    Use ``bdh()`` for synchronous usage.
 
     Args:
         tickers: Single ticker or list of tickers.
@@ -44,17 +49,23 @@ def bdh(
         start_date: Start date. Defaults to 8 weeks before end_date.
         end_date: End date. Defaults to 'today'.
         adjust: Adjustment type: `all`, `dvd`, `normal`, `abn` (=abnormal), `split`, `-` or None.
-            - `-`: No adjustment for dividend or split
-            - `dvd` or `normal|abn`: Adjust for all dividends except splits
-            - `split`: Adjust for splits and ignore all dividends
-            - `all` == `dvd|split`: Adjust for all
-            - None: Bloomberg default OR use kwargs
         backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
         format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
         **kwargs: Additional overrides and infrastructure options.
 
     Returns:
         pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
+
+    Examples:
+        >>> import asyncio
+        >>> # Single request
+        >>> # df = await blp.abdh('AAPL US Equity', start_date='2024-01-01')
+        >>>
+        >>> # Concurrent requests (true async — single thread, cooperative polling)
+        >>> # results = await asyncio.gather(
+        >>> #     blp.abdh('AAPL US Equity', start_date='2024-01-01'),
+        >>> #     blp.abdh('MSFT US Equity', start_date='2024-01-01'),
+        >>> # )
     """
     from xbbg.core.domain.context import split_kwargs
     from xbbg.core.pipeline_core import BloombergPipeline
@@ -95,9 +106,48 @@ def bdh(
         .build()
     )
 
-    # Run pipeline
+    # Run pipeline (async)
     pipeline = BloombergPipeline(config=historical_pipeline_config())
-    return pipeline.run(request)
+    return await pipeline.arun(request)
+
+
+def bdh(
+    tickers: str | list[str],
+    flds: str | list[str] | None = None,
+    start_date: str | pd.Timestamp | datetime | None = None,
+    end_date: str | pd.Timestamp | datetime = "today",
+    adjust: str | None = None,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Bloomberg historical data. Sync wrapper around abdh().
+
+    Args:
+        tickers: Single ticker or list of tickers.
+        flds: Single field or list of fields. Defaults to ['Last_Price'].
+        start_date: Start date. Defaults to 8 weeks before end_date.
+        end_date: End date. Defaults to 'today'.
+        adjust: Adjustment type: `all`, `dvd`, `normal`, `abn` (=abnormal), `split`, `-` or None.
+        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
+        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
+        **kwargs: Additional overrides and infrastructure options.
+
+    Returns:
+        pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
+    """
+    return _run_sync(
+        abdh(
+            tickers=tickers,
+            flds=flds,
+            start_date=start_date,
+            end_date=end_date,
+            adjust=adjust,
+            backend=backend,
+            format=format,
+            **kwargs,
+        )
+    )
 
 
 def earning(
@@ -133,7 +183,6 @@ def earning(
     """
     kwargs.pop("raw", None)
     ovrd = "G" if by[0].upper() == "G" else "P"
-    new_kw = {"Product_Geo_Override": ovrd}
 
     year = kwargs.pop("year", None)
     periods = kwargs.pop("periods", None)
@@ -143,12 +192,26 @@ def earning(
         kwargs["Number_Of_Periods"] = periods
 
     # Use WIDE format for internal calls since this function expects ticker as index
-    header = bds(tickers=ticker, flds="PG_Bulk_Header", use_port=False, format=Format.WIDE, **new_kw, **kwargs)
+    header = bds(
+        tickers=ticker,
+        flds="PG_Bulk_Header",
+        use_port=False,
+        format=Format.WIDE,
+        Product_Geo_Override=ovrd,
+        **kwargs,
+    )
     if ccy:
         kwargs["Eqy_Fund_Crncy"] = ccy
     if level:
         kwargs["PG_Hierarchy_Level"] = level
-    data = bds(tickers=ticker, flds=f"PG_{typ}", use_port=False, format=Format.WIDE, **new_kw, **kwargs)
+    data = bds(
+        tickers=ticker,
+        flds=f"PG_{typ}",
+        use_port=False,
+        format=Format.WIDE,
+        Product_Geo_Override=ovrd,
+        **kwargs,
+    )
 
     if is_empty(data) or is_empty(header):
         actual_backend = backend if backend is not None else get_backend()
@@ -288,60 +351,3 @@ def turnover(
     result = pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
     arrow_table = pa.Table.from_pandas(result)
     return _convert_backend(nw.from_native(arrow_table), actual_backend)
-
-
-async def abdh(
-    tickers: str | list[str],
-    flds: str | list[str] | None = None,
-    start_date: str | pd.Timestamp | None = None,
-    end_date: str | pd.Timestamp = "today",
-    adjust: str | None = None,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Async Bloomberg historical data.
-
-    Non-blocking async version of `bdh()`. Use this in async contexts to avoid
-    blocking the event loop.
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Single field or list of fields. Defaults to ['Last_Price'].
-        start_date: Start date. Defaults to 8 weeks before end_date.
-        end_date: End date. Defaults to 'today'.
-        adjust: Adjustment type: `all`, `dvd`, `normal`, `abn` (=abnormal), `split`, `-` or None.
-            - `-`: No adjustment for dividend or split
-            - `dvd` or `normal|abn`: Adjust for all dividends except splits
-            - `split`: Adjust for splits and ignore all dividends
-            - `all` == `dvd|split`: Adjust for all
-            - None: Bloomberg default OR use kwargs
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
-        **kwargs: Additional overrides and infrastructure options.
-
-    Returns:
-        pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
-
-    Examples:
-        >>> import asyncio
-        >>> # Single request
-        >>> # df = await blp.abdh('AAPL US Equity', start_date='2024-01-01')
-        >>>
-        >>> # Concurrent requests for multiple tickers
-        >>> # results = await asyncio.gather(
-        >>> #     blp.abdh('AAPL US Equity', start_date='2024-01-01'),
-        >>> #     blp.abdh('MSFT US Equity', start_date='2024-01-01'),
-        >>> # )
-    """
-    return await asyncio.to_thread(
-        bdh,
-        tickers=tickers,
-        flds=flds,
-        start_date=start_date,
-        end_date=end_date,
-        adjust=adjust,
-        backend=backend,
-        format=format,
-        **kwargs,
-    )

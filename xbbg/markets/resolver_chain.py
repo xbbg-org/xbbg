@@ -59,11 +59,11 @@ def _merge_exchange_info(
     """
     return ExchangeInfo(
         ticker=base.ticker,
-        mic=override_fields.get("mic", base.mic),  # type: ignore[arg-type]
-        exch_code=override_fields.get("exch_code", base.exch_code),  # type: ignore[arg-type]
-        timezone=override_fields.get("timezone", base.timezone),  # type: ignore[arg-type]
+        mic=override_fields.get("mic", base.mic),
+        exch_code=override_fields.get("exch_code", base.exch_code),
+        timezone=override_fields.get("timezone", base.timezone),
         utc_offset=base.utc_offset,
-        sessions=override_fields.get("sessions", base.sessions),  # type: ignore[arg-type]
+        sessions=override_fields.get("sessions", base.sessions),
         source="override",
         cached_at=base.cached_at,
     )

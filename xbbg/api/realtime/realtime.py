@@ -136,7 +136,7 @@ async def stream(
     if isinstance(info, str):
         info = [info]
     if isinstance(info, Iterable):
-        info = [key.upper() for key in info]  # type: ignore[assignment]
+        info = [key.upper() for key in info]
     if info is None:
         info = list(const.LIVE_INFO)
 

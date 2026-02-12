@@ -7,6 +7,23 @@ import pytest
 from xbbg.deprecation import XbbgFutureWarning
 
 
+@pytest.fixture(autouse=True)
+def _reset_session_manager():
+    """Reset the SessionManager singleton after every test.
+
+    Prevents MagicMock sessions from leaking across tests (e.g., test_conn.py
+    stores mock sessions in the singleton, which causes stack overflows in
+    later tests that call real Bloomberg API paths like active_futures).
+    """
+    yield
+    from xbbg.core.infra.conn import SessionManager
+
+    manager = SessionManager()
+    manager._sessions.clear()
+    manager._services.clear()
+    manager._default_session = None
+
+
 @pytest.fixture
 def fake_handle():
     """Shared fake Bloomberg request handle for mocked API tests."""
@@ -66,7 +83,7 @@ def pytest_configure(config):
             logging.getLogger().setLevel(log_level)
 
     print(config)
-    sys.pytest_call = True  # type: ignore[attr-defined]  # Dynamic attribute for pytest session tracking
+    sys.__dict__["pytest_call"] = True
     # Store prompt option globally for use in hooks
     config._prompt_between_tests = config.getoption("--prompt-between-tests", default=False)
 
@@ -88,5 +105,4 @@ def pytest_collection_modifyitems(config, items):
 
 def pytest_unconfigure(config):
     print(config)
-    if hasattr(sys, "pytest_call"):
-        del sys.pytest_call  # type: ignore[attr-defined]
+    sys.__dict__.pop("pytest_call", None)

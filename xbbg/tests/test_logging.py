@@ -3,7 +3,6 @@
 Tests verify that logging occurs at the correct levels for:
 - Session/service handle invalidation (conn.py)
 - Cache load failures (cache.py)
-- Directory creation failures (files.py)
 """
 
 from __future__ import annotations
@@ -11,8 +10,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestConnLogging:
@@ -137,7 +134,7 @@ class TestCacheLogging:
         # Mock bar_file to return our corrupt file path
         with (
             patch("xbbg.io.cache.bar_file", return_value=corrupt_file.as_posix()),
-            patch("xbbg.io.cache.files.exists", return_value=True),
+            patch("xbbg.io.cache.Path.exists", return_value=True),
             caplog.at_level(logging.WARNING, logger="xbbg.io.cache"),
         ):
             adapter.load(request, session_window)
@@ -177,7 +174,7 @@ class TestCacheLogging:
 
         with (
             patch("xbbg.io.cache.multi_day_bar_files", return_value=mock_day_files),
-            patch("xbbg.io.cache.files.exists", return_value=True),
+            patch("xbbg.io.cache.Path.exists", return_value=True),
             caplog.at_level(logging.WARNING, logger="xbbg.io.cache"),
         ):
             adapter._load_multi_day(request)
@@ -221,42 +218,6 @@ class TestCacheLogging:
         warning_messages = [record.message for record in caplog.records if record.levelname == "WARNING"]
         empty_msgs = [msg for msg in warning_messages if "no data to save" in msg.lower()]
         assert len(empty_msgs) > 0, f"Expected WARNING about empty data. Got: {warning_messages}"
-
-
-class TestFilesLogging:
-    """Test logging in xbbg.io.files module."""
-
-    def test_directory_creation_failure_logs_error(self, caplog):
-        """Test that directory creation failure logs ERROR before re-raising."""
-        from xbbg.io.files import create_folder
-
-        # Mock Path.mkdir to raise OSError
-        with (
-            patch("pathlib.Path.mkdir", side_effect=OSError("Permission denied")),
-            caplog.at_level(logging.ERROR, logger="xbbg.io.files"),
-            pytest.raises(OSError),
-        ):
-            create_folder("/invalid/path/that/cannot/be/created")
-
-        # Verify ERROR message about directory creation failure
-        error_messages = [record.message for record in caplog.records if record.levelname == "ERROR"]
-        dir_fail_msgs = [msg for msg in error_messages if "failed to create directory" in msg.lower()]
-        assert len(dir_fail_msgs) > 0, f"Expected ERROR about directory creation failure. Got: {error_messages}"
-
-    def test_directory_creation_success_logs_debug(self, caplog, tmp_path):
-        """Test that directory creation logs DEBUG on success."""
-        from xbbg.io.files import create_folder
-
-        new_dir = tmp_path / "new_subdir"
-
-        with caplog.at_level(logging.DEBUG, logger="xbbg.io.files"):
-            create_folder(str(new_dir))
-
-        # Verify DEBUG message about directory creation
-        debug_messages = [record.message for record in caplog.records if record.levelname == "DEBUG"]
-        create_msgs = [msg for msg in debug_messages if "creating directory" in msg.lower()]
-        assert len(create_msgs) > 0, f"Expected DEBUG about creating directory. Got: {debug_messages}"
-        assert new_dir.exists()
 
 
 class TestCacheDefaultLocationLogging:

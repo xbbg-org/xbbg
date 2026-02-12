@@ -64,7 +64,7 @@ def register_blpapi_logging_callback(
     def blpapi_log_callback(
         thread_id: int,
         severity: int,
-        timestamp,
+        _timestamp,
         category: str,
         message: str,
     ) -> None:

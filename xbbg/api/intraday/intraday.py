@@ -6,94 +6,21 @@ Provides functions for intraday bar data and tick-by-tick data.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import pandas as pd
-import pyarrow.parquet as pq
 
 from xbbg import const
 from xbbg.backend import Backend, Format
 from xbbg.core import process
 from xbbg.core.infra import conn
 from xbbg.core.process import DEFAULT_TZ
-from xbbg.io import cache, files
 from xbbg.io.convert import is_empty
-from xbbg.markets import resolvers
 from xbbg.utils import pipeline
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["bdib", "bdtick"]
-
-
-def _load_cached_bdib(
-    ticker: str,
-    dt,
-    session: str,
-    typ: str,
-    ex_info,
-    ctx=None,
-    **kwargs,
-) -> pd.DataFrame | None:
-    """Load cached intraday bar data if available.
-
-    Args:
-        ticker: Ticker symbol.
-        dt: Date.
-        session: Session name.
-        typ: Event type.
-        ex_info: Exchange info.
-        ctx: Bloomberg context (infrastructure kwargs only).
-        **kwargs: Legacy kwargs support.
-
-    Returns:
-        Cached DataFrame if available, None otherwise.
-    """
-    ss_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=ex_info.tz, ctx=ctx, **kwargs)
-    if ss_rng.start_time is None or ss_rng.end_time is None:
-        raise ValueError(
-            f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
-            f"This should not happen - session validation should have caught this earlier."
-        )
-    interval = kwargs.get("interval", 1)
-    interval_has_seconds = kwargs.get("intervalHasSeconds", False)
-    data_file = cache.bar_file(
-        ticker=ticker,
-        dt=dt,
-        typ=typ,
-        interval=interval,
-        interval_has_seconds=interval_has_seconds,
-    )
-    if ctx is None:
-        cache_enabled = kwargs.get("cache", True)
-        reload_flag = kwargs.get("reload", False)
-    else:
-        cache_enabled = ctx.cache
-        reload_flag = ctx.reload
-    if files.exists(data_file) and cache_enabled and (not reload_flag):
-        # Use PyArrow for parquet I/O (backend-agnostic)
-        table = pq.read_table(data_file)
-        res = table.to_pandas().pipe(pipeline.add_ticker, ticker=ticker).loc[ss_rng.start_time : ss_rng.end_time]
-        if not is_empty(res):
-            logger.debug("Loading cached Bloomberg intraday data from: %s", data_file)
-            return res
-    return None
-
-
-def _resolve_bdib_ticker(ticker: str, dt, ex_info) -> tuple[str, bool]:
-    """Resolve futures ticker if needed.
-
-    Returns:
-        Tuple of (resolved_ticker, success_flag).
-    """
-    q_tckr = ticker
-    if ex_info.get("is_fut", False):
-        is_sprd = ex_info.get("has_sprd", False) and (len(ticker[:-1]) != ex_info["tickers"][0])
-        if not is_sprd:
-            q_tckr = resolvers.fut_ticker(gen_ticker=ticker, dt=dt, freq=ex_info["freq"])
-            if q_tckr == "":
-                logger.error("Unable to resolve futures ticker for generic ticker: %s", ticker)
-                return "", False
-    return q_tckr, True
+__all__ = ["bdib", "abdib", "bdtick", "abdtick"]
 
 
 def _get_default_exchange_info(ticker: str, dt=None, session="allday", **kwargs) -> pd.Series:
@@ -151,141 +78,121 @@ def _get_default_exchange_info(ticker: str, dt=None, session="allday", **kwargs)
     )
 
 
-def _build_bdib_request(ticker: str, dt, typ: str, ex_info, ctx=None, **kwargs):
-    """Build Bloomberg intraday bar request.
-
-    Args:
-        ticker: Ticker symbol.
-        dt: Date.
-        typ: Event type.
-        ex_info: Exchange info.
-        ctx: Bloomberg context (infrastructure kwargs only).
-        **kwargs: Legacy kwargs support.
-
-    Returns:
-        Tuple of (request, date_string).
-    """
-    time_rng = process.time_range(dt=dt, ticker=ticker, session="allday", tz=ex_info.tz, ctx=ctx, **kwargs)
-
-    time_fmt = "%Y-%m-%dT%H:%M:%S"
-
-    # If time_range returns None (no session found), create default time range
-    if time_rng.start_time is None or time_rng.end_time is None:
-        cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
-        # Use allday session from ex_info or default to full day
-        if "allday" in ex_info.index:
-            start_time = ex_info["allday"][0]
-            end_time = ex_info["allday"][1]
-        else:
-            start_time = "00:00"
-            end_time = "23:59"
-
-        time_idx = (
-            pd.DatetimeIndex(
-                [f"{cur_dt} {start_time}", f"{cur_dt} {end_time}"],
-            )
-            .tz_localize(ex_info.tz)
-            .tz_convert("UTC")
-        )
-        start_dt = time_idx[0].strftime(time_fmt)
-        end_dt = time_idx[1].strftime(time_fmt)
-    else:
-        # Convert timezone-naive times from exchange timezone to UTC
-        # time_rng.start_time/end_time are in ex_info.tz but timezone-naive
-        from xbbg.markets import convert_session_times_to_utc
-
-        start_dt, end_dt = convert_session_times_to_utc(
-            start_time=time_rng.start_time,
-            end_time=time_rng.end_time,
-            exchange_tz=ex_info.tz,
-            time_fmt=time_fmt,
-        )
-
-    interval = kwargs.get("interval", 1)
-    use_seconds = kwargs.get("intervalHasSeconds", False)
-
-    settings = [
-        ("security", ticker),
-        ("eventType", typ),
-        ("interval", interval),
-        ("startDateTime", start_dt),
-        ("endDateTime", end_dt),
-    ]
-    if use_seconds:
-        settings.append(("intervalHasSeconds", True))
-
-    request = process.create_request(
-        service="//blp/refdata",
-        request="IntradayBarRequest",
-        settings=settings,
-        **kwargs,
-    )
-    cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
-    return request, cur_dt
-
-
-def _process_bdib_response(
-    res: pd.DataFrame,
+async def abdib(
     ticker: str,
-    dt,
-    session: str,
-    typ: str,
-    ex_info,
-    ctx=None,
+    dt=None,
+    session="allday",
+    typ="TRADE",
+    start_datetime=None,
+    end_datetime=None,
+    backend: Backend | None = None,
+    format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Process and transform Bloomberg intraday bar response.
+    """Async Bloomberg intraday bar data (source of truth).
+
+    Truly non-blocking — uses async event polling via arequest().
+    Use ``bdib()`` for synchronous usage.
 
     Args:
-        res: Raw response DataFrame.
-        ticker: Ticker symbol.
-        dt: Date.
-        session: Session name.
-        typ: Event type.
-        ex_info: Exchange info.
-        ctx: Bloomberg context (infrastructure kwargs only).
-        **kwargs: Legacy kwargs support.
+        ticker: ticker name
+        dt: date to download (for single-day requests). Can be omitted if
+            start_datetime and end_datetime are provided.
+        session: Trading session name. Sessions are dynamically resolved from Bloomberg.
+            Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
+            Availability depends on exchange.
+            Raises ``ValueError`` if session is not defined for the ticker's exchange.
+            Ignored when start_datetime and end_datetime are provided.
+        typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
+        start_datetime: explicit start datetime for multi-day requests (e.g., '2025-01-01 09:30:00').
+            When provided with end_datetime, bypasses session-based time resolution.
+            Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
+        end_datetime: explicit end datetime for multi-day requests (e.g., '2025-01-05 16:00:00').
+            When provided with start_datetime, bypasses session-based time resolution.
+            Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
+        backend: Backend for data processing (e.g., Backend.PANDAS, Backend.POLARS).
+            If None, uses the default backend.
+        format: Output format for the data (e.g., Format.LONG, Format.WIDE).
+            If None, uses the default format.
+        **kwargs:
+            interval: bar interval in minutes (default: 1). For sub-minute intervals,
+                set ``intervalHasSeconds=True`` and specify seconds (e.g., interval=10
+                with intervalHasSeconds=True for 10-second bars).
+            intervalHasSeconds: if True, interpret ``interval`` as seconds instead of
+                minutes. Default is False (interval always in minutes).
+            ref: reference ticker or exchange
+                 used as supplement if exchange info is not defined for `ticker`
+            batch: whether is batch process to download data
+            log: level of logs
 
     Returns:
-        Processed DataFrame filtered by session range.
+        pd.DataFrame
+
+    Examples:
+        >>> import asyncio
+        >>> # Single request
+        >>> # df = await blp.abdib('AAPL US Equity', dt='2025-11-12', interval=10)
+        >>>
+        >>> # Concurrent requests (true async)
+        >>> # results = await asyncio.gather(
+        >>> #     blp.abdib('AAPL US Equity', dt='2025-11-12'),
+        >>> #     blp.abdib('MSFT US Equity', dt='2025-11-12'),
+        >>> # )
     """
-    if is_empty(res) or ("time" not in res):
-        return pd.DataFrame()
+    # Validate parameters
+    is_multi_day = start_datetime is not None and end_datetime is not None
+    if not is_multi_day and dt is None:
+        raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
-    ss_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=ex_info.tz, ctx=ctx, **kwargs)
-    data = (
-        res.set_index("time")
-        .rename_axis(index=None)
-        .rename(columns={"numEvents": "num_trds"})
-        .tz_localize("UTC")
-        .tz_convert(ex_info.tz)
-        .pipe(pipeline.add_ticker, ticker=ticker)
+    # For multi-day requests without dt, use start_datetime's date as fallback
+    if dt is None and is_multi_day:
+        assert start_datetime is not None  # guaranteed by is_multi_day check above
+        dt = pd.Timestamp(start_datetime).strftime("%Y-%m-%d")
+    from xbbg.core.pipeline_core import BloombergPipeline
+    from xbbg.core.pipeline_factories import intraday_pipeline_config
+    from xbbg.core.request_builder import RequestBuilder
+
+    # Build request using RequestBuilder
+    request = RequestBuilder.from_legacy_kwargs(
+        ticker=ticker,
+        dt=dt,
+        session=session,
+        typ=typ,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+        backend=backend,
+        output_format=format,
+        **kwargs,
     )
-    if ctx is None:
-        cache_enabled = kwargs.get("cache", True)
-        cache_kwargs = kwargs
-    else:
-        cache_enabled = ctx.cache
-        cache_kwargs = ctx.to_kwargs()
-    if cache_enabled:
-        interval = kwargs.get("interval", 1)
-        interval_has_seconds = kwargs.get("intervalHasSeconds", False)
-        cache.save_intraday(
-            data=data[ticker],
-            ticker=ticker,
-            dt=dt,
-            typ=typ,
-            interval=interval,
-            interval_has_seconds=interval_has_seconds,
-            **cache_kwargs,
-        )
 
-    if ss_rng.start_time is None or ss_rng.end_time is None:
-        raise ValueError(
-            f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
-            f"This should not happen - session validation should have caught this earlier."
+    # Preserve legacy KeyError behavior: check if exchange info exists
+    # (pipeline will handle resolution, but we want to raise KeyError early for non-fixed-income)
+    from xbbg.core.domain.context import split_kwargs
+
+    split = split_kwargs(**kwargs)
+    ctx_kwargs = split.infra.to_kwargs()
+    ex_info = const.exch_info(ticker=ticker, **ctx_kwargs)
+    if ex_info.empty:
+        # Check if this is a fixed income security
+        t_info = ticker.split()
+        is_fixed_income = (
+            ticker.startswith("/isin/")
+            or ticker.startswith("/cusip/")
+            or ticker.startswith("/sedol/")
+            or (
+                len(t_info) > 0
+                and t_info[-1] in ["Govt", "Corp", "Mtge", "Muni"]
+                and t_info[0]
+                and len(t_info[0]) >= 2
+                and t_info[0][:2].isalpha()
+            )
         )
-    return data.loc[ss_rng.start_time : ss_rng.end_time]
+        if not is_fixed_income:
+            raise KeyError(f"Cannot find exchange info for {ticker}")
+
+    # Run pipeline (async)
+    pipeline = BloombergPipeline(config=intraday_pipeline_config())
+    return await pipeline.arun(request)
 
 
 def bdib(
@@ -299,7 +206,7 @@ def bdib(
     format: Format | None = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Bloomberg intraday bar data.
+    """Bloomberg intraday bar data. Sync wrapper around abdib().
 
     Args:
         ticker: ticker name
@@ -350,62 +257,22 @@ def bdib(
         >>> # blp.bdib('AAPL US Equity', start_datetime='2025-01-01 09:30:00',
         >>> #         end_datetime='2025-01-05 16:00:00', interval=5)
     """
-    # Validate parameters
-    is_multi_day = start_datetime is not None and end_datetime is not None
-    if not is_multi_day and dt is None:
-        raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
-
-    # For multi-day requests without dt, use start_datetime's date as fallback
-    if dt is None and is_multi_day:
-        dt = pd.Timestamp(start_datetime).strftime("%Y-%m-%d")
-    from xbbg.core.pipeline_core import BloombergPipeline
-    from xbbg.core.pipeline_factories import intraday_pipeline_config
-    from xbbg.core.request_builder import RequestBuilder
-
-    # Build request using RequestBuilder
-    request = RequestBuilder.from_legacy_kwargs(
-        ticker=ticker,
-        dt=dt,
-        session=session,
-        typ=typ,
-        start_datetime=start_datetime,
-        end_datetime=end_datetime,
-        backend=backend,
-        output_format=format,
-        **kwargs,
+    return conn._run_sync(
+        abdib(
+            ticker=ticker,
+            dt=dt,
+            session=session,
+            typ=typ,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            backend=backend,
+            format=format,
+            **kwargs,
+        )
     )
 
-    # Preserve legacy KeyError behavior: check if exchange info exists
-    # (pipeline will handle resolution, but we want to raise KeyError early for non-fixed-income)
-    from xbbg.core.domain.context import split_kwargs
 
-    split = split_kwargs(**kwargs)
-    ctx_kwargs = split.infra.to_kwargs()
-    ex_info = const.exch_info(ticker=ticker, **ctx_kwargs)
-    if ex_info.empty:
-        # Check if this is a fixed income security
-        t_info = ticker.split()
-        is_fixed_income = (
-            ticker.startswith("/isin/")
-            or ticker.startswith("/cusip/")
-            or ticker.startswith("/sedol/")
-            or (
-                len(t_info) > 0
-                and t_info[-1] in ["Govt", "Corp", "Mtge", "Muni"]
-                and t_info[0]
-                and len(t_info[0]) >= 2
-                and t_info[0][:2].isalpha()
-            )
-        )
-        if not is_fixed_income:
-            raise KeyError(f"Cannot find exchange info for {ticker}")
-
-    # Run pipeline
-    pipeline = BloombergPipeline(config=intraday_pipeline_config())
-    return pipeline.run(request)
-
-
-def bdtick(
+async def abdtick(
     ticker: str,
     dt: str | pd.Timestamp,
     session: str = "allday",
@@ -414,26 +281,21 @@ def bdtick(
     backend: Backend | None = None,
     format: Format | None = None,
     **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg tick data.
+) -> Any:
+    """Async Bloomberg tick data (source of truth).
+
+    Truly non-blocking — uses async event polling via arequest().
+    Use ``bdtick()`` for synchronous usage.
 
     Args:
         ticker: Ticker name.
         dt: Date to download.
-        session: Trading session name. Sessions are dynamically resolved from Bloomberg.
-            Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
-            Availability depends on exchange. Defaults to 'allday'.
-            Raises ``ValueError`` if session is not defined for the ticker's exchange.
+        session: Trading session name. Defaults to 'allday'.
         time_range: Tuple of (start_time, end_time) in HH:MM format.
-            If provided, `dt` and `session` are ignored. Times are converted to UTC.
-        types: Single event type or list of event types. One or more of:
-            TRADE, AT_TRADE, BID, ASK, MID_PRICE, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK.
-            Defaults to ['TRADE'].
-        backend: Backend for data processing (e.g., Backend.PANDAS, Backend.POLARS).
-            If None, uses the default backend.
-        format: Output format for the data (e.g., Format.LONG, Format.WIDE).
-            If None, uses the default format.
-        **kwargs: Additional options forwarded to helpers (e.g., logging).
+        types: Event types. Defaults to ['TRADE'].
+        backend: Backend for data processing.
+        format: Output format.
+        **kwargs: Additional options.
 
     Returns:
         pd.DataFrame: Tick data with time as index and ticker as column level.
@@ -457,7 +319,6 @@ def bdtick(
             .tz_convert(DEFAULT_TZ)
             .tz_convert("UTC")
         )
-        # Extract start_dt and end_dt from time_rng DatetimeIndex
         time_fmt = "%Y-%m-%dT%H:%M:%S"
         start_dt = time_rng[0].strftime(time_fmt)
         end_dt = time_rng[1].strftime(time_fmt)
@@ -470,8 +331,6 @@ def bdtick(
         time_rng = process.time_range(dt=dt, ticker=ticker, session=session, tz=tz, ctx=ctx, **kwargs)
         if time_rng.start_time is None or time_rng.end_time is None:
             raise ValueError(f"Unable to resolve trading session for ticker {ticker} on date {dt}")
-        # Convert timezone-naive times from exchange timezone to UTC
-        # time_rng.start_time/end_time are in exch.tz but timezone-naive
         from xbbg.markets import convert_session_times_to_utc
 
         time_fmt = "%Y-%m-%dT%H:%M:%S"
@@ -482,7 +341,7 @@ def bdtick(
             time_fmt=time_fmt,
         )
 
-    request = process.create_request(
+    blp_request = process.create_request(
         service="//blp/refdata",
         request="IntradayTickRequest",
         settings=[
@@ -503,27 +362,20 @@ def bdtick(
     )
 
     logger.debug("Sending Bloomberg tick data request for ticker: %s, event types: %s", ticker, types)
-    handle = conn.send_request(request=request, service="//blp/refdata", **kwargs)
 
-    # Tick data requests need higher timeout defaults than bar data
-    # due to larger data volumes and initial response latency
-    tick_timeout = kwargs.pop("timeout", 2000)  # 2 seconds per poll (vs 500ms default)
-    tick_max_timeouts = kwargs.pop("max_timeouts", 60)  # 60 polls = 2 min total (vs 10s default)
-
-    res = pd.DataFrame(
-        process.rec_events(
-            func=process.process_bar,
-            typ="t",
-            event_queue=handle["event_queue"],
-            timeout=tick_timeout,
-            max_timeouts=tick_max_timeouts,
-            **kwargs,
-        )
+    # Use arequest() — the async foundation
+    events = await conn.arequest(
+        request=blp_request,
+        process_func=process.process_bar,
+        service="//blp/refdata",
+        typ="t",
+        **kwargs,
     )
+
+    res = pd.DataFrame(events)
     if kwargs.get("raw", False):
         return res
     if is_empty(res) or ("time" not in res):
-        # Return empty result in requested backend format
         from xbbg.backend import Backend as BackendEnum
         from xbbg.options import get_backend
 
@@ -558,7 +410,6 @@ def bdtick(
         )
     )
 
-    # Convert to requested backend
     import pyarrow as pa
 
     from xbbg.backend import Backend as BackendEnum
@@ -569,20 +420,15 @@ def bdtick(
     actual_backend = backend if backend is not None else get_backend()
     actual_format = format if format is not None else get_format()
 
-    # Ensure backend and format are enum values
     if isinstance(actual_backend, str):
         actual_backend = BackendEnum(actual_backend)
     if isinstance(actual_format, str):
         actual_format = Format(actual_format)
 
-    # Warn if using implicit defaults
     if backend is None or format is None:
         warn_defaults_changing()
 
-    # Convert to Arrow and then to requested backend/format
-    # Reset index to include time as a column for conversion
     result_reset = result.reset_index()
-    # Stringify object columns that may contain blpapi.Name or other non-Arrow types
     for col in result_reset.columns:
         if result_reset[col].dtype == object:
             result_reset[col] = result_reset[col].astype(str)
@@ -595,4 +441,43 @@ def bdtick(
         ticker_col="ticker",
         date_col="time",
         field_cols=None,
+    )
+
+
+def bdtick(
+    ticker: str,
+    dt: str | pd.Timestamp,
+    session: str = "allday",
+    time_range: tuple[str, str] | list[str] | None = None,
+    types: str | list[str] | None = None,
+    backend: Backend | None = None,
+    format: Format | None = None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Bloomberg tick data. Sync wrapper around abdtick().
+
+    Args:
+        ticker: Ticker name.
+        dt: Date to download.
+        session: Trading session name. Defaults to 'allday'.
+        time_range: Tuple of (start_time, end_time) in HH:MM format.
+        types: Event types. Defaults to ['TRADE'].
+        backend: Backend for data processing.
+        format: Output format.
+        **kwargs: Additional options.
+
+    Returns:
+        pd.DataFrame: Tick data with time as index and ticker as column level.
+    """
+    return conn._run_sync(
+        abdtick(
+            ticker=ticker,
+            dt=dt,
+            session=session,
+            time_range=time_range,
+            types=types,
+            backend=backend,
+            format=format,
+            **kwargs,
+        )
     )

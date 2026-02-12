@@ -31,6 +31,8 @@ class IntradayRequestBuilder:
         if request.is_multi_day():
             # Use explicit datetime range - convert to UTC ISO format
             time_fmt = "%Y-%m-%dT%H:%M:%S"
+            assert request.start_datetime is not None  # guaranteed by is_multi_day()
+            assert request.end_datetime is not None
             start_ts = pd.Timestamp(request.start_datetime)
             end_ts = pd.Timestamp(request.end_datetime)
 

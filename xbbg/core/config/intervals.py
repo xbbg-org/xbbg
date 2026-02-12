@@ -50,31 +50,31 @@ def get_interval(ticker, session, **kwargs) -> Session:
         ValueError: If session is not defined for the ticker's exchange.
 
     Examples:
-        >>> get_interval('005490 KS Equity', 'day_open_30')  # doctest: +SKIP
+        >>> get_interval("005490 KS Equity", "day_open_30")  # doctest: +SKIP
         Session(start_time='09:00', end_time='09:30')
-        >>> get_interval('005490 KS Equity', 'day_normal_30_20')  # doctest: +SKIP
+        >>> get_interval("005490 KS Equity", "day_normal_30_20")  # doctest: +SKIP
         Session(start_time='09:31', end_time='15:00')
-        >>> get_interval('005490 KS Equity', 'day_close_20')  # doctest: +SKIP
+        >>> get_interval("005490 KS Equity", "day_close_20")  # doctest: +SKIP
         Session(start_time='15:01', end_time='15:20')
-        >>> get_interval('700 HK Equity', 'am_open_30')  # doctest: +SKIP
+        >>> get_interval("700 HK Equity", "am_open_30")  # doctest: +SKIP
         Session(start_time='09:30', end_time='10:00')
-        >>> get_interval('700 HK Equity', 'am_normal_30_30')  # doctest: +SKIP
+        >>> get_interval("700 HK Equity", "am_normal_30_30")  # doctest: +SKIP
         Session(start_time='10:01', end_time='11:30')
-        >>> get_interval('700 HK Equity', 'am_close_30')  # doctest: +SKIP
+        >>> get_interval("700 HK Equity", "am_close_30")  # doctest: +SKIP
         Session(start_time='11:31', end_time='12:00')
-        >>> get_interval('ES1 Index', 'day_exact_2130_2230')  # doctest: +SKIP
+        >>> get_interval("ES1 Index", "day_exact_2130_2230")  # doctest: +SKIP
         Session(start_time=None, end_time=None)
-        >>> get_interval('ES1 Index', 'allday_exact_2130_2230')  # doctest: +SKIP
+        >>> get_interval("ES1 Index", "allday_exact_2130_2230")  # doctest: +SKIP
         Session(start_time='21:30', end_time='22:30')
-        >>> get_interval('ES1 Index', 'allday_exact_2130_0230')  # doctest: +SKIP
+        >>> get_interval("ES1 Index", "allday_exact_2130_0230")  # doctest: +SKIP
         Session(start_time='21:30', end_time='02:30')
-        >>> get_interval('AMLP US', 'day_open_30') is SessNA  # doctest: +SKIP
+        >>> get_interval("AMLP US", "day_open_30") is SessNA  # doctest: +SKIP
         True
-        >>> get_interval('7974 JP Equity', 'day_normal_180_300') is SessNA  # doctest: +SKIP
+        >>> get_interval("7974 JP Equity", "day_normal_180_300") is SessNA  # doctest: +SKIP
         True
-        >>> get_interval('Z 1 Index', 'allday_normal_30_30')  # doctest: +SKIP
+        >>> get_interval("Z 1 Index", "allday_normal_30_30")  # doctest: +SKIP
         Session(start_time='01:31', end_time='20:30')
-        >>> get_interval('GBP Curncy', 'day')  # doctest: +SKIP
+        >>> get_interval("GBP Curncy", "day")  # doctest: +SKIP
         Session(start_time='17:01', end_time='17:00')
     """
     if "_" not in session:
@@ -233,19 +233,20 @@ class Intervals:
 
         same_day = ss[0] < ss[-1]
 
-        from xbbg.io import param  # noqa: PLC0415
+        def _to_hours(num: int) -> str:
+            return f"{num // 100:02d}:{num % 100:02d}"
 
         if not start_time:
             s_time = str(ss[0])
         else:
-            s_time = str(param.to_hours(int(start_time)))
+            s_time = str(_to_hours(int(start_time)))
             if same_day:
                 s_time = max(s_time, str(ss[0]))
 
         if not end_time:
             e_time = str(ss[-1])
         else:
-            e_time = str(param.to_hours(int(end_time)))
+            e_time = str(_to_hours(int(end_time)))
             if same_day:
                 e_time = min(e_time, str(ss[-1]))
 

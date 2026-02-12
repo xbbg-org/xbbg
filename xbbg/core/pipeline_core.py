@@ -126,7 +126,22 @@ class BloombergPipeline(BaseContextAware):
         )
 
     def run(self, request: DataRequest) -> Any:
-        """Execute the pipeline (Template Method).
+        """Execute the pipeline synchronously. Wraps arun().
+
+        Args:
+            request: Data request to process.
+
+        Returns:
+            Data in requested backend/format.
+        """
+        return conn._run_sync(self.arun(request))
+
+    async def arun(self, request: DataRequest) -> Any:
+        """Execute the pipeline asynchronously (source of truth).
+
+        All Bloomberg I/O flows through arequest(). CPU-bound steps
+        (context prep, market resolution, caching, transformation)
+        run synchronously since they are fast.
 
         Args:
             request: Data request to process.
@@ -196,8 +211,8 @@ class BloombergPipeline(BaseContextAware):
         if not self._validate_request(request):
             return pd.DataFrame()
 
-        # Step 6: Fetch from Bloomberg
-        raw_data = self._fetch_from_bloomberg(request, session_window)
+        # Step 6: Fetch from Bloomberg (async — the only I/O step)
+        raw_data = await self._afetch_from_bloomberg(request, session_window)
         # Check for empty data (handle both Arrow and pandas)
         raw_is_empty = (
             raw_data is None
@@ -368,24 +383,26 @@ class BloombergPipeline(BaseContextAware):
         ctx_kwargs = request.context.to_kwargs() if request.context else {}
         return process.check_current(dt=request.dt, logger=logger, **ctx_kwargs)
 
-    def _fetch_from_bloomberg(
+    async def _afetch_from_bloomberg(
         self,
         request: DataRequest,
         session_window: SessionWindow,
     ) -> pa.Table | None:
-        """Fetch data from Bloomberg using configured strategy."""
+        """Fetch data from Bloomberg using arequest() (async)."""
         blp_request, ctx_kwargs = self.config.request_builder.build_request(request, session_window)
 
-        handle = conn.send_request(request=blp_request, service=self.config.service, **ctx_kwargs)
-
-        events = list(
-            process.rec_events(
-                func=self.config.process_func,
-                event_queue=handle["event_queue"],
-                **ctx_kwargs,
-            )
+        events = await conn.arequest(
+            request=blp_request,
+            process_func=self.config.process_func,
+            service=self.config.service,
+            **ctx_kwargs,
         )
 
+        return self._events_to_arrow(events)
+
+    @staticmethod
+    def _events_to_arrow(events: list[dict]) -> pa.Table | None:
+        """Convert event dicts to Arrow table."""
         if not events:
             return None
 

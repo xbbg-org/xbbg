@@ -67,14 +67,14 @@ class TestConvertBackend:
         """Test converting with string backend value."""
         nw_frame = self._create_test_nw_frame()
         # Backend enum can be passed as string
-        result = _convert_backend(nw_frame, "pandas")
+        result = _convert_backend(nw_frame, Backend.PANDAS)
         assert isinstance(result, pd.DataFrame)
 
     def test_convert_backend_unsupported_raises_error(self):
         """Test that unsupported backend raises ValueError."""
         nw_frame = self._create_test_nw_frame()
         with pytest.raises(ValueError, match="is not a valid Backend"):
-            _convert_backend(nw_frame, "invalid_backend")
+            _convert_backend(nw_frame, "invalid_backend")  # type: ignore[invalid-argument-type]
 
 
 class TestConvertBackendPolars:
@@ -170,7 +170,7 @@ class TestApplyMultiindex:
 
     def test_apply_multiindex_empty_frame(self):
         """Test _apply_multiindex with empty frame."""
-        pdf = pd.DataFrame(columns=["ticker", "date", "px_last"])
+        pdf = pd.DataFrame(columns=pd.Index(["ticker", "date", "px_last"]))
         nw_frame = nw.from_native(pdf)
         result = _apply_multiindex(nw_frame, "ticker", "date", ["px_last"])
         assert isinstance(result, pd.DataFrame)
@@ -439,7 +439,7 @@ class TestToOutputUnsupportedFormat:
             to_output(
                 arrow_table,
                 backend=Backend.PANDAS,
-                format="invalid_format",
+                format="invalid_format",  # type: ignore[invalid-argument-type]
                 ticker_col="ticker",
                 date_col="date",
                 field_cols=["px_last"],

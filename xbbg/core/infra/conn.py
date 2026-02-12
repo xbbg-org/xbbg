@@ -6,6 +6,9 @@ services, and send requests with sensible defaults.
 
 from __future__ import annotations  # Required: defer annotation evaluation when blpapi unavailable
 
+import asyncio
+from collections.abc import Callable
+import concurrent.futures
 import logging
 from threading import Lock
 from typing import Any
@@ -15,9 +18,10 @@ from xbbg.core.infra.blpapi_wrapper import blpapi
 logger = logging.getLogger(__name__)
 
 _PORT_ = 8194
+_blpapi_logging_registered = False
 
 
-def _stop_session_quietly(session: blpapi.Session) -> None:
+def _stop_session_quietly(session: Any) -> None:
     """Stop a Bloomberg session, suppressing any errors."""
     try:
         session.stop()
@@ -37,6 +41,10 @@ class SessionManager:
 
     _instance: Any = None
     _lock = Lock()
+    _sessions: dict[str, Any] = {}
+    _services: dict[str, Any] = {}
+    _default_session: Any | None = None
+    _async_lock: asyncio.Lock = asyncio.Lock()
 
     def __new__(cls):
         """Create singleton instance."""
@@ -44,12 +52,13 @@ class SessionManager:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._sessions: dict[str, blpapi.Session] = {}
-                    cls._instance._services: dict[str, blpapi.Service] = {}
-                    cls._instance._default_session: blpapi.Session | None = None
+                    cls._instance._sessions = {}
+                    cls._instance._services = {}
+                    cls._instance._default_session = None
+                    cls._instance._async_lock = asyncio.Lock()
         return cls._instance
 
-    def set_default_session(self, session: blpapi.Session, server_host: str = "localhost", port: int = _PORT_) -> None:
+    def set_default_session(self, session: Any, server_host: str = "localhost", port: int = _PORT_) -> None:
         """Set the default session for all subsequent API calls.
 
         Args:
@@ -62,7 +71,7 @@ class SessionManager:
         con_key = f"//{server_host}:{port}"
         self._sessions[con_key] = session
 
-    def get_default_session(self) -> blpapi.Session | None:
+    def get_default_session(self) -> Any | None:
         """Get the default session if set and valid.
 
         Returns:
@@ -84,7 +93,7 @@ class SessionManager:
                 del self._sessions[k]
             _stop_session_quietly(session)
 
-    def get_session(self, port: int = _PORT_, **kwargs) -> blpapi.Session:
+    def get_session(self, port: int = _PORT_, **kwargs) -> Any:
         """Get or create a Bloomberg session.
 
         Session lookup priority:
@@ -144,7 +153,7 @@ class SessionManager:
                 self._default_session = None
             _stop_session_quietly(session)
 
-    def get_service(self, service: str, port: int = _PORT_, **kwargs) -> blpapi.Service:
+    def get_service(self, service: str, port: int = _PORT_, **kwargs) -> Any:
         """Get or create a Bloomberg service.
 
         Args:
@@ -176,12 +185,66 @@ class SessionManager:
         logger.debug("Successfully opened Bloomberg service: %s", serv_key)
         return self._services[serv_key]
 
+    async def aget_session(self, port: int = _PORT_, **kwargs) -> Any:
+        """Get or create a Bloomberg session (async-safe).
+
+        Wraps blocking session.start() in asyncio.to_thread().
+        """
+        server_host = kwargs.get("server_host") or kwargs.get("server", "")
+
+        if not server_host:
+            default_sess = self.get_default_session()
+            if default_sess is not None:
+                return default_sess
+            server_host = "localhost"
+
+        con_key = f"//{server_host}:{port}"
+
+        async_lock = self._async_lock
+        if async_lock is None:
+            async_lock = asyncio.Lock()
+            self._async_lock = async_lock
+
+        async with async_lock:
+            # Check again inside lock
+            if con_key in self._sessions:
+                session = self._sessions[con_key]
+                if getattr(session, "_Session__handle", None) is None:
+                    logger.info("Removing stale Bloomberg session (handle invalidated): %s", con_key)
+                    del self._sessions[con_key]
+                    _stop_session_quietly(session)
+                else:
+                    return session
+
+            # Create new session - blocking start() runs in thread
+            self._sessions[con_key] = await asyncio.to_thread(connect_bbg, port=port, server_host=server_host, **kwargs)
+            return self._sessions[con_key]
+
+    async def aget_service(self, service: str, port: int = _PORT_, **kwargs) -> Any:
+        """Get or create a Bloomberg service (async-safe)."""
+        server_host = kwargs.get("server_host") or kwargs.get("server", "localhost")
+        serv_key = f"//{server_host}:{port}{service}"
+
+        if serv_key in self._services:
+            svc = self._services[serv_key]
+            if getattr(svc, "_Service__handle", None) is not None:
+                return svc
+            logger.info("Removing stale Bloomberg service (handle invalidated): %s", serv_key)
+            del self._services[serv_key]
+
+        session = await self.aget_session(port=port, **kwargs)
+        logger.debug("Opening Bloomberg service: %s", service)
+        await asyncio.to_thread(session.openService, service)
+        self._services[serv_key] = session.getService(service)
+        logger.debug("Successfully opened Bloomberg service: %s", serv_key)
+        return self._services[serv_key]
+
 
 # Global singleton instance
 _session_manager = SessionManager()
 
 
-def connect(max_attempt=3, auto_restart=True, **kwargs) -> blpapi.Session:
+def connect(max_attempt=3, auto_restart=True, **kwargs) -> Any:
     """Connect to Bloomberg using alternative auth options.
 
     If a session object is passed via ``sess``, ``max_attempt`` and
@@ -299,7 +362,7 @@ def disconnect() -> None:
     logger.debug("Cleared default Bloomberg session")
 
 
-def connect_bbg(**kwargs) -> blpapi.Session:
+def connect_bbg(**kwargs) -> Any:
     """Create and connect a Bloomberg session.
 
     Args:
@@ -311,13 +374,15 @@ def connect_bbg(**kwargs) -> blpapi.Session:
     """
     logger = logging.getLogger(__name__)
 
+    global _blpapi_logging_registered
+
     # Register blpapi logging callback if not already registered (only once)
     try:
         from xbbg.core.infra import blpapi_logging
 
-        if blpapi_logging and not hasattr(connect_bbg, "_blpapi_logging_registered"):
+        if blpapi_logging and not _blpapi_logging_registered:
             blpapi_logging.register_blpapi_logging_callback()
-            connect_bbg._blpapi_logging_registered = True  # type: ignore[attr-defined]
+            _blpapi_logging_registered = True
     except ImportError:
         pass
 
@@ -345,7 +410,7 @@ def connect_bbg(**kwargs) -> blpapi.Session:
     raise ConnectionError("Cannot connect to Bloomberg")
 
 
-def bbg_session(**kwargs) -> blpapi.Session:
+def bbg_session(**kwargs) -> Any:
     """Bloomberg session - initiate if not given.
 
     Args:
@@ -367,7 +432,7 @@ def bbg_session(**kwargs) -> blpapi.Session:
     return _session_manager.get_session(port=port, **kwargs)
 
 
-def bbg_service(service: str, **kwargs) -> blpapi.Service:
+def bbg_service(service: str, **kwargs) -> Any:
     """Initiate service.
 
     Args:
@@ -384,53 +449,134 @@ def bbg_service(service: str, **kwargs) -> blpapi.Service:
     return _session_manager.get_service(service=service, port=port, **kwargs)
 
 
-def event_types() -> dict:
+def event_types() -> dict[Any, str]:
     """Bloomberg event types."""
     return {getattr(blpapi.Event, ev_typ): ev_typ for ev_typ in dir(blpapi.Event) if ev_typ.isupper()}
 
 
-def send_request(request: blpapi.Request, **kwargs):
-    """Send a request via the Bloomberg session.
+def _run_sync(coro, timeout=None):
+    """Run an async coroutine synchronously.
+
+    Handles both script context (no event loop) and Jupyter/async framework
+    context (event loop already running).
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop - safe to use asyncio.run()
+        if timeout:
+            return asyncio.run(asyncio.wait_for(coro, timeout=timeout))
+        return asyncio.run(coro)
+    # Event loop already running (Jupyter, async framework)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        if timeout:
+            return pool.submit(asyncio.run, asyncio.wait_for(coro, timeout=timeout)).result(timeout=timeout)
+        return pool.submit(asyncio.run, coro).result()
+
+
+async def arequest(
+    request: Any,
+    process_func: Callable[..., Any],
+    service: str | None = None,
+    **kwargs,
+) -> list[dict[str, Any]]:
+    """The async foundation for all Bloomberg I/O.
+
+    Every Bloomberg request/response cycle in xbbg flows through this function.
+    Sends a request with a per-request EventQueue and polls for events
+    using non-blocking tryNextEvent() + await asyncio.sleep().
 
     Args:
-        request: Bloomberg request to send.
-        service: Optional service name for logging purposes (e.g., '//blp/refdata').
-        event_queue: Optional ``blpapi.EventQueue`` to receive events. Created if not provided.
-        correlation_id: Optional ``blpapi.CorrelationId`` for the request. Created if not provided.
-        **kwargs: Additional options forwarded to session retrieval (for example, ``port``).
+        request: Bloomberg API request to send.
+        process_func: Function to process response messages (e.g., process_ref, process_hist).
+        service: Service name for logging.
+        **kwargs: Additional options forwarded to session retrieval.
 
     Returns:
-        dict: A mapping with ``event_queue`` and ``correlation_id``.
+        List of dicts from processed response events.
     """
-    logger = logging.getLogger(__name__)
+    import time
 
-    # Always use per-request EventQueue and CorrelationId by default
-    event_queue = kwargs.get("event_queue") or blpapi.EventQueue()
-    correlation_id = kwargs.get("correlation_id") or blpapi.CorrelationId()
+    event_queue = blpapi.EventQueue()
+    correlation_id = blpapi.CorrelationId()
 
-    sess = bbg_session(**kwargs)
+    # Get session (async-safe - wraps blocking start/openService in to_thread)
+    sess = await _session_manager.aget_session(port=kwargs.get("port", _PORT_), **kwargs)
+
     try:
-        # Only log request details if DEBUG enabled (avoid overhead)
         if logger.isEnabledFor(logging.DEBUG):
-            # Service name is passed explicitly since Request objects don't have service() method
-            service_name = kwargs.get("service")
-            if service_name:
-                logger.debug("Sending Bloomberg API request (service: %s)", service_name)
+            if service:
+                logger.debug("Sending Bloomberg API request (service: %s)", service)
             else:
                 logger.debug("Sending Bloomberg API request")
         sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Bloomberg API request sent successfully")
     except blpapi.InvalidStateException as e:
-        # Log exception with stack trace (important error, rare)
         logger.exception("Error sending Bloomberg request: %s", e)
-
         # Remove invalid session and retry
         port = kwargs.get("port", _PORT_)
         server_host = kwargs.get("server_host") or kwargs.get("server", "localhost")
         _session_manager.remove_session(port=port, server_host=server_host)
-
-        sess = bbg_session(**kwargs)
+        sess = await _session_manager.aget_session(port=kwargs.get("port", _PORT_), **kwargs)
         sess.sendRequest(request=request, eventQueue=event_queue, correlationId=correlation_id)
 
-    return {"event_queue": event_queue, "correlation_id": correlation_id}
+    # Async event polling
+    responses = [blpapi.Event.PARTIAL_RESPONSE, blpapi.Event.RESPONSE]
+    slow_warn_seconds = kwargs.pop("slow_warn_seconds", 15.0)
+    start_time = time.time()
+    warned = False
+    results = []
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("Starting async Bloomberg event processing")
+
+    while True:
+        ev = event_queue.tryNextEvent()
+        if ev is None:
+            await asyncio.sleep(0.001)  # 1ms polling interval
+            # Check for slow request warning
+            elapsed = time.time() - start_time
+            if not warned and elapsed > slow_warn_seconds:
+                logger.warning(
+                    "Bloomberg request taking %.1f seconds (still waiting for response)...",
+                    elapsed,
+                )
+                warned = True
+            continue
+
+        if ev.eventType() in responses:
+            for msg in ev:
+                results.extend(process_func(msg=msg, **kwargs))
+            if ev.eventType() == blpapi.Event.RESPONSE:
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("Received final RESPONSE event")
+                break
+        elif ev.eventType() == blpapi.Event.TIMEOUT:
+            continue
+        else:
+            # SESSION_TERMINATED or other events
+            for msg in ev:
+                if getattr(msg, "messageType", lambda: None)() == blpapi.Name("SessionTerminated"):
+                    logger.warning("Session terminated during async event processing")
+                    return results
+
+    return results
+
+
+def request(
+    request: Any,
+    process_func: Callable[..., Any],
+    service: str | None = None,
+    **kwargs,
+) -> list[dict[str, Any]]:
+    """Synchronous Bloomberg request. Wraps arequest().
+
+    Args:
+        request: Bloomberg API request to send.
+        process_func: Function to process response messages.
+        service: Service name for logging.
+        **kwargs: Additional options.
+
+    Returns:
+        List of dicts from processed response events.
+    """
+    return _run_sync(arequest(request, process_func, service=service, **kwargs))

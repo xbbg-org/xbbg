@@ -21,18 +21,18 @@ try:
         dll_path = os.environ.get("BBG_DLL", "C:/blp/DAPI")
         if Path(dll_path).exists():
             with os.add_dll_directory(dll_path):
-                import blpapi  # type: ignore[reportMissingImports]
+                import blpapi
         else:
             raise ImportError("Please add BBG_DLL to your PATH variable")
     else:
-        import blpapi  # type: ignore[reportMissingImports]
+        import blpapi
 
     _BLPAPI_AVAILABLE = True
 
 except (ImportError, AttributeError):
     # Try pytest importorskip as fallback (mostly for testing environments)
     try:
-        import pytest  # type: ignore[reportMissingImports]
+        import pytest
 
         blpapi = pytest.importorskip("blpapi")  # type: ignore[assignment]
         _BLPAPI_AVAILABLE = True

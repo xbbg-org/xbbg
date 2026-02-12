@@ -1,10 +1,9 @@
-import os
+from pathlib import Path
 
 import pandas as pd
 
 from xbbg.api import intraday
 from xbbg.core.infra import conn
-from xbbg.io import param
 
 
 def test_bdib_uses_cached_parquet_when_available(monkeypatch):
@@ -12,7 +11,7 @@ def test_bdib_uses_cached_parquet_when_available(monkeypatch):
     from xbbg.markets import bloomberg
     from xbbg.markets.bloomberg import ExchangeInfo
 
-    data_root = os.path.join(param.PKG_PATH, "tests", "data")
+    data_root = str(Path(__file__).parent / "data")
     monkeypatch.setenv("BBG_ROOT", data_root)
 
     # Mock Bloomberg exchange info to avoid live calls
@@ -28,10 +27,10 @@ def test_bdib_uses_cached_parquet_when_available(monkeypatch):
 
     monkeypatch.setattr(bloomberg, "fetch_exchange_info", mock_fetch_exchange_info)
 
-    def _fail(*args, **kwargs):  # pragma: no cover - defensive
-        raise AssertionError("send_request should not be called when cache file exists")
+    async def _fail(*args, **kwargs):  # pragma: no cover - defensive
+        raise AssertionError("arequest should not be called when cache file exists")
 
-    monkeypatch.setattr(conn, "send_request", _fail)
+    monkeypatch.setattr(conn, "arequest", _fail)
 
     df = intraday.bdib(
         ticker="AAPL US Equity",
