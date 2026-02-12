@@ -5,11 +5,10 @@ Market-related utility functions have been moved to xbbg.markets.info.
 """
 
 from dataclasses import dataclass
-
-from xbbg.io import files
+from pathlib import Path
 
 # Package path
-PKG_PATH = files.abspath(__file__, 0)
+PKG_PATH = Path(__file__).parent.as_posix()
 
 # Futures month codes
 Futures = {

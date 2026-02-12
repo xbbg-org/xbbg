@@ -21,7 +21,6 @@ import pyarrow.parquet as pq
 from xbbg import const
 from xbbg.core.config import overrides
 from xbbg.core.domain import contracts
-from xbbg.io import files
 from xbbg.io.convert import is_empty, to_pandas
 
 if TYPE_CHECKING:
@@ -222,7 +221,7 @@ def save_intraday(
         logger.info("Saving intraday data to cache: %s (%d rows)", data_file, len(data))
     else:
         logger.info("Saving intraday data to cache: %s", data_file)
-    files.create_folder(data_file, is_file=True)
+    Path(data_file).parent.mkdir(parents=True, exist_ok=True)
     # Use PyArrow for parquet I/O (backend-agnostic)
     table = pa.Table.from_pandas(data)
     pq.write_table(table, data_file)
@@ -260,7 +259,7 @@ class BarCacheAdapter:
         if not data_file:
             # BBG_ROOT not set - debug message logged in save() method if needed
             return None
-        if not files.exists(data_file):
+        if not Path(data_file).exists():
             return None
 
         try:
@@ -315,7 +314,7 @@ class BarCacheAdapter:
             return None
 
         # Check if all files exist first (fail fast)
-        missing_days = [dt for dt, path in day_files if not files.exists(path)]
+        missing_days = [dt for dt, path in day_files if not Path(path).exists()]
         if missing_days:
             logger.debug(
                 "Multi-day cache miss: %d of %d days missing for %s (first missing: %s)",
@@ -552,7 +551,7 @@ def save_exchange_infos(infos: list[ExchangeInfo]) -> None:
     new_tickers = set(new_df["ticker"].tolist())
 
     # Load existing cache and merge
-    if files.exists(cache_file):
+    if Path(cache_file).exists():
         try:
             existing_table = pq.read_table(cache_file)
             existing_df = existing_table.to_pandas()
@@ -567,7 +566,7 @@ def save_exchange_infos(infos: list[ExchangeInfo]) -> None:
         merged_df = new_df
 
     # Ensure directory exists
-    files.create_folder(cache_file, is_file=True)
+    Path(cache_file).parent.mkdir(parents=True, exist_ok=True)
 
     # Write to parquet
     table = pa.Table.from_pandas(merged_df, preserve_index=False)
@@ -589,7 +588,7 @@ def load_exchange_info(ticker: str, max_age_hours: float = 24.0) -> ExchangeInfo
     from xbbg.markets.bloomberg import ExchangeInfo
 
     cache_file = exchange_cache_file()
-    if not cache_file or not files.exists(cache_file):
+    if not cache_file or not Path(cache_file).exists():
         return None
 
     try:

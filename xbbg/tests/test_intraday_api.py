@@ -1,10 +1,10 @@
 import os
+from pathlib import Path
 
 import pandas as pd
 
 from xbbg.api import intraday
 from xbbg.core.infra import conn
-from xbbg.io import param
 
 
 def test_bdib_uses_cached_parquet_when_available(monkeypatch):
@@ -12,7 +12,7 @@ def test_bdib_uses_cached_parquet_when_available(monkeypatch):
     from xbbg.markets import bloomberg
     from xbbg.markets.bloomberg import ExchangeInfo
 
-    data_root = os.path.join(param.PKG_PATH, "tests", "data")
+    data_root = str(Path(__file__).parent / "data")
     monkeypatch.setenv("BBG_ROOT", data_root)
 
     # Mock Bloomberg exchange info to avoid live calls
