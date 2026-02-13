@@ -146,6 +146,23 @@ What's New
 
 .. xbbg:changelog-start
 
+*0.12.0b2* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b2>`__
+
+### Fixed
+
+- **`ArrowInvalid` on multi-field BDP calls**: Bloomberg returns different Python types for different fields (e.g., `float` for `FUT_CONT_SIZE`, `str` for `FUT_VAL_PT`). When both land in the same Arrow value column, `pa.array()` raised `ArrowInvalid`. New `_events_to_table()` builds Arrow tables directly from event dicts with automatic type coercion fallback — stringify on `ArrowInvalid`/`ArrowTypeError`, preserving nulls (#219)
+
+- **Post-transform `pa.Table.from_pandas()` mixed-type failure**: Protected the secondary Arrow conversion (after narwhals transform) with the same stringify fallback for object columns (#219)
+
+### Added
+
+- **16 unit tests for `_events_to_table()`** (`test_events_to_table.py`): covers basic contract, mixed-type columns (float+str, int+str, float+date, kitchen sink), null handling, non-uniform dict keys, and pipeline integration (#219)
+
+- **2 live regression tests for mixed-type BDP** (`test_live_endpoints.py`): `test_bdp_mixed_type_fields` and `test_bdp_mixed_type_multiple_tickers` exercise the exact bug scenario with `ES1 Index` / `NQ1 Index` using `FUT_CONT_SIZE` + `FUT_VAL_PT` (#219)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.4...v0.12.0b2
+
+
 *0.12.0b1* - see release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b1>`__
 
 ### Changed
