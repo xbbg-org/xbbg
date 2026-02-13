@@ -24,6 +24,65 @@ from xbbg.core.infra import conn
 logger = logging.getLogger(__name__)
 
 
+def _events_to_table(events: list[dict[str, Any]]) -> pa.Table | None:
+    """Convert Bloomberg event dicts directly to a PyArrow Table (no pandas).
+
+    Bloomberg's ``process_*`` functions yield ``dict[str, Any]`` where values
+    come from ``blpapi.Element.getValue()`` — native Python types that vary
+    by field (``float`` for Double fields, ``str`` for String fields,
+    ``datetime`` for Date fields, etc.).  When multiple fields are requested,
+    the ``value`` column becomes a true **variant column** with mixed Python
+    types in the same list.
+
+    ``pa.Table.from_pylist()`` and ``pa.Table.from_pandas()`` both choke on
+    this because Arrow columns are strongly typed.  Instead, we build the
+    table directly: collect all column names from the events, then for each
+    column attempt ``pa.array()`` with type inference.  If inference fails
+    (mixed types), stringify all values in that column to ``pa.string()``,
+    preserving ``None`` as Arrow null.
+
+    Args:
+        events: List of dicts from Bloomberg process functions.
+
+    Returns:
+        PyArrow Table, or None if events is empty.
+    """
+    if not events:
+        return None
+
+    # Collect column names in insertion order (first event defines order,
+    # later events may add columns — e.g. BDS array fields)
+    col_names: list[str] = []
+    seen: set[str] = set()
+    for evt in events:
+        for key in evt:
+            if key not in seen:
+                col_names.append(key)
+                seen.add(key)
+
+    # Build one Arrow array per column
+    arrays: list[pa.Array] = []
+    for col in col_names:
+        values = [evt.get(col) for evt in events]
+
+        # Fast path: let Arrow infer the type
+        try:
+            arrays.append(pa.array(values, from_pandas=True))
+            continue
+        except (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError):
+            pass
+
+        # Slow path: stringify non-None values → pa.string()
+        arrays.append(
+            pa.array(
+                [None if v is None else str(v) for v in values],
+                type=pa.string(),
+            )
+        )
+
+    return pa.table(dict(zip(col_names, arrays, strict=True)))
+
+
 class RequestBuilderStrategy(Protocol):
     """Strategy for building Bloomberg requests."""
 
@@ -260,7 +319,18 @@ class BloombergPipeline(BaseContextAware):
             warn_defaults_changing()
 
         # Get Arrow table from transformed data (fallback for pandas during transition)
-        arrow_table = transformed if isinstance(transformed, pa.Table) else pa.Table.from_pandas(transformed)
+        if isinstance(transformed, pa.Table):
+            arrow_table = transformed
+        else:
+            try:
+                arrow_table = pa.Table.from_pandas(transformed)
+            except (pa.ArrowInvalid, pa.ArrowTypeError):
+                # Mixed-type columns — coerce object columns to string
+                transformed = transformed.copy()
+                for col in transformed.columns:
+                    if transformed[col].dtype == object:
+                        transformed[col] = transformed[col].astype("string")
+                arrow_table = pa.Table.from_pandas(transformed)
 
         result = to_output(
             arrow_table,
@@ -402,26 +472,8 @@ class BloombergPipeline(BaseContextAware):
 
     @staticmethod
     def _events_to_arrow(events: list[dict]) -> pa.Table | None:
-        """Convert event dicts to Arrow table."""
-        if not events:
-            return None
-
-        # Build DataFrame from events - let pandas infer types naturally
-        df = pd.DataFrame(events)
-
-        # Handle mixed-type 'value' column (can contain strings, floats, dates)
-        # Convert to string only if it has mixed types that PyArrow can't handle
-        if "value" in df.columns and df["value"].dtype == object:
-            # Check if all non-null values are numeric
-            try:
-                pd.to_numeric(df["value"], errors="raise")
-            except (ValueError, TypeError):
-                # Mixed types - convert to string for Arrow compatibility
-                df["value"] = df["value"].astype(str)
-
-        # Convert to Arrow table, letting PyArrow infer types from pandas
-        # This preserves numeric types (float64, int64) and handles dates properly
-        return pa.Table.from_pandas(df, preserve_index=False)
+        """Convert event dicts to Arrow table (no pandas intermediary)."""
+        return _events_to_table(events)
 
     def _persist_cache(
         self,
