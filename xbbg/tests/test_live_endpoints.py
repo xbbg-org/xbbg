@@ -1487,6 +1487,81 @@ def test_stream_survey_field_issue_199():
     print("✓ stream() field values working correctly")
 
 
+@pytest.mark.live_endpoint
+def test_bdp_mixed_type_fields():
+    """Test BDP with fields that return mixed Python types (regression for ArrowInvalid bug).
+
+    Bloomberg returns different Python types for different fields:
+    - FUT_CONT_SIZE → Double → float (e.g., 50.0)
+    - FUT_VAL_PT   → String → str   (e.g., '50.00')
+
+    Before the fix, pa.array([50.0, '50.00']) raised:
+        pyarrow.lib.ArrowInvalid: Could not convert '50.00' with type str:
+        tried to convert to double
+
+    This test verifies the _events_to_table() fix handles mixed types gracefully.
+    """
+    print(f"\n{'=' * 80}")
+    print("Testing BDP (Mixed Type Fields - ArrowInvalid regression)")
+    print(f"{'=' * 80}")
+
+    # The exact call that triggered the original bug
+    result = blp.bdp(
+        tickers=["ES1 Index"],
+        flds=["FUT_CONT_SIZE", "FUT_VAL_PT"],
+    )
+
+    assert isinstance(result, pd.DataFrame), "BDP should return a DataFrame"
+    assert not result.empty, "BDP result should not be empty"
+
+    # Verify both fields are present as columns
+    result_cols_lower = [col.lower() for col in result.columns]
+    assert any("fut_cont_size" in c for c in result_cols_lower), "FUT_CONT_SIZE should be present"
+    assert any("fut_val_pt" in c for c in result_cols_lower), "FUT_VAL_PT should be present"
+
+    print("\nBDP Result (Mixed Types):")
+    print(result)
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Dtypes:\n{result.dtypes}")
+    print("✓ BDP mixed-type fields working correctly (ArrowInvalid bug fixed)")
+
+
+@pytest.mark.live_endpoint
+def test_bdp_mixed_type_multiple_tickers():
+    """Test BDP with mixed-type fields across multiple tickers.
+
+    Extends the ArrowInvalid regression test with multiple tickers to ensure
+    the fix works for multi-row results where each row has mixed types.
+    """
+    print(f"\n{'=' * 80}")
+    print("Testing BDP (Mixed Type Fields - Multiple Tickers)")
+    print(f"{'=' * 80}")
+
+    result = blp.bdp(
+        tickers=["ES1 Index", "NQ1 Index"],
+        flds=["FUT_CONT_SIZE", "FUT_VAL_PT"],
+    )
+
+    assert isinstance(result, pd.DataFrame), "BDP should return a DataFrame"
+    assert not result.empty, "BDP result should not be empty"
+
+    # Verify both tickers present
+    assert len(result) >= 2, "Should have at least 2 rows (one per ticker)"
+
+    # Verify both fields are present as columns
+    result_cols_lower = [col.lower() for col in result.columns]
+    assert any("fut_cont_size" in c for c in result_cols_lower), "FUT_CONT_SIZE should be present"
+    assert any("fut_val_pt" in c for c in result_cols_lower), "FUT_VAL_PT should be present"
+
+    print("\nBDP Result (Mixed Types, Multiple Tickers):")
+    print(result)
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Dtypes:\n{result.dtypes}")
+    print("✓ BDP mixed-type fields with multiple tickers working correctly")
+
+
 if __name__ == "__main__":
     # Allow running tests directly with verbose output
     print("\n" + "=" * 80)
