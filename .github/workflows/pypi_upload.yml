@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.11.4). Leave empty for latest release.'
+        required: false
+        type: string
 
 jobs:
   deploy:
@@ -24,23 +29,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
           elif [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Get most recent release (including pre-releases)
+          else
+            # Fallback: most recent release (including pre-releases)
             TAG=$(curl -fsSL \
                     -H "Authorization: Bearer $GITHUB_TOKEN" \
                     -H "Accept: application/vnd.github+json" \
                     "https://api.github.com/repos/${{ github.repository }}/releases?per_page=1" \
                   | jq -r '.[0].tag_name // empty')
             if [ -z "$TAG" ]; then
-              # Fallback to most recent git tag (including pre-releases)
               TAG=$(git tag --sort=-version:refname | head -n 1 || true)
             fi
-          else
-            TAG=$(git tag --sort=-version:refname | head -n 1 || true)
           fi
           if [ -z "${TAG:-}" ]; then
             echo "Unable to determine a release tag to build." >&2
