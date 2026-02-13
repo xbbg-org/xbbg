@@ -31,6 +31,7 @@ class RequestBuilder:
         self._override_kwargs: dict = {}
         self._backend: str | None = None
         self._format: str | None = None
+        self._tz: str | None = None
 
     def ticker(self, ticker: str) -> RequestBuilder:
         """Set ticker."""
@@ -84,6 +85,19 @@ class RequestBuilder:
         self._override_kwargs.update(kwargs)
         return self
 
+    def tz(self, tz: str | None) -> RequestBuilder:
+        """Set output timezone for intraday data.
+
+        Args:
+            tz: IANA timezone string (e.g., 'America/New_York', 'UTC').
+                None means use exchange local timezone (default).
+
+        Returns:
+            Self for method chaining.
+        """
+        self._tz = tz
+        return self
+
     def with_output(self, backend: str | None = None, output_format: str | None = None) -> RequestBuilder:
         """Set output backend and format.
 
@@ -127,6 +141,7 @@ class RequestBuilder:
             override_kwargs=self._override_kwargs,
             backend=cast(Backend | None, self._backend),
             format=cast(Format | None, self._format),
+            tz=self._tz,
         )
 
     @classmethod
@@ -140,6 +155,7 @@ class RequestBuilder:
         end_datetime=None,
         backend: str | None = None,
         output_format: str | None = None,
+        tz: str | None = None,
         **kwargs,
     ) -> DataRequest:
         """Build from legacy function signature.
@@ -153,6 +169,7 @@ class RequestBuilder:
             end_datetime: Optional explicit end datetime for multi-day requests.
             backend: Backend for data processing (e.g., 'pandas', 'polars').
             output_format: Output format for the data (e.g., 'long', 'wide').
+            tz: Output timezone for intraday data. None = exchange local timezone.
             **kwargs: Legacy kwargs (will be split).
 
         Returns:
@@ -183,5 +200,9 @@ class RequestBuilder:
         # Set output backend and format if provided
         if backend is not None or output_format is not None:
             builder.with_output(backend, output_format)
+
+        # Set output timezone if provided
+        if tz is not None:
+            builder.tz(tz)
 
         return builder.build()

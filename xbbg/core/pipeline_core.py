@@ -510,6 +510,7 @@ class BloombergPipeline(BaseContextAware):
             request_opts=request.request_opts,
             backend=request.backend,
             format=request.format,
+            tz=request.tz,
         )
 
     def _with_resolved_ticker(self, request: DataRequest, resolved_ticker: str) -> DataRequest:
@@ -529,4 +530,5 @@ class BloombergPipeline(BaseContextAware):
             request_opts=request.request_opts,
             backend=request.backend,
             format=request.format,
+            tz=request.tz,
         )

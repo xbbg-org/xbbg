@@ -20,7 +20,36 @@ from xbbg.utils import pipeline
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["bdib", "abdib", "bdtick", "abdtick"]
+__all__ = ["bdib", "abdib", "bdtick", "abdtick", "exchange_tz"]
+
+
+def exchange_tz(ticker: str, **kwargs) -> str:
+    """Return the exchange timezone for a Bloomberg ticker.
+
+    Looks up exchange metadata via the same resolution path used by
+    ``bdib`` / ``bdtick`` so the result matches the timezone of the
+    data those functions return.
+
+    Args:
+        ticker: Bloomberg ticker (e.g., ``'AAPL US Equity'``).
+        **kwargs: Forwarded to the exchange-info resolver (e.g., ``ref``).
+
+    Returns:
+        IANA timezone string (e.g., ``'America/New_York'``).
+
+    Raises:
+        LookupError: If exchange metadata cannot be resolved for *ticker*.
+
+    Examples:
+        >>> exchange_tz("AAPL US Equity")  # doctest: +SKIP
+        'America/New_York'
+        >>> exchange_tz("7974 JT Equity")  # doctest: +SKIP
+        'Asia/Tokyo'
+    """
+    exch = const.exch_info(ticker=ticker, **kwargs)
+    if exch.empty or "tz" not in exch.index:
+        raise LookupError(f"Cannot resolve exchange timezone for {ticker}")
+    return exch.tz
 
 
 def _get_default_exchange_info(ticker: str, dt=None, session="allday", **kwargs) -> pd.Series:
@@ -85,6 +114,7 @@ async def abdib(
     typ="TRADE",
     start_datetime=None,
     end_datetime=None,
+    tz: str | None = None,
     backend: Backend | None = None,
     format: Format | None = None,
     **kwargs,
@@ -110,6 +140,14 @@ async def abdib(
         end_datetime: explicit end datetime for multi-day requests (e.g., '2025-01-05 16:00:00').
             When provided with start_datetime, bypasses session-based time resolution.
             Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
+        tz: Output timezone for timestamps. Controls which timezone the returned
+            DataFrame's time index is expressed in.
+
+            - ``None`` (default): exchange local timezone (e.g. ``'America/New_York'``
+              for US equities, ``'Asia/Tokyo'`` for Japanese equities).  This matches
+              the behaviour of ``bdtick()`` and xbbg v0.7.x ``bdib()``.
+            - ``'UTC'``: keep timestamps in UTC (skip conversion).
+            - Any IANA timezone string: convert to that timezone.
         backend: Backend for data processing (e.g., Backend.PANDAS, Backend.POLARS).
             If None, uses the default backend.
         format: Output format for the data (e.g., Format.LONG, Format.WIDE).
@@ -130,8 +168,11 @@ async def abdib(
 
     Examples:
         >>> import asyncio
-        >>> # Single request
+        >>> # Single request — timestamps in exchange local timezone (default)
         >>> # df = await blp.abdib('AAPL US Equity', dt='2025-11-12', interval=10)
+        >>>
+        >>> # Timestamps in UTC
+        >>> # df = await blp.abdib('AAPL US Equity', dt='2025-11-12', tz='UTC')
         >>>
         >>> # Concurrent requests (true async)
         >>> # results = await asyncio.gather(
@@ -160,6 +201,7 @@ async def abdib(
         typ=typ,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
+        tz=tz,
         backend=backend,
         output_format=format,
         **kwargs,
@@ -202,6 +244,7 @@ def bdib(
     typ="TRADE",
     start_datetime=None,
     end_datetime=None,
+    tz: str | None = None,
     backend: Backend | None = None,
     format: Format | None = None,
     **kwargs,
@@ -224,6 +267,14 @@ def bdib(
         end_datetime: explicit end datetime for multi-day requests (e.g., '2025-01-05 16:00:00').
             When provided with start_datetime, bypasses session-based time resolution.
             Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
+        tz: Output timezone for timestamps. Controls which timezone the returned
+            DataFrame's time index is expressed in.
+
+            - ``None`` (default): exchange local timezone (e.g. ``'America/New_York'``
+              for US equities, ``'Asia/Tokyo'`` for Japanese equities).  This matches
+              the behaviour of ``bdtick()`` and xbbg v0.7.x ``bdib()``.
+            - ``'UTC'``: keep timestamps in UTC (skip conversion).
+            - Any IANA timezone string: convert to that timezone.
         backend: Backend for data processing (e.g., Backend.PANDAS, Backend.POLARS).
             If None, uses the default backend.
         format: Output format for the data (e.g., Format.LONG, Format.WIDE).
@@ -252,6 +303,10 @@ def bdib(
 
         >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10)
 
+        Get data in UTC instead of exchange local time:
+
+        >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', tz='UTC')
+
         Get multi-day intraday data:
 
         >>> # blp.bdib('AAPL US Equity', start_datetime='2025-01-01 09:30:00',
@@ -265,6 +320,7 @@ def bdib(
             typ=typ,
             start_datetime=start_datetime,
             end_datetime=end_datetime,
+            tz=tz,
             backend=backend,
             format=format,
             **kwargs,

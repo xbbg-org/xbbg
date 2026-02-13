@@ -107,7 +107,22 @@ class IntradayRequestBuilder:
 
 
 class IntradayTransformer:
-    """Strategy for transforming Bloomberg intraday bar data responses."""
+    """Strategy for transforming Bloomberg intraday bar data responses.
+
+    Timezone behaviour (restored from v0.7.x):
+        Bloomberg returns intraday bar timestamps in UTC.  By default,
+        this transformer converts them to the **exchange local timezone**
+        so the output matches what ``bdtick`` returns and what v0.7.x
+        ``bdib`` returned.
+
+        The target timezone is resolved in this order:
+        1. ``request.tz`` — explicit caller override (e.g. ``tz='UTC'``).
+        2. ``exchange_info.tz`` — exchange local timezone from Bloomberg.
+        3. Fall through with no conversion (data stays in UTC).
+
+        Pass ``tz='UTC'`` to ``bdib()`` / ``abdib()`` to keep timestamps
+        in UTC and skip conversion entirely.
+    """
 
     def transform(
         self,
@@ -144,6 +159,34 @@ class IntradayTransformer:
 
         # Sort by time column
         df = df.sort("time")
+
+        # ------------------------------------------------------------------
+        # Timezone conversion: UTC → target timezone
+        #
+        # Bloomberg IntradayBarRequest always returns timestamps in UTC.
+        # Convert to the target timezone so the caller sees exchange-local
+        # times by default (matching v0.7.x behaviour and bdtick).
+        # ------------------------------------------------------------------
+        target_tz = request.tz  # explicit caller override
+        if target_tz is None and not exchange_info.empty and "tz" in exchange_info.index:
+            target_tz = exchange_info.tz  # exchange local timezone
+
+        if target_tz is not None:
+            # Convert via pandas (narwhals tz support is limited)
+            native = nw.to_native(df)
+            time_col = native.column("time")
+            as_pd = time_col.to_pandas()
+
+            # Localize to UTC first (Bloomberg returns UTC), then convert
+            if as_pd.dt.tz is None:
+                as_pd = as_pd.dt.tz_localize("UTC")
+            as_pd = as_pd.dt.tz_convert(target_tz)
+
+            # Rebuild Arrow column and replace in table
+            new_time = pa.Array.from_pandas(as_pd)
+            col_idx = native.schema.get_field_index("time")
+            native = native.set_column(col_idx, "time", new_time)
+            df = nw.from_native(native, eager_only=True)
 
         # Reorder columns to have ticker first, then time, then other fields
         cols = df.columns

@@ -118,6 +118,7 @@ class DataRequest:
     override_kwargs: dict[str, Any] = field(default_factory=dict)
     backend: Backend | None = None
     format: Format | None = None
+    tz: str | None = None
 
     def to_date_string(self) -> str:
         """Convert dt to YYYY-MM-DD string."""

@@ -17,7 +17,7 @@ from xbbg.api.fixed_income import yas as _yas
 # Import implementations with underscore prefix for wrapping
 from xbbg.api.helpers import adjust_ccy as _adjust_ccy
 from xbbg.api.historical import abdh, bdh, dividend as _dividend, earning as _earning, turnover as _turnover
-from xbbg.api.intraday import abdib, abdtick, bdib, bdtick
+from xbbg.api.intraday import abdib, abdtick, bdib, bdtick, exchange_tz
 from xbbg.api.realtime import live as _live, stream, subscribe as _subscribe
 from xbbg.api.reference import (
     abdp,
@@ -370,6 +370,7 @@ __all__ = [
     "abdib",
     "bdtick",
     "abdtick",
+    "exchange_tz",
     "beqs",
     "abeqs",
     "bsrch",
