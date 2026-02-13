@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0b2] - 2026-02-13
+
 ### Fixed
 
 - **`ArrowInvalid` on multi-field BDP calls**: Bloomberg returns different Python types for different fields (e.g., `float` for `FUT_CONT_SIZE`, `str` for `FUT_VAL_PT`). When both land in the same Arrow value column, `pa.array()` raised `ArrowInvalid`. New `_events_to_table()` builds Arrow tables directly from event dicts with automatic type coercion fallback — stringify on `ArrowInvalid`/`ArrowTypeError`, preserving nulls (#219)
@@ -403,7 +405,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b2...HEAD
+[0.12.0b2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b2
 [0.12.0b1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b1
 [0.11.4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.4
 [0.11.3]: https://github.com/alpha-xone/xbbg/compare/v0.11.2...v0.11.3
