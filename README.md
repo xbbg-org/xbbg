@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==0.12.0b1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b1))
+Latest release: xbbg==0.12.0b2 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b2))
 <!-- xbbg:latest-release-end -->
 
 ## Table of Contents
@@ -1896,3 +1896,19 @@ _0.12.0b1_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/ta
 - **Bump `cryptography` from 46.0.4 to 46.0.5**: Fixes CVE-2026-26007 — subgroup attack due to missing validation for SECT binary elliptic curves (#217)
 
 **Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.4...v0.12.0b1
+
+_0.12.0b2_ - see release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b2)
+
+### Fixed
+
+- **`ArrowInvalid` on multi-field BDP calls**: Bloomberg returns different Python types for different fields (e.g., `float` for `FUT_CONT_SIZE`, `str` for `FUT_VAL_PT`). When both land in the same Arrow value column, `pa.array()` raised `ArrowInvalid`. New `_events_to_table()` builds Arrow tables directly from event dicts with automatic type coercion fallback — stringify on `ArrowInvalid`/`ArrowTypeError`, preserving nulls (#219)
+
+- **Post-transform `pa.Table.from_pandas()` mixed-type failure**: Protected the secondary Arrow conversion (after narwhals transform) with the same stringify fallback for object columns (#219)
+
+### Added
+
+- **16 unit tests for `_events_to_table()`** (`test_events_to_table.py`): covers basic contract, mixed-type columns (float+str, int+str, float+date, kitchen sink), null handling, non-uniform dict keys, and pipeline integration (#219)
+
+- **2 live regression tests for mixed-type BDP** (`test_live_endpoints.py`): `test_bdp_mixed_type_fields` and `test_bdp_mixed_type_multiple_tickers` exercise the exact bug scenario with `ES1 Index` / `NQ1 Index` using `FUT_CONT_SIZE` + `FUT_VAL_PT` (#219)
+
+**Full Changelog**: https://github.com/alpha-xone/xbbg/compare/v0.11.4...v0.12.0b2
