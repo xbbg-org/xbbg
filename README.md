@@ -232,8 +232,9 @@ xbbg is the **only Python library** that provides:
 
 | Function | Description | Key Features |
 |----------|-------------|--------------|
-| **`bdib()`** | Intraday bar data | Sub-minute bars (10s intervals)<br>Session filtering (open/close)<br>Exchange-aware timing |
+| **`bdib()`** | Intraday bar data | Sub-minute bars (10s intervals)<br>Session filtering (open/close)<br>Exchange-aware timing<br>Timezone control (`tz` parameter) |
 | **`bdtick()`** | Tick-by-tick data | Trade & quote events<br>Condition codes<br>Exchange/broker details |
+| **`exchange_tz()`** | Exchange timezone lookup | Returns IANA timezone string for any ticker |
 
 ### Screening & Advanced Queries
 
@@ -267,7 +268,7 @@ xbbg is the **only Python library** that provides:
 ### Additional Features
 
 - **Intraday Caching**: Automatic Parquet storage for `bdib()` bar data
-- **Timezone Support**: Exchange-aware market hours for 50+ global exchanges
+- **Timezone Support**: Exchange-aware market hours for 50+ global exchanges; `bdib()` and `bdtick()` return data in exchange local time by default (configurable via `tz` parameter)
 - **Configurable Logging**: Debug mode for troubleshooting
 - **Batch Processing**: Efficient multi-ticker queries
 - **Standardized Output**: Consistent DataFrame column naming
@@ -362,6 +363,12 @@ bars_10s = blp.bdib('AAPL US Equity', dt='2024-01-15', interval=10, intervalHasS
 
 # Session filtering (e.g., first 30 minutes)
 opening = blp.bdib('SPY US Equity', dt='2024-01-15', session='day_open_30')
+
+# Get data in UTC instead of exchange local time
+bars_utc = blp.bdib('SPY US Equity', dt='2024-01-15', tz='UTC')
+
+# Look up exchange timezone for a ticker
+tz = blp.exchange_tz('AAPL US Equity')  # → 'America/New_York'
 ```
 
 </details>
@@ -1054,6 +1061,34 @@ blp.bdtick(ticker='XYZ US Equity', dt='2024-10-15', session='day', timeout=1000)
 ```
 
 Note: `bdtick` requests can take longer to respond. Use `timeout` parameter (in milliseconds) if you encounter empty DataFrames due to timeout.
+
+#### Timezone handling
+
+By default, `bdib()` and `bdtick()` return timestamps in the **exchange's local timezone** (e.g., `America/New_York` for US equities, `Asia/Tokyo` for Japanese equities, `Australia/Sydney` for Australian equities). Bloomberg sends intraday data in UTC; xbbg converts it automatically using exchange metadata.
+
+Use the `tz` parameter to control the output timezone:
+
+```python
+# Default: exchange local time (America/New_York for US equities)
+bars = blp.bdib('SPY US Equity', dt='2024-01-15')
+# Index: 2024-01-15 09:31:00-05:00, 2024-01-15 09:32:00-05:00, ...
+
+# Keep timestamps in UTC (skip conversion)
+bars_utc = blp.bdib('SPY US Equity', dt='2024-01-15', tz='UTC')
+# Index: 2024-01-15 14:31:00+00:00, 2024-01-15 14:32:00+00:00, ...
+
+# Convert to a specific timezone
+bars_london = blp.bdib('SPY US Equity', dt='2024-01-15', tz='Europe/London')
+# Index: 2024-01-15 14:31:00+00:00, 2024-01-15 14:32:00+00:00, ...
+```
+
+To look up the exchange timezone for any ticker, use `exchange_tz()`:
+
+```python
+blp.exchange_tz('AAPL US Equity')   # → 'America/New_York'
+blp.exchange_tz('7974 JT Equity')   # → 'Asia/Tokyo'
+blp.exchange_tz('BHP AU Equity')    # → 'Australia/Sydney'
+```
 
 ```python
 # Trading volume & turnover (currency-adjusted, in millions)
