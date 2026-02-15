@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from xbbg.core.config import overrides
 
 
@@ -206,3 +208,163 @@ class TestIssue145Regression:
         """PRSV_COLS must include all bdib-specific parameters."""
         for param in ["interval", "typ", "types", "intervalHasSeconds", "time_range", "batch", "reload"]:
             assert param in overrides.PRSV_COLS, f"'{param}' missing from PRSV_COLS"
+
+
+class TestCreateRequestOvrdsRegression:
+    """Regression tests for create_request ovrds=dict crash.
+
+    When passing ovrds as a dict (e.g., ovrds={"PRICING_SOURCE": "BGN"}),
+    create_request crashed with:
+        ValueError: too many values to unpack (expected 2)
+
+    Root cause: iterating a dict yields keys (strings), and unpacking a
+    multi-char string into (fld, val) fails. Fixed by normalizing dict
+    to list of tuples before iteration.
+
+    See: https://stackoverflow.com/questions/79880156
+    """
+
+    def _mock_bbg_service(self):
+        """Create a mock Bloomberg service with trackable override elements."""
+        mock_overrides_element = MagicMock()
+        mock_items = []
+
+        def track_append():
+            item = MagicMock()
+            elements = {}
+
+            def set_element(name, value):
+                elements[str(name)] = value
+
+            item.setElement = set_element
+            item._elements = elements
+            mock_items.append(item)
+            return item
+
+        mock_overrides_element.appendElement = track_append
+
+        mock_request = MagicMock()
+        mock_request.getElement = MagicMock(return_value=mock_overrides_element)
+
+        mock_service = MagicMock()
+        mock_service.createRequest = MagicMock(return_value=mock_request)
+
+        return mock_service, mock_request, mock_items
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_ovrds_dict_does_not_crash(self, mock_bbg_service):
+        """ovrds=dict must not raise ValueError (was crashing before fix)."""
+        from xbbg.core.process import create_request
+
+        mock_service, _, _ = self._mock_bbg_service()
+        mock_bbg_service.return_value = mock_service
+
+        # This used to raise: ValueError: too many values to unpack (expected 2)
+        req = create_request(
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
+            ovrds={"PRICING_SOURCE": "BGN"},
+        )
+        assert req is not None
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_ovrds_dict_sets_overrides_correctly(self, mock_bbg_service):
+        """ovrds=dict must produce the same override elements as list of tuples."""
+        from xbbg.core.process import create_request
+
+        mock_service, _, mock_items = self._mock_bbg_service()
+        mock_bbg_service.return_value = mock_service
+
+        create_request(
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
+            ovrds={"PRICING_SOURCE": "BGN"},
+        )
+
+        assert len(mock_items) == 1
+        assert mock_items[0]._elements["fieldId"] == "PRICING_SOURCE"
+        assert mock_items[0]._elements["value"] == "BGN"
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_ovrds_dict_multiple_overrides(self, mock_bbg_service):
+        """ovrds=dict with multiple keys must set all overrides."""
+        from xbbg.core.process import create_request
+
+        mock_service, _, mock_items = self._mock_bbg_service()
+        mock_bbg_service.return_value = mock_service
+
+        create_request(
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
+            ovrds={"PRICING_SOURCE": "BGN", "SETTLE_DT": "20260121"},
+        )
+
+        assert len(mock_items) == 2
+        fields_set = {item._elements["fieldId"] for item in mock_items}
+        assert fields_set == {"PRICING_SOURCE", "SETTLE_DT"}
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_ovrds_list_of_tuples_still_works(self, mock_bbg_service):
+        """ovrds=list[tuple] must continue to work (backward compat)."""
+        from xbbg.core.process import create_request
+
+        mock_service, _, mock_items = self._mock_bbg_service()
+        mock_bbg_service.return_value = mock_service
+
+        create_request(
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
+            ovrds=[("PRICING_SOURCE", "BGN")],
+        )
+
+        assert len(mock_items) == 1
+        assert mock_items[0]._elements["fieldId"] == "PRICING_SOURCE"
+        assert mock_items[0]._elements["value"] == "BGN"
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_ovrds_none_skips_overrides(self, mock_bbg_service):
+        """ovrds=None must not touch the overrides element."""
+        from xbbg.core.process import create_request
+
+        mock_service, mock_request, _ = self._mock_bbg_service()
+        mock_bbg_service.return_value = mock_service
+
+        create_request(
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
+            ovrds=None,
+        )
+
+        mock_request.getElement.assert_not_called()
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_ovrds_empty_dict_skips_overrides(self, mock_bbg_service):
+        """ovrds={} must not touch the overrides element."""
+        from xbbg.core.process import create_request
+
+        mock_service, mock_request, _ = self._mock_bbg_service()
+        mock_bbg_service.return_value = mock_service
+
+        create_request(
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
+            ovrds={},
+        )
+
+        mock_request.getElement.assert_not_called()
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_ovrds_empty_list_skips_overrides(self, mock_bbg_service):
+        """ovrds=[] must not touch the overrides element."""
+        from xbbg.core.process import create_request
+
+        mock_service, mock_request, _ = self._mock_bbg_service()
+        mock_bbg_service.return_value = mock_service
+
+        create_request(
+            service="//blp/refdata",
+            request="HistoricalDataRequest",
+            ovrds=[],
+        )
+
+        mock_request.getElement.assert_not_called()

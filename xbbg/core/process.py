@@ -54,7 +54,7 @@ def create_request(
     service: str,
     request: str,
     settings: list[tuple[str, Any]] | None = None,
-    ovrds: list[tuple[str, Any]] | None = None,
+    ovrds: list[tuple[str, Any]] | dict[str, Any] | None = None,
     append: dict[str, Any] | None = None,
     **kwargs,
 ) -> Any:
@@ -64,7 +64,7 @@ def create_request(
         service: service name
         request: request name
         settings: list of settings
-        ovrds: list of overrides
+        ovrds: overrides as list of (field, value) tuples or dict mapping field to value
         append: info to be appended to request directly
         **kwargs: Additional options forwarded to session/service helpers.
 
@@ -76,6 +76,8 @@ def create_request(
 
     list(starmap(req.set, settings if settings else []))
     if ovrds:
+        if isinstance(ovrds, dict):
+            ovrds = list(ovrds.items())
         ovrd = req.getElement(blpapi.Name("overrides"))
         for fld, val in ovrds:
             item = ovrd.appendElement()
@@ -250,7 +252,6 @@ def _time_range_from_exch_metadata(
         time_idx[0].strftime(time_fmt),
         time_idx[1].strftime(time_fmt),
     )
-
 
 
 def process_ref(msg: Any, **kwargs) -> Iterator[dict[str, Any]]:
