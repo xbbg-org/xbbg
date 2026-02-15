@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`bdib` timezone regression**: The Arrow pipeline rewrite (v0.11.0) dropped the UTC→exchange local timezone conversion that existed in v0.7.x. Intraday bar timestamps were returned in UTC instead of exchange local time. Restored the conversion in `IntradayTransformer.transform()` with configurable `tz` parameter
+- **`create_request` crashed when `ovrds` passed as dict**: `create_request(ovrds={"PRICING_SOURCE": "BGN"})` raised `ValueError: too many values to unpack` because iterating a dict yields keys (strings), not (key, value) tuples. Now normalizes dict to list of tuples before iteration. Also updated type annotation to accept `dict[str, Any]` ([SO#79880156](https://stackoverflow.com/questions/79880156))
 
 ### Added
 
 - **`tz` parameter for `bdib()`/`abdib()`**: Controls output timezone for intraday bar data. Defaults to `None` (exchange local timezone, matching v0.7.x behavior). Set `tz='UTC'` to keep UTC timestamps, or pass any IANA timezone string (e.g., `'Europe/London'`)
 - **`exchange_tz()` helper**: Returns the IANA timezone string for any Bloomberg ticker (e.g., `blp.exchange_tz('AAPL US Equity')` → `'America/New_York'`). Exported via `blp.exchange_tz()`
 - **13 unit tests for timezone conversion** (`test_intraday_timezone.py`): Covers default exchange tz, explicit UTC, explicit timezone, Japanese equities, empty exchange info, empty tables, column renaming, and DataRequest/RequestBuilder propagation
+- **7 regression tests for `ovrds` dict normalization** (`test_overrides.py`): Covers dict crash, correct element setting, multiple overrides, list-of-tuples backward compat, and None/empty edge cases
 
 ## [0.12.0b2] - 2026-02-13
 
