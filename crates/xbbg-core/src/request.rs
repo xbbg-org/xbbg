@@ -318,7 +318,11 @@ impl Request {
         Ok(())
     }
 
-    /// Set a bool value on an element
+    /// Set a bool value on an element.
+    ///
+    /// Uses `blpapi_Element_setElementString` with `"true"` / `"false"` because
+    /// Bloomberg Bool-typed elements don't accept Int32 values via
+    /// `blpapi_Element_setElementInt32` (fails with rc=262156 type mismatch).
     pub fn set_bool(&mut self, name: &Name, value: bool) -> Result<()> {
         let root = self.elements();
 
@@ -326,23 +330,25 @@ impl Request {
             detail: format!("invalid name: {}", e),
         })?;
 
-        // Bloomberg API uses int for bool (0 = false, non-zero = true)
-        let int_value = if value { 1 } else { 0 };
+        let bool_str = if value { "true" } else { "false" };
+        let c_value = CString::new(bool_str).unwrap();
 
         // SAFETY: We're calling the Bloomberg API with valid pointers
         let rc = unsafe {
-            crate::ffi::blpapi_Element_setElementInt32(
+            crate::ffi::blpapi_Element_setElementString(
                 root.as_ptr(),
                 c_name.as_ptr(),
                 std::ptr::null(),
-                int_value,
+                c_value.as_ptr(),
             )
         };
 
         if rc != 0 {
             return Err(BlpError::Internal {
                 detail: format!(
-                    "blpapi_Element_setElementInt32 (bool) failed with rc={}",
+                    "set_bool('{}', {}) failed with rc={}",
+                    name.as_str(),
+                    value,
                     rc
                 ),
             });
