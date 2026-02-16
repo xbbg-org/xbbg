@@ -1919,6 +1919,212 @@ def test_yas_enhanced():
     print("✓ enhanced yas() working correctly")
 
 
+@pytest.mark.live_endpoint
+def test_option_info():
+    """Test option_info returns metadata (strike, expiry, put/call, underlying)."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_info (Strike / Expiry / Put-Call / Underlying)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_info
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_info(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_info({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_info should return data"
+    print("✓ option_info working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_greeks():
+    """Test option_greeks returns Greeks and implied vol."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_greeks (Greeks / Implied Vol)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_greeks
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_greeks(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_greeks({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_greeks should return data"
+    print("✓ option_greeks working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_pricing():
+    """Test option_pricing returns pricing, intrinsic/time value, volume/OI."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_pricing (Pricing / Intrinsic / Time Value / Volume / OI)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_pricing
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_pricing(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_pricing({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_pricing should return data"
+    print("✓ option_pricing working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain():
+    """Test option_chain returns filtered chain."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain (Filtered Chain)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_chain, PutCall, StrikeRef
+
+    underlying = "SPY US Equity"
+    result = option_chain(underlying, put_call=PutCall.CALL, expiry_dt="20260320", strike=StrikeRef.ATM, points=5)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain({underlying!r}, put_call=PutCall.CALL, expiry_dt='20260320', strike=StrikeRef.ATM, points=5):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain should return data"
+    print("✓ option_chain working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain_bql():
+    """Test option_chain_bql returns filtered chain via BQL."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain_bql (BQL Filtered Chain)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_chain_bql, PutCall
+
+    underlying = "SPY US Equity"
+    result = option_chain_bql(
+        underlying,
+        put_call=PutCall.CALL,
+        expiry_start="2026-03-20",
+        expiry_end="2026-03-20",
+        strike_low=675,
+        strike_high=690,
+        delta_low=0.3,
+        delta_high=0.7,
+    )
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain_bql({underlying!r}, put_call=PutCall.CALL, expiry_start='2026-03-20', expiry_end='2026-03-20', strike_low=675, strike_high=690, delta_low=0.3, delta_high=0.7):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain_bql should return data"
+    print("✓ option_chain_bql working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_screen():
+    """Test option_screen returns multi-option comparison."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_screen (Multi-Option Comparison)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_screen
+
+    tickers = ["SPY US 03/20/26 C680 Equity", "SPY US 03/20/26 P680 Equity"]
+    result = option_screen(tickers)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_screen({tickers!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_screen should return data"
+    print("✓ option_screen working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain_bql_advanced():
+    """Test option_chain_bql with advanced filters (moneyness, open interest, bid)."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain_bql Advanced (Moneyness / Open Interest / Bid)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_chain_bql, PutCall
+
+    underlying = "SPY US Equity"
+    result = option_chain_bql(
+        underlying,
+        put_call=PutCall.CALL,
+        expiry_start="2026-03-01",
+        expiry_end="2026-06-30",
+        moneyness_low=98,
+        moneyness_high=102,
+        min_open_int=500,
+        min_bid=1.0,
+    )
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain_bql({underlying!r}, put_call=PutCall.CALL, expiry_start='2026-03-01', expiry_end='2026-06-30', moneyness_low=98, moneyness_high=102, min_open_int=500, min_bid=1.0):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain_bql advanced should return data"
+    print("✓ option_chain_bql advanced working correctly")
+
+
 if __name__ == "__main__":
     # Allow running tests directly with verbose output
     print("\n" + "=" * 80)

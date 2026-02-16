@@ -26,6 +26,17 @@ Functions:
     bond_cashflows: Bond cash flow schedule
     bond_key_rates: Bond key rate durations and risks
     bond_curve: Multi-bond relative value analytics
+    PutCall: Enum for option chain put/call filter
+    ChainPeriodicity: Enum for option chain expiry periodicity
+    StrikeRef: Enum for option chain strike reference
+    ExerciseType: Enum for option chain exercise type
+    ExpiryMatch: Enum for option chain expiry matching
+    option_info: Option contract metadata
+    option_greeks: Option Greeks and implied volatility
+    option_pricing: Option pricing, value decomposition, and activity
+    option_chain: Option chain via CHAIN_TICKERS with overrides
+    option_chain_bql: Option chain via BQL with rich filtering
+    option_screen: Multi-option comparison analytics
 """
 
 from __future__ import annotations
@@ -55,6 +66,19 @@ from xbbg.ext.bonds import (
     bond_key_rates,
     bond_risk,
     bond_spreads,
+)
+from xbbg.ext.options import (
+    ChainPeriodicity,
+    ExerciseType,
+    ExpiryMatch,
+    PutCall,
+    StrikeRef,
+    option_chain,
+    option_chain_bql,
+    option_greeks,
+    option_info,
+    option_pricing,
+    option_screen,
 )
 from xbbg.ext.yas import YieldType, yas
 
@@ -94,4 +118,17 @@ __all__ = [
     "bond_cashflows",
     "bond_key_rates",
     "bond_curve",
+    # Options — Enums
+    "PutCall",
+    "ChainPeriodicity",
+    "StrikeRef",
+    "ExerciseType",
+    "ExpiryMatch",
+    # Options — Analytics
+    "option_info",
+    "option_greeks",
+    "option_pricing",
+    "option_chain",
+    "option_chain_bql",
+    "option_screen",
 ]
