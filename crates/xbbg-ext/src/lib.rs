@@ -20,4 +20,5 @@ pub use error::{ExtError, Result};
 pub use constants::{DVD_COLS, DVD_TYPES, ETF_COLS, FUTURES_MONTHS, MONTH_CODES};
 pub use utils::date::{fmt_date, parse_date};
 pub use utils::pivot::pivot_to_wide;
+pub use transforms::{build_yas_overrides, YieldType};
 pub use utils::ticker::{normalize_tickers, parse_ticker_parts, TickerParts};

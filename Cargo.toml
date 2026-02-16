@@ -6,6 +6,7 @@ members = [
     "crates/xbbg-async",
     "crates/xbbg-sys",
     "crates/xbbg-ext",
+    "crates/xbbg-recipes",
     "crates/xbbg-log",
     "crates/xbbg-bench",
     "crates/datamock",

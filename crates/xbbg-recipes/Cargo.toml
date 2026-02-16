@@ -1,0 +1,21 @@
+[package]
+name = "xbbg-recipes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "High-level Bloomberg recipe functions built on xbbg-async engine"
+publish = false
+
+[dependencies]
+xbbg-async = { path = "../xbbg-async" }
+xbbg-ext = { path = "../xbbg-ext" }
+arrow = { version = "57", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+thiserror = "2"
+tokio = { version = "1.48", features = ["rt"] }
+
+[features]
+default = ["live"]
+mock = ["xbbg-async/mock"]
+live = ["xbbg-async/live"]

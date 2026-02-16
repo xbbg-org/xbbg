@@ -24,6 +24,10 @@ pub enum ExtError {
     #[error("unknown dividend type '{0}': expected one of: all, dvd, split, gross, adjust, adj_fund, with_amt, dvd_amt, gross_amt, projected")]
     UnknownDividendType(String),
 
+    /// Unknown yield type.
+    #[error("unknown yield type '{0}': expected YTM, YTC, YTR, YTP, YTW, YTWR, EYTW, EYTWR, or YTAL")]
+    UnknownYieldType(String),
+
     /// Arrow error during DataFrame operations.
     #[error("arrow error: {0}")]
     Arrow(#[from] arrow::error::ArrowError),

@@ -2323,6 +2323,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "xbbg-recipes"
+version = "0.0.0"
+dependencies = [
+ "arrow",
+ "chrono",
+ "thiserror",
+ "tokio",
+ "xbbg-async",
+ "xbbg-ext",
+]
+
+[[package]]
 name = "xbbg-sys"
 version = "0.0.0"
 dependencies = [
