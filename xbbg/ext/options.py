@@ -18,8 +18,18 @@ module are explicit constants so users can quickly inspect the supported scope.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
 import logging
+import sys
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Polyfill for Python <3.11."""
+
+
 from typing import TYPE_CHECKING
 
 from xbbg.backend import Backend, Format
