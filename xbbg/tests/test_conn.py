@@ -689,7 +689,7 @@ class TestEdgeCasesFromIssues:
 
 
 class TestArequest:
-    """Tests for arequest() — the async foundation for all Bloomberg I/O."""
+    """Tests for arequest() -- the async foundation for all Bloomberg I/O."""
 
     def setup_method(self):
         """Reset SessionManager state before each test."""
@@ -943,7 +943,7 @@ class TestArequest:
 
 
 class TestRequestSync:
-    """Tests for request() — the synchronous wrapper around arequest()."""
+    """Tests for request() -- the synchronous wrapper around arequest()."""
 
     def setup_method(self):
         from xbbg.core.infra.conn import SessionManager
@@ -973,7 +973,7 @@ class TestRequestSync:
 
 
 class TestAgetSession:
-    """Tests for aget_session / aget_service — async session management."""
+    """Tests for aget_session / aget_service -- async session management."""
 
     def setup_method(self):
         from xbbg.core.infra.conn import SessionManager
@@ -1112,7 +1112,7 @@ class TestAgetSession:
 
 
 class TestRunSync:
-    """Tests for _run_sync() — the sync-to-async bridge."""
+    """Tests for _run_sync() -- the sync-to-async bridge."""
 
     def test_run_sync_executes_coroutine(self):
         """_run_sync runs a coroutine and returns its result."""
@@ -1145,7 +1145,7 @@ class TestRunSync:
 
 
 class TestConnectionFlows:
-    """End-to-end flow tests: connect → use → disconnect lifecycle."""
+    """End-to-end flow tests: connect -> use -> disconnect lifecycle."""
 
     def setup_method(self):
         from xbbg.core.infra.conn import SessionManager
@@ -1187,7 +1187,7 @@ class TestConnectionFlows:
         disconnect()
         assert _session_manager._default_session is None
 
-        # Reconnect — should create a new session
+        # Reconnect -- should create a new session
         mock_session2 = MagicMock()
         mock_session2._Session__handle = "valid_new"
 

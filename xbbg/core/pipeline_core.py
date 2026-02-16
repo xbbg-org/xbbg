@@ -28,7 +28,7 @@ def _events_to_table(events: list[dict[str, Any]]) -> pa.Table | None:
     """Convert Bloomberg event dicts directly to a PyArrow Table (no pandas).
 
     Bloomberg's ``process_*`` functions yield ``dict[str, Any]`` where values
-    come from ``blpapi.Element.getValue()`` — native Python types that vary
+    come from ``blpapi.Element.getValue()`` -- native Python types that vary
     by field (``float`` for Double fields, ``str`` for String fields,
     ``datetime`` for Date fields, etc.).  When multiple fields are requested,
     the ``value`` column becomes a true **variant column** with mixed Python
@@ -51,7 +51,7 @@ def _events_to_table(events: list[dict[str, Any]]) -> pa.Table | None:
         return None
 
     # Collect column names in insertion order (first event defines order,
-    # later events may add columns — e.g. BDS array fields)
+    # later events may add columns -- e.g. BDS array fields)
     col_names: list[str] = []
     seen: set[str] = set()
     for evt in events:
@@ -72,7 +72,7 @@ def _events_to_table(events: list[dict[str, Any]]) -> pa.Table | None:
         except (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError):
             pass
 
-        # Slow path: stringify non-None values → pa.string()
+        # Slow path: stringify non-None values -> pa.string()
         arrays.append(
             pa.array(
                 [None if v is None else str(v) for v in values],
@@ -270,7 +270,7 @@ class BloombergPipeline(BaseContextAware):
         if not self._validate_request(request):
             return pd.DataFrame()
 
-        # Step 6: Fetch from Bloomberg (async — the only I/O step)
+        # Step 6: Fetch from Bloomberg (async -- the only I/O step)
         raw_data = await self._afetch_from_bloomberg(request, session_window)
         # Check for empty data (handle both Arrow and pandas)
         raw_is_empty = (
@@ -325,7 +325,7 @@ class BloombergPipeline(BaseContextAware):
             try:
                 arrow_table = pa.Table.from_pandas(transformed)
             except (pa.ArrowInvalid, pa.ArrowTypeError):
-                # Mixed-type columns — coerce object columns to string
+                # Mixed-type columns -- coerce object columns to string
                 transformed = transformed.copy()
                 for col in transformed.columns:
                     if transformed[col].dtype == object:

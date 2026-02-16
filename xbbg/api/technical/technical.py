@@ -127,7 +127,7 @@ async def abta(
 ) -> Any:
     """Async Bloomberg Technical Analysis (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bta()`` for synchronous usage.
 
     Args:

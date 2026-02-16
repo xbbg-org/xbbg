@@ -1083,8 +1083,8 @@ class TestEdgeCases:
 
     def test_unicode_ticker(self):
         """Test handling of unicode characters in ticker."""
-        set_exchange_override("日経225 Index", timezone="Asia/Tokyo")
-        info = get_exchange_override("日経225 Index")
+        set_exchange_override("\u65e5\u7d4c225 Index", timezone="Asia/Tokyo")
+        info = get_exchange_override("\u65e5\u7d4c225 Index")
         assert info is not None
         assert info.timezone == "Asia/Tokyo"
 

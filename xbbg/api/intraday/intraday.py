@@ -124,7 +124,7 @@ async def abdib(
 ) -> pd.DataFrame:
     """Async Bloomberg intraday bar data (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bdib()`` for synchronous usage.
 
     Args:
@@ -171,7 +171,7 @@ async def abdib(
 
     Examples:
         >>> import asyncio
-        >>> # Single request — timestamps in exchange local timezone (default)
+        >>> # Single request -- timestamps in exchange local timezone (default)
         >>> # df = await blp.abdib('AAPL US Equity', dt='2025-11-12', interval=10)
         >>>
         >>> # Timestamps in UTC
@@ -255,7 +255,7 @@ async def abdtick(
 ) -> Any:
     """Async Bloomberg tick data (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bdtick()`` for synchronous usage.
 
     Args:
@@ -334,7 +334,7 @@ async def abdtick(
 
     logger.debug("Sending Bloomberg tick data request for ticker: %s, event types: %s", ticker, types)
 
-    # Use arequest() — the async foundation
+    # Use arequest() -- the async foundation
     events = await conn.arequest(
         request=blp_request,
         process_func=process.process_bar,

@@ -105,7 +105,7 @@ def _check_xbbg_version(expected_version: str | None = None) -> None:
         )
 
     print(f"\n{'=' * 80}")
-    print(f"✓ xbbg version check passed: {installed_version} (expected {expected_version})")
+    print(f"[PASS] xbbg version check passed: {installed_version} (expected {expected_version})")
     print(f"{'=' * 80}\n")
 
 
@@ -202,7 +202,7 @@ def test_bdp_reference_data():
     print(f"\nShape: {result.shape}")
     print(f"Index: {result.index.tolist()}")
     print(f"Columns: {list(result.columns)}")
-    print("✓ BDP endpoint working correctly")
+    print("[PASS] BDP endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -231,7 +231,7 @@ def test_bdp_multiple_tickers():
     print(f"\nShape: {result.shape}")
     print(f"Index (tickers): {result.index.tolist()}")
     print(f"Columns: {list(result.columns)}")
-    print("✓ BDP multiple tickers working correctly")
+    print("[PASS] BDP multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -258,7 +258,7 @@ def test_bdp_field_overrides():
     print("\nBDP Result (With Override):")
     print(result)
     print(f"\nShape: {result.shape}")
-    print("✓ BDP field overrides working correctly")
+    print("[PASS] BDP field overrides working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -292,7 +292,7 @@ def test_bds_bulk_data():
     print(f"Index: {result.index.unique().tolist()}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDS endpoint working correctly")
+    print("[PASS] BDS endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -314,7 +314,7 @@ def test_bdp_fixed_income_isin():
     print("\nBDP Result (ISIN):")
     print(result)
     print(f"\nShape: {result.shape}")
-    print("✓ BDP Fixed Income ISIN working correctly")
+    print("[PASS] BDP Fixed Income ISIN working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -335,7 +335,7 @@ def test_bds_fixed_income_cash_flow():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head(3)}")  # Just first 3 rows
-    print("✓ BDS Fixed Income cash flow working correctly")
+    print("[PASS] BDS Fixed Income cash flow working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -394,7 +394,7 @@ def test_bdh_historical_data():
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
-    print("✓ BDH endpoint working correctly")
+    print("[PASS] BDH endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -458,7 +458,7 @@ def test_bdh_multiple_tickers():
     print(f"Index type: {type(result.index)}")
     print(f"Column levels: {result.columns.nlevels}")
     print(f"Tickers in columns: {list(result.columns.get_level_values(0).unique())}")
-    print("✓ BDH multiple tickers working correctly")
+    print("[PASS] BDH multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -526,7 +526,7 @@ def test_bdh_periodicity():
     print(f"\nShape: {result.shape}")
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
-    print("✓ BDH periodicity options working correctly")
+    print("[PASS] BDH periodicity options working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -539,13 +539,14 @@ def test_bdh_adjustments():
     print("Testing BDH (Adjustments)")
     print(f"{'=' * 80}")
 
-    # Use a small date range to minimize data
-    adjust_start = (END_DATE - timedelta(days=2)).strftime("%Y-%m-%d")
+    # Use business days to avoid empty results on weekends
+    adjust_end = _get_previous_business_day(days_back=1)
+    adjust_start = _get_previous_business_day(days_back=5)
     result = blp.bdh(
         tickers=TEST_TICKER,
         flds=TEST_SINGLE_FIELD,
-        start_date=adjust_start,
-        end_date=END_DATE.strftime("%Y-%m-%d"),
+        start_date=adjust_start.strftime("%Y-%m-%d"),
+        end_date=adjust_end.strftime("%Y-%m-%d"),
         adjust="all",  # Adjust for all dividends and splits
     )
 
@@ -588,7 +589,7 @@ def test_bdh_adjustments():
     print(result)
     print(f"\nShape: {result.shape}")
     print(f"Index type: {type(result.index)}")
-    print("✓ BDH adjustment options working correctly")
+    print("[PASS] BDH adjustment options working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -629,7 +630,7 @@ def test_bdib_intraday_bars():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDIB endpoint working correctly")
+    print("[PASS] BDIB endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -670,7 +671,7 @@ def test_bdib_sub_minute_intervals():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDIB sub-minute intervals working correctly")
+    print("[PASS] BDIB sub-minute intervals working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -708,7 +709,7 @@ def test_bdib_reference_exchange():
     print(result)
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
-    print("✓ BDIB reference exchange working correctly")
+    print("[PASS] BDIB reference exchange working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -756,7 +757,7 @@ def test_bdib_am_open_session():
     print(f"\nShape: {result.shape}")
     print(f"Time range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
-    print("✓ BDIB am_open_30 session working correctly")
+    print("[PASS] BDIB am_open_30 session working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -802,7 +803,7 @@ def test_bdtick_tick_data():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDTICK endpoint working correctly")
+    print("[PASS] BDTICK endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -854,7 +855,7 @@ def test_bdtick_session_parameter():
     print(f"Index type: {type(result.index)}")
     print(f"Column levels: {result.columns.nlevels}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDTICK session parameter working correctly")
+    print("[PASS] BDTICK session parameter working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -889,7 +890,7 @@ def test_dividend_history():
     print(f"Index: {result.index.unique().tolist()}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ dividend() endpoint working correctly")
+    print("[PASS] dividend() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -914,7 +915,7 @@ def test_dividend_multiple_tickers():
     # Allow empty results - dividends may not exist in date range for all tickers
     if result.empty:
         print("\ndividend() returned empty results (no dividends in date range)")
-        print("✓ dividend() endpoint working correctly (empty result is valid)")
+        print("[PASS] dividend() endpoint working correctly (empty result is valid)")
     else:
         # Structure validation - default is WIDE format: tickers as index, data columns as columns
         # Verify at least one requested ticker is in index
@@ -931,7 +932,7 @@ def test_dividend_multiple_tickers():
         print(f"Index (tickers): {result.index.unique().tolist()}")
         print(f"Columns: {list(result.columns)}")
         print(f"Sample rows:\n{result.head()}")
-        print("✓ dividend() multiple tickers working correctly")
+        print("[PASS] dividend() multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -957,7 +958,7 @@ def test_earning_breakdowns():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ earning() endpoint working correctly")
+    print("[PASS] earning() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1014,7 +1015,7 @@ def test_turnover():
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
-    print("✓ turnover() endpoint working correctly")
+    print("[PASS] turnover() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1075,7 +1076,7 @@ def test_turnover_multiple_tickers():
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
-    print("✓ turnover() multiple tickers working correctly")
+    print("[PASS] turnover() multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1112,7 +1113,7 @@ def test_adjust_ccy():
     print(f"Index preserved: {result.index.equals(hist_data.index)}")
     print(f"Original columns: {list(hist_data.columns)}")
     print(f"Converted columns: {list(result.columns)}")
-    print("✓ adjust_ccy() endpoint working correctly")
+    print("[PASS] adjust_ccy() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1138,7 +1139,7 @@ def test_beqs_screening():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BEQS endpoint working correctly")
+    print("[PASS] BEQS endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1166,7 +1167,7 @@ def test_bql_query():
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BQL endpoint working correctly")
+    print("[PASS] BQL endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1188,7 +1189,7 @@ def test_bsrch_search():
     # The important thing is that the endpoint works correctly
     if result.empty:
         print("\nBSRCH returned empty results (screen may not exist or have no matches)")
-        print("✓ BSRCH endpoint working correctly (empty result is valid)")
+        print("[PASS] BSRCH endpoint working correctly (empty result is valid)")
     else:
         print(f"\nBSRCH returned {len(result)} rows")
         print("\nBSRCH Result:")
@@ -1196,7 +1197,7 @@ def test_bsrch_search():
         print(f"\nShape: {result.shape}")
         print(f"Columns: {list(result.columns)}")
         print(f"Sample rows:\n{result.head()}")
-        print("✓ BSRCH endpoint working correctly")
+        print("[PASS] BSRCH endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1232,7 +1233,7 @@ def test_bsrch_with_overrides():
     # The important thing is that the endpoint works correctly with overrides
     if result.empty:
         print("\nBSRCH with overrides returned empty results (screen may not exist or have no matches)")
-        print("✓ BSRCH with overrides endpoint working correctly (empty result is valid)")
+        print("[PASS] BSRCH with overrides endpoint working correctly (empty result is valid)")
     else:
         print(f"\nBSRCH with overrides returned {len(result)} rows")
         print("\nBSRCH Result (With Overrides):")
@@ -1240,7 +1241,7 @@ def test_bsrch_with_overrides():
         print(f"\nShape: {result.shape}")
         print(f"Columns: {list(result.columns)}")
         print(f"Sample rows:\n{result.head()}")
-        print("✓ BSRCH with overrides endpoint working correctly")
+        print("[PASS] BSRCH with overrides endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1282,7 +1283,7 @@ def test_live_realtime_streaming():
         print(f"\nTotal updates received: {len(updates_received)}")
         if updates_received:
             print(f"Sample update: {updates_received[0]}")
-        print("✓ live() endpoint working correctly (subscription established)")
+        print("[PASS] live() endpoint working correctly (subscription established)")
 
     # Run async test
     asyncio.run(_test_live())
@@ -1290,13 +1291,13 @@ def test_live_realtime_streaming():
 
 @pytest.mark.live_endpoint
 def test_subscribe_realtime():
-    """Test subscribe() real-time subscription endpoint with live Bloomberg data.
+    """Test stream() real-time subscription endpoint with live Bloomberg data.
 
-    This test creates a very short-lived subscription with a 10-second timeout to minimize
-    data usage and avoid hanging (especially on weekends when markets are closed).
+    This test creates a very short-lived subscription (max 2 updates) with a 10-second
+    timeout to minimize data usage and avoid hanging (especially on weekends when markets are closed).
     """
     print(f"\n{'=' * 80}")
-    print("Testing subscribe() (Real-time Subscriptions)")
+    print("Testing stream() (Real-time Subscriptions)")
     print(f"{'=' * 80}")
 
     updates_received = []
@@ -1305,33 +1306,30 @@ def test_subscribe_realtime():
     def _timeout_handler():
         timeout_occurred.set()
 
-    try:
-        # Set up a 10-second timeout
-        timer = threading.Timer(10.0, _timeout_handler)
-        timer.start()
+    timer = threading.Timer(10.0, _timeout_handler)
+    timer.start()
 
-        with blp.subscribe(
-            tickers=TEST_TICKER,
-            flds=["LAST_PRICE"],
-        ) as stream:
-            # Try to get 1-2 updates, then exit
-            for i, update in enumerate(stream):
+    try:
+
+        async def collect_updates():
+            async for data in blp.stream([TEST_TICKER], ["LAST_PRICE"], max_cnt=2):
                 if timeout_occurred.is_set():
-                    print("Timeout after 10 seconds (market may be closed)")
                     break
-                updates_received.append(update)
-                print(f"Received update {i + 1}: {update}")
-                if i >= 1:  # Get max 2 updates
+                updates_received.append(data)
+                print(f"Received update: {data}")
+                if len(updates_received) >= 2:
                     break
+
+        asyncio.run(collect_updates())
     except Exception as e:
-        print(f"Subscription error (may be expected): {e}")
+        print(f"Stream error (may be expected): {e}")
     finally:
         timer.cancel()
 
     print(f"\nTotal updates received: {len(updates_received)}")
     if updates_received:
         print(f"Sample update: {updates_received[0]}")
-    print("✓ subscribe() endpoint working correctly (subscription established)")
+    print("[PASS] stream() endpoint working correctly (subscription established)")
 
 
 @pytest.mark.live_endpoint
@@ -1348,7 +1346,7 @@ def test_fut_ticker_resolution():
 
     print("\nGeneric ticker: ES1 Index")
     print(f"Resolved ticker: {result}")
-    print("✓ fut_ticker() endpoint working correctly")
+    print("[PASS] fut_ticker() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1363,12 +1361,12 @@ def test_active_futures():
     # active_futures() may return empty string if rolling series config not found
     if not result:
         print("\nactive_futures() returned empty result (rolling series config may not exist)")
-        print("✓ active_futures() endpoint working correctly (empty result is valid)")
+        print("[PASS] active_futures() endpoint working correctly (empty result is valid)")
     else:
         assert isinstance(result, str), "active_futures() should return a string"
         print("\nGeneric ticker: ESA Index")
         print(f"Active contract: {result}")
-        print("✓ active_futures() endpoint working correctly")
+        print("[PASS] active_futures() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1386,12 +1384,12 @@ def test_cdx_ticker_resolution():
     if not result:
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print("cdx_ticker() returned empty result (rolling series config may not exist)")
-        print("✓ cdx_ticker() endpoint working correctly (empty result is valid)")
+        print("[PASS] cdx_ticker() endpoint working correctly (empty result is valid)")
     else:
         assert isinstance(result, str), "cdx_ticker() should return a string"
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print(f"Resolved ticker: {result}")
-        print("✓ cdx_ticker() endpoint working correctly")
+        print("[PASS] cdx_ticker() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1408,12 +1406,12 @@ def test_active_cdx():
     if not result:
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print("active_cdx() returned empty result (rolling series config may not exist)")
-        print("✓ active_cdx() endpoint working correctly (empty result is valid)")
+        print("[PASS] active_cdx() endpoint working correctly (empty result is valid)")
     else:
         assert isinstance(result, str), "active_cdx() should return a string"
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print(f"Active contract: {result}")
-        print("✓ active_cdx() endpoint working correctly")
+        print("[PASS] active_cdx() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1564,7 +1562,9 @@ def test_cdx_curve_endpoint():
     print("✓ cdx_curve endpoint working correctly")
 
 
-@pytest.mark.live_endpoint
+@pytest.mark.skip(
+    reason="Requires economic data release for NAPMPMI Index -- hangs waiting for RT_BN_SURVEY_MEDIAN update"
+)
 def test_stream_survey_field_issue_199():
     """Test that stream() correctly returns non-LIVE_INFO field values (Issue #199).
 
@@ -1634,9 +1634,9 @@ def test_stream_survey_field_issue_199():
 
         # For any field, verify the field value is in the dict
         if field_name and field_name in update:
-            print(f"  ✓ {field_name} value present: {update[field_name]}")
+            print(f"  [PASS] {field_name} value present: {update[field_name]}")
         elif field_name:
-            print(f"  ✗ {field_name} value MISSING from dict (Issue #199 bug)")
+            print(f"  [FAIL] {field_name} value MISSING from dict (Issue #199 bug)")
 
     # Assert the fix works
     if survey_field_found:
@@ -1644,9 +1644,9 @@ def test_stream_survey_field_issue_199():
             "Issue #199: RT_BN_SURVEY_MEDIAN field was in FIELD but value was missing from dict. "
             "The subscribed field's value should always be included regardless of info filter."
         )
-        print("\n✓ Issue #199 fix verified: RT_BN_SURVEY_MEDIAN value correctly included")
+        print("\n[PASS] Issue #199 fix verified: RT_BN_SURVEY_MEDIAN value correctly included")
     else:
-        print("\n⚠ RT_BN_SURVEY_MEDIAN field not received (may not be available for this ticker)")
+        print("\n[WARN] RT_BN_SURVEY_MEDIAN field not received (may not be available for this ticker)")
 
     # General assertion: for every update, the FIELD value should be in the dict
     for update in updates_received:
@@ -1657,7 +1657,7 @@ def test_stream_survey_field_issue_199():
                 f"Got keys: {list(update.keys())}"
             )
 
-    print("✓ stream() field values working correctly")
+    print("[PASS] stream() field values working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1665,8 +1665,8 @@ def test_bdp_mixed_type_fields():
     """Test BDP with fields that return mixed Python types (regression for ArrowInvalid bug).
 
     Bloomberg returns different Python types for different fields:
-    - FUT_CONT_SIZE → Double → float (e.g., 50.0)
-    - FUT_VAL_PT   → String → str   (e.g., '50.00')
+    - FUT_CONT_SIZE -> Double -> float (e.g., 50.0)
+    - FUT_VAL_PT   -> String -> str   (e.g., '50.00')
 
     Before the fix, pa.array([50.0, '50.00']) raised:
         pyarrow.lib.ArrowInvalid: Could not convert '50.00' with type str:
@@ -1697,7 +1697,7 @@ def test_bdp_mixed_type_fields():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Dtypes:\n{result.dtypes}")
-    print("✓ BDP mixed-type fields working correctly (ArrowInvalid bug fixed)")
+    print("[PASS] BDP mixed-type fields working correctly (ArrowInvalid bug fixed)")
 
 
 @pytest.mark.live_endpoint
@@ -1732,7 +1732,7 @@ def test_bdp_mixed_type_multiple_tickers():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Dtypes:\n{result.dtypes}")
-    print("✓ BDP mixed-type fields with multiple tickers working correctly")
+    print("[PASS] BDP mixed-type fields with multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint

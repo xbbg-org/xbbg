@@ -4,12 +4,12 @@ This module provides functions to query Bloomberg for exchange metadata includin
 timezone, MIC code, and trading hours. It serves as one layer in the exchange
 resolution waterfall:
 
-1. Runtime Override → User-set via function call
-2. Cache → ~/.xbbg/cache/exchanges.parquet
-3. Bloomberg Query → This module
-4. PMC Calendar → Use MIC from Bloomberg
-5. Country Inference → Infer timezone from COUNTRY_ISO
-6. Hardcoded Fallback → Minimal defaults
+1. Runtime Override -> User-set via function call
+2. Cache -> ~/.xbbg/cache/exchanges.parquet
+3. Bloomberg Query -> This module
+4. PMC Calendar -> Use MIC from Bloomberg
+5. Country Inference -> Infer timezone from COUNTRY_ISO
+6. Hardcoded Fallback -> Minimal defaults
 
 Design:
 - Queries Bloomberg for exchange-related fields via bdp API.
@@ -440,10 +440,10 @@ async def afetch_exchange_info(
         ctx_kwargs = ctx.to_kwargs()
 
     try:
-        # Import abdp — the true async version
+        # Import abdp -- the true async version
         from xbbg.api.reference import abdp
 
-        # Use abdp directly — truly non-blocking async
+        # Use abdp directly -- truly non-blocking async
         df = await abdp(
             tickers=ticker,
             flds=EXCHANGE_FIELDS,

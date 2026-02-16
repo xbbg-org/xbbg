@@ -403,7 +403,7 @@ def connect_bbg(**kwargs) -> Any:
     if session.start():
         logger.debug("Successfully connected to Bloomberg Terminal")
         return session
-    # start() failed — clean up the session before raising
+    # start() failed -- clean up the session before raising
     _stop_session_quietly(session)
     logger.error(
         "Failed to start Bloomberg session - check Terminal is running and %s:%d is accessible", server_host, port

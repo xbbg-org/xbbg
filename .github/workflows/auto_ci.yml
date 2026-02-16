@@ -41,6 +41,16 @@ jobs:
     - name: Lint with Ruff
       run: |
         uv run ruff check --output-format=github xbbg
+    - name: Check for non-ASCII characters in source
+      if: runner.os == 'Linux'
+      run: |
+        # Find non-ASCII characters in Python source files (allows CJK for ticker tests)
+        # Excludes __pycache__ directories
+        if grep -rPn '[^\x00-\x7F\p{Han}\p{Katakana}\p{Hiragana}]' --include='*.py' xbbg/ --exclude-dir=__pycache__; then
+          echo "ERROR: Non-ASCII characters found in Python source files (see above)"
+          echo "Allowed: ASCII + CJK/Japanese characters (for ticker tests)"
+          exit 1
+        fi
     - name: Test with pytest
       run: |
         uv run pytest --doctest-modules --cov -v xbbg

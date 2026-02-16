@@ -116,8 +116,8 @@ class IntradayTransformer:
         ``bdib`` returned.
 
         The target timezone is resolved in this order:
-        1. ``request.tz`` — explicit caller override (e.g. ``tz='UTC'``).
-        2. ``exchange_info.tz`` — exchange local timezone from Bloomberg.
+        1. ``request.tz`` -> explicit caller override (e.g. ``tz='UTC'``).
+        2. ``exchange_info.tz`` -> exchange local timezone from Bloomberg.
         3. Fall through with no conversion (data stays in UTC).
 
         Pass ``tz='UTC'`` to ``bdib()`` / ``abdib()`` to keep timestamps
@@ -161,7 +161,7 @@ class IntradayTransformer:
         df = df.sort("time")
 
         # ------------------------------------------------------------------
-        # Timezone conversion: UTC → target timezone
+        # Timezone conversion: UTC -> target timezone
         #
         # Bloomberg IntradayBarRequest always returns timestamps in UTC.
         # Convert to the target timezone so the caller sees exchange-local

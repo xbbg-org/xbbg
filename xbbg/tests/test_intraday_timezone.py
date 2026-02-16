@@ -4,7 +4,7 @@ Bloomberg IntradayBarRequest returns timestamps in UTC.  The transformer
 should convert them to the exchange local timezone by default, matching
 the behaviour of bdtick() and xbbg v0.7.x bdib().
 
-These are pure unit tests — they exercise IntradayTransformer.transform()
+These are pure unit tests -- they exercise IntradayTransformer.transform()
 directly with synthetic Arrow tables, so no Bloomberg connection is needed.
 """
 
@@ -64,7 +64,7 @@ def _session_window() -> SessionWindow:
 
 
 class TestIntradayTransformerTimezone:
-    """Verify that IntradayTransformer converts UTC → target timezone."""
+    """Verify that IntradayTransformer converts UTC -> target timezone."""
 
     def test_default_converts_to_exchange_tz(self):
         """With tz=None (default), timestamps should be in exchange local tz."""
@@ -140,7 +140,7 @@ class TestIntradayTransformerTimezone:
 
         df = result.to_pandas()
         time_col = df["time"]
-        # No conversion applied — stays in UTC (tz-aware from Bloomberg)
+        # No conversion applied -- stays in UTC (tz-aware from Bloomberg)
         assert str(time_col.dt.tz) == "UTC"
 
     def test_empty_table_returns_empty(self):

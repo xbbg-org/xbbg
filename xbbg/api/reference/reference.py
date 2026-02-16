@@ -30,7 +30,7 @@ async def abdp(
 ) -> pd.DataFrame:
     """Async Bloomberg reference data (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bdp()`` for synchronous usage.
 
     Args:
@@ -48,7 +48,7 @@ async def abdp(
         >>> # Single request
         >>> # df = await blp.abdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
         >>>
-        >>> # Concurrent requests (true async — single thread, cooperative polling)
+        >>> # Concurrent requests (true async -- single thread, cooperative polling)
         >>> # results = await asyncio.gather(
         >>> #     blp.abdp('AAPL US Equity', ['PX_LAST']),
         >>> #     blp.abdp('MSFT US Equity', ['PX_LAST']),
@@ -100,7 +100,7 @@ async def abds(
 ) -> pd.DataFrame:
     """Async Bloomberg block data (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bds()`` for synchronous usage.
 
     Args:

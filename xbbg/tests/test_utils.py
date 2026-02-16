@@ -213,7 +213,7 @@ class TestNormalizeFlds:
         assert result == []
 
     def test_normalize_flds_empty_string(self):
-        """Issue #75: bds('TSLA US Equity', flds='') — empty field should normalize gracefully."""
+        """Issue #75: bds('TSLA US Equity', flds='') -- empty field should normalize gracefully."""
         result = utils.normalize_flds("")
         assert result == [""]
 

@@ -108,7 +108,7 @@ async def absrch(
 ) -> pd.DataFrame:
     """Async Bloomberg SRCH (Search) queries (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bsrch()`` for synchronous usage.
 
     Args:
@@ -162,7 +162,7 @@ async def abql(
 ) -> pd.DataFrame:
     r"""Async BQL (Bloomberg Query Language) request (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bql()`` for synchronous usage.
 
     Args:
@@ -454,7 +454,7 @@ async def abqr(
 ) -> pd.DataFrame:
     """Async Bloomberg Quote Request (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bqr()`` for synchronous usage.
 
     Args:
