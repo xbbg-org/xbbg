@@ -5,8 +5,30 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from xbbg.api import helpers
+
+
+@pytest.fixture(autouse=True)
+def _patch_source_api_aliases():
+    """Route source functions through re-export modules for stable patching."""
+
+    def _bdp_forward(*args, **kwargs):
+        from xbbg.api import reference
+
+        return reference.bdp(*args, **kwargs)
+
+    def _bdh_forward(*args, **kwargs):
+        from xbbg.api import historical
+
+        return historical.bdh(*args, **kwargs)
+
+    with (
+        patch("xbbg.api.reference.reference.bdp", new=_bdp_forward),
+        patch("xbbg.api.historical.historical.bdh", new=_bdh_forward),
+    ):
+        yield
 
 
 class TestAdjustCcy:

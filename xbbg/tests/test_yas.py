@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from xbbg.api.fixed_income import YieldType, yas
+
+
+@pytest.fixture(autouse=True)
+def _patch_reference_source_bdp():
+    """Route source bdp calls through package re-export for stable mocking."""
+
+    def _bdp_forward(*args, **kwargs):
+        from xbbg.api import reference
+
+        return reference.bdp(*args, **kwargs)
+
+    with patch("xbbg.api.reference.reference.bdp", new=_bdp_forward):
+        yield
 
 
 class TestYieldTypeEnum:
@@ -68,7 +83,8 @@ class TestYasOverrideMapping:
     def test_yas_settle_dt_timestamp(self, mock_bdp: MagicMock):
         """Test settle_dt Timestamp override mapping."""
         mock_bdp.return_value = pd.DataFrame()
-        yas("US912810TD00 Govt", settle_dt=pd.Timestamp("2024-01-15"))
+        settle_dt = cast(pd.Timestamp, pd.Timestamp("2024-01-15"))
+        yas("US912810TD00 Govt", settle_dt=settle_dt)
         mock_bdp.assert_called_once()
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["SETTLE_DT"] == "20240115"
@@ -242,5 +258,6 @@ class TestYasImports:
             from xbbg import blp
 
             # Access yas to trigger import
-            assert hasattr(blp, "yas")
-            assert callable(blp.yas)
+            yas_fn = getattr(blp, "yas", None)
+            assert yas_fn is not None
+            assert callable(yas_fn)
