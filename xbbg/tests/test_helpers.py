@@ -7,6 +7,8 @@ from unittest.mock import patch
 import pandas as pd
 
 from xbbg.api import helpers
+from xbbg.api.historical import historical as _hist_mod
+from xbbg.api.reference import reference as _ref_mod
 
 
 class TestAdjustCcy:
@@ -30,8 +32,8 @@ class TestAdjustCcy:
         result = helpers.adjust_ccy(df, ccy="LOCAL")
         pd.testing.assert_frame_equal(result, df)
 
-    @patch("xbbg.api.historical.historical.bdh")
-    @patch("xbbg.api.reference.reference.bdp")
+    @patch.object(_hist_mod, "bdh")
+    @patch.object(_ref_mod, "bdp")
     def test_adjust_ccy_same_currency(self, mock_bdp, mock_bdh):
         """Test adjusting when ticker already in target currency."""
         # Create test data with proper MultiIndex structure
@@ -47,8 +49,8 @@ class TestAdjustCcy:
         # Function should handle this case
         assert isinstance(result, pd.DataFrame)
 
-    @patch("xbbg.api.historical.historical.bdh")
-    @patch("xbbg.api.reference.reference.bdp")
+    @patch.object(_hist_mod, "bdh")
+    @patch.object(_ref_mod, "bdp")
     def test_adjust_ccy_different_currency(self, mock_bdp, mock_bdh):
         """Test adjusting when ticker in different currency."""
         # Create test data
@@ -66,7 +68,7 @@ class TestAdjustCcy:
         # Function should handle this case gracefully
         assert isinstance(result, pd.DataFrame)
 
-    @patch("xbbg.api.reference.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_adjust_ccy_no_currency_info(self, mock_bdp):
         """Test adjusting when no currency info available."""
         dates = pd.date_range("2024-01-01", periods=3)
@@ -93,7 +95,7 @@ class TestAdjustCcy:
         df.columns = pd.MultiIndex.from_tuples(df.columns)
 
         # Test that it handles MultiIndex correctly
-        with patch("xbbg.api.reference.reference.bdp") as mock_bdp, patch("xbbg.api.historical.historical.bdh"):
+        with patch.object(_ref_mod, "bdp") as mock_bdp, patch.object(_hist_mod, "bdh"):
             mock_bdp.return_value = pd.DataFrame()
             result = helpers.adjust_ccy(df, ccy="USD")
             assert isinstance(result, pd.DataFrame)
