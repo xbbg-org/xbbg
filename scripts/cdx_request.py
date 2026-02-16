@@ -87,12 +87,12 @@ def test_ticker_resolution() -> tuple[str, str]:
     """Resolve IG (no version) and HY (with version) generic tickers."""
     _section("TICKER RESOLUTION")
 
-    # IG — expect: CDX IG CDSI S45 5Y Corp (VERSION=1, no V token)
+    # IG -- expect: CDX IG CDSI S45 5Y Corp (VERSION=1, no V token)
     ig = cdx_ticker(gen_ticker=GEN_IG, dt=RESOLVE_DATE)
     print(f"\nIG: {GEN_IG}")
     print(f" ->  {ig!r}")
 
-    # HY — expect: CDX HY CDSI S45 V2 5Y Corp (VERSION>1, separate V token)
+    # HY -- expect: CDX HY CDSI S45 V2 5Y Corp (VERSION>1, separate V token)
     hy = cdx_ticker(gen_ticker=GEN_HY, dt=RESOLVE_DATE)
     print(f"\nHY: {GEN_HY}")
     print(f" ->  {hy!r}")

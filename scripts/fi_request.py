@@ -134,11 +134,11 @@ def test_bond_spreads() -> None:
     print(f"\n--- bond_spreads({TREASURY_10Y}) ---")
     _safe_print(bond_spreads(TREASURY_10Y))
 
-    print(f"\n--- bond_spreads({CORP_BOND}) [corporate — richer spread data] ---")
+    print(f"\n--- bond_spreads({CORP_BOND}) [corporate -- richer spread data] ---")
     try:
         _safe_print(bond_spreads(CORP_BOND))
     except Exception as e:
-        print(f"  (error: {e} — corporate ticker may need adjustment)")
+        print(f"  (error: {e} -- corporate ticker may need adjustment)")
 
 
 # ------------------------------------------------------------------

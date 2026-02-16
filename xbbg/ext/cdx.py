@@ -56,14 +56,14 @@ def cdx_ticker(
 
     Uses Bloomberg fields (via ``bdp`` with ``SEMI_LONG`` format):
 
-    * ``ROLLING_SERIES`` – current on-the-run series number
-    * ``VERSION`` – current version (increments on credit events, e.g. CDX HY)
-    * ``ON_THE_RUN_CURRENT_BD_INDICATOR`` – ``'Y'`` if on-the-run
-    * ``CDS_FIRST_ACCRUAL_START_DATE`` – start date of current series trading
+    * ``ROLLING_SERIES`` -- current on-the-run series number
+    * ``VERSION`` -- current version (increments on credit events, e.g. CDX HY)
+    * ``ON_THE_RUN_CURRENT_BD_INDICATOR`` -- ``'Y'`` if on-the-run
+    * ``CDS_FIRST_ACCRUAL_START_DATE`` -- start date of current series trading
 
     Version handling:
         When ``VERSION > 1`` (credit events have occurred, common for CDX HY),
-        a separate version token is inserted: ``S45`` → ``S45 V2``.  When
+        a separate version token is inserted: ``S45`` -> ``S45 V2``.  When
         ``VERSION == 1`` (no defaults, typical for CDX IG) the ticker is left
         as ``S45`` since Bloomberg treats ``S45`` and ``S45 V1`` identically.
 
@@ -202,7 +202,7 @@ def _resolve_version_for_ticker(ticker: str, safe_kwargs: dict[str, object]) -> 
     """Look up VERSION for an already-resolved (series-only) ticker and append V suffix.
 
     If ``VERSION > 1``, returns the ticker with a separate version token
-    inserted after the series token (e.g. ``S44`` → ``S44 V2``).  Otherwise
+    inserted after the series token (e.g. ``S44`` -> ``S44 V2``).  Otherwise
     returns *ticker* unchanged.
     """
     from xbbg.api.reference import bdp
@@ -233,7 +233,7 @@ def _append_version_to_ticker(ticker: str, version: int) -> str:
     """Insert ``V{version}`` as a separate token after the series token.
 
     Bloomberg expects version as its own space-separated token:
-    ``CDX HY CDSI S44 5Y Corp`` → ``CDX HY CDSI S44 V2 5Y Corp``.
+    ``CDX HY CDSI S44 5Y Corp`` -> ``CDX HY CDSI S44 V2 5Y Corp``.
 
     If the ticker already has a version token (``V{n}``), it is replaced.
 
@@ -308,7 +308,7 @@ def active_cdx(
     1. Call :func:`cdx_ticker` to get the on-the-run series (with version).
     2. Derive the previous-series candidate (``S{n-1}``), then look up its
        ``VERSION`` to build the full versioned ticker.
-    3. If *dt* is before the current series' accrual start → return previous.
+    3. If *dt* is before the current series' accrual start -> return previous.
     4. Otherwise compare ``PX_LAST`` availability over *lookback_days* and
        return whichever series traded most recently.
 
@@ -353,11 +353,11 @@ def active_cdx(
             parts[idx] = f"S{s - 1}"
             prev = " ".join(parts)
 
-    # If no prev candidate, current is series 1 — nothing to compare
+    # If no prev candidate, current is series 1 -- nothing to compare
     if not prev:
         return cur
 
-    # Resolve version for the previous series (e.g. S44 → S44 V2 for CDX HY)
+    # Resolve version for the previous series (e.g. S44 -> S44 V2 for CDX HY)
     prev = _resolve_version_for_ticker(prev, safe_kwargs)
 
     # If dt is before accrual start of current series, prefer previous
@@ -615,7 +615,7 @@ def cdx_defaults(
         )
     except Exception as e:
         logger.warning("Failed to fetch default information for %s: %s", ticker, e)
-        # Return empty via bdp fallback — guarantees consistent return type
+        # Return empty via bdp fallback -- guarantees consistent return type
         from xbbg.api.reference import bdp
 
         return bdp(
