@@ -178,16 +178,37 @@ mod tests {
 
     #[test]
     fn parse_full_names() {
-        assert_eq!(YieldType::parse("yield to maturity").unwrap(), YieldType::YTM);
+        assert_eq!(
+            YieldType::parse("yield to maturity").unwrap(),
+            YieldType::YTM
+        );
         assert_eq!(YieldType::parse("yield to call").unwrap(), YieldType::YTC);
-        assert_eq!(YieldType::parse("yield to refunding").unwrap(), YieldType::YTR);
+        assert_eq!(
+            YieldType::parse("yield to refunding").unwrap(),
+            YieldType::YTR
+        );
         assert_eq!(YieldType::parse("yield to put").unwrap(), YieldType::YTP);
-        assert_eq!(YieldType::parse("yield to next put").unwrap(), YieldType::YTP);
+        assert_eq!(
+            YieldType::parse("yield to next put").unwrap(),
+            YieldType::YTP
+        );
         assert_eq!(YieldType::parse("yield to worst").unwrap(), YieldType::YTW);
-        assert_eq!(YieldType::parse("yield to worst refunding").unwrap(), YieldType::YTWR);
-        assert_eq!(YieldType::parse("euro yield to worst").unwrap(), YieldType::EYTW);
-        assert_eq!(YieldType::parse("euro yield to worst refunding").unwrap(), YieldType::EYTWR);
-        assert_eq!(YieldType::parse("yield to average life").unwrap(), YieldType::YTAL);
+        assert_eq!(
+            YieldType::parse("yield to worst refunding").unwrap(),
+            YieldType::YTWR
+        );
+        assert_eq!(
+            YieldType::parse("euro yield to worst").unwrap(),
+            YieldType::EYTW
+        );
+        assert_eq!(
+            YieldType::parse("euro yield to worst refunding").unwrap(),
+            YieldType::EYTWR
+        );
+        assert_eq!(
+            YieldType::parse("yield to average life").unwrap(),
+            YieldType::YTAL
+        );
     }
 
     #[test]
@@ -232,9 +253,15 @@ mod tests {
     #[test]
     fn from_str_roundtrip() {
         for yt in [
-            YieldType::YTM, YieldType::YTC, YieldType::YTR,
-            YieldType::YTP, YieldType::YTW, YieldType::YTWR,
-            YieldType::EYTW, YieldType::EYTWR, YieldType::YTAL,
+            YieldType::YTM,
+            YieldType::YTC,
+            YieldType::YTR,
+            YieldType::YTP,
+            YieldType::YTW,
+            YieldType::YTWR,
+            YieldType::EYTW,
+            YieldType::EYTWR,
+            YieldType::YTAL,
         ] {
             let s = yt.to_string();
             assert_eq!(YieldType::from_str(&s).unwrap(), yt);
@@ -251,7 +278,14 @@ mod tests {
 
     #[test]
     fn build_yas_basic() {
-        let ov = build_yas_overrides(Some("20240115"), Some(YieldType::YTM), None, None, None, None);
+        let ov = build_yas_overrides(
+            Some("20240115"),
+            Some(YieldType::YTM),
+            None,
+            None,
+            None,
+            None,
+        );
         assert_eq!(ov.len(), 2);
         assert!(ov.contains(&("YAS_SETTLE_DT".to_string(), "20240115".to_string())));
         assert!(ov.contains(&("YAS_YLD_FLAG".to_string(), "1".to_string())));
@@ -274,8 +308,12 @@ mod tests {
     #[test]
     fn build_yas_all() {
         let ov = build_yas_overrides(
-            Some("20240115"), Some(YieldType::YTW),
-            Some(50.0), Some(5.25), Some(99.5), Some("US912810SV17 Govt"),
+            Some("20240115"),
+            Some(YieldType::YTW),
+            Some(50.0),
+            Some(5.25),
+            Some(99.5),
+            Some("US912810SV17 Govt"),
         );
         assert_eq!(ov.len(), 6);
     }

@@ -4,6 +4,11 @@ These tests verify that:
 1. Python exceptions are properly defined
 2. Rust _core exceptions are exposed and can be caught
 3. Exception hierarchy allows catching by base class
+4. Individual exception class attributes and behavior
+5. BlpValidationError.from_rust_error() parsing
+6. BlpBPipeError B-PIPE license exceptions
+
+Tests 4-6 ported from main branch xbbg/tests/test_exceptions.py.
 """
 
 from __future__ import annotations
@@ -316,3 +321,282 @@ class TestValidationErrorsFromPython:
 
         with pytest.raises(BlpValidationError, match="security is required"):
             params.validate()
+
+
+class TestBlpErrorIndividual:
+    """Tests for BlpError base exception class (ported from main branch)."""
+
+    def test_blp_error_can_be_raised(self):
+        """BlpError can be raised and caught."""
+        from xbbg.exceptions import BlpError
+
+        with pytest.raises(BlpError):
+            raise BlpError("Test error")
+
+    def test_blp_error_message(self):
+        """BlpError stores message correctly."""
+        from xbbg.exceptions import BlpError
+
+        error = BlpError("Test message")
+        assert str(error) == "Test message"
+
+
+class TestBlpSessionErrorIndividual:
+    """Tests for BlpSessionError exception class (ported from main branch)."""
+
+    def test_can_be_raised(self):
+        """BlpSessionError can be raised and caught."""
+        from xbbg.exceptions import BlpSessionError
+
+        with pytest.raises(BlpSessionError):
+            raise BlpSessionError("Session failed to start")
+
+    def test_message(self):
+        """BlpSessionError stores message correctly."""
+        from xbbg.exceptions import BlpSessionError
+
+        error = BlpSessionError("Connection refused")
+        assert str(error) == "Connection refused"
+
+
+class TestBlpRequestErrorIndividual:
+    """Tests for BlpRequestError with partial/default attributes (ported from main branch)."""
+
+    def test_basic_no_attributes(self):
+        """BlpRequestError with just a message should have None attributes."""
+        from xbbg.exceptions import BlpRequestError
+
+        error = BlpRequestError("Request failed")
+        assert str(error) == "Request failed"
+        assert error.service is None
+        assert error.operation is None
+        assert error.request_id is None
+        assert error.code is None
+
+    def test_partial_attributes(self):
+        """BlpRequestError with some optional attributes."""
+        from xbbg.exceptions import BlpRequestError
+
+        error = BlpRequestError(
+            "Request failed",
+            service="//blp/refdata",
+            code=404,
+        )
+        assert error.service == "//blp/refdata"
+        assert error.operation is None
+        assert error.request_id is None
+        assert error.code == 404
+
+
+class TestBlpSecurityErrorIndividual:
+    """Tests for BlpSecurityError (ported from main branch)."""
+
+    def test_inherits_from_blp_request_error(self):
+        """BlpSecurityError should inherit from BlpRequestError."""
+        from xbbg.exceptions import BlpRequestError, BlpSecurityError
+
+        assert issubclass(BlpSecurityError, BlpRequestError)
+
+    def test_with_request_attributes(self):
+        """BlpSecurityError should support request attributes."""
+        from xbbg.exceptions import BlpSecurityError
+
+        error = BlpSecurityError(
+            "Invalid security: INVALID US Equity",
+            service="//blp/refdata",
+            operation="ReferenceDataRequest",
+        )
+        assert "Invalid security" in str(error)
+        assert error.service == "//blp/refdata"
+
+
+class TestBlpFieldErrorIndividual:
+    """Tests for BlpFieldError (ported from main branch)."""
+
+    def test_with_request_attributes(self):
+        """BlpFieldError should support request attributes."""
+        from xbbg.exceptions import BlpFieldError
+
+        error = BlpFieldError(
+            "Invalid field: INVALID_FIELD",
+            service="//blp/refdata",
+            code=100,
+        )
+        assert "Invalid field" in str(error)
+        assert error.code == 100
+
+
+class TestBlpValidationErrorAttributes:
+    """Tests for BlpValidationError attributes (ported from main branch)."""
+
+    def test_basic_no_attributes(self):
+        """BlpValidationError with just a message should have None attributes."""
+        from xbbg.exceptions import BlpValidationError
+
+        error = BlpValidationError("Validation failed")
+        assert str(error) == "Validation failed"
+        assert error.element is None
+        assert error.suggestion is None
+        assert error.valid_values is None
+
+    def test_with_all_attributes(self):
+        """BlpValidationError with all optional attributes."""
+        from xbbg.exceptions import BlpValidationError
+
+        error = BlpValidationError(
+            "Invalid enum value",
+            element="periodicitySelection",
+            suggestion="DAILY",
+            valid_values=["DAILY", "WEEKLY", "MONTHLY"],
+        )
+        assert error.element == "periodicitySelection"
+        assert error.suggestion == "DAILY"
+        assert error.valid_values == ["DAILY", "WEEKLY", "MONTHLY"]
+
+
+class TestBlpValidationErrorFromRustError:
+    """Tests for BlpValidationError.from_rust_error() parsing.
+
+    Ported from main branch's TestBlpValidationError.test_from_error_message_*
+    tests. The current branch uses from_rust_error() instead of from_error_message().
+    """
+
+    def test_with_suggestion(self):
+        """from_rust_error() should extract suggestion from 'did you mean' pattern."""
+        from xbbg.exceptions import BlpValidationError
+
+        message = "Unknown element 'periodictySelection' (did you mean 'periodicitySelection'?)"
+        error = BlpValidationError.from_rust_error(message)
+        assert error.suggestion == "periodicitySelection"
+        assert error.element == "periodictySelection"
+
+    def test_with_element_only(self):
+        """from_rust_error() should extract element without suggestion."""
+        from xbbg.exceptions import BlpValidationError
+
+        message = "Unknown element 'invalidField'"
+        error = BlpValidationError.from_rust_error(message)
+        assert error.element == "invalidField"
+        assert error.suggestion is None
+
+    def test_with_invalid_enum(self):
+        """from_rust_error() should extract element from invalid enum message."""
+        from xbbg.exceptions import BlpValidationError
+
+        message = "Invalid enum value 'DAYLY' for 'periodicitySelection'"
+        error = BlpValidationError.from_rust_error(message)
+        assert error.element == "periodicitySelection"
+        assert error.suggestion is None
+
+    def test_no_pattern_match(self):
+        """from_rust_error() with unrecognized message should set None attributes."""
+        from xbbg.exceptions import BlpValidationError
+
+        message = "Some other validation error"
+        error = BlpValidationError.from_rust_error(message)
+        assert str(error) == message
+        assert error.element is None
+        assert error.suggestion is None
+
+    def test_preserves_full_message(self):
+        """from_rust_error() should preserve the full original message."""
+        from xbbg.exceptions import BlpValidationError
+
+        message = "Unknown element 'foo' (did you mean 'bar'?)"
+        error = BlpValidationError.from_rust_error(message)
+        assert str(error) == message
+
+
+class TestBlpBPipeError:
+    """Tests for BlpBPipeError B-PIPE license exception."""
+
+    def test_inherits_from_blp_error(self):
+        """BlpBPipeError should inherit from BlpError."""
+        from xbbg.exceptions import BlpBPipeError, BlpError
+
+        assert issubclass(BlpBPipeError, BlpError)
+
+    def test_can_be_raised(self):
+        """BlpBPipeError can be raised and caught."""
+        from xbbg.exceptions import BlpBPipeError
+
+        with pytest.raises(BlpBPipeError):
+            raise BlpBPipeError("B-PIPE license required")
+
+    def test_catchable_by_base(self):
+        """BlpBPipeError should be catchable by BlpError."""
+        from xbbg.exceptions import BlpBPipeError, BlpError
+
+        with pytest.raises(BlpError):
+            raise BlpBPipeError("B-PIPE license required")
+
+    def test_message(self):
+        """BlpBPipeError stores message correctly."""
+        from xbbg.exceptions import BlpBPipeError
+
+        error = BlpBPipeError("B-PIPE license required for depth data")
+        assert "B-PIPE" in str(error)
+
+
+class TestExceptionHierarchyComplete:
+    """Complete exception hierarchy tests (ported from main branch)."""
+
+    def test_all_exceptions_inherit_from_blp_error(self):
+        """All custom exceptions should inherit from BlpError."""
+        from xbbg.exceptions import (
+            BlpBPipeError,
+            BlpError,
+            BlpFieldError,
+            BlpInternalError,
+            BlpRequestError,
+            BlpSecurityError,
+            BlpSessionError,
+            BlpTimeoutError,
+            BlpValidationError,
+        )
+
+        exceptions = [
+            BlpSessionError,
+            BlpRequestError,
+            BlpSecurityError,
+            BlpFieldError,
+            BlpValidationError,
+            BlpTimeoutError,
+            BlpInternalError,
+            BlpBPipeError,
+        ]
+        for exc in exceptions:
+            assert issubclass(exc, BlpError), f"{exc.__name__} should inherit from BlpError"
+
+    def test_security_and_field_errors_inherit_from_request_error(self):
+        """BlpSecurityError and BlpFieldError should inherit from BlpRequestError."""
+        from xbbg.exceptions import BlpFieldError, BlpRequestError, BlpSecurityError
+
+        assert issubclass(BlpSecurityError, BlpRequestError)
+        assert issubclass(BlpFieldError, BlpRequestError)
+
+    def test_exception_chain_catching(self):
+        """Exception hierarchy should allow proper chain catching."""
+        from xbbg.exceptions import BlpError, BlpRequestError, BlpSecurityError
+
+        # BlpSecurityError caught by BlpRequestError
+        try:
+            raise BlpSecurityError("Invalid security")
+        except BlpRequestError as e:
+            assert "Invalid security" in str(e)
+
+        # BlpRequestError caught by BlpError
+        try:
+            raise BlpRequestError("Request failed")
+        except BlpError as e:
+            assert "Request failed" in str(e)
+
+    def test_specific_exception_not_caught_by_sibling(self):
+        """Sibling exceptions should not catch each other."""
+        from xbbg.exceptions import BlpRequestError, BlpSessionError
+
+        with pytest.raises(BlpSessionError):
+            try:
+                raise BlpSessionError("Session error")
+            except BlpRequestError:
+                pytest.fail("BlpSessionError should not be caught by BlpRequestError")

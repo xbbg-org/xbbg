@@ -613,6 +613,87 @@ class TestExtensions:
         assert len(df) > 0
         logger.info(f"  Got {len(df)} YAS values")
 
+    def test_ext_earnings(self):
+        """Ext: earnings breakdown (renamed from earning)."""
+        from xbbg import ext
+
+        df = ext.earnings("AMD US Equity", by="Geo")
+        logger.info(f"  Got {len(df)} earnings rows")
+
+    def test_ext_turnover(self):
+        """Ext: turnover data."""
+        from xbbg import ext
+
+        start, _ = get_date_range(7)
+        df = ext.turnover(CONFIG.equity_single, start_date=start)
+        logger.info(f"  Got {len(df)} turnover rows")
+
+    def test_ext_active_futures(self):
+        """Ext: active futures resolution."""
+        from xbbg import ext
+
+        df = ext.active_futures(CONFIG.futures_generic)
+        logger.info(f"  Got {len(df)} active futures")
+
+    def test_ext_cdx_ticker(self):
+        """Ext: CDX ticker resolution."""
+        from xbbg import ext
+
+        try:
+            ticker = ext.cdx_ticker("CDX NA IG", "5Y")
+            logger.info(f"  CDX ticker: {ticker}")
+        except Exception as e:
+            pytest.skip(f"CDX data not available: {e}")
+
+    def test_ext_active_cdx(self):
+        """Ext: active CDX."""
+        from xbbg import ext
+
+        try:
+            df = ext.active_cdx("CDX NA IG")
+            logger.info(f"  Got {len(df)} active CDX")
+        except Exception as e:
+            pytest.skip(f"CDX data not available: {e}")
+
+    def test_ext_convert_ccy(self):
+        """Ext: currency conversion (renamed from adjust_ccy)."""
+        from xbbg import bdh, ext
+
+        start, end = get_date_range(5)
+        df = bdh(["VOD LN Equity"], CONFIG.price_field, start_date=start, end_date=end)
+        df_usd = ext.convert_ccy(df, ccy="USD")
+        logger.info(f"  Converted {len(df_usd)} rows to USD")
+
+    def test_ext_preferreds(self):
+        """Ext: preferred stocks."""
+        from xbbg import ext
+
+        try:
+            df = ext.preferreds("BAC US Equity")
+            logger.info(f"  Got {len(df)} preferred stocks")
+        except Exception as e:
+            pytest.skip(f"Preferreds data not available: {e}")
+
+    def test_ext_corporate_bonds(self):
+        """Ext: corporate bonds."""
+        from xbbg import ext
+
+        try:
+            df = ext.corporate_bonds("AAPL")
+            logger.info(f"  Got {len(df)} corporate bonds")
+        except Exception as e:
+            pytest.skip(f"Corporate bonds data not available: {e}")
+
+    def test_ext_bqr(self):
+        """Ext: BQR query."""
+        from xbbg import ext
+
+        try:
+            df = ext.bqr("IBM US Equity")
+            logger.info(f"  Got {len(df)} BQR results")
+        except Exception as e:
+            pytest.skip(f"BQR not available: {e}")
+
 
 class TestExtensionsAsync:
     """Tests for async ext module functions."""
@@ -645,6 +726,96 @@ class TestExtensionsAsync:
 
         assert ticker is not None
         logger.info(f"  Async result: {ticker}")
+
+    @pytest.mark.asyncio
+    async def test_ext_aearnings(self):
+        """Ext: async earnings (renamed from aearning)."""
+        from xbbg import ext
+
+        df = await ext.aearnings("AMD US Equity", by="Geo")
+        logger.info(f"  Async earnings: {len(df)} rows")
+
+    @pytest.mark.asyncio
+    async def test_ext_aturnover(self):
+        """Ext: async turnover."""
+        from xbbg import ext
+
+        start, _ = get_date_range(7)
+        df = await ext.aturnover(CONFIG.equity_single, start_date=start)
+        logger.info(f"  Async turnover: {len(df)} rows")
+
+    @pytest.mark.asyncio
+    async def test_ext_aactive_futures(self):
+        """Ext: async active futures."""
+        from xbbg import ext
+
+        df = await ext.aactive_futures(CONFIG.futures_generic)
+        logger.info(f"  Async active futures: {len(df)} results")
+
+    @pytest.mark.asyncio
+    async def test_ext_acdx_ticker(self):
+        """Ext: async CDX ticker."""
+        from xbbg import ext
+
+        try:
+            ticker = await ext.acdx_ticker("CDX NA IG", "5Y")
+            logger.info(f"  Async CDX: {ticker}")
+        except Exception as e:
+            pytest.skip(f"CDX not available: {e}")
+
+    @pytest.mark.asyncio
+    async def test_ext_aactive_cdx(self):
+        """Ext: async active CDX."""
+        from xbbg import ext
+
+        try:
+            df = await ext.aactive_cdx("CDX NA IG")
+            logger.info(f"  Async active CDX: {len(df)} results")
+        except Exception as e:
+            pytest.skip(f"CDX not available: {e}")
+
+    @pytest.mark.asyncio
+    async def test_ext_aconvert_ccy(self):
+        """Ext: async currency conversion (renamed from aadjust_ccy)."""
+        from xbbg import abdh, ext
+
+        start, end = get_date_range(5)
+        df = await abdh(["VOD LN Equity"], CONFIG.price_field, start_date=start, end_date=end)
+        df_usd = await ext.aconvert_ccy(df, ccy="USD")
+        logger.info(f"  Async converted: {len(df_usd)} rows")
+
+    @pytest.mark.asyncio
+    async def test_ext_apreferreds(self):
+        """Ext: async preferreds."""
+        from xbbg import ext
+
+        try:
+            df = await ext.apreferreds("BAC US Equity")
+            logger.info(f"  Async preferreds: {len(df)} results")
+        except Exception as e:
+            pytest.skip(f"Preferreds not available: {e}")
+
+    @pytest.mark.asyncio
+    async def test_ext_acorporate_bonds(self):
+        """Ext: async corporate bonds."""
+        from xbbg import ext
+
+        try:
+            df = await ext.acorporate_bonds("AAPL")
+            logger.info(f"  Async bonds: {len(df)} results")
+        except Exception as e:
+            pytest.skip(f"Corporate bonds not available: {e}")
+
+    @pytest.mark.asyncio
+    async def test_ext_abqr(self):
+        """Ext: async BQR."""
+        from xbbg import ext
+
+        try:
+            df = await ext.abqr("IBM US Equity")
+            logger.info(f"  Async BQR: {len(df)} results")
+        except Exception as e:
+            pytest.skip(f"BQR not available: {e}")
 
 
 # =============================================================================
@@ -741,6 +912,603 @@ class TestDataValidation:
 
 
 # =============================================================================
+# Additional API Coverage Tests
+# =============================================================================
+
+
+class TestBql:
+    """Tests for bql() - basic BQL query."""
+
+    def test_bql_basic(self):
+        """BQL: basic query."""
+        from xbbg import bql
+
+        df = bql("get(px_last) for('IBM US Equity')")
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} BQL rows")
+
+
+class TestAbql:
+    """Tests for abql() - async version."""
+
+    @pytest.mark.asyncio
+    async def test_abql_basic(self):
+        """ABQL: basic async call."""
+        from xbbg import abql
+
+        df = await abql("get(px_last) for('IBM US Equity')")
+        assert len(df) >= 1
+        logger.info(f"  Async BQL result: {len(df)} rows")
+
+
+class TestBsrch:
+    """Tests for bsrch() - Bloomberg search."""
+
+    def test_bsrch_basic(self):
+        """BSRCH: basic search query."""
+        from xbbg import bsrch
+
+        df = bsrch("FI:SOVR")
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} search results")
+
+
+class TestAbsrch:
+    """Tests for absrch() - async search."""
+
+    @pytest.mark.asyncio
+    async def test_absrch_basic(self):
+        """ABSRCH: basic async search."""
+        from xbbg import absrch
+
+        df = await absrch("FI:SOVR")
+        assert len(df) >= 1
+        logger.info(f"  Async search result: {len(df)} rows")
+
+
+class TestBflds:
+    """Tests for bflds() - field metadata lookup."""
+
+    def test_bflds_single(self):
+        """BFLDS: single field metadata lookup."""
+        from xbbg import bflds
+
+        df = bflds("PX_LAST")
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} field info rows")
+
+    def test_bflds_multi(self):
+        """BFLDS: multiple field metadata lookup."""
+        from xbbg import bflds
+
+        df = bflds(["PX_LAST", "VOLUME", "NAME"])
+        assert len(df) >= 3
+        logger.info(f"  Got {len(df)} field info rows")
+
+
+class TestAbflds:
+    """Tests for abflds() - async field metadata lookup."""
+
+    @pytest.mark.asyncio
+    async def test_abflds_basic(self):
+        """ABFLDS: basic async field metadata lookup."""
+        from xbbg import abflds
+
+        df = await abflds("PX_LAST")
+        assert len(df) >= 1
+        logger.info(f"  Async field info: {len(df)} rows")
+
+
+class TestBeqs:
+    """Tests for beqs() - equity screening."""
+
+    def test_beqs_basic(self):
+        """BEQS: basic equity screening."""
+        from xbbg import beqs
+
+        df = beqs("Core Capital Goods Makers")
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} screening results")
+
+
+class TestAbeqs:
+    """Tests for abeqs() - async equity screening."""
+
+    @pytest.mark.asyncio
+    async def test_abeqs_basic(self):
+        """ABEQS: basic async screening."""
+        from xbbg import abeqs
+
+        df = await abeqs("Core Capital Goods Makers")
+        assert len(df) >= 1
+        logger.info(f"  Async screening: {len(df)} results")
+
+
+class TestBlkp:
+    """Tests for blkp() - security lookup."""
+
+    def test_blkp_basic(self):
+        """BLKP: basic lookup."""
+        from xbbg import blkp
+
+        df = blkp("IBM", max_results=5)
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} lookup results")
+
+
+class TestAblkp:
+    """Tests for ablkp() - async security lookup."""
+
+    @pytest.mark.asyncio
+    async def test_ablkp_basic(self):
+        """ABLKP: basic async lookup."""
+        from xbbg import ablkp
+
+        df = await ablkp("IBM", max_results=5)
+        assert len(df) >= 1
+        logger.info(f"  Async lookup: {len(df)} results")
+
+
+class TestBport:
+    """Tests for bport() - portfolio data."""
+
+    def test_bport_basic(self):
+        """BPORT: basic portfolio request. May fail without portfolio access."""
+        from xbbg import bport
+
+        try:
+            df = bport("U10378179-1 Client")
+            logger.info(f"  Got {len(df)} portfolio rows")
+        except Exception as e:
+            pytest.skip(f"Portfolio access not available: {e}")
+
+
+class TestAbport:
+    """Tests for abport() - async portfolio data."""
+
+    @pytest.mark.asyncio
+    async def test_abport_basic(self):
+        """ABPORT: basic async portfolio request."""
+        from xbbg import abport
+
+        try:
+            df = await abport("U10378179-1 Client")
+            logger.info(f"  Async portfolio: {len(df)} rows")
+        except Exception as e:
+            pytest.skip(f"Portfolio access not available: {e}")
+
+
+class TestBcurves:
+    """Tests for bcurves() - yield curves."""
+
+    def test_bcurves_basic(self):
+        """BCURVES: basic curve request."""
+        from xbbg import bcurves
+
+        df = bcurves("YCSW0023 Index")
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} curve points")
+
+
+class TestAbcurves:
+    """Tests for abcurves() - async yield curves."""
+
+    @pytest.mark.asyncio
+    async def test_abcurves_basic(self):
+        """ABCURVES: basic async curve request."""
+        from xbbg import abcurves
+
+        df = await abcurves("YCSW0023 Index")
+        assert len(df) >= 1
+        logger.info(f"  Async curves: {len(df)} points")
+
+
+class TestBgovts:
+    """Tests for bgovts() - government bonds."""
+
+    def test_bgovts_basic(self):
+        """BGOVTS: basic government bond list."""
+        from xbbg import bgovts
+
+        df = bgovts("USD")
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} government bonds")
+
+
+class TestAbgovts:
+    """Tests for abgovts() - async government bonds."""
+
+    @pytest.mark.asyncio
+    async def test_abgovts_basic(self):
+        """ABGOVTS: basic async government bond list."""
+        from xbbg import abgovts
+
+        df = await abgovts("USD")
+        assert len(df) >= 1
+        logger.info(f"  Async govts: {len(df)} bonds")
+
+
+class TestRequest:
+    """Tests for request() - generic service/operation API."""
+
+    def test_request_basic(self):
+        """Request: generic API with Service/Operation."""
+        from xbbg import Operation, Service, request
+
+        df = request(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=[CONFIG.equity_single],
+            fields=[CONFIG.price_field],
+        )
+        assert len(df) >= 1
+        logger.info(f"  Got {len(df)} request rows")
+
+
+class TestArequest:
+    """Tests for arequest() - async generic API."""
+
+    @pytest.mark.asyncio
+    async def test_arequest_basic(self):
+        """ARequest: basic async generic request."""
+        from xbbg import Operation, Service, arequest
+
+        df = await arequest(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=[CONFIG.equity_single],
+            fields=[CONFIG.price_field],
+        )
+        assert len(df) >= 1
+        logger.info(f"  Async request: {len(df)} rows")
+
+
+class TestVwap:
+    """Tests for avwap() - streaming VWAP."""
+
+    @pytest.mark.asyncio
+    async def test_avwap_basic(self):
+        """VWAP: basic streaming VWAP."""
+        from xbbg import avwap
+
+        ticks = 0
+        try:
+            async for tick in avwap(CONFIG.equity_single):
+                ticks += 1
+                if ticks >= 2:
+                    break
+        except asyncio.TimeoutError:
+            pass
+        logger.info(f"  Got {ticks} VWAP ticks")
+
+
+class TestMktbar:
+    """Tests for amktbar() - streaming market bars."""
+
+    @pytest.mark.asyncio
+    async def test_amktbar_basic(self):
+        """MKTBAR: streaming bars."""
+        from xbbg import amktbar
+
+        bars = 0
+        try:
+            async for bar in amktbar(CONFIG.equity_single, interval=1):
+                bars += 1
+                if bars >= 2:
+                    break
+        except asyncio.TimeoutError:
+            pass
+        logger.info(f"  Got {bars} market bars")
+
+
+class TestDepth:
+    """Tests for adepth() - market depth streaming."""
+
+    @pytest.mark.asyncio
+    async def test_adepth_basic(self):
+        """DEPTH: market depth (requires B-PIPE)."""
+        from xbbg import adepth
+
+        try:
+            updates = 0
+            async for update in adepth(CONFIG.equity_single):
+                updates += 1
+                if updates >= 2:
+                    break
+            logger.info(f"  Got {updates} depth updates")
+        except Exception as e:
+            pytest.skip(f"B-PIPE not available: {e}")
+
+
+class TestChains:
+    """Tests for achains() - chain streaming."""
+
+    @pytest.mark.asyncio
+    async def test_achains_basic(self):
+        """CHAINS: option/futures chains (requires B-PIPE)."""
+        from xbbg import achains
+
+        try:
+            updates = 0
+            async for update in achains(CONFIG.equity_single):
+                updates += 1
+                if updates >= 2:
+                    break
+            logger.info(f"  Got {updates} chain updates")
+        except Exception as e:
+            pytest.skip(f"B-PIPE not available: {e}")
+
+
+class TestConfig:
+    """Tests for configure/connectivity/logging lifecycle APIs."""
+
+    def test_configure(self):
+        """Config: configure engine."""
+        from xbbg import configure
+
+        configure()
+        logger.info("  configure() succeeded")
+
+    def test_is_connected(self):
+        """Config: check connection status."""
+        from xbbg import is_connected
+
+        status = is_connected()
+        assert isinstance(status, bool)
+        logger.info(f"  Connected: {status}")
+
+    def test_set_get_log_level(self):
+        """Config: set and get log level."""
+        from xbbg import get_log_level, set_log_level
+
+        original = get_log_level()
+        set_log_level("warn")
+        assert get_log_level() == "warn"
+        set_log_level(original)
+        logger.info(f"  Log level round-trip: {original}")
+
+
+class TestTa:
+    """Tests for TA metadata APIs."""
+
+    def test_ta_studies_list(self):
+        """TA: list available studies."""
+        from xbbg import ta_studies
+
+        studies = ta_studies()
+        assert isinstance(studies, list)
+        assert len(studies) > 0
+        logger.info(f"  Got {len(studies)} TA studies")
+
+    def test_ta_study_params(self):
+        """TA: get study parameters."""
+        from xbbg import ta_studies, ta_study_params
+
+        studies = ta_studies()
+        if studies:
+            params = ta_study_params(studies[0])
+            assert isinstance(params, dict)
+            logger.info(f"  Study '{studies[0]}' has {len(params)} params")
+
+
+class TestBta:
+    """Tests for bta() - technical analysis data."""
+
+    def test_bta_basic(self):
+        """BTA: basic TA request."""
+        from xbbg import bta, ta_studies
+
+        studies = ta_studies()
+        if not studies:
+            pytest.skip("No TA studies available")
+        start, end = get_date_range(30)
+        df = bta(CONFIG.equity_single, studies[0], start_date=start, end_date=end)
+        logger.info(f"  Got {len(df)} TA rows")
+
+
+class TestAbta:
+    """Tests for abta() - async technical analysis data."""
+
+    @pytest.mark.asyncio
+    async def test_abta_basic(self):
+        """ABTA: basic async TA request."""
+        from xbbg import abta, ta_studies
+
+        studies = ta_studies()
+        if not studies:
+            pytest.skip("No TA studies available")
+        start, end = get_date_range(30)
+        df = await abta(CONFIG.equity_single, studies[0], start_date=start, end_date=end)
+        logger.info(f"  Async TA result: {len(df)} rows")
+
+
+class TestBops:
+    """Tests for bops() - schema operations list."""
+
+    def test_bops_basic(self):
+        """BOPS: list operations for a service."""
+        from xbbg import bops
+
+        ops = bops()
+        assert isinstance(ops, list)
+        assert len(ops) > 0
+        logger.info(f"  Got {len(ops)} operations")
+
+
+class TestAbops:
+    """Tests for abops() - async schema operations list."""
+
+    @pytest.mark.asyncio
+    async def test_abops_basic(self):
+        """ABOPS: basic async operations list."""
+        from xbbg import abops
+
+        ops = await abops()
+        assert isinstance(ops, list)
+        assert len(ops) > 0
+        logger.info(f"  Async ops: {len(ops)}")
+
+
+class TestBschema:
+    """Tests for bschema() - service schema."""
+
+    def test_bschema_basic(self):
+        """BSCHEMA: get service schema."""
+        from xbbg import bschema
+
+        schema = bschema()
+        assert isinstance(schema, dict)
+        assert "operations" in schema
+        logger.info(f"  Got schema with {len(schema['operations'])} operations")
+
+
+class TestAbschema:
+    """Tests for abschema() - async service schema."""
+
+    @pytest.mark.asyncio
+    async def test_abschema_basic(self):
+        """ABSCHEMA: basic async service schema."""
+        from xbbg import abschema
+
+        schema = await abschema()
+        assert isinstance(schema, dict)
+        assert "operations" in schema
+        logger.info(f"  Async schema: {len(schema['operations'])} ops")
+
+
+class TestSchemaIntrospection:
+    """Tests for sync schema module helpers."""
+
+    def test_get_schema(self):
+        """Schema: get full service schema."""
+        from xbbg import get_schema
+
+        schema = get_schema("//blp/refdata")
+        assert schema is not None
+        logger.info(f"  Schema: {schema.service}")
+
+    def test_list_operations(self):
+        """Schema: list operations."""
+        from xbbg import list_operations
+
+        ops = list_operations("//blp/refdata")
+        assert isinstance(ops, list)
+        assert len(ops) > 0
+        logger.info(f"  Operations: {ops}")
+
+    def test_get_enum_values(self):
+        """Schema: get enum values."""
+        from xbbg import get_enum_values
+
+        vals = get_enum_values("//blp/refdata", "HistoricalDataRequest", "periodicitySelection")
+        if vals is not None:
+            assert isinstance(vals, list)
+            logger.info(f"  Enum values: {vals}")
+        else:
+            logger.info("  No enum values (schema may need caching first)")
+
+    def test_list_valid_elements(self):
+        """Schema: list valid elements."""
+        from xbbg import list_valid_elements
+
+        elems = list_valid_elements("//blp/refdata", "ReferenceDataRequest")
+        if elems is not None:
+            assert isinstance(elems, list)
+            logger.info(f"  Valid elements: {len(elems)}")
+        else:
+            logger.info("  No elements (schema may need caching first)")
+
+
+class TestSchemaIntrospectionAsync:
+    """Tests for async schema module helpers."""
+
+    @pytest.mark.asyncio
+    async def test_aget_schema(self):
+        """Schema: async get full service schema."""
+        from xbbg import aget_schema
+
+        schema = await aget_schema("//blp/refdata")
+        assert schema is not None
+        logger.info(f"  Async schema: {schema.service}")
+
+    @pytest.mark.asyncio
+    async def test_alist_operations(self):
+        """Schema: async list operations."""
+        from xbbg import alist_operations
+
+        ops = await alist_operations("//blp/refdata")
+        assert isinstance(ops, list)
+        assert len(ops) > 0
+        logger.info(f"  Async operations: {ops}")
+
+    @pytest.mark.asyncio
+    async def test_aget_enum_values(self):
+        """Schema: async get enum values."""
+        from xbbg import aget_enum_values
+
+        vals = await aget_enum_values("//blp/refdata", "HistoricalDataRequest", "periodicitySelection")
+        if vals is not None:
+            assert isinstance(vals, list)
+            logger.info(f"  Async enum: {vals}")
+        else:
+            logger.info("  No enum values")
+
+    @pytest.mark.asyncio
+    async def test_alist_valid_elements(self):
+        """Schema: async list valid elements."""
+        from xbbg import alist_valid_elements
+
+        elems = await alist_valid_elements("//blp/refdata", "ReferenceDataRequest")
+        if elems is not None:
+            assert isinstance(elems, list)
+            logger.info(f"  Async elements: {len(elems)}")
+        else:
+            logger.info("  No elements")
+
+
+class TestFieldCache:
+    """Tests for field cache helper APIs."""
+
+    def test_resolve_field_types(self):
+        """FieldCache: resolve field types."""
+        from xbbg import resolve_field_types
+
+        result = resolve_field_types(["PX_LAST", "VOLUME", "NAME"])
+        assert result is not None
+        logger.info(f"  Resolved {len(result)} field types")
+
+    def test_get_field_info(self):
+        """FieldCache: get field info."""
+        from xbbg import get_field_info
+
+        try:
+            info = get_field_info(["PX_LAST"])
+            logger.info(f"  Field info: {info}")
+        except Exception as e:
+            pytest.skip(f"Field cache not populated: {e}")
+
+    def test_clear_field_cache(self):
+        """FieldCache: clear cache."""
+        from xbbg import clear_field_cache
+
+        clear_field_cache()
+        logger.info("  Cache cleared")
+
+
+class TestFieldCacheAsync:
+    """Tests for async field cache helper APIs."""
+
+    @pytest.mark.asyncio
+    async def test_aresolve_field_types(self):
+        """FieldCache: async resolve field types."""
+        from xbbg import aresolve_field_types
+
+        result = await aresolve_field_types(["PX_LAST", "VOLUME"])
+        assert result is not None
+        logger.info(f"  Async resolved: {len(result)} fields")
+
+
+# =============================================================================
 # CLI Runner
 # =============================================================================
 
@@ -784,6 +1552,40 @@ _register_class_tests(TestExtensions, "ext")
 _register_class_tests(TestExtensionsAsync, "ext_async")
 _register_class_tests(TestRawOutput, "raw")
 _register_class_tests(TestDataValidation, "validate")
+_register_class_tests(TestBql, "bql")
+_register_class_tests(TestAbql, "abql")
+_register_class_tests(TestBsrch, "bsrch")
+_register_class_tests(TestAbsrch, "absrch")
+_register_class_tests(TestBflds, "bflds")
+_register_class_tests(TestAbflds, "abflds")
+_register_class_tests(TestBeqs, "beqs")
+_register_class_tests(TestAbeqs, "abeqs")
+_register_class_tests(TestBlkp, "blkp")
+_register_class_tests(TestAblkp, "ablkp")
+_register_class_tests(TestBport, "bport")
+_register_class_tests(TestAbport, "abport")
+_register_class_tests(TestBcurves, "bcurves")
+_register_class_tests(TestAbcurves, "abcurves")
+_register_class_tests(TestBgovts, "bgovts")
+_register_class_tests(TestAbgovts, "abgovts")
+_register_class_tests(TestRequest, "request")
+_register_class_tests(TestArequest, "arequest")
+_register_class_tests(TestVwap, "vwap")
+_register_class_tests(TestMktbar, "mktbar")
+_register_class_tests(TestDepth, "depth")
+_register_class_tests(TestChains, "chains")
+_register_class_tests(TestConfig, "config")
+_register_class_tests(TestTa, "ta")
+_register_class_tests(TestBta, "bta")
+_register_class_tests(TestAbta, "abta")
+_register_class_tests(TestBops, "bops")
+_register_class_tests(TestAbops, "abops")
+_register_class_tests(TestBschema, "bschema")
+_register_class_tests(TestAbschema, "abschema")
+_register_class_tests(TestSchemaIntrospection, "schema")
+_register_class_tests(TestSchemaIntrospectionAsync, "schema_async")
+_register_class_tests(TestFieldCache, "field_cache")
+_register_class_tests(TestFieldCacheAsync, "field_cache_async")
 
 
 def run_tests(test_names: list[str]) -> bool:
@@ -806,7 +1608,36 @@ def run_tests(test_names: list[str]) -> bool:
             test_func = TESTS[name]
 
             # Check if it's an async test (name contains 'abdp', 'abdh', etc. or 'async')
-            is_async_test = any(x in name for x in ["abdp", "abdh", "abds", "abdib", "abdtick", "ext_async", "stream"])
+            is_async_test = any(
+                x in name
+                for x in [
+                    "abdp",
+                    "abdh",
+                    "abds",
+                    "abdib",
+                    "abdtick",
+                    "ext_async",
+                    "stream",
+                    "abql",
+                    "absrch",
+                    "abflds",
+                    "abeqs",
+                    "ablkp",
+                    "abport",
+                    "abcurves",
+                    "abgovts",
+                    "arequest",
+                    "vwap",
+                    "mktbar",
+                    "depth",
+                    "chains",
+                    "abta",
+                    "abops",
+                    "abschema",
+                    "schema_async",
+                    "field_cache_async",
+                ]
+            )
 
             if is_async_test:
                 # Run async tests in their own event loop

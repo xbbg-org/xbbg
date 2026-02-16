@@ -28,5 +28,5 @@ xbbg-core + xbbg-async  (pure Rust engine)
 ## Why
 
 Not every consumer needs native bindings. A running `xbbg-server` instance lets
-any language or tool access Bloomberg data over the network — dashboards, notebooks,
+any language or tool access Bloomberg data via api — dashboards, notebooks,
 microservices, Excel via Power Query, etc.

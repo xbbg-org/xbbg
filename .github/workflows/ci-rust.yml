@@ -51,6 +51,23 @@ jobs:
         run: cargo fmt --all -- --check
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Codegen freshness (fast, no SDK needed)
+  # ════════════════════════════════════════════════════════════════════════════
+  codegen:
+    name: Codegen Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check generated files are up to date
+        run: python codegen/generate.py --check
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Python Lint (fast, no SDK needed)
   # ════════════════════════════════════════════════════════════════════════════
   lint-python:
@@ -374,12 +391,12 @@ jobs:
 
       - name: Run tests
         working-directory: ${{ runner.temp }}/test-run
-        run: pytest tests -v
+        run: pytest tests -v -m "not live"
 
       - name: Run tests with coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
         working-directory: ${{ runner.temp }}/test-run
-        run: pytest tests --cov=xbbg --cov-report=xml -v
+        run: pytest tests --cov=xbbg --cov-report=xml -v -m "not live"
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
@@ -594,12 +611,13 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [lint-rust, lint-python, docs, audit, deny, check, build, test]
+    needs: [codegen, lint-rust, lint-python, docs, audit, deny, check, build, test]
     if: always()
     steps:
       - name: Check required jobs
         run: |
-          if [[ "${{ needs.lint-rust.result }}" != "success" ]] || \
+          if [[ "${{ needs.codegen.result }}" != "success" ]] || \
+             [[ "${{ needs.lint-rust.result }}" != "success" ]] || \
              [[ "${{ needs.lint-python.result }}" != "success" ]] || \
              [[ "${{ needs.docs.result }}" != "success" ]] || \
              [[ "${{ needs.audit.result }}" != "success" ]] || \
@@ -608,6 +626,7 @@ jobs:
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]]; then
             echo "❌ One or more required jobs failed"
+            echo "  codegen: ${{ needs.codegen.result }}"
             echo "  lint-rust: ${{ needs.lint-rust.result }}"
             echo "  lint-python: ${{ needs.lint-python.result }}"
             echo "  docs: ${{ needs.docs.result }}"

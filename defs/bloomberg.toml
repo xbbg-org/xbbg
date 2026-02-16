@@ -1,0 +1,266 @@
+# Bloomberg API Service Definitions
+# ==================================
+# Single source of truth for all Bloomberg API names.
+#
+# Run `python codegen/generate.py` to regenerate:
+#   - crates/xbbg-async/src/services.rs   (Rust enums)
+#   - py-xbbg/src/xbbg/_services_gen.py   (Python enums)
+#
+# Adding a new service or operation:
+#   1. Add the entry below
+#   2. Run codegen
+#   3. Commit the generated files
+#
+# CI runs `python codegen/generate.py --check` to verify files are in sync.
+
+
+# ============================================================================
+# Services
+# ============================================================================
+# Bloomberg service URIs.  Each key becomes the Python enum name (UPPER_SNAKE).
+# `rust_name` is the Rust variant name (PascalCase).
+# `uri` is the Bloomberg service URI string.
+
+[services.REFDATA]
+rust_name = "RefData"
+uri = "//blp/refdata"
+doc = "Reference data service for bdp, bdh, bds, bdib, bdtick, beqs, bport."
+
+[services.MKTDATA]
+rust_name = "MktData"
+uri = "//blp/mktdata"
+doc = "Real-time market data subscriptions (subscribe, stream)."
+
+[services.APIFLDS]
+rust_name = "ApiFlds"
+uri = "//blp/apiflds"
+doc = "Field metadata service for field info and search (bflds)."
+
+[services.INSTRUMENTS]
+rust_name = "Instruments"
+uri = "//blp/instruments"
+doc = "Instruments service for security lookup (blkp)."
+
+[services.BQLSVC]
+rust_name = "BqlSvc"
+uri = "//blp/bqlsvc"
+doc = "Bloomberg Query Language service (bql)."
+
+[services.EXRSVC]
+rust_name = "ExrSvc"
+uri = "//blp/exrsvc"
+doc = "Excel/Search service for Bloomberg searches (bsrch)."
+
+[services.TASVC]
+rust_name = "TaSvc"
+uri = "//blp/tasvc"
+doc = "Technical Analysis service for study calculations (bta)."
+
+[services.MKTVWAP]
+rust_name = "MktVwap"
+uri = "//blp/mktvwap"
+doc = "Real-time VWAP subscription service (vwap)."
+
+[services.MKTBAR]
+rust_name = "MktBar"
+uri = "//blp/mktbar"
+doc = "Real-time streaming OHLC bars (mktbar)."
+
+[services.MKTDEPTH]
+rust_name = "MktDepth"
+uri = "//blp/mktdepthdata"
+doc = "Level 2 market depth / order book data (depth). Requires B-PIPE license."
+
+[services.MKTLIST]
+rust_name = "MktList"
+uri = "//blp/mktlist"
+doc = "Option chains and futures chains (chains). Requires B-PIPE license."
+
+
+# ============================================================================
+# Operations
+# ============================================================================
+# Bloomberg request operation names.  `value` is the Bloomberg API string.
+# `service` references a services key.  `extractor` references an extractors key.
+# If rust_name is omitted, it is derived from the key (UPPER_SNAKE → PascalCase).
+
+[operations.REFERENCE_DATA]
+value = "ReferenceDataRequest"
+service = "REFDATA"
+extractor = "REFDATA"
+doc = "Single point-in-time data (bdp, bds)."
+
+[operations.HISTORICAL_DATA]
+value = "HistoricalDataRequest"
+service = "REFDATA"
+extractor = "HISTDATA"
+doc = "Historical time series data (bdh)."
+
+[operations.INTRADAY_BAR]
+value = "IntradayBarRequest"
+service = "REFDATA"
+extractor = "INTRADAY_BAR"
+doc = "Intraday OHLCV bars (bdib)."
+
+[operations.INTRADAY_TICK]
+value = "IntradayTickRequest"
+service = "REFDATA"
+extractor = "INTRADAY_TICK"
+doc = "Intraday tick data (bdtick)."
+
+[operations.FIELD_INFO]
+value = "FieldInfoRequest"
+service = "APIFLDS"
+extractor = "FIELD_INFO"
+doc = "Get field metadata (type, description)."
+
+[operations.FIELD_SEARCH]
+value = "FieldSearchRequest"
+service = "APIFLDS"
+extractor = "GENERIC"
+doc = "Search for fields by keyword."
+
+[operations.BEQS]
+value = "BeqsRequest"
+service = "REFDATA"
+extractor = "GENERIC"
+doc = "Bloomberg Equity Screening (BEQS)."
+
+[operations.PORTFOLIO_DATA]
+value = "PortfolioDataRequest"
+service = "REFDATA"
+extractor = "GENERIC"
+doc = "Portfolio data request (bport)."
+
+[operations.INSTRUMENT_LIST]
+value = "instrumentListRequest"
+service = "INSTRUMENTS"
+extractor = "GENERIC"
+doc = "Security lookup by name (blkp)."
+
+[operations.CURVE_LIST]
+value = "curveListRequest"
+service = "INSTRUMENTS"
+extractor = "GENERIC"
+doc = "List yield curves (bcurves)."
+
+[operations.GOVT_LIST]
+value = "govtListRequest"
+service = "INSTRUMENTS"
+extractor = "GENERIC"
+doc = "List government securities (bgovts)."
+
+[operations.BQL_SEND_QUERY]
+value = "sendQuery"
+service = "BQLSVC"
+extractor = "BQL"
+doc = "Bloomberg Query Language query (bql)."
+
+[operations.EXCEL_GET_GRID]
+value = "ExcelGetGridRequest"
+service = "EXRSVC"
+extractor = "BSRCH"
+doc = "Bloomberg Search/Excel grid request (bsrch)."
+
+[operations.STUDY_REQUEST]
+value = "studyRequest"
+service = "TASVC"
+extractor = "GENERIC"
+doc = "Technical analysis study request (bta)."
+
+[operations.RAW_REQUEST]
+value = ""
+rust_name = "RawRequest"
+doc = "Raw session.sendRequest() call (no operation name needed)."
+
+
+# ============================================================================
+# Extractors
+# ============================================================================
+# Extractor type hints for Arrow conversion.
+# Python enum: ExtractorHint.  Rust enum: ExtractorType.
+# `value` is the string exchanged over FFI.
+
+[extractors.REFDATA]
+rust_name = "RefData"
+value = "refdata"
+default = true
+doc = "Reference data extractor: [ticker, field, value, ...]"
+
+[extractors.HISTDATA]
+rust_name = "HistData"
+value = "histdata"
+doc = "Historical data extractor: [ticker, date, field, value, ...]"
+
+[extractors.BULK]
+rust_name = "BulkData"
+value = "bulk"
+doc = "Bulk data extractor: [ticker, field, row_idx, col1, col2, ...]"
+
+[extractors.INTRADAY_BAR]
+rust_name = "IntradayBar"
+value = "intraday_bar"
+doc = "Intraday bar extractor: [ticker, time, open, high, low, close, volume, ...]"
+
+[extractors.INTRADAY_TICK]
+rust_name = "IntradayTick"
+value = "intraday_tick"
+doc = "Intraday tick extractor: [ticker, time, type, value, size, ...]"
+
+[extractors.GENERIC]
+rust_name = "Generic"
+value = "generic"
+doc = "Generic flattener: [path, type, value_str, value_num, value_date]"
+
+[extractors.BQL]
+rust_name = "Bql"
+value = "bql"
+doc = "BQL: Bloomberg Query Language responses."
+
+[extractors.BSRCH]
+rust_name = "Bsrch"
+value = "bsrch"
+doc = "BSRCH: Bloomberg Search responses."
+
+[extractors.FIELD_INFO]
+rust_name = "FieldInfo"
+value = "fieldinfo"
+doc = "Field info extractor: [field, type, description, category]"
+
+
+# ============================================================================
+# Output Formats
+# ============================================================================
+# Controls the shape and typing of the output Arrow table.
+
+[formats.LONG]
+value = "long"
+default = true
+doc = "Long format with all values as strings (default, backwards-compatible)."
+
+[formats.LONG_TYPED]
+value = "long_typed"
+doc = "Long format with typed value columns."
+
+[formats.LONG_WITH_METADATA]
+value = "long_metadata"
+doc = "Long format with string values and dtype metadata column."
+
+[formats.WIDE]
+value = "wide"
+doc = "Wide format with fields as columns (DEPRECATED)."
+
+
+# ============================================================================
+# Output Modes
+# ============================================================================
+# Controls how Bloomberg responses are converted before returning.
+
+[output_modes.ARROW]
+value = "arrow"
+default = true
+doc = "Convert to Arrow RecordBatch using appropriate extractor."
+
+[output_modes.JSON]
+value = "json"
+doc = "Return raw JSON as a single-column Arrow table."

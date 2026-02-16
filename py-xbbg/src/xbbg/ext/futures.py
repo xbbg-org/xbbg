@@ -29,6 +29,8 @@ import narwhals.stable.v1 as nw
 from xbbg._core import (
     ext_contract_index,
     ext_cdx_gen_to_specific,
+    ext_filter_candidates_by_cycle,
+    ext_filter_valid_contracts,
     ext_generate_futures_candidates,
     ext_parse_date,
     ext_previous_cdx_series,
@@ -60,14 +62,14 @@ def _parse_date(dt: str | date) -> datetime:
 # =============================================================================
 
 
-def _filter_valid_contracts(
+def _filter_valid_contracts_from_df(
     nw_df: nw.DataFrame,
     dt_parsed: datetime,
-) -> list[tuple[str, datetime]]:
-    """Filter and sort futures contracts by maturity date.
+) -> list[str]:
+    """Filter and sort futures contracts by maturity date using Rust.
 
-    Parses maturity dates from a pivoted BDP DataFrame, keeps only contracts
-    whose maturity falls after *dt_parsed*, and returns them sorted by date.
+    Extracts (ticker, maturity_date_str) pairs from a pivoted BDP DataFrame
+    and delegates filtering/sorting to the Rust implementation.
 
     Args:
         nw_df: Pivoted DataFrame with ``ticker`` and ``last_tradeable_dt`` columns.
@@ -75,42 +77,32 @@ def _filter_valid_contracts(
             are excluded.
 
     Returns:
-        Sorted list of ``(ticker, maturity_datetime)`` tuples for contracts
-        maturing after *dt_parsed*.
+        Sorted list of ticker strings for contracts maturing after *dt_parsed*.
     """
     matu_dates = nw_df["last_tradeable_dt"].to_list()
     tickers = nw_df["ticker"].to_list()
 
-    valid_contracts: list[tuple[str, datetime]] = []
-    for ticker_val, matu_str in zip(tickers, matu_dates, strict=False):
-        if matu_str is None:
-            continue
-        try:
-            matu_dt = _parse_date(matu_str)
-            if matu_dt > dt_parsed:
-                valid_contracts.append((ticker_val, matu_dt))
-        except (ValueError, TypeError):
-            continue
+    # Build (ticker, maturity_str) pairs for Rust
+    contracts = [(str(t), str(m)) for t, m in zip(tickers, matu_dates, strict=False) if m is not None]
 
-    valid_contracts.sort(key=lambda x: x[1])
-    return valid_contracts
+    return ext_filter_valid_contracts(contracts, dt_parsed.year, dt_parsed.month, dt_parsed.day)
 
 
 async def afut_ticker(
     gen_ticker: str,
     dt: str | date,
-    freq: str = "M",
     **kwargs,
 ) -> str:
     """Async resolve generic futures ticker to specific contract.
 
     Maps a generic futures ticker (e.g., 'ES1 Index') to the specific
-    contract for a given date. Uses Rust for candidate generation.
+    contract for a given date. Queries Bloomberg for FUT_GEN_MONTH to
+    determine the actual trading cycle, then uses Rust for candidate
+    generation and filtering.
 
     Args:
         gen_ticker: Generic futures ticker (e.g., 'ES1 Index', 'CL1 Comdty').
         dt: Reference date for contract resolution.
-        freq: Roll frequency - 'M' (monthly), 'Q' (quarterly).
         **kwargs: Additional arguments passed to abdp.
 
     Returns:
@@ -127,9 +119,6 @@ async def afut_ticker(
             ticker = await afut_ticker("ES1 Index", "2024-01-15")
             # Returns: 'ESH24 Index'
 
-            # Get quarterly contract
-            ticker = await afut_ticker("ES1 Index", "2024-01-15", freq="Q")
-
 
         asyncio.run(main())
     """
@@ -143,27 +132,45 @@ async def afut_ticker(
     except ValueError:
         return ""
 
-    # Determine asset type for candidate count
+    # Determine candidate count — enough to cover the index + buffer
     t_info = gen_ticker.split()
     asset = t_info[-1] if t_info else ""
     month_ext = 4 if asset == "Comdty" else 2
     count = max(idx + month_ext, 3)
 
-    # Generate futures candidates using Rust (high performance)
+    # Query Bloomberg for the actual trading cycle (e.g., "HMUZ")
+    try:
+        cycle_data = await abdp(tickers=gen_ticker, flds="fut_gen_month", **kwargs)
+        cycle_nw = nw.from_native(cycle_data)
+        cycle_nw = _pivot_bdp_to_wide(cycle_nw)
+        cycle = cycle_nw["fut_gen_month"][0] if len(cycle_nw) > 0 and "fut_gen_month" in cycle_nw.columns else ""
+    except (ValueError, TypeError, KeyError, IndexError):
+        cycle = ""
+
+    # Generate monthly candidates using Rust, then filter by Bloomberg cycle
     try:
         candidates = ext_generate_futures_candidates(
             gen_ticker,
             dt_parsed.year,
             dt_parsed.month,
             dt_parsed.day,
-            freq.upper(),
-            count,
+            "M",  # always monthly — Bloomberg cycle handles filtering
+            count * 3,  # generate extra so filtering still yields enough
         )
     except ValueError:
         return ""
 
     if not candidates:
         return ""
+
+    # Filter by the cycle Bloomberg gave us
+    if cycle:
+        candidates = ext_filter_candidates_by_cycle(candidates, cycle)
+        if not candidates:
+            return ""
+
+    # Trim to needed count
+    candidates = candidates[:count]
 
     fut_candidates = [c[0] for c in candidates]  # Extract ticker strings
 
@@ -186,13 +193,13 @@ async def afut_ticker(
     if len(nw_df) == 0 or "last_tradeable_dt" not in nw_df.columns:
         return ""
 
-    # Parse maturity dates, filter to those after dt, and sort
-    valid_contracts = _filter_valid_contracts(nw_df, dt_parsed)
+    # Filter and sort using Rust (high performance)
+    valid_tickers = _filter_valid_contracts_from_df(nw_df, dt_parsed)
 
-    if len(valid_contracts) <= idx:
+    if len(valid_tickers) <= idx:
         return ""
 
-    return valid_contracts[idx][0]
+    return valid_tickers[idx]
 
 
 async def aactive_futures(
@@ -246,9 +253,8 @@ async def aactive_futures(
     f2 = f"{prefix[:-1]}2 {asset}"
 
     # Resolve to specific contracts
-    freq = kwargs.pop("freq", "M")
-    fut_1 = await afut_ticker(gen_ticker=f1, dt=dt_parsed, freq=freq, **kwargs)
-    fut_2 = await afut_ticker(gen_ticker=f2, dt=dt_parsed, freq=freq, **kwargs)
+    fut_1 = await afut_ticker(gen_ticker=f1, dt=dt_parsed, **kwargs)
+    fut_2 = await afut_ticker(gen_ticker=f2, dt=dt_parsed, **kwargs)
 
     if not fut_1:
         return ""
@@ -264,16 +270,17 @@ async def aactive_futures(
     if len(nw_tk) == 0 or "last_tradeable_dt" not in nw_tk.columns:
         return fut_1
 
-    # If current date is before first contract's maturity month, use front month
+    # If current date is before first contract's maturity, use front month
     first_row = nw_tk.filter(nw.col("ticker") == fut_1)
     if len(first_row) > 0:
         first_matu = first_row["last_tradeable_dt"][0]
         if isinstance(first_matu, str):
             first_matu = _parse_date(first_matu)
-        if hasattr(first_matu, "month") and dt_parsed.month < first_matu.month:
+        if hasattr(first_matu, "year") and dt_parsed < first_matu:
             return fut_1
 
     # Otherwise, compare volume over last 10 days
+    # abdh returns LONG format: {ticker, date, field, value}
     start = dt_parsed - timedelta(days=10)
     volume = await abdh(tickers=[fut_1, fut_2], flds="volume", start_date=start, end_date=dt_parsed, **kwargs)
     nw_vol = nw.from_native(volume)
@@ -281,27 +288,31 @@ async def aactive_futures(
     if len(nw_vol) == 0:
         return fut_1
 
-    # Get last row's volume for each contract and return the one with higher volume
-    last_row = nw_vol.tail(1)
-    vol_cols = [c for c in last_row.columns if "volume" in c.lower()]
+    # LONG format: filter to volume rows, get latest value per ticker
+    if "field" in nw_vol.columns and "value" in nw_vol.columns:
+        vol_rows = nw_vol.filter(nw.col("field").str.to_lowercase() == "volume")
+        if len(vol_rows) == 0:
+            return fut_1
 
-    if not vol_cols:
-        return fut_1
+        # Sort by date desc, take latest per ticker
+        if "date" in vol_rows.columns:
+            vol_rows = vol_rows.sort("date", descending=True)
 
-    # Find which contract has higher volume
-    max_vol = 0
-    best_ticker = fut_1
-    for col in vol_cols:
-        vol = last_row[col][0]
-        if vol and vol > max_vol:
-            max_vol = vol
-            # Extract ticker from column name
-            if fut_1 in col:
-                best_ticker = fut_1
-            elif fut_2 in col:
-                best_ticker = fut_2
+        best_ticker = fut_1
+        max_vol = 0.0
+        for tk in [fut_1, fut_2]:
+            tk_rows = vol_rows.filter(nw.col("ticker") == tk)
+            if len(tk_rows) > 0:
+                try:
+                    vol = float(tk_rows["value"][0])
+                    if vol > max_vol:
+                        max_vol = vol
+                        best_ticker = tk
+                except (ValueError, TypeError):
+                    pass
+        return best_ticker
 
-    return best_ticker
+    return fut_1
 
 
 async def acdx_ticker(
@@ -455,12 +466,30 @@ async def aactive_cdx(
         if len(nw_px) == 0:
             return cur
 
-        # Check which has more recent non-null prices
-        last_row = nw_px.tail(1)
-        for col in last_row.columns:
-            if cur in col and last_row[col][0] is not None:
+        # LONG format: {ticker, date, field, value}
+        # Find which ticker has the most recent non-null PX_LAST
+        if "field" in nw_px.columns and "value" in nw_px.columns:
+            px_rows = nw_px.filter(nw.col("field").str.to_lowercase() == "px_last")
+            # Filter out null/empty values
+            px_rows = px_rows.filter(nw.col("value") != "")
+
+            if "date" in px_rows.columns:
+                px_rows = px_rows.sort("date", descending=True)
+
+            # Check current series first
+            cur_rows = px_rows.filter(nw.col("ticker") == cur)
+            prev_rows = px_rows.filter(nw.col("ticker") == prev)
+
+            if len(cur_rows) > 0 and len(prev_rows) > 0:
+                # Both have data — compare latest dates
+                cur_date = cur_rows["date"][0]
+                prev_date = prev_rows["date"][0]
+                if prev_date > cur_date:
+                    return prev
                 return cur
-            if prev in col and last_row[col][0] is not None:
+            elif len(cur_rows) > 0:
+                return cur
+            elif len(prev_rows) > 0:
                 return prev
 
     except (ValueError, TypeError, KeyError):
@@ -477,7 +506,6 @@ async def aactive_cdx(
 def fut_ticker(
     gen_ticker: str,
     dt: str | date,
-    freq: str = "M",
     **kwargs,
 ) -> str:
     """Resolve generic futures ticker to specific contract.
@@ -491,7 +519,7 @@ def fut_ticker(
         # Get March 2024 E-mini S&P contract
         ticker = ext.fut_ticker("ES1 Index", "2024-01-15")
     """
-    return asyncio.run(afut_ticker(gen_ticker=gen_ticker, dt=dt, freq=freq, **kwargs))
+    return asyncio.run(afut_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs))
 
 
 def active_futures(

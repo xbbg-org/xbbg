@@ -19,4 +19,8 @@ phf = { version = "0.11", features = ["macros"] }
 # Error handling
 thiserror = "2"
 
+# Market rules loading
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
 # Benchmarks have been consolidated into crates/xbbg-bench.

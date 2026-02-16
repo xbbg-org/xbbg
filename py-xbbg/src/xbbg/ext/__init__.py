@@ -5,15 +5,15 @@ These are pure Python functions that compose core operations (bdp, bds, bdh, bql
 for common use cases.
 
 Extension Categories:
-    - historical: dividend(), earning(), turnover(), etf_holdings()
+    - historical: dividend(), earnings(), turnover(), etf_holdings()
     - futures: fut_ticker(), active_futures(), cdx_ticker(), active_cdx()
-    - currency: adjust_ccy()
+    - currency: convert_ccy()
     - fixed_income: yas(), preferreds(), corporate_bonds(), bqr()
 
 Async versions (primary implementations):
-    - historical: adividend(), aearning(), aturnover(), aetf_holdings()
+    - historical: adividend(), aearnings(), aturnover(), aetf_holdings()
     - futures: afut_ticker(), aactive_futures(), acdx_ticker(), aactive_cdx()
-    - currency: aadjust_ccy()
+    - currency: aconvert_ccy()
     - fixed_income: ayas(), apreferreds(), acorporate_bonds(), abqr()
 
 Example::
@@ -30,7 +30,7 @@ Example::
     ticker = ext.fut_ticker("ES1 Index", "2024-01-15")
 
     # Convert currency
-    df_usd = ext.adjust_ccy(df, ccy="USD")
+    df_usd = ext.convert_ccy(df, ccy="USD")
 
     # Yield & spread analysis for bonds
     df = ext.yas("US912810TM69 Govt", "YAS_BOND_YLD")
@@ -56,26 +56,26 @@ Example::
 from __future__ import annotations
 
 # Sync functions
-from xbbg.ext.currency import adjust_ccy
+from xbbg.ext.currency import convert_ccy
 from xbbg.ext.fixed_income import YieldType, bqr, corporate_bonds, preferreds, yas
 from xbbg.ext.futures import active_cdx, active_futures, cdx_ticker, fut_ticker
-from xbbg.ext.historical import dividend, earning, etf_holdings, turnover
+from xbbg.ext.historical import dividend, earnings, etf_holdings, turnover
 
 # Async functions
-from xbbg.ext.currency import aadjust_ccy
+from xbbg.ext.currency import aconvert_ccy
 from xbbg.ext.fixed_income import abqr, acorporate_bonds, apreferreds, ayas
 from xbbg.ext.futures import aactive_cdx, aactive_futures, acdx_ticker, afut_ticker
-from xbbg.ext.historical import adividend, aearning, aetf_holdings, aturnover
+from xbbg.ext.historical import adividend, aearnings, aetf_holdings, aturnover
 
 __all__ = [
     # Historical extensions (sync)
     "dividend",
-    "earning",
+    "earnings",
     "turnover",
     "etf_holdings",
     # Historical extensions (async)
     "adividend",
-    "aearning",
+    "aearnings",
     "aturnover",
     "aetf_holdings",
     # Futures extensions (sync)
@@ -89,9 +89,9 @@ __all__ = [
     "acdx_ticker",
     "aactive_cdx",
     # Currency extensions (sync)
-    "adjust_ccy",
+    "convert_ccy",
     # Currency extensions (async)
-    "aadjust_ccy",
+    "aconvert_ccy",
     # Fixed income extensions (sync)
     "yas",
     "YieldType",

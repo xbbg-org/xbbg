@@ -59,6 +59,70 @@ pub fn rename_etf_columns(columns: &[&str]) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Build column rename mapping from earnings header values.
+///
+/// Maps data column names (e.g., "Period X Value") to human-readable names
+/// derived from the header row (e.g., "fy2023").
+///
+/// # Arguments
+///
+/// * `header_row` - Pairs of (column_name, header_value) from the header DataFrame
+/// * `data_columns` - Column names from the data DataFrame
+///
+/// # Returns
+///
+/// A vector of (old_name, new_name) pairs for columns that need renaming.
+///
+/// # Examples
+///
+/// ```
+/// use xbbg_ext::transforms::historical::build_earning_header_rename;
+///
+/// let header = vec![
+///     ("Period 1 Header".to_string(), "FY 2023".to_string()),
+///     ("Period 2 Header".to_string(), "FY 2022".to_string()),
+/// ];
+/// let data_cols = vec!["ticker", "Period 1 Value", "Period 2 Value", "level"];
+///
+/// let renames = build_earning_header_rename(&header, &data_cols);
+/// assert!(renames.iter().any(|(old, new)| old == "Period 1 Value" && new == "fy2023"));
+/// assert!(renames.iter().any(|(old, new)| old == "Period 2 Value" && new == "fy2022"));
+/// ```
+pub fn build_earning_header_rename(
+    header_row: &[(String, String)],
+    data_columns: &[&str],
+) -> Vec<(String, String)> {
+    let header_map: std::collections::HashMap<&str, &str> = header_row
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
+    data_columns
+        .iter()
+        .filter_map(|data_col| {
+            if *data_col == "ticker" {
+                return None;
+            }
+
+            // Determine the corresponding header column name
+            let header_col = if data_col.ends_with(" Value") {
+                data_col.replace(" Value", " Header")
+            } else {
+                format!("{} Header", data_col)
+            };
+
+            // Get the header value and clean it
+            header_map.get(header_col.as_str()).map(|header_val| {
+                let new_name = header_val
+                    .to_lowercase()
+                    .replace(' ', "_")
+                    .replace("_20", "20");
+                (data_col.to_string(), new_name)
+            })
+        })
+        .collect()
+}
+
 /// Apply column renaming to a RecordBatch.
 ///
 /// Creates a new RecordBatch with renamed columns based on the provided mapping.

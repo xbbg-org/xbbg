@@ -25,7 +25,9 @@ pub enum ExtError {
     UnknownDividendType(String),
 
     /// Unknown yield type.
-    #[error("unknown yield type '{0}': expected YTM, YTC, YTR, YTP, YTW, YTWR, EYTW, EYTWR, or YTAL")]
+    #[error(
+        "unknown yield type '{0}': expected YTM, YTC, YTR, YTP, YTW, YTWR, EYTW, EYTWR, or YTAL"
+    )]
     UnknownYieldType(String),
 
     /// Arrow error during DataFrame operations.

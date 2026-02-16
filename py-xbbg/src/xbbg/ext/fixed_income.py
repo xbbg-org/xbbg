@@ -26,6 +26,9 @@ from typing import TYPE_CHECKING
 
 # Import Rust ext utilities for max performance
 from xbbg._core import (
+    ext_build_corporate_bonds_query,
+    ext_build_preferreds_query,
+    ext_build_yas_overrides,
     ext_normalize_tickers,
 )
 from xbbg.ext._utils import _fmt_date
@@ -40,98 +43,27 @@ class YieldType(IntEnum):
     These values control which yield calculation method Bloomberg uses
     in Yield & Spread Analysis (YAS) calculations.
 
-    Values validated against Bloomberg Terminal YAS<GO> function.
-
     Standard Bloomberg YAS_YLD_FLAG values:
-        1 = Yield to Maturity (YTM) - Default, assumes bond held to maturity
-        2 = Yield to Call (YTC) - Assumes bond called at first call date
-        3 = Yield to Refunding (YTR) - Assumes bond refunded at first refunding date
-        4 = Yield to Next Put (YTP) - Yield to next put date
-        5 = Yield to Worst (YTW) - Worst of next put, call, or maturity
-        6 = Yield to Worst Refunding (YTWR) - Worst of maturity, refunding, or next put
-        7 = Euro Yield to Worst (EYTW) - Euro worst of maturity, next call, or put
-        8 = Euro Yield to Worst Refunding (EYTWR) - Euro worst of YTWR
-        9 = Yield to Average Life (YTAL) - Yield to average life at maturity
-
-    Note: Not all yield types apply to all bonds. For example:
-        - YTC only applies to callable bonds
-        - YTP only applies to putable bonds
-        - YTR only applies to refundable bonds
-        - Euro variants (7, 8) use Euro conventions for yield calculation
+        1 = Yield to Maturity (YTM)
+        2 = Yield to Call (YTC)
+        3 = Yield to Refunding (YTR)
+        4 = Yield to Next Put (YTP)
+        5 = Yield to Worst (YTW)
+        6 = Yield to Worst Refunding (YTWR)
+        7 = Euro Yield to Worst (EYTW)
+        8 = Euro Yield to Worst Refunding (EYTWR)
+        9 = Yield to Average Life (YTAL)
     """
 
-    YTM = 1  # Yield to Maturity
-    YTC = 2  # Yield to Call
-    YTR = 3  # Yield to Refunding
-    YTP = 4  # Yield to Next Put
-    YTW = 5  # Yield to Worst (next put, call, or maturity)
-    YTWR = 6  # Yield to Worst Refunding (maturity, refunding, or next put)
-    EYTW = 7  # Euro Yield to Worst (maturity, next call, or put)
-    EYTWR = 8  # Euro Yield to Worst Refunding
-    YTAL = 9  # Yield to Average Life at Maturity
-
-    @classmethod
-    def from_name(cls, name: str) -> "YieldType":
-        """Get YieldType from name string (case-insensitive).
-
-        Args:
-            name: Yield type name (e.g., "YTM", "ytm", "Yield to Maturity")
-
-        Returns:
-            YieldType enum value
-
-        Raises:
-            ValueError: If name is not recognized
-
-        Example::
-
-            >>> YieldType.from_name("YTM")
-            <YieldType.YTM: 1>
-            >>> YieldType.from_name("yield to worst")
-            <YieldType.YTW: 3>
-        """
-        name_upper = name.upper().strip()
-
-        # Direct enum name match
-        try:
-            return cls[name_upper]
-        except KeyError:
-            pass
-
-        # Full name mapping
-        name_map = {
-            "YIELD TO MATURITY": cls.YTM,
-            "YIELD TO CALL": cls.YTC,
-            "YIELD TO REFUNDING": cls.YTR,
-            "YIELD TO PUT": cls.YTP,
-            "YIELD TO NEXT PUT": cls.YTP,
-            "YIELD TO WORST": cls.YTW,
-            "YIELD TO WORST REFUNDING": cls.YTWR,
-            "EURO YIELD TO WORST": cls.EYTW,
-            "EURO YIELD TO WORST REFUNDING": cls.EYTWR,
-            "YIELD TO AVERAGE LIFE": cls.YTAL,
-        }
-
-        if name_upper in name_map:
-            return name_map[name_upper]
-
-        raise ValueError(f"Unknown yield type: {name!r}. Valid names: {list(cls.__members__.keys())}")
-
-    @property
-    def description(self) -> str:
-        """Human-readable description of the yield type."""
-        descriptions = {
-            self.YTM: "Yield to Maturity - assumes bond held to maturity",
-            self.YTC: "Yield to Call - assumes bond called at first call date",
-            self.YTR: "Yield to Refunding - assumes bond refunded at first refunding date",
-            self.YTP: "Yield to Next Put - yield to next put date",
-            self.YTW: "Yield to Worst - worst of next put, call, or maturity",
-            self.YTWR: "Yield to Worst Refunding - worst of maturity, refunding, or next put",
-            self.EYTW: "Euro Yield to Worst - Euro worst of maturity, next call, or put",
-            self.EYTWR: "Euro Yield to Worst Refunding - Euro worst of YTWR",
-            self.YTAL: "Yield to Average Life - yield to average life at maturity",
-        }
-        return descriptions.get(self, f"Yield type {self.value}")
+    YTM = 1
+    YTC = 2
+    YTR = 3
+    YTP = 4
+    YTW = 5
+    YTWR = 6
+    EYTW = 7
+    EYTWR = 8
+    YTAL = 9
 
 
 def _normalize_tickers(tickers: str | list[str]) -> list[str]:
@@ -232,28 +164,19 @@ async def ayas(
     else:
         fields_list = list(flds)
 
-    # Build overrides from named parameters
-    overrides: dict[str, str] = {}
+    # Build overrides using Rust (high performance)
+    formatted_dt = _fmt_date(settle_dt) if settle_dt is not None else None
+    yt_flag = int(yield_type) if yield_type is not None else None
 
-    if settle_dt is not None:
-        formatted = _fmt_date(settle_dt)
-        if formatted:
-            overrides["YAS_SETTLE_DT"] = formatted
-
-    if yield_type is not None:
-        overrides["YAS_YLD_FLAG"] = str(int(yield_type))
-
-    if spread is not None:
-        overrides["YAS_YLD_SPREAD"] = str(spread)
-
-    if yield_ is not None:
-        overrides["YAS_BOND_YLD"] = str(yield_)
-
-    if price is not None:
-        overrides["YAS_BOND_PX"] = str(price)
-
-    if benchmark is not None:
-        overrides["YAS_BNCHMRK_BOND"] = benchmark
+    yas_pairs = ext_build_yas_overrides(
+        settle_dt=formatted_dt,
+        yield_type=yt_flag,
+        spread=spread,
+        yield_val=yield_,
+        price=price,
+        benchmark=benchmark,
+    )
+    overrides: dict[str, str] = dict(yas_pairs)
 
     # Merge with any additional overrides from kwargs
     if "overrides" in kwargs:
@@ -308,25 +231,9 @@ async def apreferreds(
     """
     from xbbg import abql
 
-    # Normalize ticker format
-    if " " not in equity_ticker:
-        equity_ticker = f"{equity_ticker} US Equity"
-
-    # Build field list
-    default_fields = ["id", "name"]
-    if fields:
-        all_fields = default_fields + [f for f in fields if f.lower() not in [df.lower() for df in default_fields]]
-    else:
-        all_fields = default_fields
-
-    fields_str = ", ".join(all_fields)
-
-    # Build BQL query using debt filter with Preferreds asset class
-    bql_query = (
-        f"get({fields_str}) "
-        f"for(filter(debt(['{equity_ticker}'], CONSOLIDATEDUPLICATES='N'), "
-        f"SRCH_ASSET_CLASS=='Preferreds'))"
-    )
+    # Build BQL query using Rust (handles ticker normalization, field dedup)
+    extra = list(fields) if fields else []
+    bql_query = ext_build_preferreds_query(equity_ticker, extra)
 
     return await abql(bql_query, **kwargs)
 
@@ -375,26 +282,9 @@ async def acorporate_bonds(
     """
     from xbbg import abql
 
-    # Build field list
-    default_fields = ["id"]
-    if fields:
-        all_fields = default_fields + [f for f in fields if f.lower() not in [df.lower() for df in default_fields]]
-    else:
-        all_fields = default_fields
-
-    fields_str = ", ".join(all_fields)
-
-    # Build filter conditions
-    conditions = ["SRCH_ASSET_CLASS=='Corporates'", f"TICKER=='{ticker}'"]
-
-    if ccy is not None:
-        conditions.append(f"CRNCY=='{ccy}'")
-
-    filter_str = " AND ".join(conditions)
-
-    # Build BQL query using bondsuniv filter
-    universe = "active" if active_only else "all"
-    bql_query = f"get({fields_str}) for(filter(bondsuniv('{universe}', CONSOLIDATEDUPLICATES='N'), {filter_str}))"
+    # Build BQL query using Rust (handles field dedup, filter construction)
+    extra = list(fields) if fields else []
+    bql_query = ext_build_corporate_bonds_query(ticker, ccy, extra, active_only)
 
     return await abql(bql_query, **kwargs)
 
@@ -451,36 +341,11 @@ async def abqr(
 
         asyncio.run(main())
     """
-    from datetime import datetime, timedelta
-
     from xbbg import abdtick
+    from xbbg._core import ext_default_bqr_datetimes
 
-    # Default time range: last hour
-    if end_datetime is None:
-        end_dt = datetime.now()
-        end_datetime = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
-    else:
-        # Normalize datetime format
-        end_datetime = end_datetime.replace(" ", "T")
-        if "T" in end_datetime and len(end_datetime) == 16:  # YYYY-MM-DDTHH:MM
-            end_datetime += ":00"
-
-    if start_datetime is None:
-        # Default to 1 hour before end
-        if isinstance(end_datetime, str):
-            try:
-                end_dt = datetime.fromisoformat(end_datetime)
-            except ValueError:
-                end_dt = datetime.now()
-        else:
-            end_dt = end_datetime
-        start_dt = end_dt - timedelta(hours=1)
-        start_datetime = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
-    else:
-        # Normalize datetime format
-        start_datetime = start_datetime.replace(" ", "T")
-        if "T" in start_datetime and len(start_datetime) == 16:  # YYYY-MM-DDTHH:MM
-            start_datetime += ":00"
+    # Compute default datetime range using Rust (handles normalization + defaults)
+    start_datetime, end_datetime = ext_default_bqr_datetimes(start_datetime, end_datetime)
 
     # Default event types
     if event_types is None:

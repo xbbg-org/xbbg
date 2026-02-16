@@ -10,6 +10,7 @@
 
 pub mod constants;
 pub mod error;
+pub mod markets;
 pub mod resolvers;
 pub mod transforms;
 pub mod utils;
@@ -18,7 +19,15 @@ pub use error::{ExtError, Result};
 
 // Re-export commonly used items
 pub use constants::{DVD_COLS, DVD_TYPES, ETF_COLS, FUTURES_MONTHS, MONTH_CODES};
+pub use markets::sessions::{
+    derive_sessions, get_market_rule, infer_timezone_from_country, MarketRule, SessionWindows,
+};
+pub use resolvers::futures::filter_valid_contracts;
+pub use transforms::historical::build_earning_header_rename;
+pub use transforms::{
+    build_corporate_bonds_query, build_etf_holdings_query, build_preferreds_query,
+};
+pub use transforms::{build_yas_overrides, YieldType};
 pub use utils::date::{fmt_date, parse_date};
 pub use utils::pivot::pivot_to_wide;
-pub use transforms::{build_yas_overrides, YieldType};
 pub use utils::ticker::{normalize_tickers, parse_ticker_parts, TickerParts};

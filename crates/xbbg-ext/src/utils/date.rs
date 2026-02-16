@@ -113,6 +113,113 @@ pub fn try_parse_date(s: &str) -> Option<NaiveDate> {
     parse_date(s).ok()
 }
 
+/// Compute default date range for turnover queries.
+///
+/// Returns `(start_date, end_date)` as ISO-8601 strings.
+/// * `end_date` defaults to yesterday if not provided.
+/// * `start_date` defaults to 30 days before `end_date` if not provided.
+///
+/// # Examples
+///
+/// ```
+/// use xbbg_ext::utils::date::default_turnover_dates;
+///
+/// let (start, end) = default_turnover_dates(None, None);
+/// assert_eq!(start.len(), 10); // "YYYY-MM-DD"
+/// assert_eq!(end.len(), 10);
+///
+/// let (start2, end2) = default_turnover_dates(None, Some("2024-06-15"));
+/// assert_eq!(end2, "2024-06-15");
+/// assert_eq!(start2, "2024-05-16");
+/// ```
+pub fn default_turnover_dates(
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> (String, String) {
+    let end = match end_date {
+        Some(s) => try_parse_date(s).unwrap_or_else(|| {
+            chrono::Local::now().naive_local().date() - chrono::Duration::days(1)
+        }),
+        None => chrono::Local::now().naive_local().date() - chrono::Duration::days(1),
+    };
+
+    let start = match start_date {
+        Some(s) => try_parse_date(s).unwrap_or(end - chrono::Duration::days(30)),
+        None => end - chrono::Duration::days(30),
+    };
+
+    (
+        fmt_date(start, Some("%Y-%m-%d")),
+        fmt_date(end, Some("%Y-%m-%d")),
+    )
+}
+
+/// Compute default datetime range for BQR (quote request) queries.
+///
+/// Returns `(start_datetime, end_datetime)` as ISO-8601 datetime strings.
+/// * `end_datetime` defaults to now if not provided.
+/// * `start_datetime` defaults to 1 hour before `end_datetime` if not provided.
+///
+/// Input datetimes support both `YYYY-MM-DD HH:MM` and `YYYY-MM-DDTHH:MM` formats.
+///
+/// # Examples
+///
+/// ```
+/// use xbbg_ext::utils::date::default_bqr_datetimes;
+///
+/// let (start, end) = default_bqr_datetimes(None, None);
+/// assert!(start.contains('T'));
+/// assert!(end.contains('T'));
+///
+/// let (start2, end2) = default_bqr_datetimes(
+///     Some("2024-01-15 09:00"),
+///     Some("2024-01-15 10:00"),
+/// );
+/// assert_eq!(start2, "2024-01-15T09:00:00");
+/// assert_eq!(end2, "2024-01-15T10:00:00");
+/// ```
+pub fn default_bqr_datetimes(
+    start_datetime: Option<&str>,
+    end_datetime: Option<&str>,
+) -> (String, String) {
+    let end_str = match end_datetime {
+        Some(s) => normalize_datetime_str(s),
+        None => chrono::Local::now()
+            .naive_local()
+            .format("%Y-%m-%dT%H:%M:%S")
+            .to_string(),
+    };
+
+    let start_str = match start_datetime {
+        Some(s) => normalize_datetime_str(s),
+        None => {
+            // Parse end_str back to compute 1 hour before
+            let end_dt = chrono::NaiveDateTime::parse_from_str(&end_str, "%Y-%m-%dT%H:%M:%S")
+                .unwrap_or_else(|_| chrono::Local::now().naive_local());
+            let start_dt = end_dt - chrono::Duration::hours(1);
+            start_dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+        }
+    };
+
+    (start_str, end_str)
+}
+
+/// Normalize a datetime string to ISO-8601 format `YYYY-MM-DDTHH:MM:SS`.
+///
+/// Handles:
+/// * `YYYY-MM-DD HH:MM` → `YYYY-MM-DDTHH:MM:00`
+/// * `YYYY-MM-DDTHH:MM` → `YYYY-MM-DDTHH:MM:00`
+/// * Already complete strings pass through.
+fn normalize_datetime_str(s: &str) -> String {
+    let s = s.replace(' ', "T");
+    if s.len() == 16 && s.contains('T') {
+        // YYYY-MM-DDTHH:MM → add :00
+        format!("{}:00", s)
+    } else {
+        s
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

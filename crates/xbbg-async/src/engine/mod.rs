@@ -26,6 +26,10 @@ use crate::errors::BlpAsyncError;
 use crate::request_builder::RequestBuilder;
 use crate::services::Operation;
 
+// ExtractorType is defined in services.rs (generated from defs/bloomberg.toml).
+// Re-export here so existing `use xbbg_async::engine::ExtractorType` paths keep working.
+pub use crate::services::ExtractorType;
+
 pub use request_pool::RequestWorkerPool;
 pub use state::{OutputFormat, SubscriptionState};
 pub use subscription_pool::{SessionClaim, SubscriptionSessionPool};
@@ -68,50 +72,6 @@ impl std::fmt::Display for OverflowPolicy {
             Self::DropNewest => write!(f, "drop_newest"),
             Self::DropOldest => write!(f, "drop_oldest"),
             Self::Block => write!(f, "block"),
-        }
-    }
-}
-
-/// Extractor type hint for Arrow conversion.
-///
-/// Tells the pump which Arrow schema/extractor to use for the response.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ExtractorType {
-    /// Reference data: [ticker, field, value, ...]
-    #[default]
-    RefData,
-    /// Historical data: [ticker, date, field, value, ...]
-    HistData,
-    /// Bulk data: [ticker, field, row_idx, col1, col2, ...]
-    BulkData,
-    /// Intraday bars: [ticker, time, open, high, low, close, volume, ...]
-    IntradayBar,
-    /// Intraday ticks: [ticker, time, type, value, size, ...]
-    IntradayTick,
-    /// Generic flattener: [path, type, value_str, value_num, value_date]
-    Generic,
-    /// BQL: Bloomberg Query Language responses
-    Bql,
-    /// BSRCH: Bloomberg Search responses
-    Bsrch,
-    /// Field info: [field, type, description, category]
-    FieldInfo,
-}
-
-impl ExtractorType {
-    /// Parse extractor type from string (from Python).
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "refdata" => Some(Self::RefData),
-            "histdata" => Some(Self::HistData),
-            "bulk" => Some(Self::BulkData),
-            "intraday_bar" => Some(Self::IntradayBar),
-            "intraday_tick" => Some(Self::IntradayTick),
-            "generic" => Some(Self::Generic),
-            "bql" => Some(Self::Bql),
-            "bsrch" => Some(Self::Bsrch),
-            "fieldinfo" => Some(Self::FieldInfo),
-            _ => None,
         }
     }
 }

@@ -12,11 +12,19 @@ use pyo3::types::PyDict;
 use xbbg_ext::constants::{DVD_TYPES, FUTURES_MONTHS, MONTH_CODES};
 use xbbg_ext::resolvers::cdx::{cdx_series_from_ticker, gen_to_specific, previous_series_ticker};
 use xbbg_ext::resolvers::futures::{
-    contract_index, generate_futures_candidates, validate_generic_ticker, RollFrequency,
+    contract_index, filter_candidates_by_cycle, filter_valid_contracts,
+    generate_futures_candidates, validate_generic_ticker, RollFrequency,
+};
+use xbbg_ext::transforms::bql::{
+    build_corporate_bonds_query, build_etf_holdings_query, build_preferreds_query,
 };
 use xbbg_ext::transforms::currency::{build_fx_pair, currencies_needing_conversion, same_currency};
-use xbbg_ext::transforms::historical::{rename_dividend_columns, rename_etf_columns};
-use xbbg_ext::utils::date::{fmt_date, parse_date};
+use xbbg_ext::transforms::fixed_income::{build_yas_overrides, YieldType};
+use xbbg_ext::transforms::historical::{
+    build_earning_header_rename, calculate_level_percentages, rename_dividend_columns,
+    rename_etf_columns,
+};
+use xbbg_ext::utils::date::{default_bqr_datetimes, default_turnover_dates, fmt_date, parse_date};
 use xbbg_ext::utils::pivot::{is_long_format, pivot_to_wide};
 use xbbg_ext::utils::ticker::{
     build_futures_ticker, filter_equity_tickers, is_specific_contract, normalize_tickers,
@@ -287,6 +295,208 @@ fn ext_get_dvd_types(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 }
 
 // =============================================================================
+// Futures Filtering
+// =============================================================================
+
+/// Filter futures candidates by a cycle-months string from Bloomberg FUT_GEN_MONTH.
+///
+/// Args:
+///     candidates: List of (ticker, year, month) tuples from ext_generate_futures_candidates.
+///     cycle: Month-code string from Bloomberg (e.g., "HMUZ").
+///
+/// Returns: Filtered list preserving original order.
+#[pyfunction]
+fn ext_filter_candidates_by_cycle(
+    candidates: Vec<(String, i32, u32)>,
+    cycle: &str,
+) -> Vec<(String, i32, u32)> {
+    filter_candidates_by_cycle(&candidates, cycle)
+}
+
+/// Filter and sort futures contracts by maturity date.
+///
+/// Args:
+///     contracts: List of (ticker, maturity_date_str) pairs.
+///     year, month, day: Reference date components.
+///
+/// Returns: List of ticker strings for contracts maturing after the reference date,
+///     sorted by maturity date ascending.
+#[pyfunction]
+fn ext_filter_valid_contracts(
+    contracts: Vec<(String, String)>,
+    year: i32,
+    month: u32,
+    day: u32,
+) -> PyResult<Vec<String>> {
+    use chrono::NaiveDate;
+
+    let ref_date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+        PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
+    })?;
+
+    Ok(filter_valid_contracts(&contracts, ref_date))
+}
+
+// =============================================================================
+// YAS Overrides
+// =============================================================================
+
+/// Build Bloomberg YAS override key-value pairs.
+///
+/// Args:
+///     settle_dt: Settlement date string (optional).
+///     yield_type: Yield type flag value 1-9 (optional).
+///     spread: Spread value (optional).
+///     yield_val: Yield value (optional).
+///     price: Price value (optional).
+///     benchmark: Benchmark security (optional).
+///
+/// Returns: List of (key, value) string pairs for Bloomberg overrides.
+#[pyfunction]
+#[pyo3(signature = (settle_dt=None, yield_type=None, spread=None, yield_val=None, price=None, benchmark=None))]
+fn ext_build_yas_overrides(
+    settle_dt: Option<&str>,
+    yield_type: Option<u8>,
+    spread: Option<f64>,
+    yield_val: Option<f64>,
+    price: Option<f64>,
+    benchmark: Option<&str>,
+) -> PyResult<Vec<(String, String)>> {
+    let yt = match yield_type {
+        Some(v) => Some(YieldType::try_from(v).map_err(|e| PyValueError::new_err(e.to_string()))?),
+        None => None,
+    };
+
+    Ok(build_yas_overrides(
+        settle_dt, yt, spread, yield_val, price, benchmark,
+    ))
+}
+
+// =============================================================================
+// Earnings Utilities
+// =============================================================================
+
+/// Build column rename mapping from earnings header values.
+///
+/// Args:
+///     header_row: List of (column_name, header_value) pairs from the header DataFrame.
+///     data_columns: Column names from the data DataFrame.
+///
+/// Returns: List of (old_name, new_name) pairs for columns that need renaming.
+#[pyfunction]
+fn ext_build_earning_header_rename(
+    header_row: Vec<(String, String)>,
+    data_columns: Vec<String>,
+) -> Vec<(String, String)> {
+    let refs: Vec<&str> = data_columns.iter().map(|s| s.as_str()).collect();
+    build_earning_header_rename(&header_row, &refs)
+}
+
+/// Calculate level-based percentages for earnings data.
+///
+/// Args:
+///     values: List of optional float values.
+///     levels: List of optional integer levels (1 = top level, 2 = sub-level).
+///
+/// Returns: List of optional percentage values (0-100).
+#[pyfunction]
+fn ext_calculate_level_percentages(
+    values: Vec<Option<f64>>,
+    levels: Vec<Option<i64>>,
+) -> Vec<Option<f64>> {
+    calculate_level_percentages(&values, &levels)
+}
+
+// =============================================================================
+// BQL Query Builders
+// =============================================================================
+
+/// Build a BQL query for preferred stocks.
+///
+/// Args:
+///     equity_ticker: Company equity ticker (e.g., "BAC US Equity" or "BAC").
+///     extra_fields: Additional fields beyond defaults (id, name).
+///
+/// Returns: Complete BQL query string.
+#[pyfunction]
+#[pyo3(signature = (equity_ticker, extra_fields=vec![]))]
+fn ext_build_preferreds_query(equity_ticker: &str, extra_fields: Vec<String>) -> String {
+    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    build_preferreds_query(equity_ticker, &refs)
+}
+
+/// Build a BQL query for corporate bonds.
+///
+/// Args:
+///     ticker: Company ticker without suffix (e.g., "AAPL").
+///     ccy: Currency filter (None for all currencies).
+///     extra_fields: Additional fields beyond default (id).
+///     active_only: If true, only return active bonds.
+///
+/// Returns: Complete BQL query string.
+#[pyfunction]
+#[pyo3(signature = (ticker, ccy=None, extra_fields=vec![], active_only=true))]
+fn ext_build_corporate_bonds_query(
+    ticker: &str,
+    ccy: Option<&str>,
+    extra_fields: Vec<String>,
+    active_only: bool,
+) -> String {
+    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    build_corporate_bonds_query(ticker, ccy, &refs, active_only)
+}
+
+/// Build a BQL query for ETF holdings.
+///
+/// Args:
+///     etf_ticker: ETF ticker (e.g., "SPY US Equity" or "SPY").
+///     extra_fields: Additional fields beyond defaults (id_isin, weights, id().position).
+///
+/// Returns: Complete BQL query string.
+#[pyfunction]
+#[pyo3(signature = (etf_ticker, extra_fields=vec![]))]
+fn ext_build_etf_holdings_query(etf_ticker: &str, extra_fields: Vec<String>) -> String {
+    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    build_etf_holdings_query(etf_ticker, &refs)
+}
+
+// =============================================================================
+// DateTime Default Ranges
+// =============================================================================
+
+/// Compute default date range for turnover queries.
+///
+/// Args:
+///     start_date: Start date string (optional, default: 30 days before end).
+///     end_date: End date string (optional, default: yesterday).
+///
+/// Returns: Tuple of (start_date, end_date) as ISO-8601 date strings.
+#[pyfunction]
+#[pyo3(signature = (start_date=None, end_date=None))]
+fn ext_default_turnover_dates(
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> (String, String) {
+    default_turnover_dates(start_date, end_date)
+}
+
+/// Compute default datetime range for BQR (quote request) queries.
+///
+/// Args:
+///     start_datetime: Start datetime string (optional, default: 1 hour before end).
+///     end_datetime: End datetime string (optional, default: now).
+///
+/// Returns: Tuple of (start_datetime, end_datetime) as ISO-8601 datetime strings.
+#[pyfunction]
+#[pyo3(signature = (start_datetime=None, end_datetime=None))]
+fn ext_default_bqr_datetimes(
+    start_datetime: Option<&str>,
+    end_datetime: Option<&str>,
+) -> (String, String) {
+    default_bqr_datetimes(start_datetime, end_datetime)
+}
+
+// =============================================================================
 // Module Registration
 // =============================================================================
 
@@ -332,6 +542,26 @@ pub fn register_ext_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ext_get_futures_months, m)?)?;
     m.add_function(wrap_pyfunction!(ext_get_dvd_type, m)?)?;
     m.add_function(wrap_pyfunction!(ext_get_dvd_types, m)?)?;
+
+    // Futures filtering
+    m.add_function(wrap_pyfunction!(ext_filter_candidates_by_cycle, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_filter_valid_contracts, m)?)?;
+
+    // YAS overrides
+    m.add_function(wrap_pyfunction!(ext_build_yas_overrides, m)?)?;
+
+    // Earnings utilities
+    m.add_function(wrap_pyfunction!(ext_build_earning_header_rename, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_calculate_level_percentages, m)?)?;
+
+    // BQL query builders
+    m.add_function(wrap_pyfunction!(ext_build_preferreds_query, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_build_corporate_bonds_query, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_build_etf_holdings_query, m)?)?;
+
+    // DateTime default ranges
+    m.add_function(wrap_pyfunction!(ext_default_turnover_dates, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_default_bqr_datetimes, m)?)?;
 
     Ok(())
 }

@@ -6,13 +6,13 @@ Uses high-performance Rust utilities from xbbg._core.
 
 Sync functions (wrap async with asyncio.run):
     - dividend(): Get dividend and split history
-    - earning(): Get earnings breakdown
+    - earnings(): Get earnings breakdown
     - turnover(): Get trading volume and turnover
     - etf_holdings(): Get ETF holdings via BQL
 
 Async functions (primary implementation):
     - adividend(): Async dividend history
-    - aearning(): Async earnings breakdown
+    - aearnings(): Async earnings breakdown
     - aturnover(): Async turnover data
     - aetf_holdings(): Async ETF holdings
 """
@@ -27,6 +27,10 @@ import narwhals.stable.v1 as nw
 
 # Import Rust ext utilities for max performance
 from xbbg._core import (
+    ext_build_earning_header_rename,
+    ext_build_etf_holdings_query,
+    ext_calculate_level_percentages,
+    ext_default_turnover_dates,
     ext_filter_equity_tickers,
     ext_get_dvd_type,
     ext_rename_dividend_columns,
@@ -177,7 +181,7 @@ def _build_earning_header_rename(
     header_nw: nw.DataFrame,
     data_nw: nw.DataFrame,
 ) -> dict[str, str]:
-    """Build column rename mapping from earnings header values.
+    """Build column rename mapping from earnings header values using Rust.
 
     Maps data column names (e.g., "Period X Value") to human-readable names
     derived from the header row (e.g., "fy2023").
@@ -189,34 +193,19 @@ def _build_earning_header_rename(
     Returns:
         Dict mapping original column names to cleaned header-based names.
     """
-    header_row = dict(next(header_nw.iter_rows(named=True)))
-    rename_map: dict[str, str] = {}
+    # Extract header row as (col_name, value) pairs for Rust
+    header_row_pairs = [(str(k), str(v)) for k, v in next(header_nw.iter_rows(named=True)).items()]
 
-    for data_col in data_nw.columns:
-        if data_col == "ticker":
-            continue
-
-        # Determine the corresponding header column name
-        if data_col.endswith(" Value"):
-            # "Period X Value" -> "Period X Header"
-            header_col = data_col.replace(" Value", " Header")
-        else:
-            # "Metric Name" -> "Metric Name Header"
-            header_col = f"{data_col} Header"
-
-        # Get the header value and clean it
-        if header_col in header_row:
-            new_name = str(header_row[header_col]).lower().replace(" ", "_").replace("_20", "20")
-            rename_map[data_col] = new_name
-
-    return rename_map
+    # Delegate to Rust (high performance string manipulation)
+    rename_pairs = ext_build_earning_header_rename(header_row_pairs, list(data_nw.columns))
+    return dict(rename_pairs)
 
 
 def _compute_earning_percentages(
     data_nw: nw.DataFrame,
     fy_cols: list[str],
 ) -> nw.DataFrame:
-    """Compute percentage columns for each fiscal year in earnings data.
+    """Compute percentage columns for each fiscal year in earnings data using Rust.
 
     For level 1 rows, computes percentage of total level 1 sum.
     For level 2 rows, computes percentage of parent level 1 group sum.
@@ -228,22 +217,22 @@ def _compute_earning_percentages(
     Returns:
         DataFrame with ``{fy}_pct`` columns inserted after each fiscal year column.
     """
+    # Extract levels once (shared across all fy columns)
+    raw_levels = data_nw["level"].to_list()
+    levels: list[int | None] = []
+    for lvl in raw_levels:
+        if lvl is None:
+            levels.append(None)
+        else:
+            try:
+                levels.append(int(lvl))
+            except (ValueError, TypeError):
+                levels.append(None)
+
     for yr in fy_cols:
         pct_col = f"{yr}_pct"
 
-        # Get level column as list for iteration, converting to int
-        raw_levels = data_nw["level"].to_list()
-        levels: list[int | None] = []
-        for lvl in raw_levels:
-            if lvl is None:
-                levels.append(None)
-            else:
-                try:
-                    levels.append(int(lvl))
-                except (ValueError, TypeError):
-                    levels.append(None)
-
-        # Get fiscal year values, converting to float
+        # Extract fiscal year values, converting to float
         raw_values = data_nw[yr].to_list()
         values: list[float | None] = []
         for val in raw_values:
@@ -255,37 +244,8 @@ def _compute_earning_percentages(
                 except (ValueError, TypeError):
                     values.append(None)
 
-        pct_values: list[float | None] = [None] * len(levels)
-
-        # Calculate level 1 percentage (% of total level 1)
-        level_1_indices = [i for i, lvl in enumerate(levels) if lvl == 1]
-        if level_1_indices:
-            level_1_sum = sum(v for i, v in enumerate(values) if i in level_1_indices and v is not None)
-            if level_1_sum and level_1_sum != 0:
-                for i in level_1_indices:
-                    val = values[i]
-                    if val is not None:
-                        pct_values[i] = 100.0 * val / level_1_sum
-
-        # Calculate level 2 percentage (% of parent level 1 group)
-        # Iterate backwards to group level 2 rows by their level 1 parent
-        level_2_group: list[int] = []
-        for i in range(len(levels) - 1, -1, -1):
-            row_level = levels[i]
-            if row_level is None or row_level > 2:
-                continue
-            if row_level == 2:
-                level_2_group.append(i)
-            elif row_level == 1:
-                # Calculate percentage for this level 2 group
-                if level_2_group:
-                    group_sum = sum(v for j, v in enumerate(values) if j in level_2_group and v is not None)
-                    if group_sum and group_sum != 0:
-                        for j in level_2_group:
-                            val = values[j]
-                            if val is not None:
-                                pct_values[j] = 100.0 * val / group_sum
-                level_2_group = []
+        # Calculate percentages using Rust (high performance)
+        pct_values = ext_calculate_level_percentages(values, levels)
 
         # Add percentage column using narwhals (backend-agnostic)
         native_namespace = nw.get_native_namespace(data_nw)
@@ -305,7 +265,7 @@ def _compute_earning_percentages(
     return data_nw
 
 
-async def aearning(
+async def aearnings(
     ticker: str,
     by: str = "Geo",
     typ: str = "Revenue",
@@ -341,18 +301,18 @@ async def aearning(
     Example::
 
         import asyncio
-        from xbbg.ext.historical import aearning
+        from xbbg.ext.historical import aearnings
 
 
         async def main():
             # Get geographic revenue breakdown
-            df = await aearning("AMD US Equity", by="Geo")
+            df = await aearnings("AMD US Equity", by="Geo")
 
             # Get product revenue breakdown for specific year
-            df = await aearning("AAPL US Equity", by="Product", year=2023)
+            df = await aearnings("AAPL US Equity", by="Product", year=2023)
 
             # Get operating income by geography
-            df = await aearning("MSFT US Equity", by="Geo", typ="Operating_Income")
+            df = await aearnings("MSFT US Equity", by="Geo", typ="Operating_Income")
 
 
         asyncio.run(main())
@@ -419,13 +379,15 @@ async def _calc_turnover_from_volume(
 
     For each ticker in *missing_tickers*, retrieves ``eqy_weighted_avg_px``
     and ``volume`` via ``abdh``, computes turnover as their product, and
-    joins the result into the main DataFrame.
+    appends the result rows into the main LONG-format DataFrame.
+
+    Input/output is LONG format: ``{ticker, date, field, value}``.
 
     Args:
-        missing_tickers: Tickers that had no Turnover column in the initial fetch.
+        missing_tickers: Tickers that had no Turnover rows in the initial fetch.
         start_date: Start date for the historical query.
         end_date: End date for the historical query.
-        nw_df: Current narwhals DataFrame (may be empty).
+        nw_df: Current narwhals DataFrame in LONG format (may be empty).
         **kwargs: Additional arguments forwarded to ``abdh``.
 
     Returns:
@@ -442,30 +404,53 @@ async def _calc_turnover_from_volume(
     )
     vol_nw = nw.from_native(vol_data)
 
-    if len(vol_nw) > 0:
-        # Calculate turnover = volume * VWAP for each ticker
-        for t in missing_tickers:
-            vwap_col = None
-            vol_col = None
-            for col in vol_nw.columns:
-                if t in col and "eqy_weighted_avg_px" in col.lower():
-                    vwap_col = col
-                elif t in col and "volume" in col.lower():
-                    vol_col = col
+    if len(vol_nw) == 0 or "field" not in vol_nw.columns:
+        return nw_df, nw_df.to_native()
 
-            if vwap_col and vol_col:
-                # Calculate turnover
-                turnover_col = f"{t}|Turnover"
-                vol_nw = vol_nw.with_columns((nw.col(vwap_col) * nw.col(vol_col)).alias(turnover_col))
+    # LONG format: {ticker, date, field, value}
+    # For each ticker+date, get vwap and volume, compute turnover
+    new_rows: list[dict[str, str]] = []
+    for t in missing_tickers:
+        tk_rows = vol_nw.filter(nw.col("ticker") == t)
+        if len(tk_rows) == 0:
+            continue
 
-                # Add to main dataframe
-                if "date" in nw_df.columns and "date" in vol_nw.columns:
-                    # Join on date
-                    turnover_series = vol_nw.select(["date", turnover_col])
-                    nw_df = nw_df.join(turnover_series, on="date", how="outer")
-                elif len(nw_df) == 0:
-                    # Main df is empty, use vol_nw
-                    nw_df = vol_nw.select(["date"] + [c for c in vol_nw.columns if "|Turnover" in c])
+        # Build {date -> {field: value}} lookup
+        date_vals: dict[str, dict[str, str]] = {}
+        for row in tk_rows.iter_rows(named=True):
+            dt = row.get("date", "")
+            field = row.get("field", "").lower()
+            val = row.get("value", "")
+            if dt not in date_vals:
+                date_vals[dt] = {}
+            date_vals[dt][field] = val
+
+        for dt, flds in date_vals.items():
+            vwap_str = flds.get("eqy_weighted_avg_px", "")
+            vol_str = flds.get("volume", "")
+            if vwap_str and vol_str:
+                try:
+                    turnover = float(vwap_str) * float(vol_str)
+                    new_rows.append({"ticker": t, "date": dt, "field": "turnover", "value": str(turnover)})
+                except (ValueError, TypeError):
+                    pass
+
+    if new_rows:
+        # Build a new narwhals DataFrame from the turnover rows and concat
+        native_ns = nw.get_native_namespace(nw_df)
+        cols = {
+            k: nw.new_series(k, [r[k] for r in new_rows], native_namespace=native_ns)
+            for k in ("ticker", "date", "field", "value")
+        }
+        first = next(iter(cols.values()))
+        turnover_df = first.to_frame()
+        for s in list(cols.values())[1:]:
+            turnover_df = turnover_df.with_columns(s)
+
+        if len(nw_df) > 0:
+            nw_df = nw.concat([nw_df, turnover_df])
+        else:
+            nw_df = turnover_df
 
     return nw_df, nw_df.to_native()
 
@@ -515,23 +500,13 @@ async def aturnover(
 
         asyncio.run(main())
     """
-    from datetime import datetime, timedelta
-
     from xbbg import abdh
-    from xbbg.ext.currency import aadjust_ccy
+    from xbbg.ext.currency import aconvert_ccy
 
-    # Default dates
-    if end_date is None:
-        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    if start_date is None:
-        if isinstance(end_date, str):
-            try:
-                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-            except ValueError:
-                end_dt = datetime.now()
-        else:
-            end_dt = end_date
-        start_date = (end_dt - timedelta(days=30)).strftime("%Y-%m-%d")
+    # Compute default date range using Rust (handles yesterday/30-day defaults)
+    start_str = str(start_date) if start_date is not None else None
+    end_str = str(end_date) if end_date is not None else None
+    start_date, end_date = ext_default_turnover_dates(start_str, end_str)
 
     # Normalize tickers
     if isinstance(tickers, str):
@@ -552,13 +527,10 @@ async def aturnover(
     nw_df = nw.from_native(data)
 
     # Check which tickers have turnover data
-    # Column names typically include ticker (e.g., "AAPL US Equity|Turnover")
-    tickers_with_data = set()
-    for col in nw_df.columns:
-        for t in tickers_list:
-            if t in col:
-                tickers_with_data.add(t)
-                break
+    # LONG format: {ticker, date, field, value} — check the ticker column
+    tickers_with_data: set[str] = set()
+    if "ticker" in nw_df.columns:
+        tickers_with_data = set(nw_df["ticker"].unique().to_list())
 
     # For tickers without turnover, calculate from volume * VWAP
     missing_tickers = [t for t in tickers_list if t not in tickers_with_data]
@@ -575,16 +547,21 @@ async def aturnover(
 
     # Apply currency conversion
     if ccy.lower() != "local":
-        data = await aadjust_ccy(data, ccy=ccy)
+        data = await aconvert_ccy(data, ccy=ccy)
         nw_df: nw.DataFrame = nw.from_native(data)  # type: ignore[assignment]
 
-    # Apply factor
-    if factor != 1.0:
-        # Divide numeric columns by factor
-        numeric_cols = [c for c in nw_df.columns if nw_df[c].dtype.is_numeric()]
-        if numeric_cols:
-            nw_df = nw_df.with_columns([nw.col(c) / factor for c in numeric_cols])
-            return nw_df.to_native()
+    # Apply factor to string values in LONG format
+    if factor != 1.0 and "value" in nw_df.columns:
+        values = nw_df["value"].to_list()
+        new_values = []
+        for v in values:
+            try:
+                new_values.append(str(float(v) / factor))
+            except (ValueError, TypeError):
+                new_values.append(v)
+        native_ns = nw.get_native_namespace(nw_df)
+        nw_df = nw_df.with_columns(nw.new_series("value", new_values, native_namespace=native_ns))
+        return nw_df.to_native()
 
     return data
 
@@ -637,22 +614,9 @@ async def aetf_holdings(
     from xbbg import abql
     from xbbg._core import ext_rename_etf_columns
 
-    # Normalize ticker format - ensure it has proper suffix
-    if " " not in etf_ticker:
-        etf_ticker = f"{etf_ticker} US Equity"
-
-    # Default fields
-    default_fields = ["id_isin", "weights", "id().position"]
-
-    # Combine default fields with any additional fields
-    if fields:
-        all_fields = default_fields + [f for f in fields if f not in default_fields]
-    else:
-        all_fields = default_fields
-
-    # Build BQL query - format: get(fields) for(holdings('TICKER'))
-    fields_str = ", ".join(all_fields)
-    bql_query = f"get({fields_str}) for(holdings('{etf_ticker}'))"
+    # Build BQL query using Rust (handles ticker normalization, field defaults)
+    extra = list(fields) if fields else []
+    bql_query = ext_build_etf_holdings_query(etf_ticker, extra)
 
     # Execute BQL query - returns DataFrame in configured backend format
     df = await abql(bql_query, **kwargs)
@@ -710,7 +674,7 @@ def dividend(
     return asyncio.run(adividend(tickers=tickers, typ=typ, start_date=start_date, end_date=end_date, **kwargs))
 
 
-def earning(
+def earnings(
     ticker: str,
     by: str = "Geo",
     typ: str = "Revenue",
@@ -723,20 +687,20 @@ def earning(
 ) -> IntoDataFrame:
     """Get earnings breakdown for a security.
 
-    Sync wrapper for aearning(). See aearning() for full documentation.
+    Sync wrapper for aearnings(). See aearnings() for full documentation.
 
     Example::
 
         from xbbg import ext
 
         # Get geographic revenue breakdown
-        df = ext.earning("AMD US Equity", by="Geo")
+        df = ext.earnings("AMD US Equity", by="Geo")
 
         # Get product revenue breakdown for specific year
-        df = ext.earning("AAPL US Equity", by="Product", year=2023)
+        df = ext.earnings("AAPL US Equity", by="Product", year=2023)
     """
     return asyncio.run(
-        aearning(ticker=ticker, by=by, typ=typ, ccy=ccy, level=level, year=year, periods=periods, **kwargs)
+        aearnings(ticker=ticker, by=by, typ=typ, ccy=ccy, level=level, year=year, periods=periods, **kwargs)
     )
 
 

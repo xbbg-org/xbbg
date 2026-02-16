@@ -694,14 +694,13 @@ def _convert_backend(
         # Convert to polars LazyFrame
         return nw_df.to_native().lazy()
     if effective == Backend.PYARROW:
-        # narwhals doesn't have direct to_arrow, go through polars or pandas
-        try:
-            # polars import needed to check if available for to_arrow()
-            import polars as _  # noqa: F401
-
-            return nw_df.to_native().to_arrow()
-        except ImportError:
-            return pa.Table.from_pandas(nw_df.to_pandas())
+        # Core return type from Rust is pyarrow; check native type before converting
+        native = nw_df.to_native()
+        if isinstance(native, pa.Table):
+            return native
+        if hasattr(native, "to_arrow"):
+            return native.to_arrow()  # polars → arrow
+        return pa.Table.from_pandas(nw_df.to_pandas())  # pandas → arrow
     if effective == Backend.NARWHALS_LAZY:
         # Return narwhals LazyFrame (backed by polars)
         return nw_df.lazy()
@@ -2941,7 +2940,7 @@ bsrch.__annotations__ = _bsrch_annotations
 # =============================================================================
 
 
-async def abfld(
+async def abflds(
     fields: str | Sequence[str],
     *,
     backend: Backend | str | None = None,
@@ -2961,13 +2960,13 @@ async def abfld(
     Example::
 
         # Get info for a single field
-        df = await abfld("PX_LAST")
+        df = await abflds("PX_LAST")
 
         # Get info for multiple fields
-        df = await abfld(["PX_LAST", "VOLUME", "NAME"])
+        df = await abflds(["PX_LAST", "VOLUME", "NAME"])
     """
     field_list = [fields] if isinstance(fields, str) else list(fields)
-    logger.debug("abfld: fields=%s", field_list)
+    logger.debug("abflds: fields=%s", field_list)
 
     # Send field info request via arequest
     # The //blp/apiflds service uses FieldInfoRequest with field_ids
@@ -2978,19 +2977,19 @@ async def abfld(
         backend=None,
     )
 
-    logger.debug("abfld: received %d rows", len(nw_df))
+    logger.debug("abflds: received %d rows", len(nw_df))
 
     return _convert_backend(nw_df, backend)
 
 
-def bfld(
+def bflds(
     fields: str | Sequence[str],
     *,
     backend: Backend | str | None = None,
 ) -> DataFrameResult:
     """Bloomberg Field Info (BFLD) request.
 
-    Sync wrapper around abfld(). For async usage, use abfld() directly.
+    Sync wrapper around abflds(). For async usage, use abflds() directly.
 
     Get metadata about specific Bloomberg fields including description,
     data type, and category.
@@ -3005,19 +3004,19 @@ def bfld(
     Example::
 
         # Get info for a single field
-        df = bfld("PX_LAST")
+        df = bflds("PX_LAST")
 
         # Get info for multiple fields
-        df = bfld(["PX_LAST", "VOLUME", "NAME"])
+        df = bflds(["PX_LAST", "VOLUME", "NAME"])
     """
     ...
 
 
-_bfld_doc = bfld.__doc__
-_bfld_annotations = bfld.__annotations__
-bfld = _sync_wrapper(abfld)
-bfld.__doc__ = _bfld_doc
-bfld.__annotations__ = _bfld_annotations
+_bflds_doc = bflds.__doc__
+_bflds_annotations = bflds.__annotations__
+bflds = _sync_wrapper(abflds)
+bflds.__doc__ = _bflds_doc
+bflds.__annotations__ = _bflds_annotations
 
 
 # =============================================================================

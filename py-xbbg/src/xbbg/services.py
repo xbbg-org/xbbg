@@ -1,250 +1,40 @@
 """Bloomberg service definitions and request parameters.
 
-This module defines the Bloomberg services, operations, and request parameters
-used by the xbbg API. These definitions are the authoritative source for
-service/operation names - the Rust layer accepts these as strings.
+Enum definitions (Service, Operation, ExtractorHint, Format, OutputMode) are
+generated from ``defs/bloomberg.toml`` into ``_services_gen.py``.  This module
+re-exports them and provides the hand-written :class:`RequestParams` dataclass.
 
-Example:
+Example::
+
     from xbbg import Service, Operation, RequestParams
 
     params = RequestParams(
         service=Service.REFDATA,
         operation=Operation.REFERENCE_DATA,
-        securities=['AAPL US Equity'],
-        fields=['PX_LAST'],
+        securities=["AAPL US Equity"],
+        fields=["PX_LAST"],
     )
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+from xbbg._services_gen import (
+    ExtractorHint,
+    Format,
+    Operation,
+    OutputMode,
+    Service,
+)
 from xbbg.exceptions import BlpValidationError
-
-
-class Service(str, Enum):
-    """Bloomberg service URIs.
-
-    These are the standard Bloomberg API services. Power users can also
-    use raw service URI strings for services not listed here.
-    """
-
-    REFDATA = "//blp/refdata"
-    """Reference data service for bdp, bdh, bds, bdib, bdtick, beqs, bport."""
-
-    MKTDATA = "//blp/mktdata"
-    """Real-time market data subscriptions (subscribe, stream)."""
-
-    APIFLDS = "//blp/apiflds"
-    """Field metadata service for field info and search (bfld)."""
-
-    INSTRUMENTS = "//blp/instruments"
-    """Instruments service for security lookup (blkp)."""
-
-    BQLSVC = "//blp/bqlsvc"
-    """Bloomberg Query Language service (bql)."""
-
-    EXRSVC = "//blp/exrsvc"
-    """Excel/Search service for Bloomberg searches (bsrch)."""
-
-    TASVC = "//blp/tasvc"
-    """Technical Analysis service for study calculations (bta)."""
-
-    MKTVWAP = "//blp/mktvwap"
-    """Real-time VWAP subscription service (vwap)."""
-
-    MKTBAR = "//blp/mktbar"
-    """Real-time streaming OHLC bars (mktbar)."""
-
-    MKTDEPTH = "//blp/mktdepthdata"
-    """Level 2 market depth / order book data (depth). Requires B-PIPE license."""
-
-    MKTLIST = "//blp/mktlist"
-    """Option chains and futures chains (chains). Requires B-PIPE license."""
-
-
-class Operation(str, Enum):
-    """Bloomberg request operation names.
-
-    These correspond to Bloomberg API request types. Power users can also
-    use raw operation name strings for operations not listed here.
-    """
-
-    # Reference data operations (//blp/refdata)
-    REFERENCE_DATA = "ReferenceDataRequest"
-    """Single point-in-time data (bdp, bds)."""
-
-    HISTORICAL_DATA = "HistoricalDataRequest"
-    """Historical time series data (bdh)."""
-
-    INTRADAY_BAR = "IntradayBarRequest"
-    """Intraday OHLCV bars (bdib)."""
-
-    INTRADAY_TICK = "IntradayTickRequest"
-    """Intraday tick data (bdtick)."""
-
-    # Field metadata operations (//blp/apiflds)
-    FIELD_INFO = "FieldInfoRequest"
-    """Get field metadata (type, description)."""
-
-    FIELD_SEARCH = "FieldSearchRequest"
-    """Search for fields by keyword."""
-
-    # Equity screening operations (//blp/refdata)
-    BEQS = "BeqsRequest"
-    """Bloomberg Equity Screening (BEQS)."""
-
-    PORTFOLIO_DATA = "PortfolioDataRequest"
-    """Portfolio data request (bport)."""
-
-    # Instruments operations (//blp/instruments)
-    INSTRUMENT_LIST = "instrumentListRequest"
-    """Security lookup by name (blkp)."""
-
-    CURVE_LIST = "curveListRequest"
-    """List yield curves (bcurves)."""
-
-    GOVT_LIST = "govtListRequest"
-    """List government securities (bgovts)."""
-
-    # BQL operations (//blp/bqlsvc)
-    BQL_SEND_QUERY = "sendQuery"
-    """Bloomberg Query Language query (bql)."""
-
-    # Excel/Search operations (//blp/exrsvc)
-    EXCEL_GET_GRID = "ExcelGetGridRequest"
-    """Bloomberg Search/Excel grid request (bsrch)."""
-
-    # Technical Analysis operations (//blp/tasvc)
-    STUDY_REQUEST = "studyRequest"
-    """Technical analysis study request (bta)."""
-
-
-class OutputMode(str, Enum):
-    """Output format for generic requests.
-
-    Controls how Bloomberg responses are converted before returning to Python.
-    """
-
-    ARROW = "arrow"
-    """Convert to Arrow RecordBatch using appropriate extractor.
-
-    For known operations (bdp, bdh, etc.), uses optimized extractors.
-    For unknown operations, uses a generic flattener.
-    """
-
-    JSON = "json"
-    """Return raw JSON as a single-column Arrow table.
-
-    Useful for debugging or when you need the full Bloomberg response structure.
-    """
-
-
-class ExtractorHint(str, Enum):
-    """Hint for which Arrow extractor to use.
-
-    This is typically auto-detected from the operation, but can be
-    overridden for custom use cases.
-    """
-
-    REFDATA = "refdata"
-    """Reference data extractor: [ticker, field, value, ...]"""
-
-    HISTDATA = "histdata"
-    """Historical data extractor: [ticker, date, field, value, ...]"""
-
-    BULK = "bulk"
-    """Bulk data extractor: [ticker, field, row_idx, col1, col2, ...]"""
-
-    INTRADAY_BAR = "intraday_bar"
-    """Intraday bar extractor: [ticker, time, open, high, low, close, volume, ...]"""
-
-    INTRADAY_TICK = "intraday_tick"
-    """Intraday tick extractor: [ticker, time, type, value, size, ...]"""
-
-    GENERIC = "generic"
-    """Generic flattener: [path, type, value_str, value_num, value_date]"""
-
-    BQL = "bql"
-    """BQL: Bloomberg Query Language responses."""
-
-    BSRCH = "bsrch"
-    """BSRCH: Bloomberg Search responses."""
-
-    FIELD_INFO = "fieldinfo"
-    """Field info extractor: [field, type, description, category]"""
-
-
-class Format(str, Enum):
-    """Output format for reference data (bdp/bdh).
-
-    Controls the shape and typing of the output DataFrame.
-    """
-
-    LONG = "long"
-    """Long format with all values as strings (default, backwards-compatible).
-
-    Columns: ticker, field, value
-    """
-
-    LONG_TYPED = "long_typed"
-    """Long format with typed value columns.
-
-    Columns: ticker, field, value_f64, value_i64, value_str, value_bool, value_date, value_ts
-    Each row populates one value column based on the field's data type.
-    """
-
-    LONG_WITH_METADATA = "long_metadata"
-    """Long format with string values and dtype metadata column.
-
-    Columns: ticker, field, value, dtype
-    The dtype column contains the Arrow type name (float64, int64, string, etc.)
-    """
-
-    WIDE = "wide"
-    """Wide format with fields as columns (DEPRECATED).
-
-    Use df.pivot(on='field', index='ticker', values='value') instead.
-    """
-
 
 # Backwards compatibility alias
 LongMode = Format
-
-
-# Mapping from Operation to default ExtractorHint
-_OPERATION_TO_EXTRACTOR: dict[str, ExtractorHint] = {
-    # Reference data operations
-    Operation.REFERENCE_DATA.value: ExtractorHint.REFDATA,
-    Operation.HISTORICAL_DATA.value: ExtractorHint.HISTDATA,
-    Operation.INTRADAY_BAR.value: ExtractorHint.INTRADAY_BAR,
-    Operation.INTRADAY_TICK.value: ExtractorHint.INTRADAY_TICK,
-    Operation.BEQS.value: ExtractorHint.GENERIC,
-    Operation.PORTFOLIO_DATA.value: ExtractorHint.GENERIC,
-    # Field metadata operations
-    Operation.FIELD_INFO.value: ExtractorHint.FIELD_INFO,
-    Operation.FIELD_SEARCH.value: ExtractorHint.GENERIC,
-    # Instruments operations
-    Operation.INSTRUMENT_LIST.value: ExtractorHint.GENERIC,
-    Operation.CURVE_LIST.value: ExtractorHint.GENERIC,
-    Operation.GOVT_LIST.value: ExtractorHint.GENERIC,
-    # BQL/Search operations
-    Operation.BQL_SEND_QUERY.value: ExtractorHint.BQL,
-    Operation.EXCEL_GET_GRID.value: ExtractorHint.BSRCH,
-    # Technical Analysis operations
-    Operation.STUDY_REQUEST.value: ExtractorHint.GENERIC,
-}
-
-
-def _get_default_extractor(operation: str, output: OutputMode) -> ExtractorHint:
-    """Get the default extractor hint for an operation."""
-    # Note: JSON output mode removed - use GENERIC extractor for raw data
-    return _OPERATION_TO_EXTRACTOR.get(operation, ExtractorHint.GENERIC)
 
 
 @dataclass
@@ -255,11 +45,13 @@ class RequestParams:
     Not all parameters are used for all request types - the Python layer
     validates that required parameters are present for each operation.
 
-    Parameters are validated before being sent to the Rust layer.
+    The Rust layer handles default extractor resolution via
+    ``RequestParams::with_defaults()``, so Python only passes an explicit
+    extractor when the caller overrides it.
 
     Attributes:
-        service: Bloomberg service URI (e.g., "//blp/refdata").
-        operation: Request operation name (e.g., "ReferenceDataRequest").
+        service: Bloomberg service URI (e.g., ``"//blp/refdata"``).
+        operation: Request operation name (e.g., ``"ReferenceDataRequest"``).
         securities: List of security identifiers (for multi-security requests).
         security: Single security identifier (for intraday requests).
         fields: List of field names to retrieve.
@@ -276,7 +68,8 @@ class RequestParams:
         options: Additional Bloomberg options as (key, value) tuples.
         field_types: Manual type overrides for fields (for issue #168).
         output: Output format (arrow or json).
-        extractor: Override the auto-detected extractor hint.
+        extractor: Override the auto-detected extractor hint.  When ``None``
+            the Rust layer picks the correct extractor for the operation.
         format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
     """
 
@@ -301,27 +94,14 @@ class RequestParams:
     extractor: ExtractorHint | None = None
     format: Format | None = None
 
-    # Computed fields (set during validation)
-    _resolved_extractor: ExtractorHint = field(default=ExtractorHint.GENERIC, init=False, repr=False)
-
     def __post_init__(self) -> None:
         """Convert enums to strings and set defaults."""
-        # Convert enums to their string values
         if isinstance(self.service, Service):
             self.service = self.service.value
         if isinstance(self.operation, Operation):
             self.operation = self.operation.value
         if isinstance(self.output, str):
             self.output = OutputMode(self.output)
-
-        # Resolve extractor hint
-        if self.extractor is not None:
-            self._resolved_extractor = self.extractor
-        else:
-            self._resolved_extractor = _get_default_extractor(
-                self.operation,
-                self.output,
-            )
 
     def validate(self) -> None:
         """Validate parameters for the given operation.
@@ -394,17 +174,24 @@ class RequestParams:
         if not self.fields:
             raise BlpValidationError("fields is required for field metadata requests")
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         """Convert to dictionary for passing to Rust.
 
+        Only non-``None`` values are included.  When *extractor* is ``None``
+        the key is omitted so the Rust layer can apply its own default via
+        ``RequestParams::with_defaults()``.
+
         Returns:
-            Dictionary with only non-None values, suitable for Rust consumption.
+            Dictionary suitable for Rust consumption.
         """
-        result: dict = {
+        result: dict[str, object] = {
             "service": self.service,
             "operation": self.operation,
-            "extractor": self._resolved_extractor.value,
         }
+
+        # Only pass extractor when explicitly set by the caller
+        if self.extractor is not None:
+            result["extractor"] = self.extractor.value
 
         if self.securities is not None:
             result["securities"] = list(self.securities)

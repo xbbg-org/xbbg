@@ -33,7 +33,7 @@ __all__ = [
     "bdtick",
     "bql",
     "bsrch",
-    "bfld",
+    "bflds",
     "beqs",
     "blkp",
     "bport",
@@ -47,7 +47,7 @@ __all__ = [
     "abdtick",
     "abql",
     "absrch",
-    "abfld",
+    "abflds",
     "abeqs",
     "ablkp",
     "abport",
@@ -138,6 +138,8 @@ __all__ = [
     "BlpBPipeError",
     # Extensions module
     "ext",
+    # Markets module
+    "markets",
 ]
 
 
@@ -208,7 +210,7 @@ def __getattr__(name: str):
         "bdtick",
         "bql",
         "bsrch",
-        "bfld",
+        "bflds",
         "beqs",
         "blkp",
         "bport",
@@ -221,7 +223,7 @@ def __getattr__(name: str):
         "abdtick",
         "abql",
         "absrch",
-        "abfld",
+        "abflds",
         "abeqs",
         "ablkp",
         "abport",
@@ -319,6 +321,11 @@ def __getattr__(name: str):
         import importlib
 
         return importlib.import_module("xbbg.ext")
+    # Markets module
+    if name == "markets":
+        import importlib
+
+        return importlib.import_module("xbbg.markets")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

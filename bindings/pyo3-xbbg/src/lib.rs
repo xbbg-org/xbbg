@@ -52,6 +52,7 @@ use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
 
 mod ext;
+mod markets;
 mod recipes;
 
 // =============================================================================
@@ -1372,6 +1373,9 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Register ext functions (date, pivot, ticker, futures, cdx, currency utilities)
     ext::register_ext_module(m)?;
+
+    // Register markets functions (session derivation, market rules, timezone inference)
+    markets::register(m)?;
 
     // Register recipe functions (12 high-level Bloomberg workflows)
     recipes::register_recipes_module(m)?;

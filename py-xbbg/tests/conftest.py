@@ -24,6 +24,21 @@ def pytest_configure(config):
         "markers",
         "slow: mark test as slow running",
     )
+    config.addinivalue_line(
+        "markers",
+        "live: mark test as requiring a live Bloomberg Terminal or B-PIPE connection",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip live tests when running in CI (no Bloomberg Terminal)."""
+    if not os.environ.get("CI"):
+        return
+
+    skip_live = pytest.mark.skip(reason="Bloomberg Terminal not available in CI")
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip_live)
 
 
 @pytest.fixture

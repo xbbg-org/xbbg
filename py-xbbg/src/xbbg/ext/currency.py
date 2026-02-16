@@ -4,10 +4,10 @@ Functions for converting Bloomberg data between currencies.
 Uses high-performance Rust utilities from xbbg._core.
 
 Sync functions (wrap async with asyncio.run):
-    - adjust_ccy(): Adjust DataFrame values to a target currency
+    - convert_ccy(): Convert DataFrame values to a target currency
 
 Async functions (primary implementation):
-    - aadjust_ccy(): Async adjust DataFrame values to a target currency
+    - aconvert_ccy(): Async convert DataFrame values to a target currency
 """
 
 from __future__ import annotations
@@ -36,31 +36,32 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
-async def aadjust_ccy(
+async def aconvert_ccy(
     data: IntoDataFrame,
     ccy: str = "USD",
     **kwargs,
 ) -> IntoDataFrame:
-    """Async adjust DataFrame values to a target currency.
+    """Async convert DataFrame values to a target currency.
 
-    Converts price/value columns in a time-series DataFrame to the specified
+    Converts values in a LONG-format time-series DataFrame to the specified
     currency using Bloomberg FX rates. Uses Rust for FX pair building.
 
+    The input DataFrame is expected to be in LONG format from the Rust engine:
+    ``{ticker, date, field, value}`` where ``value`` is a string.
+
     Args:
-        data: DataFrame with date index and ticker columns (from bdh, bdib, etc.).
-            Expected to have a 'date' column and value columns.
-            Accepts any DataFrame type supported by narwhals.
-        ccy: Target currency code (default: "USD"). Use "local" for no adjustment.
+        data: DataFrame in LONG format (from abdh).
+        ccy: Target currency code (default: "USD"). Use "local" for no conversion.
         **kwargs: Additional arguments passed to abdp/abdh for FX lookup.
 
     Returns:
-        DataFrame with currency-adjusted values (same type as input).
+        DataFrame with currency-converted values (same type as input).
 
     Example::
 
         import asyncio
         from xbbg import abdh
-        from xbbg.ext.currency import aadjust_ccy
+        from xbbg.ext.currency import aconvert_ccy
 
 
         async def main():
@@ -68,10 +69,10 @@ async def aadjust_ccy(
             df = await abdh("VOD LN Equity", "PX_LAST", "2024-01-01", "2024-01-10")
 
             # Convert to USD
-            df_usd = await aadjust_ccy(df, ccy="USD")
+            df_usd = await aconvert_ccy(df, ccy="USD")
 
             # Convert to EUR
-            df_eur = await aadjust_ccy(df, ccy="EUR")
+            df_eur = await aconvert_ccy(df, ccy="EUR")
 
 
         asyncio.run(main())
@@ -87,30 +88,17 @@ async def aadjust_ccy(
     if ccy.lower() == "local":
         return nw_df.to_native()
 
-    # Get list of tickers from column names
-    # Columns are typically: date, ticker1|field, ticker2|field, ...
-    # Or in long format: date, ticker, field, value
-    value_cols = [c for c in nw_df.columns if c not in ("date", "ticker", "field")]
-
-    if not value_cols:
+    # --- Extract unique tickers from the LONG-format ticker column ---
+    if "ticker" not in nw_df.columns:
         return nw_df.to_native()
 
-    # Try to extract tickers from column names
-    tickers = []
-    for col in value_cols:
-        if "|" in col:
-            ticker = col.split("|")[0]
-            if ticker not in tickers:
-                tickers.append(ticker)
-        elif col not in ("value", "value_str", "value_f64", "value_i64"):
-            # Column name might be the ticker itself
-            tickers.append(col)
+    tickers = nw_df["ticker"].unique().to_list()
+    tickers = [t for t in tickers if t]  # drop empty/null
 
     if not tickers:
-        # Can't determine tickers, return as-is
         return nw_df.to_native()
 
-    # Get currency for each ticker
+    # --- Get currency for each ticker from Bloomberg ---
     try:
         ccy_data = await abdp(tickers=tickers, flds="crncy", **kwargs)
         ccy_nw: nw.DataFrame = nw.from_native(ccy_data)
@@ -122,8 +110,8 @@ async def aadjust_ccy(
     if len(ccy_nw) == 0 or "crncy" not in ccy_nw.columns:
         return nw_df.to_native()
 
-    # Build FX pair mapping using Rust (high performance)
-    # ticker -> {fx_pair: "USDGBP Curncy", factor: 1.0 or 100.0}
+    # --- Build FX pair mapping using Rust ---
+    # ticker -> {fx_pair, factor}
     fx_info: dict[str, dict] = {}
     fx_pairs_needed: set[str] = set()
 
@@ -148,65 +136,79 @@ async def aadjust_ccy(
         # All tickers already in target currency
         return nw_df.to_native()
 
-    # Get FX rates for the date range
-    if "date" in nw_df.columns:
-        dates = nw_df["date"].to_list()
-        start_date = min(dates) if dates else None
-        end_date = max(dates) if dates else None
-    else:
-        start_date = None
-        end_date = None
+    # --- Get FX rates for the date range ---
+    if "date" not in nw_df.columns:
+        return nw_df.to_native()
 
-    if start_date and end_date:
-        try:
-            fx_data = await abdh(
-                tickers=list(fx_pairs_needed),
-                flds="PX_LAST",
-                start_date=start_date,
-                end_date=end_date,
-                **kwargs,
-            )
-            fx_nw: nw.DataFrame = nw.from_native(fx_data)
-        except (ValueError, TypeError, KeyError):
-            logger.warning("Failed to get FX rate data")
-            return nw_df.to_native()
-    else:
-        # No date range, can't get FX history
+    dates = nw_df["date"].to_list()
+    start_date = min(dates) if dates else None
+    end_date = max(dates) if dates else None
+
+    if not start_date or not end_date:
+        return nw_df.to_native()
+
+    try:
+        fx_data = await abdh(
+            tickers=list(fx_pairs_needed),
+            flds="PX_LAST",
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
+        fx_nw: nw.DataFrame = nw.from_native(fx_data)
+    except (ValueError, TypeError, KeyError):
+        logger.warning("Failed to get FX rate data")
         return nw_df.to_native()
 
     if len(fx_nw) == 0:
         return nw_df.to_native()
 
-    # Apply conversion
-    result = nw_df
+    # --- Build FX lookup: {(fx_pair, date) -> rate} ---
+    # FX data is also LONG format: {ticker, date, field, value}
+    fx_lookup: dict[tuple[str, str], float] = {}
+    if "ticker" in fx_nw.columns and "date" in fx_nw.columns and "value" in fx_nw.columns:
+        for row in fx_nw.iter_rows(named=True):
+            pair = row.get("ticker", "")
+            dt = row.get("date", "")
+            val = row.get("value", "")
+            if pair and dt and val:
+                try:
+                    fx_lookup[(pair, dt)] = float(val)
+                except (ValueError, TypeError):
+                    pass
 
-    for ticker, info in fx_info.items():
+    if not fx_lookup:
+        return nw_df.to_native()
+
+    # --- Apply conversion to each row ---
+    # LONG format: {ticker, date, field, value} — value is string
+    tickers_col = nw_df["ticker"].to_list()
+    dates_col = nw_df["date"].to_list()
+    values_col = nw_df["value"].to_list()
+
+    new_values = list(values_col)
+    for i, (tk, dt_val, val) in enumerate(zip(tickers_col, dates_col, values_col, strict=False)):
+        if tk not in fx_info:
+            continue
+        info = fx_info[tk]
         fx_pair = info["fx_pair"]
         factor = info["factor"]
 
-        # Find the FX column
-        fx_col = None
-        for col in fx_nw.columns:
-            if fx_pair in col:
-                fx_col = col
-                break
-
-        if fx_col is None:
+        rate = fx_lookup.get((fx_pair, dt_val))
+        if rate is None or rate == 0:
             continue
 
-        # Find the ticker column(s) to adjust
-        for col in value_cols:
-            if ticker in col and "date" in result.columns and "date" in fx_nw.columns:
-                # Join FX data and apply conversion
-                result = result.join(
-                    fx_nw.select(["date", fx_col]).rename({fx_col: f"_fx_{ticker}"}),
-                    on="date",
-                    how="left",
-                )
-                # Apply conversion: value / (fx_rate * factor)
-                result = result.with_columns((nw.col(col) / (nw.col(f"_fx_{ticker}") * factor)).alias(col))
-                # Drop temporary FX column
-                result = result.drop(f"_fx_{ticker}")
+        try:
+            numeric_val = float(val)
+            converted = numeric_val / (rate * factor)
+            new_values[i] = str(converted)
+        except (ValueError, TypeError):
+            pass  # non-numeric value — leave as-is
+
+    # Replace the value column
+    native_ns = nw.get_native_namespace(nw_df)
+    new_value_series = nw.new_series("value", new_values, native_namespace=native_ns)
+    result = nw_df.with_columns(new_value_series)
 
     return result.to_native()
 
@@ -216,14 +218,14 @@ async def aadjust_ccy(
 # =============================================================================
 
 
-def adjust_ccy(
+def convert_ccy(
     data: IntoDataFrame,
     ccy: str = "USD",
     **kwargs,
 ) -> IntoDataFrame:
-    """Adjust DataFrame values to a target currency.
+    """Convert DataFrame values to a target currency.
 
-    Sync wrapper for aadjust_ccy(). See aadjust_ccy() for full documentation.
+    Sync wrapper for aconvert_ccy(). See aconvert_ccy() for full documentation.
 
     Example::
 
@@ -233,9 +235,9 @@ def adjust_ccy(
         df = bdh("VOD LN Equity", "PX_LAST", "2024-01-01", "2024-01-10")
 
         # Convert to USD
-        df_usd = ext.adjust_ccy(df, ccy="USD")
+        df_usd = ext.convert_ccy(df, ccy="USD")
 
         # Convert to EUR
-        df_eur = ext.adjust_ccy(df, ccy="EUR")
+        df_eur = ext.convert_ccy(df, ccy="EUR")
     """
-    return asyncio.run(aadjust_ccy(data=data, ccy=ccy, **kwargs))
+    return asyncio.run(aconvert_ccy(data=data, ccy=ccy, **kwargs))
