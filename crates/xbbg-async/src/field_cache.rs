@@ -73,17 +73,19 @@ impl BlpFieldType {
     }
 
     /// Convert to Arrow type string (for serialization).
+    ///
+    /// Matches Python's FTYPE_TO_ARROW mapping exactly.
     pub fn to_arrow_type_str(&self) -> &'static str {
         match self {
-            BlpFieldType::Boolean => "boolean",
+            BlpFieldType::Boolean => "bool", // Python uses "bool" not "boolean"
             BlpFieldType::Character => "string",
             BlpFieldType::Date => "date32",
             BlpFieldType::DateOrTime => "string",
             BlpFieldType::Double | BlpFieldType::Float => "float64",
-            BlpFieldType::Int32 => "int32",
+            BlpFieldType::Int32 => "int64", // Python normalizes Int32 → int64
             BlpFieldType::Int64 => "int64",
             BlpFieldType::String => "string",
-            BlpFieldType::Time => "string",
+            BlpFieldType::Time => "timestamp", // Python maps Time → timestamp
             BlpFieldType::BulkFormat => "string",
             BlpFieldType::Unknown(_) => "string",
         }
