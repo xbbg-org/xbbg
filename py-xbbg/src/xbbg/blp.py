@@ -18,7 +18,8 @@ import functools
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-import json
+
+
 import logging
 from typing import TYPE_CHECKING, Any, TypeAlias
 import warnings
@@ -115,6 +116,15 @@ __all__ = [
     # VWAP Streaming
     "avwap",
     "vwap",
+    # Market Bar Streaming
+    "amktbar",
+    "mktbar",
+    # Market Depth Streaming
+    "adepth",
+    "depth",
+    # Chain Streaming
+    "achains",
+    "chains",
     # Technical Analysis
     "abta",
     "bta",
@@ -689,10 +699,24 @@ def _convert_backend(
     if effective == Backend.PANDAS:
         return nw_df.to_pandas()
     if effective == Backend.POLARS:
-        return nw_df.to_native()
+        import polars as pl
+
+        native = nw_df.to_native()
+        if isinstance(native, pl.DataFrame):
+            return native
+        # Native may be pyarrow — convert via polars
+        if isinstance(native, pa.Table):
+            return pl.from_arrow(native)
+        return pl.from_pandas(nw_df.to_pandas())
     if effective == Backend.POLARS_LAZY:
-        # Convert to polars LazyFrame
-        return nw_df.to_native().lazy()
+        import polars as pl
+
+        native = nw_df.to_native()
+        if isinstance(native, pl.DataFrame):
+            return native.lazy()
+        if isinstance(native, pa.Table):
+            return pl.from_arrow(native).lazy()
+        return pl.from_pandas(nw_df.to_pandas()).lazy()
     if effective == Backend.PYARROW:
         # Core return type from Rust is pyarrow; check native type before converting
         native = nw_df.to_native()
@@ -813,8 +837,10 @@ async def arequest(
     elements_list: list[tuple[str, Any]] | None = None
 
     # Handle explicit elements parameter
+    # Convert all element values to strings because the PyO3 boundary expects Vec<(String, String)>.
+    # Booleans are lowercased ("true"/"false") to match Bloomberg schema expectations.
     if elements is not None:
-        elements_list = list(elements)
+        elements_list = [(str(k), str(v).lower() if isinstance(v, bool) else str(v)) for k, v in elements]
 
     if overrides is not None:
         override_tuples: list[tuple[str, str]] = (
@@ -2389,8 +2415,11 @@ def _build_study_request(
     periodicity: str = "DAILY",
     interval: int | None = None,
     **study_params,
-) -> dict[str, Any]:
-    """Build a studyRequest element for //blp/tasvc.
+) -> list[tuple[str, str]]:
+    """Build dotted-path elements for a //blp/tasvc studyRequest.
+
+    Returns a list of (dotted_path, value_str) tuples that the Rust worker
+    applies via ``set_nested_str`` / ``set_nested_int`` on the request.
 
     Args:
         ticker: Security name
@@ -2407,30 +2436,42 @@ def _build_study_request(
     defaults = _TA_DEFAULTS.get(attr_name, {})
     params = {**defaults, **study_params}
 
-    # Build data range
+    elements: list[tuple[str, str]] = []
+
+    # Normalize dates to YYYYMMDD (Bloomberg tasvc expects this format)
+    def _norm_date(d: str | None) -> str | None:
+        return d.replace("-", "").replace("/", "") if d else None
+
+    sd = _norm_date(start_date)
+    ed = _norm_date(end_date)
+
+    # Price source
+    elements.append(("priceSource.securityName", ticker))
+
+    # Data range
     if periodicity.upper() in ("DAILY", "WEEKLY", "MONTHLY"):
-        data_range = {
-            "historical": {
-                "startDate": start_date or "",
-                "endDate": end_date or "",
-                "periodicitySelection": periodicity.upper(),
-            }
-        }
+        prefix = "priceSource.dataRange.historical"
+        if sd:
+            elements.append((f"{prefix}.startDate", sd))
+        if ed:
+            elements.append((f"{prefix}.endDate", ed))
+        elements.append((f"{prefix}.periodicitySelection", periodicity.upper()))
     else:
         # Intraday
-        data_range = {
-            "intraday": {
-                "startDate": start_date or "",
-                "endDate": end_date or "",
-                "eventType": "TRADE",
-                "interval": interval or 60,
-            }
-        }
+        prefix = "priceSource.dataRange.intraday"
+        if sd:
+            elements.append((f"{prefix}.startDate", sd))
+        if ed:
+            elements.append((f"{prefix}.endDate", ed))
+        elements.append((f"{prefix}.eventType", "TRADE"))
+        elements.append((f"{prefix}.interval", str(interval or 60)))
 
-    return {
-        "priceSource": {"securityName": ticker, "dataRange": data_range},
-        "studyAttributes": {attr_name: params},
-    }
+    # Study attributes
+    sa_prefix = f"studyAttributes.{attr_name}"
+    for key, value in params.items():
+        elements.append((f"{sa_prefix}.{key}", str(value)))
+
+    return elements
 
 
 async def abta(
@@ -2495,7 +2536,7 @@ async def abta(
 
     async def fetch_single(ticker: str) -> pa.RecordBatch | Exception:
         """Fetch TA data for a single ticker."""
-        request_elements = _build_study_request(
+        study_elements = _build_study_request(
             ticker,
             study,
             start_date=start_date,
@@ -2508,7 +2549,7 @@ async def abta(
             service=Service.TASVC,
             operation=Operation.STUDY_REQUEST,
             extractor=ExtractorHint.GENERIC,
-            json_elements=json.dumps(request_elements),
+            elements=study_elements,
         )
         return await engine.request(params.to_dict())
 
