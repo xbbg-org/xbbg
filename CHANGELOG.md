@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0b3] - 2026-02-16
+
 ### Added
 
 - **Bond analytics module** (`xbbg.ext.bonds`): 6 new functions for fixed income analytics -- `bond_info` (reference metadata and ratings), `bond_risk` (duration, convexity, DV01), `bond_spreads` (OAS, Z-spread, I-spread, ASW), `bond_cashflows` (cash flow schedule), `bond_key_rates` (key rate durations and risks), `bond_curve` (multi-bond relative value comparison)
@@ -447,7 +449,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b2...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...HEAD
+[0.12.0b3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b3
 [0.12.0b2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b2
 [0.12.0b1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b1
 [0.11.4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.4
