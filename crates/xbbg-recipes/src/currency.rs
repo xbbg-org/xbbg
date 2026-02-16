@@ -639,10 +639,8 @@ mod tests {
         .unwrap();
 
         let column_tickers = HashMap::from([(1usize, "VOD LN Equity".to_string())]);
-        let fx_by_ticker = HashMap::from([(
-            "VOD LN Equity".to_string(),
-            build_fx_pair("GBp", "USD"),
-        )]);
+        let fx_by_ticker =
+            HashMap::from([("VOD LN Equity".to_string(), build_fx_pair("GBp", "USD"))]);
         let fx_rates = HashMap::from([(
             "USDGBP Curncy".to_string(),
             HashMap::from([(d1, 1.25), (d2, 1.25)]),

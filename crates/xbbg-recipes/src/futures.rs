@@ -141,11 +141,9 @@ pub async fn recipe_active_futures(
     };
 
     let maturity_batch = engine.request(maturity_params).await?;
-    if let Some(front_maturity) = extract_refdata_date_for_ticker(
-        &maturity_batch,
-        &front_ticker,
-        "LAST_TRADEABLE_DT",
-    )? {
+    if let Some(front_maturity) =
+        extract_refdata_date_for_ticker(&maturity_batch, &front_ticker, "LAST_TRADEABLE_DT")?
+    {
         let dt_month = (dt_parsed.year(), dt_parsed.month());
         let maturity_month = (front_maturity.year(), front_maturity.month());
         if dt_month < maturity_month {
@@ -232,11 +230,8 @@ pub async fn recipe_cdx_ticker(
         ))
     })?;
 
-    let accrual_dt = extract_refdata_date_for_ticker(
-        &batch,
-        &gen_ticker,
-        "CDS_FIRST_ACCRUAL_START_DATE",
-    )?;
+    let accrual_dt =
+        extract_refdata_date_for_ticker(&batch, &gen_ticker, "CDS_FIRST_ACCRUAL_START_DATE")?;
 
     let resolved_series = if accrual_dt.is_some_and(|start| dt_parsed < start) && series > 1 {
         series - 1
@@ -314,9 +309,8 @@ pub async fn recipe_active_cdx(
     let price_batch = engine.request(price_params).await?;
     let current_latest = latest_history_numeric_point(&price_batch, &current_ticker, "PX_LAST")?
         .map(|(date, _)| date);
-    let previous_latest =
-        latest_history_numeric_point(&price_batch, &previous_ticker, "PX_LAST")?
-            .map(|(date, _)| date);
+    let previous_latest = latest_history_numeric_point(&price_batch, &previous_ticker, "PX_LAST")?
+        .map(|(date, _)| date);
 
     let selected = match (current_latest, previous_latest) {
         (Some(cur), Some(prev)) if prev > cur => previous_ticker,
@@ -350,7 +344,11 @@ fn with_generic_index(gen_ticker: &str, index: u32) -> Result<String> {
 }
 
 fn build_single_ticker_batch(ticker: String) -> Result<RecordBatch> {
-    let schema = Arc::new(Schema::new(vec![Field::new("ticker", DataType::Utf8, false)]));
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "ticker",
+        DataType::Utf8,
+        false,
+    )]));
     let ticker_array = StringArray::from(vec![ticker]);
     RecordBatch::try_new(schema, vec![Arc::new(ticker_array)]).map_err(Into::into)
 }
@@ -401,7 +399,10 @@ fn extract_refdata_string_for_ticker(
     Ok(None)
 }
 
-fn extract_refdata_date_values(batch: &RecordBatch, field: &str) -> Result<Vec<(String, NaiveDate)>> {
+fn extract_refdata_date_values(
+    batch: &RecordBatch,
+    field: &str,
+) -> Result<Vec<(String, NaiveDate)>> {
     let ticker_col = as_string_col(batch, "ticker")?;
     let field_col = as_string_col(batch, "field")?;
     let value_col = as_string_col(batch, "value")?;
@@ -575,7 +576,10 @@ mod tests {
             schema,
             vec![
                 Arc::new(StringArray::from(vec!["ESH24 Index", "ESM24 Index"])),
-                Arc::new(StringArray::from(vec!["LAST_TRADEABLE_DT", "LAST_TRADEABLE_DT"])),
+                Arc::new(StringArray::from(vec![
+                    "LAST_TRADEABLE_DT",
+                    "LAST_TRADEABLE_DT",
+                ])),
                 Arc::new(StringArray::from(vec!["2024-03-15", "2024-06-21"])),
             ],
         )

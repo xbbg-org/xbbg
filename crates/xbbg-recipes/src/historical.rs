@@ -12,6 +12,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::error::Result;
 use arrow::array::RecordBatch;
 use arrow::array::{
     Array, ArrayRef, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray,
@@ -20,7 +21,6 @@ use arrow::datatypes::{DataType, Field, Schema};
 use xbbg_async::engine::{Engine, ExtractorType, RequestParams};
 use xbbg_async::services::{Operation, Service};
 use xbbg_ext::transforms::historical::{apply_column_renames, calculate_level_percentages};
-use crate::error::Result;
 
 pub async fn recipe_dividend(
     engine: &Engine,
@@ -38,7 +38,11 @@ pub async fn recipe_dividend(
         operation: Operation::ReferenceData.to_string(),
         securities: Some(tickers),
         fields: Some(vec!["DVD_HIST_ALL".to_string()]),
-        overrides: if overrides.is_empty() { None } else { Some(overrides) },
+        overrides: if overrides.is_empty() {
+            None
+        } else {
+            Some(overrides)
+        },
         ..Default::default()
     };
     engine.request(params).await.map_err(Into::into)
@@ -355,17 +359,35 @@ fn is_earning_value_column(name: &str) -> bool {
 fn extract_numeric_values(array: &ArrayRef) -> Vec<Option<f64>> {
     if let Some(arr) = array.as_any().downcast_ref::<Float64Array>() {
         return (0..arr.len())
-            .map(|idx| if arr.is_null(idx) { None } else { Some(arr.value(idx)) })
+            .map(|idx| {
+                if arr.is_null(idx) {
+                    None
+                } else {
+                    Some(arr.value(idx))
+                }
+            })
             .collect();
     }
     if let Some(arr) = array.as_any().downcast_ref::<Int64Array>() {
         return (0..arr.len())
-            .map(|idx| if arr.is_null(idx) { None } else { Some(arr.value(idx) as f64) })
+            .map(|idx| {
+                if arr.is_null(idx) {
+                    None
+                } else {
+                    Some(arr.value(idx) as f64)
+                }
+            })
             .collect();
     }
     if let Some(arr) = array.as_any().downcast_ref::<Int32Array>() {
         return (0..arr.len())
-            .map(|idx| if arr.is_null(idx) { None } else { Some(arr.value(idx) as f64) })
+            .map(|idx| {
+                if arr.is_null(idx) {
+                    None
+                } else {
+                    Some(arr.value(idx) as f64)
+                }
+            })
             .collect();
     }
     if let Some(arr) = array.as_any().downcast_ref::<StringArray>() {
@@ -397,12 +419,24 @@ fn extract_numeric_values(array: &ArrayRef) -> Vec<Option<f64>> {
 fn extract_level_values(array: &ArrayRef) -> Vec<Option<i64>> {
     if let Some(arr) = array.as_any().downcast_ref::<Int64Array>() {
         return (0..arr.len())
-            .map(|idx| if arr.is_null(idx) { None } else { Some(arr.value(idx)) })
+            .map(|idx| {
+                if arr.is_null(idx) {
+                    None
+                } else {
+                    Some(arr.value(idx))
+                }
+            })
             .collect();
     }
     if let Some(arr) = array.as_any().downcast_ref::<Int32Array>() {
         return (0..arr.len())
-            .map(|idx| if arr.is_null(idx) { None } else { Some(arr.value(idx) as i64) })
+            .map(|idx| {
+                if arr.is_null(idx) {
+                    None
+                } else {
+                    Some(arr.value(idx) as i64)
+                }
+            })
             .collect();
     }
     if let Some(arr) = array.as_any().downcast_ref::<Float64Array>() {
@@ -553,7 +587,11 @@ pub async fn recipe_turnover(
         fields: Some(vec!["TURNOVER".to_string()]),
         start_date: Some(start_date),
         end_date: Some(end_date),
-        overrides: if overrides.is_empty() { None } else { Some(overrides) },
+        overrides: if overrides.is_empty() {
+            None
+        } else {
+            Some(overrides)
+        },
         ..Default::default()
     };
 
@@ -776,7 +814,10 @@ mod tests {
             }
         }
         assert_eq!(overrides.len(), 1);
-        assert_eq!(overrides[0], ("EQY_FUND_CRNCY".to_string(), "USD".to_string()));
+        assert_eq!(
+            overrides[0],
+            ("EQY_FUND_CRNCY".to_string(), "USD".to_string())
+        );
     }
 
     #[test]

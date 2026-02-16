@@ -7,10 +7,10 @@
 //! Architecture: Recipes call engine.request() directly (no recursion).
 //! Recipes are a layer ABOVE the engine, not part of it.
 
-pub mod error;
-pub mod futures;
 pub mod currency;
-pub mod historical;
+pub mod error;
 pub mod fixed_income;
+pub mod futures;
+pub mod historical;
 
 pub use error::{RecipeError, Result};

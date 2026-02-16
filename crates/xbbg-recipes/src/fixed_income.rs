@@ -226,7 +226,11 @@ pub async fn recipe_bqr(
         start_datetime: Some(start_datetime),
         end_datetime: Some(end_datetime),
         event_types: Some(evts),
-        options: if options.is_empty() { None } else { Some(options) },
+        options: if options.is_empty() {
+            None
+        } else {
+            Some(options)
+        },
         ..Default::default()
     };
 
@@ -241,7 +245,7 @@ mod tests {
     fn test_recipe_yas_builds_correct_params() {
         // This test verifies parameter building logic
         // Actual engine calls require Bloomberg connection (integration test)
-        
+
         let overrides = build_yas_overrides(
             Some("20240115"),
             Some(YieldType::YTM),
@@ -252,9 +256,15 @@ mod tests {
         );
 
         // Verify YAS overrides are built correctly
-        assert!(overrides.iter().any(|(k, v)| k == "YAS_SETTLE_DT" && v == "20240115"));
-        assert!(overrides.iter().any(|(k, v)| k == "YAS_YLD_FLAG" && v == "1"));
-        assert!(overrides.iter().any(|(k, v)| k == "YAS_BOND_PX" && v == "99.5"));
+        assert!(overrides
+            .iter()
+            .any(|(k, v)| k == "YAS_SETTLE_DT" && v == "20240115"));
+        assert!(overrides
+            .iter()
+            .any(|(k, v)| k == "YAS_YLD_FLAG" && v == "1"));
+        assert!(overrides
+            .iter()
+            .any(|(k, v)| k == "YAS_BOND_PX" && v == "99.5"));
     }
 
     #[test]
