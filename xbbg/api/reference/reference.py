@@ -2,7 +2,7 @@
 
 Provides functions for single point-in-time reference data (BDP) and
 bulk/block data (BDS) queries. Async versions are the source of truth;
-sync versions wrap them via _run_sync().
+sync versions are generated via sync_api().
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import logging
 import pandas as pd
 
 from xbbg.backend import Backend, Format
-from xbbg.core.infra.conn import _run_sync
+from xbbg.core.infra.conn import sync_api
 from xbbg.core.utils import utils
 
 logger = logging.getLogger(__name__)
@@ -86,27 +86,7 @@ async def abdp(
     return await pipeline.arun(request)
 
 
-def bdp(
-    tickers: str | list[str],
-    flds: str | list[str],
-    *,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg reference data. Sync wrapper around abdp().
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Single field or list of fields to query.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
-        **kwargs: Bloomberg overrides and infrastructure options.
-
-    Returns:
-        pd.DataFrame: Reference data with tickers as index and fields as columns.
-    """
-    return _run_sync(abdp(tickers=tickers, flds=flds, backend=backend, format=format, **kwargs))
+bdp = sync_api(abdp)
 
 
 async def abds(
@@ -181,26 +161,4 @@ async def abds(
     return concat_frames(results, backend)
 
 
-def bds(
-    tickers: str | list[str],
-    flds: str,
-    use_port: bool = False,
-    *,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg block data. Sync wrapper around abds().
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Field name.
-        use_port: Whether to use `PortfolioDataRequest` instead of `ReferenceDataRequest`.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
-        **kwargs: Other overrides for query.
-
-    Returns:
-        pd.DataFrame: Block data with multi-row results per ticker.
-    """
-    return _run_sync(abds(tickers=tickers, flds=flds, use_port=use_port, backend=backend, format=format, **kwargs))
+bds = sync_api(abds)

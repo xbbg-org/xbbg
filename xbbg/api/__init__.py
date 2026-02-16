@@ -14,61 +14,10 @@ This package contains the main Bloomberg API functions organized into logical mo
 from xbbg.api import helpers, historical, intraday, realtime, reference, screening, technical
 
 # Re-export all public functions for convenience
-from xbbg.api.helpers import adjust_ccy
-from xbbg.api.historical import abdh, bdh, dividend, earning, turnover
-from xbbg.api.intraday import bdib, bdtick
-from xbbg.api.realtime import live, stream, subscribe
-from xbbg.api.reference import (
-    abdp,
-    abds,
-    bdp,
-    bds,
-    # v1.0 names
-    bfld,
-    blkp,
-    bport,
-    # legacy names
-    fieldInfo,
-    fieldSearch,
-    getBlpapiVersion,
-    getPortfolio,
-    lookupSecurity,
-)
-from xbbg.api.screening import beqs, bql, bsrch, etf_holdings
-from xbbg.api.technical import bta, bta_studies, refresh_studies, ta_studies
-
-__all__ = [
-    "bdp",
-    "bds",
-    "abdp",
-    "abds",
-    "bdh",
-    "abdh",
-    "bdib",
-    "bdtick",
-    "earning",
-    "dividend",
-    "beqs",
-    "bsrch",
-    "bta",
-    # v1.0 names
-    "ta_studies",
-    "bfld",
-    "blkp",
-    "bport",
-    # legacy names (backward compatible)
-    "bta_studies",
-    "refresh_studies",
-    "live",
-    "stream",
-    "subscribe",
-    "adjust_ccy",
-    "turnover",
-    "bql",
-    "etf_holdings",
-    "fieldInfo",
-    "fieldSearch",
-    "lookupSecurity",
-    "getPortfolio",
-    "getBlpapiVersion",
-]
+from xbbg.api.helpers import *
+from xbbg.api.historical import *
+from xbbg.api.intraday import *
+from xbbg.api.realtime import *
+from xbbg.api.reference import *
+from xbbg.api.screening import *
+from xbbg.api.technical import *

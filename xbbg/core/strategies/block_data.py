@@ -82,3 +82,6 @@ class BlockDataTransformer:
         df = df.rename(rename_map)
 
         return nw.to_native(df)
+
+
+__all__ = ["BlockDataRequestBuilder", "BlockDataTransformer"]

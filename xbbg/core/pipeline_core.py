@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from typing import Any, Protocol
 
@@ -495,40 +495,8 @@ class BloombergPipeline(BaseContextAware):
 
     def _with_context(self, request: DataRequest, ctx) -> DataRequest:
         """Update request with context."""
-        return DataRequest(
-            ticker=request.ticker,
-            dt=request.dt,
-            session=request.session,
-            event_type=request.event_type,
-            interval=request.interval,
-            interval_has_seconds=request.interval_has_seconds,
-            start_datetime=request.start_datetime,
-            end_datetime=request.end_datetime,
-            context=ctx,
-            cache_policy=request.cache_policy,
-            override_kwargs=request.override_kwargs,
-            request_opts=request.request_opts,
-            backend=request.backend,
-            format=request.format,
-            tz=request.tz,
-        )
+        return replace(request, context=ctx)
 
     def _with_resolved_ticker(self, request: DataRequest, resolved_ticker: str) -> DataRequest:
         """Update request with resolved ticker."""
-        return DataRequest(
-            ticker=resolved_ticker,
-            dt=request.dt,
-            session=request.session,
-            event_type=request.event_type,
-            interval=request.interval,
-            interval_has_seconds=request.interval_has_seconds,
-            start_datetime=request.start_datetime,
-            end_datetime=request.end_datetime,
-            context=request.context,
-            cache_policy=request.cache_policy,
-            override_kwargs=request.override_kwargs,
-            request_opts=request.request_opts,
-            backend=request.backend,
-            format=request.format,
-            tz=request.tz,
-        )
+        return replace(request, ticker=resolved_ticker)

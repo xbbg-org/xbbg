@@ -3,6 +3,8 @@
 Provides functions for intraday bar data and tick-by-tick data.
 """
 
+# pyright: reportImportCycles=false
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +17,7 @@ from xbbg.backend import Backend, Format
 from xbbg.core import process
 from xbbg.core.infra import conn
 from xbbg.core.process import DEFAULT_TZ
+from xbbg.core.utils import utils
 from xbbg.io.convert import is_empty
 from xbbg.utils import pipeline
 
@@ -188,7 +191,7 @@ async def abdib(
     # For multi-day requests without dt, use start_datetime's date as fallback
     if dt is None and is_multi_day:
         assert start_datetime is not None  # guaranteed by is_multi_day check above
-        dt = pd.Timestamp(start_datetime).strftime("%Y-%m-%d")
+        dt = utils.fmt_dt(start_datetime, fmt="%Y-%m-%d")
     from xbbg.core.pipeline_core import BloombergPipeline
     from xbbg.core.pipeline_factories import intraday_pipeline_config
     from xbbg.core.request_builder import RequestBuilder
@@ -237,95 +240,7 @@ async def abdib(
     return await pipeline.arun(request)
 
 
-def bdib(
-    ticker: str,
-    dt=None,
-    session="allday",
-    typ="TRADE",
-    start_datetime=None,
-    end_datetime=None,
-    tz: str | None = None,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg intraday bar data. Sync wrapper around abdib().
-
-    Args:
-        ticker: ticker name
-        dt: date to download (for single-day requests). Can be omitted if
-            start_datetime and end_datetime are provided.
-        session: Trading session name. Sessions are dynamically resolved from Bloomberg.
-            Common sessions: ``allday``, ``day``, ``am``, ``pm``, ``pre``, ``post``, ``night``.
-            Availability depends on exchange.
-            Raises ``ValueError`` if session is not defined for the ticker's exchange.
-            Ignored when start_datetime and end_datetime are provided.
-        typ: [TRADE, BID, ASK, BID_BEST, ASK_BEST, BEST_BID, BEST_ASK]
-        start_datetime: explicit start datetime for multi-day requests (e.g., '2025-01-01 09:30:00').
-            When provided with end_datetime, bypasses session-based time resolution.
-            Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
-        end_datetime: explicit end datetime for multi-day requests (e.g., '2025-01-05 16:00:00').
-            When provided with start_datetime, bypasses session-based time resolution.
-            Can be timezone-aware (will be converted to UTC) or timezone-naive (assumed UTC).
-        tz: Output timezone for timestamps. Controls which timezone the returned
-            DataFrame's time index is expressed in.
-
-            - ``None`` (default): exchange local timezone (e.g. ``'America/New_York'``
-              for US equities, ``'Asia/Tokyo'`` for Japanese equities).  This matches
-              the behaviour of ``bdtick()`` and xbbg v0.7.x ``bdib()``.
-            - ``'UTC'``: keep timestamps in UTC (skip conversion).
-            - Any IANA timezone string: convert to that timezone.
-        backend: Backend for data processing (e.g., Backend.PANDAS, Backend.POLARS).
-            If None, uses the default backend.
-        format: Output format for the data (e.g., Format.LONG, Format.WIDE).
-            If None, uses the default format.
-        **kwargs:
-            interval: bar interval in minutes (default: 1). For sub-minute intervals,
-                set ``intervalHasSeconds=True`` and specify seconds (e.g., interval=10
-                with intervalHasSeconds=True for 10-second bars).
-            intervalHasSeconds: if True, interpret ``interval`` as seconds instead of
-                minutes. Default is False (interval always in minutes).
-            ref: reference ticker or exchange
-                 used as supplement if exchange info is not defined for `ticker`
-            batch: whether is batch process to download data
-            log: level of logs
-
-    Returns:
-        pd.DataFrame
-
-    Examples:
-        Get 10-second bars (requires Bloomberg):
-
-        >>> # from xbbg import blp
-        >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10, intervalHasSeconds=True)
-
-        Get 10-minute bars (default behavior):
-
-        >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', interval=10)
-
-        Get data in UTC instead of exchange local time:
-
-        >>> # blp.bdib('AAPL US Equity', dt='2025-11-12', tz='UTC')
-
-        Get multi-day intraday data:
-
-        >>> # blp.bdib('AAPL US Equity', start_datetime='2025-01-01 09:30:00',
-        >>> #         end_datetime='2025-01-05 16:00:00', interval=5)
-    """
-    return conn._run_sync(
-        abdib(
-            ticker=ticker,
-            dt=dt,
-            session=session,
-            typ=typ,
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            tz=tz,
-            backend=backend,
-            format=format,
-            **kwargs,
-        )
-    )
+bdib = conn.sync_api(abdib)
 
 
 async def abdtick(
@@ -363,7 +278,7 @@ async def abdtick(
         raise LookupError(f"Cannot find exchange info for {ticker}")
 
     if isinstance(time_range, (tuple, list)) and (len(time_range) == 2):
-        cur_dt = pd.Timestamp(dt).strftime("%Y-%m-%d")
+        cur_dt = utils.fmt_dt(dt, fmt="%Y-%m-%d")
         time_rng = (
             pd.DatetimeIndex(
                 [
@@ -500,40 +415,4 @@ async def abdtick(
     )
 
 
-def bdtick(
-    ticker: str,
-    dt: str | pd.Timestamp,
-    session: str = "allday",
-    time_range: tuple[str, str] | list[str] | None = None,
-    types: str | list[str] | None = None,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg tick data. Sync wrapper around abdtick().
-
-    Args:
-        ticker: Ticker name.
-        dt: Date to download.
-        session: Trading session name. Defaults to 'allday'.
-        time_range: Tuple of (start_time, end_time) in HH:MM format.
-        types: Event types. Defaults to ['TRADE'].
-        backend: Backend for data processing.
-        format: Output format.
-        **kwargs: Additional options.
-
-    Returns:
-        pd.DataFrame: Tick data with time as index and ticker as column level.
-    """
-    return conn._run_sync(
-        abdtick(
-            ticker=ticker,
-            dt=dt,
-            session=session,
-            time_range=time_range,
-            types=types,
-            backend=backend,
-            format=format,
-            **kwargs,
-        )
-    )
+bdtick = conn.sync_api(abdtick)

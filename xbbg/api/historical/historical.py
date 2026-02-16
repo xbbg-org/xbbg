@@ -1,7 +1,7 @@
 """Bloomberg historical data API (BDH).
 
 Provides functions for end-of-day historical data, dividends, earnings, and turnover.
-Async versions are the source of truth; sync versions wrap them via _run_sync().
+Async versions are the source of truth; sync versions are generated via sync_api().
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from xbbg import const
 from xbbg.api.reference import bds
 from xbbg.backend import Backend, Format
 from xbbg.core import process
-from xbbg.core.infra.conn import _run_sync
+from xbbg.core.infra.conn import sync_api
 from xbbg.core.utils import utils
 from xbbg.io.convert import _convert_backend, is_empty
 from xbbg.options import get_backend
@@ -85,8 +85,9 @@ async def abdh(
 
     e_dt = utils.fmt_dt(end_date, fmt="%Y%m%d")
     if start_date is None:
-        start_date = pd.Timestamp(e_dt) - pd.Timedelta(weeks=8)
-    s_dt = utils.fmt_dt(start_date, fmt="%Y%m%d")
+        s_dt = utils.fmt_dt(pd.Timestamp(e_dt) - pd.Timedelta(weeks=8), fmt="%Y%m%d")
+    else:
+        s_dt = utils.fmt_dt(start_date, fmt="%Y%m%d")
 
     request = (
         RequestBuilder()
@@ -111,43 +112,7 @@ async def abdh(
     return await pipeline.arun(request)
 
 
-def bdh(
-    tickers: str | list[str],
-    flds: str | list[str] | None = None,
-    start_date: str | pd.Timestamp | datetime | None = None,
-    end_date: str | pd.Timestamp | datetime = "today",
-    adjust: str | None = None,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg historical data. Sync wrapper around abdh().
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Single field or list of fields. Defaults to ['Last_Price'].
-        start_date: Start date. Defaults to 8 weeks before end_date.
-        end_date: End date. Defaults to 'today'.
-        adjust: Adjustment type: `all`, `dvd`, `normal`, `abn` (=abnormal), `split`, `-` or None.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to None.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to None.
-        **kwargs: Additional overrides and infrastructure options.
-
-    Returns:
-        pd.DataFrame: Historical data with MultiIndex columns (ticker, field) and dates as index.
-    """
-    return _run_sync(
-        abdh(
-            tickers=tickers,
-            flds=flds,
-            start_date=start_date,
-            end_date=end_date,
-            adjust=adjust,
-            backend=backend,
-            format=format,
-            **kwargs,
-        )
-    )
+bdh = sync_api(abdh)
 
 
 def earning(
@@ -224,7 +189,10 @@ def earning(
         raise KeyError("Cannot find [level] in data")
 
     # Ensure level column is numeric (may come as string from pipeline)
-    data["level"] = pd.to_numeric(data["level"], errors="coerce").fillna(0).astype(int)
+    level_data = pd.to_numeric(data["level"], errors="coerce")
+    if not isinstance(level_data, pd.Series):
+        level_data = pd.Series(level_data, index=data.index)
+    data["level"] = level_data.fillna(0).astype(int)
 
     # Ensure fiscal year columns are numeric
     for col in data.columns:
@@ -318,9 +286,9 @@ def turnover(
         DataFrame.
     """
     if end_date is None:
-        end_date = pd.bdate_range(end="today", periods=2)[0]
+        end_date = utils.fmt_dt(pd.bdate_range(end="today", periods=2)[0], fmt="%Y-%m-%d")
     if start_date is None:
-        start_date = pd.bdate_range(end=end_date, periods=2, freq="M")[0]
+        start_date = utils.fmt_dt(pd.bdate_range(end=end_date, periods=2, freq="M")[0], fmt="%Y-%m-%d")
     tickers = utils.normalize_tickers(tickers)
 
     # Use WIDE format for internal calls since this function expects MultiIndex columns

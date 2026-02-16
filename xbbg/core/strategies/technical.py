@@ -126,3 +126,6 @@ class BtaTransformer:
 
         # Return as Arrow table
         return pa.Table.from_pandas(df_pd, preserve_index=False)
+
+
+__all__ = ["BtaRequestBuilder", "BtaTransformer"]

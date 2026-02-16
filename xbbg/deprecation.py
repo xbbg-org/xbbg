@@ -6,7 +6,7 @@ All warnings are issued once per session to avoid spamming users.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 import warnings
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-__all__ = [
+_BASE_ALL = [
     "XbbgFutureWarning",
     "warn_once",
     "warn_defaults_changing",
@@ -25,6 +25,7 @@ __all__ = [
     "warn_signature_changed",
     "warn_parameter_renamed",
     "deprecated_alias",
+    "get_warn_func",
 ]
 
 
@@ -154,150 +155,97 @@ def deprecated_alias(
 # Pre-defined warning messages for specific functions
 # =============================================================================
 
-
-def warn_connect() -> None:
-    """Warn about connect() removal."""
-    warn_function_removed(
-        "connect",
+_DEPRECATION_REGISTRY = {
+    # Removed in v1.0
+    "connect": (
+        "removed",
         "Engine auto-initializes in v1.0. Use xbbg.configure() for custom host/port.",
-    )
-
-
-def warn_disconnect() -> None:
-    """Warn about disconnect() removal."""
-    warn_function_removed(
-        "disconnect",
+    ),
+    "disconnect": (
+        "removed",
         "Engine manages connections automatically in v1.0. Remove this call.",
-    )
-
-
-def warn_getBlpapiVersion() -> None:
-    """Warn about getBlpapiVersion() removal."""
-    warn_function_removed(
-        "getBlpapiVersion",
+    ),
+    "getBlpapiVersion": (
+        "removed",
         "Use xbbg.get_sdk_info() instead, which returns all SDK sources and versions.",
-    )
-
-
-def warn_lookupSecurity() -> None:
-    """Warn about lookupSecurity() removal."""
-    warn_function_removed(
-        "lookupSecurity",
+    ),
+    "lookupSecurity": (
+        "removed",
         "Use xbbg.blkp() instead. Note: yellowkey format changed to 'YK_FILTER_*'.",
-    )
-
-
-def warn_fieldInfo() -> None:
-    """Warn about fieldInfo() rename."""
-    warn_function_renamed("fieldInfo", "bfld")
-
-
-def warn_fieldSearch() -> None:
-    """Warn about fieldSearch() merge into bfld()."""
-    warn_once(
-        "renamed_fieldSearch",
+    ),
+    # Renamed in v1.0
+    "fieldInfo": ("renamed", "bfld"),
+    "fieldSearch": (
+        "custom",
         "fieldSearch() is merged into bfld() in v1.0. Use bfld(search_spec='keyword') for field search.",
-    )
+    ),
+    "bta_studies": ("renamed", "ta_studies"),
+    "getPortfolio": ("renamed", "bport"),
+    # Signature changed
+    "live": (
+        "signature",
+        "Replaced by asubscribe()/stream() which return Subscription object, not async generator. Yields DataFrames instead of dicts.",
+    ),
+    "subscribe": (
+        "signature",
+        "No longer a context manager in v1.0. Returns Subscription object with dynamic add/remove support. Use stream() for simple iteration.",
+    ),
+    # Param renamed
+    "beqs_typ_param": ("param", ("beqs", "typ", "screen_type")),
+    # Moved to ext
+    "dividend": ("moved", "xbbg.ext.dividend"),
+    "earning": ("moved", "xbbg.ext.earning"),
+    "turnover": ("moved", "xbbg.ext.turnover"),
+    "adjust_ccy": ("moved", "xbbg.ext.adjust_ccy"),
+    "fut_ticker": ("moved", "xbbg.ext.fut_ticker"),
+    "active_futures": ("moved", "xbbg.ext.active_futures"),
+    "cdx_ticker": ("moved", "xbbg.ext.cdx_ticker"),
+    "active_cdx": ("moved", "xbbg.ext.active_cdx"),
+    "etf_holdings": ("moved", "xbbg.ext.etf_holdings"),
+    "preferreds": ("moved", "xbbg.ext.preferreds"),
+    "corporate_bonds": ("moved", "xbbg.ext.corporate_bonds"),
+    "yas": ("moved", "xbbg.ext.yas"),
+    "refresh_studies": ("removed", None),
+}
 
 
-def warn_bta_studies() -> None:
-    """Warn about bta_studies() rename."""
-    warn_function_renamed("bta_studies", "ta_studies")
+def get_warn_func(name: str) -> Callable[[], None]:
+    """Return a zero-argument warning function for a deprecated name."""
+    try:
+        kind, detail = _DEPRECATION_REGISTRY[name]
+    except KeyError as exc:
+        raise KeyError(f"Unknown deprecation warning key: {name}") from exc
+
+    def _warn() -> None:
+        if kind == "removed":
+            warn_function_removed(name, cast("str | None", detail))
+            return
+        if kind == "renamed":
+            warn_function_renamed(name, cast("str", detail))
+            return
+        if kind == "moved":
+            warn_function_moved(name, cast("str", detail))
+            return
+        if kind == "signature":
+            warn_signature_changed(name, cast("str", detail))
+            return
+        if kind == "param":
+            warn_parameter_renamed(*cast("tuple[str, str, str]", detail))
+            return
+        if kind == "custom":
+            warn_once(f"renamed_{name}", cast("str", detail))
+            return
+        raise ValueError(f"Unknown deprecation warning kind: {kind}")
+
+    _warn.__name__ = f"warn_{name}"
+    _warn.__doc__ = f"Warn about {name}() deprecation."
+    return _warn
 
 
-def warn_refresh_studies() -> None:
-    """Warn about refresh_studies() removal."""
-    warn_function_removed("refresh_studies")
+_GENERATED_WARN_NAMES = [f"warn_{name}" for name in _DEPRECATION_REGISTRY]
 
+for _deprecated_name in _DEPRECATION_REGISTRY:
+    _warn_name = f"warn_{_deprecated_name}"
+    globals()[_warn_name] = get_warn_func(_deprecated_name)
 
-def warn_getPortfolio() -> None:
-    """Warn about getPortfolio() rename."""
-    warn_function_renamed("getPortfolio", "bport")
-
-
-def warn_live() -> None:
-    """Warn about live() replacement."""
-    warn_signature_changed(
-        "live",
-        "Replaced by asubscribe()/stream() which return Subscription object, "
-        "not async generator. Yields DataFrames instead of dicts.",
-    )
-
-
-def warn_subscribe() -> None:
-    """Warn about subscribe() signature change."""
-    warn_signature_changed(
-        "subscribe",
-        "No longer a context manager in v1.0. Returns Subscription object with "
-        "dynamic add/remove support. Use stream() for simple iteration.",
-    )
-
-
-def warn_beqs_typ_param() -> None:
-    """Warn about beqs() 'typ' parameter rename."""
-    warn_parameter_renamed("beqs", "typ", "screen_type")
-
-
-# =============================================================================
-# Moved to ext module warnings
-# =============================================================================
-
-
-def warn_dividend() -> None:
-    """Warn about dividend() move to ext module."""
-    warn_function_moved("dividend", "xbbg.ext.dividend")
-
-
-def warn_earning() -> None:
-    """Warn about earning() move to ext module."""
-    warn_function_moved("earning", "xbbg.ext.earning")
-
-
-def warn_turnover() -> None:
-    """Warn about turnover() move to ext module."""
-    warn_function_moved("turnover", "xbbg.ext.turnover")
-
-
-def warn_adjust_ccy() -> None:
-    """Warn about adjust_ccy() move to ext module."""
-    warn_function_moved("adjust_ccy", "xbbg.ext.adjust_ccy")
-
-
-def warn_fut_ticker() -> None:
-    """Warn about fut_ticker() move to ext module."""
-    warn_function_moved("fut_ticker", "xbbg.ext.fut_ticker")
-
-
-def warn_active_futures() -> None:
-    """Warn about active_futures() move to ext module."""
-    warn_function_moved("active_futures", "xbbg.ext.active_futures")
-
-
-def warn_cdx_ticker() -> None:
-    """Warn about cdx_ticker() move to ext module."""
-    warn_function_moved("cdx_ticker", "xbbg.ext.cdx_ticker")
-
-
-def warn_active_cdx() -> None:
-    """Warn about active_cdx() move to ext module."""
-    warn_function_moved("active_cdx", "xbbg.ext.active_cdx")
-
-
-def warn_etf_holdings() -> None:
-    """Warn about etf_holdings() move to ext module."""
-    warn_function_moved("etf_holdings", "xbbg.ext.etf_holdings")
-
-
-def warn_preferreds() -> None:
-    """Warn about preferreds() move to ext module."""
-    warn_function_moved("preferreds", "xbbg.ext.preferreds")
-
-
-def warn_corporate_bonds() -> None:
-    """Warn about corporate_bonds() move to ext module."""
-    warn_function_moved("corporate_bonds", "xbbg.ext.corporate_bonds")
-
-
-def warn_yas() -> None:
-    """Warn about yas() move to ext module."""
-    warn_function_moved("yas", "xbbg.ext.yas")
+__all__ = [*_BASE_ALL, *_GENERATED_WARN_NAMES]

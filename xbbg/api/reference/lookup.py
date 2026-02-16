@@ -153,33 +153,7 @@ async def afieldInfo(
     return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
-def fieldInfo(
-    fields: str | list[str],
-    *,
-    backend: Backend | None = None,
-    **kwargs,
-) -> Any:
-    """Get metadata about Bloomberg fields.
-
-    Retrieves field information including ID, mnemonic, data type, and field type
-    for the specified Bloomberg fields.
-
-    Args:
-        fields: Single field or list of fields to query.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        **kwargs: Infrastructure options (e.g., port, server).
-
-    Returns:
-        DataFrame: Field information with columns: id, mnemonic, datatype, ftype.
-
-    Examples:
-        >>> from xbbg import blp
-        >>> # Get info for single field
-        >>> info = blp.fieldInfo("PX_LAST")  # doctest: +SKIP
-        >>> # Get info for multiple fields
-        >>> info = blp.fieldInfo(["PX_LAST", "VOLUME"])  # doctest: +SKIP
-    """
-    return conn_module._run_sync(afieldInfo(fields, backend=backend, **kwargs))
+fieldInfo = conn_module.sync_api(afieldInfo)
 
 
 async def afieldSearch(
@@ -230,33 +204,7 @@ async def afieldSearch(
     return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
-def fieldSearch(
-    searchterm: str,
-    *,
-    backend: Backend | None = None,
-    **kwargs,
-) -> Any:
-    """Search for Bloomberg fields by name or description.
-
-    Searches for Bloomberg fields matching the given search term. Useful for
-    discovering fields when you know what you want but not the exact field name.
-
-    Args:
-        searchterm: Search term to match against field names/descriptions.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        **kwargs: Infrastructure options (e.g., port, server).
-
-    Returns:
-        DataFrame: Matching fields with columns: id, mnemonic, description.
-
-    Examples:
-        >>> from xbbg import blp
-        >>> # Search for VWAP-related fields
-        >>> results = blp.fieldSearch("vwap")  # doctest: +SKIP
-        >>> # Search for volume fields
-        >>> results = blp.fieldSearch("volume")  # doctest: +SKIP
-    """
-    return conn_module._run_sync(afieldSearch(searchterm, backend=backend, **kwargs))
+fieldSearch = conn_module.sync_api(afieldSearch)
 
 
 async def alookupSecurity(
@@ -364,57 +312,7 @@ async def alookupSecurity(
     return _convert_backend(nw.from_native(arrow_table), actual_backend)
 
 
-def lookupSecurity(
-    query: str,
-    yellowkey: str = "none",
-    language: str = "none",
-    max_results: int = 20,
-    verbose: bool = False,
-    *,
-    backend: Backend | None = None,
-    **kwargs,
-) -> Any:
-    """Look up securities/tickers by company name.
-
-    Searches for securities matching the given query string. Useful for finding
-    tickers when you only know the company name.
-
-    Args:
-        query: Company name or search term (e.g., "IBM", "Apple").
-        yellowkey: Asset class filter. One of: none, cmdt, eqty, muni, prfd,
-            clnt, mmkt, govt, corp, indx, curr, mtge. Defaults to 'none'.
-        language: Language override. One of: none, english, kanji, french,
-            german, spanish, portuguese, italian, chinese_trad, korean,
-            chinese_simp, russian. Defaults to 'none'.
-        max_results: Maximum number of results to return (capped at 1000 by API).
-            Defaults to 20.
-        verbose: Whether to print verbose output. Defaults to False.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        **kwargs: Infrastructure options (e.g., port, server).
-
-    Returns:
-        DataFrame: Matching securities with columns: security, description.
-
-    Examples:
-        >>> from xbbg import blp
-        >>> # Search for IBM
-        >>> results = blp.lookupSecurity("IBM")  # doctest: +SKIP
-        >>> # Search with asset class filter
-        >>> results = blp.lookupSecurity("IBM", yellowkey="eqty")  # doctest: +SKIP
-        >>> # Increase max results
-        >>> results = blp.lookupSecurity("Apple", max_results=100)  # doctest: +SKIP
-    """
-    return conn_module._run_sync(
-        alookupSecurity(
-            query,
-            yellowkey=yellowkey,
-            language=language,
-            max_results=max_results,
-            verbose=verbose,
-            backend=backend,
-            **kwargs,
-        )
-    )
+lookupSecurity = conn_module.sync_api(alookupSecurity)
 
 
 def getPortfolio(
