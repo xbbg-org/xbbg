@@ -322,8 +322,8 @@ class TestBds:
 
         df = bds(CONFIG.equity_single, "DVD_HIST")
 
-        # Should have some dividend history (IBM pays dividends)
-        assert len(df) >= 0  # May be empty for some tickers
+        # IBM has been paying dividends since 1916
+        assert len(df) >= 1, "IBM should have dividend history"
 
         logger.info(f"  Got {len(df)} dividend records")
 
@@ -361,23 +361,27 @@ class TestBdib:
             interval=5,
         )
 
-        # Should have bars if market was open
-        # Note: May be empty if market was closed
+        assert len(df) >= 1, f"Expected intraday bars for {trading_day}, got 0"
         logger.info(f"  Got {len(df)} bars for {trading_day}")
 
     def test_bdib_with_datetime_range(self):
-        """BDIB: explicit datetime range."""
+        """BDIB: explicit datetime range.
+
+        IMPORTANT: Bloomberg intraday bar requests use UTC times.
+        NYSE open: 9:30 ET = 14:30 UTC
+        """
         from xbbg import bdib
 
         trading_day = get_recent_trading_day()
         df = bdib(
             CONFIG.equity_single,
-            start_datetime=f"{trading_day} 10:00:00",
-            end_datetime=f"{trading_day} 11:00:00",
+            start_datetime=f"{trading_day}T14:30:00",
+            end_datetime=f"{trading_day}T15:30:00",
             interval=5,
         )
 
-        logger.info(f"  Got {len(df)} bars (10:00-11:00)")
+        assert len(df) >= 1, f"Expected intraday bars for {trading_day} 14:30-15:30 UTC, got 0"
+        logger.info(f"  Got {len(df)} bars (14:30-15:30 UTC)")
 
 
 class TestAbdib:
@@ -391,6 +395,7 @@ class TestAbdib:
         trading_day = get_recent_trading_day()
         df = await abdib(CONFIG.equity_single, dt=trading_day, interval=5)
 
+        assert len(df) >= 1, f"Expected async intraday bars for {trading_day}, got 0"
         logger.info(f"  Async result: {len(df)} bars")
 
 
@@ -425,6 +430,7 @@ class TestBdtick:
             end_datetime=f"{trading_day}T15:30:00",
         )
 
+        assert len(df) >= 1, f"Expected tick data for {trading_day} 14:30-15:30 UTC, got 0"
         logger.info(f"  Got {len(df)} ticks for {trading_day} (1-hour at open, UTC)")
 
 
@@ -451,6 +457,7 @@ class TestAbdtick:
             end_datetime=f"{trading_day}T15:30:00",
         )
 
+        assert len(df) >= 1, f"Expected async tick data for {trading_day} 14:30-15:30 UTC, got 0"
         logger.info(f"  Async result: {len(df)} ticks for {trading_day} (UTC)")
 
 
@@ -552,6 +559,10 @@ class TestStreaming:
         except asyncio.TimeoutError:
             logger.warning(f"  Timeout after {timeout_seconds}s (got {ticks_received} ticks)")
 
+        assert ticks_received >= 1, (
+            f"Expected streaming ticks from {CONFIG.streaming_ticker} "
+            f"(ES1 trades ~23h/day), got 0 after {timeout_seconds}s"
+        )
         logger.info(f"  Received {ticks_received} ticks")
 
     @pytest.mark.asyncio
@@ -560,7 +571,7 @@ class TestStreaming:
         from xbbg import asubscribe
 
         sub = await asubscribe(CONFIG.streaming_ticker, ["LAST_PRICE"])
-        timeout_seconds = 15
+        timeout_seconds = 20
 
         ticks_received = 0
 
@@ -574,10 +585,14 @@ class TestStreaming:
         try:
             await asyncio.wait_for(collect_ticks(), timeout=timeout_seconds)
         except asyncio.TimeoutError:
-            logger.warning(f"  Timeout after {timeout_seconds}s (got {ticks_received} ticks — market may be closed)")
+            logger.warning(f"  Timeout after {timeout_seconds}s (got {ticks_received} ticks)")
         finally:
             await sub.unsubscribe()
 
+        assert ticks_received >= 1, (
+            f"Expected subscribe ticks from {CONFIG.streaming_ticker} "
+            f"(ES1 trades ~23h/day), got 0 after {timeout_seconds}s"
+        )
         logger.info(f"  Received {ticks_received} ticks before unsubscribe")
 
 
@@ -595,6 +610,7 @@ class TestExtensions:
 
         df = ext.dividend(CONFIG.equity_single, start_date="2024-01-01")
 
+        assert len(df) >= 1, f"IBM should have dividends since 2024-01-01, got 0"
         logger.info(f"  Got {len(df)} dividend records")
 
     def test_ext_etf_holdings(self):
@@ -629,6 +645,7 @@ class TestExtensions:
         from xbbg import ext
 
         df = ext.earnings("AMD US Equity", by="Geo")
+        assert len(df) >= 1, "AMD should have geographic earnings breakdown"
         logger.info(f"  Got {len(df)} earnings rows")
 
     def test_ext_turnover(self):
@@ -637,6 +654,7 @@ class TestExtensions:
 
         start, _ = get_date_range(7)
         df = ext.turnover(CONFIG.equity_single, start_date=start)
+        assert len(df) >= 1, f"IBM should have turnover data since {start}"
         logger.info(f"  Got {len(df)} turnover rows")
 
     def test_ext_active_futures(self):
@@ -645,27 +663,26 @@ class TestExtensions:
 
         trading_day = get_recent_trading_day()
         result = ext.active_futures(CONFIG.futures_generic, dt=trading_day)
+        assert result is not None, f"Expected active futures ticker for {CONFIG.futures_generic}"
         logger.info(f"  Active futures result: {result}")
 
     def test_ext_cdx_ticker(self):
         """Ext: CDX ticker resolution."""
         from xbbg import ext
 
-        try:
-            ticker = ext.cdx_ticker("CDX NA IG", "5Y")
-            logger.info(f"  CDX ticker: {ticker}")
-        except Exception as e:
-            pytest.skip(f"CDX data not available: {e}")
+        trading_day = get_recent_trading_day()
+        ticker = ext.cdx_ticker("CDX IG CDSI GEN 5Y Corp", trading_day)
+        assert isinstance(ticker, str) and len(ticker) > 0, "Expected a resolved CDX ticker"
+        logger.info(f"  CDX ticker: {ticker}")
 
     def test_ext_active_cdx(self):
         """Ext: active CDX."""
         from xbbg import ext
 
-        try:
-            df = ext.active_cdx("CDX NA IG")
-            logger.info(f"  Got {len(df)} active CDX")
-        except Exception as e:
-            pytest.skip(f"CDX data not available: {e}")
+        trading_day = get_recent_trading_day()
+        ticker = ext.active_cdx("CDX IG CDSI GEN 5Y Corp", trading_day)
+        assert isinstance(ticker, str) and len(ticker) > 0, "Expected an active CDX ticker"
+        logger.info(f"  Active CDX: {ticker}")
 
     def test_ext_convert_ccy(self):
         """Ext: currency conversion (renamed from adjust_ccy)."""
@@ -682,9 +699,10 @@ class TestExtensions:
 
         try:
             df = ext.preferreds("BAC US Equity")
+            assert len(df) >= 1, "BAC should have preferred stocks"
             logger.info(f"  Got {len(df)} preferred stocks")
-        except Exception as e:
-            pytest.skip(f"Preferreds data not available: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"Preferreds Bloomberg request failed: {e}")
 
     def test_ext_corporate_bonds(self):
         """Ext: corporate bonds."""
@@ -692,9 +710,10 @@ class TestExtensions:
 
         try:
             df = ext.corporate_bonds("AAPL")
+            assert len(df) >= 1, "AAPL should have corporate bonds"
             logger.info(f"  Got {len(df)} corporate bonds")
-        except Exception as e:
-            pytest.skip(f"Corporate bonds data not available: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"Corporate bonds Bloomberg request failed: {e}")
 
     def test_ext_bqr(self):
         """Ext: BQR query."""
@@ -702,9 +721,10 @@ class TestExtensions:
 
         try:
             df = ext.bqr("IBM US Equity")
+            assert len(df) >= 1, "IBM should have BQR results"
             logger.info(f"  Got {len(df)} BQR results")
-        except Exception as e:
-            pytest.skip(f"BQR not available: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"BQR Bloomberg request failed: {e}")
 
 
 class TestExtensionsAsync:
@@ -717,6 +737,7 @@ class TestExtensionsAsync:
 
         df = await ext.adividend(CONFIG.equity_single, start_date="2024-01-01")
 
+        assert len(df) >= 1, f"IBM should have dividends since 2024-01-01, got 0"
         logger.info(f"  Async result: {len(df)} dividend records")
 
     @pytest.mark.asyncio
@@ -745,6 +766,7 @@ class TestExtensionsAsync:
         from xbbg import ext
 
         df = await ext.aearnings("AMD US Equity", by="Geo")
+        assert len(df) >= 1, "AMD should have geographic earnings breakdown"
         logger.info(f"  Async earnings: {len(df)} rows")
 
     @pytest.mark.asyncio
@@ -754,6 +776,7 @@ class TestExtensionsAsync:
 
         start, _ = get_date_range(7)
         df = await ext.aturnover(CONFIG.equity_single, start_date=start)
+        assert len(df) >= 1, f"IBM should have turnover data since {start}"
         logger.info(f"  Async turnover: {len(df)} rows")
 
     @pytest.mark.asyncio
@@ -763,6 +786,7 @@ class TestExtensionsAsync:
 
         trading_day = get_recent_trading_day()
         result = await ext.aactive_futures(CONFIG.futures_generic, dt=trading_day)
+        assert result is not None, f"Expected async active futures ticker for {CONFIG.futures_generic}"
         logger.info(f"  Async active futures result: {result}")
 
     @pytest.mark.asyncio
@@ -770,22 +794,20 @@ class TestExtensionsAsync:
         """Ext: async CDX ticker."""
         from xbbg import ext
 
-        try:
-            ticker = await ext.acdx_ticker("CDX NA IG", "5Y")
-            logger.info(f"  Async CDX: {ticker}")
-        except Exception as e:
-            pytest.skip(f"CDX not available: {e}")
+        trading_day = get_recent_trading_day()
+        ticker = await ext.acdx_ticker("CDX IG CDSI GEN 5Y Corp", trading_day)
+        assert isinstance(ticker, str) and len(ticker) > 0, "Expected a resolved CDX ticker"
+        logger.info(f"  Async CDX: {ticker}")
 
     @pytest.mark.asyncio
     async def test_ext_aactive_cdx(self):
         """Ext: async active CDX."""
         from xbbg import ext
 
-        try:
-            df = await ext.aactive_cdx("CDX NA IG")
-            logger.info(f"  Async active CDX: {len(df)} results")
-        except Exception as e:
-            pytest.skip(f"CDX not available: {e}")
+        trading_day = get_recent_trading_day()
+        ticker = await ext.aactive_cdx("CDX IG CDSI GEN 5Y Corp", trading_day)
+        assert isinstance(ticker, str) and len(ticker) > 0, "Expected an active CDX ticker"
+        logger.info(f"  Async active CDX: {ticker}")
 
     @pytest.mark.asyncio
     async def test_ext_aconvert_ccy(self):
@@ -804,9 +826,10 @@ class TestExtensionsAsync:
 
         try:
             df = await ext.apreferreds("BAC US Equity")
+            assert len(df) >= 1, "BAC should have preferred stocks"
             logger.info(f"  Async preferreds: {len(df)} results")
-        except Exception as e:
-            pytest.skip(f"Preferreds not available: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"Preferreds Bloomberg request failed: {e}")
 
     @pytest.mark.asyncio
     async def test_ext_acorporate_bonds(self):
@@ -815,9 +838,10 @@ class TestExtensionsAsync:
 
         try:
             df = await ext.acorporate_bonds("AAPL")
+            assert len(df) >= 1, "AAPL should have corporate bonds"
             logger.info(f"  Async bonds: {len(df)} results")
-        except Exception as e:
-            pytest.skip(f"Corporate bonds not available: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"Corporate bonds Bloomberg request failed: {e}")
 
     @pytest.mark.asyncio
     async def test_ext_abqr(self):
@@ -826,9 +850,10 @@ class TestExtensionsAsync:
 
         try:
             df = await ext.abqr("IBM US Equity")
+            assert len(df) >= 1, "IBM should have BQR results"
             logger.info(f"  Async BQR: {len(df)} results")
-        except Exception as e:
-            pytest.skip(f"BQR not available: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"BQR Bloomberg request failed: {e}")
 
 
 # =============================================================================
@@ -1073,9 +1098,12 @@ class TestBport:
 
         try:
             df = bport("U10378179-1 Client")
+            assert len(df) >= 1, "Expected portfolio rows"
             logger.info(f"  Got {len(df)} portfolio rows")
-        except Exception as e:
-            pytest.skip(f"Portfolio access not available: {e}")
+        except (TypeError, ValueError) as e:
+            pytest.skip(f"Portfolio API signature issue: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"Portfolio Bloomberg request failed: {e}")
 
 
 class TestAbport:
@@ -1088,9 +1116,12 @@ class TestAbport:
 
         try:
             df = await abport("U10378179-1 Client")
+            assert len(df) >= 1, "Expected async portfolio rows"
             logger.info(f"  Async portfolio: {len(df)} rows")
-        except Exception as e:
-            pytest.skip(f"Portfolio access not available: {e}")
+        except (TypeError, ValueError) as e:
+            pytest.skip(f"Portfolio API signature issue: {e}")
+        except RuntimeError as e:
+            pytest.skip(f"Portfolio Bloomberg request failed: {e}")
 
 
 class TestBcurves:
@@ -1187,7 +1218,11 @@ class TestArequest:
 
 
 class TestVwap:
-    """Tests for avwap() - streaming VWAP."""
+    """Tests for avwap() - streaming VWAP.
+
+    VWAP subscription may require specific Bloomberg entitlements.
+    rc=131077 from blpapi_Session_subscribe indicates subscription failure.
+    """
 
     @pytest.mark.asyncio
     async def test_avwap_basic(self):
@@ -1207,7 +1242,17 @@ class TestVwap:
         try:
             await asyncio.wait_for(collect(), timeout=15)
         except asyncio.TimeoutError:
-            logger.warning(f"  VWAP timeout (got {ticks} ticks — market may be closed)")
+            logger.warning(f"  VWAP timeout (got {ticks} ticks)")
+        except RuntimeError as e:
+            if "subscribe failed" in str(e):
+                pytest.skip(f"VWAP subscription not available (entitlement): {e}")
+            raise
+
+        if ticks == 0:
+            pytest.skip(
+                "VWAP subscription produced 0 ticks after 15s "
+                "(likely requires specific Bloomberg entitlement for VWAP service)"
+            )
         logger.info(f"  Got {ticks} VWAP ticks")
 
 
@@ -1232,7 +1277,9 @@ class TestMktbar:
         try:
             await asyncio.wait_for(collect(), timeout=15)
         except asyncio.TimeoutError:
-            logger.warning(f"  Mktbar timeout (got {bars} bars — market may be closed)")
+            logger.warning(f"  Mktbar timeout (got {bars} bars)")
+
+        assert bars >= 1, f"Expected market bars from {CONFIG.streaming_ticker} (ES1 trades ~23h/day), got 0 after 15s"
         logger.info(f"  Got {bars} market bars")
 
 
