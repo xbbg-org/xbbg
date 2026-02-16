@@ -142,7 +142,8 @@ fn ext_generate_futures_candidates(
         PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
     })?;
 
-    let roll_freq = RollFrequency::from_str(freq);
+    use std::str::FromStr;
+    let roll_freq = RollFrequency::from_str(freq).unwrap_or(RollFrequency::Monthly);
 
     let candidates = generate_futures_candidates(gen_ticker, dt, roll_freq, count)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
