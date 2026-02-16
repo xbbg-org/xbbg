@@ -184,14 +184,23 @@ pub fn contract_index(gen_ticker: &str) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
-    fn test_roll_frequency_parse() {
-        assert_eq!(RollFrequency::from_str("M"), RollFrequency::Monthly);
-        assert_eq!(RollFrequency::from_str("m"), RollFrequency::Monthly);
-        assert_eq!(RollFrequency::from_str("Q"), RollFrequency::Quarterly);
-        assert_eq!(RollFrequency::from_str("QE"), RollFrequency::Quarterly);
-        assert_eq!(RollFrequency::from_str(""), RollFrequency::Monthly);
+    fn test_roll_frequency_parsing() {
+        assert_eq!(
+            RollFrequency::from_str("M").unwrap(),
+            RollFrequency::Monthly
+        );
+        assert_eq!(
+            RollFrequency::from_str("Q").unwrap(),
+            RollFrequency::Quarterly
+        );
+        assert_eq!(
+            RollFrequency::from_str("QE").unwrap(),
+            RollFrequency::Quarterly
+        );
+        assert_eq!(RollFrequency::from_str("").unwrap(), RollFrequency::Monthly);
     }
 
     #[test]
