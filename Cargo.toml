@@ -1,5 +1,23 @@
 [workspace]
-members = ["crates/xbbg-core", "crates/pyo3-xbbg", "crates/blpapi-sys", "crates/xbbg-async", "crates/datamock", "crates/datamock-sys", "crates/xbbg-sys", "crates/xbbg-ext", "crates/xbbg-log", "crates/xbbg-bench"]
+members = [
+    # Core engine
+    "crates/xbbg-core",
+    "crates/blpapi-sys",
+    "crates/xbbg-async",
+    "crates/xbbg-sys",
+    "crates/xbbg-ext",
+    "crates/xbbg-log",
+    "crates/xbbg-bench",
+    "crates/datamock",
+    "crates/datamock-sys",
+    # Language bindings
+    "bindings/pyo3-xbbg",
+    # "bindings/napi-xbbg",
+    # "bindings/dotnet-xbbg",
+    # Applications
+    # "apps/xbbg-cli",
+    # "apps/xbbg-server",
+]
 resolver = "2"
 
 [workspace.package]

@@ -1,0 +1,21 @@
+[package]
+name = "xbbg-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line interface for Bloomberg data via xbbg"
+publish = false
+
+# [[bin]]
+# name = "xbbg"
+# path = "src/main.rs"
+
+# [dependencies]
+# clap = { version = "4", features = ["derive"] }
+# xbbg_core = { path = "../../crates/xbbg-core" }
+# xbbg-async = { path = "../../crates/xbbg-async" }
+# xbbg-log = { path = "../../crates/xbbg-log" }
+# arrow = { version = "57.1.0", features = ["csv", "json"] }
+# tokio = { version = "1", features = ["full"] }
+# serde_json = "1.0"

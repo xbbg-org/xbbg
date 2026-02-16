@@ -1,0 +1,22 @@
+{
+  "name": "@xbbg/core",
+  "version": "0.0.0",
+  "description": "Bloomberg data API for Node.js — powered by Rust",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "echo 'placeholder — not yet implemented'",
+    "test": "echo 'placeholder — not yet implemented'"
+  },
+  "keywords": ["bloomberg", "finance", "market-data", "arrow"],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alpha-xone/xbbg.git",
+    "directory": "js-xbbg"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

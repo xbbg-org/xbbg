@@ -45,7 +45,7 @@ Issues = "https://github.com/alpha-xone/xbbg/issues"
 bindings = "pyo3"
 python-source = "py-xbbg/src"
 module-name = "xbbg._core"
-manifest-path = "crates/pyo3-xbbg/Cargo.toml"
+manifest-path = "bindings/pyo3-xbbg/Cargo.toml"
 
 [[tool.uv.index]]
 name = "bloomberg"

@@ -14,14 +14,14 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.26", features = ["extension-module"] }
 pyo3-async-runtimes = { version = "0.26", features = ["tokio-runtime"] }
 tokio = { version = "1.48", features = ["sync"] }
-xbbg-log = { path = "../xbbg-log" }
+xbbg-log = { path = "../../crates/xbbg-log" }
 arrow = { version = "57.1.0", features = ["pyarrow"] }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 anyhow = "1.0"
 serde_json = "1.0"
-xbbg_core = { path = "../xbbg-core" }
-xbbg-async = { path = "../xbbg-async" }
-xbbg-ext = { path = "../xbbg-ext" }
+xbbg_core = { path = "../../crates/xbbg-core" }
+xbbg-async = { path = "../../crates/xbbg-async" }
+xbbg-ext = { path = "../../crates/xbbg-ext" }
 
 [build-dependencies]
 vergen-gitcl = { version = "1", features = ["build", "cargo"] }
