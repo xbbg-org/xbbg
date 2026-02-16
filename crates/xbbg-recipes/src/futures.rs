@@ -49,9 +49,10 @@ pub async fn recipe_fut_ticker(
     let dt_parsed = parse_date(&dt)?;
     let idx = contract_index(&gen_ticker)?;
 
+    use std::str::FromStr;
     let freq = freq
         .as_deref()
-        .map(RollFrequency::from_str)
+        .and_then(|s| RollFrequency::from_str(s).ok())
         .unwrap_or(RollFrequency::Monthly);
 
     let count = futures_candidate_count(&gen_ticker, idx)?;

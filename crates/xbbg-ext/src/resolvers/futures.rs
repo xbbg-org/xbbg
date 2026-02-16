@@ -18,13 +18,14 @@ pub enum RollFrequency {
     Quarterly,
 }
 
-impl RollFrequency {
-    /// Parse from string (e.g., "M", "Q", "QE").
-    pub fn from_str(s: &str) -> Self {
-        match s.trim().to_uppercase().as_str() {
+impl std::str::FromStr for RollFrequency {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.trim().to_uppercase().as_str() {
             "Q" | "QE" => RollFrequency::Quarterly,
             _ => RollFrequency::Monthly,
-        }
+        })
     }
 }
 
