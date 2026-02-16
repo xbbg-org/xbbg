@@ -22,12 +22,13 @@ serde_json = "1.0"
 xbbg_core = { path = "../../crates/xbbg-core" }
 xbbg-async = { path = "../../crates/xbbg-async" }
 xbbg-ext = { path = "../../crates/xbbg-ext" }
+xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 
 [build-dependencies]
 vergen-gitcl = { version = "1", features = ["build", "cargo"] }
 
 [features]
 default = ["live"]
-mock = ["xbbg-async/mock"]
-live = ["xbbg-async/live"]
+mock = ["xbbg-async/mock", "xbbg-recipes/mock"]
+live = ["xbbg-async/live", "xbbg-recipes/live"]
 

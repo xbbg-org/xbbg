@@ -52,6 +52,7 @@ use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
 
 mod ext;
+mod recipes;
 
 // =============================================================================
 // Python Exception Hierarchy (mirrors py-xbbg/src/xbbg/exceptions.py)
@@ -417,7 +418,10 @@ impl PyEngine {
     /// Required keys:
     /// - service: Bloomberg service URI (e.g., "//blp/refdata")
     /// - operation: Request operation name (e.g., "ReferenceDataRequest")
+    ///
+    /// Optional keys:
     /// - extractor: Extractor type hint (e.g., "refdata", "histdata", "intraday_bar")
+    ///   If omitted, Rust resolves a default from `operation`.
     ///
     /// Optional keys (depend on request type):
     /// - securities: List of security identifiers
@@ -1178,14 +1182,16 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .ok_or_else(|| PyRuntimeError::new_err("missing required field: operation"))?
         .extract()?;
 
-    let extractor_str: String = dict
-        .get_item("extractor")?
-        .ok_or_else(|| PyRuntimeError::new_err("missing required field: extractor"))?
-        .extract()?;
-
-    let extractor = ExtractorType::parse(&extractor_str).ok_or_else(|| {
-        PyRuntimeError::new_err(format!("invalid extractor type: {}", extractor_str))
-    })?;
+    let (extractor, extractor_set) = match dict.get_item("extractor")? {
+        Some(value) => {
+            let extractor_str: String = value.extract()?;
+            let extractor = ExtractorType::parse(&extractor_str).ok_or_else(|| {
+                PyRuntimeError::new_err(format!("invalid extractor type: {}", extractor_str))
+            })?;
+            (extractor, true)
+        }
+        None => (ExtractorType::default(), false),
+    };
 
     // Optional fields
     let securities: Option<Vec<String>> = dict
@@ -1209,6 +1215,9 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .get_item("elements")?
         .map(|v| v.extract())
         .transpose()?;
+
+    let kwargs: Option<HashMap<String, String>> =
+        dict.get_item("kwargs")?.map(|v| v.extract()).transpose()?;
 
     let start_date: Option<String> = dict
         .get_item("start_date")?
@@ -1274,11 +1283,13 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         service,
         operation,
         extractor,
+        extractor_set,
         securities,
         security,
         fields,
         overrides,
         elements,
+        kwargs,
         json_elements,
         start_date,
         end_date,
@@ -1298,7 +1309,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
 /// Convert Arrow RecordBatch to PyArrow RecordBatch using zero-copy FFI.
 ///
 /// Uses Arrow's C Data Interface via ToPyArrow for zero-copy conversion.
-fn record_batch_to_pyarrow(
+pub(crate) fn record_batch_to_pyarrow(
     py: Python<'_>,
     batch: arrow::record_batch::RecordBatch,
 ) -> PyResult<Py<PyAny>> {
@@ -1361,6 +1372,9 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Register ext functions (date, pivot, ticker, futures, cdx, currency utilities)
     ext::register_ext_module(m)?;
+
+    // Register recipe functions (12 high-level Bloomberg workflows)
+    recipes::register_recipes_module(m)?;
 
     Ok(())
 }
