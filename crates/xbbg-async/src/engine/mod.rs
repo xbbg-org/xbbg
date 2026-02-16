@@ -241,8 +241,8 @@ impl Default for EngineConfig {
             request_pool_size: 2,
             subscription_pool_size: 4,
             warmup_services: vec![
-                crate::services::REFDATA.to_string(),
-                crate::services::APIFLDS.to_string(),
+                crate::services::Service::RefData.to_string(),
+                crate::services::Service::ApiFlds.to_string(),
             ],
             validation_mode: ValidationMode::default(),
         }
@@ -338,7 +338,7 @@ impl Engine {
         topics: Vec<String>,
         fields: Vec<String>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
-        self.subscribe_with_options(crate::services::MKTDATA.to_string(), topics, fields, vec![])
+        self.subscribe_with_options(crate::services::Service::MktData.to_string(), topics, fields, vec![])
             .await
     }
 
@@ -429,7 +429,7 @@ impl Engine {
             xbbg_log::debug!(fields = ?uncached, "Querying //blp/apiflds for field types");
 
             let params = RequestParams {
-                service: crate::services::APIFLDS.to_string(),
+                service: crate::services::Service::ApiFlds.to_string(),
                 operation: "FieldInfoRequest".to_string(),
                 extractor: ExtractorType::FieldInfo,
                 field_ids: Some(uncached.clone()),
@@ -494,7 +494,7 @@ impl Engine {
 
         // Query //blp/apiflds for the fields
         let params = RequestParams {
-            service: crate::services::APIFLDS.to_string(),
+            service: crate::services::Service::ApiFlds.to_string(),
             operation: "FieldInfoRequest".to_string(),
             extractor: ExtractorType::FieldInfo,
             field_ids: Some(fields.to_vec()),
