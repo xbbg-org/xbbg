@@ -103,6 +103,15 @@ class Backend(str, Enum):
     PYSPARK = "pyspark"
     SQLFRAME = "sqlframe"
 
+    @classmethod
+    def _missing_(cls, value: object) -> Backend | None:
+        if isinstance(value, str):
+            lowered = value.lower()
+            for member in cls:
+                if member.value == lowered:
+                    return member
+        return None
+
 
 class Format(str, Enum):
     """Enum for selecting the output data format.
@@ -149,6 +158,15 @@ class Format(str, Enum):
     LONG_WITH_METADATA = "long_metadata"
     SEMI_LONG = "semi_long"
     WIDE = "wide"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Format | None:
+        if isinstance(value, str):
+            lowered = value.lower()
+            for member in cls:
+                if member.value == lowered:
+                    return member
+        return None
 
 
 @dataclass
