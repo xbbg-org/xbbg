@@ -239,6 +239,15 @@ def __getattr__(name: str):
         # VWAP Streaming
         "avwap",
         "vwap",
+        # Market Bar Streaming
+        "amktbar",
+        "mktbar",
+        # Market Depth Streaming
+        "adepth",
+        "depth",
+        # Chain Streaming
+        "achains",
+        "chains",
         # Technical Analysis
         "abta",
         "bta",
