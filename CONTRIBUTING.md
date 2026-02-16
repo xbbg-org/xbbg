@@ -381,7 +381,7 @@ uv run sphinx-build -b html docs docs/_build/html
 
 ### Getting Help
 
-- **Discord**: Join our [Discord community](https://discord.gg/fUUy2nfzxM) for discussions and help
+- **Discord**: Join our [Discord community](https://discord.gg/P34uMwgCjC) for discussions and help
 - **GitHub Issues**: Search existing issues or create a new one
 - **Documentation**: Check [ReadTheDocs](https://xbbg.readthedocs.io/)
 

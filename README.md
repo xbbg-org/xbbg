@@ -10,11 +10,11 @@
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/xbbg)](https://pypistats.org/packages/xbbg)
-[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/fUUy2nfzxM)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/P34uMwgCjC)
 
 <a href="https://www.buymeacoffee.com/Lntx29Oof"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
 
-**Quick Links:** [Discord](https://discord.gg/fUUy2nfzxM) • [Documentation](https://xbbg.readthedocs.io/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Contributing](CONTRIBUTING.md) • [Changelog](CHANGELOG.md)
+**Quick Links:** [Discord](https://discord.gg/P34uMwgCjC) • [Documentation](https://xbbg.readthedocs.io/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Contributing](CONTRIBUTING.md) • [Changelog](CHANGELOG.md)
 
 </div>
 <!-- markdownlint-enable MD033 MD041 -->
@@ -1415,7 +1415,7 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 <summary><b>🐛 Still Stuck?</b></summary>
 
 **Get help fast:**
-- 💬 **Discord**: [Join our community](https://discord.gg/fUUy2nfzxM) - Usually get answers within hours
+- 💬 **Discord**: [Join our community](https://discord.gg/P34uMwgCjC) - Usually get answers within hours
 - 🐛 **GitHub Issues**: [Report bugs](https://github.com/alpha-xone/xbbg/issues) - Include error messages & code
 - 📚 **Documentation**: [ReadTheDocs](https://xbbg.readthedocs.io/) - Comprehensive guides
 - 📓 **Examples**: [`xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipynb) - 100+ working examples
@@ -1499,7 +1499,7 @@ uv run pytest --doctest-modules -q
 
 ### Community Support
 
-- **Discord**: [Join our community](https://discord.gg/fUUy2nfzxM) for discussions, questions, and help
+- **Discord**: [Join our community](https://discord.gg/P34uMwgCjC) for discussions, questions, and help
 - **GitHub Issues**: [Report bugs or request features](https://github.com/alpha-xone/xbbg/issues)
 - **GitHub Discussions**: Share ideas and ask questions
 
@@ -1516,7 +1516,7 @@ uv run pytest --doctest-modules -q
 - [Documentation](https://xbbg.readthedocs.io/)
 - [Source Code](https://github.com/alpha-xone/xbbg)
 - [Issue Tracker](https://github.com/alpha-xone/xbbg/issues)
-- [Discord Community](https://discord.gg/fUUy2nfzxM)
+- [Discord Community](https://discord.gg/P34uMwgCjC)
 - [Changelog](CHANGELOG.md)
 - [Contributing Guidelines](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
