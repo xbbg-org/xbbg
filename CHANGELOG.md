@@ -518,6 +518,159 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pandas options handling in doctest
 - CI/CD configuration updates
 
+## [0.7.7a4] - 2022-05-25
+
+### Changed
+
+- Pandas options handling in doctest
+
+## [0.7.7a3] - 2021-12-31
+
+### Fixed
+
+- Typo fix
+
+## [0.7.7a2] - 2021-12-20
+
+### Added
+
+- Custom config and reference exchange support (contributed by @hceh)
+
+## [0.7.7a1] - 2021-07-13
+
+### Added
+
+- Options in `blp.live` (contributed by @swiecki)
+
+## [0.7.6] - 2021-07-05
+
+### Added
+
+- Log folder creation handling
+- Alternative connection method support
+- Custom session argument for Bloomberg connections
+- `bdtick` with custom time range support
+
+### Changed
+
+- Update asset universe
+- Exchange info corrections
+- No manual conversion of timezones
+
+### Fixed
+
+- BDS fix for edge cases
+- blpapi install URL correction
+
+## [0.7.6a8] - 2021-04-17
+
+### Fixed
+
+- Log folder creation bug
+
+## [0.7.6a7] - 2021-04-02
+
+### Changed
+
+- Update asset universe
+
+## [0.7.6a6] - 2021-03-27
+
+### Fixed
+
+- Exchange info corrected
+
+## [0.7.6a5] - 2021-03-05
+
+### Changed
+
+- No manual conversion of timezones
+
+## [0.7.6a4] - 2021-03-05
+
+### Added
+
+- `bdtick` with custom time range support
+
+## [0.7.6a3] - 2021-02-10
+
+### Fixed
+
+- Bug fixes for BDS and blpapi install URL
+
+## [0.7.6a2] - 2021-02-07
+
+### Added
+
+- Alternative connection method
+
+## [0.7.6a1] - 2021-02-03
+
+### Added
+
+- Add `sess` as argument for custom Bloomberg session
+
+## [0.7.5] - 2021-01-31
+
+### Added
+
+- Currency adjusted turnover function
+- Useful fields for live feeds
+- More examples in documentation
+
+### Changed
+
+- Standardize IO operations
+- Log levels adjustment
+- Replace `os.path` with pathlib
+- Performance function improvements
+- Default args of live feeds
+
+### Fixed
+
+- CCY adjust fix
+- Bug in finding exchange info
+
+## [0.7.5b2] - 2021-01-30
+
+### Changed
+
+- Log levels adjustment
+
+## [0.7.5b1] - 2021-01-13
+
+### Added
+
+- New methods included in `__all__`
+
+### Fixed
+
+- CCY adjust fix
+
+## [0.7.5a9] - 2021-01-12
+
+### Added
+
+- Currency adjusted turnover function
+
+## [0.7.5a09] - 2021-01-12
+
+### Added
+
+- Currency adjusted turnover function
+
+## [0.7.5a8] - 2021-01-11
+
+### Fixed
+
+- Fix bug in finding exchange info
+
+## [0.7.5a7] - 2021-01-07
+
+### Changed
+
+- Default args of live feeds
+
 ## [0.7.2] - 2020-12-16
 
 ### Added
@@ -615,7 +768,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.7.10]: https://github.com/alpha-xone/xbbg/compare/v0.7.9...v0.7.10
 [0.7.9]: https://github.com/alpha-xone/xbbg/compare/v0.7.8a2...v0.7.9
 [0.7.8a2]: https://github.com/alpha-xone/xbbg/compare/v0.7.7...v0.7.8a2
-[0.7.7]: https://github.com/alpha-xone/xbbg/compare/v0.7.2...v0.7.7
+[0.7.7]: https://github.com/alpha-xone/xbbg/compare/v0.7.7a4...v0.7.7
+[0.7.7a4]: https://github.com/alpha-xone/xbbg/compare/v0.7.7a3...v0.7.7a4
+[0.7.7a3]: https://github.com/alpha-xone/xbbg/compare/v0.7.7a2...v0.7.7a3
+[0.7.7a2]: https://github.com/alpha-xone/xbbg/compare/v0.7.7a1...v0.7.7a2
+[0.7.7a1]: https://github.com/alpha-xone/xbbg/compare/v0.7.6...v0.7.7a1
+[0.7.6]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a8...v0.7.6
+[0.7.6a8]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a7...v0.7.6a8
+[0.7.6a7]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a6...v0.7.6a7
+[0.7.6a6]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a5...v0.7.6a6
+[0.7.6a5]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a4...v0.7.6a5
+[0.7.6a4]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a3...v0.7.6a4
+[0.7.6a3]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a2...v0.7.6a3
+[0.7.6a2]: https://github.com/alpha-xone/xbbg/compare/v0.7.6a1...v0.7.6a2
+[0.7.6a1]: https://github.com/alpha-xone/xbbg/compare/v0.7.5...v0.7.6a1
+[0.7.5]: https://github.com/alpha-xone/xbbg/compare/v0.7.5b2...v0.7.5
+[0.7.5b2]: https://github.com/alpha-xone/xbbg/compare/v0.7.5b1...v0.7.5b2
+[0.7.5b1]: https://github.com/alpha-xone/xbbg/compare/v0.7.5a9...v0.7.5b1
+[0.7.5a9]: https://github.com/alpha-xone/xbbg/compare/v0.7.5a09...v0.7.5a9
+[0.7.5a09]: https://github.com/alpha-xone/xbbg/compare/v0.7.5a8...v0.7.5a09
+[0.7.5a8]: https://github.com/alpha-xone/xbbg/compare/v0.7.5a7...v0.7.5a8
+[0.7.5a7]: https://github.com/alpha-xone/xbbg/compare/v0.7.2...v0.7.5a7
 [0.7.2]: https://github.com/alpha-xone/xbbg/compare/v0.7.0...v0.7.2
 [0.7.0]: https://github.com/alpha-xone/xbbg/compare/v0.6.7...v0.7.0
 [0.6.7]: https://github.com/alpha-xone/xbbg/compare/v0.6.0...v0.6.7
