@@ -10,10 +10,9 @@ from __future__ import annotations
 
 # Re-export from ext modules for backwards compatibility
 from xbbg.ext.cdx import active_cdx, cdx_ticker
-from xbbg.ext.futures import MONTH_CODE_MAP, active_futures, fut_ticker
+from xbbg.ext.futures import active_futures, fut_ticker
 
 __all__ = [
-    "MONTH_CODE_MAP",
     "fut_ticker",
     "active_futures",
     "cdx_ticker",

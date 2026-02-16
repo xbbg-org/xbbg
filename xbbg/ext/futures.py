@@ -1,7 +1,12 @@
 """Futures contract resolution utilities.
 
-This module provides functions for resolving generic futures tickers to specific
-contract tickers and selecting active futures contracts based on volume.
+Resolves generic futures tickers (e.g. ``ES1 Index``) to specific contracts
+(e.g. ``ESH6 Index``) and selects active contracts by volume.
+
+Resolution uses Bloomberg's ``FUT_CHAIN_LAST_TRADE_DATES`` bulk field with a
+``CHAIN_DATE`` override, returning all contracts and their expiry dates in a
+single ``bds()`` call.  This replaces the previous approach of manually
+constructing candidate tickers from ``FUT_GEN_MONTH`` cycle codes.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ import logging
 import re
 
 import narwhals as nw
+import pandas as pd
 
 from xbbg import const
 from xbbg.backend import Backend, Format
@@ -22,28 +28,18 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["fut_ticker", "active_futures"]
 
-# Month code to month number mapping for futures contracts
-MONTH_CODE_MAP = {
-    "F": 1,
-    "G": 2,
-    "H": 3,
-    "J": 4,
-    "K": 5,
-    "M": 6,
-    "N": 7,
-    "Q": 8,
-    "U": 9,
-    "V": 10,
-    "X": 11,
-    "Z": 12,
-}
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 
 def _parse_generic_ticker(gen_ticker: str) -> tuple[str, int, str]:
     """Parse a generic futures ticker into components.
 
     Args:
-        gen_ticker: Generic ticker like 'ES1 Index', 'CL2 Comdty', '7203 1 JT Equity'
+        gen_ticker: Generic ticker like 'ES1 Index', 'CL2 Comdty',
+            '7203 1 JT Equity'.
 
     Returns:
         Tuple of (root, n, asset_type) where:
@@ -73,165 +69,212 @@ def _parse_generic_ticker(gen_ticker: str) -> tuple[str, int, str]:
     return root, n, asset_type
 
 
-def _get_cycle_months(gen_ticker: str) -> str:
-    """Get the contract cycle months from Bloomberg.
+def _find_col(columns: list[str], candidates: list[str]) -> str | None:
+    """Find first matching column name (case-insensitive)."""
+    col_lower = {c.lower(): c for c in columns}
+    for cand in candidates:
+        if cand.lower() in col_lower:
+            return col_lower[cand.lower()]
+    return None
+
+
+def _resolve_chain(
+    gen_ticker: str,
+    dt: datetime,
+    **kwargs,
+) -> list[tuple[str, datetime]]:
+    """Get futures chain with expiry dates from Bloomberg.
+
+    Single ``bds()`` call using ``FUT_CHAIN_LAST_TRADE_DATES`` with a
+    ``CHAIN_DATE`` override.
 
     Args:
-        gen_ticker: Generic futures ticker like 'ES1 Index'
+        gen_ticker: Generic ticker (e.g. ``ES1 Index``).
+        dt: Reference date -- only contracts expiring **after** this date are
+            returned.
+        **kwargs: Forwarded to ``bds()``.
 
     Returns:
-        String of month codes (e.g., 'HMUZ' for quarterly, 'FGHJKMNQUVXZ' for monthly)
+        Sorted list of ``(ticker, expiry_date)`` for contracts expiring after
+        *dt*, ordered by expiry ascending.
     """
-    from xbbg.api.reference import bdp
+    from xbbg.api.reference.reference import bds
 
-    result = bdp(gen_ticker, "FUT_GEN_MONTH", backend=Backend.NARWHALS, format=Format.SEMI_LONG)
-    if is_empty(result):
-        logger.warning("Could not get FUT_GEN_MONTH for %s", gen_ticker)
+    chain_date = dt.strftime("%Y%m%d")
+
+    try:
+        chain = bds(
+            gen_ticker,
+            "FUT_CHAIN_LAST_TRADE_DATES",
+            CHAIN_DATE=chain_date,
+            backend=Backend.PANDAS,
+            **kwargs,
+        )
+    except Exception as e:
+        logger.error("Failed to get futures chain for %s: %s", gen_ticker, e)
+        return []
+
+    if is_empty(chain):
+        logger.warning("Empty futures chain for %s at %s", gen_ticker, chain_date)
+        return []
+
+    # Locate ticker and date columns (handle name variations)
+    ticker_col = _find_col(
+        list(chain.columns),
+        ["future's_ticker", "futures_ticker", "security_description", "ticker"],
+    )
+    date_col = _find_col(
+        list(chain.columns),
+        ["last_trade_date", "last_tradeable_dt", "date"],
+    )
+
+    if ticker_col is None or date_col is None:
+        logger.warning(
+            "Unexpected columns in FUT_CHAIN_LAST_TRADE_DATES: %s",
+            list(chain.columns),
+        )
+        return []
+
+    # Parse dates, drop nulls, filter for future contracts, sort
+    chain[date_col] = pd.to_datetime(chain[date_col], errors="coerce")
+    chain = chain.dropna(subset=[ticker_col, date_col])
+    future = chain[chain[date_col] > dt].sort_values(date_col)
+
+    return [(str(row[ticker_col]).strip(), row[date_col].to_pydatetime()) for _, row in future.iterrows()]
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def fut_ticker(gen_ticker: str, dt, **kwargs) -> str:
+    """Resolve a generic futures ticker to a specific contract.
+
+    Uses Bloomberg's ``FUT_CHAIN_LAST_TRADE_DATES`` bulk field with a
+    ``CHAIN_DATE`` override for single-call resolution.
+
+    Args:
+        gen_ticker: Generic ticker (e.g. ``'ES1 Index'``, ``'CL2 Comdty'``).
+            The trailing digit selects the Nth contract: ``1`` = front month,
+            ``2`` = second month, etc.
+        dt: Reference date.  The Nth contract *expiring after* this date is
+            returned.
+        **kwargs: Forwarded to the underlying Bloomberg call.
+
+    Returns:
+        Specific contract ticker (e.g. ``'ESH6 Index'``), or empty string on
+        failure.
+    """
+    dt_parsed = _parse_date(dt)
+
+    try:
+        _root, n, _asset_type = _parse_generic_ticker(gen_ticker)
+    except ValueError as e:
+        logger.error(str(e))
         return ""
 
-    # Get the value from narwhals DataFrame using vectorized operations
-    nw_result = nw.from_native(result, eager_only=True)
+    contracts = _resolve_chain(gen_ticker, dt_parsed, **kwargs)
 
-    # Try to get FUT_GEN_MONTH column, fallback to fut_gen_month or value
-    for col_name in ["FUT_GEN_MONTH", "fut_gen_month", "value"]:
-        if col_name in nw_result.columns:
-            val = nw_result.select(col_name).drop_nulls().head(1)
-            if len(val) > 0:
-                return str(val.item(0, 0))
+    if len(contracts) < n:
+        logger.warning(
+            "Not enough contracts expiring after %s for %s (need %d, found %d)",
+            dt_parsed.date(),
+            gen_ticker,
+            n,
+            len(contracts),
+        )
+        return ""
 
-    return ""
+    result = contracts[n - 1][0]
 
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("Resolved %s @ %s -> %s", gen_ticker, dt_parsed.date(), result)
 
-def _construct_contract_ticker(
-    root: str, month_code: str, year: int, asset_type: str, use_single_digit_year: bool = False
-) -> str:
-    """Construct a specific futures contract ticker.
-
-    Args:
-        root: Ticker root (e.g., 'ES', 'CL')
-        month_code: Month code (e.g., 'H', 'M', 'U', 'Z')
-        year: Full year (e.g., 2024)
-        asset_type: Asset type (e.g., 'Index', 'Comdty')
-        use_single_digit_year: If True, use single digit year (e.g., 'ESH5' instead of 'ESH25')
-
-    Returns:
-        Contract ticker (e.g., 'ESH24 Index')
-    """
-    year_str = str(year)[-1] if use_single_digit_year else str(year)[-2:]
-    return f"{root}{month_code}{year_str} {asset_type}"
+    return result
 
 
 def active_futures(ticker: str, dt, **kwargs) -> str:
-    """Active futures contract.
+    """Select the most actively traded futures contract.
 
-    Determines the most actively traded futures contract by comparing volume
-    between the front-month and second-month contracts.
+    Fetches the futures chain in a single call, then compares recent volume
+    between the front-month and second-month contracts to determine which is
+    more actively traded.
 
     Args:
-        ticker: Generic futures ticker, i.e., UX1 Index, ESA Index, Z A Index, CLA Comdty, etc.
-            Must be a generic contract (e.g., UX1 Index), not a specific contract (e.g., UXZ5 Index).
-        dt: date
-        **kwargs: Passed through to downstream resolvers (e.g., logging).
+        ticker: Generic futures ticker (e.g. ``'UX1 Index'``, ``'ESA Index'``,
+            ``'CLA Comdty'``).  Must be a generic contract, **not** a specific
+            one like ``'UXZ5 Index'``.
+        dt: Reference date.
+        **kwargs: Forwarded to downstream Bloomberg calls.
 
     Returns:
-        str: ticker name
+        Ticker of the most active contract, or empty string on failure.
 
     Raises:
-        ValueError: If ticker is a specific contract instead of a generic one.
+        ValueError: If *ticker* appears to be a specific contract.
     """
     from xbbg.api.historical import bdh
-    from xbbg.api.reference import bdp
 
     dt_parsed = _parse_date(dt)
 
-    # Check if ticker is already a specific contract (contains month codes)
-    month_codes = set(const.Futures.values())  # {'F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z'}
-    ticker_base = ticker.rsplit(" ", 1)[0]  # Remove asset type (Index, Comdty, etc.)
+    # ------------------------------------------------------------------
+    # Reject specific contracts
+    # ------------------------------------------------------------------
+    month_codes = set(const.Futures.values())
+    ticker_base = ticker.rsplit(" ", 1)[0]
 
-    # Generic tickers end with just a number (1, 2, etc.) like UX1, ESA1, ZA1
-    # Specific contracts end with month code + year digits like UXZ5, UXZ24, ESAM24
-    # Pattern: ends with [month_code][1-2 digits] where month_code is immediately before digits
     month_code_pattern = rf"[{re.escape(''.join(month_codes))}]"
-    # Match pattern: [anything][month_code][1-2 digits] at the end
     match = re.search(rf"(.+)({month_code_pattern})(\d{{1,2}})$", ticker_base)
     if match:
-        prefix, month_char, digits = match.groups()
-        # If it ends with [month_code][2 digits] it's definitely specific
-        # If it ends with [month_code][1 digit], check length: very short (3 chars) is likely generic
+        _prefix, _month_char, digits = match.groups()
         if len(digits) == 2:
-            # Two digit year = definitely specific contract
             raise ValueError(
-                f"'{ticker}' appears to be a specific futures contract (ends with month code + 2-digit year), "
-                f"not a generic one. Please use a generic ticker (e.g., 'UX1 Index' instead of 'UXZ24 Index'). "
-                f"Generic tickers end with a number (1, 2, etc.) before the asset type."
+                f"'{ticker}' appears to be a specific futures contract "
+                f"(ends with month code + 2-digit year), not a generic one. "
+                f"Use a generic ticker like 'UX1 Index' instead of 'UXZ24 Index'."
             )
-        # Single digit: could be generic (UX1) or specific (UXZ5)
-        # Check length: very short (3 chars) with single digit is likely generic
         if len(digits) == 1 and len(ticker_base) > 3:
-            # Longer ticker ending in [month_code][digit] is likely specific (e.g., "UXZ5", "ESAM4")
             raise ValueError(
-                f"'{ticker}' appears to be a specific futures contract, not a generic one. "
-                f"Please use a generic ticker (e.g., 'UX1 Index' instead of 'UXZ5 Index'). "
-                f"Generic tickers end with a number (1, 2, etc.) before the asset type."
+                f"'{ticker}' appears to be a specific futures contract, "
+                f"not a generic one.  Use a generic ticker like "
+                f"'UX1 Index' instead of 'UXZ5 Index'."
             )
 
+    # ------------------------------------------------------------------
+    # Build the '...1' generic and resolve the full chain once
+    # ------------------------------------------------------------------
     t_info = ticker.split()
     prefix, asset = " ".join(t_info[:-1]), t_info[-1]
+    gen_1 = f"{prefix[:-1]}1 {asset}"
 
-    # Construct the generic tickers for front and second month
-    f1, f2 = f"{prefix[:-1]}1 {asset}", f"{prefix[:-1]}2 {asset}"
+    contracts = _resolve_chain(gen_1, dt_parsed, **kwargs)
 
-    # Get specific contracts using Bloomberg-based resolution
-    fut_1 = fut_ticker(gen_ticker=f1, dt=dt, **kwargs)
-    fut_2 = fut_ticker(gen_ticker=f2, dt=dt, **kwargs)
-
-    if not fut_1:
-        logger.error("Failed to resolve front-month contract for %s", f1)
+    if not contracts:
+        logger.error("Failed to resolve chain for %s", gen_1)
         return ""
 
-    if not fut_2:
-        # If we can't get second month, just return front month
+    fut_1, fut_1_expiry = contracts[0]
+
+    if len(contracts) < 2:
         return fut_1
 
-    fut_tk = bdp(
-        tickers=[fut_1, fut_2],
-        flds="last_tradeable_dt",
-        backend=Backend.NARWHALS,
-        format=Format.SEMI_LONG,
-    )
+    fut_2 = contracts[1][0]
 
-    if is_empty(fut_tk):
+    # If the request date is well before front-month expiry, skip volume check
+    if dt_parsed.month < fut_1_expiry.month and dt_parsed.year == fut_1_expiry.year:
         return fut_1
 
-    # Parse the result to get last_tradeable_dt for fut_1 using vectorized operations
-    nw_fut = nw.from_native(fut_tk, eager_only=True)
-    first_matu = None
-
-    # Filter for fut_1 ticker and get the expiry date value
-    # SEMI_LONG format returns columns: ticker, field, value
-    fut_1_data = nw_fut.filter(nw.col("ticker") == fut_1).select(nw.col("value").alias("exp_date")).head(1)
-
-    if fut_1_data.shape[0] > 0:
-        val = fut_1_data.item(0, 0)
-        if val:
-            with contextlib.suppress(ValueError, TypeError):
-                first_matu = _parse_date(val)
-
-    if first_matu is None:
-        return fut_1
-
-    if dt_parsed.month < first_matu.month:
-        return fut_1
-
-    # Get volume for last ~10 business days (request 15 calendar days to be safe)
+    # ------------------------------------------------------------------
+    # Compare volume over the last ~10 business days
+    # ------------------------------------------------------------------
     start_date = dt_parsed - timedelta(days=15)
-    end_date = dt_parsed
 
     volume = bdh(
         tickers=[fut_1, fut_2],
         flds="volume",
         start_date=start_date,
-        end_date=end_date,
+        end_date=dt_parsed,
         backend=Backend.NARWHALS,
         format=Format.SEMI_LONG,
     )
@@ -239,147 +282,25 @@ def active_futures(ticker: str, dt, **kwargs) -> str:
     if is_empty(volume):
         return fut_1
 
-    # Find ticker with highest volume on most recent date using vectorized operations
     nw_vol = nw.from_native(volume, eager_only=True)
-
-    # Normalize volume column name (handle both 'volume' and 'VOLUME')
     vol_col = "volume" if "volume" in nw_vol.columns else "VOLUME"
 
-    # Get the most recent date and volume for each ticker
-    latest_volumes = {}
-    for ticker in [fut_1, fut_2]:
-        ticker_data = (
-            nw_vol.filter(nw.col("ticker") == ticker)
+    latest_volumes: dict[str, float] = {}
+    for tk in [fut_1, fut_2]:
+        tk_data = (
+            nw_vol.filter(nw.col("ticker") == tk)
             .select(["date", vol_col])
             .drop_nulls(subset=[vol_col])
             .sort("date", descending=True)
             .head(1)
         )
-        if len(ticker_data) > 0:
-            vol_val = ticker_data.item(0, 1)
+        if len(tk_data) > 0:
+            vol_val = tk_data.item(0, 1)
             if vol_val is not None:
                 with contextlib.suppress(ValueError, TypeError):
-                    latest_volumes[ticker] = float(vol_val)
+                    latest_volumes[tk] = float(vol_val)
 
     if not latest_volumes:
         return fut_1
 
-    # Return ticker with highest volume
     return max(latest_volumes, key=lambda k: latest_volumes.get(k, 0))
-
-
-def fut_ticker(gen_ticker: str, dt, **kwargs) -> str:
-    """Get specific futures contract ticker from generic ticker.
-
-    Uses Bloomberg's FUT_GEN_MONTH field to determine the contract cycle,
-    then constructs candidate contracts and queries their expiration dates.
-
-    Args:
-        gen_ticker: Generic ticker (e.g., 'ES1 Index', 'CL2 Comdty')
-        dt: Date to resolve for
-        **kwargs: Passed through to Bloomberg calls (e.g., timeout).
-
-    Returns:
-        Specific contract ticker (e.g., 'ESH24 Index')
-    """
-    from xbbg.api.reference import bdp
-
-    dt_parsed = _parse_date(dt)
-    today = datetime.today()
-
-    # Parse the generic ticker
-    try:
-        root, n, asset_type = _parse_generic_ticker(gen_ticker)
-    except ValueError as e:
-        logger.error(str(e))
-        return ""
-
-    # Get cycle months from Bloomberg
-    cycle_months = _get_cycle_months(gen_ticker)
-    if not cycle_months:
-        logger.error("Could not determine contract cycle for %s", gen_ticker)
-        return ""
-
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Contract cycle for %s: %s", gen_ticker, cycle_months)
-
-    # Determine if we should use single-digit year (for current year contracts)
-    use_single_digit_year = (today.month == dt_parsed.month) and (today.year == dt_parsed.year)
-
-    # Generate candidate contracts for a range of years
-    start_year = dt_parsed.year - 1
-    end_year = dt_parsed.year + 3
-
-    candidates = []
-    for year in range(start_year, end_year + 1):
-        for month_code in cycle_months:
-            ticker = _construct_contract_ticker(root, month_code, year, asset_type, use_single_digit_year)
-            candidates.append(ticker)
-
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Generated %d candidate contracts for %s", len(candidates), gen_ticker)
-
-    # Query expiration dates from Bloomberg
-    try:
-        exp_dates = bdp(
-            tickers=candidates,
-            flds="last_tradeable_dt",
-            backend=Backend.NARWHALS,
-            format=Format.SEMI_LONG,
-        )
-    except Exception as e:
-        logger.error("Failed to query expiration dates for %s: %s", gen_ticker, e)
-        return ""
-
-    if is_empty(exp_dates):
-        logger.warning("No valid futures contracts found for %s", gen_ticker)
-        return ""
-
-    # Parse results and build list of (ticker, expiration_date) tuples using vectorized operations
-    nw_exp = nw.from_native(exp_dates, eager_only=True)
-    valid_contracts = []
-
-    # Get ticker and expiration date columns, handling both 'value' and 'last_tradeable_dt' column names
-    exp_col = "value" if "value" in nw_exp.columns else "last_tradeable_dt"
-
-    # Filter for non-null tickers and expiration dates using drop_nulls
-    exp_data = nw_exp.select(["ticker", exp_col]).drop_nulls(subset=["ticker", exp_col])
-
-    # Convert to list of tuples
-    for row in exp_data.iter_rows(named=True):
-        ticker = row.get("ticker")
-        exp_val = row.get(exp_col)
-        if ticker and exp_val:
-            try:
-                exp_dt = _parse_date(exp_val)
-                valid_contracts.append((ticker, exp_dt))
-            except (ValueError, TypeError):
-                continue
-
-    if not valid_contracts:
-        logger.warning("No valid futures contracts found for %s", gen_ticker)
-        return ""
-
-    # Sort by expiration date
-    valid_contracts.sort(key=lambda x: x[1])
-
-    # Filter contracts expiring after dt
-    future_contracts = [(t, d) for t, d in valid_contracts if d > dt_parsed]
-
-    if len(future_contracts) < n:
-        logger.warning(
-            "Not enough contracts expiring after %s for %s (need %d, found %d)",
-            dt_parsed.date(),
-            gen_ticker,
-            n,
-            len(future_contracts),
-        )
-        return ""
-
-    # Return the Nth contract (1-indexed, so n-1 for 0-indexed)
-    result = future_contracts[n - 1][0]
-
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Resolved %s @ %s -> %s", gen_ticker, dt_parsed.date(), result)
-
-    return result
