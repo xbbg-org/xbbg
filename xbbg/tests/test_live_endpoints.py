@@ -39,8 +39,21 @@ import threading
 
 import pandas as pd
 import pytest
+import narwhals as nw
 
 from xbbg import blp  # noqa: E402
+from xbbg.ext.cdx import (
+    cdx_basis,
+    cdx_cashflows,
+    cdx_curve,
+    cdx_default_prob,
+    cdx_defaults,
+    cdx_info,
+    cdx_pricing,
+    cdx_risk,
+    cdx_ticker as ext_cdx_ticker,
+)
+from xbbg.io.convert import is_empty
 
 
 # Version checking for regression testing
@@ -94,6 +107,10 @@ TEST_TICKERS = ["AAPL US Equity", "MSFT US Equity"]
 TEST_INDEX = "SPX Index"
 TEST_FIELDS = ["Security_Name", "PX_LAST"]
 TEST_SINGLE_FIELD = "PX_LAST"
+
+# CDX test parameters
+CDX_GEN_IG = "CDX IG CDSI GEN 5Y Corp"
+CDX_GEN_HY = "CDX HY CDSI GEN 5Y Corp"
 
 
 # Date ranges - use recent dates but keep small
@@ -1389,6 +1406,154 @@ def test_active_cdx():
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print(f"Active contract: {result}")
         print("✓ active_cdx() endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_ticker_version_format():
+    """Test CDX ticker resolution produces correct version token format.
+
+    IG (VERSION=1) should NOT have a V token.
+    HY (VERSION>1) should have a SEPARATE V token (e.g. 'S45 V2' not 'S45V2').
+    """
+    # Use ext_cdx_ticker to test directly without deprecation wrapper
+    ig = ext_cdx_ticker(CDX_GEN_IG, END_DATE.strftime("%Y-%m-%d"))
+    assert ig, "IG ticker resolution should not be empty"
+    tokens = ig.split()
+    # Find the series token
+    series_tok = next((t for t in tokens if t.startswith("S") and t[1:].isdigit()), None)
+    assert series_tok is not None, f"Should have a series token like S45, got: {ig}"
+    series_idx = tokens.index(series_tok)
+    # IG should NOT have a version token right after series
+    if series_idx + 1 < len(tokens):
+        next_tok = tokens[series_idx + 1]
+        assert not (next_tok.startswith("V") and next_tok[1:].isdigit()), (
+            f"IG should not have version token but got '{next_tok}' in: {ig}"
+        )
+
+    hy = ext_cdx_ticker(CDX_GEN_HY, END_DATE.strftime("%Y-%m-%d"))
+    assert hy, "HY ticker resolution should not be empty"
+    tokens = hy.split()
+    series_tok = next((t for t in tokens if t.startswith("S") and t[1:].isdigit()), None)
+    assert series_tok is not None, f"Should have a series token like S45, got: {hy}"
+    series_idx = tokens.index(series_tok)
+    # HY should have a SEPARATE version token (V2, V3, etc.) right after series
+    assert series_idx + 1 < len(tokens), f"HY should have token after series, got: {hy}"
+    version_tok = tokens[series_idx + 1]
+    assert version_tok.startswith("V") and version_tok[1:].isdigit(), (
+        f"HY should have separate version token like V2 after series, got '{version_tok}' in: {hy}"
+    )
+
+    print(f"\nIG resolved: {ig}")
+    print(f"HY resolved: {hy}")
+    print("✓ CDX ticker version format correct")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_info_endpoint():
+    """Test cdx_info() returns metadata for a CDX ticker."""
+    result = cdx_info(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_info should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert "ticker" in nw_result.columns, "Should have ticker column"
+    assert "field" in nw_result.columns, "Should have field column"
+    assert "value" in nw_result.columns, "Should have value column"
+    assert nw_result.shape[0] >= 4, f"Should have at least 4 field rows, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_info result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("✓ cdx_info endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_defaults_endpoint():
+    """Test cdx_defaults() returns default history for CDX HY (which has defaults)."""
+    # Resolve HY ticker first (it has defaults)
+    hy = ext_cdx_ticker(CDX_GEN_HY, END_DATE.strftime("%Y-%m-%d"))
+    assert hy, "HY ticker resolution should not be empty"
+
+    result = cdx_defaults(hy)
+    assert not is_empty(result), "cdx_defaults for HY should return data (HY has credit events)"
+
+    print(f"\ncdx_defaults result for {hy}:")
+    print(result)
+    print("✓ cdx_defaults endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_pricing_endpoint():
+    """Test cdx_pricing() returns pricing analytics."""
+    result = cdx_pricing(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_pricing should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 3, f"Should have at least 3 pricing fields, got {nw_result.shape[0]}"
+
+    # Verify px_last is present
+    fields = nw_result.select("field").to_series().to_list()
+    assert "px_last" in fields, f"Should have px_last field, got: {fields}"
+
+    print(f"\ncdx_pricing result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("✓ cdx_pricing endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_risk_endpoint():
+    """Test cdx_risk() returns risk analytics (DV01, duration, etc.)."""
+    result = cdx_risk(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_risk should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 2, f"Should have at least 2 risk fields, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_risk result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("✓ cdx_risk endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_basis_endpoint():
+    """Test cdx_basis() returns intrinsic value and basis analytics."""
+    result = cdx_basis(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_basis should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 2, f"Should have at least 2 basis fields, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_basis result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("✓ cdx_basis endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_default_prob_endpoint():
+    """Test cdx_default_prob() returns default probability term structure."""
+    result = cdx_default_prob(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_default_prob should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 5, f"Should have at least 5 term structure rows, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_default_prob result ({nw_result.shape[0]} rows):")
+    print(result)
+    print("✓ cdx_default_prob endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_curve_endpoint():
+    """Test cdx_curve() returns multi-tenor term structure."""
+    result = cdx_curve(CDX_GEN_IG, tenors=["3Y", "5Y", "10Y"])
+    assert not is_empty(result), "cdx_curve should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    # Should have results for multiple tenors
+    tickers = nw_result.select("ticker").to_series().unique().to_list()
+    assert len(tickers) >= 2, f"Should have at least 2 tenor tickers, got: {tickers}"
+
+    print(f"\ncdx_curve result ({nw_result.shape[0]} rows, {len(tickers)} tenors):")
+    print(result)
+    print("✓ cdx_curve endpoint working correctly")
 
 
 @pytest.mark.live_endpoint

@@ -24,7 +24,18 @@ Functions:
 
 from __future__ import annotations
 
-from xbbg.ext.cdx import active_cdx, cdx_ticker
+from xbbg.ext.cdx import (
+    active_cdx,
+    cdx_basis,
+    cdx_cashflows,
+    cdx_curve,
+    cdx_default_prob,
+    cdx_defaults,
+    cdx_info,
+    cdx_pricing,
+    cdx_risk,
+    cdx_ticker,
+)
 from xbbg.ext.currency import adjust_ccy
 from xbbg.ext.dividends import dividend
 from xbbg.ext.earnings import earning
@@ -50,6 +61,15 @@ __all__ = [
     # CDX resolution
     "cdx_ticker",
     "active_cdx",
+    # CDX analytics
+    "cdx_info",
+    "cdx_defaults",
+    "cdx_pricing",
+    "cdx_risk",
+    "cdx_basis",
+    "cdx_default_prob",
+    "cdx_cashflows",
+    "cdx_curve",
     # Fixed income
     "yas",
     "YieldType",
