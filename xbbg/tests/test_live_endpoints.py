@@ -54,6 +54,14 @@ from xbbg.ext.cdx import (
     cdx_ticker as ext_cdx_ticker,
 )
 from xbbg.io.convert import is_empty
+from xbbg.ext.bonds import (
+    bond_cashflows,
+    bond_curve,
+    bond_info,
+    bond_key_rates,
+    bond_risk,
+    bond_spreads,
+)
 
 
 # Version checking for regression testing
@@ -1725,6 +1733,190 @@ def test_bdp_mixed_type_multiple_tickers():
     print(f"Columns: {list(result.columns)}")
     print(f"Dtypes:\n{result.dtypes}")
     print("✓ BDP mixed-type fields with multiple tickers working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_info():
+    """Test bond_info returns static reference metadata for a Treasury."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_info (Bond Reference Metadata)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_info(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_info({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_info should return data"
+    print("✓ bond_info working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_risk():
+    """Test bond_risk returns duration, convexity, DV01 analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_risk (Duration / Convexity / DV01)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_risk(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_risk({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_risk should return data"
+    print("✓ bond_risk working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_spreads():
+    """Test bond_spreads returns OAS, Z-spread, I-spread, ASW analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_spreads (OAS / Z-Spread / I-Spread / ASW)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_spreads(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_spreads({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_spreads should return data"
+    print("✓ bond_spreads working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_cashflows():
+    """Test bond_cashflows returns cash flow schedule via bds DES_CASH_FLOW."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_cashflows (DES_CASH_FLOW via bds)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_cashflows(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_cashflows({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_cashflows should return data"
+    print("✓ bond_cashflows working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_key_rates():
+    """Test bond_key_rates returns key rate durations and risks."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_key_rates (Key Rate Durations / Risks)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_key_rates(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_key_rates({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_key_rates should return data"
+    print("✓ bond_key_rates working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_curve():
+    """Test bond_curve returns multi-bond relative value analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_curve (Multi-Bond Relative Value)")
+    print(f"{'=' * 80}")
+
+    tickers = ["/isin/US91282CNC19", "T 4 02/28/31 Govt"]
+    result = bond_curve(tickers)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_curve({tickers!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_curve should return data"
+    print("✓ bond_curve working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_yas_enhanced():
+    """Test enhanced yas() with new YieldType.YTW and workout_dt override."""
+    print(f"\n{'=' * 80}")
+    print("Testing yas() Enhanced (YTW + workout_dt)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext import YieldType, yas
+
+    ticker = "/isin/US91282CNC19"
+
+    # Basic yield
+    result1 = yas(ticker)
+    printable1 = result1
+    to_native = getattr(result1, "to_native", None)
+    if callable(to_native):
+        printable1 = to_native()
+    to_pandas = getattr(printable1, "to_pandas", None)
+    if callable(to_pandas):
+        printable1 = to_pandas()
+    print(f"\nyas({ticker!r}):")
+    print(printable1)
+
+    # Multi-field
+    result2 = yas(ticker, ["YAS_BOND_YLD", "YAS_MOD_DUR", "YAS_ZSPREAD"])
+    printable2 = result2
+    to_native = getattr(result2, "to_native", None)
+    if callable(to_native):
+        printable2 = to_native()
+    to_pandas = getattr(printable2, "to_pandas", None)
+    if callable(to_pandas):
+        printable2 = to_pandas()
+    print(f"\nyas({ticker!r}, ['YAS_BOND_YLD', 'YAS_MOD_DUR', 'YAS_ZSPREAD']):")
+    print(printable2)
+
+    assert not is_empty(result1), "yas basic should return data"
+    assert not is_empty(result2), "yas multi-field should return data"
+    print("✓ enhanced yas() working correctly")
 
 
 if __name__ == "__main__":

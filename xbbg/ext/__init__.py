@@ -20,6 +20,12 @@ Functions:
     active_cdx: Active CDX contract selection
     yas: Yield & Spread Analysis calculator
     YieldType: Enum for yield calculation types
+    bond_info: Bond reference metadata
+    bond_risk: Bond duration, convexity, DV01 analytics
+    bond_spreads: Bond spread analytics (OAS, Z-spread, I-spread, ASW)
+    bond_cashflows: Bond cash flow schedule
+    bond_key_rates: Bond key rate durations and risks
+    bond_curve: Multi-bond relative value analytics
 """
 
 from __future__ import annotations
@@ -42,6 +48,14 @@ from xbbg.ext.earnings import earning
 from xbbg.ext.futures import active_futures, fut_ticker
 from xbbg.ext.holdings import corporate_bonds, etf_holdings, preferreds
 from xbbg.ext.turnover import turnover
+from xbbg.ext.bonds import (
+    bond_cashflows,
+    bond_curve,
+    bond_info,
+    bond_key_rates,
+    bond_risk,
+    bond_spreads,
+)
 from xbbg.ext.yas import YieldType, yas
 
 __all__ = [
@@ -70,7 +84,14 @@ __all__ = [
     "cdx_default_prob",
     "cdx_cashflows",
     "cdx_curve",
-    # Fixed income
+    # Fixed income — YAS
     "yas",
     "YieldType",
+    # Fixed income — Bond analytics
+    "bond_info",
+    "bond_risk",
+    "bond_spreads",
+    "bond_cashflows",
+    "bond_key_rates",
+    "bond_curve",
 ]

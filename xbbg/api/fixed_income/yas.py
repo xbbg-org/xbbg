@@ -1,14 +1,14 @@
 """Bloomberg Yield & Spread Analysis (YAS) API.
 
-Provides convenience functions for fixed income yield and spread calculations.
+This module provides convenience functions for fixed income yield and spread calculations.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import IntEnum
 import logging
-
-import pandas as pd
+from typing import Any
 
 from xbbg.backend import Backend, Format
 
@@ -20,7 +20,7 @@ __all__ = ["yas", "YieldType"]
 class YieldType(IntEnum):
     """Bloomberg YAS yield calculation type (YAS_YLD_FLAG override).
 
-    Used to specify whether to calculate Yield to Maturity or Yield to Call.
+    Used to specify the yield calculation convention.
 
     Examples:
         >>> from xbbg.api.fixed_income import YieldType
@@ -28,28 +28,32 @@ class YieldType(IntEnum):
         <YieldType.YTM: 1>
         >>> YieldType.YTC
         <YieldType.YTC: 2>
-        >>> int(YieldType.YTM)
-        1
+        >>> int(YieldType.YTW)
+        3
     """
 
     YTM = 1  # Yield to Maturity
     YTC = 2  # Yield to Call
+    YTW = 3  # Yield to Worst
+    YTP = 4  # Yield to Put
+    CFY = 5  # Cash Flow Yield
 
 
 def yas(
     tickers: str | list[str],
     flds: str | list[str] = "YAS_BOND_YLD",
     *,
-    settle_dt: str | pd.Timestamp | None = None,
+    settle_dt: str | datetime | None = None,
     yield_type: YieldType | int | None = None,
     spread: float | None = None,
     yield_: float | None = None,
     price: float | None = None,
     benchmark: str | None = None,
+    workout_dt: str | datetime | None = None,
     backend: Backend | None = None,
     format: Format | None = None,
     **kwargs,
-) -> pd.DataFrame:
+) -> Any:
     """Bloomberg Yield & Spread Analysis (YAS) data.
 
     Convenience wrapper for YAS fields with commonly-used overrides as named parameters.
@@ -72,6 +76,8 @@ def yas(
             Maps to YAS_BOND_PX override.
         benchmark: Benchmark bond ticker for spread calculations.
             Maps to YAS_BNCHMRK_BOND override.
+        workout_dt: Workout date for yield-to-worst/call calculations (YYYYMMDD or datetime).
+            Maps to YAS_WORKOUT_DT override.
         backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS).
             Defaults to global setting.
         format: Output format (e.g., Format.WIDE, Format.LONG).
@@ -88,25 +94,28 @@ def yas(
         >>> from xbbg.api.fixed_income import YieldType  # doctest: +SKIP
         >>>
         >>> # Get yield to maturity for a bond
-        >>> blp.yas('US912810TD00 Govt')  # doctest: +SKIP
+        >>> blp.yas("US912810TD00 Govt")  # doctest: +SKIP
         >>>
         >>> # Get yield with custom settlement date
-        >>> blp.yas('US912810TD00 Govt', settle_dt='20240115')  # doctest: +SKIP
+        >>> blp.yas("US912810TD00 Govt", settle_dt="20240115")  # doctest: +SKIP
         >>>
         >>> # Get yield to call instead of yield to maturity
-        >>> blp.yas('XYZ Corp', yield_type=YieldType.YTC)  # doctest: +SKIP
+        >>> blp.yas("XYZ Corp", yield_type=YieldType.YTC)  # doctest: +SKIP
+        >>>
+        >>> # Get yield to worst
+        >>> blp.yas("XYZ Corp", yield_type=YieldType.YTW)  # doctest: +SKIP
         >>>
         >>> # Calculate yield from a given price
-        >>> blp.yas('US912810TD00 Govt', price=98.5)  # doctest: +SKIP
+        >>> blp.yas("US912810TD00 Govt", price=98.5)  # doctest: +SKIP
         >>>
         >>> # Calculate price from a given yield
-        >>> blp.yas('US912810TD00 Govt', flds='YAS_BOND_PX', yield_=4.5)  # doctest: +SKIP
+        >>> blp.yas("US912810TD00 Govt", flds="YAS_BOND_PX", yield_=4.5)  # doctest: +SKIP
         >>>
         >>> # Get spread to a specific benchmark
-        >>> blp.yas('XYZ Corp', flds='YAS_YLD_SPREAD', benchmark='US912810TD00 Govt')  # doctest: +SKIP
+        >>> blp.yas("XYZ Corp", flds="YAS_YLD_SPREAD", benchmark="US912810TD00 Govt")  # doctest: +SKIP
         >>>
         >>> # Get multiple YAS analytics
-        >>> blp.yas('US912810TD00 Govt', ['YAS_BOND_YLD', 'YAS_MOD_DUR', 'YAS_Z_SPREAD'])  # doctest: +SKIP
+        >>> blp.yas("US912810TD00 Govt", ["YAS_BOND_YLD", "YAS_MOD_DUR", "YAS_Z_SPREAD"])  # doctest: +SKIP
     """
     from xbbg.api.reference import bdp
 
@@ -120,16 +129,16 @@ def yas(
         if isinstance(settle_dt, str):
             # Try to parse and reformat to ensure consistent format
             try:
-                dt = pd.Timestamp(settle_dt)
-                if dt is not pd.NaT:
-                    formatted_dt = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}"
+                # Handle various date string formats
+                dt = datetime.fromisoformat(settle_dt.replace("/", "-"))
+                formatted_dt = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}"
             except (ValueError, TypeError):
-                # If parsing fails, pass through as-is
+                # If parsing fails, pass through as-is (might already be YYYYMMDD)
                 formatted_dt = settle_dt
-        elif isinstance(settle_dt, pd.Timestamp) and settle_dt is not pd.NaT:
+        elif isinstance(settle_dt, datetime):
             formatted_dt = f"{settle_dt.year:04d}{settle_dt.month:02d}{settle_dt.day:02d}"
         else:
-            formatted_dt = str(settle_dt) if settle_dt is not None else None
+            formatted_dt = str(settle_dt)
 
         if formatted_dt is not None:
             overrides["SETTLE_DT"] = formatted_dt
@@ -149,6 +158,22 @@ def yas(
 
     if benchmark is not None:
         overrides["YAS_BNCHMRK_BOND"] = benchmark
+
+    if workout_dt is not None:
+        # Reuse the same date formatting logic as settle_dt
+        formatted_wo: str | None = None
+        if isinstance(workout_dt, str):
+            try:
+                dt = datetime.fromisoformat(workout_dt.replace("/", "-"))
+                formatted_wo = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}"
+            except (ValueError, TypeError):
+                formatted_wo = workout_dt
+        elif isinstance(workout_dt, datetime):
+            formatted_wo = f"{workout_dt.year:04d}{workout_dt.month:02d}{workout_dt.day:02d}"
+        else:
+            formatted_wo = str(workout_dt)
+        if formatted_wo is not None:
+            overrides["YAS_WORKOUT_DT"] = formatted_wo
 
     # Merge with any additional kwargs overrides (kwargs take precedence)
     overrides.update(kwargs)
