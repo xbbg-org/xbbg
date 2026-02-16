@@ -61,7 +61,7 @@ DVD_TYPES = {
     "projected": "BDVD_Pr_Ex_Dts_DVD_Amts_w_Ann",
 }
 
-# Deprecated alias for backward compatibility — use DVD_TYPES instead
+# Deprecated alias for backward compatibility -- use DVD_TYPES instead
 DVD_TPYES = DVD_TYPES
 
 # Dividend column name mappings
@@ -170,7 +170,7 @@ __all__ = [
     "CurrencyPair",
     "DVD_COLS",
     "DVD_TYPES",
-    "DVD_TPYES",  # Deprecated alias — use DVD_TYPES
+    "DVD_TPYES",  # Deprecated alias -- use DVD_TYPES
     "Futures",
     "LIVE_CHG",
     "LIVE_INFO",

@@ -101,7 +101,7 @@ class BloombergExchangeResolver:
         return True
 
     def resolve(self, request: DataRequest) -> ResolverResult:
-        """Resolve using override → cache → Bloomberg waterfall.
+        """Resolve using override -> cache -> Bloomberg waterfall.
 
         Args:
             request: Data request with ticker and context.

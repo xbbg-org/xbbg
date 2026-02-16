@@ -40,7 +40,7 @@ async def abdh(
 ) -> pd.DataFrame:
     """Async Bloomberg historical data (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bdh()`` for synchronous usage.
 
     Args:
@@ -61,7 +61,7 @@ async def abdh(
         >>> # Single request
         >>> # df = await blp.abdh('AAPL US Equity', start_date='2024-01-01')
         >>>
-        >>> # Concurrent requests (true async — single thread, cooperative polling)
+        >>> # Concurrent requests (true async -- single thread, cooperative polling)
         >>> # results = await asyncio.gather(
         >>> #     blp.abdh('AAPL US Equity', start_date='2024-01-01'),
         >>> #     blp.abdh('MSFT US Equity', start_date='2024-01-01'),

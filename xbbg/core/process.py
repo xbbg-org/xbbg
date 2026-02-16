@@ -185,7 +185,7 @@ def time_range(
     if result is not None:
         return result
 
-    # Nothing worked – propagate a clear error
+    # Nothing worked -- propagate a clear error
     raise ValueError(
         f'Unable to resolve trading session "{session}" for ticker {ticker} on date {dt}. '
         f"Session is not defined in exchange metadata."

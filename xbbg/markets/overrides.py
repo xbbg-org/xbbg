@@ -4,12 +4,12 @@ This module provides an in-memory registry for overriding exchange metadata
 at runtime. Overrides take priority over all other sources in the exchange
 resolution waterfall:
 
-1. Runtime Override → This module (highest priority)
-2. Cache → ~/.xbbg/cache/exchanges.parquet
-3. Bloomberg Query → xbbg.markets.bloomberg
-4. PMC Calendar → Use MIC from Bloomberg
-5. Country Inference → Infer timezone from COUNTRY_ISO
-6. Hardcoded Fallback → Minimal defaults
+1. Runtime Override -> This module (highest priority)
+2. Cache -> ~/.xbbg/cache/exchanges.parquet
+3. Bloomberg Query -> xbbg.markets.bloomberg
+4. PMC Calendar -> Use MIC from Bloomberg
+5. Country Inference -> Infer timezone from COUNTRY_ISO
+6. Hardcoded Fallback -> Minimal defaults
 
 Usage:
     from xbbg.markets.overrides import set_exchange_override, clear_exchange_override

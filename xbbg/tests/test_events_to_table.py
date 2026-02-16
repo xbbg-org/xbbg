@@ -1,7 +1,7 @@
 """Regression tests for _events_to_table (mixed-type Arrow conversion).
 
 Bloomberg's process_* functions yield event dicts where the ``value`` column
-is a true variant — it can contain float, str, datetime, bool, and None in
+is a true variant -- it can contain float, str, datetime, bool, and None in
 the same list.  ``pa.Table.from_pandas()`` and ``pa.Table.from_pylist()``
 both raise ``ArrowInvalid`` on such mixed-type columns.
 
@@ -180,7 +180,7 @@ class TestNonUniformKeys:
         table = _events_to_table(events)
         assert table.num_columns == 4
         assert "extra" in table.column_names
-        # First row has no "extra" → should be null
+        # First row has no "extra" -> should be null
         assert table.column("extra")[0].as_py() is None
         assert table.column("extra")[1].as_py() == "col"
 
