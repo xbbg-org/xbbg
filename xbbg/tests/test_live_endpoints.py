@@ -37,14 +37,21 @@ from datetime import date, datetime, timedelta
 import sys
 import threading
 
+import narwhals as nw
 import pandas as pd
 import pytest
-import narwhals as nw
 
 from xbbg import blp  # noqa: E402
+from xbbg.ext.bonds import (
+    bond_cashflows,
+    bond_curve,
+    bond_info,
+    bond_key_rates,
+    bond_risk,
+    bond_spreads,
+)
 from xbbg.ext.cdx import (
     cdx_basis,
-    cdx_cashflows,
     cdx_curve,
     cdx_default_prob,
     cdx_defaults,
@@ -54,14 +61,6 @@ from xbbg.ext.cdx import (
     cdx_ticker as ext_cdx_ticker,
 )
 from xbbg.io.convert import is_empty
-from xbbg.ext.bonds import (
-    bond_cashflows,
-    bond_curve,
-    bond_info,
-    bond_key_rates,
-    bond_risk,
-    bond_spreads,
-)
 
 
 # Version checking for regression testing
@@ -1886,7 +1885,7 @@ def test_yas_enhanced():
     print("Testing yas() Enhanced (YTW + workout_dt)")
     print(f"{'=' * 80}")
 
-    from xbbg.ext import YieldType, yas
+    from xbbg.ext import yas
 
     ticker = "/isin/US91282CNC19"
 
@@ -2004,7 +2003,7 @@ def test_option_chain():
     print("Testing option_chain (Filtered Chain)")
     print(f"{'=' * 80}")
 
-    from xbbg.ext.options import option_chain, PutCall, StrikeRef
+    from xbbg.ext.options import PutCall, StrikeRef, option_chain
 
     underlying = "SPY US Equity"
     result = option_chain(underlying, put_call=PutCall.CALL, expiry_dt="20260320", strike=StrikeRef.ATM, points=5)
@@ -2032,7 +2031,7 @@ def test_option_chain_bql():
     print("Testing option_chain_bql (BQL Filtered Chain)")
     print(f"{'=' * 80}")
 
-    from xbbg.ext.options import option_chain_bql, PutCall
+    from xbbg.ext.options import PutCall, option_chain_bql
 
     underlying = "SPY US Equity"
     result = option_chain_bql(
@@ -2095,7 +2094,7 @@ def test_option_chain_bql_advanced():
     print("Testing option_chain_bql Advanced (Moneyness / Open Interest / Bid)")
     print(f"{'=' * 80}")
 
-    from xbbg.ext.options import option_chain_bql, PutCall
+    from xbbg.ext.options import PutCall, option_chain_bql
 
     underlying = "SPY US Equity"
     result = option_chain_bql(

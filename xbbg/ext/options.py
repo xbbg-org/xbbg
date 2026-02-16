@@ -504,7 +504,6 @@ def option_chain(
     * ``expiry_match`` -> ``CHAIN_EXP_MATCH_OVRD``
 
     Notes:
-
     * ``expiry_dt`` is normalized to ``YYYYMMDD`` when parseable.
     * ``strike`` accepts ``StrikeRef.ATM`` / ``"ATM"`` or a numeric strike.
     * Any explicit ``kwargs`` values take precedence over named parameters.
@@ -640,7 +639,6 @@ def option_chain_bql(
         open_int(), px_last(), px_bid(), px_ask()
 
     Notes:
-
     * Date values use ISO format (``YYYY-MM-DD``) in BQL predicates.
     * ``extra_filters`` allows arbitrary BQL syntax for advanced use cases
       (e.g. ``"theta().value>=-0.5"``).

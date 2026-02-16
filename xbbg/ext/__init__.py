@@ -41,6 +41,14 @@ Functions:
 
 from __future__ import annotations
 
+from xbbg.ext.bonds import (
+    bond_cashflows,
+    bond_curve,
+    bond_info,
+    bond_key_rates,
+    bond_risk,
+    bond_spreads,
+)
 from xbbg.ext.cdx import (
     active_cdx,
     cdx_basis,
@@ -58,15 +66,6 @@ from xbbg.ext.dividends import dividend
 from xbbg.ext.earnings import earning
 from xbbg.ext.futures import active_futures, fut_ticker
 from xbbg.ext.holdings import corporate_bonds, etf_holdings, preferreds
-from xbbg.ext.turnover import turnover
-from xbbg.ext.bonds import (
-    bond_cashflows,
-    bond_curve,
-    bond_info,
-    bond_key_rates,
-    bond_risk,
-    bond_spreads,
-)
 from xbbg.ext.options import (
     ChainPeriodicity,
     ExerciseType,
@@ -80,6 +79,7 @@ from xbbg.ext.options import (
     option_pricing,
     option_screen,
 )
+from xbbg.ext.turnover import turnover
 from xbbg.ext.yas import YieldType, yas
 
 __all__ = [
