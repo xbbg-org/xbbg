@@ -108,23 +108,23 @@ __all__ = [
     "cdx_default_prob",
     "cdx_cashflows",
     "cdx_curve",
-    # Fixed income — YAS
+    # Fixed income -- YAS
     "yas",
     "YieldType",
-    # Fixed income — Bond analytics
+    # Fixed income -- Bond analytics
     "bond_info",
     "bond_risk",
     "bond_spreads",
     "bond_cashflows",
     "bond_key_rates",
     "bond_curve",
-    # Options — Enums
+    # Options -- Enums
     "PutCall",
     "ChainPeriodicity",
     "StrikeRef",
     "ExerciseType",
     "ExpiryMatch",
-    # Options — Analytics
+    # Options -- Analytics
     "option_info",
     "option_greeks",
     "option_pricing",

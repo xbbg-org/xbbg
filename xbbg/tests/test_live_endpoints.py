@@ -1450,7 +1450,7 @@ def test_cdx_ticker_version_format():
 
     print(f"\nIG resolved: {ig}")
     print(f"HY resolved: {hy}")
-    print("✓ CDX ticker version format correct")
+    print("[PASS] CDX ticker version format correct")
 
 
 @pytest.mark.live_endpoint
@@ -1467,7 +1467,7 @@ def test_cdx_info_endpoint():
 
     print(f"\ncdx_info result ({nw_result.shape[0]} fields):")
     print(result)
-    print("✓ cdx_info endpoint working correctly")
+    print("[PASS] cdx_info endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1482,7 +1482,7 @@ def test_cdx_defaults_endpoint():
 
     print(f"\ncdx_defaults result for {hy}:")
     print(result)
-    print("✓ cdx_defaults endpoint working correctly")
+    print("[PASS] cdx_defaults endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1500,7 +1500,7 @@ def test_cdx_pricing_endpoint():
 
     print(f"\ncdx_pricing result ({nw_result.shape[0]} fields):")
     print(result)
-    print("✓ cdx_pricing endpoint working correctly")
+    print("[PASS] cdx_pricing endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1514,7 +1514,7 @@ def test_cdx_risk_endpoint():
 
     print(f"\ncdx_risk result ({nw_result.shape[0]} fields):")
     print(result)
-    print("✓ cdx_risk endpoint working correctly")
+    print("[PASS] cdx_risk endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1528,7 +1528,7 @@ def test_cdx_basis_endpoint():
 
     print(f"\ncdx_basis result ({nw_result.shape[0]} fields):")
     print(result)
-    print("✓ cdx_basis endpoint working correctly")
+    print("[PASS] cdx_basis endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1542,7 +1542,7 @@ def test_cdx_default_prob_endpoint():
 
     print(f"\ncdx_default_prob result ({nw_result.shape[0]} rows):")
     print(result)
-    print("✓ cdx_default_prob endpoint working correctly")
+    print("[PASS] cdx_default_prob endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1558,7 +1558,7 @@ def test_cdx_curve_endpoint():
 
     print(f"\ncdx_curve result ({nw_result.shape[0]} rows, {len(tickers)} tenors):")
     print(result)
-    print("✓ cdx_curve endpoint working correctly")
+    print("[PASS] cdx_curve endpoint working correctly")
 
 
 @pytest.mark.skip(
@@ -1755,7 +1755,7 @@ def test_bond_info():
     print(printable)
 
     assert not is_empty(result), "bond_info should return data"
-    print("✓ bond_info working correctly")
+    print("[PASS] bond_info working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1779,7 +1779,7 @@ def test_bond_risk():
     print(printable)
 
     assert not is_empty(result), "bond_risk should return data"
-    print("✓ bond_risk working correctly")
+    print("[PASS] bond_risk working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1803,7 +1803,7 @@ def test_bond_spreads():
     print(printable)
 
     assert not is_empty(result), "bond_spreads should return data"
-    print("✓ bond_spreads working correctly")
+    print("[PASS] bond_spreads working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1827,7 +1827,7 @@ def test_bond_cashflows():
     print(printable)
 
     assert not is_empty(result), "bond_cashflows should return data"
-    print("✓ bond_cashflows working correctly")
+    print("[PASS] bond_cashflows working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1851,7 +1851,7 @@ def test_bond_key_rates():
     print(printable)
 
     assert not is_empty(result), "bond_key_rates should return data"
-    print("✓ bond_key_rates working correctly")
+    print("[PASS] bond_key_rates working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1875,7 +1875,7 @@ def test_bond_curve():
     print(printable)
 
     assert not is_empty(result), "bond_curve should return data"
-    print("✓ bond_curve working correctly")
+    print("[PASS] bond_curve working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1915,7 +1915,7 @@ def test_yas_enhanced():
 
     assert not is_empty(result1), "yas basic should return data"
     assert not is_empty(result2), "yas multi-field should return data"
-    print("✓ enhanced yas() working correctly")
+    print("[PASS] enhanced yas() working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1941,7 +1941,7 @@ def test_option_info():
     print(printable)
 
     assert not is_empty(result), "option_info should return data"
-    print("✓ option_info working correctly")
+    print("[PASS] option_info working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1967,7 +1967,7 @@ def test_option_greeks():
     print(printable)
 
     assert not is_empty(result), "option_greeks should return data"
-    print("✓ option_greeks working correctly")
+    print("[PASS] option_greeks working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1993,7 +1993,7 @@ def test_option_pricing():
     print(printable)
 
     assert not is_empty(result), "option_pricing should return data"
-    print("✓ option_pricing working correctly")
+    print("[PASS] option_pricing working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -2021,7 +2021,7 @@ def test_option_chain():
     print(printable)
 
     assert not is_empty(result), "option_chain should return data"
-    print("✓ option_chain working correctly")
+    print("[PASS] option_chain working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -2058,7 +2058,7 @@ def test_option_chain_bql():
     print(printable)
 
     assert not is_empty(result), "option_chain_bql should return data"
-    print("✓ option_chain_bql working correctly")
+    print("[PASS] option_chain_bql working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -2084,7 +2084,7 @@ def test_option_screen():
     print(printable)
 
     assert not is_empty(result), "option_screen should return data"
-    print("✓ option_screen working correctly")
+    print("[PASS] option_screen working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -2121,7 +2121,7 @@ def test_option_chain_bql_advanced():
     print(printable)
 
     assert not is_empty(result), "option_chain_bql advanced should return data"
-    print("✓ option_chain_bql advanced working correctly")
+    print("[PASS] option_chain_bql advanced working correctly")
 
 
 if __name__ == "__main__":
