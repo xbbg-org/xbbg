@@ -32,6 +32,7 @@ dynamic = ["version"]
 dependencies = [
   "narwhals>=2.14.0",
   "pyarrow>=22.0.0",
+  "tomli>=2.0.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -77,7 +78,7 @@ include = ["xbbg*"]
 exclude = ["xbbg.tests*"]
 
 [tool.setuptools.package-data]
-xbbg = ["markets/*.yml"]
+xbbg = ["markets/*.yml", "markets/config/*.toml"]
 
 
 [tool.uv]
