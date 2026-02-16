@@ -232,10 +232,13 @@ jobs:
         
         mv /tmp/CHANGELOG.md.new CHANGELOG.md
         
-        # Add version link at the bottom if not already present
+        # Extract previous tag from the current [Unreleased] compare link
+        # e.g., [Unreleased]: .../compare/v0.12.0b3...HEAD → v0.12.0b3
+        PREV_TAG_LINK=$(grep '^\[Unreleased\]:' CHANGELOG.md | sed 's|.*compare/||;s|\.\.\.HEAD||')
+        
+        # Add version link using compare format (Keep a Changelog 1.1.0)
         if ! grep -q "^\[${VERSION}\]:" CHANGELOG.md; then
-          # Find the [Unreleased] link line and add the new version link after it
-          sed -i "/^\[Unreleased\]:/a [${VERSION}]: https://github.com/${{ github.repository }}/releases/tag/${TAG}" CHANGELOG.md
+          sed -i "/^\[Unreleased\]:/a [${VERSION}]: https://github.com/${{ github.repository }}/compare/${PREV_TAG_LINK}...${TAG}" CHANGELOG.md
         fi
         
         # Update the [Unreleased] comparison link to compare from new version

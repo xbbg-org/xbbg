@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`tomli` conditional dependency added**: `tomli>=2.0.1` for Python < 3.11 (TOML parsing for `sessions.toml`)
 - **Net reduction of ~1,346 lines** across 27 files from codegen and table-driven optimizations
 
+### Removed
+
+- **`update_readme_on_release.yml` workflow**: Inline changelog in README replaced by link to `CHANGELOG.md`
+- **`MONTH_CODE_MAP` and futures candidate generation helpers**: Superseded by `FUT_CHAIN_LAST_TRADE_DATES` chain resolution (#223)
+
 ### Fixed
 
 - **`bdib` timezone regression**: The Arrow pipeline rewrite (v0.11.0) dropped the UTC-to-exchange local timezone conversion that existed in v0.7.x. Intraday bar timestamps were returned in UTC instead of exchange local time. Restored the conversion in `IntradayTransformer.transform()` with configurable `tz` parameter
@@ -46,22 +51,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Non-ASCII characters in source**: Replaced checkmarks, em dashes, and arrows with ASCII equivalents across the codebase for CI compliance
 - **Ruff lint errors**: Fixed import sorting (I001) and docstring formatting issues
 
-### Removed
-
-- **`update_readme_on_release.yml` workflow**: Inline changelog in README replaced by link to `CHANGELOG.md`
-- **`MONTH_CODE_MAP` and futures candidate generation helpers**: Superseded by `FUT_CHAIN_LAST_TRADE_DATES` chain resolution (#223)
-
 ## [0.12.0b2] - 2026-02-13
-
-### Fixed
-
-- **`ArrowInvalid` on multi-field BDP calls**: Bloomberg returns different Python types for different fields (e.g., `float` for `FUT_CONT_SIZE`, `str` for `FUT_VAL_PT`). When both land in the same Arrow value column, `pa.array()` raised `ArrowInvalid`. New `_events_to_table()` builds Arrow tables directly from event dicts with automatic type coercion fallback — stringify on `ArrowInvalid`/`ArrowTypeError`, preserving nulls (#219)
-- **Post-transform `pa.Table.from_pandas()` mixed-type failure**: Protected the secondary Arrow conversion (after narwhals transform) with the same stringify fallback for object columns (#219)
 
 ### Added
 
 - **16 unit tests for `_events_to_table()`** (`test_events_to_table.py`): covers basic contract, mixed-type columns (float+str, int+str, float+date, kitchen sink), null handling, non-uniform dict keys, and pipeline integration (#219)
 - **2 live regression tests for mixed-type BDP** (`test_live_endpoints.py`): `test_bdp_mixed_type_fields` and `test_bdp_mixed_type_multiple_tickers` exercise the exact bug scenario with `ES1 Index` / `NQ1 Index` using `FUT_CONT_SIZE` + `FUT_VAL_PT` (#219)
+
+### Fixed
+
+- **`ArrowInvalid` on multi-field BDP calls**: Bloomberg returns different Python types for different fields (e.g., `float` for `FUT_CONT_SIZE`, `str` for `FUT_VAL_PT`). When both land in the same Arrow value column, `pa.array()` raised `ArrowInvalid`. New `_events_to_table()` builds Arrow tables directly from event dicts with automatic type coercion fallback — stringify on `ArrowInvalid`/`ArrowTypeError`, preserving nulls (#219)
+- **Post-transform `pa.Table.from_pandas()` mixed-type failure**: Protected the secondary Arrow conversion (after narwhals transform) with the same stringify fallback for object columns (#219)
 
 ## [0.12.0b1] - 2026-02-12
 
@@ -74,14 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **IO module cleanup**: Removed dead code and fixed type annotations across `xbbg/io/` (#218)
 - **Test coverage expanded**: 571 tests total (up from 543), covering all connection-related GitHub issues and all previously untested paths in `conn.py`
 
-### Fixed
-
-- **Mock session leak in tests**: Added autouse `_reset_session_manager` fixture in `conftest.py` to prevent `MagicMock` sessions from persisting in the `SessionManager` singleton across test modules, which caused infinite `__getattr__` → `_get_child_mock` recursion and stack overflow on Windows (#213)
-- **`interval` parameter leaked as Bloomberg override**: `interval` was not in `PRSV_COLS`, causing it to be sent to Bloomberg as an override field instead of being used locally for bar sizing (#145)
-- **README Data Storage section**: Clarified that only `bdib()` (intraday bars) has caching via `BarCacheAdapter`; all other functions always make live Bloomberg API calls (#215)
-- **README async example for Jupyter**: Fixed `asyncio.run()` example that fails in notebooks (which already have a running event loop) by adding `await`-based and `nest_asyncio` alternatives (#216)
-- **Unused imports in tests**: Removed `import os` from `test_intraday_api.py` and `import pytest` from `test_logging.py` that caused Ruff F401 lint failures in CI
-
 ### Removed
 
 - **`xbbg/io/db.py`**: SQLite database helper module (zero imports across codebase) (#218)
@@ -92,6 +84,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`xbbg/tests/__init__.py`**, **`examples/feeds/__init__.py`**: Empty `__init__` files (#218)
 - **`xbbg/tests/xone.db`**: Stale SQLite test database (#218)
 - **`regression_testing/`**: Standalone v0.7.7 regression test directory (6 files); all 9 test scenarios already covered by `xbbg/tests/test_live_endpoints.py` with stricter assertions (#218)
+
+### Fixed
+
+- **Mock session leak in tests**: Added autouse `_reset_session_manager` fixture in `conftest.py` to prevent `MagicMock` sessions from persisting in the `SessionManager` singleton across test modules, which caused infinite `__getattr__` → `_get_child_mock` recursion and stack overflow on Windows (#213)
+- **`interval` parameter leaked as Bloomberg override**: `interval` was not in `PRSV_COLS`, causing it to be sent to Bloomberg as an override field instead of being used locally for bar sizing (#145)
+- **README Data Storage section**: Clarified that only `bdib()` (intraday bars) has caching via `BarCacheAdapter`; all other functions always make live Bloomberg API calls (#215)
+- **README async example for Jupyter**: Fixed `asyncio.run()` example that fails in notebooks (which already have a running event loop) by adding `await`-based and `nest_asyncio` alternatives (#216)
+- **Unused imports in tests**: Removed `import os` from `test_intraday_api.py` and `import pytest` from `test_logging.py` that caused Ruff F401 lint failures in CI
 
 ### Security
 
@@ -230,18 +230,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Helper functions now work correctly with LONG format output
 - Logging format compliance fixes (G004, G201)
 
-## [0.10.3] - 2025-12-29
+## [0.11.0b5] - 2026-01-25
+
+### Changed
+
+- Internal class renames with backward compatible aliases (`YamlMarketInfoProvider` -> `MetadataProvider`)
+
+### Removed
+
+- **Trials mechanism**: Eliminated retry-blocking system that caused silent failures after 2 failed attempts
+- **pandas-market-calendars dependency**: Exchange info now sourced exclusively from Bloomberg API with local caching
 
 ### Fixed
 
-- Extended BDS test date range to 120 days for quarterly dividends
-- Helper functions now work correctly with LONG format output
+- **Import without blpapi installed**: Fixed `AttributeError` when importing xbbg without blpapi (#200)
+- **Japan/non-US timezone fix for bdib**: Bloomberg returns trading hours in EST; now correctly converted to exchange's local timezone (#198)
+- **get_tz() improvement**: Direct timezone strings recognized without Bloomberg API call
+
+## [0.11.0b4] - 2026-01-24
+
+### Added
+
+- **yas()**: Bloomberg YAS (Yield Analysis) wrapper for fixed income analytics with `YieldType` enum (#202)
+- **Treasury and SOFR futures support**: TY, ZN, ZB, ZF, ZT, UB, TN, SFR, SR1, SR3, ED futures (#198)
+
+### Fixed
+
+- **stream() field values**: Subscribed field values now always included in output dict (#199)
+- **Futures symbol parsing**: Fixed `market_info()` to correctly parse symbols like `TYH6` -> `TY` (#198)
+
+## [0.11.0b3] - 2026-01-21
+
+### Added
+
+- **bqr()**: Bloomberg Quote Request function emulating Excel `=BQR()` for dealer quote data with broker attribution (#22)
+
+### Fixed
+
+- **Slow Bloomberg fields**: TIMEOUT events handled correctly; requests wait for response with `slow_warn_seconds` warning (#193)
+- **Pipeline data types**: Preserve original data types instead of converting to strings (#191)
+
+## [0.11.0b2] - 2026-01-20
+
+### Added
+
+- **preferreds()**: BQL convenience function to find preferred stocks for an equity ticker
+- **corporate_bonds()**: BQL convenience function to find active corporate bonds for a ticker
+
+### Fixed
+
+- **bdtick timezone fix**: Pass exchange timezone to fix blank results for non-UTC exchanges (#185)
+- **bdtick timeout**: Increased from 10s to 2 minutes for tick data requests
+
+## [0.11.0b1] - 2026-01-10
+
+### Added
+
+- **Arrow-first pipeline**: Complete rewrite of data processing using PyArrow internally
+- **Multi-backend support**: New `Backend` enum supporting narwhals, pandas, polars, polars_lazy, pyarrow, duckdb
+- **Output format control**: New `Format` enum with long, semi_long, wide options
+- **bta()**: Bloomberg Technical Analysis function for 50+ technical indicators
+- `set_backend()`, `get_backend()`, `set_format()`, `get_format()` configuration functions
+- `get_sdk_info()` as replacement for deprecated `getBlpapiVersion()`
+- v1.0-compatible exception classes (`BlpError`, `BlpSessionError`, etc.)
+- `EngineConfig` dataclass and `configure()` function
+- `Service` and `Operation` enums for Bloomberg service URIs
+
+### Changed
+
+- All API functions now support `backend` and `format` parameters
+- Internal pipeline uses PyArrow tables with narwhals transformations
+- Removed pytz dependency (using stdlib `datetime.timezone`)
+
+### Deprecated
+
+- `connect()` / `disconnect()` - engine auto-initializes in v1.0
+- `getBlpapiVersion()` - use `get_sdk_info()`
+- `lookupSecurity()` - will become `blkp()` in v1.0
+- `fieldInfo()` / `fieldSearch()` - will merge into `bfld()` in v1.0
+
+## [0.10.3] - 2025-12-29
 
 ### Changed
 
 - Re-enabled futures and CDX resolver tests
 - Updated live endpoint tests for LONG format output
 - Code style improvements using contextlib.suppress instead of try-except-pass
+
+### Fixed
+
+- Extended BDS test date range to 120 days for quarterly dividends
+- Helper functions now work correctly with LONG format output
 
 ## [0.10.2] - 2025-12-29
 
@@ -252,15 +331,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.1] - 2025-12-29
 
-### Fixed
-
-- Persist blp.connect() session for subsequent API calls (#165)
-
 ### Changed
 
 - Trigger release workflows via release event instead of workflow_dispatch
 - Removed Gitter badge (replaced by Discord)
 - Added Discord community link and badge
+
+### Fixed
+
+- Persist blp.connect() session for subsequent API calls (#165)
 
 ## [0.10.0] - 2025-12-25
 
@@ -277,15 +356,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.1] - 2025-12-11
 
-### Fixed
-
-- Fix BQL returning only one row for multi-value results (#152)
-
 ### Changed
 
 - Add blank lines around latest-release markers in index.rst
 - Remove redundant release triggers from workflows
 - Trigger release workflows explicitly from semantic_version
+
+### Fixed
+
+- Fix BQL returning only one row for multi-value results (#152)
 
 ## [0.9.0] - 2025-12-02
 
@@ -336,6 +415,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove 1-minute offset for bare session names in bdtick (#139)
 - Resolve Sphinx build errors and RST formatting issues
 
+## [0.8.0rc1] - 2025-11-17
+
+### Changed
+
+- Comprehensive codebase cleanup and restructuring (#144)
+
+## [0.8.0b2] - 2025-11-14
+
+### Fixed
+
+- Fix BQL syntax documentation and error handling (#141, #142)
+
+## [0.8.0b1] - 2025-11-14
+
+### Added
+
+- **BQL support**: Bloomberg Query Language with QueryRequest and result parsing
+- **Sub-minute intervals for bdib**: 10-second bars via `intervalHasSeconds=True` flag
+- **bsrch()**: Bloomberg SRCH queries for fixed income, commodities, and weather data (#137)
+- **Fixed income securities support**: ISIN/CUSIP/SEDOL identifiers for bdib (#136)
+- **Server host parameter**: Connect to remote Bloomberg servers via `server` parameter (#138)
+- **Interval parameter for subscribe()/live()**: Configurable update intervals for real-time feeds
+- Support for GY (Xetra), IM (Borsa Italiana), and SE (SIX) exchanges (#140)
+
+### Changed
+
+- Standardized Google-style docstrings across codebase
+- Migrate to uv for development with PEP 621 pyproject.toml
+- Improved logging with blpapi integration and performance optimizations (#135)
+- Enhanced BEQS timeout handling with configurable `timeout` and `max_timeouts` parameters
+
+### Fixed
+
+- Remove 1-minute offset for bare session names in bdtick (#139)
+
 ## [0.7.11] - 2025-11-12
 
 ### Added
@@ -371,15 +485,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.9] - 2025-04-15
 
+### Changed
+
+- Add exchanges support
+- CI/CD configuration updates
+
 ### Fixed
 
 - Corrected typo (thanks to @ShiyuanSchonfeld)
 - Pin pandas version due to pd.to_datetime behaviour change in format_raw
 - Fix TLS Options typo when creating a new connection
 
+## [0.7.8a2] - 2022-12-03
+
+### Added
+
+- Additional exchanges support (#83)
+
 ### Changed
 
-- Add exchanges support
+- CI/CD configuration improvements
+
+## [0.7.7] - 2022-06-19
+
+### Added
+
+- Custom config usage in bdib (contributed by @hceh)
+- Options in `blp.live` (contributed by @swiecki)
+
+### Changed
+
+- Pandas options handling in doctest
 - CI/CD configuration updates
 
 ## [0.7.2] - 2020-12-16
@@ -450,14 +586,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 [Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...HEAD
-[0.12.0b3]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b3
-[0.12.0b2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b2
-[0.12.0b1]: https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0b1
-[0.11.4]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.4
+[0.12.0b3]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b2...v0.12.0b3
+[0.12.0b2]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b1...v0.12.0b2
+[0.12.0b1]: https://github.com/alpha-xone/xbbg/compare/v0.11.4...v0.12.0b1
+[0.11.4]: https://github.com/alpha-xone/xbbg/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/alpha-xone/xbbg/compare/v0.11.2...v0.11.3
-[0.11.2]: https://github.com/alpha-xone/xbbg/releases/tag/v0.11.2
+[0.11.2]: https://github.com/alpha-xone/xbbg/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/alpha-xone/xbbg/compare/v0.11.0...v0.11.1
-[0.11.0]: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0
+[0.11.0]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b5...v0.11.0
+[0.11.0b5]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b4...v0.11.0b5
+[0.11.0b4]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b3...v0.11.0b4
+[0.11.0b3]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b2...v0.11.0b3
+[0.11.0b2]: https://github.com/alpha-xone/xbbg/compare/v0.11.0b1...v0.11.0b2
+[0.11.0b1]: https://github.com/alpha-xone/xbbg/compare/v0.10.3...v0.11.0b1
 [0.10.3]: https://github.com/alpha-xone/xbbg/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/alpha-xone/xbbg/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/alpha-xone/xbbg/compare/v0.10.0...v0.10.1
@@ -466,14 +607,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.9.0]: https://github.com/alpha-xone/xbbg/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/alpha-xone/xbbg/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/alpha-xone/xbbg/compare/v0.8.0...v0.8.1
-[0.8.0]: https://github.com/alpha-xone/xbbg/compare/v0.7.11...v0.8.0
+[0.8.0]: https://github.com/alpha-xone/xbbg/compare/v0.8.0rc1...v0.8.0
+[0.8.0rc1]: https://github.com/alpha-xone/xbbg/compare/v0.8.0b2...v0.8.0rc1
+[0.8.0b2]: https://github.com/alpha-xone/xbbg/compare/v0.8.0b1...v0.8.0b2
+[0.8.0b1]: https://github.com/alpha-xone/xbbg/compare/v0.7.11...v0.8.0b1
 [0.7.11]: https://github.com/alpha-xone/xbbg/compare/v0.7.10...v0.7.11
 [0.7.10]: https://github.com/alpha-xone/xbbg/compare/v0.7.9...v0.7.10
-[0.7.9]: https://github.com/alpha-xone/xbbg/compare/v0.7.2...v0.7.9
+[0.7.9]: https://github.com/alpha-xone/xbbg/compare/v0.7.8a2...v0.7.9
+[0.7.8a2]: https://github.com/alpha-xone/xbbg/compare/v0.7.7...v0.7.8a2
+[0.7.7]: https://github.com/alpha-xone/xbbg/compare/v0.7.2...v0.7.7
 [0.7.2]: https://github.com/alpha-xone/xbbg/compare/v0.7.0...v0.7.2
 [0.7.0]: https://github.com/alpha-xone/xbbg/compare/v0.6.7...v0.7.0
 [0.6.7]: https://github.com/alpha-xone/xbbg/compare/v0.6.0...v0.6.7
-[0.6.0]: https://github.com/alpha-xone/xbbg/compare/v0.5.1...v0.6.0
-[0.5.0]: https://github.com/alpha-xone/xbbg/releases/tag/v0.5.1
-[0.1.22]: https://github.com/alpha-xone/xbbg/releases/tag/v0.1.22
+[0.6.0]: https://github.com/alpha-xone/xbbg/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/alpha-xone/xbbg/compare/v0.1.22...v0.5.0
+[0.1.22]: https://github.com/alpha-xone/xbbg/compare/v0.1.17...v0.1.22
 [0.1.17]: https://github.com/alpha-xone/xbbg/releases/tag/v0.1.17
