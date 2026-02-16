@@ -13,6 +13,7 @@ mod subscription_pool;
 mod worker;
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use arrow::array::Array;
@@ -22,6 +23,8 @@ use tokio::sync::mpsc;
 use xbbg_core::BlpError;
 
 use crate::errors::BlpAsyncError;
+use crate::request_builder::RequestBuilder;
+use crate::services::Operation;
 
 pub use request_pool::RequestWorkerPool;
 pub use state::{OutputFormat, SubscriptionState};
@@ -125,6 +128,8 @@ pub struct RequestParams {
     pub operation: String,
     /// Extractor type hint for Arrow conversion
     pub extractor: ExtractorType,
+    /// Whether extractor was explicitly provided by the caller.
+    pub extractor_set: bool,
     /// Multiple securities (for bdp/bdh)
     pub securities: Option<Vec<String>>,
     /// Single security (for intraday)
@@ -135,6 +140,8 @@ pub struct RequestParams {
     pub overrides: Option<Vec<(String, String)>>,
     /// Generic request elements (for BQL expression, bsrch domain, etc.)
     pub elements: Option<Vec<(String, String)>>,
+    /// Raw kwargs to route into elements/overrides using schema-driven logic.
+    pub kwargs: Option<HashMap<String, String>>,
     /// JSON request body for complex nested structures (e.g., tasvc studyRequest)
     pub json_elements: Option<String>,
     /// Start date (YYYYMMDD for bdh)
@@ -161,6 +168,229 @@ pub struct RequestParams {
     pub field_ids: Option<Vec<String>>,
     /// Output format (long, long_typed, long_metadata, wide)
     pub format: Option<String>,
+}
+
+impl RequestParams {
+    /// Apply default values derived from operation semantics.
+    pub fn with_defaults(mut self) -> Self {
+        if !self.extractor_set {
+            let operation = Operation::from_str(&self.operation).unwrap();
+            self.extractor = operation.default_extractor();
+        }
+        self
+    }
+
+    /// Validate request parameters for known Bloomberg operations.
+    pub fn validate(&self) -> Result<(), BlpAsyncError> {
+        if self.service.is_empty() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "service is required".to_string(),
+            });
+        }
+
+        if self.operation.is_empty() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "operation is required".to_string(),
+            });
+        }
+
+        let operation = Operation::from_str(&self.operation).unwrap();
+
+        match operation {
+            Operation::ReferenceData => self.validate_reference_data(),
+            Operation::HistoricalData => self.validate_historical_data(),
+            Operation::IntradayBar => self.validate_intraday_bar(),
+            Operation::IntradayTick => self.validate_intraday_tick(),
+            Operation::FieldInfo | Operation::FieldSearch => {
+                self.validate_field_request(&operation)
+            }
+            // Unknown/custom operations run in power-user mode.
+            Operation::Beqs
+            | Operation::PortfolioData
+            | Operation::InstrumentList
+            | Operation::CurveList
+            | Operation::GovtList
+            | Operation::BqlSendQuery
+            | Operation::ExcelGetGrid
+            | Operation::StudyRequest
+            | Operation::RawRequest
+            | Operation::Custom(_) => Ok(()),
+        }
+    }
+
+    fn validate_reference_data(&self) -> Result<(), BlpAsyncError> {
+        if !self.has_securities() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "securities is required for ReferenceDataRequest".to_string(),
+            });
+        }
+
+        if !self.has_fields() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "fields is required for ReferenceDataRequest".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_historical_data(&self) -> Result<(), BlpAsyncError> {
+        if !self.has_securities() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "securities is required for HistoricalDataRequest".to_string(),
+            });
+        }
+
+        if !self.has_fields() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "fields is required for HistoricalDataRequest".to_string(),
+            });
+        }
+
+        if !self.has_start_date() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "start_date is required for HistoricalDataRequest".to_string(),
+            });
+        }
+
+        if !self.has_end_date() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "end_date is required for HistoricalDataRequest".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_intraday_bar(&self) -> Result<(), BlpAsyncError> {
+        if !self.has_security() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "security is required for IntradayBarRequest".to_string(),
+            });
+        }
+
+        if !self.has_event_type() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "event_type is required for IntradayBarRequest".to_string(),
+            });
+        }
+
+        if self.interval.is_none() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "interval is required for IntradayBarRequest".to_string(),
+            });
+        }
+
+        if !self.has_start_datetime() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "start_datetime is required for IntradayBarRequest".to_string(),
+            });
+        }
+
+        if !self.has_end_datetime() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "end_datetime is required for IntradayBarRequest".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_intraday_tick(&self) -> Result<(), BlpAsyncError> {
+        if !self.has_security() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "security is required for IntradayTickRequest".to_string(),
+            });
+        }
+
+        if !self.has_start_datetime() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "start_datetime is required for IntradayTickRequest".to_string(),
+            });
+        }
+
+        if !self.has_end_datetime() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "end_datetime is required for IntradayTickRequest".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_field_request(&self, operation: &Operation) -> Result<(), BlpAsyncError> {
+        let has_fields = self.has_fields();
+
+        match operation {
+            Operation::FieldInfo => {
+                let has_field_ids = self.field_ids.as_ref().is_some_and(|ids| !ids.is_empty());
+                if !has_fields && !has_field_ids {
+                    return Err(BlpAsyncError::ConfigError {
+                        detail: "fields is required for field metadata requests".to_string(),
+                    });
+                }
+            }
+            Operation::FieldSearch => {
+                let has_search_spec = self.search_spec.as_ref().is_some_and(|s| !s.is_empty());
+                if !has_fields && !has_search_spec {
+                    return Err(BlpAsyncError::ConfigError {
+                        detail: "fields is required for field metadata requests".to_string(),
+                    });
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn has_securities(&self) -> bool {
+        self.securities
+            .as_ref()
+            .is_some_and(|values| !values.is_empty())
+    }
+
+    fn has_security(&self) -> bool {
+        self.security
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    fn has_fields(&self) -> bool {
+        self.fields
+            .as_ref()
+            .is_some_and(|values| !values.is_empty())
+    }
+
+    fn has_start_date(&self) -> bool {
+        self.start_date
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    fn has_end_date(&self) -> bool {
+        self.end_date
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    fn has_start_datetime(&self) -> bool {
+        self.start_datetime
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    fn has_end_datetime(&self) -> bool {
+        self.end_datetime
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    fn has_event_type(&self) -> bool {
+        self.event_type
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
 }
 
 /// Validation mode for request validation.
@@ -311,6 +541,7 @@ impl Engine {
     ///
     /// All request types are handled by the same pool of workers.
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
+        let params = self.prepare_request_params(params)?;
         self.request_pool.request(params).await
     }
 
@@ -319,7 +550,50 @@ impl Engine {
         &self,
         params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
+        let params = self.prepare_request_params(params)?;
         self.request_pool.request_stream(params).await
+    }
+
+    /// Resolve defaults, validate, and schema-route kwargs before dispatch.
+    fn prepare_request_params(
+        &self,
+        params: RequestParams,
+    ) -> Result<RequestParams, BlpAsyncError> {
+        let mut params = params.with_defaults();
+        params.validate()?;
+
+        let kwargs = params.kwargs.take().unwrap_or_default();
+        let routed = RequestBuilder::route_kwargs(
+            &self.schema_cache,
+            &params.service,
+            &params.operation,
+            kwargs,
+            params.overrides.take(),
+        );
+
+        if !routed.elements.is_empty() {
+            params
+                .elements
+                .get_or_insert_with(Vec::new)
+                .extend(routed.elements);
+        }
+
+        params.overrides = if routed.overrides.is_empty() {
+            None
+        } else {
+            Some(routed.overrides)
+        };
+
+        for warning in routed.warnings {
+            xbbg_log::warn!(
+                service = %params.service,
+                operation = %params.operation,
+                warning = %warning,
+                "request parameter routing warning"
+            );
+        }
+
+        Ok(params)
     }
 
     // ─── Subscriptions ───────────────────────────────────────────────────────

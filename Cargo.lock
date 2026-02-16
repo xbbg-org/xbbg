@@ -1578,6 +1578,7 @@ dependencies = [
  "xbbg-async",
  "xbbg-ext",
  "xbbg-log",
+ "xbbg-recipes",
  "xbbg_core",
 ]
 
@@ -2288,6 +2289,8 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "xbbg-log",
  "xbbg_core",
 ]
