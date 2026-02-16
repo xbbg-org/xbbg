@@ -79,6 +79,19 @@ class BlockDataTransformer:
             return name.lower().replace(" ", "_").replace("-", "_")
 
         rename_map = {col: standardize_col_name(col) for col in df.columns}
+
+        # Deduplicate: when different original names map to the same
+        # standardized name (e.g. "ticker" and "Ticker" both -> "ticker"),
+        # suffix later occurrences so narwhals/polars don't reject the rename.
+        seen: dict[str, int] = {}
+        for old_name in list(rename_map):
+            new_name = rename_map[old_name]
+            if new_name in seen:
+                seen[new_name] += 1
+                rename_map[old_name] = f"{new_name}_{seen[new_name]}"
+            else:
+                seen[new_name] = 0
+
         df = df.rename(rename_map)
 
         return nw.to_native(df)

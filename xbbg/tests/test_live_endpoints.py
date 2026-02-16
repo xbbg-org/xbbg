@@ -37,10 +37,30 @@ from datetime import date, datetime, timedelta
 import sys
 import threading
 
+import narwhals as nw
 import pandas as pd
 import pytest
 
 from xbbg import blp  # noqa: E402
+from xbbg.ext.bonds import (
+    bond_cashflows,
+    bond_curve,
+    bond_info,
+    bond_key_rates,
+    bond_risk,
+    bond_spreads,
+)
+from xbbg.ext.cdx import (
+    cdx_basis,
+    cdx_curve,
+    cdx_default_prob,
+    cdx_defaults,
+    cdx_info,
+    cdx_pricing,
+    cdx_risk,
+    cdx_ticker as ext_cdx_ticker,
+)
+from xbbg.io.convert import is_empty
 
 
 # Version checking for regression testing
@@ -94,6 +114,10 @@ TEST_TICKERS = ["AAPL US Equity", "MSFT US Equity"]
 TEST_INDEX = "SPX Index"
 TEST_FIELDS = ["Security_Name", "PX_LAST"]
 TEST_SINGLE_FIELD = "PX_LAST"
+
+# CDX test parameters
+CDX_GEN_IG = "CDX IG CDSI GEN 5Y Corp"
+CDX_GEN_HY = "CDX HY CDSI GEN 5Y Corp"
 
 
 # Date ranges - use recent dates but keep small
@@ -1390,6 +1414,153 @@ def test_active_cdx():
 
 
 @pytest.mark.live_endpoint
+def test_cdx_ticker_version_format():
+    """Test CDX ticker resolution produces correct version token format.
+
+    IG (VERSION=1) should NOT have a V token.
+    HY (VERSION>1) should have a SEPARATE V token (e.g. 'S45 V2' not 'S45V2').
+    """
+    # Use ext_cdx_ticker to test directly without deprecation wrapper
+    ig = ext_cdx_ticker(CDX_GEN_IG, END_DATE.strftime("%Y-%m-%d"))
+    assert ig, "IG ticker resolution should not be empty"
+    tokens = ig.split()
+    # Find the series token
+    series_tok = next((t for t in tokens if t.startswith("S") and t[1:].isdigit()), None)
+    assert series_tok is not None, f"Should have a series token like S45, got: {ig}"
+    series_idx = tokens.index(series_tok)
+    # IG should NOT have a version token right after series
+    if series_idx + 1 < len(tokens):
+        next_tok = tokens[series_idx + 1]
+        assert not (next_tok.startswith("V") and next_tok[1:].isdigit()), (
+            f"IG should not have version token but got '{next_tok}' in: {ig}"
+        )
+
+    hy = ext_cdx_ticker(CDX_GEN_HY, END_DATE.strftime("%Y-%m-%d"))
+    assert hy, "HY ticker resolution should not be empty"
+    tokens = hy.split()
+    series_tok = next((t for t in tokens if t.startswith("S") and t[1:].isdigit()), None)
+    assert series_tok is not None, f"Should have a series token like S45, got: {hy}"
+    series_idx = tokens.index(series_tok)
+    # HY should have a SEPARATE version token (V2, V3, etc.) right after series
+    assert series_idx + 1 < len(tokens), f"HY should have token after series, got: {hy}"
+    version_tok = tokens[series_idx + 1]
+    assert version_tok.startswith("V") and version_tok[1:].isdigit(), (
+        f"HY should have separate version token like V2 after series, got '{version_tok}' in: {hy}"
+    )
+
+    print(f"\nIG resolved: {ig}")
+    print(f"HY resolved: {hy}")
+    print("[PASS] CDX ticker version format correct")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_info_endpoint():
+    """Test cdx_info() returns metadata for a CDX ticker."""
+    result = cdx_info(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_info should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert "ticker" in nw_result.columns, "Should have ticker column"
+    assert "field" in nw_result.columns, "Should have field column"
+    assert "value" in nw_result.columns, "Should have value column"
+    assert nw_result.shape[0] >= 4, f"Should have at least 4 field rows, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_info result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_info endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_defaults_endpoint():
+    """Test cdx_defaults() returns default history for CDX HY (which has defaults)."""
+    # Resolve HY ticker first (it has defaults)
+    hy = ext_cdx_ticker(CDX_GEN_HY, END_DATE.strftime("%Y-%m-%d"))
+    assert hy, "HY ticker resolution should not be empty"
+
+    result = cdx_defaults(hy)
+    assert not is_empty(result), "cdx_defaults for HY should return data (HY has credit events)"
+
+    print(f"\ncdx_defaults result for {hy}:")
+    print(result)
+    print("[PASS] cdx_defaults endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_pricing_endpoint():
+    """Test cdx_pricing() returns pricing analytics."""
+    result = cdx_pricing(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_pricing should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 3, f"Should have at least 3 pricing fields, got {nw_result.shape[0]}"
+
+    # Verify px_last is present
+    fields = nw_result.select("field").to_series().to_list()
+    assert "px_last" in fields, f"Should have px_last field, got: {fields}"
+
+    print(f"\ncdx_pricing result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_pricing endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_risk_endpoint():
+    """Test cdx_risk() returns risk analytics (DV01, duration, etc.)."""
+    result = cdx_risk(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_risk should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 2, f"Should have at least 2 risk fields, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_risk result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_risk endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_basis_endpoint():
+    """Test cdx_basis() returns intrinsic value and basis analytics."""
+    result = cdx_basis(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_basis should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 2, f"Should have at least 2 basis fields, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_basis result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_basis endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_default_prob_endpoint():
+    """Test cdx_default_prob() returns default probability term structure."""
+    result = cdx_default_prob(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_default_prob should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 5, f"Should have at least 5 term structure rows, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_default_prob result ({nw_result.shape[0]} rows):")
+    print(result)
+    print("[PASS] cdx_default_prob endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_curve_endpoint():
+    """Test cdx_curve() returns multi-tenor term structure."""
+    result = cdx_curve(CDX_GEN_IG, tenors=["3Y", "5Y", "10Y"])
+    assert not is_empty(result), "cdx_curve should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    # Should have results for multiple tenors
+    tickers = nw_result.select("ticker").to_series().unique().to_list()
+    assert len(tickers) >= 2, f"Should have at least 2 tenor tickers, got: {tickers}"
+
+    print(f"\ncdx_curve result ({nw_result.shape[0]} rows, {len(tickers)} tenors):")
+    print(result)
+    print("[PASS] cdx_curve endpoint working correctly")
+
+
 @pytest.mark.skip(
     reason="Requires economic data release for NAPMPMI Index -- hangs waiting for RT_BN_SURVEY_MEDIAN update"
 )
@@ -1561,6 +1732,396 @@ def test_bdp_mixed_type_multiple_tickers():
     print(f"Columns: {list(result.columns)}")
     print(f"Dtypes:\n{result.dtypes}")
     print("[PASS] BDP mixed-type fields with multiple tickers working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_info():
+    """Test bond_info returns static reference metadata for a Treasury."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_info (Bond Reference Metadata)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_info(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_info({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_info should return data"
+    print("[PASS] bond_info working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_risk():
+    """Test bond_risk returns duration, convexity, DV01 analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_risk (Duration / Convexity / DV01)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_risk(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_risk({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_risk should return data"
+    print("[PASS] bond_risk working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_spreads():
+    """Test bond_spreads returns OAS, Z-spread, I-spread, ASW analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_spreads (OAS / Z-Spread / I-Spread / ASW)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_spreads(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_spreads({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_spreads should return data"
+    print("[PASS] bond_spreads working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_cashflows():
+    """Test bond_cashflows returns cash flow schedule via bds DES_CASH_FLOW."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_cashflows (DES_CASH_FLOW via bds)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_cashflows(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_cashflows({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_cashflows should return data"
+    print("[PASS] bond_cashflows working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_key_rates():
+    """Test bond_key_rates returns key rate durations and risks."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_key_rates (Key Rate Durations / Risks)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_key_rates(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_key_rates({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_key_rates should return data"
+    print("[PASS] bond_key_rates working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_curve():
+    """Test bond_curve returns multi-bond relative value analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_curve (Multi-Bond Relative Value)")
+    print(f"{'=' * 80}")
+
+    tickers = ["/isin/US91282CNC19", "T 4 02/28/31 Govt"]
+    result = bond_curve(tickers)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_curve({tickers!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_curve should return data"
+    print("[PASS] bond_curve working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_yas_enhanced():
+    """Test enhanced yas() with new YieldType.YTW and workout_dt override."""
+    print(f"\n{'=' * 80}")
+    print("Testing yas() Enhanced (YTW + workout_dt)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext import yas
+
+    ticker = "/isin/US91282CNC19"
+
+    # Basic yield
+    result1 = yas(ticker)
+    printable1 = result1
+    to_native = getattr(result1, "to_native", None)
+    if callable(to_native):
+        printable1 = to_native()
+    to_pandas = getattr(printable1, "to_pandas", None)
+    if callable(to_pandas):
+        printable1 = to_pandas()
+    print(f"\nyas({ticker!r}):")
+    print(printable1)
+
+    # Multi-field
+    result2 = yas(ticker, ["YAS_BOND_YLD", "YAS_MOD_DUR", "YAS_ZSPREAD"])
+    printable2 = result2
+    to_native = getattr(result2, "to_native", None)
+    if callable(to_native):
+        printable2 = to_native()
+    to_pandas = getattr(printable2, "to_pandas", None)
+    if callable(to_pandas):
+        printable2 = to_pandas()
+    print(f"\nyas({ticker!r}, ['YAS_BOND_YLD', 'YAS_MOD_DUR', 'YAS_ZSPREAD']):")
+    print(printable2)
+
+    assert not is_empty(result1), "yas basic should return data"
+    assert not is_empty(result2), "yas multi-field should return data"
+    print("[PASS] enhanced yas() working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_info():
+    """Test option_info returns metadata (strike, expiry, put/call, underlying)."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_info (Strike / Expiry / Put-Call / Underlying)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_info
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_info(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_info({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_info should return data"
+    print("[PASS] option_info working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_greeks():
+    """Test option_greeks returns Greeks and implied vol."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_greeks (Greeks / Implied Vol)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_greeks
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_greeks(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_greeks({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_greeks should return data"
+    print("[PASS] option_greeks working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_pricing():
+    """Test option_pricing returns pricing, intrinsic/time value, volume/OI."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_pricing (Pricing / Intrinsic / Time Value / Volume / OI)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_pricing
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_pricing(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_pricing({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_pricing should return data"
+    print("[PASS] option_pricing working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain():
+    """Test option_chain returns filtered chain."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain (Filtered Chain)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import PutCall, StrikeRef, option_chain
+
+    underlying = "SPY US Equity"
+    result = option_chain(underlying, put_call=PutCall.CALL, expiry_dt="20260320", strike=StrikeRef.ATM, points=5)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain({underlying!r}, put_call=PutCall.CALL, expiry_dt='20260320', strike=StrikeRef.ATM, points=5):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain should return data"
+    print("[PASS] option_chain working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain_bql():
+    """Test option_chain_bql returns filtered chain via BQL."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain_bql (BQL Filtered Chain)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import PutCall, option_chain_bql
+
+    underlying = "SPY US Equity"
+    result = option_chain_bql(
+        underlying,
+        put_call=PutCall.CALL,
+        expiry_start="2026-03-20",
+        expiry_end="2026-03-20",
+        strike_low=675,
+        strike_high=690,
+        delta_low=0.3,
+        delta_high=0.7,
+    )
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain_bql({underlying!r}, put_call=PutCall.CALL, expiry_start='2026-03-20', expiry_end='2026-03-20', strike_low=675, strike_high=690, delta_low=0.3, delta_high=0.7):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain_bql should return data"
+    print("[PASS] option_chain_bql working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_screen():
+    """Test option_screen returns multi-option comparison."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_screen (Multi-Option Comparison)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_screen
+
+    tickers = ["SPY US 03/20/26 C680 Equity", "SPY US 03/20/26 P680 Equity"]
+    result = option_screen(tickers)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_screen({tickers!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_screen should return data"
+    print("[PASS] option_screen working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain_bql_advanced():
+    """Test option_chain_bql with advanced filters (moneyness, open interest, bid)."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain_bql Advanced (Moneyness / Open Interest / Bid)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import PutCall, option_chain_bql
+
+    underlying = "SPY US Equity"
+    result = option_chain_bql(
+        underlying,
+        put_call=PutCall.CALL,
+        expiry_start="2026-03-01",
+        expiry_end="2026-06-30",
+        moneyness_low=98,
+        moneyness_high=102,
+        min_open_int=500,
+        min_bid=1.0,
+    )
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain_bql({underlying!r}, put_call=PutCall.CALL, expiry_start='2026-03-01', expiry_end='2026-06-30', moneyness_low=98, moneyness_high=102, min_open_int=500, min_bid=1.0):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain_bql advanced should return data"
+    print("[PASS] option_chain_bql advanced working correctly")
 
 
 if __name__ == "__main__":

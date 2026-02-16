@@ -46,9 +46,17 @@ jobs:
       run: |
         # Find non-ASCII characters in Python source files (allows CJK for ticker tests)
         # Excludes __pycache__ directories
-        if grep -rPn '[^\x00-\x7F\p{Han}\p{Katakana}\p{Hiragana}]' --include='*.py' xbbg/ --exclude-dir=__pycache__; then
-          echo "ERROR: Non-ASCII characters found in Python source files (see above)"
+        # Show ALL violations at once so every issue can be fixed in a single pass
+        HITS=$(grep -rPn '[^\x00-\x7F\p{Han}\p{Katakana}\p{Hiragana}]' --include='*.py' xbbg/ --exclude-dir=__pycache__ || true)
+        if [ -n "$HITS" ]; then
+          echo "=========================================="
+          echo " Non-ASCII characters found in source"
+          echo "=========================================="
+          echo "$HITS"
+          echo ""
+          echo "Total violations: $(echo "$HITS" | wc -l)"
           echo "Allowed: ASCII + CJK/Japanese characters (for ticker tests)"
+          echo "=========================================="
           exit 1
         fi
     - name: Test with pytest
