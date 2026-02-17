@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bdtick` format parameter was completely non-functional**: All five output formats (LONG, SEMI_LONG, WIDE, LONG_TYPED, LONG_WITH_METADATA) were broken. Root cause #1: `pipeline.add_ticker()` wrapped columns in a `pd.MultiIndex`, so `to_output()` could not find the flat `"ticker"` and `"time"` columns and skipped all format transformation. Fix: replaced MultiIndex column wrapping with a flat `ticker` column. Root cause #2 (prior session): `.rename_axis(index=None)` killed the index name, causing `.reset_index()` to produce `"index"` instead of `"time"`. Root cause #3: mixed-type tick data (float `value` + string `typ`/`cond`/`exch`) crashed `narwhals.unpivot` with `ArrowTypeError`. Fix: try/except with string-cast fallback in the LONG branch
+
+### Added
+
+- **LONG_TYPED format for `to_output()`**: New `_to_long_typed()` function produces typed value columns (`value_f64`, `value_i64`, `value_str`, `value_bool`, `value_date`, `value_ts`) with exactly one populated per row based on the Arrow type of each field
+- **LONG_WITH_METADATA format for `to_output()`**: New `_to_long_with_metadata()` function produces `(ticker, date, field, value, dtype)` where `value` is stringified and `dtype` contains the Arrow type name (e.g. `double`, `int64`, `string`)
+- **12 unit tests** in `test_convert.py`: `TestToOutputLongMixedTypes` (4), `TestToOutputLongTyped` (4), `TestToOutputLongWithMetadata` (4)
+- **5 live Bloomberg tests** for bdtick format variants in `test_live_endpoints.py`: `test_bdtick_format_wide`, `test_bdtick_format_semi_long`, `test_bdtick_format_long`, `test_bdtick_format_long_typed`, `test_bdtick_format_long_with_metadata`
+
 ## [0.12.0b3] - 2026-02-16
 
 ### Added

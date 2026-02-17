@@ -555,6 +555,112 @@ def _pivot_wide_non_pandas(
     return _convert_backend(nw.from_native(pivoted), backend)
 
 
+def _classify_arrow_dtype(arrow_type: pa.DataType) -> str:
+    """Map an Arrow type to a LONG_TYPED value-column suffix.
+
+    Returns one of: 'f64', 'i64', 'str', 'bool', 'date', 'ts'.
+    """
+    if pa.types.is_floating(arrow_type) or pa.types.is_decimal(arrow_type):
+        return "f64"
+    if pa.types.is_integer(arrow_type):
+        return "i64"
+    if pa.types.is_boolean(arrow_type):
+        return "bool"
+    if pa.types.is_date(arrow_type):
+        return "date"
+    if pa.types.is_timestamp(arrow_type):
+        return "ts"
+    # string, binary, large_string, etc.
+    return "str"
+
+
+# Canonical column order for LONG_TYPED value columns
+_TYPED_VALUE_COLS = ["value_f64", "value_i64", "value_str", "value_bool", "value_date", "value_ts"]
+
+
+def _to_long_typed(
+    nw_frame: nw.DataFrame,
+    ticker_col: str,
+    date_col: str,
+    field_cols: list[str],
+    backend: Backend,
+) -> Any:
+    """Unpivot to LONG_TYPED format with one value column per Arrow type.
+
+    Output columns: ticker, date, field, value_f64, value_i64, value_str,
+    value_bool, value_date, value_ts.  Each row populates exactly one
+    typed value column; the rest are null.
+    """
+    import pandas as pd
+
+    arrow_table = nw_frame.to_arrow()
+    schema = arrow_table.schema
+
+    # Build per-field classification
+    field_type_map: dict[str, str] = {}
+    for col_name in field_cols:
+        idx = schema.get_field_index(col_name)
+        arrow_type = schema.field(idx).type if idx >= 0 else pa.string()
+        field_type_map[col_name] = _classify_arrow_dtype(arrow_type)
+
+    pdf = nw_frame.to_pandas()
+    rows: list[dict[str, Any]] = []
+    index_cols = [ticker_col, date_col]
+
+    for _, row in pdf.iterrows():
+        base = {c: row[c] for c in index_cols}
+        for field_name in field_cols:
+            entry = {**base, "field": field_name}
+            # Initialize all value columns to None
+            for vc in _TYPED_VALUE_COLS:
+                entry[vc] = None
+            # Populate the matching value column
+            suffix = field_type_map[field_name]
+            entry[f"value_{suffix}"] = row[field_name]
+            rows.append(entry)
+
+    result = pd.DataFrame(rows, columns=index_cols + ["field"] + _TYPED_VALUE_COLS)
+    return _convert_backend(nw.from_native(result), backend)
+
+
+def _to_long_with_metadata(
+    nw_frame: nw.DataFrame,
+    ticker_col: str,
+    date_col: str,
+    field_cols: list[str],
+    backend: Backend,
+) -> Any:
+    """Unpivot to LONG_WITH_METADATA format: string value + dtype column.
+
+    Output columns: ticker, date, field, value, dtype.
+    The *dtype* column contains the Arrow type name of the original column
+    (e.g. ``float64``, ``int64``, ``large_string``).
+    """
+    arrow_table = nw_frame.to_arrow()
+    schema = arrow_table.schema
+
+    # Build per-field Arrow type name map
+    field_dtype_map: dict[str, str] = {}
+    for col_name in field_cols:
+        idx = schema.get_field_index(col_name)
+        arrow_type = schema.field(idx).type if idx >= 0 else pa.string()
+        field_dtype_map[col_name] = str(arrow_type)
+
+    # Unpivot to long (cast all to string so the merge always works)
+    cast_exprs = [nw.col(c).cast(nw.String).alias(c) for c in field_cols]
+    long_frame = nw_frame.with_columns(cast_exprs).unpivot(
+        on=field_cols,
+        index=[ticker_col, date_col],
+        variable_name="field",
+        value_name="value",
+    )
+
+    # Add dtype column by mapping field name → Arrow type string
+    pdf = long_frame.to_pandas()
+    pdf["dtype"] = pdf["field"].map(field_dtype_map)
+    return _convert_backend(nw.from_native(pdf), backend)
+
+
 def to_output(
     arrow_table: pa.Table,
     backend: Backend,
@@ -656,13 +762,27 @@ def to_output(
         field_cols = [c for c in columns if c not in (ticker_col, date_col)]
 
     if format == Format.LONG:
-        # Unpivot field columns to long format
-        nw_frame = nw_frame.unpivot(
-            on=field_cols,
-            index=[ticker_col, date_col],
-            variable_name="field",
-            value_name="value",
-        )
+        # Unpivot field columns to long format.
+        # When all fields share a compatible type (e.g. all numeric), the unpivot
+        # preserves the native dtype.  When types are mixed (e.g. tick data with
+        # float 'value' + string 'typ'/'cond'/'exch'), Arrow cannot merge them,
+        # so we fall back to casting every field column to string first.
+        try:
+            nw_frame = nw_frame.unpivot(
+                on=field_cols,
+                index=[ticker_col, date_col],
+                variable_name="field",
+                value_name="value",
+            )
+        except Exception:
+            cast_exprs = [nw.col(c).cast(nw.String).alias(c) for c in field_cols]
+            nw_frame = nw_frame.with_columns(cast_exprs)
+            nw_frame = nw_frame.unpivot(
+                on=field_cols,
+                index=[ticker_col, date_col],
+                variable_name="field",
+                value_name="value",
+            )
         return _convert_backend(nw_frame, backend)
 
     if format == Format.SEMI_LONG:
@@ -675,5 +795,11 @@ def to_output(
             return _apply_multiindex(nw_frame, ticker_col, date_col, field_cols)
         # For non-pandas backends, pivot to wide format (requires pandas for pivot)
         return _pivot_wide_non_pandas(nw_frame, ticker_col, date_col, field_cols, backend)
+
+    if format == Format.LONG_TYPED:
+        return _to_long_typed(nw_frame, ticker_col, date_col, field_cols, backend)
+
+    if format == Format.LONG_WITH_METADATA:
+        return _to_long_with_metadata(nw_frame, ticker_col, date_col, field_cols, backend)
 
     raise ValueError(f"Unsupported format: {format}")

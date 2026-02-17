@@ -19,7 +19,6 @@ from xbbg.core.infra import conn
 from xbbg.core.process import DEFAULT_TZ
 from xbbg.core.utils import utils
 from xbbg.io.convert import is_empty
-from xbbg.utils import pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -366,10 +365,8 @@ async def abdtick(
 
     result = (
         res.set_index("time")
-        .rename_axis(index=None)
         .tz_localize("UTC")
         .tz_convert(exch.tz)
-        .pipe(pipeline.add_ticker, ticker=ticker)
         .rename(
             columns={
                 "size": "volume",
@@ -380,6 +377,9 @@ async def abdtick(
             }
         )
     )
+    # Add ticker as a flat column (NOT MultiIndex) so to_output can find
+    # the "ticker" and "time" columns and apply format transformations.
+    result["ticker"] = ticker
 
     import pyarrow as pa
 

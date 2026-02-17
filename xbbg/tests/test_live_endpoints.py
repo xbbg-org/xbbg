@@ -764,7 +764,7 @@ def test_bdtick_tick_data():
     """Test BDTICK (tick data) endpoint with live Bloomberg data.
 
     Uses minimal data by:
-    - Limiting to first 30 minutes of trading (9:30-10:00)
+    - Limiting to first 5 minutes of trading (9:30-9:35)
     - Only requesting TRADE events (not BID/ASK/etc)
     - Using timeout to avoid long waits
     """
@@ -772,11 +772,11 @@ def test_bdtick_tick_data():
     print("Testing BDTICK (Tick Data)")
     print(f"{'=' * 80}")
 
-    # Limit to first 30 minutes of trading day and only TRADE events
+    # Limit to first 5 minutes of trading day and only TRADE events
     result = blp.bdtick(
         ticker=TEST_TICKER,
         dt=TEST_DATE.strftime("%Y-%m-%d"),
-        time_range=("09:30", "10:00"),  # Just first 30 minutes
+        time_range=("09:30", "09:35"),  # Just first 5 minutes
         types=["TRADE"],  # Only trade events, not BID/ASK/etc
         timeout=5000,  # 5 second timeout
     )
@@ -797,7 +797,7 @@ def test_bdtick_tick_data():
     for col in expected_cols:
         assert any(col in c for c in result_cols_lower), f"Expected column '{col}' should be present"
 
-    print("\nBDTICK Result (09:30-10:00, TRADE only):")
+    print("\nBDTICK Result (09:30-09:35, TRADE only):")
     print(result)
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
@@ -855,6 +855,212 @@ def test_bdtick_session_parameter():
     print(f"Column levels: {result.columns.nlevels}")
     print(f"Sample rows:\n{result.head()}")
     print("[PASS] BDTICK session parameter working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_wide():
+    """Test BDTICK with explicit WIDE format (default behaviour).
+
+    WIDE format for pandas produces MultiIndex columns (ticker, field)
+    with datetime index.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=WIDE")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.WIDE,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "WIDE should return a DataFrame"
+    assert not result.empty, "WIDE result should not be empty"
+    assert isinstance(result.columns, pd.MultiIndex), "WIDE format should have MultiIndex columns (ticker, field)"
+    assert len(result.columns.levels) == 2, "MultiIndex should have 2 levels"
+    assert TEST_TICKER in result.columns.get_level_values(0), f"Ticker {TEST_TICKER} should be in column level 0"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Column levels: {result.columns.nlevels}")
+    print(f"Fields: {list(result.columns.get_level_values(1).unique())}")
+    print(f"Sample:\n{result.head(3)}")
+    print("[PASS] BDTICK format=WIDE working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_semi_long():
+    """Test BDTICK with SEMI_LONG format.
+
+    SEMI_LONG keeps each field as its own column with ticker + time columns.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=SEMI_LONG")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.SEMI_LONG,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "SEMI_LONG should return a DataFrame"
+    assert not result.empty, "SEMI_LONG result should not be empty"
+    # SEMI_LONG has flat columns: ticker, time, value, volume, typ, cond, exch, ...
+    assert not isinstance(result.columns, pd.MultiIndex), "SEMI_LONG should NOT have MultiIndex columns"
+    assert "ticker" in result.columns, "SEMI_LONG should have 'ticker' column"
+    assert "time" in result.columns, "SEMI_LONG should have 'time' column"
+    # At least one data field should exist
+    data_cols = [c for c in result.columns if c not in ("ticker", "time")]
+    assert len(data_cols) >= 1, "SEMI_LONG should have at least one data column"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Sample:\n{result.head(3)}")
+    print("[PASS] BDTICK format=SEMI_LONG working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_long():
+    """Test BDTICK with LONG format.
+
+    LONG unpivots all field columns into (ticker, time, field, value) rows.
+    Tick data has mixed types (float value + string typ/cond/exch), so the
+    fallback string-cast path is exercised.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=LONG")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.LONG,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "LONG should return a DataFrame"
+    assert not result.empty, "LONG result should not be empty"
+    assert not isinstance(result.columns, pd.MultiIndex), "LONG should NOT have MultiIndex columns"
+    expected_cols = {"ticker", "time", "field", "value"}
+    assert expected_cols.issubset(set(result.columns)), (
+        f"LONG should have columns {expected_cols}, got {set(result.columns)}"
+    )
+    # Should have multiple field values per tick (value, volume, typ, etc.)
+    unique_fields = result["field"].unique()
+    assert len(unique_fields) >= 2, f"LONG should have multiple fields, got {list(unique_fields)}"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Unique fields: {list(unique_fields)}")
+    print(f"Sample:\n{result.head(6)}")
+    print("[PASS] BDTICK format=LONG working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_long_typed():
+    """Test BDTICK with LONG_TYPED format.
+
+    LONG_TYPED produces typed value columns: value_f64, value_i64, value_str,
+    value_bool, value_date, value_ts.  Each row populates exactly one typed
+    column; the rest are null/NaN.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=LONG_TYPED")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.LONG_TYPED,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "LONG_TYPED should return a DataFrame"
+    assert not result.empty, "LONG_TYPED result should not be empty"
+    # Must have the standard index columns plus typed value columns
+    assert "ticker" in result.columns, "LONG_TYPED should have 'ticker' column"
+    assert "time" in result.columns, "LONG_TYPED should have 'time' column"
+    assert "field" in result.columns, "LONG_TYPED should have 'field' column"
+    typed_cols = ["value_f64", "value_i64", "value_str", "value_bool", "value_date", "value_ts"]
+    for col in typed_cols:
+        assert col in result.columns, f"LONG_TYPED should have '{col}' column"
+
+    # Each row should populate at most one typed value column
+    # (check a sample - at least some rows should have exactly 1 non-null typed value)
+    typed_data = result[typed_cols]
+    non_null_counts = typed_data.notna().sum(axis=1)
+    assert (non_null_counts == 1).any(), "At least some rows should have exactly one typed value populated"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Unique fields: {list(result['field'].unique())}")
+    print(f"Sample:\n{result.head(6)}")
+    print("[PASS] BDTICK format=LONG_TYPED working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_long_with_metadata():
+    """Test BDTICK with LONG_WITH_METADATA format.
+
+    LONG_WITH_METADATA produces: ticker, time, field, value (string), dtype.
+    The dtype column contains the Arrow type name of the original column
+    (e.g. 'double', 'int64', 'large_string').
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=LONG_WITH_METADATA")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.LONG_WITH_METADATA,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "LONG_WITH_METADATA should return a DataFrame"
+    assert not result.empty, "LONG_WITH_METADATA result should not be empty"
+    expected_cols = {"ticker", "time", "field", "value", "dtype"}
+    assert expected_cols.issubset(set(result.columns)), (
+        f"LONG_WITH_METADATA should have columns {expected_cols}, got {set(result.columns)}"
+    )
+    # value should be all strings
+    assert result["value"].dtype == object or str(result["value"].dtype) == "string", (
+        "LONG_WITH_METADATA 'value' column should be string type"
+    )
+    # dtype column should have non-null entries
+    assert result["dtype"].notna().all(), "dtype column should have no nulls"
+    # dtype values should be Arrow type names
+    actual_dtypes = set(result["dtype"].unique())
+    assert len(actual_dtypes) >= 1, "dtype column should have at least one type"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Unique fields: {list(result['field'].unique())}")
+    print(f"Unique dtypes: {list(actual_dtypes)}")
+    print(f"Sample:\n{result.head(6)}")
+    print("[PASS] BDTICK format=LONG_WITH_METADATA working correctly")
 
 
 @pytest.mark.live_endpoint
