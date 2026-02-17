@@ -655,7 +655,7 @@ def _to_long_with_metadata(
         value_name="value",
     )
 
-    # Add dtype column by mapping field name → Arrow type string
+    # Add dtype column by mapping field name -> Arrow type string
     pdf = long_frame.to_pandas()
     pdf["dtype"] = pdf["field"].map(field_dtype_map)
     return _convert_backend(nw.from_native(pdf), backend)
