@@ -881,15 +881,31 @@ def test_bdtick_format_wide():
 
     assert isinstance(result, pd.DataFrame), "WIDE should return a DataFrame"
     assert not result.empty, "WIDE result should not be empty"
+    # Structure: MultiIndex columns (ticker, field), DatetimeIndex as index
     assert isinstance(result.columns, pd.MultiIndex), "WIDE format should have MultiIndex columns (ticker, field)"
-    assert len(result.columns.levels) == 2, "MultiIndex should have 2 levels"
-    assert TEST_TICKER in result.columns.get_level_values(0), f"Ticker {TEST_TICKER} should be in column level 0"
+    assert result.columns.nlevels == 2, "MultiIndex should have exactly 2 levels"
+    assert result.columns.names == ["ticker", "field"], (
+        f"MultiIndex names should be ['ticker', 'field'], got {result.columns.names}"
+    )
+    # Only our ticker should appear
+    tickers = list(result.columns.get_level_values(0).unique())
+    assert tickers == [TEST_TICKER], f"Only {TEST_TICKER} should be in column level 0, got {tickers}"
+    # Tick data must have these fields
+    fields = set(result.columns.get_level_values(1).unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(fields), f"Expected at least fields {expected_fields}, got {fields}"
+    # Index should be DatetimeIndex
+    assert pd.api.types.is_datetime64_any_dtype(result.index), (
+        f"WIDE index should be datetime, got {result.index.dtype}"
+    )
+    # Store row count for cross-format consistency
+    wide_rows = len(result)
 
     print(f"\nShape: {result.shape}")
     print(f"Column levels: {result.columns.nlevels}")
-    print(f"Fields: {list(result.columns.get_level_values(1).unique())}")
+    print(f"Fields: {sorted(fields)}")
     print(f"Sample:\n{result.head(3)}")
-    print("[PASS] BDTICK format=WIDE working correctly")
+    print(f"[PASS] BDTICK format=WIDE working correctly ({wide_rows} rows)")
 
 
 @pytest.mark.live_endpoint
@@ -915,13 +931,32 @@ def test_bdtick_format_semi_long():
 
     assert isinstance(result, pd.DataFrame), "SEMI_LONG should return a DataFrame"
     assert not result.empty, "SEMI_LONG result should not be empty"
-    # SEMI_LONG has flat columns: ticker, time, value, volume, typ, cond, exch, ...
+    # Must be flat columns, not MultiIndex
     assert not isinstance(result.columns, pd.MultiIndex), "SEMI_LONG should NOT have MultiIndex columns"
+    # Must have ticker + time + the 5 tick data fields
     assert "ticker" in result.columns, "SEMI_LONG should have 'ticker' column"
     assert "time" in result.columns, "SEMI_LONG should have 'time' column"
-    # At least one data field should exist
-    data_cols = [c for c in result.columns if c not in ("ticker", "time")]
-    assert len(data_cols) >= 1, "SEMI_LONG should have at least one data column"
+    expected_data_fields = {"typ", "value", "volume", "cond", "exch"}
+    actual_data_cols = set(result.columns) - {"ticker", "time"}
+    assert expected_data_fields.issubset(actual_data_cols), (
+        f"Expected at least data fields {expected_data_fields}, got {actual_data_cols}"
+    )
+    # Ticker column should only contain our test ticker
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # Time column should be datetime
+    assert pd.api.types.is_datetime64_any_dtype(result["time"]), (
+        f"time column should be datetime, got {result['time'].dtype}"
+    )
+    # All typ values should be "TRADE" (we filtered to TRADE only)
+    assert (result["typ"] == "TRADE").all(), "All typ values should be TRADE"
+    # value column should be numeric (trade prices)
+    assert pd.api.types.is_numeric_dtype(result["value"]), (
+        f"value column should be numeric, got {result['value'].dtype}"
+    )
+    # volume column should be numeric (trade sizes)
+    assert pd.api.types.is_numeric_dtype(result["volume"]), (
+        f"volume column should be numeric, got {result['volume'].dtype}"
+    )
 
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
@@ -943,6 +978,16 @@ def test_bdtick_format_long():
     print("Testing BDTICK format=LONG")
     print(f"{'=' * 80}")
 
+    # Also fetch SEMI_LONG to verify cross-format row count consistency
+    semi_long = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.SEMI_LONG,
+        timeout=5000,
+    )
+
     result = blp.bdtick(
         ticker=TEST_TICKER,
         dt=TEST_DATE.strftime("%Y-%m-%d"),
@@ -955,17 +1000,37 @@ def test_bdtick_format_long():
     assert isinstance(result, pd.DataFrame), "LONG should return a DataFrame"
     assert not result.empty, "LONG result should not be empty"
     assert not isinstance(result.columns, pd.MultiIndex), "LONG should NOT have MultiIndex columns"
-    expected_cols = {"ticker", "time", "field", "value"}
-    assert expected_cols.issubset(set(result.columns)), (
-        f"LONG should have columns {expected_cols}, got {set(result.columns)}"
+    # Exact column set
+    assert list(result.columns) == ["ticker", "time", "field", "value"], (
+        f"LONG columns should be exactly ['ticker', 'time', 'field', 'value'], got {list(result.columns)}"
     )
-    # Should have multiple field values per tick (value, volume, typ, etc.)
-    unique_fields = result["field"].unique()
-    assert len(unique_fields) >= 2, f"LONG should have multiple fields, got {list(unique_fields)}"
+    # Tick data should have all 5 fields
+    unique_fields = set(result["field"].unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(unique_fields), (
+        f"LONG should have at least fields {expected_fields}, got {unique_fields}"
+    )
+    num_fields = len(unique_fields)
+    # Cross-format consistency: LONG rows == SEMI_LONG rows * num_fields
+    expected_long_rows = len(semi_long) * num_fields
+    assert len(result) == expected_long_rows, (
+        f"LONG rows ({len(result)}) should equal SEMI_LONG rows ({len(semi_long)}) * "
+        f"{num_fields} fields = {expected_long_rows}"
+    )
+    # Ticker should be constant
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # value column should be string (mixed-type fallback casts all to string)
+    assert result["value"].dtype == object, (
+        f"LONG value column should be object (string) due to mixed types, got {result['value'].dtype}"
+    )
+    # Every field should have the same number of rows (one per tick)
+    field_counts = result["field"].value_counts()
+    assert field_counts.nunique() == 1, f"All fields should have equal row counts, got {field_counts.to_dict()}"
 
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
-    print(f"Unique fields: {list(unique_fields)}")
+    print(f"Unique fields: {sorted(unique_fields)}")
+    print(f"Cross-format check: {len(semi_long)} semi_long rows * {num_fields} fields = {len(result)} long rows")
     print(f"Sample:\n{result.head(6)}")
     print("[PASS] BDTICK format=LONG working correctly")
 
@@ -995,23 +1060,39 @@ def test_bdtick_format_long_typed():
 
     assert isinstance(result, pd.DataFrame), "LONG_TYPED should return a DataFrame"
     assert not result.empty, "LONG_TYPED result should not be empty"
-    # Must have the standard index columns plus typed value columns
-    assert "ticker" in result.columns, "LONG_TYPED should have 'ticker' column"
-    assert "time" in result.columns, "LONG_TYPED should have 'time' column"
-    assert "field" in result.columns, "LONG_TYPED should have 'field' column"
+    # Exact column set and order
     typed_cols = ["value_f64", "value_i64", "value_str", "value_bool", "value_date", "value_ts"]
-    for col in typed_cols:
-        assert col in result.columns, f"LONG_TYPED should have '{col}' column"
-
-    # Each row should populate at most one typed value column
-    # (check a sample - at least some rows should have exactly 1 non-null typed value)
+    expected_columns = ["ticker", "time", "field"] + typed_cols
+    assert list(result.columns) == expected_columns, (
+        f"LONG_TYPED columns should be exactly {expected_columns}, got {list(result.columns)}"
+    )
+    # Tick data should have all 5 fields
+    unique_fields = set(result["field"].unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(unique_fields), f"Expected at least fields {expected_fields}, got {unique_fields}"
+    # EVERY row must have exactly one non-null typed value (not just "some")
     typed_data = result[typed_cols]
     non_null_counts = typed_data.notna().sum(axis=1)
-    assert (non_null_counts == 1).any(), "At least some rows should have exactly one typed value populated"
+    assert (non_null_counts == 1).all(), (
+        f"Every row should have exactly 1 typed value, but found rows with "
+        f"{non_null_counts[non_null_counts != 1].value_counts().to_dict()} non-null counts"
+    )
+    # Verify type routing: float fields -> value_f64, int -> value_i64, string -> value_str
+    value_rows = result[result["field"] == "value"]
+    assert value_rows["value_f64"].notna().all(), "trade 'value' (price) should route to value_f64"
+    volume_rows = result[result["field"] == "volume"]
+    assert volume_rows["value_i64"].notna().all(), "trade 'volume' should route to value_i64"
+    typ_rows = result[result["field"] == "typ"]
+    assert typ_rows["value_str"].notna().all(), "trade 'typ' should route to value_str"
+    # Ticker should be constant
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # All fields should have equal row counts
+    field_counts = result["field"].value_counts()
+    assert field_counts.nunique() == 1, f"All fields should have equal row counts, got {field_counts.to_dict()}"
 
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
-    print(f"Unique fields: {list(result['field'].unique())}")
+    print(f"Unique fields: {sorted(unique_fields)}")
     print(f"Sample:\n{result.head(6)}")
     print("[PASS] BDTICK format=LONG_TYPED working correctly")
 
@@ -1022,7 +1103,7 @@ def test_bdtick_format_long_with_metadata():
 
     LONG_WITH_METADATA produces: ticker, time, field, value (string), dtype.
     The dtype column contains the Arrow type name of the original column
-    (e.g. 'double', 'int64', 'large_string').
+    (e.g. 'double', 'int64', 'string').
     """
     from xbbg.backend import Format
 
@@ -1041,24 +1122,47 @@ def test_bdtick_format_long_with_metadata():
 
     assert isinstance(result, pd.DataFrame), "LONG_WITH_METADATA should return a DataFrame"
     assert not result.empty, "LONG_WITH_METADATA result should not be empty"
-    expected_cols = {"ticker", "time", "field", "value", "dtype"}
-    assert expected_cols.issubset(set(result.columns)), (
-        f"LONG_WITH_METADATA should have columns {expected_cols}, got {set(result.columns)}"
+    # Exact column set and order
+    assert list(result.columns) == ["ticker", "time", "field", "value", "dtype"], (
+        f"LONG_WITH_METADATA columns should be exactly "
+        f"['ticker', 'time', 'field', 'value', 'dtype'], got {list(result.columns)}"
     )
-    # value should be all strings
-    assert result["value"].dtype == object or str(result["value"].dtype) == "string", (
-        "LONG_WITH_METADATA 'value' column should be string type"
-    )
-    # dtype column should have non-null entries
-    assert result["dtype"].notna().all(), "dtype column should have no nulls"
-    # dtype values should be Arrow type names
+    # Tick data should have all 5 fields
+    unique_fields = set(result["field"].unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(unique_fields), f"Expected at least fields {expected_fields}, got {unique_fields}"
+    # value column must be string (all values are stringified)
+    assert result["value"].dtype == object, f"value column should be object (string), got {result['value'].dtype}"
+    # No nulls in any column
+    for col in result.columns:
+        assert result[col].notna().all(), f"Column '{col}' should have no nulls"
+    # dtype column should contain specific Arrow type names
     actual_dtypes = set(result["dtype"].unique())
-    assert len(actual_dtypes) >= 1, "dtype column should have at least one type"
+    # Tick data has double (value), int64 (volume), and string (typ/cond/exch)
+    assert "double" in actual_dtypes, f"dtype should include 'double' for price, got {actual_dtypes}"
+    assert "int64" in actual_dtypes, f"dtype should include 'int64' for volume, got {actual_dtypes}"
+    assert "string" in actual_dtypes or "large_string" in actual_dtypes, (
+        f"dtype should include 'string' or 'large_string' for text fields, got {actual_dtypes}"
+    )
+    # Verify field-to-dtype mapping is consistent (each field maps to one dtype)
+    for field_name in unique_fields:
+        field_dtypes = result[result["field"] == field_name]["dtype"].unique()
+        assert len(field_dtypes) == 1, f"Field '{field_name}' should map to exactly one dtype, got {list(field_dtypes)}"
+    # Verify specific field dtype mappings
+    value_dtype = result[result["field"] == "value"]["dtype"].iloc[0]
+    assert value_dtype == "double", f"'value' field dtype should be 'double', got {value_dtype}"
+    volume_dtype = result[result["field"] == "volume"]["dtype"].iloc[0]
+    assert volume_dtype == "int64", f"'volume' field dtype should be 'int64', got {volume_dtype}"
+    # Ticker should be constant
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # All fields should have equal row counts
+    field_counts = result["field"].value_counts()
+    assert field_counts.nunique() == 1, f"All fields should have equal row counts, got {field_counts.to_dict()}"
 
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
-    print(f"Unique fields: {list(result['field'].unique())}")
-    print(f"Unique dtypes: {list(actual_dtypes)}")
+    print(f"Unique fields: {sorted(unique_fields)}")
+    print(f"Unique dtypes: {sorted(actual_dtypes)}")
     print(f"Sample:\n{result.head(6)}")
     print("[PASS] BDTICK format=LONG_WITH_METADATA working correctly")
 
