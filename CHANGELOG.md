@@ -7,16 +7,57 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
-### Fixed
-
-- **`bdtick` format parameter was completely non-functional**: All five output formats (LONG, SEMI_LONG, WIDE, LONG_TYPED, LONG_WITH_METADATA) were broken. Root cause #1: `pipeline.add_ticker()` wrapped columns in a `pd.MultiIndex`, so `to_output()` could not find the flat `"ticker"` and `"time"` columns and skipped all format transformation. Fix: replaced MultiIndex column wrapping with a flat `ticker` column. Root cause #2 (prior session): `.rename_axis(index=None)` killed the index name, causing `.reset_index()` to produce `"index"` instead of `"time"`. Root cause #3: mixed-type tick data (float `value` + string `typ`/`cond`/`exch`) crashed `narwhals.unpivot` with `ArrowTypeError`. Fix: try/except with string-cast fallback in the LONG branch
-
 ### Added
 
-- **LONG_TYPED format for `to_output()`**: New `_to_long_typed()` function produces typed value columns (`value_f64`, `value_i64`, `value_str`, `value_bool`, `value_date`, `value_ts`) with exactly one populated per row based on the Arrow type of each field
-- **LONG_WITH_METADATA format for `to_output()`**: New `_to_long_with_metadata()` function produces `(ticker, date, field, value, dtype)` where `value` is stringified and `dtype` contains the Arrow type name (e.g. `double`, `int64`, `string`)
-- **12 unit tests** in `test_convert.py`: `TestToOutputLongMixedTypes` (4), `TestToOutputLongTyped` (4), `TestToOutputLongWithMetadata` (4)
-- **5 live Bloomberg tests** for bdtick format variants in `test_live_endpoints.py`: `test_bdtick_format_wide`, `test_bdtick_format_semi_long`, `test_bdtick_format_long`, `test_bdtick_format_long_typed`, `test_bdtick_format_long_with_metadata`
+- **Async-first architecture**: All Bloomberg API functions (`bdp`, `bds`, `bdh`, `bdib`, `bdtick`, `bql`, `beqs`, `bsrch`, `bqr`, `bta`) now have async counterparts (`abdp`, `abds`, `abdh`, etc.) as the source of truth; sync wrappers delegate via `_run_sync()` (#218)
+- **Bond analytics module** (`xbbg.ext.bonds`): 6 new functions for fixed income analytics -- `bond_info` (reference metadata and ratings), `bond_risk` (duration, convexity, DV01), `bond_spreads` (OAS, Z-spread, I-spread, ASW), `bond_cashflows` (cash flow schedule), `bond_key_rates` (key rate durations and risks), `bond_curve` (multi-bond relative value comparison)
+- **Options analytics module** (`xbbg.ext.options`): 6 new functions and 5 enums for equity option analytics -- `option_info` (contract metadata), `option_greeks` (Greeks and implied volatility), `option_pricing` (value decomposition and activity), `option_chain` (chain via `CHAIN_TICKERS` with overrides), `option_chain_bql` (chain via BQL with rich filtering), `option_screen` (multi-option comparison). Enums: `PutCall`, `ChainPeriodicity`, `StrikeRef`, `ExerciseType`, `ExpiryMatch`
+- **CDX analytics** (`xbbg.ext.cdx`): 8 new functions for credit default swap index analytics -- `cdx_info`, `cdx_defaults`, `cdx_pricing`, `cdx_risk`, `cdx_basis`, `cdx_default_prob`, `cdx_cashflows`, `cdx_curve`. `cdx_pricing`/`cdx_risk` support `CDS_RR` recovery rate override
+- **`YieldType` expanded**: Added `YTW` (Yield to Worst), `YTP` (Yield to Put), `CFY` (Cash Flow Yield) to `YieldType` enum
+- **`workout_dt` parameter for `yas()`**: Workout date for yield-to-worst/call calculations, maps to `YAS_WORKOUT_DT` Bloomberg override. Accepts `str` (YYYYMMDD) or `datetime`
+- **`tz` parameter for `bdib()`/`abdib()`**: Controls output timezone for intraday bar data. Defaults to `None` (exchange local timezone, matching v0.7.x behavior). Set `tz='UTC'` to keep UTC timestamps, or pass any IANA timezone string (e.g., `'Europe/London'`)
+- **`exchange_tz()` helper**: Returns the IANA timezone string for any Bloomberg ticker (e.g., `blp.exchange_tz('AAPL US Equity')` -> `'America/New_York'`). Exported via `blp.exchange_tz()`
+- **LONG_TYPED output format**: New `_to_long_typed()` function produces typed value columns (`value_f64`, `value_i64`, `value_str`, `value_bool`, `value_date`, `value_ts`) with exactly one populated per row based on the Arrow type of each field
+- **LONG_WITH_METADATA output format**: New `_to_long_with_metadata()` function produces `(ticker, date, field, value, dtype)` where `value` is stringified and `dtype` contains the Arrow type name (e.g. `double`, `int64`, `string`)
+- **CI non-ASCII source check**: New `auto_ci.yml` step rejects non-ASCII characters in Python source files (allows CJK for ticker tests)
+- **Comprehensive test coverage**: 55+ new tests including bond analytics (7), CDX analytics (8), options analytics, timezone conversion (13), `ovrds` dict normalization (7), `_events_to_table()` (16), `bdtick` format variants (5), mixed-type BDP (2), and output format tests (12)
+
+### Changed
+
+- **Unified I/O layer**: All Bloomberg requests now flow through a single `arequest()` async entry point in `conn.py`, replacing scattered session/service management across modules (#218)
+- **Futures resolution uses `FUT_CHAIN_LAST_TRADE_DATES`** (#223): Replaced manual candidate generation (`FUT_GEN_MONTH` + batch `bdp`) with Bloomberg-native `FUT_CHAIN_LAST_TRADE_DATES` via single `bds()` call. ~2x faster (0.25-0.30s vs 0.53-0.72s)
+- **`sync_api` decorator**: Replaces 13 hand-written sync wrappers across API modules (`screening.py`, `historical.py`, `intraday.py`, etc.) with a single `sync_api(async_fn)` call
+- **Table-driven deprecation wrappers**: 23 manual wrapper functions in `blp.py` replaced by dict + loop pattern; 24 `warn_*` functions in `deprecation.py` replaced by `_DEPRECATION_REGISTRY` + `get_warn_func()` lookup
+- **Market session rules extracted to TOML** (`markets/config/sessions.toml`): All MIC and exchange code rules moved from `sessions.py` into data-driven TOML config, reducing `sessions.py` from 364 to 168 lines (54% reduction)
+- **Pipeline factory registry** (`pipeline_factories.py`): Centralized factory dispatch replaces scattered conditionals
+- **CDX ticker format corrected**: Version is now a separate space-delimited token (e.g., `CDX HY CDSI S45 V2 5Y Corp` instead of `S45V2`)
+- **`tomli` conditional dependency added**: `tomli>=2.0.1` for Python < 3.11 (TOML parsing for `sessions.toml`)
+- **Net reduction of ~1,346 lines** across 27 files from codegen and table-driven optimizations
+
+### Removed
+
+- **`xbbg/io/db.py`**: SQLite database helper module (zero imports across codebase) (#218)
+- **`xbbg/io/param.py`**: Legacy parameter/configuration module (zero imports across codebase) (#218)
+- **`xbbg/io/files.py`**: File path utility module (zero imports after replacing 6 usages in `cache.py` and `const.py` with `pathlib.Path`) (#218)
+- **`regression_testing/`**: Standalone v0.7.7 regression test directory; all scenarios covered by `test_live_endpoints.py` (#218)
+- **`MONTH_CODE_MAP` and futures candidate generation helpers**: Superseded by `FUT_CHAIN_LAST_TRADE_DATES` chain resolution (#223)
+- Stale files: `pmc_cache.json`, `xone.db`, empty `__init__` files, `test_param.py` (#218)
+
+### Fixed
+
+- **`bdtick` format parameter was completely non-functional**: All five output formats (LONG, SEMI_LONG, WIDE, LONG_TYPED, LONG_WITH_METADATA) were broken due to MultiIndex column wrapping, killed index name, and mixed-type Arrow conversion errors
+- **`bdib` timezone regression**: The Arrow pipeline rewrite (v0.11.0) dropped the UTC-to-exchange local timezone conversion that existed in v0.7.x. Restored with configurable `tz` parameter
+- **`ArrowInvalid` on multi-field BDP calls**: Bloomberg returns different Python types for different fields. New `_events_to_table()` builds Arrow tables with automatic type coercion fallback (#219)
+- **`create_request` crashed when `ovrds` passed as dict**: Now normalizes dict to list of tuples before iteration ([SO#79880156](https://stackoverflow.com/questions/79880156))
+- **Case-sensitive `backend` and `format` parameters**: Added `_missing_` classmethod to `Backend` and `Format` enums for case-insensitive lookup (#221)
+- **Mock session leak in tests**: Added autouse `_reset_session_manager` fixture to prevent `MagicMock` persistence across test modules (#213)
+- **`interval` parameter leaked as Bloomberg override**: Added to `PRSV_COLS` so it stays local (#145)
+- **`StrEnum` Python 3.10 compatibility**: Added polyfill for Python < 3.11
+- **Non-ASCII characters in source**: Replaced with ASCII equivalents for CI compliance
+
+### Security
+
+- **Bump `cryptography` from 46.0.4 to 46.0.5**: Fixes CVE-2026-26007 (#217)
 
 ## [0.12.0b3] - 2026-02-16
 
