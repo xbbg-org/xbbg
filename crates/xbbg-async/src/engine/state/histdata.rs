@@ -351,6 +351,15 @@ impl HistDataState {
                 self.columns
                     .append("value_ts", Value::TimestampMicros(dt.to_micros()));
             }
+            Some(Value::Time64Micros(t)) => {
+                // Store time-of-day in timestamp column as micros from midnight
+                self.columns.append_null("value_f64");
+                self.columns.append_null("value_i64");
+                self.columns.append_null("value_str");
+                self.columns.append_null("value_bool");
+                self.columns.append_null("value_date");
+                self.columns.append("value_ts", Value::TimestampMicros(*t));
+            }
             Some(Value::Byte(b)) => {
                 self.columns.append_null("value_f64");
                 self.columns.append("value_i64", Value::Int64(*b as i64));
@@ -406,6 +415,17 @@ fn value_to_string(value: &Value) -> String {
             } else {
                 format!("{}us", micros)
             }
+        }
+        Value::Time64Micros(micros) => {
+            let t = micros / 1_000_000;
+            let frac = (micros % 1_000_000).unsigned_abs();
+            format!(
+                "{:02}:{:02}:{:02}.{:06}",
+                t / 3600,
+                (t % 3600) / 60,
+                t % 60,
+                frac
+            )
         }
         Value::Byte(b) => b.to_string(),
     }

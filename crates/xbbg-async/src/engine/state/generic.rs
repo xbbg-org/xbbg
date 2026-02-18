@@ -149,6 +149,12 @@ impl GenericState {
                         Value::Byte(b) => {
                             self.append_row(path, "number", Some(&b.to_string()), Some(b as f64));
                         }
+                        Value::Time64Micros(micros) => {
+                            let t = micros / 1_000_000;
+                            let time_str =
+                                format!("{:02}:{:02}:{:02}", t / 3600, (t % 3600) / 60, t % 60);
+                            self.append_row(path, "time", Some(&time_str), Some(micros as f64));
+                        }
                     }
                 } else {
                     // Could not extract value
