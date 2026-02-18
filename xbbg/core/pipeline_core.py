@@ -320,6 +320,16 @@ class BloombergPipeline(BaseContextAware):
         # who explicitly pass format=Format.WIDE get the flattened-column
         # approximation from _pivot_wide_non_pandas().  (#225)
         if request.format is None and format_ == Format.WIDE and backend != Backend.PANDAS:
+            from xbbg.deprecation import warn_once
+
+            warn_once(
+                "wide_to_semi_long",
+                f"WIDE format requires pandas MultiIndex which {backend.value} does not support. "
+                "Automatically using SEMI_LONG format instead (ticker preserved as column). "
+                "Pass format=Format.WIDE explicitly to force flattened column names, "
+                "or format=Format.SEMI_LONG to silence this warning.",
+                stacklevel=4,
+            )
             format_ = Format.SEMI_LONG
 
         # Warn if using implicit defaults

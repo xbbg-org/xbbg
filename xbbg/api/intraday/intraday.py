@@ -400,6 +400,16 @@ async def abdtick(
     # no equivalent, so when the user hasn't explicitly requested WIDE we
     # fall back to SEMI_LONG which preserves ticker as a column.  (#225)
     if format is None and actual_format == Format.WIDE and actual_backend != BackendEnum.PANDAS:
+        from xbbg.deprecation import warn_once
+
+        warn_once(
+            "wide_to_semi_long",
+            f"WIDE format requires pandas MultiIndex which {actual_backend.value} does not support. "
+            "Automatically using SEMI_LONG format instead (ticker preserved as column). "
+            "Pass format=Format.WIDE explicitly to force flattened column names, "
+            "or format=Format.SEMI_LONG to silence this warning.",
+            stacklevel=3,
+        )
         actual_format = Format.SEMI_LONG
 
     if backend is None or format is None:
