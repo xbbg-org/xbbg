@@ -314,6 +314,14 @@ class BloombergPipeline(BaseContextAware):
         if isinstance(format_, str):
             format_ = Format(format_)
 
+        # WIDE format requires pandas MultiIndex — non-pandas backends have
+        # no equivalent, so when the user hasn't explicitly requested WIDE we
+        # fall back to SEMI_LONG which preserves ticker as a column.  Users
+        # who explicitly pass format=Format.WIDE get the flattened-column
+        # approximation from _pivot_wide_non_pandas().  (#225)
+        if request.format is None and format_ == Format.WIDE and backend != Backend.PANDAS:
+            format_ = Format.SEMI_LONG
+
         # Warn if using implicit defaults
         if request.backend is None or request.format is None:
             warn_defaults_changing()

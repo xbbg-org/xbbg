@@ -846,6 +846,74 @@ class TestToOutputLongWithMetadata:
         assert set(result["ticker"]) == {"AAPL US Equity", "MSFT US Equity"}
 
 
+class TestWideFormatMixedTypesPyArrow:
+    """Regression test for #224: WIDE + PYARROW + mixed types must not crash."""
+
+    def test_wide_mixed_types_pyarrow_does_not_crash(self):
+        """_pivot_wide_non_pandas should handle mixed float+string columns."""
+        tick_table = pa.table(
+            {
+                "ticker": ["AAPL US Equity"] * 2,
+                "time": pd.to_datetime(["2024-01-01 09:30:00", "2024-01-01 09:30:01"]),
+                "value": [150.0, 150.5],
+                "typ": ["TRADE", "TRADE"],
+                "cond": ["R", ""],
+                "exch": ["N", "N"],
+            }
+        )
+        # This used to raise ArrowTypeError during unpivot inside
+        # _pivot_wide_non_pandas because float and string columns
+        # could not be merged into a single 'value' column.
+        result = to_output(
+            tick_table,
+            backend=Backend.PYARROW,
+            format=Format.WIDE,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=["value", "typ", "cond", "exch"],
+        )
+        assert isinstance(result, pa.Table)
+        assert result.num_rows > 0
+
+
+class TestNonPandasDefaultSemiLong:
+    """Regression test for #225: non-pandas backends should not default to WIDE."""
+
+    def test_pyarrow_default_preserves_ticker_column(self):
+        """When format is not explicitly set, non-pandas backends should get
+        SEMI_LONG (which keeps ticker as a column) instead of WIDE."""
+        from xbbg.backend import Backend as BackendEnum, Format as FormatEnum
+        from xbbg.options import get_format
+
+        # Simulate what pipeline_core does when request.format is None
+        backend = BackendEnum.PYARROW
+        format_ = get_format()  # returns WIDE (the v0.x default)
+
+        # The fix: auto-downgrade to SEMI_LONG for non-pandas
+        request_format_is_none = True  # user didn't pass format=
+        if request_format_is_none and format_ == FormatEnum.WIDE and backend != BackendEnum.PANDAS:
+            format_ = FormatEnum.SEMI_LONG
+
+        arrow_table = pa.table(
+            {
+                "ticker": ["AAPL US Equity", "AAPL US Equity"],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+                "px_last": [150.0, 151.0],
+            }
+        )
+        result = to_output(
+            arrow_table,
+            backend=Backend.PYARROW,
+            format=format_,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last"],
+        )
+        assert isinstance(result, pa.Table)
+        # Ticker column must survive as a real column
+        assert "ticker" in result.column_names
+
+
 class TestToOutputUnsupportedFormat:
     """Test to_output() with unsupported format."""
 

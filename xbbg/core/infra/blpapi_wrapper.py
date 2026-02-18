@@ -30,13 +30,15 @@ try:
     _BLPAPI_AVAILABLE = True
 
 except (ImportError, AttributeError):
-    # Try pytest importorskip as fallback (mostly for testing environments)
+    # Try pytest importorskip as fallback (mostly for testing environments).
+    # Must catch BaseException because pytest.importorskip raises Skipped
+    # (a BaseException subclass) when the module is unavailable.
     try:
         import pytest
 
         blpapi = pytest.importorskip("blpapi")  # type: ignore[assignment]
         _BLPAPI_AVAILABLE = True
-    except (ImportError, AttributeError):
+    except BaseException:
         blpapi = None  # type: ignore[assignment]
         _BLPAPI_AVAILABLE = False
 
