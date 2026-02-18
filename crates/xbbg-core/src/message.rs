@@ -9,6 +9,7 @@
 use crate::{ffi, CorrelationId, Element, Name};
 use std::ffi::CStr;
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
@@ -126,6 +127,35 @@ impl<'a> Message<'a> {
             // The string lives as long as the message (lifetime 'a).
             Some(unsafe { CStr::from_ptr(ptr).to_str().unwrap_unchecked() })
         }
+    }
+
+    /// Get the time this message was received by the SDK, as microseconds since Unix epoch.
+    ///
+    /// Returns `None` if receive-time recording was not enabled via
+    /// `SessionOptions::set_record_subscription_receive_times(true)`.
+    ///
+    /// This is more accurate than `SystemTime::now()` because it records the time
+    /// at the SDK's network layer, before any queuing or processing delays.
+    #[inline]
+    pub fn time_received_us(&self) -> Option<i64> {
+        let mut tp = MaybeUninit::<ffi::blpapi_TimePoint_t>::uninit();
+        // SAFETY: self.ptr is valid for the lifetime 'a. timeReceived writes to tp on success.
+        let rc = unsafe { ffi::blpapi_Message_timeReceived(self.ptr as *const _, tp.as_mut_ptr()) };
+        if rc != 0 {
+            return None;
+        }
+        let tp = unsafe { tp.assume_init() };
+
+        let mut dt = MaybeUninit::<ffi::blpapi_HighPrecisionDatetime_t>::uninit();
+        // SAFETY: tp is initialized above. offset=0 gives UTC datetime.
+        let rc =
+            unsafe { ffi::blpapi_HighPrecisionDatetime_fromTimePoint(dt.as_mut_ptr(), &tp, 0) };
+        if rc != 0 {
+            return None;
+        }
+
+        let hpdt = crate::HighPrecisionDatetime(unsafe { dt.assume_init() });
+        Some(hpdt.to_micros())
     }
 
     /// Get raw pointer for FFI calls (internal use).

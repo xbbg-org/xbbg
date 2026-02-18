@@ -202,7 +202,19 @@ const _: () = {
     assert!(std::mem::size_of::<blpapi_Datetime_t>() == 12);
 };
 
-// Declare datetime FFI using our local types (not blpapi-sys's)
+// --- TimePoint (for message receive timestamps) ---
+
+/// Bloomberg TimePoint — nanoseconds from an unspecified epoch.
+///
+/// Used by `blpapi_Message_timeReceived` to record when the SDK received a message.
+/// Convert to calendar time via `blpapi_HighPrecisionDatetime_fromTimePoint`.
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct blpapi_TimePoint_t {
+    pub d_value: i64,
+}
+
+// Declare datetime + timepoint FFI using our local types (not blpapi-sys's)
 extern "C" {
     pub fn blpapi_Element_getValueAsHighPrecisionDatetime(
         element: *mut blpapi_Element_t,
@@ -221,5 +233,23 @@ extern "C" {
         element: *mut blpapi_Element_t,
         value: *const blpapi_Datetime_t,
         index: usize,
+    ) -> i32;
+
+    /// Get the time this message was received by the SDK.
+    ///
+    /// Returns 0 on success. Fails if receive-time recording was not enabled
+    /// via `blpapi_SessionOptions_setRecordSubscriptionDataReceiveTimes`.
+    pub fn blpapi_Message_timeReceived(
+        message: *const blpapi_Message_t,
+        timeReceived: *mut blpapi_TimePoint_t,
+    ) -> i32;
+
+    /// Convert a TimePoint to a HighPrecisionDatetime.
+    ///
+    /// `offset` is the timezone offset in minutes from UTC (0 = UTC).
+    pub fn blpapi_HighPrecisionDatetime_fromTimePoint(
+        datetime: *mut blpapi_HighPrecisionDatetime_t,
+        timePoint: *const blpapi_TimePoint_t,
+        offset: i16,
     ) -> i32;
 }
