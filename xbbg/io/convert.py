@@ -532,13 +532,26 @@ def _pivot_wide_non_pandas(
     Any
         Pivoted DataFrame in the requested backend format.
     """
-    # First unpivot, then pivot by ticker
-    long_frame = nw_frame.unpivot(
-        on=field_cols,
-        index=[ticker_col, date_col],
-        variable_name="field",
-        value_name="value",
-    )
+    # First unpivot, then pivot by ticker.
+    # When field columns have mixed types (e.g. tick data with float 'value'
+    # + string 'typ'/'cond'/'exch'), Arrow cannot merge them into a single
+    # 'value' column, so we fall back to casting all fields to string.
+    try:
+        long_frame = nw_frame.unpivot(
+            on=field_cols,
+            index=[ticker_col, date_col],
+            variable_name="field",
+            value_name="value",
+        )
+    except Exception:
+        cast_exprs = [nw.col(c).cast(nw.String).alias(c) for c in field_cols]
+        nw_frame = nw_frame.with_columns(cast_exprs)
+        long_frame = nw_frame.unpivot(
+            on=field_cols,
+            index=[ticker_col, date_col],
+            variable_name="field",
+            value_name="value",
+        )
     # Create combined ticker_field column using concat_str
     # (+ operator fails with pyarrow backend)
     long_frame = long_frame.with_columns(
