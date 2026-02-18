@@ -907,19 +907,23 @@ impl PyEngine {
 /// - Explicit unsubscribe with optional drain
 /// - Context manager (`async with`)
 ///
+/// Data arrives as `Result<RecordBatch, BlpError>`:
+/// - `Ok(batch)` — yields a PyArrow RecordBatch
+/// - `Err(error)` — raises a Python exception (BlpRequestError, BlpInternalError, etc.)
+///
 /// Design: Uses separate locks for rx (data receiving) vs stream (add/remove/metadata)
 /// to avoid lock contention between iterating and modifying subscriptions.
 #[pyclass]
 pub struct PySubscription {
     /// Receiver for incoming data - separate lock so iteration doesn't block add/remove
-    rx: Arc<Mutex<Option<tokio::sync::mpsc::Receiver<arrow::record_batch::RecordBatch>>>>,
+    rx: Arc<Mutex<Option<tokio::sync::mpsc::Receiver<Result<arrow::record_batch::RecordBatch, BlpError>>>>>,
     /// Stream handle for metadata and modification operations
     stream: Arc<Mutex<Option<SubscriptionStreamHandle>>>,
 }
 
 /// Internal handle for subscription metadata and operations (without the receiver)
 struct SubscriptionStreamHandle {
-    tx: tokio::sync::mpsc::Sender<arrow::record_batch::RecordBatch>,
+    tx: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
     claim: Option<xbbg_async::engine::SessionClaim>,
     keys: Vec<usize>,
     topics: Vec<String>,
@@ -938,11 +942,15 @@ impl PySubscription {
 
     /// Get next batch of data.
     /// Only locks the rx, not the stream - so add/remove can run concurrently.
+    ///
+    /// Returns a PyArrow RecordBatch on success.
+    /// Raises a Python exception (BlpRequestError, BlpInternalError, etc.) on error.
+    /// Raises StopAsyncIteration when the subscription is closed.
     fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let rx = self.rx.clone();
 
         future_into_py(py, async move {
-            let batch = {
+            let item = {
                 let mut guard = rx.lock().await;
                 let rx_ref = guard
                     .as_mut()
@@ -950,8 +958,9 @@ impl PySubscription {
                 rx_ref.recv().await
             };
 
-            match batch {
-                Some(batch) => Python::attach(|py| record_batch_to_pyarrow(py, batch)),
+            match item {
+                Some(Ok(batch)) => Python::attach(|py| record_batch_to_pyarrow(py, batch)),
+                Some(Err(blp_err)) => Err(blp_error_to_pyerr(blp_err)),
                 None => Err(PyStopAsyncIteration::new_err("subscription ended")),
             }
         })
@@ -1103,11 +1112,13 @@ impl PySubscription {
 
             let mut remaining = Vec::new();
 
-            // Drain remaining batches if requested
+            // Drain remaining batches if requested (skip errors)
             if drain {
                 if let Some(mut rx) = rx {
-                    while let Ok(batch) = rx.try_recv() {
-                        remaining.push(batch);
+                    while let Ok(item) = rx.try_recv() {
+                        if let Ok(batch) = item {
+                            remaining.push(batch);
+                        }
                     }
                 }
             }
