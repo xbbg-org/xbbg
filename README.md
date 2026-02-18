@@ -218,6 +218,41 @@ xbbg is the **only Python library** that provides:
 |----------|-------------|--------------|
 | **`yas()`** | Yield & Spread Analysis | YAS calculator wrapper<br>YTM/YTC yield types<br>Price↔yield conversion<br>Spread calculations |
 
+### Bond Analytics (via `xbbg.ext`)
+
+| Function | Description | Key Features |
+|----------|-------------|--------------|
+| **`bond_info()`** | Bond reference metadata | Ratings, maturity, coupon |
+| **`bond_risk()`** | Duration and risk metrics | Modified/Macaulay duration, convexity, DV01 |
+| **`bond_spreads()`** | Spread analytics | OAS, Z-spread, I-spread, ASW |
+| **`bond_cashflows()`** | Cash flow schedule | Coupon and principal payments |
+| **`bond_key_rates()`** | Key rate durations | Key rate DV01s and risks |
+| **`bond_curve()`** | Relative value comparison | Multi-bond analytics |
+
+### Options Analytics (via `xbbg.ext`)
+
+| Function | Description | Key Features |
+|----------|-------------|--------------|
+| **`option_info()`** | Contract metadata | Strike, expiry, exercise type |
+| **`option_greeks()`** | Greeks and implied vol | Delta, gamma, theta, vega, IV |
+| **`option_pricing()`** | Value decomposition | Intrinsic/time value, activity |
+| **`option_chain()`** | Chain via overrides | `CHAIN_TICKERS` with filtering |
+| **`option_chain_bql()`** | Chain via BQL | Rich filtering, expiry/strike ranges |
+| **`option_screen()`** | Multi-option comparison | Side-by-side analytics |
+
+### CDX Analytics (via `xbbg.ext`)
+
+| Function | Description | Key Features |
+|----------|-------------|--------------|
+| **`cdx_info()`** | CDX reference metadata | Series, version, constituents |
+| **`cdx_defaults()`** | Default history | Settled defaults in index |
+| **`cdx_pricing()`** | Market pricing | Spread, price, recovery rate |
+| **`cdx_risk()`** | Risk metrics | DV01, duration, spread sensitivity |
+| **`cdx_basis()`** | Basis analytics | CDX vs intrinsics spread |
+| **`cdx_default_prob()`** | Default probability | Implied default rates |
+| **`cdx_cashflows()`** | Cash flow schedule | Premium and protection legs |
+| **`cdx_curve()`** | Term structure | Multi-tenor curve analytics |
+
 ### Historical Data - Time Series Analysis
 
 | Function | Description | Key Features |
@@ -285,9 +320,10 @@ xbbg is the **only Python library** that provides:
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
-- **Python dependencies**: `numpy`, `pandas`, `narwhals`, `ruamel.yaml` and `pyarrow` (automatically installed)
+- **Python dependencies**: `narwhals>=2.14.0`, `pyarrow>=22.0.0` (core); `tomli>=2.0.1` for Python < 3.11 (automatically installed)
 
 - **Optional backends** (install separately if needed):
+  - `pandas` - For pandas DataFrame output (`pip install xbbg[pandas]`)
   - `polars` - For Polars DataFrame output
   - `duckdb` - For DuckDB relation output
 
@@ -415,6 +451,48 @@ divs = blp.dividend('AAPL US Equity', start_date='2024-01-01', end_date='2024-12
 
 </details>
 
+<details>
+<summary><b>Fixed Income Analytics (Bond, CDX)</b></summary>
+
+```python
+from xbbg.ext import bond_info, bond_risk, bond_spreads, cdx_info, cdx_pricing
+
+# Bond reference data
+info = bond_info('T 4.5 05/15/38 Govt')
+
+# Bond risk metrics (duration, convexity, DV01)
+risk = bond_risk('T 4.5 05/15/38 Govt')
+
+# Bond spreads (OAS, Z-spread, ASW)
+spreads = bond_spreads('T 4.5 05/15/38 Govt')
+
+# CDX index info
+cdx = cdx_info('CDX IG CDSI GEN 5Y Corp')
+
+# CDX pricing
+px = cdx_pricing('CDX IG CDSI GEN 5Y Corp')
+```
+
+</details>
+
+<details>
+<summary><b>Options Analytics</b></summary>
+
+```python
+from xbbg.ext import option_info, option_greeks, option_chain_bql
+
+# Option contract metadata
+info = option_info('AAPL US 01/17/25 C200 Equity')
+
+# Greeks and implied volatility
+greeks = option_greeks('AAPL US 01/17/25 C200 Equity')
+
+# Option chain via BQL (rich filtering)
+chain = option_chain_bql('AAPL US Equity', expiry='2025-01-17')
+```
+
+</details>
+
 ### Best Practices
 
 - **Excel users**: Use the same field names and date formats as Bloomberg Excel
@@ -438,7 +516,7 @@ The `server` parameter (or `server_host`) can be passed through any function tha
 
 ### Async Functions
 
-Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. The async versions are the real implementations; the sync functions are thin wrappers.
+Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. The async versions are the real implementations; the sync functions are thin wrappers. Since v0.12.0, the async functions are the canonical source of truth — all sync functions delegate via `_run_sync()`.
 
 #### In scripts (no existing event loop)
 
@@ -513,7 +591,7 @@ Starting with v0.11.0, xbbg is **DataFrame-library agnostic**. You can get outpu
 | `pyspark` | Lazy | Spark DataFrame | Big data processing (requires Java) |
 | `sqlframe` | Lazy | SQLFrame DataFrame | SQL-first DataFrame operations |
 
-**Note:** Lazy backends only support `LONG` and `SEMI_LONG` output formats (not `WIDE`).
+**Note:** Lazy backends only support `LONG`, `SEMI_LONG`, `LONG_TYPED`, and `LONG_WITH_METADATA` output formats (not `WIDE`).
 
 #### Check Backend Availability
 
@@ -553,6 +631,8 @@ Control the shape of your data with the `format` parameter:
 | Format | Description | Use Case |
 |--------|-------------|----------|
 | `long` | Tidy format with ticker, field, value columns | Analysis, joins, aggregations |
+| `long_typed` | Typed value columns per data type | Type-safe analysis, no casting needed |
+| `long_metadata` | String values with dtype column | Serialization, debugging, data catalogs |
 | `semi_long` | One row per ticker, fields as columns | Quick inspection |
 | `wide` | Tickers as columns (pandas only) | Time series alignment, Excel-like |
 
@@ -578,6 +658,9 @@ set_backend(Backend.POLARS)
 
 # Set long format as default
 set_format(Format.LONG)
+
+# Use new typed output format
+set_format(Format.LONG_TYPED)
 
 # All subsequent calls use these defaults
 df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame in long format

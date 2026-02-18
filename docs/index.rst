@@ -12,7 +12,7 @@
    <a href="https://pypi.org/project/xbbg/"><img src="https://img.shields.io/pypi/v/xbbg.svg" alt="PyPI version"></a>
    <a href="https://pypi.org/project/xbbg/"><img src="https://img.shields.io/pypi/pyversions/xbbg.svg" alt="Python versions"></a>
    <a href="https://pypi.org/project/xbbg/"><img src="https://img.shields.io/pypi/dm/xbbg" alt="PyPI Downloads"></a>
-   <a href="https://gitter.im/xbbg/community"><img src="https://badges.gitter.im/xbbg/community.svg" alt="Gitter"></a>
+    <a href="https://discord.gg/P34uMwgCjC"><img src="https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
    </p>
    
    <p>
@@ -29,7 +29,7 @@ xbbg
 ..
    xbbg:latest-release-start
 
-Latest release: xbbg==0.11.0b3 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.11.0b3>`_)
+Latest release: xbbg==0.12.0 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0>`_)
 
 ..
    xbbg:latest-release-end
@@ -37,15 +37,15 @@ Latest release: xbbg==0.11.0b3 (release: `notes <https://github.com/alpha-xone/x
 Overview
 ========
 
-xbbg is the **most comprehensive and intuitive Bloomberg API wrapper for Python**, providing a Pythonic interface with Excel-compatible inputs, straightforward intraday bar requests, and real-time subscriptions. All functions return pandas DataFrames for seamless integration with your data workflow.
+xbbg is the **most comprehensive and intuitive Bloomberg API wrapper for Python**, providing a Pythonic interface with Excel-compatible inputs, straightforward intraday bar requests, and real-time subscriptions. All functions return DataFrames in your preferred format (pandas, Polars, PyArrow, DuckDB, and more) for seamless integration with your data workflow.
 
 **Why xbbg?**
 
-- 🎯 **Complete API Coverage**: Reference, historical, intraday bars, tick data, real-time subscriptions, equity screening (BEQS), and BQL support
+- 🎯 **Complete API Coverage**: Reference, historical, intraday bars, tick data, real-time subscriptions, BQL, BEQS, BSRCH, BQR, BTA, bond/options/CDX analytics
 - 📊 **Excel-Compatible**: Use familiar Excel date formats and field names - no learning curve
-- ⚡ **Built-in Caching**: Automatic Parquet-based local storage reduces API calls and speeds up workflows
+- ⚡ **Built-in Caching**: Automatic Parquet-based intraday bar caching and 13 DataFrame backend options
 - 🔧 **Rich Utilities**: Currency conversion, futures/CDX resolvers, exchange-aware market hours, and more
-- 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
+- 🚀 **Modern & Active**: Python 3.10-3.14, async-first architecture, regular updates and active maintenance
 - 💡 **Intuitive Design**: Simple, consistent API (``bdp``, ``bdh``, ``bdib``, etc.) that feels natural to use
 
 See `examples/xbbg_jupyter_examples.ipynb <https://github.com/alpha-xone/xbbg/blob/main/examples/xbbg_jupyter_examples.ipynb>`_ for interactive tutorials and examples.
@@ -57,11 +57,11 @@ xbbg stands out as the most comprehensive and user-friendly Bloomberg API wrappe
 
 **Key Advantages:**
 
-- 🎯 **Most Complete API**: Covers reference, historical, intraday, tick, real-time, screening, and BQL
+- 🎯 **Most Complete API**: Covers reference, historical, intraday, tick, real-time, screening, BQL, BTA, bond/options/CDX analytics
 - 📊 **Excel Compatibility**: Use familiar Excel date formats and field names
 - ⚡ **Performance**: Built-in Parquet caching reduces API calls and speeds up workflows
 - 🔧 **Rich Utilities**: Currency conversion, futures resolvers, and more out of the box
-- 🚀 **Modern & Active**: Python 3.10+ support with regular updates and active maintenance
+- 🚀 **Modern & Active**: Python 3.10-3.14, async-first architecture, regular updates and active maintenance
 - 💡 **Intuitive Design**: Simple, consistent API that feels natural to use
 
 Requirements
@@ -79,7 +79,7 @@ Requirements
 
    pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 
-- numpy, pandas, ruamel.yaml and pyarrow
+- narwhals, pyarrow (automatically installed). Optional: pandas, polars, duckdb, and other backends.
 
 Installation
 ============
@@ -96,35 +96,48 @@ Supported Functionality
 xbbg provides comprehensive Bloomberg API coverage:
 
 **Reference Data:**
-- ``bdp()`` - Single point-in-time reference data
-- ``bds()`` - Bulk/block data (multi-row)
+- ``bdp()`` / ``abdp()`` - Single point-in-time reference data
+- ``bds()`` / ``abds()`` - Bulk/block data (multi-row)
 
 **Historical Data:**
-- ``bdh()`` - End-of-day historical data
+- ``bdh()`` / ``abdh()`` - End-of-day historical data
 - ``dividend()`` - Dividend & split history
 - ``earning()`` - Corporate earnings breakdowns
 - ``turnover()`` - Trading volume & turnover
 
 **Intraday Data:**
-- ``bdib()`` - Intraday bar data
-- ``bdtick()`` - Tick-by-tick data
+- ``bdib()`` / ``abdib()`` - Intraday bar data
+- ``bdtick()`` / ``abdtick()`` - Tick-by-tick data
+- ``exchange_tz()`` - Exchange timezone lookup
+
+**Fixed Income:**
+- ``yas()`` - Yield & Spread Analysis (YAS calculator)
+- ``bond_info()``, ``bond_risk()``, ``bond_spreads()`` - Bond analytics (via ``xbbg.ext``)
+- ``bond_cashflows()``, ``bond_key_rates()``, ``bond_curve()`` - Advanced bond analytics
+
+**Options Analytics (via ``xbbg.ext``):**
+- ``option_info()``, ``option_greeks()``, ``option_pricing()``
+- ``option_chain()``, ``option_chain_bql()``, ``option_screen()``
 
 **Screening & Queries:**
-- ``beqs()`` - Bloomberg Equity Screening
-- ``bql()`` - Bloomberg Query Language
+- ``beqs()`` / ``abeqs()`` - Bloomberg Equity Screening
+- ``bql()`` / ``abql()`` - Bloomberg Query Language
+- ``bqr()`` / ``abqr()`` - Bloomberg Quote Request (dealer quotes)
+- ``bsrch()`` / ``absrch()`` - Bloomberg Search
+- ``bta()`` / ``abta()`` - Bloomberg Technical Analysis
 
 **Real-time:**
 - ``live()`` - Real-time market data
 - ``subscribe()`` - Real-time subscriptions
+- ``stream()`` - Async streaming
 
 **Utilities:**
 - ``adjust_ccy()`` - Currency conversion
-- ``active_futures()`` - Active futures contracts
-- ``fut_ticker()`` - Futures ticker resolution
-- ``cdx_ticker()`` - CDX index ticker resolution
-- ``active_cdx()`` - Active CDX contracts
+- ``active_futures()`` / ``fut_ticker()`` - Futures contract resolution
+- ``cdx_ticker()`` / ``active_cdx()`` - CDX index resolution
+- ``cdx_info()``, ``cdx_pricing()``, ``cdx_risk()`` - CDX analytics (via ``xbbg.ext``)
 
-**Additional Features**: Local caching (Parquet), configurable logging, timezone support, exchange-aware market hours, batch processing, standardized column mapping
+**Additional Features**: Multi-backend output (13 backends), 5 output formats (WIDE, LONG, SEMI_LONG, LONG_TYPED, LONG_WITH_METADATA), async/await support, local caching (Parquet), configurable logging, timezone support, exchange-aware market hours
 
 Quickstart
 ==========
