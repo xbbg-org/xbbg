@@ -6,11 +6,26 @@ powered by a high-performance Rust backend.
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 # Lazy import of the Rust module to avoid import errors when it's not built
 if TYPE_CHECKING:
     from . import _core
+
+# ── DLL search path setup (Windows) ──────────────────────────────────────
+# MUST run at module level, not inside __getattr__. When Python resolves
+# `from xbbg._core import X`, it imports `xbbg` first (here) then loads
+# the native extension as a submodule — bypassing __getattr__ entirely.
+# Without this, `from xbbg._core import X` fails with DLL load errors
+# while `xbbg._core` (attribute access via __getattr__) would work.
+if sys.platform == "win32":
+    try:
+        from . import _sdk
+
+        _sdk._add_sdk_to_dll_search_path()
+    except Exception:
+        pass  # SDK detection failures shouldn't block package import
 
 # Guard flag to prevent recursion in __getattr__
 _importing_core = False
@@ -165,14 +180,8 @@ def __getattr__(name: str):
         _importing_core = True
         try:
             import importlib
-            import sys
 
-            # Add all detected SDK library paths to DLL search path before importing
-            if sys.platform == "win32":
-                from . import _sdk
-
-                _sdk._add_sdk_to_dll_search_path()
-
+            # DLL search path is already set up at module level (top of __init__.py)
             mod = importlib.import_module("xbbg._core")
             _core_module = mod
             return mod
