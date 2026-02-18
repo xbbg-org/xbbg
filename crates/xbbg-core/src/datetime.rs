@@ -81,6 +81,16 @@ impl HighPrecisionDatetime {
             + (self.0.picoseconds as i64) / 1_000_000
     }
 
+    /// Check if date parts (year, month, day) are all present.
+    ///
+    /// Bloomberg `Datetime` fields sometimes have zeroed date parts — the
+    /// `parts` bitmask tells us which components are actually valid.
+    /// When date parts are missing, `to_micros()` produces garbage.
+    #[inline(always)]
+    pub fn has_date_parts(&self) -> bool {
+        (self.0.parts & ffi::BLPAPI_DATETIME_DATE_PART) == ffi::BLPAPI_DATETIME_DATE_PART
+    }
+
     /// Convert to nanoseconds since Unix epoch.
     ///
     /// **WARNING**: offset field is IGNORED. Treat result as naive UTC.

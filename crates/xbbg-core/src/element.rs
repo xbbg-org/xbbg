@@ -531,9 +531,16 @@ impl<'a> Element<'a> {
                 self.get_datetime(i)
                     .map(|dt| Value::Time64Micros(dt.to_time_micros()))
             }
-            DataType::Datetime => self
-                .get_datetime(i)
-                .map(|dt| Value::TimestampMicros(dt.to_micros())),
+            DataType::Datetime => self.get_datetime(i).map(|dt| {
+                // Some Bloomberg Datetime fields (e.g. LAST_UPDATE_BID_RT, RT_TIME_OF_TRADE)
+                // have zeroed date parts in certain messages. Check the parts bitmask to
+                // avoid producing garbage timestamps anchored to year 0.
+                if dt.has_date_parts() {
+                    Value::TimestampMicros(dt.to_micros())
+                } else {
+                    Value::Time64Micros(dt.to_time_micros())
+                }
+            }),
             DataType::Enumeration => {
                 // Enums are stored as strings in Bloomberg
                 self.get_str(i).map(Value::Enum)
@@ -590,9 +597,13 @@ impl<'a> Element<'a> {
             DataType::Time => self
                 .get_datetime(i)
                 .map(|dt| Value::Time64Micros(dt.to_time_micros())),
-            DataType::Datetime => self
-                .get_datetime(i)
-                .map(|dt| Value::TimestampMicros(dt.to_micros())),
+            DataType::Datetime => self.get_datetime(i).map(|dt| {
+                if dt.has_date_parts() {
+                    Value::TimestampMicros(dt.to_micros())
+                } else {
+                    Value::Time64Micros(dt.to_time_micros())
+                }
+            }),
             DataType::Enumeration => self.get_str(i).map(Value::Enum),
             DataType::Sequence
             | DataType::Choice
