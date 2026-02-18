@@ -74,6 +74,7 @@ impl SubscriptionWorker {
         opts.set_max_event_queue_size(config.max_event_queue_size);
         let _ = opts.set_bandwidth_save_mode_disabled(true);
         opts.set_record_subscription_receive_times(true);
+        opts.set_auto_restart_on_disconnection(true);
 
         let session = Session::new(&opts)?;
         session.start()?;

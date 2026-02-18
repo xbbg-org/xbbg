@@ -60,6 +60,19 @@ impl SessionOptions {
         Ok(self)
     }
 
+    /// Enable automatic session restart on disconnection.
+    ///
+    /// When enabled, the Bloomberg SDK will automatically attempt to reconnect
+    /// and re-establish subscriptions when the connection is lost. This is
+    /// critical for long-running subscription sessions to survive network blips.
+    pub fn set_auto_restart_on_disconnection(&mut self, auto_restart: bool) -> &mut Self {
+        // SAFETY: FFI call with valid pointer. Returns void.
+        unsafe {
+            ffi::blpapi_SessionOptions_setAutoRestartOnDisconnection(self.ptr, auto_restart as i32);
+        }
+        self
+    }
+
     pub fn set_record_subscription_receive_times(&mut self, record: bool) -> &mut Self {
         // SAFETY: FFI call with valid pointer
         unsafe {

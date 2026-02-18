@@ -116,8 +116,8 @@ pub use xbbg_sys::{
 // --- SessionOptions functions ---
 pub use xbbg_sys::{
     blpapi_SessionOptions_create, blpapi_SessionOptions_destroy,
-    blpapi_SessionOptions_maxEventQueueSize, blpapi_SessionOptions_setBandwidthSaveModeDisabled,
-    blpapi_SessionOptions_setConnectTimeout,
+    blpapi_SessionOptions_maxEventQueueSize, blpapi_SessionOptions_setAutoRestartOnDisconnection,
+    blpapi_SessionOptions_setBandwidthSaveModeDisabled, blpapi_SessionOptions_setConnectTimeout,
     blpapi_SessionOptions_setDefaultKeepAliveInactivityTime,
     blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout,
     blpapi_SessionOptions_setDefaultSubscriptionService,
