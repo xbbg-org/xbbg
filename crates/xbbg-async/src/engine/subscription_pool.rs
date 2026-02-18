@@ -29,7 +29,7 @@ pub enum SubscriptionCommand {
         fields: Vec<String>,
         /// Subscription options (e.g., ["VWAP_START_TIME=09:30"])
         options: Vec<String>,
-        stream: mpsc::Sender<RecordBatch>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         /// Reply with slab keys for later unsubscribe.
         reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
     },
@@ -41,7 +41,7 @@ pub enum SubscriptionCommand {
         fields: Vec<String>,
         /// Subscription options
         options: Vec<String>,
-        stream: mpsc::Sender<RecordBatch>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         /// Reply with new slab keys.
         reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
     },
@@ -73,6 +73,7 @@ impl SubscriptionWorker {
         opts.set_server_port(config.server_port);
         opts.set_max_event_queue_size(config.max_event_queue_size);
         let _ = opts.set_bandwidth_save_mode_disabled(true);
+        opts.set_record_subscription_receive_times(true);
 
         let session = Session::new(&opts)?;
         session.start()?;
@@ -178,11 +179,12 @@ impl SubscriptionWorker {
         topics: Vec<String>,
         fields: Vec<String>,
         options: Vec<String>,
-        stream: mpsc::Sender<RecordBatch>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Vec<SlabKey> {
         let mut sub_list = SubscriptionList::new();
 
         let field_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
+        let options_str = options.join(",");
         let mut keys = Vec::with_capacity(topics.len());
 
         for topic in &topics {
@@ -194,21 +196,35 @@ impl SubscriptionWorker {
                 self.config.overflow_policy,
             );
             let key = self.subs.insert(state);
-            keys.push(key);
 
             let cid = CorrelationId::Int(key as i64);
-            // Convert options Vec to comma-separated string for SubscriptionList::add
-            let options_str = options.join(",");
             if let Err(e) = sub_list.add(topic, &field_refs, &options_str, &cid)
             {
                 xbbg_log::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
+                // Clean up phantom slab entry — sub_list.add failed so Bloomberg
+                // will never send data for this correlation ID.
+                self.subs.remove(key);
+                continue;
             }
 
+            keys.push(key);
             xbbg_log::debug!(worker_id = self.id, topic = %topic, key = key, "subscription added");
+        }
+
+        if keys.is_empty() {
+            return keys;
         }
 
         if let Err(e) = self.session.subscribe(&sub_list, None) {
             xbbg_log::error!(worker_id = self.id, error = %e, "subscribe failed");
+            // Clean up all slab entries — session.subscribe failed so
+            // Bloomberg will never send data for any of these.
+            for &key in &keys {
+                if self.subs.contains(key) {
+                    self.subs.remove(key);
+                }
+            }
+            return vec![];
         }
 
         keys
@@ -304,6 +320,12 @@ impl SubscriptionWorker {
         let msg_type = msg_type_name.as_str();
         let n = msg.num_correlation_ids();
 
+        // Extract reason description from the message if available
+        let reason = msg.elements().get_by_str("reason")
+            .and_then(|r| r.get_by_str("description"))
+            .and_then(|d| d.get_str(0))
+            .map(|s| s.to_string());
+
         for i in 0..n {
             if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
                 match msg_type {
@@ -311,15 +333,23 @@ impl SubscriptionWorker {
                         xbbg_log::debug!(worker_id = self.id, key = key, "subscription started");
                     }
                     "SubscriptionFailure" => {
-                        xbbg_log::error!(worker_id = self.id, key = key, "subscription failed");
+                        xbbg_log::error!(worker_id = self.id, key = key, reason = ?reason, "subscription failed");
                         if self.subs.contains(key as usize) {
-                            self.subs.remove(key as usize);
+                            let state = self.subs.remove(key as usize);
+                            state.fail(BlpError::SubscriptionFailure {
+                                cid: Some(xbbg_core::errors::CorrelationContext::U64(key as u64)),
+                                label: reason.clone(),
+                            });
                         }
                     }
                     "SubscriptionTerminated" => {
-                        xbbg_log::info!(worker_id = self.id, key = key, "subscription terminated");
+                        xbbg_log::info!(worker_id = self.id, key = key, reason = ?reason, "subscription terminated");
                         if self.subs.contains(key as usize) {
-                            self.subs.remove(key as usize);
+                            let state = self.subs.remove(key as usize);
+                            state.fail(BlpError::SubscriptionFailure {
+                                cid: Some(xbbg_core::errors::CorrelationContext::U64(key as u64)),
+                                label: reason.clone().or_else(|| Some("subscription terminated".to_string())),
+                            });
                         }
                     }
                     _ => {
@@ -342,8 +372,49 @@ impl SubscriptionWorker {
             "SessionStarted" => {
                 xbbg_log::info!(worker_id = self.id, "session started");
             }
-            "SessionTerminated" | "SessionConnectionDown" => {
-                xbbg_log::error!(worker_id = self.id, "session terminated/down");
+            "SessionConnectionDown" => {
+                xbbg_log::error!(
+                    worker_id = self.id,
+                    active_subs = self.subs.len(),
+                    "session connection down — SDK may attempt reconnect"
+                );
+                // Don't remove subs yet — SDK may auto-reconnect.
+                // But notify all consumers that the connection dropped.
+                for (key, state) in &self.subs {
+                    state.fail(BlpError::Internal {
+                        detail: format!(
+                            "Bloomberg session connection lost (worker={}, sub={}). \
+                             Data may be stale until reconnection.",
+                            self.id, key,
+                        ),
+                    });
+                }
+            }
+            "SessionTerminated" => {
+                xbbg_log::error!(
+                    worker_id = self.id,
+                    active_subs = self.subs.len(),
+                    "session terminated — all subscriptions lost"
+                );
+                // Session is dead. Send error to all consumers and remove all subs.
+                let keys: Vec<usize> = self.subs.iter().map(|(k, _)| k).collect();
+                for key in keys {
+                    let state = self.subs.remove(key);
+                    state.fail(BlpError::Internal {
+                        detail: format!(
+                            "Bloomberg session terminated (worker={}). \
+                             Subscription closed. Please resubscribe.",
+                            self.id,
+                        ),
+                    });
+                }
+            }
+            "SessionConnectionUp" => {
+                xbbg_log::info!(
+                    worker_id = self.id,
+                    active_subs = self.subs.len(),
+                    "session connection restored"
+                );
             }
             _ => {
                 xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
@@ -557,14 +628,14 @@ impl SessionClaim {
     /// * `topics` - Securities to subscribe to
     /// * `fields` - Fields to subscribe to
     /// * `options` - Subscription options (e.g., ["VWAP_START_TIME=09:30"])
-    /// * `stream` - Channel to send data batches to
+    /// * `stream` - Channel to send data batches (or errors) to
     pub async fn subscribe(
         &self,
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
         options: Vec<String>,
-        stream: mpsc::Sender<RecordBatch>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
         let handle = self
             .handle
@@ -598,7 +669,7 @@ impl SessionClaim {
         topics: Vec<String>,
         fields: Vec<String>,
         options: Vec<String>,
-        stream: mpsc::Sender<RecordBatch>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
         let handle = self
             .handle

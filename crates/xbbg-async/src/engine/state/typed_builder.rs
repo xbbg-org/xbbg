@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use arrow::array::{
     ArrayBuilder, ArrayRef, BooleanBuilder, Date32Builder, Float64Builder, Int32Builder,
-    Int64Builder, StringBuilder, TimestampMicrosecondBuilder,
+    Int64Builder, StringBuilder, Time64MicrosecondBuilder, TimestampMicrosecondBuilder,
 };
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
@@ -27,6 +27,7 @@ pub enum ArrowType {
     Bool,
     Date32,
     TimestampMicros,
+    Time64Micros,
 }
 
 impl ArrowType {
@@ -39,6 +40,7 @@ impl ArrowType {
             "bool" | "boolean" => ArrowType::Bool,
             "date32" | "date" => ArrowType::Date32,
             "timestamp" | "datetime" | "timestamp_us" => ArrowType::TimestampMicros,
+            "time64" | "time" | "time64_us" => ArrowType::Time64Micros,
             _ => ArrowType::String, // Default to string
         }
     }
@@ -54,6 +56,7 @@ impl ArrowType {
             Value::String(_) | Value::Enum(_) => ArrowType::String,
             Value::Date32(_) => ArrowType::Date32,
             Value::TimestampMicros(_) | Value::Datetime(_) => ArrowType::TimestampMicros,
+            Value::Time64Micros(_) => ArrowType::Time64Micros,
             Value::Byte(_) => ArrowType::Int32, // Promote byte to int32
         }
     }
@@ -70,6 +73,7 @@ impl ArrowType {
             ArrowType::TimestampMicros => {
                 DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
             }
+            ArrowType::Time64Micros => DataType::Time64(TimeUnit::Microsecond),
         }
     }
 
@@ -83,6 +87,7 @@ impl ArrowType {
             ArrowType::Bool => "bool",
             ArrowType::Date32 => "date32",
             ArrowType::TimestampMicros => "timestamp",
+            ArrowType::Time64Micros => "time64",
         }
     }
 }
@@ -96,6 +101,7 @@ pub enum TypedBuilder {
     Bool(BooleanBuilder),
     Date32(Date32Builder),
     TimestampMicros(TimestampMicrosecondBuilder),
+    Time64Micros(Time64MicrosecondBuilder),
 }
 
 impl TypedBuilder {
@@ -111,6 +117,7 @@ impl TypedBuilder {
             ArrowType::TimestampMicros => {
                 TypedBuilder::TimestampMicros(TimestampMicrosecondBuilder::new())
             }
+            ArrowType::Time64Micros => TypedBuilder::Time64Micros(Time64MicrosecondBuilder::new()),
         }
     }
 
@@ -159,6 +166,7 @@ impl TypedBuilder {
                     Value::Date32(d) => Some(format_date32(d)),
                     Value::TimestampMicros(ts) => Some(format_timestamp_micros(ts)),
                     Value::Datetime(dt) => Some(format_timestamp_micros(dt.to_micros())),
+                    Value::Time64Micros(t) => Some(format_time64_micros(t)),
                     Value::Byte(b) => Some(b.to_string()),
                     Value::Null => None,
                 }) {
@@ -197,6 +205,20 @@ impl TypedBuilder {
                     b.append_null();
                 }
             }
+            TypedBuilder::Time64Micros(b) => {
+                if let Some(micros) = value.and_then(|v| match v {
+                    Value::Time64Micros(ts) => Some(ts),
+                    Value::TimestampMicros(ts) => {
+                        // Extract time-of-day from full timestamp
+                        Some(ts.rem_euclid(86_400_000_000))
+                    }
+                    _ => None,
+                }) {
+                    b.append_value(micros);
+                } else {
+                    b.append_null();
+                }
+            }
         }
     }
 
@@ -218,6 +240,7 @@ impl TypedBuilder {
             TypedBuilder::Bool(b) => b.append_null(),
             TypedBuilder::Date32(b) => b.append_null(),
             TypedBuilder::TimestampMicros(b) => b.append_null(),
+            TypedBuilder::Time64Micros(b) => b.append_null(),
         }
     }
 
@@ -231,6 +254,7 @@ impl TypedBuilder {
             TypedBuilder::Bool(b) => b.len(),
             TypedBuilder::Date32(b) => b.len(),
             TypedBuilder::TimestampMicros(b) => b.len(),
+            TypedBuilder::Time64Micros(b) => b.len(),
         }
     }
 
@@ -249,6 +273,7 @@ impl TypedBuilder {
             TypedBuilder::Bool(b) => Arc::new(b.finish()),
             TypedBuilder::Date32(b) => Arc::new(b.finish()),
             TypedBuilder::TimestampMicros(b) => Arc::new(b.finish().with_timezone("UTC")),
+            TypedBuilder::Time64Micros(b) => Arc::new(b.finish()),
         }
     }
 
@@ -264,6 +289,7 @@ impl TypedBuilder {
             TypedBuilder::TimestampMicros(_) => {
                 DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()))
             }
+            TypedBuilder::Time64Micros(_) => DataType::Time64(TimeUnit::Microsecond),
         }
     }
 
@@ -277,6 +303,7 @@ impl TypedBuilder {
             TypedBuilder::Bool(_) => ArrowType::Bool,
             TypedBuilder::Date32(_) => ArrowType::Date32,
             TypedBuilder::TimestampMicros(_) => ArrowType::TimestampMicros,
+            TypedBuilder::Time64Micros(_) => ArrowType::Time64Micros,
         }
     }
 }
@@ -495,6 +522,16 @@ fn format_date32(days: i32) -> String {
     let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
     let date = epoch + Duration::days(days as i64);
     date.format("%Y-%m-%d").to_string()
+}
+
+/// Format microseconds from midnight as HH:MM:SS.ffffff string.
+fn format_time64_micros(micros: i64) -> String {
+    let total_secs = micros / 1_000_000;
+    let frac_us = (micros % 1_000_000).unsigned_abs();
+    let h = total_secs / 3600;
+    let m = (total_secs % 3600) / 60;
+    let s = total_secs % 60;
+    format!("{:02}:{:02}:{:02}.{:06}", h, m, s, frac_us)
 }
 
 /// Format microseconds since epoch as ISO datetime string.
