@@ -62,6 +62,25 @@ impl HighPrecisionDatetime {
         days * 86_400_000_000 + us
     }
 
+    /// Convert to microseconds from midnight (time-of-day only).
+    ///
+    /// Ignores date parts entirely — only uses hours, minutes, seconds,
+    /// milliseconds, and picoseconds. Use for Bloomberg `Time`-only fields
+    /// where the date parts are zeroed.
+    ///
+    /// Returns a value in the range [0, 86_400_000_000) for valid times.
+    ///
+    /// # Performance
+    /// Pure arithmetic, no allocations. Target: < 10ns.
+    #[inline(always)]
+    pub fn to_time_micros(&self) -> i64 {
+        (self.0.hours as i64) * 3_600_000_000
+            + (self.0.minutes as i64) * 60_000_000
+            + (self.0.seconds as i64) * 1_000_000
+            + (self.0.milliseconds as i64) * 1_000
+            + (self.0.picoseconds as i64) / 1_000_000
+    }
+
     /// Convert to nanoseconds since Unix epoch.
     ///
     /// **WARNING**: offset field is IGNORED. Treat result as naive UTC.

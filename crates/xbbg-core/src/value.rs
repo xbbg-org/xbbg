@@ -36,6 +36,8 @@ pub enum Value<'a> {
     String(&'a str),
     Date32(i32),
     TimestampMicros(i64),
+    /// Time-of-day as microseconds from midnight (0..86_400_000_000).
+    Time64Micros(i64),
     Datetime(HighPrecisionDatetime),
     Enum(&'a str),
     Byte(u8),
@@ -52,6 +54,8 @@ pub enum OwnedValue {
     String(String),
     Date32(i32),
     TimestampMicros(i64),
+    /// Time-of-day as microseconds from midnight (0..86_400_000_000).
+    Time64Micros(i64),
     Datetime(HighPrecisionDatetime),
     Enum(String),
     Byte(u8),
@@ -84,6 +88,7 @@ impl<'a> Value<'a> {
             Self::Byte(v) => Some(*v as i64),
             Self::Date32(v) => Some(*v as i64),
             Self::TimestampMicros(v) => Some(*v),
+            Self::Time64Micros(v) => Some(*v),
             _ => None,
         }
     }
@@ -117,6 +122,7 @@ impl<'a> Value<'a> {
             Self::String(s) => OwnedValue::String((*s).to_string()),
             Self::Date32(v) => OwnedValue::Date32(*v),
             Self::TimestampMicros(v) => OwnedValue::TimestampMicros(*v),
+            Self::Time64Micros(v) => OwnedValue::Time64Micros(*v),
             Self::Datetime(dt) => OwnedValue::Datetime(*dt),
             Self::Enum(s) => OwnedValue::Enum((*s).to_string()),
             Self::Byte(v) => OwnedValue::Byte(*v),
@@ -134,6 +140,7 @@ impl<'a> Value<'a> {
             Self::String(_) => DataType::String,
             Self::Date32(_) => DataType::Date,
             Self::TimestampMicros(_) | Self::Datetime(_) => DataType::Datetime,
+            Self::Time64Micros(_) => DataType::Time,
             Self::Enum(_) => DataType::Enumeration,
             Self::Byte(_) => DataType::Byte,
         }
@@ -167,6 +174,7 @@ impl OwnedValue {
             Self::Byte(v) => Some(*v as i64),
             Self::Date32(v) => Some(*v as i64),
             Self::TimestampMicros(v) => Some(*v),
+            Self::Time64Micros(v) => Some(*v),
             _ => None,
         }
     }

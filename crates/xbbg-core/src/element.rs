@@ -525,12 +525,11 @@ impl<'a> Element<'a> {
                 })
             }
             DataType::Time => {
-                // Time-only: store as microseconds from midnight
-                self.get_datetime(i).map(|dt| {
-                    // to_micros returns full timestamp, we want just the time portion
-                    // For time-only, the date parts are typically zeroed
-                    Value::TimestampMicros(dt.to_micros())
-                })
+                // Time-only: extract just hours/minutes/seconds as microseconds from midnight.
+                // Bloomberg Time fields have zeroed date parts — using to_micros() would
+                // produce garbage timestamps anchored to year 0.
+                self.get_datetime(i)
+                    .map(|dt| Value::Time64Micros(dt.to_time_micros()))
             }
             DataType::Datetime => self
                 .get_datetime(i)
@@ -588,7 +587,10 @@ impl<'a> Element<'a> {
                 let micros = dt.to_micros();
                 Value::Date32((micros / 86_400_000_000) as i32)
             }),
-            DataType::Time | DataType::Datetime => self
+            DataType::Time => self
+                .get_datetime(i)
+                .map(|dt| Value::Time64Micros(dt.to_time_micros())),
+            DataType::Datetime => self
                 .get_datetime(i)
                 .map(|dt| Value::TimestampMicros(dt.to_micros())),
             DataType::Enumeration => self.get_str(i).map(Value::Enum),
