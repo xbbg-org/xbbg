@@ -12,7 +12,7 @@
 
 ## Version 1.0 — Complete Rewrite
 
-This branch contains a complete rewrite of xbbg focused on **performance, flexibility, and reliability**.
+xbbg has been completely rewritten for **performance, flexibility, and reliability**.
 
 See the [1.0.0 Milestone](https://github.com/alpha-xone/xbbg/milestone/1) for progress and planned features.
 
