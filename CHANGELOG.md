@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Rust-powered backend**: Complete rewrite of the Bloomberg data engine in Rust, merged from `feat/rust-backend`. The Rust workspace contains 11 crates providing safe FFI bindings, an async engine, and PyO3 Python bindings -- delivering up to 10x faster data retrieval with zero-copy Arrow transfer between Rust and Python
+- **`xbbg-core` crate**: Safe Rust wrapper around the Bloomberg C++ SDK -- `Session`, `Service`, `Request`, `Element`, `Event`, `Message`, `Name`, `Datetime`, `Subscription`, `Value` types with SIMD-accelerated parsing and zero-allocation design
+- **`blpapi-sys` crate**: Raw FFI bindings to the Bloomberg C SDK generated via `bindgen`, with pre-generated binding file support for CI environments without `libclang`
+- **`xbbg-async` crate**: Async engine with worker pool architecture -- request pool, subscription pool, state machines for all Bloomberg request types (refdata, histdata, intradaybar, intradaytick, BQL, BSRCH, fieldinfo, bulkdata, subscription, generic), `RequestBuilder` with schema-driven kwargs routing and validation, field type cache, and schema introspection with caching
+- **`xbbg-ext` crate**: Rust port of Python extension utilities -- futures and CDX ticker resolvers, BQL/currency/fixed income/historical transforms, market session definitions, date/pivot/ticker utility functions
+- **`xbbg-recipes` crate**: High-level Bloomberg "recipe" functions in Rust -- `recipe_yas`, `recipe_adjust_ccy`, `recipe_earning`, `recipe_futures`, `recipe_currency`, `recipe_historical`, `recipe_fixed_income`, plus simple recipes for preferreds, corporate_bonds, bqr, turnover, etf_holdings. All 12 recipes exposed to Python via PyO3
+- **`xbbg-log` crate**: Zero-GIL tracing/logging infrastructure using the `tracing` ecosystem, decoupled from the Python GIL for minimal overhead
+- **`xbbg-sys` crate**: Stub implementations of Bloomberg C functions for CI/testing without the Bloomberg SDK installed
+- **`datamock` and `datamock-sys` crates**: Bloomberg API mock testing library (C++ BEmu port with a C API and Rust FFI bindings) for deterministic testing of reference, historical, intraday bar, intraday tick, and market data requests
+- **`pyo3-xbbg` crate**: PyO3 Python bindings exposing the entire Rust engine to Python as `xbbg._core`, including all API functions, streaming types, schema introspection, recipes, market utilities, and engine configuration
+- **`xbbg-bench` crate**: Consolidated Rust benchmark suite using Criterion -- allocation profiling, datetime/name micro-benchmarks, cached response parsing, and live `bdp`/subscription benchmarks
+- **New Python package (`py-xbbg/`)**: Complete v1 Python API powered by the Rust backend, replacing the pure-Python `xbbg/` package. Lazy-loaded via `__getattr__` for fast import
+- **New Bloomberg API functions**: `bcurves()`/`abcurves()` for yield curve lookup, `bgovts()`/`abgovts()` for government securities lookup, `bflds()`/`abflds()` for field search (replacing `fieldInfo`/`fieldSearch`)
+- **New streaming APIs**: `avwap()`/`vwap()` for VWAP streaming (`//blp/mktvwap`), `amktbar()`/`mktbar()` for market bar streaming, `adepth()`/`depth()` for market depth (B-PIPE), `achains()`/`chains()` for option/futures chain streaming (B-PIPE)
+- **Schema introspection API**: `bops()`/`abops()` to list service operations, `bschema()`/`abschema()` for full service schema, `get_schema()`/`aget_schema()`, `list_operations()`/`alist_operations()`, `get_enum_values()`/`aget_enum_values()`, `list_valid_elements()`/`alist_valid_elements()` -- all with async variants. `generate_stubs()` and `configure_ide_stubs()` for IDE auto-completion from live Bloomberg schemas
+- **Field type cache**: `FieldTypeCache`, `FieldInfo`, `resolve_field_types()`/`aresolve_field_types()`, `cache_field_types()`, `get_field_info()`, `clear_field_cache()` for caching and resolving Bloomberg field metadata
+- **Service definitions**: `Service`, `Operation`, `OutputMode`, `RequestParams`, `ExtractorHint` enums for type-safe Bloomberg service configuration
+- **Engine lifecycle management**: `shutdown()`, `reset()`, `is_connected()` for explicit Rust engine control
+- **Logging control**: `set_log_level()`, `get_log_level()` to control Rust-side tracing verbosity without Python overhead
+- **`BlpBPipeError` exception**: New exception class for B-PIPE-specific errors, added to the existing exception hierarchy
+- **Generic request API**: `arequest()`/`request()` for power users -- direct access to any Bloomberg service/operation with schema-driven kwargs routing
+- **Technical Analysis improvements**: `ta_study_params()` to inspect study parameters, `generate_ta_stubs()` for IDE auto-completion of TA study names
+- **`EngineConfig`**: Rust-native engine configuration dataclass (PyO3 `PyEngineConfig`) -- subscription pool size, request pool size, flush thresholds, auto-restart on disconnection
+- **`setAutoRestartOnDisconnection`**: Subscription resilience -- sessions automatically reconnect after network interruptions
+- **`Time64Micros` value type**: Microsecond-precision time-of-day extraction from Bloomberg `Datetime` fields, with Arrow `Time64Micros` type support in generic, histdata, and refdata state handlers
+- **Bloomberg SDK message receive time**: `Message::receive_time()` for latency measurement and diagnostics
+- **Extension modules (`py-xbbg/src/xbbg/ext/`)**: `currency`, `fixed_income`, `futures`, `historical` -- ported to work with the Rust backend in LONG format
+- **Markets module (`py-xbbg/src/xbbg/markets/`)**: `bloomberg`, `info`, `overrides`, `resolvers`, `sessions` -- exchange metadata, market timing, and override normalization
+- **Data definition files**: `defs/bloomberg.toml` and `defs/exchanges.toml` for data-driven Bloomberg and exchange configuration
+- **Codegen tool** (`codegen/generate.py`): Python code generator for service definitions, including `SEMI_LONG` output format support from `release/0.x`
+- **Python benchmark suite** (`benchmarks/`): Comprehensive benchmarks for `bdp`, `bdh`, `bdib`, `bdtick`, `bql`, and raw `blpapi` with version-based result tracking and a unified harness
+- **Comprehensive test suites**: `py-xbbg/tests/` with unit tests for imports, backends, blp API, backend conversion, currency conversion, exceptions, futures validation, integration, markets, and yield types. Live test suite (`py-xbbg/tests/live/`) for API, engine, subscription add/remove lifecycle, and subscription fixes
+- **Docker CI containers**: `docker/ci/Dockerfile` for Rust CI builds, `docker/manylinux/Dockerfile` for manylinux wheel builds
+- **CI workflow `ci-rust.yml`**: Multi-platform Rust CI with clippy, rustfmt, unit tests, integration tests, security audit (`cargo-audit`), license/dependency checks (`cargo-deny`), and semver-checks
+- **CI workflow `ci-docker.yml`**: Reusable container image builds for Rust and manylinux CI jobs
+- **Starlight documentation site**: Replaced Sphinx with Astro Starlight (`docs/astro.config.mjs`). New pages: API reference (`blp.md`, `exceptions.md`, `schema.md`, `services.md`), getting started (`installation.mdx`, `introduction.mdx`, `quickstart.mdx`), guides (`async.mdx`, `backends.mdx`, `migration.mdx`, `output-formats.mdx`, `streaming.mdx`), reference (`changelog.mdx`, `configuration.mdx`, `type-mappings.mdx`)
+- **SDK setup script** (`scripts/sdktool.ps1`): PowerShell script for Bloomberg SDK vendor layout management
+- **`cargo-deny` configuration** (`deny.toml`): License and security policy for all Rust dependencies
+- **Binding scaffolds**: `bindings/napi-xbbg/` (Node.js N-API) and `bindings/dotnet-xbbg/` (.NET) placeholder crates for future language bindings
+- **Application scaffolds**: `apps/xbbg-cli/` and `apps/xbbg-server/` placeholder crates for CLI and server applications
+- **JavaScript package scaffold** (`js-xbbg/`): `package.json` and README for future npm package
+- **`vendor/blpapi-sdk/README.md`**: Instructions for vendoring the Bloomberg C++ SDK locally
+
+### Changed
+
+- **Build system**: Switched from `setuptools` to `maturin>=1.7` (PyO3). `pyproject.toml` now uses `[build-system] requires = ["maturin>=1.7"]` with `bindings = "pyo3"` and `python-source = "py-xbbg/src"`
+- **Python package source location**: Moved from `xbbg/` (in-tree) to `py-xbbg/src/xbbg/` (maturin mixed-project layout). The native extension is compiled as `xbbg._core`
+- **Runtime dependencies**: Now `narwhals>=1.30`, `pyarrow>=22.0.0`, `lief>=0.17`. Removed `pandas`, `blpapi`, `tomli`, and all other previous dependencies as hard requirements
+- **Python version support**: Added Python 3.14 to classifiers (`>=3.10,<3.15`)
+- **`pypi_upload.yml` workflow**: Completely rewritten for maturin-based manylinux/Windows wheel builds with Bloomberg SDK detection, replacing the pure-Python sdist/wheel workflow
+- **`pre-commit-config.yaml`**: Updated hooks for the Rust+Python monorepo -- added `cargo fmt`, `cargo clippy`, and scoped ruff to `py-xbbg/` and `xbbg/`
+- **`.gitignore`**: Expanded for Rust build artifacts (`target/`), maturin outputs, SDK vendor directory, benchmark results, and IDE files
+- **README.md**: Rewritten for v1.0 -- concise project description, Rust-powered backend highlights, installation and quick start replacing the extensive v0.x documentation
+- **CONTRIBUTING.md**: Rewritten for the Rust+Python development workflow
+- **LICENSE**: Updated to Apache-2.0 with revised copyright
+- **Cargo release profile**: `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"` for maximum runtime performance; `opt-level = 3` for `xbbg-core` release, `opt-level = 2` for dev
+- **Subscription pool default**: Reduced from 4 to 1 worker, consolidated into `EngineConfig`
+- **Legacy `xbbg/` package**: Minor cleanups -- added `from __future__ import annotations` across all `__init__.py` files, normalized docstring quotes from single to double, removed `# noqa` lint suppression comments, replaced `lambda: []` with `list` in pipeline factory registry default resolvers
+
+### Removed
+
+- **`xbbg/__init__.py`**: Top-level package init replaced by `py-xbbg/src/xbbg/__init__.py` with Rust backend
+- **`xbbg/blp.py`**: 178-line deprecation compatibility layer -- all functions now live in `py-xbbg/src/xbbg/blp.py` backed by Rust
+- **`xbbg/const.py`**: 187-line constants module -- constants moved to Rust crates and `defs/*.toml`
+- **`xbbg/core/__init__.py`**: 35-line core package init -- core functionality replaced by Rust engine
+- **`xbbg/core/process.py`**: 787-line Bloomberg message processing module -- replaced by `xbbg-async` Rust engine state machines
+- **`xbbg/utils/pipeline.py`**: 336-line pipeline utilities -- replaced by Rust engine pipeline
+- **`xbbg/io/__init__.py`**: IO module init removed (module gutted in v0.12.0)
+- **`xbbg/markets/__init__.py`**: 76-line markets package init -- replaced by `py-xbbg/src/xbbg/markets/`
+- **`xbbg/markets/resolvers.py`**: Futures/CDX resolvers moved to `xbbg-ext` Rust crate
+- **`examples/feeds/pub.py`** and **`examples/feeds/sub.py`**: Legacy feed examples
+- **Sphinx documentation**: `docs/conf.py`, `docs/index.rst` (1,293 lines), `docs/Makefile`, `docs/make.bat`, `docs/docstring_style.rst` -- replaced by Starlight
+- **`.readthedocs.yaml`**: ReadTheDocs configuration (docs now use Starlight)
+- **`MANIFEST.in`**: No longer needed with maturin build system
+- **`SECURITY.md`**: Security policy document
+- **`_config.yml`**: Jekyll configuration
+- **`codecov.yml`**: Codecov configuration
+- **9 CI workflows**: `auto_ci.yml`, `ci_docs.yml`, `codeql-analysis.yml`, `publish_docs.yml`, `publish_testpypi.yml`, `pypi_build_test.yml`, `release_assets.yml`, `update_index_on_release.yml`, `update_readme_on_release.yml` -- consolidated into `ci-rust.yml`, `ci-docker.yml`, and rewritten `pypi_upload.yml`
+
+### Fixed
+
+- **Clippy 1.93 lints**: Resolved `map_or` and doc indentation warnings across all Rust crates
+- **Windows LLVM/`LIBCLANG_PATH` setup**: Fixed detection and configuration for `bindgen` on Windows CI
+- **Linux `LIBCLANG_PATH` detection**: Fixed `libclang-dev` path resolution on Linux CI
+- **Non-ASCII characters in comments**: Replaced em dashes with ASCII equivalents to pass CI source checks
+- **Subscription slab key reuse race**: Prevented key reuse on subscription removal in `xbbg-async` that could cause events to route to wrong handlers
+- **Subscription error propagation**: Subscription errors now propagate as Python exceptions via PyO3 instead of being silently swallowed
+- **Subscription pipeline rewrite**: Multi-type support, error propagation, and event time tracking in `xbbg-async`
+- **`Datetime` field zeroed date parts**: Added parts bitmask check to correctly handle Bloomberg `Datetime` fields with zeroed date components
+- **DLL search path setup (Windows)**: Moved SDK DLL search path configuration to module level in `py-xbbg` to fix `from xbbg._core import X` failures
+- **`Request::set_bool`**: Use `setElementString` for Bool elements in Bloomberg requests (Bloomberg API quirk)
+- **TA study requests**: Wired through `elements` instead of unused `json_elements` path
+- **`WIDE` format compatibility**: Produces 0.7.7-compatible DataFrame structure from the Rust backend
+- **Backend double-conversion bug**: Fixed duplicate conversion when Rust backend returns data that is then converted again by Python
+
 ## [0.12.0] - 2026-02-18
 
 ### Added
@@ -792,7 +889,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...HEAD
 [0.12.0]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...v0.12.0
 [0.12.0b3]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b2...v0.12.0b3
 [0.12.0b2]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b1...v0.12.0b2
