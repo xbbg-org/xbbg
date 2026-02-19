@@ -32,26 +32,16 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Build wheels for supported platforms (Linux x64, Windows x64/x86) × Python versions
+  # Build wheels via setuptools-rust (Linux x64, Windows x64) × Python versions
   # ════════════════════════════════════════════════════════════════════════════
   build:
-    name: Build (Python ${{ matrix.python }}, ${{ matrix.target }})
+    name: Build (Python ${{ matrix.python }}, ${{ matrix.os }})
     needs: sdk-version
     strategy:
       fail-fast: false
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         os: [ubuntu-latest, windows-latest]
-        target: [x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, i686-pc-windows-msvc]
-        exclude:
-          # Linux only runs on ubuntu with linux target
-          - os: ubuntu-latest
-            target: x86_64-pc-windows-msvc
-          - os: ubuntu-latest
-            target: i686-pc-windows-msvc
-          # Windows only runs on windows with windows targets
-          - os: windows-latest
-            target: x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.os }}
     env:
@@ -59,11 +49,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # setuptools_scm needs full git history for version
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -95,26 +85,16 @@ jobs:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
+      - name: Install build dependencies
+        run: pip install setuptools>=77 wheel "setuptools-scm>=8" "setuptools-rust>=1.11"
+
       - name: Build wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist -i ${{ matrix.python }}
-          manylinux: "2_28"
-          before-script-linux: |
-            dnf install -y git clang-devel
-            git config --global --add safe.directory /io
-            mkdir -p /opt/blpapi
-            curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-linux.tar.gz" \
-              | tar -xz -C /opt/blpapi --strip-components=1
-            ln -sf /opt/blpapi/Linux /opt/blpapi/lib
-            ln -sf /opt/blpapi/lib/libblpapi3_64.so /opt/blpapi/lib/libblpapi3.so
-          docker-options: -e BLPAPI_ROOT=/opt/blpapi -e LIBRARY_PATH=/opt/blpapi/lib
+        run: pip wheel . --no-deps --wheel-dir dist/
 
       - name: Upload wheel
         uses: actions/upload-artifact@v6
         with:
-          name: wheel-${{ matrix.target }}-py${{ matrix.python }}
+          name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist/*.whl
 
   # ════════════════════════════════════════════════════════════════════════════
@@ -125,12 +105,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # setuptools_scm needs full git history for version
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install build tool
+        run: pip install build
 
       - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          command: sdist
-          args: --out dist
+        run: python -m build --sdist --outdir dist/
 
       - name: Upload sdist
         uses: actions/upload-artifact@v6
@@ -166,10 +153,10 @@ jobs:
           packages-dir: dist/
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Create GitHub Release
+  # Attach wheels to GitHub Release (created by semantic_version.yml)
   # ════════════════════════════════════════════════════════════════════════════
-  github-release:
-    name: Create GitHub Release
+  release-assets:
+    name: Attach Release Assets
     needs: [build, sdist, publish]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry-run
@@ -177,18 +164,13 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
-
       - name: Download all artifacts
         uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
