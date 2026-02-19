@@ -55,6 +55,10 @@ mod ext;
 mod markets;
 mod recipes;
 
+type StreamBatchResult = Result<arrow::record_batch::RecordBatch, BlpError>;
+type StreamReceiver = tokio::sync::mpsc::Receiver<StreamBatchResult>;
+type SharedStreamReceiver = Arc<Mutex<Option<StreamReceiver>>>;
+
 // =============================================================================
 // Python Exception Hierarchy (mirrors py-xbbg/src/xbbg/exceptions.py)
 // =============================================================================
@@ -947,11 +951,7 @@ impl PyEngine {
 #[pyclass]
 pub struct PySubscription {
     /// Receiver for incoming data - separate lock so iteration doesn't block add/remove
-    rx: Arc<
-        Mutex<
-            Option<tokio::sync::mpsc::Receiver<Result<arrow::record_batch::RecordBatch, BlpError>>>,
-        >,
-    >,
+    rx: SharedStreamReceiver,
     /// Stream handle for metadata and modification operations
     stream: Arc<Mutex<Option<SubscriptionStreamHandle>>>,
 }

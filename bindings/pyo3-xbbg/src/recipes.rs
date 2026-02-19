@@ -41,6 +41,7 @@ fn recipe_err(e: xbbg_recipes::RecipeError) -> PyErr {
 ///     benchmark: Benchmark security for spread calculation
 #[pyfunction]
 #[pyo3(signature = (engine, tickers, fields, settle_dt=None, yield_type=None, spread=None, yield_val=None, price=None, benchmark=None))]
+#[allow(clippy::too_many_arguments)]
 fn recipe_yas<'py>(
     py: Python<'py>,
     engine: &PyEngine,

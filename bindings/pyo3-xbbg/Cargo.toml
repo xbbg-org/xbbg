@@ -24,9 +24,6 @@ xbbg-async = { path = "../../crates/xbbg-async" }
 xbbg-ext = { path = "../../crates/xbbg-ext" }
 xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 
-[build-dependencies]
-vergen-gitcl = { version = "1", features = ["build", "cargo"] }
-
 [features]
 default = ["live"]
 mock = ["xbbg-async/mock", "xbbg-recipes/mock"]
