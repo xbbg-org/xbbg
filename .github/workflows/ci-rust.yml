@@ -450,12 +450,15 @@ jobs:
   # ════════════════════════════════════════════════════════════════════════════
   test:
     name: Test (Python ${{ matrix.python }}, ${{ matrix.os }})
-    needs: build
+    needs: [sdk-version, build]
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -476,6 +479,30 @@ jobs:
           name: wheel-${{ matrix.os == 'ubuntu-latest' && 'x86_64-unknown-linux-gnu' || 'x86_64-pc-windows-msvc' }}-py${{ matrix.python }}
           path: dist
 
+      - name: Cache Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: cache-sdk-linux
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (Linux)
+        if: runner.os == 'Linux' && steps.cache-sdk-linux.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$HOME/blpapi/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
       - name: Install blpapi from Bloomberg
         run: uv pip install --system --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
 
@@ -484,7 +511,7 @@ jobs:
         run: |
           # Install the specific wheel for this Python version
           uv pip install --system dist/*.whl
-          uv pip install --system pytest pytest-cov
+          uv pip install --system pytest pytest-cov pytest-asyncio pandas
 
       - name: Copy tests to temp directory
         # Run from temp dir to avoid importing local source instead of installed package
