@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-02-19
+
 ### Fixed
 
 - **PyArrow WIDE format crash**: Fix `ArrowTypeError` when pivoting intraday tick data with mixed types (float value + string typ/cond/exch columns) in non-pandas backends (#224)
@@ -799,7 +801,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/alpha-xone/xbbg/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...v0.12.0
 [0.12.0b3]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b2...v0.12.0b3
 [0.12.0b2]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b1...v0.12.0b2
