@@ -53,6 +53,13 @@ impl GenericState {
         self.process_message(msg);
 
         let result = self.build_batch();
+        if let Ok(ref batch) = result {
+            xbbg_log::debug!(
+                rows = batch.num_rows(),
+                cols = batch.num_columns(),
+                "generic finish"
+            );
+        }
         let _ = self.reply.send(result);
     }
 

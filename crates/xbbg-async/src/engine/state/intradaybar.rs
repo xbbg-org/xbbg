@@ -80,6 +80,9 @@ impl IntradayBarState {
             "volume",
             "numEvents",
         ]);
+        if let Ok(ref batch) = result {
+            xbbg_log::debug!(rows = batch.num_rows(), "intradaybar finish");
+        }
         let _ = reply.send(result);
     }
 

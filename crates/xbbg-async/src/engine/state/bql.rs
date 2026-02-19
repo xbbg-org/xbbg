@@ -52,6 +52,13 @@ impl BqlState {
             self.columns.finish()
         };
 
+        if let Ok(ref batch) = result {
+            xbbg_log::debug!(
+                rows = batch.num_rows(),
+                cols = batch.num_columns(),
+                "bql finish"
+            );
+        }
         let _ = self.reply.send(result);
     }
 

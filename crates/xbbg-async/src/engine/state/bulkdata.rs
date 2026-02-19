@@ -46,6 +46,13 @@ impl BulkDataState {
         let mut order = vec!["ticker", "field"];
         order.extend(self.subfield_names.iter().map(|s| s.as_str()));
         let result = self.columns.finish_with_order(&order);
+        if let Ok(ref batch) = result {
+            xbbg_log::debug!(
+                rows = batch.num_rows(),
+                cols = batch.num_columns(),
+                "bulkdata finish"
+            );
+        }
         let _ = reply.send(result);
     }
 

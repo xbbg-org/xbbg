@@ -77,6 +77,9 @@ impl BsrchState {
         } else {
             self.columns.finish()
         };
+        if let Ok(ref batch) = result {
+            xbbg_log::debug!(rows = batch.num_rows(), "bsrch finish");
+        }
         let _ = reply.send(result);
     }
 

@@ -52,6 +52,9 @@ impl IntradayTickState {
         let result = self
             .columns
             .finish_with_order(&["ticker", "time", "type", "value", "size"]);
+        if let Ok(ref batch) = result {
+            xbbg_log::debug!(rows = batch.num_rows(), "intradaytick finish");
+        }
         let _ = reply.send(result);
     }
 
