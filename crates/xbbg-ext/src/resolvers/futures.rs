@@ -276,7 +276,7 @@ pub fn filter_candidates_by_cycle(
         .filter(|(_, _, month)| {
             MONTH_NUM_TO_CODE
                 .get(month)
-                .map_or(false, |code| cycle_upper.contains(code))
+                .is_some_and(|code| cycle_upper.contains(code))
         })
         .cloned()
         .collect()

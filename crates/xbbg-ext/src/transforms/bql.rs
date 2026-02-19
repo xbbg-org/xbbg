@@ -10,9 +10,9 @@
 /// # Arguments
 ///
 /// * `equity_ticker` - Company equity ticker (e.g., "BAC US Equity").
-///     If no suffix is provided, " US Equity" will be appended.
+///   If no suffix is provided, " US Equity" will be appended.
 /// * `fields` - Optional additional fields to retrieve.
-///     Default fields are: id, name.
+///   Default fields are: id, name.
 ///
 /// # Returns
 ///
@@ -66,7 +66,7 @@ pub fn build_preferreds_query(equity_ticker: &str, extra_fields: &[&str]) -> Str
 /// * `ticker` - Company ticker without suffix (e.g., "AAPL", "MSFT").
 /// * `ccy` - Currency filter (None for all currencies).
 /// * `extra_fields` - Optional additional fields to retrieve.
-///     Default field is: id.
+///   Default field is: id.
 /// * `active_only` - If true, only return active bonds.
 ///
 /// # Returns
@@ -129,9 +129,9 @@ pub fn build_corporate_bonds_query(
 /// # Arguments
 ///
 /// * `etf_ticker` - ETF ticker (e.g., "SPY US Equity" or "SPY").
-///     If no suffix is provided, " US Equity" will be appended.
+///   If no suffix is provided, " US Equity" will be appended.
 /// * `extra_fields` - Optional additional fields beyond the defaults
-///     (id_isin, weights, id().position).
+///   (id_isin, weights, id().position).
 ///
 /// # Returns
 ///
