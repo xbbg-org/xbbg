@@ -17,8 +17,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  XBBG_CI_IMAGE: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
-  XBBG_MANYLINUX_IMAGE: ghcr.io/${{ github.repository_owner }}/xbbg-manylinux:latest
 
 jobs:
   # ════════════════════════════════════════════════════════════════════════════
@@ -45,7 +43,7 @@ jobs:
     name: Generate blpapi bindings artifact
     needs: sdk-version
     runs-on: ubuntu-latest
-    container: ${{ env.XBBG_CI_IMAGE }}
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
@@ -234,7 +232,7 @@ jobs:
     name: Check (Linux)
     needs: sdk-version
     runs-on: ubuntu-latest
-    container: ${{ env.XBBG_CI_IMAGE }}
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
@@ -419,7 +417,7 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist -i ${{ matrix.python }}
           manylinux: "2_28"
-          container: ${{ env.XBBG_MANYLINUX_IMAGE }}
+          container: ghcr.io/${{ github.repository_owner }}/xbbg-manylinux:latest
           before-script-linux: |
             git config --global --add safe.directory /io
             mkdir -p /opt/blpapi
@@ -513,7 +511,7 @@ jobs:
     name: Unused Deps
     needs: [sdk-version, check-linux]
     runs-on: ubuntu-latest
-    container: ${{ env.XBBG_CI_IMAGE }}
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     continue-on-error: true
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
@@ -560,7 +558,7 @@ jobs:
     name: Unsafe Audit
     needs: [sdk-version, check-linux]
     runs-on: ubuntu-latest
-    container: ${{ env.XBBG_CI_IMAGE }}
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     continue-on-error: true
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
@@ -612,7 +610,7 @@ jobs:
     name: Semver Check
     needs: [sdk-version, check-linux]
     runs-on: ubuntu-latest
-    container: ${{ env.XBBG_CI_IMAGE }}
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     continue-on-error: true
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
@@ -666,7 +664,7 @@ jobs:
     name: Kani
     needs: [sdk-version, check-linux]
     runs-on: ubuntu-latest
-    container: ${{ env.XBBG_CI_IMAGE }}
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     continue-on-error: true
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
