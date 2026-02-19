@@ -242,7 +242,7 @@ pub struct PyEngineConfig {
     /// Number of pre-warmed request workers (default: 2)
     #[pyo3(get, set)]
     pub request_pool_size: usize,
-    /// Number of pre-warmed subscription sessions (default: 4)
+    /// Number of pre-warmed subscription sessions (default: 1)
     #[pyo3(get, set)]
     pub subscription_pool_size: usize,
     /// Validation mode: "disabled" (default), "strict", or "lenient"

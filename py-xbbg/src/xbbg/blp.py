@@ -74,7 +74,7 @@ class Backend(str, Enum):
 
 __all__ = [
     "Backend",
-    "EngineConfig",
+    # EngineConfig is re-exported from __init__.py -> _core.PyEngineConfig
     # Generic API (power users)
     "arequest",
     "request",
@@ -147,45 +147,11 @@ __all__ = [
 ]
 
 
-@dataclass
-class EngineConfig:
-    """Configuration for the xbbg Engine.
-
-    All settings have sensible defaults - you only need to specify what you want to change.
-
-    Attributes:
-        host: Bloomberg server host (default: "localhost")
-        port: Bloomberg server port (default: 8194)
-        request_pool_size: Number of pre-warmed request workers (default: 2)
-        subscription_pool_size: Number of pre-warmed subscription sessions (default: 4)
-
-    Example::
-
-        from xbbg import configure, EngineConfig
-
-        # Configure before first request
-        configure(
-            EngineConfig(
-                request_pool_size=4,
-                subscription_pool_size=8,
-            )
-        )
-
-        # Or use configure() with keyword arguments
-        configure(request_pool_size=4, subscription_pool_size=8)
-    """
-
-    host: str = "localhost"
-    port: int = 8194
-    request_pool_size: int = 2
-    subscription_pool_size: int = 4
-
-
 # Backend configuration
 _default_backend: Backend | None = None
 
 # Engine configuration (set before first use)
-_config: EngineConfig | None = None
+_config = None  # PyEngineConfig instance or None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
@@ -285,26 +251,28 @@ def is_connected() -> bool:
 
 
 def configure(
-    config: EngineConfig | None = None,
-    *,
-    host: str | None = None,
-    port: int | None = None,
-    request_pool_size: int | None = None,
-    subscription_pool_size: int | None = None,
+    config=None,
+    **kwargs,
 ) -> None:
     """Configure the xbbg engine before first use.
 
     This function must be called before any Bloomberg request is made.
     If called after the engine has started, a RuntimeError is raised.
 
-    Can be called with either an EngineConfig object or keyword arguments.
+    Can be called with an EngineConfig object, keyword arguments, or both
+    (kwargs override config fields). All defaults come from Rust.
+
+    See ``EngineConfig()`` for available fields and their defaults::
+
+        >>> from xbbg import EngineConfig
+        >>> EngineConfig()
+        EngineConfig(host='localhost', port=8194, request_pool_size=2,
+                     subscription_pool_size=1, ...)
 
     Args:
         config: An EngineConfig object with all settings.
-        host: Bloomberg server host (default: "localhost")
-        port: Bloomberg server port (default: 8194)
-        request_pool_size: Number of pre-warmed request workers (default: 2)
-        subscription_pool_size: Number of pre-warmed subscription sessions (default: 4)
+        **kwargs: Override individual fields (host, port, request_pool_size,
+            subscription_pool_size, etc.).
 
     Raises:
         RuntimeError: If called after the engine has already started.
@@ -313,16 +281,17 @@ def configure(
 
         import xbbg
 
-        # Option 1: Using keyword arguments
-        xbbg.configure(request_pool_size=4, subscription_pool_size=8)
+        # Option 1: Using keyword arguments (most common)
+        xbbg.configure(request_pool_size=4, subscription_pool_size=2)
 
         # Option 2: Using EngineConfig object
         from xbbg import EngineConfig
 
         xbbg.configure(EngineConfig(request_pool_size=4))
 
-        # Now make requests - configuration takes effect
-        df = xbbg.bdp("AAPL US Equity", "PX_LAST")
+        # Option 3: EngineConfig + overrides
+        cfg = EngineConfig(request_pool_size=4)
+        xbbg.configure(cfg, subscription_pool_size=2)
     """
     global _config, _engine
 
@@ -331,32 +300,18 @@ def configure(
             "Cannot configure after engine has started. Call xbbg.configure() before any Bloomberg request."
         )
 
-    if config is not None:
-        # Use the provided config, optionally overriding with kwargs
-        _config = EngineConfig(
-            host=host if host is not None else config.host,
-            port=port if port is not None else config.port,
-            request_pool_size=request_pool_size if request_pool_size is not None else config.request_pool_size,
-            subscription_pool_size=subscription_pool_size
-            if subscription_pool_size is not None
-            else config.subscription_pool_size,
-        )
-    else:
-        # Build config from kwargs, using defaults for unspecified values
-        _config = EngineConfig(
-            host=host if host is not None else "localhost",
-            port=port if port is not None else 8194,
-            request_pool_size=request_pool_size if request_pool_size is not None else 2,
-            subscription_pool_size=subscription_pool_size if subscription_pool_size is not None else 4,
-        )
+    from . import _core
 
-    logger.info(
-        "Engine configured: host=%s port=%d request_pool=%d subscription_pool=%d",
-        _config.host,
-        _config.port,
-        _config.request_pool_size,
-        _config.subscription_pool_size,
-    )
+    if config is not None:
+        # Start from the provided config, apply kwargs on top
+        _config = config
+        for key, value in kwargs.items():
+            setattr(_config, key, value)
+    else:
+        # Build from kwargs; PyEngineConfig fills Rust defaults for anything unset
+        _config = _core.PyEngineConfig(**kwargs)
+
+    logger.info("Engine configured: %s", _config)
 
 
 def set_backend(backend: Backend | str | None) -> None:
@@ -416,24 +371,12 @@ def _get_engine():
         from . import _core
 
         if _config is not None:
-            # Use user-provided configuration
-            logger.debug(
-                "Creating PyEngine with config: host=%s port=%d request_pool=%d subscription_pool=%d",
-                _config.host,
-                _config.port,
-                _config.request_pool_size,
-                _config.subscription_pool_size,
-            )
-            py_config = _core.PyEngineConfig(
-                host=_config.host,
-                port=_config.port,
-                request_pool_size=_config.request_pool_size,
-                subscription_pool_size=_config.subscription_pool_size,
-            )
-            _engine = _core.PyEngine.with_config(py_config)
+            # Use user-provided configuration (already a PyEngineConfig)
+            logger.debug("Creating PyEngine with config: %s", _config)
+            _engine = _core.PyEngine.with_config(_config)
         else:
-            # Use defaults
-            logger.debug("Creating new PyEngine instance with default config")
+            # Use Rust defaults
+            logger.debug("Creating PyEngine with default config")
             _engine = _core.PyEngine()
         logger.info("PyEngine connected to Bloomberg")
     return _engine

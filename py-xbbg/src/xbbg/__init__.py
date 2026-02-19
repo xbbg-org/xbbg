@@ -206,10 +206,14 @@ def __getattr__(name: str):
         from . import _core
 
         return getattr(_core, name)
+    # EngineConfig comes directly from Rust — single source of truth
+    if name == "EngineConfig":
+        from . import _core
+
+        return _core.PyEngineConfig
     # blp module exports
     if name in (
         "Backend",
-        "EngineConfig",
         "arequest",
         "request",
         "bdp",

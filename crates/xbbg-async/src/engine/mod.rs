@@ -429,7 +429,7 @@ impl Default for EngineConfig {
             subscription_stream_capacity: 256,
             overflow_policy: OverflowPolicy::default(),
             request_pool_size: 2,
-            subscription_pool_size: 4,
+            subscription_pool_size: 1,
             warmup_services: vec![
                 crate::services::Service::RefData.to_string(),
                 crate::services::Service::ApiFlds.to_string(),
