@@ -205,13 +205,12 @@ jobs:
       - name: Set LIBCLANG_PATH
         shell: bash
         run: |
-          LLVM_LIB="${{ steps.install-llvm.outputs.llvm-path }}/lib"
+          echo "::notice::LLVM_PATH env = ${LLVM_PATH:-unset}"
+          LLVM_LIB="${LLVM_PATH}/lib"
           echo "LIBCLANG_PATH=$LLVM_LIB" >> "$GITHUB_ENV"
           echo "::notice::LIBCLANG_PATH=$LLVM_LIB"
-          echo "--- LLVM lib contents (clang related) ---"
+          echo "--- LLVM lib contents (clang/libclang) ---"
           ls "$LLVM_LIB" 2>/dev/null | grep -i clang || echo "No clang files in $LLVM_LIB"
-          echo "--- LLVM bin contents (clang related) ---"
-          ls "${{ steps.install-llvm.outputs.llvm-path }}/bin" 2>/dev/null | grep -i clang || echo "No clang files in bin/"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
