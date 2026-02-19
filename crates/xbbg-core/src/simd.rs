@@ -43,6 +43,10 @@ pub fn pack_validity_scalar(valid: &[u8], out: &mut [u8]) {
 }
 
 /// AVX2 implementation - processes 32 rows in ~3 cycles
+///
+/// # Safety
+///
+/// Caller must ensure the CPU supports AVX2 (check with `is_x86_feature_detected!("avx2")`).
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
@@ -113,6 +117,10 @@ pub fn is_ascii_scalar(data: &[u8]) -> bool {
 }
 
 /// AVX2 ASCII check - processes 32 bytes in ~3 cycles
+///
+/// # Safety
+///
+/// Caller must ensure the CPU supports AVX2 (check with `is_x86_feature_detected!("avx2")`).
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
@@ -190,6 +198,10 @@ pub fn i32_to_f64_scalar(src: &[i32], dst: &mut [f64]) {
 }
 
 /// AVX2 i32 to f64 conversion - processes 4 values at a time
+///
+/// # Safety
+///
+/// Caller must ensure the CPU supports AVX2 (check with `is_x86_feature_detected!("avx2")`).
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]

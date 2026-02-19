@@ -74,7 +74,7 @@ impl std::fmt::Debug for ConstantList {
     }
 }
 
-impl<'a> IntoIterator for &'a ConstantList {
+impl IntoIterator for &ConstantList {
     type Item = Constant;
     type IntoIter = ConstantIter;
 

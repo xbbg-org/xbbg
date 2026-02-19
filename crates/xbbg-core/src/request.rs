@@ -436,17 +436,22 @@ impl Request {
     /// This is used for Bloomberg override arrays where each entry is a sub-element
     /// with "fieldId" and "value" children.
     ///
+    /// # Safety
+    ///
+    /// `array_element` must be a valid, non-null pointer to a Bloomberg element
+    /// obtained from [`get_or_create_element`] or a prior call to this method.
+    ///
     /// # Example
     /// ```ignore
     /// // Get the overrides array
     /// let overrides_ptr = req.get_or_create_element("overrides")?;
     /// // Append a new override entry
-    /// let entry_ptr = req.append_element(overrides_ptr)?;
+    /// let entry_ptr = unsafe { req.append_element(overrides_ptr)? };
     /// // Set fieldId and value on the entry
-    /// req.set_element_string(entry_ptr, "fieldId", "BEST_FPERIOD_OVERRIDE")?;
-    /// req.set_element_string(entry_ptr, "value", "1FY")?;
+    /// unsafe { req.set_element_string(entry_ptr, "fieldId", "BEST_FPERIOD_OVERRIDE")? };
+    /// unsafe { req.set_element_string(entry_ptr, "value", "1FY")? };
     /// ```
-    pub fn append_element(
+    pub unsafe fn append_element(
         &mut self,
         array_element: *mut crate::ffi::blpapi_Element_t,
     ) -> Result<*mut crate::ffi::blpapi_Element_t> {
@@ -470,7 +475,12 @@ impl Request {
     /// This is the low-level version that operates on a raw element pointer
     /// rather than the request root. Used for setting fields on sub-elements
     /// returned by `append_element()`.
-    pub fn set_element_string(
+    ///
+    /// # Safety
+    ///
+    /// `element` must be a valid, non-null pointer to a Bloomberg element
+    /// obtained from [`get_or_create_element`] or [`append_element`].
+    pub unsafe fn set_element_string(
         &mut self,
         element: *mut crate::ffi::blpapi_Element_t,
         name: &str,
