@@ -211,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@v1.17.5
       - run: cargo binstall -y cargo-audit && cargo audit
 
   # ════════════════════════════════════════════════════════════════════════════
@@ -222,7 +222,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@v1.17.5
       - run: cargo binstall -y cargo-deny && cargo deny check
 
   # ════════════════════════════════════════════════════════════════════════════
@@ -542,7 +542,7 @@ jobs:
           toolchain: nightly
           rustflags: ""
 
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@v1.17.5
       - run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           cargo binstall -y --force cargo-udeps
@@ -589,7 +589,7 @@ jobs:
           components: rust-src
           rustflags: ""
 
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@v1.17.5
       - name: Run cargo-geiger
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
@@ -642,7 +642,7 @@ jobs:
         with:
           rustflags: ""
 
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@v1.17.5
       - name: Run cargo-semver-checks
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
