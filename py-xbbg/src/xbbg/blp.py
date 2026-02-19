@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import functools
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -175,7 +176,7 @@ def _atexit_cleanup() -> None:
         try:
             _engine.signal_shutdown()
         except Exception:
-            pass  # Best effort during interpreter shutdown
+            logger.debug("Exception during atexit cleanup (ignored)", exc_info=True)
         _engine = None
 
 
@@ -419,7 +420,7 @@ async def _aget_valid_elements(service: str, operation: str) -> set[str]:
         _VALID_ELEMENTS_CACHE[cache_key] = valid
         return valid
     except Exception:
-        # Schema not available, return empty set
+        logger.debug("Schema lookup failed for %s/%s, using empty set", service, operation, exc_info=True)
         return set()
 
 
@@ -836,22 +837,25 @@ async def arequest(
         format=format_hint,
     )
     params.validate()
-    logger.debug(
-        "Request validated: service=%s operation=%s securities=%s fields=%s",
-        params.service,
-        params.operation,
-        securities_list,
-        fields_list,
-    )
 
     # Get engine and send request
     engine = _get_engine()
     params_dict = params.to_dict()
 
     # Call the generic request method on the engine
-    logger.debug("Sending request to Rust engine")
+    t0 = time.perf_counter()
     batch = await engine.request(params_dict)
-    logger.debug("Received response: %d rows", batch.num_rows)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+
+    logger.info(
+        "bloomberg %s.%s: %d rows in %.1fms | securities=%s fields=%s",
+        params.service,
+        params.operation,
+        batch.num_rows,
+        elapsed_ms,
+        securities_list,
+        fields_list,
+    )
 
     # Convert RecordBatch to Table for narwhals native support (zero-copy)
     table = pa.Table.from_batches([batch])
@@ -1606,6 +1610,7 @@ class Subscription:
             tickers: Single ticker or list of tickers to add
         """
         ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+        logger.debug("subscription add: %s", ticker_list)
         await self._sub.add(ticker_list)
 
     async def remove(self, tickers: str | list[str]) -> None:
@@ -1615,6 +1620,7 @@ class Subscription:
             tickers: Single ticker or list of tickers to remove
         """
         ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+        logger.debug("subscription remove: %s", ticker_list)
         await self._sub.remove(ticker_list)
 
     @property
@@ -1641,6 +1647,7 @@ class Subscription:
         Returns:
             List of remaining batches if drain=True, else None
         """
+        logger.info("unsubscribe: drain=%s", drain)
         return await self._sub.unsubscribe(drain)
 
     async def __aenter__(self):
@@ -1707,6 +1714,7 @@ async def asubscribe(
     )
 
     engine = _get_engine()
+    logger.info("subscribe: tickers=%s fields=%s", ticker_list, field_list)
     py_sub = await engine.subscribe(ticker_list, field_list)
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
