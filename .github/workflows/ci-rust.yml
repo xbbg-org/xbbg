@@ -358,13 +358,12 @@ jobs:
           rustflags: ""
 
       - name: Download pre-generated bindings
-        if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
           name: blpapi-bindings
           path: ci-bindings
 
-      - name: Configure pre-generated bindings path
+      - name: Configure pre-generated bindings path (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -418,7 +417,7 @@ jobs:
               | tar -xz -C /opt/blpapi --strip-components=1
             ln -sf /opt/blpapi/Linux /opt/blpapi/lib
             ln -sf /opt/blpapi/lib/libblpapi3_64.so /opt/blpapi/lib/libblpapi3.so
-          docker-options: -e BLPAPI_ROOT=/opt/blpapi -e LIBRARY_PATH=/opt/blpapi/lib -e LD_LIBRARY_PATH=/opt/blpapi/lib
+          docker-options: -e BLPAPI_ROOT=/opt/blpapi -e LIBRARY_PATH=/opt/blpapi/lib -e LD_LIBRARY_PATH=/opt/blpapi/lib -e BLPAPI_PREGENERATED_BINDINGS=/io/ci-bindings/bindings.rs
 
       - name: Build wheel (Windows)
         if: runner.os == 'Windows'
