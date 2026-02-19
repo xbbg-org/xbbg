@@ -267,11 +267,8 @@ jobs:
           rustflags: ""
 
       - name: Cargo clippy
-        run: |
-          cargo clippy --workspace --all-targets \
-            --exclude datamock \
-            --exclude datamock-sys \
-            -- -D warnings
+        shell: pwsh
+        run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
 
   check-windows:
     name: Check (Windows)
