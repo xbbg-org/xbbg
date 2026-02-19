@@ -90,8 +90,8 @@ where
 
     AllocStats {
         name: name.to_string(),
-        bytes_allocated: bytes as u64,
-        allocations: allocs as u64,
+        bytes_allocated: bytes,
+        allocations: allocs,
         duration_us: duration.as_micros() as u64,
         bytes_per_op: bytes as f64 / iterations as f64,
         allocs_per_op: allocs as f64 / iterations as f64,

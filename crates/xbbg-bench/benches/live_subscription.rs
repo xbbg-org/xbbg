@@ -10,7 +10,7 @@
 //!
 //! Run with: cargo bench --package xbbg-bench --bench live_subscription
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use xbbg_bench::{open_service, setup_session, write_json, FieldNames};
@@ -221,7 +221,7 @@ fn bench_multi_subscription(
     }
 }
 
-fn write_results(results: &[SubBenchResult], output_path: &PathBuf) {
+fn write_results(results: &[SubBenchResult], output_path: &Path) {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

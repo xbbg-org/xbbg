@@ -637,9 +637,11 @@ impl RequestWorker {
             if !overrides.is_empty() {
                 let overrides_ptr = request.get_or_create_element("overrides")?;
                 for (field_id, value) in overrides {
-                    let entry_ptr = request.append_element(overrides_ptr)?;
-                    request.set_element_string(entry_ptr, "fieldId", field_id)?;
-                    request.set_element_string(entry_ptr, "value", value)?;
+                    // SAFETY: overrides_ptr is a valid element obtained from
+                    // get_or_create_element above; entry_ptr is valid from append_element.
+                    let entry_ptr = unsafe { request.append_element(overrides_ptr)? };
+                    unsafe { request.set_element_string(entry_ptr, "fieldId", field_id)? };
+                    unsafe { request.set_element_string(entry_ptr, "value", value)? };
                 }
                 xbbg_log::debug!(
                     worker_id = self.id,
