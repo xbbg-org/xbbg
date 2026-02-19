@@ -484,7 +484,15 @@ impl Engine {
             config.clone(),
         )?);
 
-        xbbg_log::info!("Engine started with worker pools");
+        let total_sessions = config.request_pool_size + config.subscription_pool_size;
+        xbbg_log::info!(
+            request_workers = config.request_pool_size,
+            subscription_workers = config.subscription_pool_size,
+            total_bloomberg_sessions = total_sessions,
+            host = %config.server_host,
+            port = config.server_port,
+            "Engine ready"
+        );
 
         Ok(Self {
             request_pool,
