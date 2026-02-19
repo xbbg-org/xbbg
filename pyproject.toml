@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=77", "wheel", "setuptools_scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.7"]
+build-backend = "maturin"
 
 [project]
 name = "xbbg"
@@ -13,13 +13,6 @@ authors = [
   { name = "Alpha x1", email = "alpha.xone@outlook.com" },
 ]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
-  "Intended Audience :: Financial and Insurance Industry",
-  "Intended Audience :: Developers",
-  "Topic :: Office/Business :: Financial",
-  "Topic :: Office/Business :: Financial :: Investment",
-  "Topic :: Software Development :: Libraries :: Python Modules",
-  "Topic :: Scientific/Engineering :: Information Analysis",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
@@ -30,34 +23,16 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-  "narwhals>=2.14.0",
+  "narwhals>=1.30",
   "pyarrow>=22.0.0",
-  "tomli>=2.0.1; python_version < '3.11'",
+  "lief>=0.17",
 ]
 
 [project.optional-dependencies]
-# DataFrame backends - install what you need
-# Eager backends (full API support)
-pandas = ["pandas>=2.0"]
-polars = ["polars>=0.20"]
-# cudf requires NVIDIA GPU + CUDA + Linux - install manually if needed:
-#   pip install --extra-index-url https://pypi.nvidia.com cudf-cu12
-modin = ["modin[dask]>=0.25"]  # Distributed pandas
-# Lazy backends (deferred execution)
-duckdb = ["duckdb>=1.0"]
-dask = ["dask[dataframe]>=2024.1"]
-ibis = ["ibis-framework>=6.0"]
-# pyspark requires Java - install manually if needed
-sqlframe = ["sqlframe>=3.22"]
-# Convenience extras
-all-backends = [
-  "pandas>=2.0",
-  "polars>=0.20",
-  "duckdb>=1.0",
-  "dask[dataframe]>=2024.1",
-  "ibis-framework>=6.0",
-]
-# Documentation (for ReadTheDocs builds)
+# Kept for compatibility if consumers expect extras, but dev/test tooling
+# is managed via uv dependency groups below.
+test = ["pytest", "pytest-cov", "coverage", "codecov"]
+dev = ["ruff", "ipykernel", "build", "twine", "pre-commit"]
 docs = ["sphinx>=5.3.0", "sphinx-rtd-theme>=2.0.0", "sphinx-llms-txt>=0.7.0"]
 
 [project.urls]
@@ -65,24 +40,12 @@ Homepage = "https://github.com/alpha-xone/xbbg"
 Documentation = "https://xbbg.readthedocs.io/"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
-Logo = "https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/xbbg.png"
 
-[tool.setuptools_scm]
-# Accept semantic versioning tags: v0.7.10, v0.7.12a1, v0.7.12b1, v0.7.12rc1
-# Also supports legacy xbbg== prefix for backward compatibility
-tag_regex = '^(?:v|xbbg==)?(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc|alpha|beta)\d+)?)$'
-fallback_version = "0+unknown"
-
-[tool.setuptools.packages.find]
-include = ["xbbg*"]
-exclude = ["xbbg.tests*"]
-
-[tool.setuptools.package-data]
-xbbg = ["markets/*.yml", "markets/config/*.toml"]
-
-
-[tool.uv]
-default-groups = ["dev"]
+[tool.maturin]
+bindings = "pyo3"
+python-source = "py-xbbg/src"
+module-name = "xbbg._core"
+manifest-path = "bindings/pyo3-xbbg/Cargo.toml"
 
 [[tool.uv.index]]
 name = "bloomberg"
@@ -96,52 +59,58 @@ blpapi = { index = "bloomberg" }
 target-version = "py310"
 line-length = 120
 exclude = [
-  "examples/**",
   "docs/_build",
-  "docs/conf.py",
-  "Examples.ipynb",
   "dist",
   "venv",
   ".venv",
 ]
 
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
 [tool.ruff.lint]
 select = [
-  "E",   # pycodestyle errors
-  "W",   # pycodestyle warnings
-  "F",   # pyflakes
-  "I",   # isort
-  "D",   # pydocstyle
-  "UP",  # pyupgrade
-  "B",   # flake8-bugbear
-  "C4",  # flake8-comprehensions
-  "SIM", # flake8-simplify
-  "RET", # flake8-return
-  "ISC", # implicit string concatenation
-  "LOG", # flake8-logging - logging best practices
-  "G",   # flake8-logging-format - logging format strings
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "D",    # pydocstyle
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "SIM",  # flake8-simplify
+  "RET",  # flake8-return
+  "FA",   # flake8-future-annotations
+  "TCH",  # flake8-type-checking
+  "PERF", # perflint
+  "RUF",  # ruff-specific rules
+  "PIE",  # flake8-pie
+  "PT",   # flake8-pytest-style
 ]
 ignore = [
-  "E701", # multiple statements on one line (colon)
-  "E501", # line too long
-  "D104", # Missing docstring in public package
-  "D107", # Missing docstring in __init__
-  "UP031", # Use format specifiers instead of percent format (intentionally using % for performance in logging)
-  "S110", # try/except/pass detected (intentional in logging code to avoid recursion, and in fallback logic)
-  "G004", # Logging statement uses f-string (we prefer % formatting but allow f-string in some cases)
+  "E501",   # line too long (handled by formatter)
+  "D104",   # missing docstring in public package
+  "D105",   # missing docstring in magic method
+  "D107",   # missing docstring in __init__
+  "RET504", # unnecessary assign before return
+  "RET505", # unnecessary else after return
+  "SIM108", # use ternary instead of if-else (readability)
+  "RUF022", # unsorted __all__ (we organize by category)
+  "PERF203", # try-except in loop (intentional for date parsing)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"xbbg/__init__.py" = ["F401"]
-"xbbg/**/__init__.py" = ["F401", "F403"]
-"xbbg/tests/**" = ["D"]
-"xbbg/core/blpapi_logging.py" = ["S110"]  # Intentional try/except/pass to avoid recursive logging
-"xbbg/blp.py" = ["F822"]  # Undefined names in __all__ from dynamic globals() assignments
+"py-xbbg/src/xbbg/__init__.py" = ["F401", "E402"]
+"py-xbbg/src/xbbg/**/__init__.py" = ["F401"]
+"py-xbbg/tests/**" = ["D", "PT"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]
 combine-as-imports = true
 force-sort-within-sections = true
+required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 12
@@ -149,53 +118,34 @@ max-complexity = 12
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-[tool.ruff.format]
-docstring-code-format = true
-quote-style = "double"
-indent-style = "space"
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 
-[tool.ty.environment]
-python-version = "3.10"
 
-[tool.ty.rules]
-unresolved-import = "warn"
+
 
 [tool.pytest.ini_options]
 addopts = "-ra"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
   "error::DeprecationWarning",
   "error::PendingDeprecationWarning",
-  # FutureWarning filter handled in conftest.py to allow XbbgFutureWarning
+  "error::FutureWarning",
 ]
-markers = [
-  "live_endpoint: marks tests as live Bloomberg endpoint tests (requires --run-xbbg-live to run)",
-]
-# Show logging output during test execution
-log_cli = true
-log_cli_level = "WARNING"
-log_cli_format = "%(levelname)-8s %(name)s:%(filename)s:%(lineno)d %(message)s"
-log_cli_date_format = "%H:%M:%S"
 
 [dependency-groups]
 dev = [
-    "blpapi",
-    "build>=1.0",
-    "codecov>=2.1",
-    "coverage>=7.11.0",
-    "dask[dataframe]>=2026.1.2",
-    "duckdb>=1.4.4",
-    "ibis-framework>=11.0.0",
-    "ipykernel>=6.0",
-    "modin[dask]>=0.37.1",
-    "pandas>=2.0",
-    "polars",
-    "pre-commit>=3.0",
-    "pyarrow-hotfix>=0.7",
-    "pytest>=8.0",
-    "pytest-cov>=7.0.0",
-    "rich>=14.3.2",
-    "ruff>=0.14.3",
-    "sqlframe>=3.46.2",
-    "twine>=6.0",
-    "vulture>=2.14",
+    "maturin>=1.10.0",
+    "pre-commit>=4.5.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.14.10",
+]
+benchmark = [
+    "pytest-benchmark>=4.0.0",
+    "tabulate>=0.9.0",
+    "psutil>=5.9.0",
+    "pandas>=2.0.0",
+    "polars>=0.20.0",
 ]

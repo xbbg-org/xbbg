@@ -1,5 +1,35 @@
-# Ignore runtime-generated TASVC study cache
-xbbg/api/technical/cached/
+# Local environment files
+.env
+.env.local
+env.local
+
+# Claude Code
+.claude/
+
+# Sisyphus
+.sisyphus/
+
+# Benchmark dependencies (isolated Python env for benchmarks)
+.benchmark_deps/
+
+# Cargo / Rust
+.cargo/config.toml
+build_rust.bat
+
+# PyO3/maturin generated files
+py-xbbg/src/xbbg/_core.pyd
+py-xbbg/src/xbbg/*.so
+
+# Logs
+Logs/
+*.log
+
+# Rust build artifacts (Cargo)
+/target/
+
+# Ignore local PMC mapping and cache files
+xbbg/markets/pmc_map.json
+xbbg/markets/cached/pmc_cache.pkl
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -54,7 +84,6 @@ coverage.xml
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 
@@ -68,8 +97,7 @@ instance/
 # Sphinx documentation
 docs/_build/
 
-# PyBuilder
-target/
+# PyBuilder (target/ also used by Cargo - see above)
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -119,24 +147,17 @@ xbbg/tests/data/**/TRADE/*.parq
 #Ruff
 .ruff_cache/
 
-# Claude Code
-.claude/
+# Bloomberg BLPAPI SDK (local development only; do not commit)
+# README.md is tracked for setup instructions; everything else is ignored.
+vendor/blpapi-sdk/*
+!vendor/blpapi-sdk/README.md
+vendor/*.zip
 
-# SQLite WAL files
-*.db-shm
-*.db-wal
-
-# Astro build artifacts
-docs/.astro/
-
-# Node modules in docs
-docs/node_modules/
+# Bloomberg DLL files (local development only)
+**/blpapi3_64.dll
 
 # Windows artifacts
 nul
-
-# Backup files
-*.backup
-# Local agent/orchestration config
-.omc/
-.sisyphus/
+exploration/
+.crush/
+compile_commands.json

@@ -1,0 +1,567 @@
+//! PyO3 bindings for xbbg-ext extension utilities.
+//!
+//! Exposes high-performance Rust implementations to Python.
+
+use arrow::pyarrow::{FromPyArrow, ToPyArrow};
+use arrow::record_batch::RecordBatch;
+use chrono::Datelike;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::PyDict;
+
+use xbbg_ext::constants::{DVD_TYPES, FUTURES_MONTHS, MONTH_CODES};
+use xbbg_ext::resolvers::cdx::{cdx_series_from_ticker, gen_to_specific, previous_series_ticker};
+use xbbg_ext::resolvers::futures::{
+    contract_index, filter_candidates_by_cycle, filter_valid_contracts,
+    generate_futures_candidates, validate_generic_ticker, RollFrequency,
+};
+use xbbg_ext::transforms::bql::{
+    build_corporate_bonds_query, build_etf_holdings_query, build_preferreds_query,
+};
+use xbbg_ext::transforms::currency::{build_fx_pair, currencies_needing_conversion, same_currency};
+use xbbg_ext::transforms::fixed_income::{build_yas_overrides, YieldType};
+use xbbg_ext::transforms::historical::{
+    build_earning_header_rename, calculate_level_percentages, rename_dividend_columns,
+    rename_etf_columns,
+};
+use xbbg_ext::utils::date::{default_bqr_datetimes, default_turnover_dates, fmt_date, parse_date};
+use xbbg_ext::utils::pivot::{is_long_format, pivot_to_wide};
+use xbbg_ext::utils::ticker::{
+    build_futures_ticker, filter_equity_tickers, is_specific_contract, normalize_tickers,
+    parse_ticker_parts,
+};
+
+// =============================================================================
+// Date Utilities
+// =============================================================================
+
+/// Parse a date string into components (year, month, day).
+///
+/// Supports: YYYY-MM-DD, YYYYMMDD, YYYY/MM/DD, DD-MM-YYYY, DD/MM/YYYY
+#[pyfunction]
+#[pyo3(signature = (date_str))]
+fn ext_parse_date(date_str: &str) -> PyResult<(i32, u32, u32)> {
+    let d = parse_date(date_str).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((d.year(), d.month(), d.day()))
+}
+
+/// Format a date to string.
+#[pyfunction]
+#[pyo3(signature = (year, month, day, fmt=None))]
+fn ext_fmt_date(year: i32, month: u32, day: u32, fmt: Option<&str>) -> PyResult<String> {
+    use chrono::NaiveDate;
+    let d = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+        PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
+    })?;
+    Ok(fmt_date(d, fmt))
+}
+
+// =============================================================================
+// Pivot Utilities
+// =============================================================================
+
+/// Pivot a PyArrow RecordBatch from long to wide format.
+///
+/// Input: RecordBatch with columns (ticker, field, value)
+/// Output: RecordBatch with columns (ticker, field1, field2, ...)
+#[pyfunction]
+fn ext_pivot_to_wide(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    // Convert PyArrow to Rust RecordBatch
+    let rust_batch = RecordBatch::from_pyarrow_bound(batch)
+        .map_err(|e| PyValueError::new_err(format!("invalid RecordBatch: {e}")))?;
+
+    // Pivot
+    let result = pivot_to_wide(&rust_batch).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    // Convert back to PyArrow
+    result
+        .to_pyarrow(py)
+        .map(|b| b.unbind())
+        .map_err(|e| PyValueError::new_err(format!("conversion failed: {e}")))
+}
+
+/// Check if a RecordBatch is in long format (ticker, field, value).
+#[pyfunction]
+fn ext_is_long_format(batch: &Bound<'_, PyAny>) -> PyResult<bool> {
+    let rust_batch = RecordBatch::from_pyarrow_bound(batch)
+        .map_err(|e| PyValueError::new_err(format!("invalid RecordBatch: {e}")))?;
+    Ok(is_long_format(&rust_batch))
+}
+
+// =============================================================================
+// Ticker Utilities
+// =============================================================================
+
+/// Parse a Bloomberg ticker into components.
+///
+/// Returns: (prefix, index, asset, exchange)
+#[pyfunction]
+fn ext_parse_ticker(ticker: &str) -> PyResult<(String, u32, String, Option<String>)> {
+    let parts = parse_ticker_parts(ticker).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((parts.prefix, parts.index, parts.asset, parts.exchange))
+}
+
+/// Check if a ticker is a specific contract (not generic).
+#[pyfunction]
+fn ext_is_specific_contract(ticker: &str) -> bool {
+    is_specific_contract(ticker)
+}
+
+/// Build a futures ticker from components.
+#[pyfunction]
+fn ext_build_futures_ticker(prefix: &str, month_code: &str, year: &str, asset: &str) -> String {
+    build_futures_ticker(prefix, month_code, year, asset)
+}
+
+/// Normalize tickers to a list.
+#[pyfunction]
+fn ext_normalize_tickers(tickers: Vec<String>) -> Vec<String> {
+    let refs: Vec<&str> = tickers.iter().map(|s| s.as_str()).collect();
+    normalize_tickers(&refs)
+}
+
+/// Filter to equity tickers only.
+#[pyfunction]
+fn ext_filter_equity_tickers(tickers: Vec<String>) -> Vec<String> {
+    let refs: Vec<&str> = tickers.iter().map(|s| s.as_str()).collect();
+    filter_equity_tickers(&refs)
+}
+
+// =============================================================================
+// Futures Resolution
+// =============================================================================
+
+/// Generate futures contract candidates.
+///
+/// Returns list of (ticker, year, month) tuples.
+#[pyfunction]
+#[pyo3(signature = (gen_ticker, year, month, day, freq="M", count=4))]
+fn ext_generate_futures_candidates(
+    gen_ticker: &str,
+    year: i32,
+    month: u32,
+    day: u32,
+    freq: &str,
+    count: usize,
+) -> PyResult<Vec<(String, i32, u32)>> {
+    use chrono::NaiveDate;
+
+    let dt = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+        PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
+    })?;
+
+    use std::str::FromStr;
+    let roll_freq = RollFrequency::from_str(freq).unwrap_or(RollFrequency::Monthly);
+
+    let candidates = generate_futures_candidates(gen_ticker, dt, roll_freq, count)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    Ok(candidates
+        .into_iter()
+        .map(|c| (c.ticker, c.month.year(), c.month.month()))
+        .collect())
+}
+
+/// Validate that a ticker is generic (not specific).
+#[pyfunction]
+fn ext_validate_generic_ticker(ticker: &str) -> PyResult<()> {
+    validate_generic_ticker(ticker).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Get the contract index from a generic ticker (0-based).
+#[pyfunction]
+fn ext_contract_index(gen_ticker: &str) -> PyResult<usize> {
+    contract_index(gen_ticker).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+// =============================================================================
+// CDX Resolution
+// =============================================================================
+
+/// Parse a CDX ticker.
+///
+/// Returns: (index, series, tenor, asset, is_generic, series_num)
+#[pyfunction]
+fn ext_parse_cdx_ticker(
+    ticker: &str,
+) -> PyResult<(String, String, String, String, bool, Option<u32>)> {
+    let info = cdx_series_from_ticker(ticker).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((
+        info.index,
+        info.series,
+        info.tenor,
+        info.asset,
+        info.is_generic,
+        info.series_num,
+    ))
+}
+
+/// Get the previous series ticker for a CDX index.
+#[pyfunction]
+fn ext_previous_cdx_series(ticker: &str) -> PyResult<Option<String>> {
+    previous_series_ticker(ticker).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Convert a generic CDX ticker to specific series.
+#[pyfunction]
+fn ext_cdx_gen_to_specific(gen_ticker: &str, series: u32) -> PyResult<String> {
+    gen_to_specific(gen_ticker, series).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+// =============================================================================
+// Currency Utilities
+// =============================================================================
+
+/// Build an FX pair ticker for currency conversion.
+///
+/// Returns: (fx_pair, factor, from_ccy, to_ccy)
+#[pyfunction]
+fn ext_build_fx_pair(from_ccy: &str, to_ccy: &str) -> (String, f64, String, String) {
+    let info = build_fx_pair(from_ccy, to_ccy);
+    (info.fx_pair, info.factor, info.from_ccy, info.to_ccy)
+}
+
+/// Check if two currencies are effectively the same.
+#[pyfunction]
+fn ext_same_currency(ccy1: &str, ccy2: &str) -> bool {
+    same_currency(ccy1, ccy2)
+}
+
+/// Get currencies that need FX conversion.
+#[pyfunction]
+fn ext_currencies_needing_conversion(currencies: Vec<String>, target: &str) -> Vec<String> {
+    let refs: Vec<&str> = currencies.iter().map(|s| s.as_str()).collect();
+    currencies_needing_conversion(&refs, target)
+}
+
+// =============================================================================
+// Column Renaming
+// =============================================================================
+
+/// Get dividend column rename mapping.
+#[pyfunction]
+fn ext_rename_dividend_columns(columns: Vec<String>) -> Vec<(String, String)> {
+    let refs: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
+    rename_dividend_columns(&refs)
+}
+
+/// Get ETF holdings column rename mapping.
+#[pyfunction]
+fn ext_rename_etf_columns(columns: Vec<String>) -> Vec<(String, String)> {
+    let refs: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
+    rename_etf_columns(&refs)
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/// Get futures month code for a month name.
+#[pyfunction]
+fn ext_get_month_code(month: &str) -> Option<String> {
+    FUTURES_MONTHS.get(month).map(|s| s.to_string())
+}
+
+/// Get month name for a futures month code.
+#[pyfunction]
+fn ext_get_month_name(code: &str) -> Option<String> {
+    MONTH_CODES.get(code).map(|s| s.to_string())
+}
+
+/// Get all futures month mappings.
+#[pyfunction]
+fn ext_get_futures_months(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+    let dict = PyDict::new(py);
+    for (k, v) in FUTURES_MONTHS.entries() {
+        dict.set_item(*k, *v)?;
+    }
+    Ok(dict)
+}
+
+/// Get dividend type field name.
+#[pyfunction]
+fn ext_get_dvd_type(typ: &str) -> Option<String> {
+    DVD_TYPES.get(typ).map(|s| s.to_string())
+}
+
+/// Get all dividend type mappings.
+#[pyfunction]
+fn ext_get_dvd_types(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+    let dict = PyDict::new(py);
+    for (k, v) in DVD_TYPES.entries() {
+        dict.set_item(*k, *v)?;
+    }
+    Ok(dict)
+}
+
+// =============================================================================
+// Futures Filtering
+// =============================================================================
+
+/// Filter futures candidates by a cycle-months string from Bloomberg FUT_GEN_MONTH.
+///
+/// Args:
+///     candidates: List of (ticker, year, month) tuples from ext_generate_futures_candidates.
+///     cycle: Month-code string from Bloomberg (e.g., "HMUZ").
+///
+/// Returns: Filtered list preserving original order.
+#[pyfunction]
+fn ext_filter_candidates_by_cycle(
+    candidates: Vec<(String, i32, u32)>,
+    cycle: &str,
+) -> Vec<(String, i32, u32)> {
+    filter_candidates_by_cycle(&candidates, cycle)
+}
+
+/// Filter and sort futures contracts by maturity date.
+///
+/// Args:
+///     contracts: List of (ticker, maturity_date_str) pairs.
+///     year, month, day: Reference date components.
+///
+/// Returns: List of ticker strings for contracts maturing after the reference date,
+///     sorted by maturity date ascending.
+#[pyfunction]
+fn ext_filter_valid_contracts(
+    contracts: Vec<(String, String)>,
+    year: i32,
+    month: u32,
+    day: u32,
+) -> PyResult<Vec<String>> {
+    use chrono::NaiveDate;
+
+    let ref_date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+        PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
+    })?;
+
+    Ok(filter_valid_contracts(&contracts, ref_date))
+}
+
+// =============================================================================
+// YAS Overrides
+// =============================================================================
+
+/// Build Bloomberg YAS override key-value pairs.
+///
+/// Args:
+///     settle_dt: Settlement date string (optional).
+///     yield_type: Yield type flag value 1-9 (optional).
+///     spread: Spread value (optional).
+///     yield_val: Yield value (optional).
+///     price: Price value (optional).
+///     benchmark: Benchmark security (optional).
+///
+/// Returns: List of (key, value) string pairs for Bloomberg overrides.
+#[pyfunction]
+#[pyo3(signature = (settle_dt=None, yield_type=None, spread=None, yield_val=None, price=None, benchmark=None))]
+fn ext_build_yas_overrides(
+    settle_dt: Option<&str>,
+    yield_type: Option<u8>,
+    spread: Option<f64>,
+    yield_val: Option<f64>,
+    price: Option<f64>,
+    benchmark: Option<&str>,
+) -> PyResult<Vec<(String, String)>> {
+    let yt = match yield_type {
+        Some(v) => Some(YieldType::try_from(v).map_err(|e| PyValueError::new_err(e.to_string()))?),
+        None => None,
+    };
+
+    Ok(build_yas_overrides(
+        settle_dt, yt, spread, yield_val, price, benchmark,
+    ))
+}
+
+// =============================================================================
+// Earnings Utilities
+// =============================================================================
+
+/// Build column rename mapping from earnings header values.
+///
+/// Args:
+///     header_row: List of (column_name, header_value) pairs from the header DataFrame.
+///     data_columns: Column names from the data DataFrame.
+///
+/// Returns: List of (old_name, new_name) pairs for columns that need renaming.
+#[pyfunction]
+fn ext_build_earning_header_rename(
+    header_row: Vec<(String, String)>,
+    data_columns: Vec<String>,
+) -> Vec<(String, String)> {
+    let refs: Vec<&str> = data_columns.iter().map(|s| s.as_str()).collect();
+    build_earning_header_rename(&header_row, &refs)
+}
+
+/// Calculate level-based percentages for earnings data.
+///
+/// Args:
+///     values: List of optional float values.
+///     levels: List of optional integer levels (1 = top level, 2 = sub-level).
+///
+/// Returns: List of optional percentage values (0-100).
+#[pyfunction]
+fn ext_calculate_level_percentages(
+    values: Vec<Option<f64>>,
+    levels: Vec<Option<i64>>,
+) -> Vec<Option<f64>> {
+    calculate_level_percentages(&values, &levels)
+}
+
+// =============================================================================
+// BQL Query Builders
+// =============================================================================
+
+/// Build a BQL query for preferred stocks.
+///
+/// Args:
+///     equity_ticker: Company equity ticker (e.g., "BAC US Equity" or "BAC").
+///     extra_fields: Additional fields beyond defaults (id, name).
+///
+/// Returns: Complete BQL query string.
+#[pyfunction]
+#[pyo3(signature = (equity_ticker, extra_fields=vec![]))]
+fn ext_build_preferreds_query(equity_ticker: &str, extra_fields: Vec<String>) -> String {
+    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    build_preferreds_query(equity_ticker, &refs)
+}
+
+/// Build a BQL query for corporate bonds.
+///
+/// Args:
+///     ticker: Company ticker without suffix (e.g., "AAPL").
+///     ccy: Currency filter (None for all currencies).
+///     extra_fields: Additional fields beyond default (id).
+///     active_only: If true, only return active bonds.
+///
+/// Returns: Complete BQL query string.
+#[pyfunction]
+#[pyo3(signature = (ticker, ccy=None, extra_fields=vec![], active_only=true))]
+fn ext_build_corporate_bonds_query(
+    ticker: &str,
+    ccy: Option<&str>,
+    extra_fields: Vec<String>,
+    active_only: bool,
+) -> String {
+    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    build_corporate_bonds_query(ticker, ccy, &refs, active_only)
+}
+
+/// Build a BQL query for ETF holdings.
+///
+/// Args:
+///     etf_ticker: ETF ticker (e.g., "SPY US Equity" or "SPY").
+///     extra_fields: Additional fields beyond defaults (id_isin, weights, id().position).
+///
+/// Returns: Complete BQL query string.
+#[pyfunction]
+#[pyo3(signature = (etf_ticker, extra_fields=vec![]))]
+fn ext_build_etf_holdings_query(etf_ticker: &str, extra_fields: Vec<String>) -> String {
+    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    build_etf_holdings_query(etf_ticker, &refs)
+}
+
+// =============================================================================
+// DateTime Default Ranges
+// =============================================================================
+
+/// Compute default date range for turnover queries.
+///
+/// Args:
+///     start_date: Start date string (optional, default: 30 days before end).
+///     end_date: End date string (optional, default: yesterday).
+///
+/// Returns: Tuple of (start_date, end_date) as ISO-8601 date strings.
+#[pyfunction]
+#[pyo3(signature = (start_date=None, end_date=None))]
+fn ext_default_turnover_dates(
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> (String, String) {
+    default_turnover_dates(start_date, end_date)
+}
+
+/// Compute default datetime range for BQR (quote request) queries.
+///
+/// Args:
+///     start_datetime: Start datetime string (optional, default: 1 hour before end).
+///     end_datetime: End datetime string (optional, default: now).
+///
+/// Returns: Tuple of (start_datetime, end_datetime) as ISO-8601 datetime strings.
+#[pyfunction]
+#[pyo3(signature = (start_datetime=None, end_datetime=None))]
+fn ext_default_bqr_datetimes(
+    start_datetime: Option<&str>,
+    end_datetime: Option<&str>,
+) -> (String, String) {
+    default_bqr_datetimes(start_datetime, end_datetime)
+}
+
+// =============================================================================
+// Module Registration
+// =============================================================================
+
+/// Register ext functions with the module.
+pub fn register_ext_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Date utilities
+    m.add_function(wrap_pyfunction!(ext_parse_date, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_fmt_date, m)?)?;
+
+    // Pivot utilities
+    m.add_function(wrap_pyfunction!(ext_pivot_to_wide, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_is_long_format, m)?)?;
+
+    // Ticker utilities
+    m.add_function(wrap_pyfunction!(ext_parse_ticker, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_is_specific_contract, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_build_futures_ticker, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_normalize_tickers, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_filter_equity_tickers, m)?)?;
+
+    // Futures resolution
+    m.add_function(wrap_pyfunction!(ext_generate_futures_candidates, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_validate_generic_ticker, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_contract_index, m)?)?;
+
+    // CDX resolution
+    m.add_function(wrap_pyfunction!(ext_parse_cdx_ticker, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_previous_cdx_series, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_cdx_gen_to_specific, m)?)?;
+
+    // Currency utilities
+    m.add_function(wrap_pyfunction!(ext_build_fx_pair, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_same_currency, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_currencies_needing_conversion, m)?)?;
+
+    // Column renaming
+    m.add_function(wrap_pyfunction!(ext_rename_dividend_columns, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_rename_etf_columns, m)?)?;
+
+    // Constants
+    m.add_function(wrap_pyfunction!(ext_get_month_code, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_get_month_name, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_get_futures_months, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_get_dvd_type, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_get_dvd_types, m)?)?;
+
+    // Futures filtering
+    m.add_function(wrap_pyfunction!(ext_filter_candidates_by_cycle, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_filter_valid_contracts, m)?)?;
+
+    // YAS overrides
+    m.add_function(wrap_pyfunction!(ext_build_yas_overrides, m)?)?;
+
+    // Earnings utilities
+    m.add_function(wrap_pyfunction!(ext_build_earning_header_rename, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_calculate_level_percentages, m)?)?;
+
+    // BQL query builders
+    m.add_function(wrap_pyfunction!(ext_build_preferreds_query, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_build_corporate_bonds_query, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_build_etf_holdings_query, m)?)?;
+
+    // DateTime default ranges
+    m.add_function(wrap_pyfunction!(ext_default_turnover_dates, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_default_bqr_datetimes, m)?)?;
+
+    Ok(())
+}

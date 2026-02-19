@@ -1,0 +1,69 @@
+[package]
+name = "xbbg-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Benchmarks for xbbg — performance, allocation profiling, and live Bloomberg tests"
+publish = false
+
+[lib]
+name = "xbbg_bench"
+
+[dependencies]
+# Crates under test
+xbbg_core = { path = "../xbbg-core" }
+xbbg-ext = { path = "../xbbg-ext" }
+
+[dev-dependencies]
+criterion = "0.5"
+dhat = "0.3"
+
+# =============================================================================
+# Benchmarks — Pure Rust (no Bloomberg connection required)
+# =============================================================================
+
+# Pure Rust datetime conversion
+[[bench]]
+name = "datetime"
+harness = false
+
+# Name interning and comparison
+[[bench]]
+name = "name"
+harness = false
+
+# Allocation tracking with Criterion
+[[bench]]
+name = "alloc_criterion"
+harness = false
+
+# =============================================================================
+# Benchmarks — Live (require Bloomberg connection)
+# =============================================================================
+# Run with: cargo bench --package xbbg-bench --bench <name>
+
+# Simple BDP round-trip
+[[bench]]
+name = "live_bdp"
+harness = false
+
+# Profiled BDP with per-phase breakdown
+[[bench]]
+name = "live_bdp_profiled"
+harness = false
+
+# Subscription latency and throughput
+[[bench]]
+name = "live_subscription"
+harness = false
+
+# Cached message parsing (network only for setup)
+[[bench]]
+name = "parse_cached"
+harness = false
+
+# Heap allocation profiling with dhat
+[[bench]]
+name = "alloc_profile"
+harness = false

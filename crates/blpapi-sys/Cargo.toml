@@ -1,0 +1,25 @@
+[package]
+name = "blpapi-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+links = "blpapi"
+description = "Unsafe, zero-policy FFI bindings to blpapi C API (blpapi_*) generated at build time."
+publish = false
+
+[features]
+default = ["dynamic"]
+static = []
+dynamic = []
+
+[dependencies]
+cty = "0.2"
+
+[build-dependencies]
+bindgen = { version = "0.69", default-features = false, features = ["runtime"] }
+
+[package.metadata.docs.rs]
+all-features = true
+
+

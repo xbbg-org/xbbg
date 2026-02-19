@@ -1,0 +1,25 @@
+---
+title: Output Formats
+description: Control output shape with Format.LONG, LONG_TYPED, and more
+---
+
+# Output Formats
+
+:::note[TODO]
+This guide needs to be written. Topics to cover:
+- Format.LONG (default) - string values
+- Format.LONG_TYPED - typed value columns
+- Format.LONG_WITH_METADATA - values with dtype column
+- Format.WIDE (deprecated) - migration to .pivot()
+- Visual examples of each format
+:::
+
+```python
+from xbbg import bdp, Format
+
+# Default: all values as strings
+df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+
+# Typed columns (value_f64, value_i64, etc.)
+df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'], format=Format.LONG_TYPED)
+```

@@ -1,0 +1,116 @@
+---
+title: Quick Start
+description: Make your first Bloomberg request with xbbg
+---
+
+import { Aside, Code } from '@astrojs/starlight/components';
+
+# Quick Start
+
+This guide will help you make your first Bloomberg request.
+
+<Aside type="caution">
+  You need an active Bloomberg Terminal or B-PIPE connection to run these examples.
+</Aside>
+
+## Reference Data (BDP)
+
+Get point-in-time data for securities:
+
+```python
+import xbbg
+
+# Single ticker, single field
+df = xbbg.bdp('AAPL US Equity', 'PX_LAST')
+
+# Multiple tickers and fields
+df = xbbg.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME', 'NAME']
+)
+```
+
+**Output (long format):**
+
+| ticker | field | value |
+|--------|-------|-------|
+| AAPL US Equity | PX_LAST | 185.50 |
+| AAPL US Equity | VOLUME | 45234521 |
+| AAPL US Equity | NAME | Apple Inc |
+| MSFT US Equity | PX_LAST | 378.91 |
+| ... | ... | ... |
+
+## Historical Data (BDH)
+
+Get time series data:
+
+```python
+df = xbbg.bdh(
+    'AAPL US Equity',
+    ['PX_LAST', 'VOLUME'],
+    start_date='2024-01-01',
+    end_date='2024-01-31'
+)
+```
+
+**Output:**
+
+| ticker | date | field | value |
+|--------|------|-------|-------|
+| AAPL US Equity | 2024-01-02 | PX_LAST | 185.50 |
+| AAPL US Equity | 2024-01-02 | VOLUME | 45234521 |
+| AAPL US Equity | 2024-01-03 | PX_LAST | 186.20 |
+| ... | ... | ... | ... |
+
+## Bulk Data (BDS)
+
+Get multi-row data like dividends or index members:
+
+```python
+# Dividend history
+df = xbbg.bds('AAPL US Equity', 'DVD_Hist_All')
+
+# Index members
+df = xbbg.bds('SPX Index', 'INDX_MEMBERS')
+```
+
+## Choose Your Backend
+
+Return data in your preferred DataFrame format:
+
+```python
+# Global setting
+xbbg.set_backend('polars')
+df = xbbg.bdp('AAPL US Equity', 'PX_LAST')  # polars.DataFrame
+
+# Per-call override
+df = xbbg.bdp('AAPL US Equity', 'PX_LAST', backend='pandas')  # pandas.DataFrame
+
+# Available backends: pandas, polars, pyarrow, duckdb, narwhals
+```
+
+## Async Support
+
+For concurrent requests, use the async API:
+
+```python
+import asyncio
+import xbbg
+
+async def main():
+    # Concurrent requests
+    results = await asyncio.gather(
+        xbbg.abdp('AAPL US Equity', 'PX_LAST'),
+        xbbg.abdp('MSFT US Equity', 'PX_LAST'),
+        xbbg.abdp('GOOGL US Equity', 'PX_LAST'),
+    )
+    return results
+
+dfs = asyncio.run(main())
+```
+
+## Next Steps
+
+- [API Reference](/xbbg/api/blp) - Full function documentation
+- [DataFrame Backends](/xbbg/guides/backends) - Learn about backend options
+- [Output Formats](/xbbg/guides/output-formats) - Typed output formats

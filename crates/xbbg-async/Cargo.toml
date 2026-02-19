@@ -1,0 +1,37 @@
+[package]
+name = "xbbg-async"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Async worker-pool engine over xbbg-core for Bloomberg API requests and subscriptions"
+publish = false
+
+[dependencies]
+xbbg_core = { path = "../xbbg-core" }
+thiserror = "2.0"
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "sync", "time"] }
+xbbg-log = { path = "../xbbg-log" }
+once_cell = "1.19"
+slab = "0.4"
+arrow = "57.1.0"
+indexmap = "2.7"
+chrono = "0.4"
+parking_lot = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+default = ["live"]
+mock = ["xbbg_core/mock"]
+live = ["xbbg_core/live"]
+
+# cargo-udeps false positives (xbbg-log re-exports tracing macros)
+[package.metadata.cargo-udeps.ignore]
+normal = ["xbbg-log"]
+
+[dev-dependencies]
+blpapi-sys = { path = "../blpapi-sys" }
+tempfile = "3.15"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

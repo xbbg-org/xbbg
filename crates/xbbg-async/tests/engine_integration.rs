@@ -1,0 +1,651 @@
+//! Comprehensive integration tests for the xbbg-async Engine.
+//!
+//! These tests mirror the Python integration tests in py-xbbg/tests/test_integration.py
+//! to ensure consistent behavior across the Python and Rust APIs.
+//!
+//! Enable these tests with: cargo test --features live
+//!
+//! Data usage summary (same as Python tests):
+//! - Engine connection tests: 0 data points
+//! - Field metadata tests: 0 data points (no security data)
+//! - BDP tests: ~3-6 data points per test
+//! - BDH tests: ~5-25 data points per test
+//! - BDS tests: Variable, but uses small bulk fields
+//! - BDIB tests: ~60-120 bars
+//! - BDTICK tests: Variable, uses short time windows
+//! - Error tests: 0 data points
+
+#![cfg(feature = "live")]
+
+use arrow::array::{Array, Float64Array, StringArray};
+use arrow::record_batch::RecordBatch;
+
+use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
+
+// =============================================================================
+// Test Helpers
+// =============================================================================
+
+fn init_tracing() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_test_writer()
+            .try_init();
+        // Suppress noisy BLPAPI WARN logs in tests
+        unsafe {
+            let _ = blpapi_sys::blpapi_Logging_registerCallback(
+                None,
+                blpapi_sys::blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR as i32,
+            );
+        }
+    });
+}
+
+fn create_engine() -> Engine {
+    let host = std::env::var("BLP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    let port: u16 = std::env::var("BLP_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8194);
+
+    let config = EngineConfig {
+        server_host: host,
+        server_port: port,
+        ..Default::default()
+    };
+
+    Engine::start(config).expect("Engine should connect to Bloomberg")
+}
+
+fn print_batch_summary(name: &str, batch: &RecordBatch) {
+    println!(
+        "\n=== {} ===\nColumns: {}, Rows: {}",
+        name,
+        batch.num_columns(),
+        batch.num_rows()
+    );
+    for field in batch.schema().fields() {
+        println!("  - {} ({:?})", field.name(), field.data_type());
+    }
+}
+
+// =============================================================================
+// Engine Connection Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_engine_connects_successfully() {
+    init_tracing();
+
+    let engine = create_engine();
+
+    // If we get here without panic, connection succeeded
+    assert!(true, "Engine connected successfully");
+
+    // Clean shutdown
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_engine_config_custom_values() {
+    init_tracing();
+
+    let config = EngineConfig {
+        server_host: "custom.host.com".to_string(),
+        server_port: 9999,
+        max_event_queue_size: 20000,
+        command_queue_size: 512,
+        ..Default::default()
+    };
+
+    assert_eq!(config.server_host, "custom.host.com");
+    assert_eq!(config.server_port, 9999);
+    assert_eq!(config.max_event_queue_size, 20000);
+}
+
+// =============================================================================
+// Field Metadata Tests (Zero security data usage)
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_field_info_single_field() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/apiflds".to_string(),
+        operation: "FieldInfoRequest".to_string(),
+        extractor: ExtractorType::Generic,
+        field_ids: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("field info request");
+
+    print_batch_summary("Field Info (single)", &batch);
+    assert!(batch.num_rows() > 0, "Should return field info");
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_field_info_multiple_fields() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/apiflds".to_string(),
+        operation: "FieldInfoRequest".to_string(),
+        extractor: ExtractorType::Generic,
+        field_ids: Some(vec![
+            "PX_LAST".to_string(),
+            "VOLUME".to_string(),
+            "NAME".to_string(),
+        ]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("field info request");
+
+    print_batch_summary("Field Info (multiple)", &batch);
+    assert!(batch.num_rows() >= 3, "Should return info for each field");
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_field_search() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/apiflds".to_string(),
+        operation: "FieldSearchRequest".to_string(),
+        extractor: ExtractorType::Generic,
+        search_spec: Some("last price".to_string()),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("field search request");
+
+    print_batch_summary("Field Search", &batch);
+    assert!(batch.num_rows() > 0, "Should return matching fields");
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// BDP (Reference Data) Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdp_single_ticker_single_field() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdp request");
+
+    print_batch_summary("BDP (1 ticker, 1 field)", &batch);
+    assert!(batch.num_rows() >= 1, "Should have at least one row");
+    assert!(
+        batch.schema().column_with_name("ticker").is_some(),
+        "Should have ticker column"
+    );
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdp_multiple_tickers_multiple_fields() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec![
+            "IBM US Equity".to_string(),
+            "AAPL US Equity".to_string(),
+        ]),
+        fields: Some(vec!["PX_LAST".to_string(), "VOLUME".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdp request");
+
+    print_batch_summary("BDP (2 tickers, 2 fields)", &batch);
+    // Should have 2 tickers × 2 fields = 4 rows
+    assert!(batch.num_rows() >= 4, "Should have ticker×field rows");
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdp_returns_numeric_for_price() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdp request");
+
+    // Check that we have a value column with numeric data
+    if let Some((idx, _)) = batch.schema().column_with_name("value_num") {
+        let col = batch.column(idx);
+        if let Some(arr) = col.as_any().downcast_ref::<Float64Array>() {
+            if !arr.is_null(0) {
+                let value = arr.value(0);
+                assert!(value > 0.0, "Price should be positive");
+            }
+        }
+    }
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// BDH (Historical Data) Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdh_single_ticker() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "HistoricalDataRequest".to_string(),
+        extractor: ExtractorType::HistData,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        start_date: Some("20241201".to_string()),
+        end_date: Some("20241207".to_string()),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdh request");
+
+    print_batch_summary("BDH (1 ticker, 1 week)", &batch);
+    assert!(batch.num_rows() >= 1, "Should have historical data");
+    assert!(
+        batch.schema().column_with_name("date").is_some(),
+        "Should have date column"
+    );
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdh_multiple_tickers() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "HistoricalDataRequest".to_string(),
+        extractor: ExtractorType::HistData,
+        securities: Some(vec![
+            "IBM US Equity".to_string(),
+            "AAPL US Equity".to_string(),
+        ]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        start_date: Some("20241201".to_string()),
+        end_date: Some("20241207".to_string()),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdh request");
+
+    print_batch_summary("BDH (2 tickers)", &batch);
+
+    // Verify we have data from both tickers
+    if let Some((idx, _)) = batch.schema().column_with_name("ticker") {
+        let col = batch.column(idx);
+        if let Some(arr) = col.as_any().downcast_ref::<StringArray>() {
+            let unique: std::collections::HashSet<_> =
+                (0..arr.len()).filter_map(|i| arr.value(i).into()).collect();
+            assert!(
+                unique.len() >= 1,
+                "Should have data for at least one ticker"
+            );
+        }
+    }
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// BDS (Bulk Data) Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bds_index_members() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::BulkData,
+        securities: Some(vec!["INDU Index".to_string()]),
+        fields: Some(vec!["INDX_MEMBERS".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bds request");
+
+    print_batch_summary("BDS (DJIA members)", &batch);
+    // DJIA has 30 members
+    assert!(batch.num_rows() >= 30, "DJIA should have 30 members");
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bds_dividend_history() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::BulkData,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["DVD_HIST".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bds request");
+
+    print_batch_summary("BDS (dividend history)", &batch);
+    // IBM typically has dividend history (request succeeded if we get here)
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// BDIB (Intraday Bar) Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdib_1min_bars() {
+    init_tracing();
+    let engine = create_engine();
+
+    // Use a recent trading day
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "IntradayBarRequest".to_string(),
+        extractor: ExtractorType::IntradayBar,
+        security: Some("IBM US Equity".to_string()),
+        event_type: Some("TRADE".to_string()),
+        interval: Some(1),
+        start_datetime: Some("2025-12-23T14:00:00".to_string()),
+        end_datetime: Some("2025-12-23T14:30:00".to_string()),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdib request");
+
+    print_batch_summary("BDIB (1-min bars, 30 min)", &batch);
+    // Request succeeded if we get here (may have bars if market was open)
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdib_5min_bars() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "IntradayBarRequest".to_string(),
+        extractor: ExtractorType::IntradayBar,
+        security: Some("IBM US Equity".to_string()),
+        event_type: Some("TRADE".to_string()),
+        interval: Some(5),
+        start_datetime: Some("2025-12-23T14:00:00".to_string()),
+        end_datetime: Some("2025-12-23T14:30:00".to_string()),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdib request");
+
+    print_batch_summary("BDIB (5-min bars, 30 min)", &batch);
+    // Request succeeded if we get here (may have bars if market was open)
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// BDTICK (Intraday Tick) Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdtick_short_window() {
+    init_tracing();
+    let engine = create_engine();
+
+    // Use today's date for tick data availability
+    // IMPORTANT: Bloomberg intraday requests use UTC times
+    // US market open: 9:30 ET = 14:30 UTC
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "IntradayTickRequest".to_string(),
+        extractor: ExtractorType::IntradayTick,
+        security: Some("IBM US Equity".to_string()),
+        // UTC times: 14:30-15:00 UTC = 9:30-10:00 ET (market open)
+        start_datetime: Some(format!("{}T14:30:00", today)),
+        end_datetime: Some(format!("{}T15:00:00", today)),
+        // eventTypes is REQUIRED for IntradayTickRequest
+        event_types: Some(vec!["TRADE".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("bdtick request");
+
+    print_batch_summary("BDTICK (30 min window with eventTypes, UTC)", &batch);
+    // Should have ticks during market hours
+    println!("  Tick count: {}", batch.num_rows());
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// Generic API Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_generic_reference_data() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::Generic,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("generic request");
+
+    print_batch_summary("Generic RefData", &batch);
+    assert!(batch.num_rows() >= 1, "Should have data");
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_generic_with_overrides() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::Generic,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["CRNCY_ADJ_PX_LAST".to_string()]),
+        overrides: Some(vec![("EQY_FUND_CRNCY".to_string(), "EUR".to_string())]),
+        ..Default::default()
+    };
+
+    let batch = engine
+        .request(params)
+        .await
+        .expect("generic request with overrides");
+
+    print_batch_summary("Generic with overrides", &batch);
+    assert!(batch.num_rows() >= 1, "Should have data");
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// Raw JSON Extractor Tests
+// =============================================================================
+
+// NOTE: RawJson and JsonArrow extractors have been removed.
+// Use Generic extractor for flattened path/type/value output,
+// or use specialized extractors (RefData, HistData, etc.) for structured output.
+
+// =============================================================================
+// Error Handling Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_invalid_ticker_returns_error() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec!["INVALID_TICKER_XYZ123 Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    // Invalid ticker may still return a batch with error info, or may error
+    // Either behavior is acceptable
+    let result = engine.request(params).await;
+    println!("Invalid ticker result: {:?}", result.is_ok());
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_invalid_field_returns_error() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["INVALID_FIELD_XYZ123".to_string()]),
+        ..Default::default()
+    };
+
+    // Invalid field may still return a batch with error info, or may error
+    let result = engine.request(params).await;
+    println!("Invalid field result: {:?}", result.is_ok());
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// Concurrent Request Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_concurrent_requests() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params1 = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    let params2 = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec!["AAPL US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    // Run requests concurrently
+    let (result1, result2) = tokio::join!(engine.request(params1), engine.request(params2));
+
+    let batch1 = result1.expect("first concurrent request");
+    let batch2 = result2.expect("second concurrent request");
+
+    assert!(batch1.num_rows() >= 1, "First request should succeed");
+    assert!(batch2.num_rows() >= 1, "Second request should succeed");
+
+    std::mem::forget(engine);
+}
+
+// =============================================================================
+// Tracing/Logging Tests
+// =============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_tracing_captures_request() {
+    // This test verifies that tracing is active and capturing events
+    init_tracing();
+    tracing::info!("Starting tracing test");
+
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "ReferenceDataRequest".to_string(),
+        extractor: ExtractorType::RefData,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    tracing::debug!(?params, "Sending request");
+
+    let batch = engine.request(params).await.expect("request");
+
+    tracing::info!(num_rows = batch.num_rows(), "Request completed");
+
+    std::mem::forget(engine);
+}

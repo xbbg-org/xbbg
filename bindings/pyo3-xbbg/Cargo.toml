@@ -1,0 +1,34 @@
+[package]
+name = "pyo3-xbbg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PyO3 bindings for xbbg Bloomberg engine"
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.26", features = ["extension-module"] }
+pyo3-async-runtimes = { version = "0.26", features = ["tokio-runtime"] }
+tokio = { version = "1.48", features = ["sync"] }
+xbbg-log = { path = "../../crates/xbbg-log" }
+arrow = { version = "57.1.0", features = ["pyarrow"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+anyhow = "1.0"
+serde_json = "1.0"
+xbbg_core = { path = "../../crates/xbbg-core" }
+xbbg-async = { path = "../../crates/xbbg-async" }
+xbbg-ext = { path = "../../crates/xbbg-ext" }
+xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
+
+[build-dependencies]
+vergen-gitcl = { version = "1", features = ["build", "cargo"] }
+
+[features]
+default = ["live"]
+mock = ["xbbg-async/mock", "xbbg-recipes/mock"]
+live = ["xbbg-async/live", "xbbg-recipes/live"]
+

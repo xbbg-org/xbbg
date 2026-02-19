@@ -1,0 +1,25 @@
+---
+title: Type Mappings
+description: Bloomberg to Arrow type mappings
+---
+
+# Type Mappings
+
+:::note[TODO]
+This guide needs to be written. Topics to cover:
+- BLPAPI ftype → Arrow type table
+- Boolean detection (ASCII 78='N', 89='Y')
+- Field type resolution hierarchy
+- Manual type overrides
+:::
+
+## BLPAPI → Arrow Type Mapping
+
+| BLPAPI ftype | Arrow Type | Typed Column |
+|--------------|------------|--------------|
+| Double, Float, Price, Real | Float64 | value_f64 |
+| Int32, Int64, Integer | Int64 | value_i64 |
+| String, Character | Utf8 | value_str |
+| Date | Date32 | value_date |
+| DateTime, Time | Timestamp | value_ts |
+| Boolean, Bool | Boolean | value_bool |

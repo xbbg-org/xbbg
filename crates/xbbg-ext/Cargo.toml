@@ -1,0 +1,26 @@
+[package]
+name = "xbbg-ext"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "Extension utilities for xbbg - futures resolution, currency adjustment, historical data helpers"
+
+[dependencies]
+# Arrow for zero-copy DataFrame operations (must match pyo3-xbbg version)
+arrow = { version = "57", default-features = false, features = ["chrono-tz"] }
+
+# Date/time handling
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+
+# Compile-time perfect hash maps for constants
+phf = { version = "0.11", features = ["macros"] }
+
+# Error handling
+thiserror = "2"
+
+# Market rules loading
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Benchmarks have been consolidated into crates/xbbg-bench.

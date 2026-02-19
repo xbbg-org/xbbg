@@ -1,0 +1,30 @@
+# Virtual environments
+.venv/
+venv/
+__pycache__/
+
+# Benchmark results
+# Version-specific files (commit these!)
+!results/benchmark_v*.json
+!results/benchmark_v*.md
+
+# Timestamped archives (commit these too!)  
+# (Keeps historical record per version)
+
+# Temporary/latest files (ignore)
+results/latest.json
+results/latest.md
+
+# Other formats (ignore)
+results/*.csv
+results/*.html
+
+# Keep structure
+!results/README.md
+!results/.gitkeep
+
+# Temporary files
+*.pyc
+*.pyo
+*.log
+.pytest_cache/

@@ -1,0 +1,71 @@
+---
+title: Installation
+description: Install xbbg and set up the Bloomberg SDK
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# Installation
+
+## Requirements
+
+- Python 3.10+
+- Bloomberg Terminal or B-PIPE connection
+- Bloomberg C++ SDK
+
+## Install xbbg
+
+```bash
+pip install xbbg
+```
+
+## Bloomberg SDK Setup
+
+xbbg requires the Bloomberg C++ SDK shared library. You have several options:
+
+<Tabs>
+  <TabItem label="blpapi (Recommended)">
+    Install the official Bloomberg Python bindings:
+    ```bash
+    pip install blpapi --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/
+    ```
+    xbbg will automatically detect and use the bundled SDK.
+  </TabItem>
+  <TabItem label="Bloomberg Terminal">
+    If you have Bloomberg Terminal installed, xbbg will auto-detect the DAPI SDK:
+    - Windows: `C:\blp\DAPI`
+    - Linux: `~/blp/DAPI` or `/opt/bloomberg/DAPI`
+  </TabItem>
+  <TabItem label="Manual SDK">
+    Set the `BLPAPI_ROOT` environment variable:
+    ```bash
+    export BLPAPI_ROOT=/path/to/blpapi_cpp_3.x.x.x
+    ```
+    Or configure at runtime:
+    ```python
+    import xbbg
+    xbbg.set_sdk_path('/path/to/blpapi_cpp_3.x.x.x')
+    ```
+  </TabItem>
+</Tabs>
+
+## Verify Installation
+
+```python
+import xbbg
+
+# Check SDK detection
+print(xbbg.get_sdk_info())
+# {'sources': [{'name': 'blpapi_python', 'version': '3.25.x.x', ...}], 'active': 'blpapi_python'}
+
+# Check version
+print(xbbg.__version__)
+```
+
+<Aside type="tip">
+  Run `xbbg.get_sdk_info()` to see all detected SDK sources and which one is active.
+</Aside>
+
+## Next Steps
+
+Continue to [Quick Start](/xbbg/getting-started/quickstart) to make your first Bloomberg request.
