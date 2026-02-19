@@ -9,6 +9,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BLPAPI_ROOT");
     println!("cargo:rerun-if-env-changed=XBBG_DEV_SDK_ROOT");
     println!("cargo:rerun-if-env-changed=BLPAPI_LINK_LIB_NAME");
+    println!("cargo:rerun-if-env-changed=BLPAPI_PREGENERATED_BINDINGS");
+    println!("cargo:rerun-if-env-changed=BLPAPI_BINDINGS_EXPORT_PATH");
 
     // Resolve include and lib directories from environment (precedence order)
     let (include_dir, lib_dir) =
@@ -48,13 +50,33 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib={}", lib_name);
     }
 
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+    let bindings_out = out_dir.join("bindings.rs");
+
+    if let Some(pregenerated_bindings) = env::var_os("BLPAPI_PREGENERATED_BINDINGS") {
+        let pregenerated_bindings = PathBuf::from(pregenerated_bindings);
+        if !pregenerated_bindings.is_file() {
+            panic!(
+                "blpapi-sys: BLPAPI_PREGENERATED_BINDINGS does not point to a file: {}",
+                pregenerated_bindings.display()
+            );
+        }
+
+        copy_bindings(&pregenerated_bindings, &bindings_out)
+            .unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
+
+        if let Some(export_path) = env::var_os("BLPAPI_BINDINGS_EXPORT_PATH") {
+            let export_path = PathBuf::from(export_path);
+            copy_bindings(&pregenerated_bindings, &export_path)
+                .unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
+        }
+
+        return;
+    }
+
     // Build bindgen wrapper that includes all blpapi_*.h headers found
     let wrapper =
         generate_wrapper_header(&include_dir).unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
-
-    // Prepare bindgen
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-    let bindings_out = out_dir.join("bindings.rs");
 
     let builder = bindgen::Builder::default()
         .header_contents("wrapper.h", &wrapper)
@@ -77,6 +99,33 @@ fn main() {
     bindings
         .write_to_file(&bindings_out)
         .unwrap_or_else(|e| panic!("Failed to write bindings: {}", e));
+
+    if let Some(export_path) = env::var_os("BLPAPI_BINDINGS_EXPORT_PATH") {
+        let export_path = PathBuf::from(export_path);
+        copy_bindings(&bindings_out, &export_path).unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
+    }
+}
+
+fn copy_bindings(src: &Path, dst: &Path) -> Result<(), String> {
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create parent directory for {}: {}",
+                dst.display(),
+                e
+            )
+        })?;
+    }
+
+    fs::copy(src, dst).map_err(|e| {
+        format!(
+            "Failed to copy bindings from {} to {}: {}",
+            src.display(),
+            dst.display(),
+            e
+        )
+    })?;
+    Ok(())
 }
 
 fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {
