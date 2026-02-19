@@ -46,7 +46,7 @@ Issues = "https://github.com/alpha-xone/xbbg/issues"
 tag_regex = '^(?:v|xbbg==)?(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc|alpha|beta)\d+)?)$'
 fallback_version = "0+unknown"
 
-# ── Rust extension (replaces maturin) ────────────────────────────────────────
+# ── Rust extension via setuptools-rust ───────────────────────────────────────
 [[tool.setuptools-rust.ext-modules]]
 target = "xbbg._core"
 path = "bindings/pyo3-xbbg/Cargo.toml"

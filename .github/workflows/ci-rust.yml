@@ -326,7 +326,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Build wheels (matrix: OS × Python version)
+  # Build wheels via setuptools-rust + uv (matrix: OS × Python version)
   # ════════════════════════════════════════════════════════════════════════════
   build:
     name: Build (Python ${{ matrix.python }}, ${{ matrix.target }})
@@ -363,6 +363,13 @@ jobs:
           name: blpapi-bindings
           path: ci-bindings
 
+      - name: Configure pre-generated bindings path (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
       - name: Configure pre-generated bindings path (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -373,16 +380,40 @@ jobs:
           }
           "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
 
-      - name: Cache Bloomberg SDK
+      - name: Cache Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: cache-sdk-linux
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (Linux)
+        if: runner.os == 'Linux' && steps.cache-sdk-linux.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$HOME/blpapi/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Cache Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
-        id: cache-sdk
+        id: cache-sdk-windows
         uses: actions/cache@v4
         with:
           path: ~/blpapi
           key: blpapi-Windows-${{ env.BLPAPI_VERSION }}
 
       - name: Download Bloomberg SDK (Windows)
-        if: runner.os == 'Windows' && steps.cache-sdk.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows' && steps.cache-sdk-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $sdkUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-windows.zip"
@@ -402,29 +433,14 @@ jobs:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
-      - name: Build wheel (Linux)
-        if: runner.os == 'Linux'
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist -i ${{ matrix.python }}
-          manylinux: "2_28"
-          container: ghcr.io/${{ github.repository_owner }}/xbbg-manylinux:latest
-          before-script-linux: |
-            git config --global --add safe.directory /io
-            mkdir -p /opt/blpapi
-            curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-linux.tar.gz" \
-              | tar -xz -C /opt/blpapi --strip-components=1
-            ln -sf /opt/blpapi/Linux /opt/blpapi/lib
-            ln -sf /opt/blpapi/lib/libblpapi3_64.so /opt/blpapi/lib/libblpapi3.so
-          docker-options: -e BLPAPI_ROOT=/opt/blpapi -e LIBRARY_PATH=/opt/blpapi/lib -e LD_LIBRARY_PATH=/opt/blpapi/lib -e BLPAPI_PREGENERATED_BINDINGS=/io/ci-bindings/bindings.rs
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
 
-      - name: Build wheel (Windows)
-        if: runner.os == 'Windows'
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist -i ${{ matrix.python }}
+      - name: Install build dependencies
+        run: uv pip install --system "build>=1.2.2" "setuptools>=82" "wheel>=0.46" "setuptools-scm>=9" "setuptools-rust>=1.12"
+
+      - name: Build wheel (setuptools-rust)
+        run: python -m build --wheel --outdir dist/
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4

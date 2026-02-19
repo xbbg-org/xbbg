@@ -85,11 +85,14 @@ jobs:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
       - name: Install build dependencies
-        run: pip install "setuptools>=82" "wheel>=0.46" "setuptools-scm>=9" "setuptools-rust>=1.12"
+        run: uv pip install --system "build>=1.2.2" "setuptools>=82" "wheel>=0.46" "setuptools-scm>=9" "setuptools-rust>=1.12"
 
       - name: Build wheel
-        run: pip wheel . --no-deps --wheel-dir dist/
+        run: python -m build --wheel --outdir dist/
 
       - name: Upload wheel
         uses: actions/upload-artifact@v6
@@ -113,8 +116,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
       - name: Install build tool
-        run: pip install build
+        run: uv pip install --system "build>=1.2.2"
 
       - name: Build sdist
         run: python -m build --sdist --outdir dist/
