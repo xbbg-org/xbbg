@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0a2] - 2026-02-19
+
 ### Changed
 
 - **README**: Comprehensive rewrite with full API reference tables, comparison matrix, multi-backend documentation, detailed intraday session guide, fixed income/options/CDX analytics examples, troubleshooting section, and data storage documentation
@@ -882,7 +884,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...HEAD
+[1.0.0a2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a1...v1.0.0a2
 [1.0.0a1]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...v1.0.0a1
 [0.12.0]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...v0.12.0
 [0.12.0b3]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b2...v0.12.0b3
