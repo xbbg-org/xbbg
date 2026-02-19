@@ -12,9 +12,11 @@
 
 ## Version 1.0 — Complete Rewrite
 
-xbbg has been completely rewritten for **performance, flexibility, and reliability**.
+xbbg has been completely rewritten for **performance, flexibility, and reliability**. We are currently preparing for a **v1 alpha release**.
 
 See the [1.0.0 Milestone](https://github.com/alpha-xone/xbbg/milestone/1) for progress and planned features.
+
+> **Looking for the legacy pure-Python version?** The previous 0.x release line is maintained on the [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x) branch.
 
 ### What's New
 
