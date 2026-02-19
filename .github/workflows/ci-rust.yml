@@ -538,7 +538,8 @@ jobs:
           toolchain: nightly
           rustflags: ""
 
-      - uses: cargo-bins/cargo-binstall@v1.17.5
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           cargo binstall -y --force cargo-udeps
@@ -585,7 +586,8 @@ jobs:
           components: rust-src
           rustflags: ""
 
-      - uses: cargo-bins/cargo-binstall@v1.17.5
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Run cargo-geiger
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
@@ -638,7 +640,8 @@ jobs:
         with:
           rustflags: ""
 
-      - uses: cargo-bins/cargo-binstall@v1.17.5
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Run cargo-semver-checks
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
