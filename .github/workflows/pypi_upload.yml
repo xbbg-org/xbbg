@@ -248,10 +248,11 @@ jobs:
       id-token: write  # Trusted publishing (OIDC)
 
     steps:
-      - name: Download all artifacts
+      - name: Download wheels and sdist
         uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: "{wheel-*,sdist}"
           merge-multiple: true
 
       - name: List artifacts
@@ -274,10 +275,11 @@ jobs:
       contents: write
 
     steps:
-      - name: Download all artifacts
+      - name: Download wheels and sdist
         uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: "{wheel-*,sdist}"
           merge-multiple: true
 
       - name: Upload to GitHub Release
