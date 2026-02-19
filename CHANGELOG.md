@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **PyArrow WIDE format crash**: Fix `ArrowTypeError` when pivoting intraday tick data with mixed types (float value + string typ/cond/exch columns) in non-pandas backends (#224)
+- **Default format for non-pandas backends**: Auto-downgrade default output format from WIDE to SEMI_LONG for pyarrow/polars/narwhals backends, since WIDE requires pandas MultiIndex (#225)
+- **WIDE downgrade warning**: Emit `XbbgFutureWarning` when WIDE format is silently downgraded to SEMI_LONG for non-pandas backends
+- **CI non-ASCII check**: Replace non-ASCII em dashes in source comments to pass CI character validation
+
 ## [0.12.0] - 2026-02-18
 
 ### Added
