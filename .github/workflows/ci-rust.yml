@@ -436,11 +436,8 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Install build dependencies
-        run: uv pip install --system "build>=1.2.2" "setuptools>=82" "wheel>=0.46" "setuptools-scm>=9" "setuptools-rust>=1.12"
-
-      - name: Build wheel (setuptools-rust)
-        run: python -m build --wheel --outdir dist/
+      - name: Build wheel (setuptools-rust via uv)
+        run: uv build --wheel --out-dir dist/
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4

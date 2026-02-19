@@ -10,6 +10,10 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+  packages: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -32,11 +36,58 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Build wheels via setuptools-rust (Linux x64, Windows x64) × Python versions
+  # Generate bindings once (needs libclang), consumed by build jobs
+  # ════════════════════════════════════════════════════════════════════════════
+  generate-bindings:
+    name: Generate blpapi bindings
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Generate bindings artifact
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/ci-bindings"
+          BLPAPI_BINDINGS_EXPORT_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs" cargo build -p blpapi-sys
+          test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+
+      - name: Upload bindings artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blpapi-bindings
+          path: ci-bindings/bindings.rs
+          retention-days: 7
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Build wheels via setuptools-rust + uv (Linux x64, Windows x64) × Python
   # ════════════════════════════════════════════════════════════════════════════
   build:
     name: Build (Python ${{ matrix.python }}, ${{ matrix.os }})
-    needs: sdk-version
+    needs: [sdk-version, generate-bindings]
     strategy:
       fail-fast: false
       matrix:
@@ -48,39 +99,87 @@ jobs:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # setuptools_scm needs full git history for version
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - name: Download pre-generated bindings
+        uses: actions/download-artifact@v4
+        with:
+          name: blpapi-bindings
+          path: ci-bindings
+
+      - name: Configure pre-generated bindings path (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure pre-generated bindings path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bindingsPath = Join-Path $env:GITHUB_WORKSPACE "ci-bindings\bindings.rs"
+          if (-not (Test-Path $bindingsPath)) {
+            throw "Bindings artifact not found at $bindingsPath"
+          }
+          "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
+
+      - name: Cache Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: cache-sdk-linux
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
 
       - name: Download Bloomberg SDK (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.cache-sdk-linux.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/blpapi"
           curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
             | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
           ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
           ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$HOME/blpapi/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
-      - name: Download Bloomberg SDK (Windows)
+      - name: Cache Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
+        id: cache-sdk-windows
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Windows-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (Windows)
+        if: runner.os == 'Windows' && steps.cache-sdk-windows.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $sdkUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-windows.zip"
           Invoke-WebRequest -Uri $sdkUrl -OutFile blpapi.zip
-          Expand-Archive -Path blpapi.zip -DestinationPath C:\blpapi
-          $sdkPath = (Get-ChildItem C:\blpapi -Directory)[0].FullName
-          echo "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+          Expand-Archive -Path blpapi.zip -DestinationPath $HOME/blpapi
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = (Get-ChildItem $HOME/blpapi -Directory)[0].FullName
+          "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
 
       - name: Setup Python ${{ matrix.python }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
@@ -88,14 +187,27 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Install build dependencies
-        run: uv pip install --system "build>=1.2.2" "setuptools>=82" "wheel>=0.46" "setuptools-scm>=9" "setuptools-rust>=1.12"
-
       - name: Build wheel
-        run: python -m build --wheel --outdir dist/
+        run: uv build --wheel --out-dir build-wheel/
+
+      - name: Fix Linux wheel platform tag (manylinux)
+        if: runner.os == 'Linux'
+        run: |
+          uv pip install --system auditwheel patchelf
+          auditwheel show build-wheel/*.whl
+          auditwheel repair build-wheel/*.whl --wheel-dir dist/ --exclude libblpapi3.so --exclude libblpapi3_64.so
+          echo "Repaired wheel:"
+          ls -la dist/*.whl
+
+      - name: Move Windows wheel to dist
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build-wheel/*.whl dist/
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist/*.whl
@@ -107,26 +219,18 @@ jobs:
     name: Build sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # setuptools_scm needs full git history for version
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Install build tool
-        run: uv pip install --system "build>=1.2.2"
-
       - name: Build sdist
-        run: python -m build --sdist --outdir dist/
+        run: uv build --sdist --out-dir dist/
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -145,7 +249,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
@@ -159,7 +263,7 @@ jobs:
           packages-dir: dist/
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Attach wheels to GitHub Release (created by semantic_version.yml)
+  # Attach wheels + sdist to GitHub Release (created by semantic_version.yml)
   # ════════════════════════════════════════════════════════════════════════════
   release-assets:
     name: Attach Release Assets
@@ -171,7 +275,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true

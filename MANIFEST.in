@@ -1,0 +1,101 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# MANIFEST.in — Controls what goes into the source distribution (sdist)
+# ═══════════════════════════════════════════════════════════════════════════════
+# The sdist must contain everything needed to build the wheel from source:
+#   - Python source (py-xbbg/src/xbbg/)
+#   - Rust workspace (Cargo.toml, Cargo.lock, crates/, bindings/pyo3-xbbg/)
+#   - Build config (pyproject.toml, .cargo/config.toml)
+#
+# It should NOT contain dev-only files (docs, benchmarks, CI, vendor SDK, etc.)
+
+# ── Include build essentials ─────────────────────────────────────────────────
+include pyproject.toml
+include Cargo.toml
+include Cargo.lock
+include LICENSE
+include README.md
+include deny.toml
+
+# Cargo config (env vars for Rust build)
+include .cargo/config.toml
+
+# Python source
+recursive-include py-xbbg/src *.py *.pyi
+
+# Rust workspace crates needed for the build
+recursive-include crates/blpapi-sys *.rs *.toml
+recursive-include crates/xbbg-core *.rs *.toml
+recursive-include crates/xbbg-async *.rs *.toml
+recursive-include crates/xbbg-sys *.rs *.toml
+recursive-include crates/xbbg-ext *.rs *.toml
+recursive-include crates/xbbg-recipes *.rs *.toml
+recursive-include crates/xbbg-log *.rs *.toml
+recursive-include crates/xbbg-bench *.rs *.toml
+
+# PyO3 binding (the actual extension we build)
+recursive-include bindings/pyo3-xbbg *.rs *.toml
+
+# Codegen (needed for workspace compilation)
+recursive-include codegen *.py
+
+# Definition files (schema defs used by crates)
+recursive-include defs *
+
+# datamock workspace members — Cargo needs Cargo.toml + src/lib.rs to resolve
+# the workspace, but we exclude the massive C++ source tree (not needed for
+# release builds — the mock feature is off by default).
+recursive-include crates/datamock *.rs *.toml
+recursive-include crates/datamock-sys *.rs *.toml
+
+# ── Exclude dev-only crate content ───────────────────────────────────────────
+# datamock C++ source (100+ files, ~500KB, not needed for live builds)
+prune crates/datamock/cpp
+
+# Benchmarks and examples (not needed to build the wheel)
+prune crates/xbbg-bench/benches
+prune crates/xbbg-core/examples
+prune crates/xbbg-core/tests
+prune crates/xbbg-async/tests
+
+# Other language bindings (not part of Python wheel)
+prune bindings/napi-xbbg
+prune bindings/dotnet-xbbg
+
+# Applications (separate packages)
+prune apps
+
+# Dev/CI files
+prune .github
+prune .sisyphus
+prune docker
+prune docs
+prune benchmarks
+prune examples
+prune scripts
+prune vendor
+prune js-xbbg
+prune xbbg
+prune py-xbbg/tests
+
+# Build artifacts
+prune target
+prune dist
+prune .venv
+prune .uv-cache
+prune .ruff_cache
+prune .pytest_cache
+
+# Misc dev files
+exclude .coveragerc
+exclude .env
+exclude .gitattributes
+exclude .gitignore
+exclude .markdownlint.json
+exclude .pre-commit-config.yaml
+exclude edge-cases.md
+exclude uv.lock
+exclude nul
+exclude CONTRIBUTING.md
+exclude CODE_OF_CONDUCT.md
+exclude RELEASE_PROCESS.md
+exclude CHANGELOG.md

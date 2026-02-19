@@ -4,7 +4,7 @@ This document explains the release process for xbbg, intended for AI agents and 
 
 ## Overview
 
-xbbg uses **semantic versioning** (SemVer) and follows the [Keep a Changelog](https://keepachangelog.com/) format. Releases are automated via GitHub Actions workflows.
+xbbg uses **semantic versioning** (SemVer) with versions **automatically derived from git tags** via `setuptools_scm`. The build system is `setuptools` + `setuptools-rust` + `setuptools_scm`.
 
 ### Version Format
 
@@ -12,17 +12,28 @@ xbbg uses **semantic versioning** (SemVer) and follows the [Keep a Changelog](ht
 {major}.{minor}.{patch}[-{pre-release}]
 
 Examples:
-- 0.11.0        # Stable release
-- 0.11.0b1      # Beta pre-release
-- 0.11.0a1      # Alpha pre-release
-- 0.11.0rc1     # Release candidate
+- 0.12.1        # Stable release
+- 0.12.1b1      # Beta pre-release
+- 0.12.1a1      # Alpha pre-release
+- 0.12.1rc1     # Release candidate
 ```
+
+Dev builds (untagged commits) automatically get versions like `0.12.1.dev268+g84acdcf.d20260219`.
+
+### Build System
+
+| Component | Package | Purpose |
+|-----------|---------|---------|
+| Build backend | `setuptools` | Python packaging |
+| Rust extension | `setuptools-rust` | Compiles PyO3 extension (`xbbg._core`) |
+| Version | `setuptools_scm` | Derives version from git tags |
+| Build tool | `uv` | Fast package manager and build frontend |
 
 ## Release Workflow
 
 ### Step 1: Update CHANGELOG.md
 
-Before creating a release, ensure all changes are documented under the `[Unreleased]` section:
+Ensure all changes are documented under the `[Unreleased]` section:
 
 ```markdown
 ## [Unreleased]
@@ -35,15 +46,6 @@ Before creating a release, ensure all changes are documented under the `[Unrelea
 
 ### Fixed
 - Bug fix description
-
-### Removed
-- Removed feature description
-
-### Deprecated
-- Deprecated feature description
-
-### Security
-- Security fix description
 ```
 
 **Categories** (use only what applies):
@@ -75,19 +77,18 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | `create_release` | Create GitHub release | `true`, `false` |
 
 **Examples:**
-- `0.11.0` → `0.12.0`: bump_type=`minor`, pre_release=`none`
-- `0.11.0` → `0.11.1`: bump_type=`patch`, pre_release=`none`
-- `0.11.0` → `0.11.1b1`: bump_type=`patch`, pre_release=`beta`, pre_number=`1`
-- `0.11.0b3` → `0.11.0b4`: bump_type=`patch`, pre_release=`beta`, pre_number=`4`
+- `0.12.1` → `0.13.0`: bump_type=`minor`, pre_release=`none`
+- `0.12.1` → `0.12.2`: bump_type=`patch`, pre_release=`none`
+- `0.12.1` → `0.12.2b1`: bump_type=`patch`, pre_release=`beta`, pre_number=`1`
 
 ### Step 4: What Happens Automatically
 
 1. **Version Calculation**: Computes new version from current tags
 2. **Changelog Update**: Renames `[Unreleased]` to `[version] - date`
-3. **Git Tag**: Creates `vX.Y.Z` tag
+3. **Git Tag**: Creates `vX.Y.Z` tag and pushes it
 4. **GitHub Release**: Creates release with notes from CHANGELOG
-5. **PyPI Publish**: Uploads package via OIDC trusted publishing
-6. **Documentation**: Updates README and docs with new version
+5. **PyPI Publish**: Tag push triggers `pypi_upload.yml` — builds wheels and publishes via OIDC trusted publishing
+6. **Release Assets**: Wheels and sdist are attached to the GitHub release
 
 ## CI/CD Workflows
 
@@ -95,51 +96,56 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 
 | Workflow | File | Purpose |
 |----------|------|---------|
-| Auto CI | `auto_ci.yml` | Run tests on Python 3.10-3.14 |
-| Docs | `ci_docs.yml` | Build and verify documentation |
-| CodeQL | `codeql-analysis.yml` | Security analysis |
-| PyPI Build Test | `pypi_build_test.yml` | Verify package builds |
+| CI | `ci-rust.yml` | Rust lint, clippy, build, test (Linux + Windows) |
+| Docker | `ci-docker.yml` | Build CI Docker image |
 
-### On Release
+### On Release (tag push `v*`)
 
 | Workflow | File | Purpose |
 |----------|------|---------|
-| Upload to PyPI | `pypi_upload.yml` | Publish to PyPI |
-| Release Assets | `release_assets.yml` | Attach build artifacts |
-| Update README | `update_readme_on_release.yml` | Update version badges |
-| Update Index | `update_index_on_release.yml` | Update docs index |
-| Publish Docs | `publish_docs.yml` | Deploy to ReadTheDocs |
+| Release | `pypi_upload.yml` | Build wheels (Linux + Windows × Python 3.10–3.14), sdist, publish to PyPI, attach to GitHub release |
 
-## Quick Commands
+### Manual Trigger
+
+| Workflow | File | Purpose |
+|----------|------|---------|
+| Bump Version | `semantic_version.yml` | Calculate version, update CHANGELOG, create tag + GitHub release |
+
+## Local Development
+
+### Build Locally
+
+```bash
+# Set Bloomberg SDK path (required for wheel builds)
+# Windows PowerShell:
+$env:BLPAPI_ROOT = "$PWD\vendor\blpapi-sdk\3.25.12.1"
+# Linux/macOS:
+export BLPAPI_ROOT=$PWD/vendor/blpapi-sdk/3.25.12.1
+
+# Build wheel (includes Rust extension)
+uv build
+
+# Build sdist only (no Rust compilation)
+uv build --sdist
+```
 
 ### Check Current Version
 
 ```bash
+# Latest release tags
 git tag --sort=-version:refname | head -5
-```
 
-### View Changelog
+# Local dev version (from setuptools_scm)
+python -c "from setuptools_scm import get_version; print(get_version())"
 
-```bash
-head -100 CHANGELOG.md
-```
-
-### Run Tests Before Release
-
-```bash
-uv run pytest xbbg/tests/ --tb=short -q
-uv run ruff check xbbg/ --fix
-uv run ruff format xbbg/
-```
-
-### Manual Version Check
-
-```bash
-# Check what's on PyPI
-pip index versions xbbg
-
-# Check local version
+# Installed package version
 python -c "import xbbg; print(xbbg.__version__)"
+```
+
+### Check What's on PyPI
+
+```bash
+pip index versions xbbg
 ```
 
 ## Branch Strategy
@@ -153,7 +159,7 @@ python -c "import xbbg; print(xbbg.__version__)"
 
 ### After Merging PRs
 
-1. Delete merged branches (automatic if using `--delete-branch`)
+1. Delete merged branches
 2. Update CHANGELOG.md on main
 3. Trigger release workflow when ready
 
@@ -163,46 +169,38 @@ python -c "import xbbg; print(xbbg.__version__)"
 
 1. Check workflow logs in GitHub Actions
 2. Common issues:
-   - Empty CHANGELOG `[Unreleased]` section
+   - Empty CHANGELOG `[Unreleased]` section (blocked by validation)
    - Version already exists on PyPI
-   - CI tests failing
+   - Bloomberg SDK download URL changed
+   - Rust compilation error
 
 ### Version Already on PyPI
 
-The workflow automatically skips publishing if the version exists. To fix:
+PyPI rejects duplicate versions. To fix:
 1. Increment pre-release number (e.g., `b3` → `b4`)
 2. Or fix issues and bump patch version
 
-### CHANGELOG Format Issues
+### Local Build Fails
 
-Ensure proper formatting:
-```markdown
-## [Unreleased]
-
-### Added
-- Item with description
-
-## [0.11.0] - 2026-01-24
-
-### Fixed
-- Previous release item
-```
+1. Ensure `BLPAPI_ROOT` points to the Bloomberg SDK directory (must contain `include/` and `lib/`)
+2. Ensure Rust toolchain is installed (`rustup show`)
+3. For bindgen issues, set `LIBCLANG_PATH` (see `.cargo/config.toml` comments)
+4. CI uses pregenerated bindings (`BLPAPI_PREGENERATED_BINDINGS`) to skip bindgen entirely
 
 ## For AI Agents
 
 When asked to create a release:
 
 1. **Review pending changes**: Read `CHANGELOG.md` `[Unreleased]` section
-2. **Verify tests pass**: Run `uv run pytest xbbg/tests/ -q`
-3. **Check for uncommitted changes**: Run `git status`
-4. **Determine version bump**:
+2. **Check for uncommitted changes**: Run `git status`
+3. **Determine version bump**:
    - Breaking changes → `major`
    - New features → `minor`
    - Bug fixes only → `patch`
    - Pre-release → add `alpha`/`beta`/`rc`
-5. **Guide user to GitHub Actions** to trigger the workflow
+4. **Guide user to GitHub Actions** to trigger the `semantic_version.yml` workflow
 
 **Do NOT manually:**
-- Edit version numbers in code (managed by `setuptools_scm`)
+- Edit version numbers in code (managed by `setuptools_scm` from git tags)
 - Create git tags directly (workflow handles this)
 - Upload to PyPI manually (OIDC trusted publishing only)
