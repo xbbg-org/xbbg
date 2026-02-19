@@ -69,6 +69,12 @@ impl RequestWorkerPool {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         let worker = self.next_worker();
+        xbbg_log::debug!(
+            worker_id = worker.id,
+            service = %params.service,
+            operation = %params.operation,
+            "dispatching request"
+        );
         worker
             .cmd_tx
             .send(WorkerCommand::Request {
@@ -94,6 +100,12 @@ impl RequestWorkerPool {
         let (stream_tx, stream_rx) = mpsc::channel(self.config.subscription_stream_capacity);
 
         let worker = self.next_worker();
+        xbbg_log::debug!(
+            worker_id = worker.id,
+            service = %params.service,
+            operation = %params.operation,
+            "dispatching stream request"
+        );
         worker
             .cmd_tx
             .send(WorkerCommand::RequestStream {
