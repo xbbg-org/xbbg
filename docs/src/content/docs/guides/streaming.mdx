@@ -1,0 +1,28 @@
+---
+title: Streaming Data
+description: Real-time market data subscriptions
+---
+
+# Streaming Data
+
+:::note[TODO]
+This guide needs to be written. Topics to cover:
+- subscribe() vs asubscribe()
+- stream() for simple iteration
+- Subscription lifecycle (add, remove, unsubscribe)
+- Handling batches of ticks
+- Context manager usage
+:::
+
+```python
+import xbbg
+
+# Simple streaming
+async for batch in xbbg.astream(['AAPL US Equity'], ['LAST_PRICE', 'BID']):
+    print(batch)
+
+# Full control with subscription
+sub = await xbbg.asubscribe(['AAPL US Equity'], ['LAST_PRICE'])
+await sub.add(['MSFT US Equity'])  # Dynamic add
+await sub.unsubscribe()
+```

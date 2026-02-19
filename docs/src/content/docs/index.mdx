@@ -1,0 +1,62 @@
+---
+title: xbbg
+description: An intuitive Bloomberg API for Python — powered by Rust
+template: splash
+hero:
+  tagline: An intuitive Bloomberg API for Python — now powered by Rust
+  image:
+    file: ../../assets/xbbg-logo.png
+  actions:
+    - text: Get Started
+      link: /xbbg/getting-started/introduction/
+      icon: right-arrow
+    - text: API Reference
+      link: /xbbg/api/blp/
+      icon: document
+      variant: minimal
+    - text: GitHub
+      link: https://github.com/alpha-xone/xbbg
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Features
+
+<CardGrid stagger>
+  <Card title="Rust Backend" icon="rocket">
+    Up to 10x faster data retrieval with Arrow integration and async I/O.
+  </Card>
+  <Card title="Multi-Backend Support" icon="puzzle">
+    Return data as pandas, Polars, PyArrow, or DuckDB.
+  </Card>
+  <Card title="Async-First Design" icon="lightning">
+    Native async/await API with sync wrappers.
+  </Card>
+  <Card title="Zero-Copy Transfer" icon="document">
+    Arrow C Data Interface between Rust and Python.
+  </Card>
+</CardGrid>
+
+## Quick Example
+
+```python
+import xbbg
+
+# Reference data
+df = xbbg.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+
+# Historical data  
+df = xbbg.bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
+
+# Use Polars instead of pandas
+xbbg.set_backend('polars')
+df = xbbg.bdp('AAPL US Equity', 'PX_LAST')
+```
+
+## Install
+
+```bash
+pip install xbbg
+```

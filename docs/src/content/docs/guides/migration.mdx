@@ -1,0 +1,41 @@
+---
+title: Migration from Legacy
+description: Upgrading from xbbg < 1.0 to the new Rust backend
+---
+
+# Migration from Legacy xbbg
+
+:::note[TODO]
+This guide needs to be written. Topics to cover:
+- Key breaking changes
+- Wide format → Long format (default change)
+- MultiIndex removal
+- New backend system
+- Code migration examples
+- Feature comparison table
+:::
+
+## Key Changes
+
+| Feature | Legacy xbbg | xbbg 1.0 |
+|---------|-------------|----------|
+| Default output | Wide format | Long format |
+| Backend | Pure Python | Rust + Arrow |
+| MultiIndex | Supported | Removed |
+| Async | Not available | Native support |
+| Backends | pandas only | pandas, polars, pyarrow, duckdb |
+
+## Migration Example
+
+```python
+# Legacy (wide format default)
+df = bdh(['AAPL', 'MSFT'], 'PX_LAST')
+# Columns: (AAPL, PX_LAST), (MSFT, PX_LAST)
+
+# xbbg 1.0 (long format default)
+df = bdh(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST')
+# Columns: ticker, date, field, value
+
+# To get wide format, use pivot:
+df_wide = df.pivot(on='field', index=['ticker', 'date'], values='value')
+```

@@ -1,0 +1,32 @@
+---
+title: Configuration
+description: Configure engine settings, pool sizes, and connection options
+---
+
+# Configuration
+
+:::note[TODO]
+This guide needs to be written. Topics to cover:
+- configure() function
+- EngineConfig dataclass
+- Pool sizes (request_pool_size, subscription_pool_size)
+- Host/port settings
+- When to configure (before first request)
+:::
+
+```python
+import xbbg
+from xbbg import EngineConfig
+
+# Configure before first request
+xbbg.configure(
+    request_pool_size=4,
+    subscription_pool_size=8,
+    host='localhost',
+    port=8194,
+)
+
+# Or with EngineConfig
+config = EngineConfig(request_pool_size=4)
+xbbg.configure(config)
+```

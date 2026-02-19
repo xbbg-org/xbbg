@@ -1,0 +1,368 @@
+# Exchange & Market Definitions
+# =============================
+# Single source of truth for exchange session rules, exchange code mappings,
+# and country-to-timezone fallbacks.
+#
+# Used by Rust (compiled in via `include_str!`) and optionally by codegen.
+#
+# Session rules define how to derive pre/post/am/pm windows from
+# Bloomberg's regular trading hours for each exchange.
+
+
+# ============================================================================
+# Market Rules by MIC Code (ISO 10383)
+# ============================================================================
+# Each entry defines session derivation parameters:
+#   pre_minutes       – minutes before day_start for pre-market session
+#   post_minutes      – minutes after day_end for post-market session
+#   lunch_start_min   – minutes from day_start to lunch break start (Asian markets)
+#   lunch_end_min     – minutes from day_start to lunch break end
+#   is_continuous     – true for 23-hour futures markets (no extended hours concept)
+#
+# Omitted fields default to 0 / null / false.
+
+# --- US Equities (5.5h pre, 4h post) ---
+# Day: 09:30–16:00, Pre: 04:00–09:30, Post: 16:00–20:00
+[mic.XNYS]
+pre_minutes = 330
+post_minutes = 240
+
+[mic.XNGS]
+pre_minutes = 330
+post_minutes = 240
+
+[mic.XASE]
+pre_minutes = 330
+post_minutes = 240
+
+[mic.ARCX]
+pre_minutes = 330
+post_minutes = 240
+
+[mic.BATS]
+pre_minutes = 330
+post_minutes = 240
+
+[mic.IEXG]
+pre_minutes = 330
+post_minutes = 240
+
+# --- Japanese Equities (1h pre, 30m post, lunch 11:30–12:30) ---
+# Day: 09:00–15:00, AM: 09:00–11:30, PM: 12:30–15:00
+[mic.XTKS]
+pre_minutes = 60
+post_minutes = 30
+lunch_start_min = 150
+lunch_end_min = 210
+
+[mic.XOSE]
+pre_minutes = 60
+post_minutes = 30
+lunch_start_min = 150
+lunch_end_min = 210
+
+[mic.XNGO]
+pre_minutes = 60
+post_minutes = 30
+lunch_start_min = 150
+lunch_end_min = 210
+
+[mic.XFKA]
+pre_minutes = 60
+post_minutes = 30
+lunch_start_min = 150
+lunch_end_min = 210
+
+[mic.XSAP]
+pre_minutes = 60
+post_minutes = 30
+lunch_start_min = 150
+lunch_end_min = 210
+
+# --- Hong Kong (45m pre, 15m post, lunch 12:00–13:00) ---
+# Day: 09:30–16:00, AM: 09:30–12:00, PM: 13:00–16:00
+[mic.XHKG]
+pre_minutes = 45
+post_minutes = 15
+lunch_start_min = 150
+lunch_end_min = 210
+
+# --- China (15m pre, lunch 11:30–13:00) ---
+# Day: 09:30–15:00, AM: 09:30–11:30, PM: 13:00–15:00
+[mic.XSHG]
+pre_minutes = 15
+lunch_start_min = 120
+lunch_end_min = 210
+
+[mic.XSHE]
+pre_minutes = 15
+lunch_start_min = 120
+lunch_end_min = 210
+
+# --- South Korea (15m post) ---
+[mic.XKRX]
+post_minutes = 15
+
+[mic.XKOS]
+post_minutes = 15
+
+# --- Taiwan (10m post) ---
+[mic.XTAI]
+post_minutes = 10
+
+# --- Australia (16m post) ---
+[mic.XASX]
+post_minutes = 16
+
+# --- UK / London (30m post) ---
+[mic.XLON]
+post_minutes = 30
+
+# --- Germany / Xetra (no extended hours) ---
+[mic.XETR]
+
+# --- Netherlands (30m post) ---
+[mic.XAMS]
+post_minutes = 30
+
+# --- France (30m post) ---
+[mic.XPAR]
+post_minutes = 30
+
+# --- Spain (30m post) ---
+[mic.XMAD]
+post_minutes = 30
+
+# --- Italy (no extended hours) ---
+[mic.XMIL]
+
+# --- Switzerland (no extended hours) ---
+[mic.XSWX]
+
+# --- Sweden (30m post) ---
+[mic.XSTO]
+post_minutes = 30
+
+# --- India (100m post) ---
+[mic.XNSE]
+post_minutes = 100
+
+[mic.XBOM]
+post_minutes = 100
+
+# --- Futures exchanges (continuous trading) ---
+[mic.XCME]
+is_continuous = true
+
+[mic.XCBT]
+is_continuous = true
+
+[mic.XCEC]
+is_continuous = true
+
+[mic.XNYM]
+is_continuous = true
+
+[mic.IFEU]
+is_continuous = true
+
+[mic.IFUS]
+is_continuous = true
+
+[mic.XEUR]
+is_continuous = true
+
+
+# ============================================================================
+# Fallback Rules by Bloomberg Exchange Code
+# ============================================================================
+# Used when MIC code is unavailable.  Same field schema as [mic.*].
+
+# --- US ---
+[exch_code.US]
+pre_minutes = 330
+post_minutes = 240
+
+[exch_code.UN]
+pre_minutes = 330
+post_minutes = 240
+
+[exch_code.UW]
+pre_minutes = 330
+post_minutes = 240
+
+[exch_code.UA]
+pre_minutes = 330
+post_minutes = 240
+
+# --- Japan ---
+[exch_code.JT]
+pre_minutes = 60
+post_minutes = 30
+lunch_start_min = 150
+lunch_end_min = 210
+
+[exch_code.JP]
+pre_minutes = 60
+post_minutes = 30
+lunch_start_min = 150
+lunch_end_min = 210
+
+# --- Hong Kong ---
+[exch_code.HK]
+pre_minutes = 45
+post_minutes = 15
+lunch_start_min = 150
+lunch_end_min = 210
+
+# --- China ---
+[exch_code.CH]
+pre_minutes = 15
+lunch_start_min = 120
+lunch_end_min = 210
+
+[exch_code.CG]
+pre_minutes = 15
+lunch_start_min = 120
+lunch_end_min = 210
+
+[exch_code.CS]
+pre_minutes = 15
+lunch_start_min = 120
+lunch_end_min = 210
+
+# --- Korea ---
+[exch_code.KS]
+post_minutes = 15
+
+# --- Taiwan ---
+[exch_code.TT]
+post_minutes = 10
+
+# --- Australia ---
+[exch_code.AU]
+post_minutes = 16
+
+# --- UK ---
+[exch_code.LN]
+post_minutes = 30
+
+# --- Germany ---
+[exch_code.GY]
+
+# --- France ---
+[exch_code.FP]
+post_minutes = 30
+
+# --- India ---
+[exch_code.IN]
+post_minutes = 100
+
+[exch_code.IS]
+post_minutes = 100
+
+[exch_code.IB]
+post_minutes = 100
+
+# --- Futures exchanges (continuous) ---
+[exch_code.CME]
+is_continuous = true
+
+[exch_code.CBT]
+is_continuous = true
+
+[exch_code.CMX]
+is_continuous = true
+
+[exch_code.NYM]
+is_continuous = true
+
+[exch_code.ICE]
+is_continuous = true
+
+[exch_code.EUX]
+is_continuous = true
+
+[exch_code.OSE]
+is_continuous = true
+
+[exch_code.SFE]
+is_continuous = true
+
+
+# ============================================================================
+# Country ISO → IANA Timezone Mapping
+# ============================================================================
+# Fallback when Bloomberg's IANA_TIME_ZONE field is unavailable.
+
+[country_tz]
+# North America
+US = "America/New_York"
+CA = "America/Toronto"
+MX = "America/Mexico_City"
+
+# Europe
+GB = "Europe/London"
+DE = "Europe/Berlin"
+FR = "Europe/Paris"
+CH = "Europe/Zurich"
+NL = "Europe/Amsterdam"
+BE = "Europe/Brussels"
+IT = "Europe/Rome"
+ES = "Europe/Madrid"
+PT = "Europe/Lisbon"
+AT = "Europe/Vienna"
+IE = "Europe/Dublin"
+SE = "Europe/Stockholm"
+NO = "Europe/Oslo"
+DK = "Europe/Copenhagen"
+FI = "Europe/Helsinki"
+PL = "Europe/Warsaw"
+CZ = "Europe/Prague"
+HU = "Europe/Budapest"
+GR = "Europe/Athens"
+RU = "Europe/Moscow"
+TR = "Europe/Istanbul"
+
+# Asia Pacific
+JP = "Asia/Tokyo"
+HK = "Asia/Hong_Kong"
+SG = "Asia/Singapore"
+CN = "Asia/Shanghai"
+TW = "Asia/Taipei"
+KR = "Asia/Seoul"
+IN = "Asia/Kolkata"
+AU = "Australia/Sydney"
+NZ = "Pacific/Auckland"
+TH = "Asia/Bangkok"
+MY = "Asia/Kuala_Lumpur"
+ID = "Asia/Jakarta"
+PH = "Asia/Manila"
+VN = "Asia/Ho_Chi_Minh"
+PK = "Asia/Karachi"
+BD = "Asia/Dhaka"
+LK = "Asia/Colombo"
+
+# Middle East
+AE = "Asia/Dubai"
+SA = "Asia/Riyadh"
+IL = "Asia/Jerusalem"
+QA = "Asia/Qatar"
+KW = "Asia/Kuwait"
+BH = "Asia/Bahrain"
+OM = "Asia/Muscat"
+
+# Africa
+ZA = "Africa/Johannesburg"
+EG = "Africa/Cairo"
+NG = "Africa/Lagos"
+KE = "Africa/Nairobi"
+MA = "Africa/Casablanca"
+
+# South America
+BR = "America/Sao_Paulo"
+AR = "America/Buenos_Aires"
+CL = "America/Santiago"
+CO = "America/Bogota"
+PE = "America/Lima"
+VE = "America/Caracas"

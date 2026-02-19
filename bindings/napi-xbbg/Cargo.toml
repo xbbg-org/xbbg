@@ -1,0 +1,24 @@
+[package]
+name = "napi-xbbg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "N-API (Node.js) bindings for xbbg Bloomberg engine"
+publish = false
+
+# [lib]
+# crate-type = ["cdylib"]
+
+# [dependencies]
+# napi = { version = "3", features = ["async"] }
+# napi-derive = "3"
+# xbbg_core = { path = "../../crates/xbbg-core" }
+# xbbg-async = { path = "../../crates/xbbg-async" }
+# xbbg-ext = { path = "../../crates/xbbg-ext" }
+# xbbg-log = { path = "../../crates/xbbg-log" }
+# arrow = "57.1.0"
+# tokio = { version = "1", features = ["sync"] }
+
+# [build-dependencies]
+# napi-build = "2"

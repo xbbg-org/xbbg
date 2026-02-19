@@ -1,0 +1,25 @@
+[package]
+name = "xbbg-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTP/WebSocket/gRPC gateway for Bloomberg data via xbbg"
+publish = false
+
+# [[bin]]
+# name = "xbbg-server"
+# path = "src/main.rs"
+
+# [dependencies]
+# axum = { version = "0.8", features = ["ws"] }
+# xbbg_core = { path = "../../crates/xbbg-core" }
+# xbbg-async = { path = "../../crates/xbbg-async" }
+# xbbg-log = { path = "../../crates/xbbg-log" }
+# arrow = { version = "57.1.0", features = ["json", "ipc"] }
+# tokio = { version = "1", features = ["full"] }
+# serde = { version = "1", features = ["derive"] }
+# serde_json = "1.0"
+# tower = "0.5"
+# tower-http = { version = "0.6", features = ["cors", "trace"] }
+# tracing = "0.1"

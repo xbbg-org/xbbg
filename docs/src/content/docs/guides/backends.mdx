@@ -1,0 +1,27 @@
+---
+title: DataFrame Backends
+description: Choose between pandas, Polars, PyArrow, and more
+---
+
+# DataFrame Backends
+
+:::note[TODO]
+This guide needs to be written. Topics to cover:
+- Backend enum options (pandas, polars, pyarrow, duckdb, narwhals)
+- Global vs per-call backend selection
+- Lazy backends (polars_lazy, narwhals_lazy)
+- Performance considerations
+- Conversion examples
+:::
+
+```python
+# Quick reference
+import xbbg
+from xbbg import Backend
+
+# Set global default
+xbbg.set_backend(Backend.POLARS)
+
+# Per-call override
+df = xbbg.bdp('AAPL US Equity', 'PX_LAST', backend='pandas')
+```

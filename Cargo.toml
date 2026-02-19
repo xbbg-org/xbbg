@@ -1,0 +1,51 @@
+[workspace]
+members = [
+    # Core engine
+    "crates/xbbg-core",
+    "crates/blpapi-sys",
+    "crates/xbbg-async",
+    "crates/xbbg-sys",
+    "crates/xbbg-ext",
+    "crates/xbbg-recipes",
+    "crates/xbbg-log",
+    "crates/xbbg-bench",
+    "crates/datamock",
+    "crates/datamock-sys",
+    # Language bindings
+    "bindings/pyo3-xbbg",
+    # "bindings/napi-xbbg",
+    # "bindings/dotnet-xbbg",
+    # Applications
+    # "apps/xbbg-cli",
+    # "apps/xbbg-server",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.0"
+license = "Apache-2.0"
+repository = "https://github.com/alpha-xone/xbbg"
+edition = "2021"
+
+# =============================================================================
+# Release Profile Optimizations
+# =============================================================================
+# These settings significantly improve runtime performance at the cost of
+# longer compile times. For development, use `cargo build` (debug profile).
+#
+# Build with: cargo build --release
+# For maximum performance: RUSTFLAGS="-C target-cpu=native" cargo build --release
+
+[profile.release]
+lto = "fat"           # Full link-time optimization across all crates
+codegen-units = 1     # Single codegen unit = better optimization opportunities
+panic = "abort"       # No unwinding = smaller/faster code (can't catch panics)
+strip = "symbols"     # Remove debug symbols for smaller binary
+
+# Maximum optimization for the core crate
+[profile.release.package.xbbg_core]
+opt-level = 3
+
+# Faster dev builds for xbbg_core (useful for testing)
+[profile.dev.package.xbbg_core]
+opt-level = 2
