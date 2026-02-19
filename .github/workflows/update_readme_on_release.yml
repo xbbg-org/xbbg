@@ -22,14 +22,25 @@ jobs:
     permissions:
       contents: write
     steps:
+    - name: Determine target branch
+      id: branch
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      run: |
+        # Find which branch contains this tag
+        BRANCH=$(gh api repos/${{ github.repository }}/releases/tags/$TAG --jq '.target_commitish // "main"')
+        echo "name=$BRANCH" >> $GITHUB_OUTPUT
+        echo "Target branch: $BRANCH"
+
     - uses: actions/checkout@v5
       with:
-        ref: main
+        ref: ${{ steps.branch.outputs.name }}
         fetch-depth: 0
 
     - name: Pull latest changes
       run: |
-        git pull origin main
+        git pull origin ${{ steps.branch.outputs.name }}
 
     - name: Get release info
       id: release_info
@@ -65,7 +76,8 @@ jobs:
       if: ${{ env.ACT != 'true' }}
       run: |
         set -euo pipefail
-        git checkout main || git checkout -B main
+        BRANCH="${{ steps.branch.outputs.name }}"
+        git checkout "$BRANCH" || git checkout -B "$BRANCH"
         if git diff --quiet; then
           echo "No README changes to commit"
           exit 0
@@ -74,5 +86,5 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add README.md
         git commit -m "docs(README): update changelog and latest release for ${{ steps.release_info.outputs.tag_name }}"
-        git pull --rebase origin main
-        git push origin main
+        git pull --rebase origin "$BRANCH"
+        git push origin "$BRANCH"
