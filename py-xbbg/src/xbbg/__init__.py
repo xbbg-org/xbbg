@@ -6,8 +6,8 @@ powered by a high-performance Rust backend.
 
 from __future__ import annotations
 
-import sys
 from importlib.metadata import PackageNotFoundError, version
+import sys
 from typing import TYPE_CHECKING
 
 # Version from git tags via setuptools_scm (same mechanism as release/0.x)
