@@ -396,7 +396,7 @@ async def abdtick(
     if isinstance(actual_format, str):
         actual_format = Format(actual_format)
 
-    # WIDE format requires pandas MultiIndex — non-pandas backends have
+    # WIDE format requires pandas MultiIndex -- non-pandas backends have
     # no equivalent, so when the user hasn't explicitly requested WIDE we
     # fall back to SEMI_LONG which preserves ticker as a column.  (#225)
     if format is None and actual_format == Format.WIDE and actual_backend != BackendEnum.PANDAS:
