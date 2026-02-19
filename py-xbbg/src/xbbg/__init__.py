@@ -7,7 +7,14 @@ powered by a high-performance Rust backend.
 from __future__ import annotations
 
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
+
+# Version from git tags via setuptools_scm (same mechanism as release/0.x)
+try:
+    __version__ = version("xbbg")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
 
 # Lazy import of the Rust module to avoid import errors when it's not built
 if TYPE_CHECKING:
@@ -161,11 +168,6 @@ __all__ = [
 def __getattr__(name: str):
     """Lazy attribute access for deferred imports."""
     global _importing_core, _core_module
-    if name == "__version__":
-        # Version from git describe, embedded at compile time
-        from . import _core
-
-        return _core.__version__
     if name in ("get_sdk_info", "set_sdk_path", "clear_sdk_path"):
         from . import _sdk
 

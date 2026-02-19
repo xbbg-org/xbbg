@@ -1,6 +1,6 @@
 [build-system]
-requires = ["maturin>=1.7"]
-build-backend = "maturin"
+requires = ["setuptools>=77", "wheel", "setuptools-scm>=8", "setuptools-rust>=1.11"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "xbbg"
@@ -41,11 +41,20 @@ Documentation = "https://xbbg.readthedocs.io/"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
 
-[tool.maturin]
-bindings = "pyo3"
-python-source = "py-xbbg/src"
-module-name = "xbbg._core"
-manifest-path = "bindings/pyo3-xbbg/Cargo.toml"
+# ── Version from git tags (equivalent to release/0.x setuptools_scm config) ──
+[tool.setuptools_scm]
+tag_regex = '^(?:v|xbbg==)?(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc|alpha|beta)\d+)?)$'
+fallback_version = "0+unknown"
+
+# ── Rust extension (replaces maturin) ────────────────────────────────────────
+[[tool.setuptools-rust.ext-modules]]
+target = "xbbg._core"
+path = "bindings/pyo3-xbbg/Cargo.toml"
+binding = "PyO3"
+
+[tool.setuptools.packages.find]
+where = ["py-xbbg/src"]
+include = ["xbbg*"]
 
 [[tool.uv.index]]
 name = "bloomberg"
@@ -163,7 +172,9 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
-    "maturin>=1.10.0",
+    "setuptools>=77",
+    "setuptools-rust>=1.11",
+    "setuptools-scm>=8",
     "pre-commit>=4.5.1",
     "pytest>=8.4.2",
     "pytest-asyncio>=0.24.0",
