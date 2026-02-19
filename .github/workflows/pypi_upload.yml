@@ -86,7 +86,7 @@ jobs:
           allow-prereleases: true
 
       - name: Install build dependencies
-        run: pip install setuptools>=77 wheel "setuptools-scm>=8" "setuptools-rust>=1.11"
+        run: pip install "setuptools>=82" "wheel>=0.46" "setuptools-scm>=9" "setuptools-rust>=1.12"
 
       - name: Build wheel
         run: pip wheel . --no-deps --wheel-dir dist/

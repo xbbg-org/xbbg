@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77", "wheel", "setuptools-scm>=8", "setuptools-rust>=1.11"]
+requires = ["setuptools>=82", "wheel>=0.46", "setuptools-scm>=9", "setuptools-rust>=1.12"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -172,9 +172,9 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
-    "setuptools>=77",
-    "setuptools-rust>=1.11",
-    "setuptools-scm>=8",
+    "setuptools>=82",
+    "setuptools-rust>=1.12",
+    "setuptools-scm>=9",
     "pre-commit>=4.5.1",
     "pytest>=8.4.2",
     "pytest-asyncio>=0.24.0",
