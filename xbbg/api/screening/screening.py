@@ -10,7 +10,7 @@ import logging
 import pandas as pd
 
 from xbbg.backend import Backend, Format
-from xbbg.core.infra.conn import _run_sync
+from xbbg.core.infra.conn import sync_api
 from xbbg.io.convert import is_empty, rename_columns
 
 logger = logging.getLogger(__name__)
@@ -95,36 +95,12 @@ async def abeqs(
     return result
 
 
-def beqs(
-    screen: str,
-    asof: str | pd.Timestamp | None = None,
-    typ: str = "PRIVATE",
-    group: str = "General",
-    *,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg equity screening. Sync wrapper around abeqs().
-
-    Args:
-        screen: screen name
-        asof: as of date
-        typ: GLOBAL/B (Bloomberg) or PRIVATE/C (Custom, default)
-        group: group name if screen is organized into groups
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
-        **kwargs: Additional request overrides for BeqsRequest and infrastructure options.
-
-    Returns:
-        pd.DataFrame.
-    """
-    return _run_sync(abeqs(screen=screen, asof=asof, typ=typ, group=group, backend=backend, format=format, **kwargs))
+beqs = sync_api(abeqs)
 
 
 async def absrch(
     domain: str,
-    overrides: dict | None = None,
+    overrides: dict[str, object] | None = None,
     *,
     backend: Backend | None = None,
     format: Format | None = None,
@@ -132,7 +108,7 @@ async def absrch(
 ) -> pd.DataFrame:
     """Async Bloomberg SRCH (Search) queries (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bsrch()`` for synchronous usage.
 
     Args:
@@ -172,53 +148,12 @@ async def absrch(
     return await pipeline.arun(request)
 
 
-def bsrch(
-    domain: str,
-    overrides: dict | None = None,
-    *,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg SRCH (Search) queries. Sync wrapper around absrch().
-
-    Args:
-        domain: Domain string in format <domain>:<search_name>.
-            Examples: "FI:YOURSRCH", "comdty:weather", "FI:SRCHEX.@CLOSUB"
-        overrides: Optional dict of override name-value pairs for search parameters.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
-        **kwargs: Additional options forwarded to session and logging.
-
-    Returns:
-        pd.DataFrame: Search results with columns as returned by the search.
-
-    Examples:
-        Basic usage (requires Bloomberg session; skipped in doctest):
-
-        >>> from xbbg import blp  # doctest: +SKIP
-        >>> # Fixed income search
-        >>> df = blp.bsrch("FI:SRCHEX.@CLOSUB")  # doctest: +SKIP
-        >>> # Weather data with parameters
-        >>> weather_df = blp.bsrch(  # doctest: +SKIP
-        ...     "comdty:weather",
-        ...     overrides={
-        ...         "provider": "wsi",
-        ...         "location": "US_IL",
-        ...         "model": "ACTUALS",
-        ...         "frequency": "DAILY",
-        ...         "target_start_date": "2021-01-01",
-        ...         "target_end_date": "2024-12-31",
-        ...         "fields": "WIND_SPEED|TEMPERATURE",
-        ...     },
-        ... )  # doctest: +SKIP
-    """
-    return _run_sync(absrch(domain=domain, overrides=overrides, backend=backend, format=format, **kwargs))
+bsrch = sync_api(absrch)
 
 
 async def abql(
     query: str,
-    params: dict | None = None,
+    params: dict[str, object] | None = None,
     overrides: list[tuple[str, object]] | None = None,
     *,
     backend: Backend | None = None,
@@ -227,7 +162,7 @@ async def abql(
 ) -> pd.DataFrame:
     r"""Async BQL (Bloomberg Query Language) request (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bql()`` for synchronous usage.
 
     Args:
@@ -270,129 +205,7 @@ async def abql(
     return await pipeline.arun(request)
 
 
-def bql(
-    query: str,
-    params: dict | None = None,
-    overrides: list[tuple[str, object]] | None = None,
-    *,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    r"""Execute a BQL (Bloomberg Query Language) request. Sync wrapper around abql().
-
-    Args:
-        query: BQL query string. Must be a complete BQL expression.
-            **IMPORTANT:** The ``for`` clause must be OUTSIDE the ``get()`` function,
-            not inside. Correct: ``get(px_last) for('AAPL US Equity')``.
-            Incorrect: ``get(px_last for('AAPL US Equity'))``.
-        params: Optional request options for BQL (mapped directly to elements).
-        overrides: Optional list of (field, value) overrides for the BQL request.
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        format: Output format (e.g., Format.WIDE, Format.LONG). Defaults to global setting.
-        **kwargs: Session and logging options.
-
-    Returns:
-        pd.DataFrame: Parsed tabular results when available; otherwise a flattened view.
-
-    Examples:
-        Basic usage (requires Bloomberg session; skipped in doctest):
-
-        >>> from xbbg import blp  # doctest: +SKIP
-        >>> # Simple price query - NOTE: 'for' is OUTSIDE get()
-        >>> df = blp.bql("get(px_last) for('AAPL US Equity')")  # doctest: +SKIP
-        >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
-        True
-
-        >>> # Multiple fields for multiple securities
-        >>> df = blp.bql("get(px_last, volume) for(['AAPL US Equity', 'MSFT US Equity'])")  # doctest: +SKIP
-
-        Options queries with filters and aggregations:
-
-        >>> # Options query: Get open interest for filtered options
-        >>> # IMPORTANT: 'for' clause is OUTSIDE get(), filter() is inside for()
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(open_int) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
-        ... )
-
-        >>> # Options query: Sum of open interest for filtered options
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
-        ... )
-
-        >>> # Get individual option contracts with multiple fields
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(id, open_int, strike_px) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
-        ... )
-
-        >>> # Options query: Group by strike price and sum open interest
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(sum(group(open_int, by=strike_px))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
-        ... )
-
-        >>> # Options query: Filter by multiple criteria
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(open_int, strike_px) for(filter(options('SPX Index'), expire_dt=='2025-11-21', call_put=='C'))"
-        ... )
-
-        >>> # Alternative date format (integer YYYYMMDD)
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(open_int) for(filter(options('SPX Index'), expire_dt==20251121))"
-        ... )
-
-        Option chain metadata queries:
-
-        >>> # Get available option expiries for an underlying
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(expire_dt) for(options('SPX Index'))"
-        ... )
-
-        >>> # Get option tickers/IDs for an underlying
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(id) for(options('SPX Index'))"
-        ... )
-
-        >>> # Get option chain metadata (expiry, strike, put/call) for specific expiry
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(id, expire_dt, strike_px, PUT_CALL) for(filter(options('SPX Index'), expire_dt=='2025-12-19'))"
-        ... )
-
-        >>> # Get all options for a specific expiry date
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(id, expire_dt, strike_px) for(filter(options('SPX Index'), expire_dt=='2025-12-19'))"
-        ... )
-
-        Historical data queries:
-
-        >>> # Historical data query with period
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(px_last) for('AAPL US Equity') with(Period('1M', '2024-01-01', '2024-01-31'))"
-        ... )
-
-        >>> # Daily historical data query
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(px_last) for('AAPL US Equity') with(Period('1D', '2024-01-01', '2024-01-31'))"
-        ... )
-
-        Common mistakes to avoid:
-
-        >>> # INCORRECT: 'for' inside get() - will cause parse error
-        >>> # df = blp.bql("get(px_last for('AAPL US Equity'))")
-
-        >>> # INCORRECT: Missing get() wrapper
-        >>> # This will return empty results without error
-        >>> # df = blp.bql("filter(options('SPX Index'), expire_dt=='2025-11-21'), sum(group(open_int))")
-
-        >>> # INCORRECT: Using mode parameter (not supported)
-        >>> # This will raise NotFoundException
-        >>> # df = blp.bql("get(...)", params={"mode": "cached"})
-
-        >>> # CORRECT: 'for' is OUTSIDE get(), filter() is inside for()
-        >>> df = blp.bql(  # doctest: +SKIP
-        ...     "get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))"
-        ... )
-    """
-    return _run_sync(abql(query=query, params=params, overrides=overrides, backend=backend, format=format, **kwargs))
+bql = sync_api(abql)
 
 
 def etf_holdings(
@@ -641,7 +454,7 @@ async def abqr(
 ) -> pd.DataFrame:
     """Async Bloomberg Quote Request (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bqr()`` for synchronous usage.
 
     Args:
@@ -699,84 +512,4 @@ async def abqr(
     return await pipeline.arun(request)
 
 
-def bqr(
-    ticker: str,
-    date_offset: str | None = None,
-    start_date: str | pd.Timestamp | None = None,
-    end_date: str | pd.Timestamp | None = None,
-    event_types: list[str] | None = None,
-    include_broker_codes: bool = True,
-    include_condition_codes: bool = False,
-    include_exchange_codes: bool = False,
-    *,
-    backend: Backend | None = None,
-    format: Format | None = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """Bloomberg Quote Request. Sync wrapper around abqr().
-
-    Emulates the Excel =BQR() function for retrieving quote data from Bloomberg.
-
-    Args:
-        ticker: Security identifier.
-        date_offset: Date offset from now (e.g., "-2d", "-1w", "-3h").
-        start_date: Start date for quote range (if date_offset not provided).
-        end_date: End date for quote range (defaults to now if not provided).
-        event_types: List of event types to retrieve. Defaults to ["BID", "ASK"].
-        include_broker_codes: Include broker/dealer codes (default True).
-        include_condition_codes: Include trade condition codes (default False).
-        include_exchange_codes: Include exchange codes (default False).
-        backend: Output backend. Defaults to global setting.
-        format: Output format. Defaults to global setting.
-        **kwargs: Additional options passed to the Bloomberg session.
-
-    Returns:
-        pd.DataFrame: Quote data.
-
-    Examples:
-        Basic usage with date offset (requires Bloomberg session; skipped in doctest):
-
-        >>> from xbbg import blp  # doctest: +SKIP
-        >>> # Get quotes from last 2 days
-        >>> df = blp.bqr("AAPL 3.45 02/09/45@MSG1 Corp", date_offset="-2d")  # doctest: +SKIP
-        >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
-        True
-
-        Using ISIN with pricing source:
-
-        >>> df = blp.bqr("/isin/US037833BA77@MSG1", date_offset="-2d")  # doctest: +SKIP
-
-        Using explicit date range:
-
-        >>> df = blp.bqr(  # doctest: +SKIP
-        ...     "AAPL 3.45 02/09/45@MSG1 Corp", start_date="2024-01-15", end_date="2024-01-17"
-        ... )
-
-        Get only trade events:
-
-        >>> df = blp.bqr(  # doctest: +SKIP
-        ...     "AAPL 3.45 02/09/45@MSG1 Corp", date_offset="-1d", event_types=["TRADE"]
-        ... )
-
-    Notes:
-        - MSG1 is a composite pricing source that aggregates dealer quotes
-        - The @MSG1 suffix in the ticker enables dealer-level attribution
-        - Without @MSG1, quotes come from the default pricing source
-        - Broker codes (broker_buy, broker_sell) are only available with MSG1 source
-        - For Excel compatibility, this emulates: =BQR("ticker", "-2d", "", "View=AllQuotes")
-    """
-    return _run_sync(
-        abqr(
-            ticker=ticker,
-            date_offset=date_offset,
-            start_date=start_date,
-            end_date=end_date,
-            event_types=event_types,
-            include_broker_codes=include_broker_codes,
-            include_condition_codes=include_condition_codes,
-            include_exchange_codes=include_exchange_codes,
-            backend=backend,
-            format=format,
-            **kwargs,
-        )
-    )
+bqr = sync_api(abqr)

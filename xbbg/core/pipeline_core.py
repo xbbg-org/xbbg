@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from typing import Any, Protocol
 
@@ -28,7 +28,7 @@ def _events_to_table(events: list[dict[str, Any]]) -> pa.Table | None:
     """Convert Bloomberg event dicts directly to a PyArrow Table (no pandas).
 
     Bloomberg's ``process_*`` functions yield ``dict[str, Any]`` where values
-    come from ``blpapi.Element.getValue()`` — native Python types that vary
+    come from ``blpapi.Element.getValue()`` -- native Python types that vary
     by field (``float`` for Double fields, ``str`` for String fields,
     ``datetime`` for Date fields, etc.).  When multiple fields are requested,
     the ``value`` column becomes a true **variant column** with mixed Python
@@ -51,7 +51,7 @@ def _events_to_table(events: list[dict[str, Any]]) -> pa.Table | None:
         return None
 
     # Collect column names in insertion order (first event defines order,
-    # later events may add columns — e.g. BDS array fields)
+    # later events may add columns -- e.g. BDS array fields)
     col_names: list[str] = []
     seen: set[str] = set()
     for evt in events:
@@ -72,7 +72,7 @@ def _events_to_table(events: list[dict[str, Any]]) -> pa.Table | None:
         except (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError):
             pass
 
-        # Slow path: stringify non-None values → pa.string()
+        # Slow path: stringify non-None values -> pa.string()
         arrays.append(
             pa.array(
                 [None if v is None else str(v) for v in values],
@@ -270,7 +270,7 @@ class BloombergPipeline(BaseContextAware):
         if not self._validate_request(request):
             return pd.DataFrame()
 
-        # Step 6: Fetch from Bloomberg (async — the only I/O step)
+        # Step 6: Fetch from Bloomberg (async -- the only I/O step)
         raw_data = await self._afetch_from_bloomberg(request, session_window)
         # Check for empty data (handle both Arrow and pandas)
         raw_is_empty = (
@@ -314,6 +314,24 @@ class BloombergPipeline(BaseContextAware):
         if isinstance(format_, str):
             format_ = Format(format_)
 
+        # WIDE format requires pandas MultiIndex -- non-pandas backends have
+        # no equivalent, so when the user hasn't explicitly requested WIDE we
+        # fall back to SEMI_LONG which preserves ticker as a column.  Users
+        # who explicitly pass format=Format.WIDE get the flattened-column
+        # approximation from _pivot_wide_non_pandas().  (#225)
+        if request.format is None and format_ == Format.WIDE and backend != Backend.PANDAS:
+            from xbbg.deprecation import warn_once
+
+            warn_once(
+                "wide_to_semi_long",
+                f"WIDE format requires pandas MultiIndex which {backend.value} does not support. "
+                "Automatically using SEMI_LONG format instead (ticker preserved as column). "
+                "Pass format=Format.WIDE explicitly to force flattened column names, "
+                "or format=Format.SEMI_LONG to silence this warning.",
+                stacklevel=4,
+            )
+            format_ = Format.SEMI_LONG
+
         # Warn if using implicit defaults
         if request.backend is None or request.format is None:
             warn_defaults_changing()
@@ -325,7 +343,7 @@ class BloombergPipeline(BaseContextAware):
             try:
                 arrow_table = pa.Table.from_pandas(transformed)
             except (pa.ArrowInvalid, pa.ArrowTypeError):
-                # Mixed-type columns — coerce object columns to string
+                # Mixed-type columns -- coerce object columns to string
                 transformed = transformed.copy()
                 for col in transformed.columns:
                     if transformed[col].dtype == object:
@@ -495,40 +513,8 @@ class BloombergPipeline(BaseContextAware):
 
     def _with_context(self, request: DataRequest, ctx) -> DataRequest:
         """Update request with context."""
-        return DataRequest(
-            ticker=request.ticker,
-            dt=request.dt,
-            session=request.session,
-            event_type=request.event_type,
-            interval=request.interval,
-            interval_has_seconds=request.interval_has_seconds,
-            start_datetime=request.start_datetime,
-            end_datetime=request.end_datetime,
-            context=ctx,
-            cache_policy=request.cache_policy,
-            override_kwargs=request.override_kwargs,
-            request_opts=request.request_opts,
-            backend=request.backend,
-            format=request.format,
-            tz=request.tz,
-        )
+        return replace(request, context=ctx)
 
     def _with_resolved_ticker(self, request: DataRequest, resolved_ticker: str) -> DataRequest:
         """Update request with resolved ticker."""
-        return DataRequest(
-            ticker=resolved_ticker,
-            dt=request.dt,
-            session=request.session,
-            event_type=request.event_type,
-            interval=request.interval,
-            interval_has_seconds=request.interval_has_seconds,
-            start_datetime=request.start_datetime,
-            end_datetime=request.end_datetime,
-            context=request.context,
-            cache_policy=request.cache_policy,
-            override_kwargs=request.override_kwargs,
-            request_opts=request.request_opts,
-            backend=request.backend,
-            format=request.format,
-            tz=request.tz,
-        )
+        return replace(request, ticker=resolved_ticker)

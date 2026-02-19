@@ -108,3 +108,6 @@ class HistoricalTransformer:
 
         # Return as Arrow table
         return nw.to_native(df)
+
+
+__all__ = ["HistoricalRequestBuilder", "HistoricalTransformer"]

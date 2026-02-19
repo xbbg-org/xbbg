@@ -15,6 +15,7 @@ import pyarrow as pa
 
 from xbbg.api.technical.schema import get_studies, refresh_cache
 from xbbg.backend import Backend
+from xbbg.core.infra.conn import sync_api
 from xbbg.io.convert import _convert_backend
 from xbbg.options import get_backend
 
@@ -126,7 +127,7 @@ async def abta(
 ) -> Any:
     """Async Bloomberg Technical Analysis (source of truth).
 
-    Truly non-blocking — uses async event polling via arequest().
+    Truly non-blocking -- uses async event polling via arequest().
     Use ``bta()`` for synchronous usage.
 
     Args:
@@ -193,62 +194,4 @@ async def abta(
     return await pipeline.arun(request)
 
 
-def bta(
-    ticker: str,
-    study: str,
-    start_date: str | pd.Timestamp | None = None,
-    end_date: str | pd.Timestamp | None = None,
-    periodicity: str = "DAILY",
-    *,
-    backend: Backend | None = None,
-    **kwargs,
-) -> Any:
-    """Bloomberg Technical Analysis. Sync wrapper around abta().
-
-    Args:
-        ticker: Bloomberg security identifier (e.g., 'IBM US Equity').
-        study: Technical study name (e.g., 'SMA', 'RSI', 'MACD').
-            Use bta_studies() to see available studies.
-        start_date: Start date for the study data.
-        end_date: End date for the study data.
-        periodicity: Data periodicity ('DAILY', 'WEEKLY', 'MONTHLY').
-        backend: Output backend (e.g., Backend.PANDAS, Backend.POLARS). Defaults to global setting.
-        **kwargs: Study-specific parameters (e.g., period=20 for SMA).
-            Use bta_studies(study) to see available parameters.
-
-    Returns:
-        DataFrame: DataFrame with date index and study values.
-
-    Examples:
-        >>> from xbbg import blp  # doctest: +SKIP
-        >>> # 20-period Simple Moving Average
-        >>> sma = blp.bta(
-        ...     "IBM US Equity", "SMA", period=20, start_date="2024-01-01", end_date="2024-06-30"
-        ... )  # doctest: +SKIP
-
-        >>> # 14-period RSI
-        >>> rsi = blp.bta("AAPL US Equity", "RSI", period=14, start_date="2024-01-01")  # doctest: +SKIP
-
-        >>> # MACD with custom parameters
-        >>> macd = blp.bta(
-        ...     "MSFT US Equity", "MACD", maPeriod1=12, maPeriod2=26, sigPeriod=9, start_date="2024-01-01"
-        ... )  # doctest: +SKIP
-
-        >>> # Bollinger Bands
-        >>> boll = blp.bta(
-        ...     "SPY US Equity", "BOLLINGER", period=20, upperBand=2.0, lowerBand=2.0, start_date="2024-01-01"
-        ... )  # doctest: +SKIP
-    """
-    from xbbg.core.infra.conn import _run_sync
-
-    return _run_sync(
-        abta(
-            ticker=ticker,
-            study=study,
-            start_date=start_date,
-            end_date=end_date,
-            periodicity=periodicity,
-            backend=backend,
-            **kwargs,
-        )
-    )
+bta = sync_api(abta)

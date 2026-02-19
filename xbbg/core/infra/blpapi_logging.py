@@ -123,7 +123,7 @@ def log_event_info(event, context: str = "") -> None:
         event_type = event.eventType()
         event_type_name = _get_event_type_name(event_type)
 
-        # Do NOT iterate the event here – that would consume messages and break callers.
+        # Do NOT iterate the event here -- that would consume messages and break callers.
         # Just log the event type and optional context.
         if context:
             logger.debug(

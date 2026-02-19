@@ -1,9 +1,9 @@
 """Bloomberg Fixed Income API.
 
 Provides convenience functions for fixed income analytics including
-yield and spread analysis (YAS).
+yield and spread analysis (YAS) and bond analytics.
 """
 
-from xbbg.api.fixed_income.yas import YieldType, yas
+from xbbg.ext.bonds import *
 
-__all__ = ["yas", "YieldType"]
+from .yas import *

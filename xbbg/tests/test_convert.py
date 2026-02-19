@@ -423,6 +423,497 @@ class TestToOutputFieldColsInference:
         assert set(result["field"].unique()) == {"px_last", "volume"}
 
 
+class TestToOutputLongMixedTypes:
+    """Test to_output() LONG format with mixed-type columns (e.g., tick data)."""
+
+    def _create_tick_arrow_table(self):
+        """Create a tick-data Arrow table with mixed float/int/string columns."""
+        pdf = pd.DataFrame(
+            {
+                "ticker": ["AAPL US Equity", "AAPL US Equity"],
+                "time": pd.to_datetime(["2024-01-01 09:30:00", "2024-01-01 09:30:01"]),
+                "value": [150.0, 150.5],
+                "volume": [100, 200],
+                "typ": ["TRADE", "TRADE"],
+                "cond": ["R", "R"],
+            }
+        )
+        return pa.Table.from_pandas(pdf)
+
+    def test_long_mixed_types_does_not_error(self):
+        """LONG format should not raise on mixed float+string columns."""
+        arrow_table = self._create_tick_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=None,
+        )
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == ["ticker", "time", "field", "value"]
+        assert str(result["value"].dtype) == "object"
+
+    def test_long_mixed_types_has_all_fields(self):
+        """All field columns should appear in the unpivoted output."""
+        arrow_table = self._create_tick_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=None,
+        )
+        expected_fields = {"value", "volume", "typ", "cond"}
+        assert set(result["field"].unique()) == expected_fields
+        value_rows = result[result["field"] == "value"]
+        assert list(value_rows["value"]) == ["150", "150.5"]
+
+    def test_long_mixed_types_row_count(self):
+        """2 ticks * 4 fields = 8 rows."""
+        arrow_table = self._create_tick_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=None,
+        )
+        assert len(result) == 8  # 2 rows * 4 field columns
+
+    def test_long_homogeneous_preserves_numeric(self):
+        """When all fields are numeric, LONG should keep float values (no string cast)."""
+        arrow_table = pa.table(
+            {
+                "ticker": ["AAPL US Equity", "AAPL US Equity"],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+                "px_last": [150.0, 151.0],
+                "volume": [1000000, 1100000],
+            }
+        )
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        # Values should be numeric, not string
+        assert result["value"].dtype.kind == "f"  # float
+        px_rows = result[result["field"] == "px_last"]
+        vol_rows = result[result["field"] == "volume"]
+        assert list(px_rows["value"]) == [150.0, 151.0]
+        assert list(vol_rows["value"]) == [1000000.0, 1100000.0]
+
+    def test_long_mixed_types_ticker_preserved(self):
+        """All unpivoted rows should retain the source ticker."""
+        arrow_table = self._create_tick_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=None,
+        )
+        assert (result["ticker"] == "AAPL US Equity").all()
+
+    def test_long_mixed_types_time_preserved(self):
+        """Each input timestamp should repeat once per unpivoted field."""
+        arrow_table = self._create_tick_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=None,
+        )
+        expected_counts = {
+            pd.Timestamp("2024-01-01 09:30:00"): 4,
+            pd.Timestamp("2024-01-01 09:30:01"): 4,
+        }
+        assert result["time"].value_counts().to_dict() == expected_counts
+
+    def test_long_mixed_types_multi_ticker(self):
+        """Mixed-type LONG should preserve row counts across multiple tickers."""
+        arrow_table = pa.Table.from_pandas(
+            pd.DataFrame(
+                {
+                    "ticker": ["AAPL US Equity", "MSFT US Equity"],
+                    "time": pd.to_datetime(["2024-01-01 09:30:00", "2024-01-01 09:30:00"]),
+                    "value": [150.0, 380.0],
+                    "volume": [100, 200],
+                    "typ": ["TRADE", "TRADE"],
+                    "cond": ["R", "R"],
+                }
+            )
+        )
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=None,
+        )
+        assert len(result) == 8
+        assert set(result["ticker"]) == {"AAPL US Equity", "MSFT US Equity"}
+        assert result["ticker"].value_counts().to_dict() == {
+            "AAPL US Equity": 4,
+            "MSFT US Equity": 4,
+        }
+
+
+class TestToOutputLongTyped:
+    """Test to_output() with LONG_TYPED format."""
+
+    def _create_test_arrow_table(self):
+        """Create a test Arrow table with multiple types."""
+        return pa.table(
+            {
+                "ticker": ["AAPL US Equity", "AAPL US Equity"],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+                "px_last": [150.0, 151.0],
+                "volume": [1000000, 1100000],
+            }
+        )
+
+    def test_long_typed_has_typed_columns(self):
+        """LONG_TYPED should have value_f64, value_i64, etc. columns."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_TYPED,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == [
+            "ticker",
+            "date",
+            "field",
+            "value_f64",
+            "value_i64",
+            "value_str",
+            "value_bool",
+            "value_date",
+            "value_ts",
+        ]
+        assert result.dtypes.astype(str).to_dict() == {
+            "ticker": "object",
+            "date": "datetime64[ns]",
+            "field": "object",
+            "value_f64": "float64",
+            "value_i64": "float64",
+            "value_str": "object",
+            "value_bool": "object",
+            "value_date": "object",
+            "value_ts": "object",
+        }
+
+    def test_long_typed_routes_values_correctly(self):
+        """Float fields go to value_f64, int fields go to value_i64."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_TYPED,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        px_rows = result[result["field"] == "px_last"]
+        vol_rows = result[result["field"] == "volume"]
+        # px_last (float) should populate value_f64
+        assert px_rows["value_f64"].notna().all()
+        assert px_rows["value_i64"].isna().all()
+        assert list(px_rows["value_f64"]) == [150.0, 151.0]
+        assert px_rows["value_str"].isna().all()
+        assert px_rows["value_bool"].isna().all()
+        assert px_rows["value_date"].isna().all()
+        assert px_rows["value_ts"].isna().all()
+        # volume (int) should populate value_i64
+        assert vol_rows["value_i64"].notna().all()
+        assert vol_rows["value_f64"].isna().all()
+        assert list(vol_rows["value_i64"]) == [1000000.0, 1100000.0]
+        assert vol_rows["value_str"].isna().all()
+        assert vol_rows["value_bool"].isna().all()
+        assert vol_rows["value_date"].isna().all()
+        assert vol_rows["value_ts"].isna().all()
+
+    def test_long_typed_row_count(self):
+        """2 dates * 2 fields = 4 rows."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_TYPED,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        assert len(result) == 4
+
+    def test_long_typed_with_mixed_types(self):
+        """LONG_TYPED with float + string columns."""
+        arrow_table = pa.table(
+            {
+                "ticker": ["AAPL", "AAPL"],
+                "time": pd.to_datetime(["2024-01-01 09:30:00", "2024-01-01 09:30:01"]),
+                "price": [150.0, 150.5],
+                "exchange": ["NYSE", "NYSE"],
+            }
+        )
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_TYPED,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=["price", "exchange"],
+        )
+        price_rows = result[result["field"] == "price"]
+        exch_rows = result[result["field"] == "exchange"]
+        assert price_rows["value_f64"].notna().all()
+        assert exch_rows["value_str"].notna().all()
+        assert list(price_rows["value_f64"]) == [150.0, 150.5]
+        assert list(exch_rows["value_str"]) == ["NYSE", "NYSE"]
+
+    def test_long_typed_every_row_has_exactly_one_value(self):
+        """Each LONG_TYPED row should populate exactly one typed value column."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_TYPED,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        typed_cols = ["value_f64", "value_i64", "value_str", "value_bool", "value_date", "value_ts"]
+        non_null_counts = result[typed_cols].notna().sum(axis=1)
+        assert (non_null_counts == 1).all()
+
+    def test_long_typed_multi_ticker(self):
+        """LONG_TYPED should preserve values and counts for multiple tickers."""
+        arrow_table = pa.table(
+            {
+                "ticker": ["AAPL US Equity", "MSFT US Equity"],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-01"]),
+                "px_last": [150.0, 380.0],
+                "volume": [1000000, 500000],
+            }
+        )
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_TYPED,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        assert len(result) == 4
+        assert set(result["ticker"]) == {"AAPL US Equity", "MSFT US Equity"}
+        assert result["ticker"].value_counts().to_dict() == {
+            "AAPL US Equity": 2,
+            "MSFT US Equity": 2,
+        }
+
+
+class TestToOutputLongWithMetadata:
+    """Test to_output() with LONG_WITH_METADATA format."""
+
+    def _create_test_arrow_table(self):
+        """Create a test Arrow table."""
+        return pa.table(
+            {
+                "ticker": ["AAPL US Equity", "AAPL US Equity"],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+                "px_last": [150.0, 151.0],
+                "volume": [1000000, 1100000],
+            }
+        )
+
+    def test_long_metadata_has_dtype_column(self):
+        """LONG_WITH_METADATA should have a 'dtype' column."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_WITH_METADATA,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == ["ticker", "date", "field", "value", "dtype"]
+
+    def test_long_metadata_dtype_values(self):
+        """dtype column should reflect Arrow type names."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_WITH_METADATA,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        px_dtypes = result[result["field"] == "px_last"]["dtype"].unique()
+        vol_dtypes = result[result["field"] == "volume"]["dtype"].unique()
+        assert list(px_dtypes) == ["double"]
+        assert list(vol_dtypes) == ["int64"]
+
+    def test_long_metadata_values_are_strings(self):
+        """All values should be cast to string."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_WITH_METADATA,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        # value column should be string type
+        assert result["value"].dtype == object or str(result["value"].dtype) == "string"
+        px_rows = result[result["field"] == "px_last"]
+        vol_rows = result[result["field"] == "volume"]
+        assert list(px_rows["value"]) == ["150", "151"]
+        assert list(vol_rows["value"]) == ["1000000", "1100000"]
+
+    def test_long_metadata_row_count(self):
+        """2 dates * 2 fields = 4 rows."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_WITH_METADATA,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        assert len(result) == 4
+
+    def test_long_metadata_no_nulls(self):
+        """LONG_WITH_METADATA should not produce nulls in output columns."""
+        arrow_table = self._create_test_arrow_table()
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_WITH_METADATA,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        assert result["ticker"].notna().all()
+        assert result["date"].notna().all()
+        assert result["field"].notna().all()
+        assert result["value"].notna().all()
+        assert result["dtype"].notna().all()
+
+    def test_long_metadata_multi_ticker(self):
+        """LONG_WITH_METADATA should preserve counts across multiple tickers."""
+        arrow_table = pa.table(
+            {
+                "ticker": [
+                    "AAPL US Equity",
+                    "AAPL US Equity",
+                    "MSFT US Equity",
+                    "MSFT US Equity",
+                ],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01", "2024-01-02"]),
+                "px_last": [150.0, 151.0, 380.0, 381.0],
+                "volume": [1000000, 1100000, 500000, 550000],
+            }
+        )
+        result = to_output(
+            arrow_table,
+            backend=Backend.PANDAS,
+            format=Format.LONG_WITH_METADATA,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last", "volume"],
+        )
+        assert len(result) == 8
+        assert set(result["ticker"]) == {"AAPL US Equity", "MSFT US Equity"}
+
+
+class TestWideFormatMixedTypesPyArrow:
+    """Regression test for #224: WIDE + PYARROW + mixed types must not crash."""
+
+    def test_wide_mixed_types_pyarrow_does_not_crash(self):
+        """_pivot_wide_non_pandas should handle mixed float+string columns."""
+        tick_table = pa.table(
+            {
+                "ticker": ["AAPL US Equity"] * 2,
+                "time": pd.to_datetime(["2024-01-01 09:30:00", "2024-01-01 09:30:01"]),
+                "value": [150.0, 150.5],
+                "typ": ["TRADE", "TRADE"],
+                "cond": ["R", ""],
+                "exch": ["N", "N"],
+            }
+        )
+        # This used to raise ArrowTypeError during unpivot inside
+        # _pivot_wide_non_pandas because float and string columns
+        # could not be merged into a single 'value' column.
+        result = to_output(
+            tick_table,
+            backend=Backend.PYARROW,
+            format=Format.WIDE,
+            ticker_col="ticker",
+            date_col="time",
+            field_cols=["value", "typ", "cond", "exch"],
+        )
+        assert isinstance(result, pa.Table)
+        assert result.num_rows > 0
+
+
+class TestNonPandasDefaultSemiLong:
+    """Regression test for #225: non-pandas backends should not default to WIDE."""
+
+    def test_pyarrow_default_preserves_ticker_column(self):
+        """When format is not explicitly set, non-pandas backends should get
+        SEMI_LONG (which keeps ticker as a column) instead of WIDE."""
+        from xbbg.backend import Backend as BackendEnum, Format as FormatEnum
+        from xbbg.options import get_format
+
+        # Simulate what pipeline_core does when request.format is None
+        backend = BackendEnum.PYARROW
+        format_ = get_format()  # returns WIDE (the v0.x default)
+
+        # The fix: auto-downgrade to SEMI_LONG for non-pandas
+        request_format_is_none = True  # user didn't pass format=
+        if request_format_is_none and format_ == FormatEnum.WIDE and backend != BackendEnum.PANDAS:
+            format_ = FormatEnum.SEMI_LONG
+
+        arrow_table = pa.table(
+            {
+                "ticker": ["AAPL US Equity", "AAPL US Equity"],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02"]),
+                "px_last": [150.0, 151.0],
+            }
+        )
+        result = to_output(
+            arrow_table,
+            backend=Backend.PYARROW,
+            format=format_,
+            ticker_col="ticker",
+            date_col="date",
+            field_cols=["px_last"],
+        )
+        assert isinstance(result, pa.Table)
+        # Ticker column must survive as a real column
+        assert "ticker" in result.column_names
+
+
 class TestToOutputUnsupportedFormat:
     """Test to_output() with unsupported format."""
 

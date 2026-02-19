@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
 from xbbg.api.fixed_income import YieldType, yas
+from xbbg.api.reference import reference as _ref_mod
 
 
 class TestYieldTypeEnum:
@@ -37,7 +39,7 @@ class TestYieldTypeEnum:
 class TestYasOverrideMapping:
     """Tests for YAS override parameter mapping."""
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_default_field(self, mock_bdp: MagicMock):
         """Test default field is YAS_BOND_YLD."""
         mock_bdp.return_value = pd.DataFrame()
@@ -46,7 +48,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["flds"] == "YAS_BOND_YLD"
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_custom_fields(self, mock_bdp: MagicMock):
         """Test custom fields are passed through."""
         mock_bdp.return_value = pd.DataFrame()
@@ -55,7 +57,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["flds"] == ["YAS_BOND_YLD", "YAS_MOD_DUR"]
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_settle_dt_string(self, mock_bdp: MagicMock):
         """Test settle_dt string override mapping."""
         mock_bdp.return_value = pd.DataFrame()
@@ -64,16 +66,17 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["SETTLE_DT"] == "20240115"
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_settle_dt_timestamp(self, mock_bdp: MagicMock):
         """Test settle_dt Timestamp override mapping."""
         mock_bdp.return_value = pd.DataFrame()
-        yas("US912810TD00 Govt", settle_dt=pd.Timestamp("2024-01-15"))
+        settle_dt = cast(pd.Timestamp, pd.Timestamp("2024-01-15"))
+        yas("US912810TD00 Govt", settle_dt=settle_dt)
         mock_bdp.assert_called_once()
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["SETTLE_DT"] == "20240115"
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_settle_dt_date_string_format(self, mock_bdp: MagicMock):
         """Test settle_dt with various date string formats."""
         mock_bdp.return_value = pd.DataFrame()
@@ -82,7 +85,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["SETTLE_DT"] == "20240115"
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_yield_type_ytm(self, mock_bdp: MagicMock):
         """Test yield_type YTM override mapping."""
         mock_bdp.return_value = pd.DataFrame()
@@ -91,7 +94,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["YAS_YLD_FLAG"] == 1
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_yield_type_ytc(self, mock_bdp: MagicMock):
         """Test yield_type YTC override mapping."""
         mock_bdp.return_value = pd.DataFrame()
@@ -100,7 +103,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["YAS_YLD_FLAG"] == 2
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_yield_type_int(self, mock_bdp: MagicMock):
         """Test yield_type accepts raw integer."""
         mock_bdp.return_value = pd.DataFrame()
@@ -109,7 +112,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["YAS_YLD_FLAG"] == 1
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_spread_override(self, mock_bdp: MagicMock):
         """Test spread override mapping."""
         mock_bdp.return_value = pd.DataFrame()
@@ -118,7 +121,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["YAS_YLD_SPREAD"] == 75.5
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_yield_override(self, mock_bdp: MagicMock):
         """Test yield_ override mapping."""
         mock_bdp.return_value = pd.DataFrame()
@@ -127,7 +130,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["YAS_BOND_YLD"] == 4.5
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_price_override(self, mock_bdp: MagicMock):
         """Test price override mapping."""
         mock_bdp.return_value = pd.DataFrame()
@@ -136,7 +139,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["YAS_BOND_PX"] == 98.5
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_benchmark_override(self, mock_bdp: MagicMock):
         """Test benchmark override mapping."""
         mock_bdp.return_value = pd.DataFrame()
@@ -145,7 +148,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["YAS_BNCHMRK_BOND"] == "US912810TD00 Govt"
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_multiple_overrides(self, mock_bdp: MagicMock):
         """Test multiple overrides are combined correctly."""
         mock_bdp.return_value = pd.DataFrame()
@@ -161,7 +164,7 @@ class TestYasOverrideMapping:
         assert call_kwargs[1]["YAS_YLD_FLAG"] == 1
         assert call_kwargs[1]["YAS_BOND_PX"] == 98.5
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_kwargs_passthrough(self, mock_bdp: MagicMock):
         """Test additional kwargs are passed through."""
         mock_bdp.return_value = pd.DataFrame()
@@ -170,7 +173,7 @@ class TestYasOverrideMapping:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["CUSTOM_OVERRIDE"] == "value"
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_kwargs_override_named_params(self, mock_bdp: MagicMock):
         """Test kwargs override named parameters (kwargs take precedence)."""
         mock_bdp.return_value = pd.DataFrame()
@@ -181,7 +184,7 @@ class TestYasOverrideMapping:
         # kwargs value should win
         assert call_kwargs[1]["YAS_BOND_PX"] == 99.0
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_no_overrides_when_none(self, mock_bdp: MagicMock):
         """Test no overrides added when parameters are None."""
         mock_bdp.return_value = pd.DataFrame()
@@ -200,7 +203,7 @@ class TestYasOverrideMapping:
 class TestYasBackendFormat:
     """Tests for backend and format parameter passthrough."""
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_backend_passthrough(self, mock_bdp: MagicMock):
         """Test backend parameter is passed through."""
         from xbbg.backend import Backend
@@ -211,7 +214,7 @@ class TestYasBackendFormat:
         call_kwargs = mock_bdp.call_args
         assert call_kwargs[1]["backend"] == Backend.PANDAS
 
-    @patch("xbbg.api.reference.bdp")
+    @patch.object(_ref_mod, "bdp")
     def test_yas_format_passthrough(self, mock_bdp: MagicMock):
         """Test format parameter is passed through."""
         from xbbg.backend import Format
@@ -242,5 +245,6 @@ class TestYasImports:
             from xbbg import blp
 
             # Access yas to trigger import
-            assert hasattr(blp, "yas")
-            assert callable(blp.yas)
+            yas_fn = getattr(blp, "yas", None)
+            assert yas_fn is not None
+            assert callable(yas_fn)

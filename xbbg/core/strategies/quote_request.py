@@ -198,3 +198,6 @@ class BqrTransformer:
         df = df.select(ordered_cols + other_cols)
 
         return nw.to_native(df)
+
+
+__all__ = ["BqrRequestBuilder", "BqrTransformer"]

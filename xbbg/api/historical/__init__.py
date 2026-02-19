@@ -3,6 +3,12 @@
 This module provides Bloomberg historical data functionality using a pipeline-based architecture.
 """
 
-from xbbg.api.historical.historical import abdh, bdh, dividend, earning, turnover
+# pyright: reportImportCycles=false
 
-__all__ = ["bdh", "abdh", "dividend", "earning", "turnover"]
+from . import historical as historical  # noqa: F401
+from .historical import *
+
+
+def bdh(*args, **kwargs):
+    """Forward to historical.bdh to keep runtime lookup patchable."""
+    return historical.bdh(*args, **kwargs)

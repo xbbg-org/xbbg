@@ -135,3 +135,6 @@ class ReferenceTransformer:
 
         # Convert back to Arrow table
         return nw.to_native(df)
+
+
+__all__ = ["ReferenceRequestBuilder", "ReferenceTransformer"]

@@ -9,6 +9,7 @@ from __future__ import annotations  # Required: defer annotation evaluation when
 import asyncio
 from collections.abc import Callable
 import concurrent.futures
+import functools
 import logging
 from threading import Lock
 from typing import Any
@@ -402,7 +403,7 @@ def connect_bbg(**kwargs) -> Any:
     if session.start():
         logger.debug("Successfully connected to Bloomberg Terminal")
         return session
-    # start() failed — clean up the session before raising
+    # start() failed -- clean up the session before raising
     _stop_session_quietly(session)
     logger.error(
         "Failed to start Bloomberg session - check Terminal is running and %s:%d is accessible", server_host, port
@@ -472,6 +473,29 @@ def _run_sync(coro, timeout=None):
         if timeout:
             return pool.submit(asyncio.run, asyncio.wait_for(coro, timeout=timeout)).result(timeout=timeout)
         return pool.submit(asyncio.run, coro).result()
+
+
+def sync_api(async_fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Create a sync wrapper from an async function.
+
+    The sync function inherits the async function's signature, docstring,
+    and type hints. The name has the leading 'a' stripped (abdp -> bdp).
+    """
+
+    @functools.wraps(async_fn)
+    def wrapper(*args, **kwargs):
+        return _run_sync(async_fn(*args, **kwargs))
+
+    name = async_fn.__name__
+    if name.startswith("a") and not name.startswith("async"):
+        sync_name = name[1:]
+        wrapper.__name__ = sync_name
+        if "." in wrapper.__qualname__:
+            wrapper.__qualname__ = wrapper.__qualname__.rsplit(".", 1)[0] + "." + sync_name
+        else:
+            wrapper.__qualname__ = sync_name
+
+    return wrapper
 
 
 async def arequest(

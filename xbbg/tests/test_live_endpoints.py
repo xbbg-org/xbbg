@@ -37,10 +37,30 @@ from datetime import date, datetime, timedelta
 import sys
 import threading
 
+import narwhals as nw
 import pandas as pd
 import pytest
 
 from xbbg import blp  # noqa: E402
+from xbbg.ext.bonds import (
+    bond_cashflows,
+    bond_curve,
+    bond_info,
+    bond_key_rates,
+    bond_risk,
+    bond_spreads,
+)
+from xbbg.ext.cdx import (
+    cdx_basis,
+    cdx_curve,
+    cdx_default_prob,
+    cdx_defaults,
+    cdx_info,
+    cdx_pricing,
+    cdx_risk,
+    cdx_ticker as ext_cdx_ticker,
+)
+from xbbg.io.convert import is_empty
 
 
 # Version checking for regression testing
@@ -84,7 +104,7 @@ def _check_xbbg_version(expected_version: str | None = None) -> None:
         )
 
     print(f"\n{'=' * 80}")
-    print(f"✓ xbbg version check passed: {installed_version} (expected {expected_version})")
+    print(f"[PASS] xbbg version check passed: {installed_version} (expected {expected_version})")
     print(f"{'=' * 80}\n")
 
 
@@ -94,6 +114,10 @@ TEST_TICKERS = ["AAPL US Equity", "MSFT US Equity"]
 TEST_INDEX = "SPX Index"
 TEST_FIELDS = ["Security_Name", "PX_LAST"]
 TEST_SINGLE_FIELD = "PX_LAST"
+
+# CDX test parameters
+CDX_GEN_IG = "CDX IG CDSI GEN 5Y Corp"
+CDX_GEN_HY = "CDX HY CDSI GEN 5Y Corp"
 
 
 # Date ranges - use recent dates but keep small
@@ -177,7 +201,7 @@ def test_bdp_reference_data():
     print(f"\nShape: {result.shape}")
     print(f"Index: {result.index.tolist()}")
     print(f"Columns: {list(result.columns)}")
-    print("✓ BDP endpoint working correctly")
+    print("[PASS] BDP endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -206,7 +230,7 @@ def test_bdp_multiple_tickers():
     print(f"\nShape: {result.shape}")
     print(f"Index (tickers): {result.index.tolist()}")
     print(f"Columns: {list(result.columns)}")
-    print("✓ BDP multiple tickers working correctly")
+    print("[PASS] BDP multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -233,7 +257,7 @@ def test_bdp_field_overrides():
     print("\nBDP Result (With Override):")
     print(result)
     print(f"\nShape: {result.shape}")
-    print("✓ BDP field overrides working correctly")
+    print("[PASS] BDP field overrides working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -267,7 +291,7 @@ def test_bds_bulk_data():
     print(f"Index: {result.index.unique().tolist()}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDS endpoint working correctly")
+    print("[PASS] BDS endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -289,7 +313,7 @@ def test_bdp_fixed_income_isin():
     print("\nBDP Result (ISIN):")
     print(result)
     print(f"\nShape: {result.shape}")
-    print("✓ BDP Fixed Income ISIN working correctly")
+    print("[PASS] BDP Fixed Income ISIN working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -310,7 +334,7 @@ def test_bds_fixed_income_cash_flow():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head(3)}")  # Just first 3 rows
-    print("✓ BDS Fixed Income cash flow working correctly")
+    print("[PASS] BDS Fixed Income cash flow working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -369,7 +393,7 @@ def test_bdh_historical_data():
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
-    print("✓ BDH endpoint working correctly")
+    print("[PASS] BDH endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -433,7 +457,7 @@ def test_bdh_multiple_tickers():
     print(f"Index type: {type(result.index)}")
     print(f"Column levels: {result.columns.nlevels}")
     print(f"Tickers in columns: {list(result.columns.get_level_values(0).unique())}")
-    print("✓ BDH multiple tickers working correctly")
+    print("[PASS] BDH multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -501,7 +525,7 @@ def test_bdh_periodicity():
     print(f"\nShape: {result.shape}")
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
-    print("✓ BDH periodicity options working correctly")
+    print("[PASS] BDH periodicity options working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -514,13 +538,14 @@ def test_bdh_adjustments():
     print("Testing BDH (Adjustments)")
     print(f"{'=' * 80}")
 
-    # Use a small date range to minimize data
-    adjust_start = (END_DATE - timedelta(days=2)).strftime("%Y-%m-%d")
+    # Use business days to avoid empty results on weekends
+    adjust_end = _get_previous_business_day(days_back=1)
+    adjust_start = _get_previous_business_day(days_back=5)
     result = blp.bdh(
         tickers=TEST_TICKER,
         flds=TEST_SINGLE_FIELD,
-        start_date=adjust_start,
-        end_date=END_DATE.strftime("%Y-%m-%d"),
+        start_date=adjust_start.strftime("%Y-%m-%d"),
+        end_date=adjust_end.strftime("%Y-%m-%d"),
         adjust="all",  # Adjust for all dividends and splits
     )
 
@@ -563,7 +588,7 @@ def test_bdh_adjustments():
     print(result)
     print(f"\nShape: {result.shape}")
     print(f"Index type: {type(result.index)}")
-    print("✓ BDH adjustment options working correctly")
+    print("[PASS] BDH adjustment options working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -604,7 +629,7 @@ def test_bdib_intraday_bars():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDIB endpoint working correctly")
+    print("[PASS] BDIB endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -645,7 +670,7 @@ def test_bdib_sub_minute_intervals():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDIB sub-minute intervals working correctly")
+    print("[PASS] BDIB sub-minute intervals working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -683,7 +708,7 @@ def test_bdib_reference_exchange():
     print(result)
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
-    print("✓ BDIB reference exchange working correctly")
+    print("[PASS] BDIB reference exchange working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -731,7 +756,7 @@ def test_bdib_am_open_session():
     print(f"\nShape: {result.shape}")
     print(f"Time range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
-    print("✓ BDIB am_open_30 session working correctly")
+    print("[PASS] BDIB am_open_30 session working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -739,7 +764,7 @@ def test_bdtick_tick_data():
     """Test BDTICK (tick data) endpoint with live Bloomberg data.
 
     Uses minimal data by:
-    - Limiting to first 30 minutes of trading (9:30-10:00)
+    - Limiting to first 5 minutes of trading (9:30-9:35)
     - Only requesting TRADE events (not BID/ASK/etc)
     - Using timeout to avoid long waits
     """
@@ -747,11 +772,11 @@ def test_bdtick_tick_data():
     print("Testing BDTICK (Tick Data)")
     print(f"{'=' * 80}")
 
-    # Limit to first 30 minutes of trading day and only TRADE events
+    # Limit to first 5 minutes of trading day and only TRADE events
     result = blp.bdtick(
         ticker=TEST_TICKER,
         dt=TEST_DATE.strftime("%Y-%m-%d"),
-        time_range=("09:30", "10:00"),  # Just first 30 minutes
+        time_range=("09:30", "09:35"),  # Just first 5 minutes
         types=["TRADE"],  # Only trade events, not BID/ASK/etc
         timeout=5000,  # 5 second timeout
     )
@@ -772,12 +797,12 @@ def test_bdtick_tick_data():
     for col in expected_cols:
         assert any(col in c for c in result_cols_lower), f"Expected column '{col}' should be present"
 
-    print("\nBDTICK Result (09:30-10:00, TRADE only):")
+    print("\nBDTICK Result (09:30-09:35, TRADE only):")
     print(result)
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDTICK endpoint working correctly")
+    print("[PASS] BDTICK endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -829,7 +854,317 @@ def test_bdtick_session_parameter():
     print(f"Index type: {type(result.index)}")
     print(f"Column levels: {result.columns.nlevels}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BDTICK session parameter working correctly")
+    print("[PASS] BDTICK session parameter working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_wide():
+    """Test BDTICK with explicit WIDE format (default behaviour).
+
+    WIDE format for pandas produces MultiIndex columns (ticker, field)
+    with datetime index.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=WIDE")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.WIDE,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "WIDE should return a DataFrame"
+    assert not result.empty, "WIDE result should not be empty"
+    # Structure: MultiIndex columns (ticker, field), DatetimeIndex as index
+    assert isinstance(result.columns, pd.MultiIndex), "WIDE format should have MultiIndex columns (ticker, field)"
+    assert result.columns.nlevels == 2, "MultiIndex should have exactly 2 levels"
+    assert result.columns.names == ["ticker", "field"], (
+        f"MultiIndex names should be ['ticker', 'field'], got {result.columns.names}"
+    )
+    # Only our ticker should appear
+    tickers = list(result.columns.get_level_values(0).unique())
+    assert tickers == [TEST_TICKER], f"Only {TEST_TICKER} should be in column level 0, got {tickers}"
+    # Tick data must have these fields
+    fields = set(result.columns.get_level_values(1).unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(fields), f"Expected at least fields {expected_fields}, got {fields}"
+    # Index should be DatetimeIndex
+    assert pd.api.types.is_datetime64_any_dtype(result.index), (
+        f"WIDE index should be datetime, got {result.index.dtype}"
+    )
+    # Store row count for cross-format consistency
+    wide_rows = len(result)
+
+    print(f"\nShape: {result.shape}")
+    print(f"Column levels: {result.columns.nlevels}")
+    print(f"Fields: {sorted(fields)}")
+    print(f"Sample:\n{result.head(3)}")
+    print(f"[PASS] BDTICK format=WIDE working correctly ({wide_rows} rows)")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_semi_long():
+    """Test BDTICK with SEMI_LONG format.
+
+    SEMI_LONG keeps each field as its own column with ticker + time columns.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=SEMI_LONG")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.SEMI_LONG,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "SEMI_LONG should return a DataFrame"
+    assert not result.empty, "SEMI_LONG result should not be empty"
+    # Must be flat columns, not MultiIndex
+    assert not isinstance(result.columns, pd.MultiIndex), "SEMI_LONG should NOT have MultiIndex columns"
+    # Must have ticker + time + the 5 tick data fields
+    assert "ticker" in result.columns, "SEMI_LONG should have 'ticker' column"
+    assert "time" in result.columns, "SEMI_LONG should have 'time' column"
+    expected_data_fields = {"typ", "value", "volume", "cond", "exch"}
+    actual_data_cols = set(result.columns) - {"ticker", "time"}
+    assert expected_data_fields.issubset(actual_data_cols), (
+        f"Expected at least data fields {expected_data_fields}, got {actual_data_cols}"
+    )
+    # Ticker column should only contain our test ticker
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # Time column should be datetime
+    assert pd.api.types.is_datetime64_any_dtype(result["time"]), (
+        f"time column should be datetime, got {result['time'].dtype}"
+    )
+    # All typ values should be "TRADE" (we filtered to TRADE only)
+    assert (result["typ"] == "TRADE").all(), "All typ values should be TRADE"
+    # value column should be numeric (trade prices)
+    assert pd.api.types.is_numeric_dtype(result["value"]), (
+        f"value column should be numeric, got {result['value'].dtype}"
+    )
+    # volume column should be numeric (trade sizes)
+    assert pd.api.types.is_numeric_dtype(result["volume"]), (
+        f"volume column should be numeric, got {result['volume'].dtype}"
+    )
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Sample:\n{result.head(3)}")
+    print("[PASS] BDTICK format=SEMI_LONG working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_long():
+    """Test BDTICK with LONG format.
+
+    LONG unpivots all field columns into (ticker, time, field, value) rows.
+    Tick data has mixed types (float value + string typ/cond/exch), so the
+    fallback string-cast path is exercised.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=LONG")
+    print(f"{'=' * 80}")
+
+    # Also fetch SEMI_LONG to verify cross-format row count consistency
+    semi_long = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.SEMI_LONG,
+        timeout=5000,
+    )
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.LONG,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "LONG should return a DataFrame"
+    assert not result.empty, "LONG result should not be empty"
+    assert not isinstance(result.columns, pd.MultiIndex), "LONG should NOT have MultiIndex columns"
+    # Exact column set
+    assert list(result.columns) == ["ticker", "time", "field", "value"], (
+        f"LONG columns should be exactly ['ticker', 'time', 'field', 'value'], got {list(result.columns)}"
+    )
+    # Tick data should have all 5 fields
+    unique_fields = set(result["field"].unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(unique_fields), (
+        f"LONG should have at least fields {expected_fields}, got {unique_fields}"
+    )
+    num_fields = len(unique_fields)
+    # Cross-format consistency: LONG rows == SEMI_LONG rows * num_fields
+    expected_long_rows = len(semi_long) * num_fields
+    assert len(result) == expected_long_rows, (
+        f"LONG rows ({len(result)}) should equal SEMI_LONG rows ({len(semi_long)}) * "
+        f"{num_fields} fields = {expected_long_rows}"
+    )
+    # Ticker should be constant
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # value column should be string (mixed-type fallback casts all to string)
+    assert result["value"].dtype == object, (
+        f"LONG value column should be object (string) due to mixed types, got {result['value'].dtype}"
+    )
+    # Every field should have the same number of rows (one per tick)
+    field_counts = result["field"].value_counts()
+    assert field_counts.nunique() == 1, f"All fields should have equal row counts, got {field_counts.to_dict()}"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Unique fields: {sorted(unique_fields)}")
+    print(f"Cross-format check: {len(semi_long)} semi_long rows * {num_fields} fields = {len(result)} long rows")
+    print(f"Sample:\n{result.head(6)}")
+    print("[PASS] BDTICK format=LONG working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_long_typed():
+    """Test BDTICK with LONG_TYPED format.
+
+    LONG_TYPED produces typed value columns: value_f64, value_i64, value_str,
+    value_bool, value_date, value_ts.  Each row populates exactly one typed
+    column; the rest are null/NaN.
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=LONG_TYPED")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.LONG_TYPED,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "LONG_TYPED should return a DataFrame"
+    assert not result.empty, "LONG_TYPED result should not be empty"
+    # Exact column set and order
+    typed_cols = ["value_f64", "value_i64", "value_str", "value_bool", "value_date", "value_ts"]
+    expected_columns = ["ticker", "time", "field"] + typed_cols
+    assert list(result.columns) == expected_columns, (
+        f"LONG_TYPED columns should be exactly {expected_columns}, got {list(result.columns)}"
+    )
+    # Tick data should have all 5 fields
+    unique_fields = set(result["field"].unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(unique_fields), f"Expected at least fields {expected_fields}, got {unique_fields}"
+    # EVERY row must have exactly one non-null typed value (not just "some")
+    typed_data = result[typed_cols]
+    non_null_counts = typed_data.notna().sum(axis=1)
+    assert (non_null_counts == 1).all(), (
+        f"Every row should have exactly 1 typed value, but found rows with "
+        f"{non_null_counts[non_null_counts != 1].value_counts().to_dict()} non-null counts"
+    )
+    # Verify type routing: float fields -> value_f64, int -> value_i64, string -> value_str
+    value_rows = result[result["field"] == "value"]
+    assert value_rows["value_f64"].notna().all(), "trade 'value' (price) should route to value_f64"
+    volume_rows = result[result["field"] == "volume"]
+    assert volume_rows["value_i64"].notna().all(), "trade 'volume' should route to value_i64"
+    typ_rows = result[result["field"] == "typ"]
+    assert typ_rows["value_str"].notna().all(), "trade 'typ' should route to value_str"
+    # Ticker should be constant
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # All fields should have equal row counts
+    field_counts = result["field"].value_counts()
+    assert field_counts.nunique() == 1, f"All fields should have equal row counts, got {field_counts.to_dict()}"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Unique fields: {sorted(unique_fields)}")
+    print(f"Sample:\n{result.head(6)}")
+    print("[PASS] BDTICK format=LONG_TYPED working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bdtick_format_long_with_metadata():
+    """Test BDTICK with LONG_WITH_METADATA format.
+
+    LONG_WITH_METADATA produces: ticker, time, field, value (string), dtype.
+    The dtype column contains the Arrow type name of the original column
+    (e.g. 'double', 'int64', 'string').
+    """
+    from xbbg.backend import Format
+
+    print(f"\n{'=' * 80}")
+    print("Testing BDTICK format=LONG_WITH_METADATA")
+    print(f"{'=' * 80}")
+
+    result = blp.bdtick(
+        ticker=TEST_TICKER,
+        dt=TEST_DATE.strftime("%Y-%m-%d"),
+        time_range=("09:30", "09:35"),
+        types=["TRADE"],
+        format=Format.LONG_WITH_METADATA,
+        timeout=5000,
+    )
+
+    assert isinstance(result, pd.DataFrame), "LONG_WITH_METADATA should return a DataFrame"
+    assert not result.empty, "LONG_WITH_METADATA result should not be empty"
+    # Exact column set and order
+    assert list(result.columns) == ["ticker", "time", "field", "value", "dtype"], (
+        f"LONG_WITH_METADATA columns should be exactly "
+        f"['ticker', 'time', 'field', 'value', 'dtype'], got {list(result.columns)}"
+    )
+    # Tick data should have all 5 fields
+    unique_fields = set(result["field"].unique())
+    expected_fields = {"typ", "value", "volume", "cond", "exch"}
+    assert expected_fields.issubset(unique_fields), f"Expected at least fields {expected_fields}, got {unique_fields}"
+    # value column must be string (all values are stringified)
+    assert result["value"].dtype == object, f"value column should be object (string), got {result['value'].dtype}"
+    # No nulls in any column
+    for col in result.columns:
+        assert result[col].notna().all(), f"Column '{col}' should have no nulls"
+    # dtype column should contain specific Arrow type names
+    actual_dtypes = set(result["dtype"].unique())
+    # Tick data has double (value), int64 (volume), and string (typ/cond/exch)
+    assert "double" in actual_dtypes, f"dtype should include 'double' for price, got {actual_dtypes}"
+    assert "int64" in actual_dtypes, f"dtype should include 'int64' for volume, got {actual_dtypes}"
+    assert "string" in actual_dtypes or "large_string" in actual_dtypes, (
+        f"dtype should include 'string' or 'large_string' for text fields, got {actual_dtypes}"
+    )
+    # Verify field-to-dtype mapping is consistent (each field maps to one dtype)
+    for field_name in unique_fields:
+        field_dtypes = result[result["field"] == field_name]["dtype"].unique()
+        assert len(field_dtypes) == 1, f"Field '{field_name}' should map to exactly one dtype, got {list(field_dtypes)}"
+    # Verify specific field dtype mappings
+    value_dtype = result[result["field"] == "value"]["dtype"].iloc[0]
+    assert value_dtype == "double", f"'value' field dtype should be 'double', got {value_dtype}"
+    volume_dtype = result[result["field"] == "volume"]["dtype"].iloc[0]
+    assert volume_dtype == "int64", f"'volume' field dtype should be 'int64', got {volume_dtype}"
+    # Ticker should be constant
+    assert (result["ticker"] == TEST_TICKER).all(), f"All ticker values should be {TEST_TICKER}"
+    # All fields should have equal row counts
+    field_counts = result["field"].value_counts()
+    assert field_counts.nunique() == 1, f"All fields should have equal row counts, got {field_counts.to_dict()}"
+
+    print(f"\nShape: {result.shape}")
+    print(f"Columns: {list(result.columns)}")
+    print(f"Unique fields: {sorted(unique_fields)}")
+    print(f"Unique dtypes: {sorted(actual_dtypes)}")
+    print(f"Sample:\n{result.head(6)}")
+    print("[PASS] BDTICK format=LONG_WITH_METADATA working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -864,7 +1199,7 @@ def test_dividend_history():
     print(f"Index: {result.index.unique().tolist()}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ dividend() endpoint working correctly")
+    print("[PASS] dividend() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -889,7 +1224,7 @@ def test_dividend_multiple_tickers():
     # Allow empty results - dividends may not exist in date range for all tickers
     if result.empty:
         print("\ndividend() returned empty results (no dividends in date range)")
-        print("✓ dividend() endpoint working correctly (empty result is valid)")
+        print("[PASS] dividend() endpoint working correctly (empty result is valid)")
     else:
         # Structure validation - default is WIDE format: tickers as index, data columns as columns
         # Verify at least one requested ticker is in index
@@ -906,7 +1241,7 @@ def test_dividend_multiple_tickers():
         print(f"Index (tickers): {result.index.unique().tolist()}")
         print(f"Columns: {list(result.columns)}")
         print(f"Sample rows:\n{result.head()}")
-        print("✓ dividend() multiple tickers working correctly")
+        print("[PASS] dividend() multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -932,7 +1267,7 @@ def test_earning_breakdowns():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ earning() endpoint working correctly")
+    print("[PASS] earning() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -989,7 +1324,7 @@ def test_turnover():
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
-    print("✓ turnover() endpoint working correctly")
+    print("[PASS] turnover() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1050,7 +1385,7 @@ def test_turnover_multiple_tickers():
     print(f"Date range: {result.index.min()} to {result.index.max()}")
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
-    print("✓ turnover() multiple tickers working correctly")
+    print("[PASS] turnover() multiple tickers working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1087,7 +1422,7 @@ def test_adjust_ccy():
     print(f"Index preserved: {result.index.equals(hist_data.index)}")
     print(f"Original columns: {list(hist_data.columns)}")
     print(f"Converted columns: {list(result.columns)}")
-    print("✓ adjust_ccy() endpoint working correctly")
+    print("[PASS] adjust_ccy() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1113,7 +1448,7 @@ def test_beqs_screening():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BEQS endpoint working correctly")
+    print("[PASS] BEQS endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1141,7 +1476,7 @@ def test_bql_query():
     print(f"Index type: {type(result.index)}")
     print(f"Column structure: {'MultiIndex' if isinstance(result.columns, pd.MultiIndex) else 'Single-level'}")
     print(f"Sample rows:\n{result.head()}")
-    print("✓ BQL endpoint working correctly")
+    print("[PASS] BQL endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1163,7 +1498,7 @@ def test_bsrch_search():
     # The important thing is that the endpoint works correctly
     if result.empty:
         print("\nBSRCH returned empty results (screen may not exist or have no matches)")
-        print("✓ BSRCH endpoint working correctly (empty result is valid)")
+        print("[PASS] BSRCH endpoint working correctly (empty result is valid)")
     else:
         print(f"\nBSRCH returned {len(result)} rows")
         print("\nBSRCH Result:")
@@ -1171,7 +1506,7 @@ def test_bsrch_search():
         print(f"\nShape: {result.shape}")
         print(f"Columns: {list(result.columns)}")
         print(f"Sample rows:\n{result.head()}")
-        print("✓ BSRCH endpoint working correctly")
+        print("[PASS] BSRCH endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1207,7 +1542,7 @@ def test_bsrch_with_overrides():
     # The important thing is that the endpoint works correctly with overrides
     if result.empty:
         print("\nBSRCH with overrides returned empty results (screen may not exist or have no matches)")
-        print("✓ BSRCH with overrides endpoint working correctly (empty result is valid)")
+        print("[PASS] BSRCH with overrides endpoint working correctly (empty result is valid)")
     else:
         print(f"\nBSRCH with overrides returned {len(result)} rows")
         print("\nBSRCH Result (With Overrides):")
@@ -1215,7 +1550,7 @@ def test_bsrch_with_overrides():
         print(f"\nShape: {result.shape}")
         print(f"Columns: {list(result.columns)}")
         print(f"Sample rows:\n{result.head()}")
-        print("✓ BSRCH with overrides endpoint working correctly")
+        print("[PASS] BSRCH with overrides endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1257,7 +1592,7 @@ def test_live_realtime_streaming():
         print(f"\nTotal updates received: {len(updates_received)}")
         if updates_received:
             print(f"Sample update: {updates_received[0]}")
-        print("✓ live() endpoint working correctly (subscription established)")
+        print("[PASS] live() endpoint working correctly (subscription established)")
 
     # Run async test
     asyncio.run(_test_live())
@@ -1265,13 +1600,13 @@ def test_live_realtime_streaming():
 
 @pytest.mark.live_endpoint
 def test_subscribe_realtime():
-    """Test subscribe() real-time subscription endpoint with live Bloomberg data.
+    """Test stream() real-time subscription endpoint with live Bloomberg data.
 
-    This test creates a very short-lived subscription with a 10-second timeout to minimize
-    data usage and avoid hanging (especially on weekends when markets are closed).
+    This test creates a very short-lived subscription (max 2 updates) with a 10-second
+    timeout to minimize data usage and avoid hanging (especially on weekends when markets are closed).
     """
     print(f"\n{'=' * 80}")
-    print("Testing subscribe() (Real-time Subscriptions)")
+    print("Testing stream() (Real-time Subscriptions)")
     print(f"{'=' * 80}")
 
     updates_received = []
@@ -1280,33 +1615,30 @@ def test_subscribe_realtime():
     def _timeout_handler():
         timeout_occurred.set()
 
-    try:
-        # Set up a 10-second timeout
-        timer = threading.Timer(10.0, _timeout_handler)
-        timer.start()
+    timer = threading.Timer(10.0, _timeout_handler)
+    timer.start()
 
-        with blp.subscribe(
-            tickers=TEST_TICKER,
-            flds=["LAST_PRICE"],
-        ) as stream:
-            # Try to get 1-2 updates, then exit
-            for i, update in enumerate(stream):
+    try:
+
+        async def collect_updates():
+            async for data in blp.stream([TEST_TICKER], ["LAST_PRICE"], max_cnt=2):
                 if timeout_occurred.is_set():
-                    print("Timeout after 10 seconds (market may be closed)")
                     break
-                updates_received.append(update)
-                print(f"Received update {i + 1}: {update}")
-                if i >= 1:  # Get max 2 updates
+                updates_received.append(data)
+                print(f"Received update: {data}")
+                if len(updates_received) >= 2:
                     break
+
+        asyncio.run(collect_updates())
     except Exception as e:
-        print(f"Subscription error (may be expected): {e}")
+        print(f"Stream error (may be expected): {e}")
     finally:
         timer.cancel()
 
     print(f"\nTotal updates received: {len(updates_received)}")
     if updates_received:
         print(f"Sample update: {updates_received[0]}")
-    print("✓ subscribe() endpoint working correctly (subscription established)")
+    print("[PASS] stream() endpoint working correctly (subscription established)")
 
 
 @pytest.mark.live_endpoint
@@ -1323,7 +1655,7 @@ def test_fut_ticker_resolution():
 
     print("\nGeneric ticker: ES1 Index")
     print(f"Resolved ticker: {result}")
-    print("✓ fut_ticker() endpoint working correctly")
+    print("[PASS] fut_ticker() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1338,12 +1670,12 @@ def test_active_futures():
     # active_futures() may return empty string if rolling series config not found
     if not result:
         print("\nactive_futures() returned empty result (rolling series config may not exist)")
-        print("✓ active_futures() endpoint working correctly (empty result is valid)")
+        print("[PASS] active_futures() endpoint working correctly (empty result is valid)")
     else:
         assert isinstance(result, str), "active_futures() should return a string"
         print("\nGeneric ticker: ESA Index")
         print(f"Active contract: {result}")
-        print("✓ active_futures() endpoint working correctly")
+        print("[PASS] active_futures() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1361,12 +1693,12 @@ def test_cdx_ticker_resolution():
     if not result:
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print("cdx_ticker() returned empty result (rolling series config may not exist)")
-        print("✓ cdx_ticker() endpoint working correctly (empty result is valid)")
+        print("[PASS] cdx_ticker() endpoint working correctly (empty result is valid)")
     else:
         assert isinstance(result, str), "cdx_ticker() should return a string"
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print(f"Resolved ticker: {result}")
-        print("✓ cdx_ticker() endpoint working correctly")
+        print("[PASS] cdx_ticker() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1383,15 +1715,165 @@ def test_active_cdx():
     if not result:
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print("active_cdx() returned empty result (rolling series config may not exist)")
-        print("✓ active_cdx() endpoint working correctly (empty result is valid)")
+        print("[PASS] active_cdx() endpoint working correctly (empty result is valid)")
     else:
         assert isinstance(result, str), "active_cdx() should return a string"
         print(f"\nGeneric CDX ticker: {generic_cdx}")
         print(f"Active contract: {result}")
-        print("✓ active_cdx() endpoint working correctly")
+        print("[PASS] active_cdx() endpoint working correctly")
 
 
 @pytest.mark.live_endpoint
+def test_cdx_ticker_version_format():
+    """Test CDX ticker resolution produces correct version token format.
+
+    IG (VERSION=1) should NOT have a V token.
+    HY (VERSION>1) should have a SEPARATE V token (e.g. 'S45 V2' not 'S45V2').
+    """
+    # Use ext_cdx_ticker to test directly without deprecation wrapper
+    ig = ext_cdx_ticker(CDX_GEN_IG, END_DATE.strftime("%Y-%m-%d"))
+    assert ig, "IG ticker resolution should not be empty"
+    tokens = ig.split()
+    # Find the series token
+    series_tok = next((t for t in tokens if t.startswith("S") and t[1:].isdigit()), None)
+    assert series_tok is not None, f"Should have a series token like S45, got: {ig}"
+    series_idx = tokens.index(series_tok)
+    # IG should NOT have a version token right after series
+    if series_idx + 1 < len(tokens):
+        next_tok = tokens[series_idx + 1]
+        assert not (next_tok.startswith("V") and next_tok[1:].isdigit()), (
+            f"IG should not have version token but got '{next_tok}' in: {ig}"
+        )
+
+    hy = ext_cdx_ticker(CDX_GEN_HY, END_DATE.strftime("%Y-%m-%d"))
+    assert hy, "HY ticker resolution should not be empty"
+    tokens = hy.split()
+    series_tok = next((t for t in tokens if t.startswith("S") and t[1:].isdigit()), None)
+    assert series_tok is not None, f"Should have a series token like S45, got: {hy}"
+    series_idx = tokens.index(series_tok)
+    # HY should have a SEPARATE version token (V2, V3, etc.) right after series
+    assert series_idx + 1 < len(tokens), f"HY should have token after series, got: {hy}"
+    version_tok = tokens[series_idx + 1]
+    assert version_tok.startswith("V") and version_tok[1:].isdigit(), (
+        f"HY should have separate version token like V2 after series, got '{version_tok}' in: {hy}"
+    )
+
+    print(f"\nIG resolved: {ig}")
+    print(f"HY resolved: {hy}")
+    print("[PASS] CDX ticker version format correct")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_info_endpoint():
+    """Test cdx_info() returns metadata for a CDX ticker."""
+    result = cdx_info(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_info should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert "ticker" in nw_result.columns, "Should have ticker column"
+    assert "field" in nw_result.columns, "Should have field column"
+    assert "value" in nw_result.columns, "Should have value column"
+    assert nw_result.shape[0] >= 4, f"Should have at least 4 field rows, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_info result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_info endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_defaults_endpoint():
+    """Test cdx_defaults() returns default history for CDX HY (which has defaults)."""
+    # Resolve HY ticker first (it has defaults)
+    hy = ext_cdx_ticker(CDX_GEN_HY, END_DATE.strftime("%Y-%m-%d"))
+    assert hy, "HY ticker resolution should not be empty"
+
+    result = cdx_defaults(hy)
+    assert not is_empty(result), "cdx_defaults for HY should return data (HY has credit events)"
+
+    print(f"\ncdx_defaults result for {hy}:")
+    print(result)
+    print("[PASS] cdx_defaults endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_pricing_endpoint():
+    """Test cdx_pricing() returns pricing analytics."""
+    result = cdx_pricing(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_pricing should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 3, f"Should have at least 3 pricing fields, got {nw_result.shape[0]}"
+
+    # Verify px_last is present
+    fields = nw_result.select("field").to_series().to_list()
+    assert "px_last" in fields, f"Should have px_last field, got: {fields}"
+
+    print(f"\ncdx_pricing result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_pricing endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_risk_endpoint():
+    """Test cdx_risk() returns risk analytics (DV01, duration, etc.)."""
+    result = cdx_risk(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_risk should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 2, f"Should have at least 2 risk fields, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_risk result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_risk endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_basis_endpoint():
+    """Test cdx_basis() returns intrinsic value and basis analytics."""
+    result = cdx_basis(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_basis should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 2, f"Should have at least 2 basis fields, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_basis result ({nw_result.shape[0]} fields):")
+    print(result)
+    print("[PASS] cdx_basis endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_default_prob_endpoint():
+    """Test cdx_default_prob() returns default probability term structure."""
+    result = cdx_default_prob(CDX_GEN_IG)
+    assert not is_empty(result), "cdx_default_prob should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    assert nw_result.shape[0] >= 5, f"Should have at least 5 term structure rows, got {nw_result.shape[0]}"
+
+    print(f"\ncdx_default_prob result ({nw_result.shape[0]} rows):")
+    print(result)
+    print("[PASS] cdx_default_prob endpoint working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_cdx_curve_endpoint():
+    """Test cdx_curve() returns multi-tenor term structure."""
+    result = cdx_curve(CDX_GEN_IG, tenors=["3Y", "5Y", "10Y"])
+    assert not is_empty(result), "cdx_curve should return data"
+
+    nw_result = nw.from_native(result, eager_only=True)
+    # Should have results for multiple tenors
+    tickers = nw_result.select("ticker").to_series().unique().to_list()
+    assert len(tickers) >= 2, f"Should have at least 2 tenor tickers, got: {tickers}"
+
+    print(f"\ncdx_curve result ({nw_result.shape[0]} rows, {len(tickers)} tenors):")
+    print(result)
+    print("[PASS] cdx_curve endpoint working correctly")
+
+
+@pytest.mark.skip(
+    reason="Requires economic data release for NAPMPMI Index -- hangs waiting for RT_BN_SURVEY_MEDIAN update"
+)
 def test_stream_survey_field_issue_199():
     """Test that stream() correctly returns non-LIVE_INFO field values (Issue #199).
 
@@ -1461,9 +1943,9 @@ def test_stream_survey_field_issue_199():
 
         # For any field, verify the field value is in the dict
         if field_name and field_name in update:
-            print(f"  ✓ {field_name} value present: {update[field_name]}")
+            print(f"  [PASS] {field_name} value present: {update[field_name]}")
         elif field_name:
-            print(f"  ✗ {field_name} value MISSING from dict (Issue #199 bug)")
+            print(f"  [FAIL] {field_name} value MISSING from dict (Issue #199 bug)")
 
     # Assert the fix works
     if survey_field_found:
@@ -1471,9 +1953,9 @@ def test_stream_survey_field_issue_199():
             "Issue #199: RT_BN_SURVEY_MEDIAN field was in FIELD but value was missing from dict. "
             "The subscribed field's value should always be included regardless of info filter."
         )
-        print("\n✓ Issue #199 fix verified: RT_BN_SURVEY_MEDIAN value correctly included")
+        print("\n[PASS] Issue #199 fix verified: RT_BN_SURVEY_MEDIAN value correctly included")
     else:
-        print("\n⚠ RT_BN_SURVEY_MEDIAN field not received (may not be available for this ticker)")
+        print("\n[WARN] RT_BN_SURVEY_MEDIAN field not received (may not be available for this ticker)")
 
     # General assertion: for every update, the FIELD value should be in the dict
     for update in updates_received:
@@ -1484,7 +1966,7 @@ def test_stream_survey_field_issue_199():
                 f"Got keys: {list(update.keys())}"
             )
 
-    print("✓ stream() field values working correctly")
+    print("[PASS] stream() field values working correctly")
 
 
 @pytest.mark.live_endpoint
@@ -1492,8 +1974,8 @@ def test_bdp_mixed_type_fields():
     """Test BDP with fields that return mixed Python types (regression for ArrowInvalid bug).
 
     Bloomberg returns different Python types for different fields:
-    - FUT_CONT_SIZE → Double → float (e.g., 50.0)
-    - FUT_VAL_PT   → String → str   (e.g., '50.00')
+    - FUT_CONT_SIZE -> Double -> float (e.g., 50.0)
+    - FUT_VAL_PT   -> String -> str   (e.g., '50.00')
 
     Before the fix, pa.array([50.0, '50.00']) raised:
         pyarrow.lib.ArrowInvalid: Could not convert '50.00' with type str:
@@ -1524,7 +2006,7 @@ def test_bdp_mixed_type_fields():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Dtypes:\n{result.dtypes}")
-    print("✓ BDP mixed-type fields working correctly (ArrowInvalid bug fixed)")
+    print("[PASS] BDP mixed-type fields working correctly (ArrowInvalid bug fixed)")
 
 
 @pytest.mark.live_endpoint
@@ -1559,7 +2041,397 @@ def test_bdp_mixed_type_multiple_tickers():
     print(f"\nShape: {result.shape}")
     print(f"Columns: {list(result.columns)}")
     print(f"Dtypes:\n{result.dtypes}")
-    print("✓ BDP mixed-type fields with multiple tickers working correctly")
+    print("[PASS] BDP mixed-type fields with multiple tickers working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_info():
+    """Test bond_info returns static reference metadata for a Treasury."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_info (Bond Reference Metadata)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_info(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_info({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_info should return data"
+    print("[PASS] bond_info working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_risk():
+    """Test bond_risk returns duration, convexity, DV01 analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_risk (Duration / Convexity / DV01)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_risk(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_risk({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_risk should return data"
+    print("[PASS] bond_risk working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_spreads():
+    """Test bond_spreads returns OAS, Z-spread, I-spread, ASW analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_spreads (OAS / Z-Spread / I-Spread / ASW)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_spreads(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_spreads({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_spreads should return data"
+    print("[PASS] bond_spreads working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_cashflows():
+    """Test bond_cashflows returns cash flow schedule via bds DES_CASH_FLOW."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_cashflows (DES_CASH_FLOW via bds)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_cashflows(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_cashflows({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_cashflows should return data"
+    print("[PASS] bond_cashflows working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_key_rates():
+    """Test bond_key_rates returns key rate durations and risks."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_key_rates (Key Rate Durations / Risks)")
+    print(f"{'=' * 80}")
+
+    ticker = "/isin/US91282CNC19"
+    result = bond_key_rates(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_key_rates({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_key_rates should return data"
+    print("[PASS] bond_key_rates working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_bond_curve():
+    """Test bond_curve returns multi-bond relative value analytics."""
+    print(f"\n{'=' * 80}")
+    print("Testing bond_curve (Multi-Bond Relative Value)")
+    print(f"{'=' * 80}")
+
+    tickers = ["/isin/US91282CNC19", "T 4 02/28/31 Govt"]
+    result = bond_curve(tickers)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\nbond_curve({tickers!r}):")
+    print(printable)
+
+    assert not is_empty(result), "bond_curve should return data"
+    print("[PASS] bond_curve working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_yas_enhanced():
+    """Test enhanced yas() with new YieldType.YTW and workout_dt override."""
+    print(f"\n{'=' * 80}")
+    print("Testing yas() Enhanced (YTW + workout_dt)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext import yas
+
+    ticker = "/isin/US91282CNC19"
+
+    # Basic yield
+    result1 = yas(ticker)
+    printable1 = result1
+    to_native = getattr(result1, "to_native", None)
+    if callable(to_native):
+        printable1 = to_native()
+    to_pandas = getattr(printable1, "to_pandas", None)
+    if callable(to_pandas):
+        printable1 = to_pandas()
+    print(f"\nyas({ticker!r}):")
+    print(printable1)
+
+    # Multi-field
+    result2 = yas(ticker, ["YAS_BOND_YLD", "YAS_MOD_DUR", "YAS_ZSPREAD"])
+    printable2 = result2
+    to_native = getattr(result2, "to_native", None)
+    if callable(to_native):
+        printable2 = to_native()
+    to_pandas = getattr(printable2, "to_pandas", None)
+    if callable(to_pandas):
+        printable2 = to_pandas()
+    print(f"\nyas({ticker!r}, ['YAS_BOND_YLD', 'YAS_MOD_DUR', 'YAS_ZSPREAD']):")
+    print(printable2)
+
+    assert not is_empty(result1), "yas basic should return data"
+    assert not is_empty(result2), "yas multi-field should return data"
+    print("[PASS] enhanced yas() working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_info():
+    """Test option_info returns metadata (strike, expiry, put/call, underlying)."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_info (Strike / Expiry / Put-Call / Underlying)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_info
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_info(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_info({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_info should return data"
+    print("[PASS] option_info working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_greeks():
+    """Test option_greeks returns Greeks and implied vol."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_greeks (Greeks / Implied Vol)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_greeks
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_greeks(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_greeks({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_greeks should return data"
+    print("[PASS] option_greeks working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_pricing():
+    """Test option_pricing returns pricing, intrinsic/time value, volume/OI."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_pricing (Pricing / Intrinsic / Time Value / Volume / OI)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_pricing
+
+    ticker = "SPY US 03/20/26 C600 Equity"
+    result = option_pricing(ticker)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_pricing({ticker!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_pricing should return data"
+    print("[PASS] option_pricing working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain():
+    """Test option_chain returns filtered chain."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain (Filtered Chain)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import PutCall, StrikeRef, option_chain
+
+    underlying = "SPY US Equity"
+    result = option_chain(underlying, put_call=PutCall.CALL, expiry_dt="20260320", strike=StrikeRef.ATM, points=5)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain({underlying!r}, put_call=PutCall.CALL, expiry_dt='20260320', strike=StrikeRef.ATM, points=5):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain should return data"
+    print("[PASS] option_chain working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain_bql():
+    """Test option_chain_bql returns filtered chain via BQL."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain_bql (BQL Filtered Chain)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import PutCall, option_chain_bql
+
+    underlying = "SPY US Equity"
+    result = option_chain_bql(
+        underlying,
+        put_call=PutCall.CALL,
+        expiry_start="2026-03-20",
+        expiry_end="2026-03-20",
+        strike_low=675,
+        strike_high=690,
+        delta_low=0.3,
+        delta_high=0.7,
+    )
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain_bql({underlying!r}, put_call=PutCall.CALL, expiry_start='2026-03-20', expiry_end='2026-03-20', strike_low=675, strike_high=690, delta_low=0.3, delta_high=0.7):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain_bql should return data"
+    print("[PASS] option_chain_bql working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_screen():
+    """Test option_screen returns multi-option comparison."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_screen (Multi-Option Comparison)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import option_screen
+
+    tickers = ["SPY US 03/20/26 C680 Equity", "SPY US 03/20/26 P680 Equity"]
+    result = option_screen(tickers)
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(f"\noption_screen({tickers!r}):")
+    print(printable)
+
+    assert not is_empty(result), "option_screen should return data"
+    print("[PASS] option_screen working correctly")
+
+
+@pytest.mark.live_endpoint
+def test_option_chain_bql_advanced():
+    """Test option_chain_bql with advanced filters (moneyness, open interest, bid)."""
+    print(f"\n{'=' * 80}")
+    print("Testing option_chain_bql Advanced (Moneyness / Open Interest / Bid)")
+    print(f"{'=' * 80}")
+
+    from xbbg.ext.options import PutCall, option_chain_bql
+
+    underlying = "SPY US Equity"
+    result = option_chain_bql(
+        underlying,
+        put_call=PutCall.CALL,
+        expiry_start="2026-03-01",
+        expiry_end="2026-06-30",
+        moneyness_low=98,
+        moneyness_high=102,
+        min_open_int=500,
+        min_bid=1.0,
+    )
+    printable = result
+    to_native = getattr(result, "to_native", None)
+    if callable(to_native):
+        printable = to_native()
+    to_pandas = getattr(printable, "to_pandas", None)
+    if callable(to_pandas):
+        printable = to_pandas()
+
+    print(
+        f"\noption_chain_bql({underlying!r}, put_call=PutCall.CALL, expiry_start='2026-03-01', expiry_end='2026-06-30', moneyness_low=98, moneyness_high=102, min_open_int=500, min_bid=1.0):"
+    )
+    print(printable)
+
+    assert not is_empty(result), "option_chain_bql advanced should return data"
+    print("[PASS] option_chain_bql advanced working correctly")
 
 
 if __name__ == "__main__":
