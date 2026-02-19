@@ -267,7 +267,6 @@ jobs:
           rustflags: ""
 
       - name: Cargo clippy
-        shell: pwsh
         run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
 
   check-windows:
@@ -323,11 +322,8 @@ jobs:
           "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
 
       - name: Cargo clippy
-        run: |
-          cargo clippy --workspace --all-targets \
-            --exclude datamock \
-            --exclude datamock-sys \
-            -- -D warnings
+        shell: bash
+        run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
 
   # ════════════════════════════════════════════════════════════════════════════
   # Build wheels (matrix: OS × Python version)
