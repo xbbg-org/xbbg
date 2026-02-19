@@ -134,6 +134,9 @@ class Format(str, Enum):
     LONG_WITH_METADATA = "long_metadata"
     """Long format with string values and dtype metadata column."""
 
+    SEMI_LONG = "semi_long"
+    """Semi-long format with one row per ticker/timestamp and fields as columns."""
+
     WIDE = "wide"
     """Wide format with fields as columns (DEPRECATED)."""
 

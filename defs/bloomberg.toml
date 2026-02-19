@@ -246,6 +246,10 @@ doc = "Long format with typed value columns."
 value = "long_metadata"
 doc = "Long format with string values and dtype metadata column."
 
+[formats.SEMI_LONG]
+value = "semi_long"
+doc = "Semi-long format with one row per ticker/timestamp and fields as columns."
+
 [formats.WIDE]
 value = "wide"
 doc = "Wide format with fields as columns (DEPRECATED)."
