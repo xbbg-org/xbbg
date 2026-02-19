@@ -196,21 +196,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install LLVM (for bindgen)
-        id: install-llvm
+      - name: Install libclang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libclang-dev
+          CLANG_LIB=$(dpkg -L libclang-dev | grep 'libclang-[0-9]*.so$' | head -1 | xargs dirname)
+          echo "LIBCLANG_PATH=$CLANG_LIB" >> "$GITHUB_ENV"
+          echo "::notice::LIBCLANG_PATH=$CLANG_LIB"
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "18"
 
-      - name: Set LIBCLANG_PATH
+      - name: Set LIBCLANG_PATH (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
-          echo "::notice::LLVM_PATH env = ${LLVM_PATH:-unset}"
-          LLVM_LIB="${LLVM_PATH}/lib"
-          echo "LIBCLANG_PATH=$LLVM_LIB" >> "$GITHUB_ENV"
-          echo "::notice::LIBCLANG_PATH=$LLVM_LIB"
-          echo "--- LLVM lib contents (clang/libclang) ---"
-          ls "$LLVM_LIB" 2>/dev/null | grep -i clang || echo "No clang files in $LLVM_LIB"
+          echo "LIBCLANG_PATH=${LLVM_PATH}/lib" >> "$GITHUB_ENV"
+          echo "::notice::LIBCLANG_PATH=${LLVM_PATH}/lib"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
