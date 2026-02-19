@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0a1] - 2026-02-19
+
 ### Added
 
 - **Rust-powered engine**: Complete ground-up rewrite delivering up to **10x faster** data retrieval with zero-copy Arrow transfer between Rust and Python. The engine spans 11 purpose-built crates: safe FFI bindings with SIMD-accelerated parsing (`blpapi-sys`, `xbbg-core`), an async worker pool engine with state machines for every Bloomberg request type (`xbbg-async`), Rust ports of extension and recipe logic (`xbbg-ext`, `xbbg-recipes` -- all 12 recipes exposed via PyO3), zero-GIL tracing (`xbbg-log`), CI/test stubs (`xbbg-sys`), and PyO3 Python bindings (`pyo3-xbbg`)
@@ -876,7 +878,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a1...HEAD
+[1.0.0a1]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...v1.0.0a1
 [0.12.0]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...v0.12.0
 [0.12.0b3]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b2...v0.12.0b3
 [0.12.0b2]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b1...v0.12.0b2
