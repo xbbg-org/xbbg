@@ -200,9 +200,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update && sudo apt-get install -y libclang-dev
-          CLANG_LIB=$(dpkg -L libclang-dev | grep 'libclang-[0-9]*.so$' | head -1 | xargs dirname)
+          CLANG_LIB=$(find /usr/lib -name 'libclang*.so' -print -quit 2>/dev/null | xargs -r dirname)
+          if [ -z "$CLANG_LIB" ]; then
+            CLANG_LIB="/usr/lib/llvm-18/lib"
+          fi
           echo "LIBCLANG_PATH=$CLANG_LIB" >> "$GITHUB_ENV"
           echo "::notice::LIBCLANG_PATH=$CLANG_LIB"
+          ls "$CLANG_LIB"/libclang* 2>/dev/null || echo "WARNING: no libclang in $CLANG_LIB"
 
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
