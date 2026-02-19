@@ -27,8 +27,8 @@ Thank you for your interest in contributing to xbbg!
 
 3. Install dependencies and build:
    ```bash
-   uv sync
-   uv run maturin develop
+   uv sync --extra dev
+   uv run python -m pip install -e .
    ```
 
 4. Run tests:

@@ -16,7 +16,7 @@ env.local
 .cargo/config.toml
 build_rust.bat
 
-# PyO3/maturin generated files
+# PyO3 extension build outputs
 py-xbbg/src/xbbg/_core.pyd
 py-xbbg/src/xbbg/*.so
 

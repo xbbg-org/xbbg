@@ -43,12 +43,13 @@ ENV LD_LIBRARY_PATH=/opt/blpapi/lib:$LD_LIBRARY_PATH
 
 # Install Python tools via uv
 RUN uv tool install ruff \
-    && uv tool install maturin \
     && uv pip install --system \
+        build \
         pytest \
         pytest-cov \
         pyarrow \
         pandas \
+        setuptools-rust \
         numpy
 
 # Create workspace directory

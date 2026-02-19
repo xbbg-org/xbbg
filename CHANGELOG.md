@@ -41,13 +41,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 
-- **Build system**: Switched from `setuptools` to `maturin>=1.7` (PyO3). `pyproject.toml` now uses `[build-system] requires = ["maturin>=1.7"]` with `bindings = "pyo3"` and `python-source = "py-xbbg/src"`
-- **Python package source location**: Moved from `xbbg/` (in-tree) to `py-xbbg/src/xbbg/` (maturin mixed-project layout). The native extension is compiled as `xbbg._core`
+- **Build system**: Switched to `setuptools-rust` (PyO3) with `setuptools_scm` versioning. `pyproject.toml` now builds the Rust extension via `setuptools.build_meta`
+- **Python package source location**: Moved from `xbbg/` (in-tree) to `py-xbbg/src/xbbg/` for the Rust-backed package layout. The native extension is compiled as `xbbg._core`
 - **Runtime dependencies**: `pandas` is no longer required -- now only `narwhals>=1.30`, `pyarrow>=22.0.0`, `lief>=0.17`. Removed `blpapi`, `tomli`, and all other previous hard dependencies
 - **Python version support**: Added Python 3.14 to classifiers (`>=3.10,<3.15`)
-- **`pypi_upload.yml` workflow**: Completely rewritten for maturin-based manylinux/Windows wheel builds with Bloomberg SDK detection, replacing the pure-Python sdist/wheel workflow
+- **`pypi_upload.yml` workflow**: Completely rewritten for `setuptools-rust` wheel builds with Bloomberg SDK detection, replacing the pure-Python sdist/wheel workflow
 - **`pre-commit-config.yaml`**: Updated hooks for the Rust+Python monorepo -- added `cargo fmt`, `cargo clippy`, and scoped ruff to `py-xbbg/` and `xbbg/`
-- **`.gitignore`**: Expanded for Rust build artifacts (`target/`), maturin outputs, SDK vendor directory, benchmark results, and IDE files
+- **`.gitignore`**: Expanded for Rust build artifacts (`target/`), native extension outputs, SDK vendor directory, benchmark results, and IDE files
 - **README.md**: Rewritten for v1.0 -- concise project description, Rust-powered backend highlights, installation and quick start replacing the extensive v0.x documentation
 - **CONTRIBUTING.md**: Rewritten for the Rust+Python development workflow
 - **LICENSE**: Updated to Apache-2.0 with revised copyright
@@ -69,7 +69,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **`examples/feeds/pub.py`** and **`examples/feeds/sub.py`**: Legacy feed examples
 - **Sphinx documentation**: `docs/conf.py`, `docs/index.rst` (1,293 lines), `docs/Makefile`, `docs/make.bat`, `docs/docstring_style.rst` -- replaced by Starlight
 - **`.readthedocs.yaml`**: ReadTheDocs configuration (docs now use Starlight)
-- **`MANIFEST.in`**: No longer needed with maturin build system
+- **`MANIFEST.in`**: No longer needed with the `setuptools-rust` build system
 - **`SECURITY.md`**: Security policy document
 - **`_config.yml`**: Jekyll configuration
 - **`codecov.yml`**: Codecov configuration
