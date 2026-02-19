@@ -653,46 +653,47 @@ jobs:
           fi
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Kani Verification (optional, non-blocking)
+  # Kani Verification (disabled — no #[kani::proof] harnesses exist yet)
+  # Re-enable once proof harnesses are added to workspace crates.
   # ════════════════════════════════════════════════════════════════════════════
-  kani:
-    name: Kani
-    needs: [sdk-version, check-linux]
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    env:
-      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install libclang
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev
-
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Linux)
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
-
-      - name: Setup Bloomberg SDK (Linux)
-        run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
-
-      - name: Run Kani
-        uses: model-checking/kani-github-action@v1
-        with:
-          args: --workspace --exclude blpapi-sys --exclude pyo3-xbbg
+  # kani:
+  #   name: Kani
+  #   needs: [sdk-version, check-linux]
+  #   runs-on: ubuntu-latest
+  #   continue-on-error: true
+  #   env:
+  #     BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Install libclang
+  #       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev
+  #
+  #     - name: Cache Bloomberg SDK
+  #       id: cache-sdk
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: ~/blpapi
+  #         key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+  #
+  #     - name: Download Bloomberg SDK (Linux)
+  #       if: steps.cache-sdk.outputs.cache-hit != 'true'
+  #       run: |
+  #         mkdir -p "$HOME/blpapi"
+  #         curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+  #           | tar -xz -C "$HOME/blpapi" --strip-components=1
+  #
+  #     - name: Setup Bloomberg SDK (Linux)
+  #       run: |
+  #         ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+  #         ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+  #         echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+  #         echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+  #
+  #     - name: Run Kani
+  #       uses: model-checking/kani-github-action@v1
+  #       with:
+  #         args: --workspace --exclude blpapi-sys --exclude pyo3-xbbg
 
   # ════════════════════════════════════════════════════════════════════════════
   # CI Status (required gate for merging)
