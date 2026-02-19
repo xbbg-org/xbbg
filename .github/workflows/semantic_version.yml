@@ -260,7 +260,8 @@ jobs:
         else
           git add CHANGELOG.md
           git commit -m "docs(CHANGELOG): update for ${VERSION} release"
-          git push origin main
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          git push origin HEAD:"${BRANCH}"
         fi
 
     - name: Create git tag
@@ -283,43 +284,9 @@ jobs:
         make_latest: ${{ inputs.pre_release == 'none' || inputs.pre_release == '' }}
         draft: false
 
-  # Attach release assets (wheel and tarball)
-  release-assets:
-    needs: bump-version
-    if: inputs.create_release == true
-    uses: ./.github/workflows/release_assets.yml
-    with:
-      tag: ${{ needs.bump-version.outputs.tag }}
-    secrets: inherit
-
-  # Update README changelog
-  update-readme:
-    needs: bump-version
-    if: inputs.create_release == true
-    uses: ./.github/workflows/update_readme_on_release.yml
-    with:
-      tag: ${{ needs.bump-version.outputs.tag }}
-    secrets: inherit
-
-  # Update docs/index.rst changelog (runs after README to avoid conflicts)
-  update-index:
-    needs: [bump-version, update-readme]
-    if: inputs.create_release == true
-    uses: ./.github/workflows/update_index_on_release.yml
-    with:
-      tag: ${{ needs.bump-version.outputs.tag }}
-    secrets: inherit
-
-  # Trigger Read the Docs build
-  publish-docs:
-    needs: [bump-version, update-index]
-    if: inputs.create_release == true
-    uses: ./.github/workflows/publish_docs.yml
-    secrets: inherit
-
   # Summary job
   summary:
-    needs: [bump-version, release-assets, update-readme, update-index, publish-docs]
+    needs: [bump-version]
     if: always() && inputs.create_release == true
     runs-on: ubuntu-latest
 
@@ -333,13 +300,5 @@ jobs:
         echo "- **Tag**: ${{ needs.bump-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Type**: ${{ inputs.bump_type }}${{ inputs.pre_release != 'none' && inputs.pre_release != '' && format(' ({0})', inputs.pre_release) || '' }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Job Results" >> $GITHUB_STEP_SUMMARY
-        echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Release Assets | ${{ needs.release-assets.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Update README | ${{ needs.update-readme.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Update index.rst | ${{ needs.update-index.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Publish Docs | ${{ needs.publish-docs.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Manual Step Required" >> $GITHUB_STEP_SUMMARY
-        echo "Run **pypi_upload.yml** manually to publish to PyPI (required for trusted publisher attestation)." >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "The tag push will automatically trigger **pypi_upload.yml** to build and publish wheels." >> $GITHUB_STEP_SUMMARY
