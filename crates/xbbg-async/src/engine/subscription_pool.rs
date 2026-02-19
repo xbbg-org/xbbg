@@ -207,8 +207,7 @@ impl SubscriptionWorker {
             let key = self.subs.insert(state);
 
             let cid = CorrelationId::Int(key as i64);
-            if let Err(e) = sub_list.add(topic, &field_refs, &options_str, &cid)
-            {
+            if let Err(e) = sub_list.add(topic, &field_refs, &options_str, &cid) {
                 xbbg_log::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
                 // Clean up phantom slab entry — sub_list.add failed so Bloomberg
                 // will never send data for this correlation ID.
@@ -273,7 +272,11 @@ impl SubscriptionWorker {
         for &key in &keys {
             if self.subs.contains(key) {
                 self.pending_cancel.insert(key);
-                xbbg_log::debug!(worker_id = self.id, key = key, "subscription pending cancel");
+                xbbg_log::debug!(
+                    worker_id = self.id,
+                    key = key,
+                    "subscription pending cancel"
+                );
             }
         }
     }
@@ -338,7 +341,9 @@ impl SubscriptionWorker {
         let n = msg.num_correlation_ids();
 
         // Extract reason description from the message if available
-        let reason = msg.elements().get_by_str("reason")
+        let reason = msg
+            .elements()
+            .get_by_str("reason")
             .and_then(|r| r.get_by_str("description"))
             .and_then(|d| d.get_str(0))
             .map(|s| s.to_string());
@@ -357,14 +362,20 @@ impl SubscriptionWorker {
                             if self.subs.contains(key as usize) {
                                 self.subs.remove(key as usize);
                             }
-                            xbbg_log::debug!(worker_id = self.id, key = key, "pending cancel confirmed via SubscriptionFailure");
+                            xbbg_log::debug!(
+                                worker_id = self.id,
+                                key = key,
+                                "pending cancel confirmed via SubscriptionFailure"
+                            );
                         } else {
                             // Genuine subscription failure — propagate as an error.
                             xbbg_log::error!(worker_id = self.id, key = key, reason = ?reason, "subscription failed");
                             if self.subs.contains(key as usize) {
                                 let state = self.subs.remove(key as usize);
                                 state.fail(BlpError::SubscriptionFailure {
-                                    cid: Some(xbbg_core::errors::CorrelationContext::U64(key as u64)),
+                                    cid: Some(xbbg_core::errors::CorrelationContext::U64(
+                                        key as u64,
+                                    )),
                                     label: reason.clone(),
                                 });
                             }
@@ -377,15 +388,23 @@ impl SubscriptionWorker {
                             if self.subs.contains(key as usize) {
                                 self.subs.remove(key as usize);
                             }
-                            xbbg_log::debug!(worker_id = self.id, key = key, "pending cancel confirmed by Bloomberg");
+                            xbbg_log::debug!(
+                                worker_id = self.id,
+                                key = key,
+                                "pending cancel confirmed by Bloomberg"
+                            );
                         } else {
                             // Unexpected termination — propagate as an error.
                             xbbg_log::info!(worker_id = self.id, key = key, reason = ?reason, "subscription terminated unexpectedly");
                             if self.subs.contains(key as usize) {
                                 let state = self.subs.remove(key as usize);
                                 state.fail(BlpError::SubscriptionFailure {
-                                    cid: Some(xbbg_core::errors::CorrelationContext::U64(key as u64)),
-                                    label: reason.clone().or_else(|| Some("subscription terminated".to_string())),
+                                    cid: Some(xbbg_core::errors::CorrelationContext::U64(
+                                        key as u64,
+                                    )),
+                                    label: reason
+                                        .clone()
+                                        .or_else(|| Some("subscription terminated".to_string())),
                                 });
                             }
                         }
@@ -625,7 +644,10 @@ impl SubscriptionSessionPool {
     /// will be signaled when they're returned to the pool and dropped.
     pub fn signal_shutdown(&self) {
         let available = self.available.lock();
-        xbbg_log::info!(count = available.len(), "signaling subscription pool shutdown");
+        xbbg_log::info!(
+            count = available.len(),
+            "signaling subscription pool shutdown"
+        );
         for handle in available.iter() {
             handle.signal_shutdown();
         }
@@ -634,7 +656,10 @@ impl SubscriptionSessionPool {
     /// Graceful shutdown - waits for all workers to finish (blocking).
     pub fn shutdown_blocking(&self) {
         let mut available = self.available.lock();
-        xbbg_log::info!(count = available.len(), "shutting down subscription pool (blocking)");
+        xbbg_log::info!(
+            count = available.len(),
+            "shutting down subscription pool (blocking)"
+        );
         for handle in available.iter_mut() {
             handle.shutdown_blocking();
         }

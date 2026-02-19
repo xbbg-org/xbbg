@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 try:
     from xbbg.ext.cdx import (
-        _CDX_FIELDS,
         active_cdx,
         cdx_basis,
         cdx_cashflows,

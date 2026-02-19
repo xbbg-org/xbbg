@@ -297,7 +297,7 @@ def _make_live_handler(
             # Log summary only if DEBUG enabled (aggregate, not per-message)
             if msg_count > 0 and logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Processed %d subscription data message(s) in live handler", msg_count)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             # Only log exceptions if DEBUG enabled (avoid expensive stack traces in production)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Exception in live subscription handler: %s", e, exc_info=True)

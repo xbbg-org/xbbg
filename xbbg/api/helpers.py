@@ -38,8 +38,8 @@ def adjust_ccy(data: pd.DataFrame, ccy: str = "USD") -> pd.DataFrame:
         >>> intraday_data = blp.bdib("AAPL US Equity", dt="2024-01-01")  # doctest: +SKIP
         >>> adjusted_intraday = blp.adjust_ccy(intraday_data, ccy="EUR")  # doctest: +SKIP
     """
-    from xbbg.api.historical import bdh  # noqa: PLC0415
-    from xbbg.api.reference import bdp  # noqa: PLC0415
+    from xbbg.api.historical import bdh
+    from xbbg.api.reference import bdp
 
     if is_empty(data):
         return pd.DataFrame()

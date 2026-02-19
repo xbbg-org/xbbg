@@ -41,7 +41,7 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from xbbg import blp  # noqa: E402
+from xbbg import blp
 from xbbg.ext.bonds import (
     bond_cashflows,
     bond_curve,

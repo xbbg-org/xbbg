@@ -56,16 +56,39 @@ Example::
 from __future__ import annotations
 
 # Sync functions
-from xbbg.ext.currency import convert_ccy
-from xbbg.ext.fixed_income import YieldType, bqr, corporate_bonds, preferreds, yas
-from xbbg.ext.futures import active_cdx, active_futures, cdx_ticker, fut_ticker
-from xbbg.ext.historical import dividend, earnings, etf_holdings, turnover
-
 # Async functions
-from xbbg.ext.currency import aconvert_ccy
-from xbbg.ext.fixed_income import abqr, acorporate_bonds, apreferreds, ayas
-from xbbg.ext.futures import aactive_cdx, aactive_futures, acdx_ticker, afut_ticker
-from xbbg.ext.historical import adividend, aearnings, aetf_holdings, aturnover
+from xbbg.ext.currency import aconvert_ccy, convert_ccy
+from xbbg.ext.fixed_income import (
+    YieldType,
+    abqr,
+    acorporate_bonds,
+    apreferreds,
+    ayas,
+    bqr,
+    corporate_bonds,
+    preferreds,
+    yas,
+)
+from xbbg.ext.futures import (
+    aactive_cdx,
+    aactive_futures,
+    acdx_ticker,
+    active_cdx,
+    active_futures,
+    afut_ticker,
+    cdx_ticker,
+    fut_ticker,
+)
+from xbbg.ext.historical import (
+    adividend,
+    aearnings,
+    aetf_holdings,
+    aturnover,
+    dividend,
+    earnings,
+    etf_holdings,
+    turnover,
+)
 
 __all__ = [
     # Historical extensions (sync)

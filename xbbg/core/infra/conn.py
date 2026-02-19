@@ -26,7 +26,7 @@ def _stop_session_quietly(session: Any) -> None:
     """Stop a Bloomberg session, suppressing any errors."""
     try:
         session.stop()
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.debug("Error stopping Bloomberg session (ignored)", exc_info=True)
 
 

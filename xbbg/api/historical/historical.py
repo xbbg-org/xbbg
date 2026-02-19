@@ -314,7 +314,7 @@ def turnover(
     actual_backend = backend if backend is not None else get_backend()
     if is_empty(data) and is_empty(use_volume):
         return _convert_backend(nw.from_native(pa.table({})), actual_backend)
-    from xbbg.api.helpers import adjust_ccy  # noqa: PLC0415
+    from xbbg.api.helpers import adjust_ccy
 
     result = pd.concat([adjust_ccy(data=data, ccy=ccy).div(factor), use_volume], axis=1)
     arrow_table = pa.Table.from_pandas(result)

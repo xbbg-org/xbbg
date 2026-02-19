@@ -17,8 +17,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import sys
 from datetime import datetime
+import sys
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -122,7 +122,7 @@ async def main() -> None:
     # -- Phase 2: add a ticker ---------------------------------------------
     print_header(f"PHASE 2: Adding '{ADD_TICKER}'")
     await sub.add([ADD_TICKER])
-    print(f"Added. New state:")
+    print("Added. New state:")
     print_sub_state(sub)
 
     print("Streaming...\n")
@@ -131,7 +131,7 @@ async def main() -> None:
     # -- Phase 3: remove a ticker ------------------------------------------
     print_header(f"PHASE 3: Removing '{REMOVE_TICKER}'")
     await sub.remove([REMOVE_TICKER])
-    print(f"Removed. New state:")
+    print("Removed. New state:")
     print_sub_state(sub)
 
     print("Streaming...\n")

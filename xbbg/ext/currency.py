@@ -42,12 +42,11 @@ def adjust_ccy(
     Examples:
         >>> from xbbg import blp  # doctest: +SKIP
         >>> # Works with historical data in SEMI_LONG format
-        >>> hist_data = blp.bdh('AAPL US Equity', 'px_last', '2024-01-01',
-        ...                     format=Format.SEMI_LONG)  # doctest: +SKIP
-        >>> adjusted = blp.adjust_ccy(hist_data, ccy='EUR')  # doctest: +SKIP
+        >>> hist_data = blp.bdh("AAPL US Equity", "px_last", "2024-01-01", format=Format.SEMI_LONG)  # doctest: +SKIP
+        >>> adjusted = blp.adjust_ccy(hist_data, ccy="EUR")  # doctest: +SKIP
     """
-    from xbbg.api.historical import bdh  # noqa: PLC0415
-    from xbbg.api.reference import bdp  # noqa: PLC0415
+    from xbbg.api.historical import bdh
+    from xbbg.api.reference import bdp
 
     if is_empty(data):
         actual_backend = backend if backend is not None else get_backend()

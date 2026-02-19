@@ -154,14 +154,13 @@ def split_kwargs(**kwargs) -> KwargsSplit:
 
     Example:
         >>> split = split_kwargs(
-        ...     interval=5, typ='TRADE', sess=None, slow_warn_seconds=30.0,
-        ...     DVD_Start_Dt='20180101', Period='W'
+        ...     interval=5, typ="TRADE", sess=None, slow_warn_seconds=30.0, DVD_Start_Dt="20180101", Period="W"
         ... )
-        >>> 'interval' in split.request_opts
+        >>> "interval" in split.request_opts
         True
-        >>> 'DVD_Start_Dt' in split.override_like
+        >>> "DVD_Start_Dt" in split.override_like
         True
-        >>> 'slow_warn_seconds' in split.infra.to_kwargs()
+        >>> "slow_warn_seconds" in split.infra.to_kwargs()
         True
     """
     # Request-specific parameters (not Bloomberg overrides, not infrastructure)

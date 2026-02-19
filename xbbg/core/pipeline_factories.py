@@ -56,7 +56,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_ref,
         ReferenceRequestBuilder(),
         ReferenceTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
     "historical": (
         "//blp/refdata",
@@ -64,7 +64,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_hist,
         HistoricalRequestBuilder(),
         HistoricalTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
     "intraday": (
         "//blp/refdata",
@@ -84,7 +84,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_ref,
         BlockDataRequestBuilder(),
         BlockDataTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
     "beqs": (
         "//blp/refdata",
@@ -92,7 +92,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_ref,
         BeqsRequestBuilder(),
         BeqsTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
     "bsrch": (
         "//blp/exrsvc",
@@ -100,7 +100,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_bsrch,
         BsrchRequestBuilder(),
         BsrchTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
     "bql": (
         "//blp/bqlsvc",
@@ -108,7 +108,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_bql,
         BqlRequestBuilder(),
         BqlTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
     "bta": (
         "//blp/tasvc",
@@ -116,7 +116,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_tasvc,
         BtaRequestBuilder(),
         BtaTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
     "bqr": (
         "//blp/refdata",
@@ -124,7 +124,7 @@ _PIPELINE_REGISTRY: dict[str, tuple[str, str, Any, Any, Any, dict[str, Any]]] = 
         process.process_bqr,
         BqrRequestBuilder(),
         BqrTransformer(),
-        {"needs_session": False, "default_resolvers": lambda: []},
+        {"needs_session": False, "default_resolvers": list},
     ),
 }
 

@@ -4,6 +4,8 @@ Provides helpers to map tickers/shorthands to tz names and convert
 datetime-like values between timezones.
 """
 
+from __future__ import annotations
+
 from datetime import timezone
 import logging
 
@@ -26,13 +28,13 @@ def get_tz(tz) -> str:
         str: Python timezone.
 
     Examples:
-        >>> get_tz('NY')
+        >>> get_tz("NY")
         'America/New_York'
         >>> get_tz(TimeZone.NY)
         'America/New_York'
-        >>> get_tz('America/New_York')
+        >>> get_tz("America/New_York")
         'America/New_York'
-        >>> get_tz('BHP AU Equity')  # doctest: +SKIP
+        >>> get_tz("BHP AU Equity")  # doctest: +SKIP
         'Australia/Sydney'
     """
     from xbbg.const import exch_info
@@ -71,14 +73,14 @@ def tz_convert(dt, to_tz, from_tz=None) -> str:
         str: date & time
 
     Examples:
-        >>> dt_1 = pd.Timestamp('2018-09-10 16:00', tz='Asia/Hong_Kong')
-        >>> tz_convert(dt_1, to_tz='NY')
+        >>> dt_1 = pd.Timestamp("2018-09-10 16:00", tz="Asia/Hong_Kong")
+        >>> tz_convert(dt_1, to_tz="NY")
         '2018-09-10 04:00:00-04:00'
-        >>> dt_2 = pd.Timestamp('2018-01-10 16:00')
-        >>> tz_convert(dt_2, to_tz='HK', from_tz='NY')
+        >>> dt_2 = pd.Timestamp("2018-01-10 16:00")
+        >>> tz_convert(dt_2, to_tz="HK", from_tz="NY")
         '2018-01-11 05:00:00+08:00'
-        >>> dt_3 = '2018-09-10 15:00'
-        >>> tz_convert(dt_3, to_tz='NY', from_tz='JP')
+        >>> dt_3 = "2018-09-10 15:00"
+        >>> tz_convert(dt_3, to_tz="NY", from_tz="JP")
         '2018-09-10 02:00:00-04:00'
     """
     f_tz, t_tz = get_tz(from_tz), get_tz(to_tz)

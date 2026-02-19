@@ -46,7 +46,7 @@ def exch_info_bloomberg(ticker: str, **kwargs) -> pd.Series:
         Returns empty Series if Bloomberg data unavailable.
 
     Examples:
-        >>> exch_info_bloomberg('AAPL US Equity')  # doctest: +SKIP
+        >>> exch_info_bloomberg("AAPL US Equity")  # doctest: +SKIP
         tz        America/New_York
         allday      [04:00, 20:30]
         day         [09:30, 16:30]
@@ -117,7 +117,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
         pd.Series with keys: tz, allday, day, pre, post, am, pm (where applicable)
 
     Examples:
-        >>> exch_info('SPY US Equity')  # doctest: +SKIP
+        >>> exch_info("SPY US Equity")  # doctest: +SKIP
         tz        America/New_York
         allday      [04:00, 20:00]
         day         [09:30, 16:00]
@@ -153,16 +153,16 @@ def market_info(ticker: str) -> pd.Series:
         pd.Series with keys: exch, tz, freq (for futures), is_fut
 
     Examples:
-        >>> market_info('SPY US Equity').exch  # doctest: +SKIP
+        >>> market_info("SPY US Equity").exch  # doctest: +SKIP
         'US'
-        >>> market_info('7203 JT Equity').exch  # doctest: +SKIP
+        >>> market_info("7203 JT Equity").exch  # doctest: +SKIP
         'JT'
-        >>> market_info('ES1 Index').freq  # doctest: +SKIP
+        >>> market_info("ES1 Index").freq  # doctest: +SKIP
         'HMUZ'
-        >>> market_info('CL1 Comdty').freq  # doctest: +SKIP
+        >>> market_info("CL1 Comdty").freq  # doctest: +SKIP
         'FGHJKMNQUVXZ'
     """
-    from xbbg.api.reference import bdp  # noqa: PLC0415
+    from xbbg.api.reference import bdp
 
     t_info = ticker.split()
 
@@ -303,15 +303,15 @@ def ccy_pair(local, base="USD") -> const.CurrencyPair:
         The FX rate can be calculated as: (BDP(ticker) / factor) ** power
 
     Examples:
-        >>> ccy_pair(local='HKD', base='USD')  # doctest: +SKIP
+        >>> ccy_pair(local="HKD", base="USD")  # doctest: +SKIP
         CurrencyPair(ticker='HKD Curncy', factor=1.0, power=1.0)
-        >>> ccy_pair(local='GBp')  # doctest: +SKIP
+        >>> ccy_pair(local="GBp")  # doctest: +SKIP
         CurrencyPair(ticker='GBP Curncy', factor=100.0, power=-1.0)
-        >>> ccy_pair(local='USD', base='GBp')  # doctest: +SKIP
+        >>> ccy_pair(local="USD", base="GBp")  # doctest: +SKIP
         CurrencyPair(ticker='GBP Curncy', factor=0.01, power=1.0)
-        >>> ccy_pair(local='GBP', base='GBp')  # doctest: +SKIP
+        >>> ccy_pair(local="GBP", base="GBp")  # doctest: +SKIP
         CurrencyPair(ticker='', factor=0.01, power=1.0)
-        >>> ccy_pair(local='GBp', base='GBP')  # doctest: +SKIP
+        >>> ccy_pair(local="GBp", base="GBP")  # doctest: +SKIP
         CurrencyPair(ticker='', factor=100.0, power=1.0)
     """
     # Handle same currency (e.g., GBP to GBp or vice versa)
@@ -336,7 +336,7 @@ def ccy_pair(local, base="USD") -> const.CurrencyPair:
     ticker = f"{local_norm} Curncy"
 
     # Query Bloomberg for quote direction
-    from xbbg.api.reference import bdp  # noqa: PLC0415
+    from xbbg.api.reference import bdp
 
     try:
         result = bdp(ticker, ["INVERSE_QUOTED", "BASE_CRNCY"])
@@ -398,17 +398,9 @@ def convert_session_times_to_utc(
         Tuple of (start_time_utc, end_time_utc) as formatted strings.
 
     Examples:
-        >>> convert_session_times_to_utc(
-        ...     '2025-11-14T09:30:00',
-        ...     '2025-11-14T10:00:00',
-        ...     'America/New_York'
-        ... )
+        >>> convert_session_times_to_utc("2025-11-14T09:30:00", "2025-11-14T10:00:00", "America/New_York")
         ('2025-11-14T14:30:00', '2025-11-14T15:00:00')
-        >>> convert_session_times_to_utc(
-        ...     '2025-11-14T09:30:00',
-        ...     '2025-11-14T10:00:00',
-        ...     'UTC'
-        ... )
+        >>> convert_session_times_to_utc("2025-11-14T09:30:00", "2025-11-14T10:00:00", "UTC")
         ('2025-11-14T09:30:00', '2025-11-14T10:00:00')
     """
     if exchange_tz == "UTC":
@@ -433,19 +425,19 @@ def market_timing(ticker, dt, timing="EOD", tz="local", **kwargs) -> str:
         str: date & time.
 
     Examples:
-        >>> market_timing('7267 JT Equity', dt='2018-09-10')  # doctest: +SKIP
+        >>> market_timing("7267 JT Equity", dt="2018-09-10")  # doctest: +SKIP
         '2018-09-10 14:58'
-        >>> market_timing('7267 JT Equity', dt='2018-09-10', tz=timezone.TimeZone.NY)  # doctest: +SKIP
+        >>> market_timing("7267 JT Equity", dt="2018-09-10", tz=timezone.TimeZone.NY)  # doctest: +SKIP
         '2018-09-10 01:58:00-04:00'
-        >>> market_timing('7267 JT Equity', dt='2018-01-10', tz='NY')  # doctest: +SKIP
+        >>> market_timing("7267 JT Equity", dt="2018-01-10", tz="NY")  # doctest: +SKIP
         '2018-01-10 00:58:00-05:00'
-        >>> market_timing('7267 JT Equity', dt='2018-09-10', tz='SPX Index')  # doctest: +SKIP
+        >>> market_timing("7267 JT Equity", dt="2018-09-10", tz="SPX Index")  # doctest: +SKIP
         '2018-09-10 01:58:00-04:00'
-        >>> market_timing('8035 JT Equity', dt='2018-09-10', timing='BOD')  # doctest: +SKIP
+        >>> market_timing("8035 JT Equity", dt="2018-09-10", timing="BOD")  # doctest: +SKIP
         '2018-09-10 09:01'
-        >>> market_timing('Z 1 Index', dt='2018-09-10', timing='FINISHED')  # doctest: +SKIP
+        >>> market_timing("Z 1 Index", dt="2018-09-10", timing="FINISHED")  # doctest: +SKIP
         '2018-09-10 21:00'
-        >>> market_timing('TESTTICKER Corp', dt='2018-09-10') == ''  # doctest: +SKIP
+        >>> market_timing("TESTTICKER Corp", dt="2018-09-10") == ""  # doctest: +SKIP
         True
     """
     exch = pd.Series(exch_info(ticker=ticker, **kwargs))

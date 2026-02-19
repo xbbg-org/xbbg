@@ -1,5 +1,7 @@
 """Raw blpapi profiled benchmark — phase-level timing comparison with Rust."""
 
+from __future__ import annotations
+
 import logging
 import sys
 import time
@@ -101,7 +103,7 @@ def main():
         f"{avg['send_req']:>12.0f} {avg['wait_resp']:>12.0f} {avg['parse']:>12.0f} {avg['total']:>12.0f}"
     )
 
-    logger.info(f"\nPhase breakdown (% of total):")
+    logger.info("\nPhase breakdown (% of total):")
     logger.info(f"  get_service:     {avg['get_svc'] / avg['total'] * 100:>6.2f}%  ({avg['get_svc']:>8.0f} μs)")
     logger.info(f"  create_request:  {avg['create_req'] / avg['total'] * 100:>6.2f}%  ({avg['create_req']:>8.0f} μs)")
     logger.info(f"  append:          {avg['append'] / avg['total'] * 100:>6.2f}%  ({avg['append']:>8.0f} μs)")

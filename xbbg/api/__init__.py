@@ -11,7 +11,17 @@ This package contains the main Bloomberg API functions organized into logical mo
 """
 
 # Import submodules to make them accessible as attributes (needed for mocking in tests)
-from xbbg.api import helpers, historical, intraday, realtime, reference, screening, technical
+from __future__ import annotations
+
+from xbbg.api import (
+    helpers as helpers,
+    historical as historical,
+    intraday as intraday,
+    realtime as realtime,
+    reference as reference,
+    screening as screening,
+    technical as technical,
+)
 
 # Re-export all public functions for convenience
 from xbbg.api.helpers import *

@@ -5,8 +5,8 @@ Data usage: ~10-20 data points per run
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 import statistics
 import time
 import tracemalloc

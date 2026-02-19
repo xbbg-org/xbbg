@@ -6,6 +6,8 @@ This package contains domain objects and context management:
 """
 
 # Import modules for easy access
+from __future__ import annotations
+
 from xbbg.core.domain import context as context_module, contracts as contracts_module
 
 __all__ = ["contracts_module", "context_module"]

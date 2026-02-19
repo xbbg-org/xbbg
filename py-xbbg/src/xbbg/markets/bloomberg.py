@@ -135,10 +135,10 @@ def _infer_timezone_from_country(country_iso: str | None) -> str | None:
     if not country_iso or pd.isna(country_iso):
         return None
     core = importlib.import_module("xbbg._core")
-    infer = cast(Any, getattr(core, "ext_infer_timezone", None))
+    infer = cast("Any", getattr(core, "ext_infer_timezone", None))
     if infer is None:
         return None
-    return cast(str | None, infer(str(country_iso).strip().upper()))
+    return cast("str | None", infer(str(country_iso).strip().upper()))
 
 
 def _extract_value(df: pd.DataFrame, field: str) -> str | float | None:
@@ -209,7 +209,7 @@ def _build_exchange_info_from_response(ticker: str, df: pd.DataFrame) -> Exchang
 def _to_pandas_wide(data: Any) -> pd.DataFrame:
     """Convert current backend response into a wide pandas DataFrame."""
     utils = importlib.import_module("xbbg.ext._utils")
-    pivot_fn = cast(Any, getattr(utils, "_pivot_bdp_to_wide"))
+    pivot_fn = cast("Any", utils._pivot_bdp_to_wide)
     nw_df = nw.from_native(data)
     nw_df = pivot_fn(nw_df)
     return nw_df.to_pandas()
@@ -218,7 +218,7 @@ def _to_pandas_wide(data: Any) -> pd.DataFrame:
 async def afetch_exchange_info(ticker: str, **kwargs) -> ExchangeInfo:
     """Async fetch exchange metadata from Bloomberg."""
     xbbg_module = importlib.import_module("xbbg")
-    abdp_fn = cast(Any, getattr(xbbg_module, "abdp"))
+    abdp_fn = cast("Any", xbbg_module.abdp)
 
     try:
         data = await abdp_fn(tickers=ticker, flds=EXCHANGE_FIELDS, **kwargs)

@@ -70,7 +70,7 @@ class TestYasOverrideMapping:
     def test_yas_settle_dt_timestamp(self, mock_bdp: MagicMock):
         """Test settle_dt Timestamp override mapping."""
         mock_bdp.return_value = pd.DataFrame()
-        settle_dt = cast(pd.Timestamp, pd.Timestamp("2024-01-15"))
+        settle_dt = cast("pd.Timestamp", pd.Timestamp("2024-01-15"))
         yas("US912810TD00 Govt", settle_dt=settle_dt)
         mock_bdp.assert_called_once()
         call_kwargs = mock_bdp.call_args

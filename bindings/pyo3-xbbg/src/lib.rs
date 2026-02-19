@@ -203,7 +203,11 @@ fn blp_async_error_to_pyerr(e: BlpAsyncError) -> PyErr {
 }
 
 /// Helper to format error messages with optional label and source.
-fn format_error_msg(base: &str, label: Option<&str>, source: Option<&(dyn std::error::Error + Send + Sync)>) -> String {
+fn format_error_msg(
+    base: &str,
+    label: Option<&str>,
+    source: Option<&(dyn std::error::Error + Send + Sync)>,
+) -> String {
     let mut msg = base.to_string();
     if let Some(l) = label {
         if !msg.is_empty() {
@@ -292,17 +296,39 @@ impl PyEngineConfig {
         };
 
         if let Some(kw) = kwargs {
-            if let Some(v) = kw.get_item("host")? { config.host = v.extract()?; }
-            if let Some(v) = kw.get_item("port")? { config.port = v.extract()?; }
-            if let Some(v) = kw.get_item("request_pool_size")? { config.request_pool_size = v.extract()?; }
-            if let Some(v) = kw.get_item("subscription_pool_size")? { config.subscription_pool_size = v.extract()?; }
-            if let Some(v) = kw.get_item("validation_mode")? { config.validation_mode = v.extract()?; }
-            if let Some(v) = kw.get_item("subscription_flush_threshold")? { config.subscription_flush_threshold = v.extract()?; }
-            if let Some(v) = kw.get_item("max_event_queue_size")? { config.max_event_queue_size = v.extract()?; }
-            if let Some(v) = kw.get_item("command_queue_size")? { config.command_queue_size = v.extract()?; }
-            if let Some(v) = kw.get_item("subscription_stream_capacity")? { config.subscription_stream_capacity = v.extract()?; }
-            if let Some(v) = kw.get_item("overflow_policy")? { config.overflow_policy = v.extract()?; }
-            if let Some(v) = kw.get_item("warmup_services")? { config.warmup_services = v.extract()?; }
+            if let Some(v) = kw.get_item("host")? {
+                config.host = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("port")? {
+                config.port = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("request_pool_size")? {
+                config.request_pool_size = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("subscription_pool_size")? {
+                config.subscription_pool_size = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("validation_mode")? {
+                config.validation_mode = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("subscription_flush_threshold")? {
+                config.subscription_flush_threshold = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("max_event_queue_size")? {
+                config.max_event_queue_size = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("command_queue_size")? {
+                config.command_queue_size = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("subscription_stream_capacity")? {
+                config.subscription_stream_capacity = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("overflow_policy")? {
+                config.overflow_policy = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("warmup_services")? {
+                config.warmup_services = v.extract()?;
+            }
         }
 
         Ok(config)
@@ -312,8 +338,13 @@ impl PyEngineConfig {
         format!(
             "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, \
              validation_mode='{}', overflow_policy='{}', warmup_services={:?})",
-            self.host, self.port, self.request_pool_size, self.subscription_pool_size,
-            self.validation_mode, self.overflow_policy, self.warmup_services
+            self.host,
+            self.port,
+            self.request_pool_size,
+            self.subscription_pool_size,
+            self.validation_mode,
+            self.overflow_policy,
+            self.warmup_services
         )
     }
 }
@@ -916,7 +947,11 @@ impl PyEngine {
 #[pyclass]
 pub struct PySubscription {
     /// Receiver for incoming data - separate lock so iteration doesn't block add/remove
-    rx: Arc<Mutex<Option<tokio::sync::mpsc::Receiver<Result<arrow::record_batch::RecordBatch, BlpError>>>>>,
+    rx: Arc<
+        Mutex<
+            Option<tokio::sync::mpsc::Receiver<Result<arrow::record_batch::RecordBatch, BlpError>>>,
+        >,
+    >,
     /// Stream handle for metadata and modification operations
     stream: Arc<Mutex<Option<SubscriptionStreamHandle>>>,
 }

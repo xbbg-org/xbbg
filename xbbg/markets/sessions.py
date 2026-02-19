@@ -95,10 +95,10 @@ def _load_rules() -> tuple[dict[str, MarketRule], dict[str, MarketRule]]:
     config_path = Path(__file__).parent / "config" / "sessions.toml"
 
     with config_path.open("rb") as f:
-        config = cast(dict[str, object], tomllib.load(f))
+        config = cast("dict[str, object]", tomllib.load(f))
 
-    mic_section = cast(dict[str, _MarketRuleKwargs], config.get("mic", {}))
-    exch_code_section = cast(dict[str, _MarketRuleKwargs], config.get("exch_code", {}))
+    mic_section = cast("dict[str, _MarketRuleKwargs]", config.get("mic", {}))
+    exch_code_section = cast("dict[str, _MarketRuleKwargs]", config.get("exch_code", {}))
 
     mic_rules = {mic: MarketRule(**rule_kwargs) for mic, rule_kwargs in mic_section.items()}
     exch_code_rules = {exch_code: MarketRule(**rule_kwargs) for exch_code, rule_kwargs in exch_code_section.items()}

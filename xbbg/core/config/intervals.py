@@ -4,6 +4,8 @@ Defines helpers to derive time windows (open, close, normal, exact)
 for an instrument's predefined sessions based on exchange metadata.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 import logging
 

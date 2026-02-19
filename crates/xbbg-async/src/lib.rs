@@ -1,8 +1,8 @@
 // Allow large error types - BlpError contains rich context for debugging
 #![allow(clippy::result_large_err)]
 
-mod errors;
 pub mod engine;
+mod errors;
 pub mod field_cache;
 pub mod request_builder;
 pub mod schema;

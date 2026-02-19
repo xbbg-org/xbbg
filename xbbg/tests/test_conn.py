@@ -708,7 +708,7 @@ class TestArequest:
         return ev
 
     def test_arequest_happy_path(self):
-        """arequest sends request, polls events, returns processed results."""
+        """Arequest sends request, polls events, returns processed results."""
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
@@ -743,7 +743,7 @@ class TestArequest:
         mock_session.sendRequest.assert_called_once()
 
     def test_arequest_partial_then_response(self):
-        """arequest accumulates results across PARTIAL_RESPONSE and RESPONSE events."""
+        """Arequest accumulates results across PARTIAL_RESPONSE and RESPONSE events."""
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
@@ -781,7 +781,7 @@ class TestArequest:
         assert results == [{"row": 1}, {"row": 2}]
 
     def test_arequest_retries_on_invalid_state(self):
-        """arequest removes stale session and retries on InvalidStateException."""
+        """Arequest removes stale session and retries on InvalidStateException."""
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
@@ -822,7 +822,7 @@ class TestArequest:
         assert results == [{"retried": True}]
 
     def test_arequest_skips_timeout_events(self):
-        """arequest ignores TIMEOUT events and continues polling."""
+        """Arequest ignores TIMEOUT events and continues polling."""
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
@@ -856,7 +856,7 @@ class TestArequest:
         assert results == [{"data": 42}]
 
     def test_arequest_handles_session_terminated(self):
-        """arequest returns partial results on SessionTerminated event."""
+        """Arequest returns partial results on SessionTerminated event."""
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
@@ -897,7 +897,7 @@ class TestArequest:
         assert results == []
 
     def test_arequest_slow_request_warning(self, caplog):
-        """arequest logs a warning when response takes longer than slow_warn_seconds."""
+        """Arequest logs a warning when response takes longer than slow_warn_seconds."""
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()

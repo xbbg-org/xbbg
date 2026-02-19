@@ -5,8 +5,8 @@ Data usage: ~100-200 data points per run (5 minutes of tick data)
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 import statistics
 import time
 import tracemalloc

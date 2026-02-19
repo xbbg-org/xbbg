@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -37,10 +36,6 @@ from xbbg.markets.overrides import (
     list_exchange_overrides,
     set_exchange_override,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # ============================================================================
 # Fixtures

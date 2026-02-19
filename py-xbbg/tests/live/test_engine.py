@@ -10,11 +10,13 @@ Usage:
     python tests/live/test_engine.py --list       # List available tests
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
+from datetime import date, timedelta
 import logging
 import sys
-from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -297,13 +299,13 @@ async def test_ext_functions(engine):
     logger.info("-" * 40)
 
     from xbbg._core import (
-        ext_parse_date,
-        ext_fmt_date,
-        ext_is_specific_contract,
-        ext_generate_futures_candidates,
         ext_build_fx_pair,
-        ext_same_currency,
+        ext_fmt_date,
+        ext_generate_futures_candidates,
         ext_get_futures_months,
+        ext_is_specific_contract,
+        ext_parse_date,
+        ext_same_currency,
     )
 
     # Date parsing
@@ -322,7 +324,7 @@ async def test_ext_functions(engine):
 
     # Futures candidates
     candidates = ext_generate_futures_candidates("ES1 Index", 2024, 3, 15, "Q", 4)
-    logger.info(f"  generate_futures_candidates('ES1 Index', Q, 4):")
+    logger.info("  generate_futures_candidates('ES1 Index', Q, 4):")
     for ticker, year, month in candidates:
         logger.debug(f"    {ticker} ({year}-{month:02d})")
 

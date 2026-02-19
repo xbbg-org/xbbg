@@ -756,7 +756,7 @@ class TestToOutputLongWithMetadata:
         assert list(result.columns) == ["ticker", "date", "field", "value", "dtype"]
 
     def test_long_metadata_dtype_values(self):
-        """dtype column should reflect Arrow type names."""
+        """Dtype column should reflect Arrow type names."""
         arrow_table = self._create_test_arrow_table()
         result = to_output(
             arrow_table,
@@ -880,8 +880,10 @@ class TestNonPandasDefaultSemiLong:
     """Regression test for #225: non-pandas backends should not default to WIDE."""
 
     def test_pyarrow_default_preserves_ticker_column(self):
-        """When format is not explicitly set, non-pandas backends should get
-        SEMI_LONG (which keeps ticker as a column) instead of WIDE."""
+        """When format is not explicitly set, non-pandas backends get SEMI_LONG.
+
+        SEMI_LONG keeps ticker as a column instead of WIDE.
+        """
         from xbbg.backend import Backend as BackendEnum, Format as FormatEnum
         from xbbg.options import get_format
 

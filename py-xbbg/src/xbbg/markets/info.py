@@ -36,7 +36,7 @@ class CurrencyPair:
 
 def _to_pandas_wide(data: Any) -> pd.DataFrame:
     utils = importlib.import_module("xbbg.ext._utils")
-    pivot_fn = cast(Any, getattr(utils, "_pivot_bdp_to_wide"))
+    pivot_fn = cast("Any", utils._pivot_bdp_to_wide)
     nw_df = nw.from_native(data)
     nw_df = pivot_fn(nw_df)
     return nw_df.to_pandas()
@@ -95,7 +95,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
 def market_info(ticker: str) -> pd.Series:
     """Get market info for a ticker using Bloomberg metadata fields."""
     xbbg_module = importlib.import_module("xbbg")
-    bdp_fn = cast(Any, getattr(xbbg_module, "bdp"))
+    bdp_fn = cast("Any", xbbg_module.bdp)
 
     t_info = ticker.split()
     if len(t_info) < 2:
@@ -193,8 +193,8 @@ def explode(data: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
 def ccy_pair(local: str, base: str = "USD") -> CurrencyPair:
     """Currency pair info using Rust FX helpers."""
     core = importlib.import_module("xbbg._core")
-    ext_same_currency = cast(Any, getattr(core, "ext_same_currency"))
-    ext_build_fx_pair = cast(Any, getattr(core, "ext_build_fx_pair"))
+    ext_same_currency = cast("Any", core.ext_same_currency)
+    ext_build_fx_pair = cast("Any", core.ext_build_fx_pair)
 
     if ext_same_currency(base, local):
         factor = 1.0

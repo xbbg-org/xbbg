@@ -151,7 +151,10 @@ impl RequestWorkerPool {
     /// Workers will terminate when they see the shutdown signal.
     /// Used by Drop to avoid blocking during interpreter shutdown.
     pub fn signal_shutdown(&self) {
-        xbbg_log::info!(pool_size = self.workers.len(), "signaling request pool shutdown");
+        xbbg_log::info!(
+            pool_size = self.workers.len(),
+            "signaling request pool shutdown"
+        );
         for worker in &self.workers {
             worker.signal_shutdown();
         }
@@ -161,7 +164,10 @@ impl RequestWorkerPool {
     ///
     /// Use this for clean shutdown when you can afford to wait.
     pub fn shutdown_blocking(&mut self) {
-        xbbg_log::info!(pool_size = self.workers.len(), "shutting down request pool (blocking)");
+        xbbg_log::info!(
+            pool_size = self.workers.len(),
+            "shutting down request pool (blocking)"
+        );
         for worker in &mut self.workers {
             worker.shutdown_blocking();
         }

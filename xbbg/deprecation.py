@@ -32,8 +32,6 @@ _BASE_ALL = [
 class XbbgFutureWarning(FutureWarning):
     """Warning for upcoming changes in xbbg v1.0."""
 
-    pass
-
 
 # Track which warnings have been issued this session
 _warned: set[str] = set()

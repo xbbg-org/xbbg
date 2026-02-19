@@ -83,7 +83,7 @@ select = [
   "SIM",  # flake8-simplify
   "RET",  # flake8-return
   "FA",   # flake8-future-annotations
-  "TCH",  # flake8-type-checking
+  "TC",   # flake8-type-checking
   "PERF", # perflint
   "RUF",  # ruff-specific rules
   "PIE",  # flake8-pie
@@ -92,6 +92,8 @@ select = [
 ignore = [
   "E501",   # line too long (handled by formatter)
   "D104",   # missing docstring in public package
+  "D102",   # missing docstring in public method
+  "D103",   # missing docstring in public function
   "D105",   # missing docstring in magic method
   "D107",   # missing docstring in __init__
   "RET504", # unnecessary assign before return
@@ -99,12 +101,37 @@ ignore = [
   "SIM108", # use ternary instead of if-else (readability)
   "RUF022", # unsorted __all__ (we organize by category)
   "PERF203", # try-except in loop (intentional for date parsing)
+  "RUF012",  # mutable ClassVar annotations
+  "TC001",   # type-checking-only first-party imports
+  "TC002",   # type-checking-only third-party imports
+  "TC003",   # type-checking-only stdlib imports
+  "SIM105",  # contextlib.suppress suggestion (readability preference)
+  "C416",    # unnecessary comprehension (dict() vs comprehension is style)
+  "RUF002",  # ambiguous unicode in docstring (× is intentional)
+  "RUF005",  # collection literal concatenation (readability)
+  "PIE810",  # multiple startswith (readability)
+  "UP031",   # printf-style formatting (existing code style)
+  "PERF401", # manual list comprehension (readability in async contexts)
+  "PERF402", # manual list copy
+  "PERF403", # manual dict comprehension
+  "D417",    # missing arg description (too strict for now)
+  "PT011",   # pytest-raises-too-broad
+  "PT012",   # pytest-raises-with-multiple-statements
+  "PT017",   # pytest-assert-in-except
+  "PT018",   # pytest-composite-assertion
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"benchmarks/**" = ["E402", "D", "I001", "F841", "B007"]
+"codegen/**" = ["D103"]
 "py-xbbg/src/xbbg/__init__.py" = ["F401", "E402"]
 "py-xbbg/src/xbbg/**/__init__.py" = ["F401"]
+"py-xbbg/tests/live/**" = ["D", "B007", "B905", "F841", "B023", "RUF001"]
 "py-xbbg/tests/**" = ["D", "PT"]
+"scripts/**" = ["D103"]
+"xbbg/api/**/__init__.py" = ["F401", "F403"]
+"xbbg/api/__init__.py" = ["F401", "F403"]
+"xbbg/core/strategies/__init__.py" = ["F403"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]

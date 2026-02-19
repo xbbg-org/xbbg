@@ -580,8 +580,13 @@ impl Engine {
         topics: Vec<String>,
         fields: Vec<String>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
-        self.subscribe_with_options(crate::services::Service::MktData.to_string(), topics, fields, vec![])
-            .await
+        self.subscribe_with_options(
+            crate::services::Service::MktData.to_string(),
+            topics,
+            fields,
+            vec![],
+        )
+        .await
     }
 
     /// Subscribe to real-time data with custom service and options.
@@ -794,7 +799,10 @@ impl Engine {
         }
 
         // Introspect via worker
-        let schema = self.request_pool.introspect_schema(service.to_string()).await?;
+        let schema = self
+            .request_pool
+            .introspect_schema(service.to_string())
+            .await?;
 
         // Cache and return
         Ok(self.schema_cache.insert(service, schema))
@@ -815,7 +823,10 @@ impl Engine {
             .get_operation(operation)
             .cloned()
             .ok_or_else(|| BlpAsyncError::ConfigError {
-                detail: format!("Operation '{}' not found in service '{}'", operation, service),
+                detail: format!(
+                    "Operation '{}' not found in service '{}'",
+                    operation, service
+                ),
             })
     }
 
@@ -1119,8 +1130,8 @@ impl SubscriptionStream {
         unsafe {
             let rx = ptr::read(&this.rx);
             let tx = ptr::read(&this.tx);
-            let claim = ptr::read(&mut this.claim)
-                .expect("into_parts called on already-closed stream");
+            let claim =
+                ptr::read(&mut this.claim).expect("into_parts called on already-closed stream");
             let keys = ptr::read(&this.keys);
             let topic_to_key = ptr::read(&this.topic_to_key);
             let service = ptr::read(&this.service);

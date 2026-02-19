@@ -7,7 +7,9 @@ All functions are designed to work with pandas DataFrames and can be used
 with the `.pipe()` method for method chaining.
 """
 
-from xbbg.utils.pipeline import (  # noqa: F401
+from __future__ import annotations
+
+from xbbg.utils.pipeline import (
     add_ticker,
     apply_fx,
     daily_stats,

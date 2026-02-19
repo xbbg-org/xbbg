@@ -139,8 +139,8 @@ class RequestBuilder:
             cache_policy=self._cache_policy,
             request_opts=self._request_opts,
             override_kwargs=self._override_kwargs,
-            backend=cast(Backend | None, self._backend),
-            format=cast(Format | None, self._format),
+            backend=cast("Backend | None", self._backend),
+            format=cast("Format | None", self._format),
             tz=self._tz,
         )
 

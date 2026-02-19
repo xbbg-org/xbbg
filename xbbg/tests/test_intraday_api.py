@@ -1,3 +1,7 @@
+"""Tests for intraday API pipeline."""
+
+from __future__ import annotations
+
 from pathlib import Path
 
 import pandas as pd
@@ -7,7 +11,7 @@ from xbbg.core.infra import conn
 
 
 def test_bdib_uses_cached_parquet_when_available(monkeypatch):
-    """bdib should load from cached intraday parquet and avoid live Bloomberg calls."""
+    """Bdib should load from cached intraday parquet and avoid live Bloomberg calls."""
     from xbbg.markets import bloomberg
     from xbbg.markets.bloomberg import ExchangeInfo
 

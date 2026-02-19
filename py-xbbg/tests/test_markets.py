@@ -11,8 +11,6 @@ import importlib.util
 import os
 import sys
 import threading
-from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -522,27 +520,22 @@ class TestSessionWindows:
     @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
     def test_session_windows_creation_empty(self):
         """SessionWindows: creates with all None fields."""
-        pass
 
     @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
     def test_session_windows_creation_with_fields(self):
         """SessionWindows: creates with specified fields."""
-        pass
 
     @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
     def test_session_windows_to_dict_empty(self):
         """SessionWindows.to_dict(): returns empty dict when all None."""
-        pass
 
     @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
     def test_session_windows_to_dict_excludes_none(self):
         """SessionWindows.to_dict(): excludes None values."""
-        pass
 
     @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
     def test_session_windows_to_dict_includes_all_non_none(self):
         """SessionWindows.to_dict(): includes all non-None values."""
-        pass
 
 
 # ============================================================================

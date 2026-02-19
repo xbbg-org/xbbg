@@ -5,6 +5,8 @@ a single source of truth for its availability. It also handles DLL path
 configuration for Windows environments.
 """
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
 import sys

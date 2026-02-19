@@ -267,10 +267,9 @@ fn recipe_active_cdx<'py>(
     let eng = engine.engine.clone();
 
     future_into_py(py, async move {
-        let batch =
-            xbbg_recipes::futures::recipe_active_cdx(&eng, gen_ticker, dt, lookback_days)
-                .await
-                .map_err(recipe_err)?;
+        let batch = xbbg_recipes::futures::recipe_active_cdx(&eng, gen_ticker, dt, lookback_days)
+            .await
+            .map_err(recipe_err)?;
 
         Python::attach(|py| record_batch_to_pyarrow(py, batch))
     })
@@ -395,11 +394,7 @@ fn recipe_currency_conversion<'py>(
 
     future_into_py(py, async move {
         let batch = xbbg_recipes::currency::recipe_currency_conversion(
-            &eng,
-            ticker,
-            target_ccy,
-            start_date,
-            end_date,
+            &eng, ticker, target_ccy, start_date, end_date,
         )
         .await
         .map_err(recipe_err)?;

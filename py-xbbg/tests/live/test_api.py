@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import logging
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -416,7 +416,6 @@ class TestBdtick:
 
     def test_bdtick_one_hour(self):
         """BDTICK: one hour window at market open (UTC times)."""
-        from datetime import datetime
 
         from xbbg import bdtick
 
@@ -443,7 +442,6 @@ class TestAbdtick:
     @pytest.mark.asyncio
     async def test_abdtick_basic(self):
         """ABDTICK: basic async call at market open (UTC times)."""
-        from datetime import datetime
 
         from xbbg import abdtick
 
@@ -610,7 +608,7 @@ class TestExtensions:
 
         df = ext.dividend(CONFIG.equity_single, start_date="2024-01-01")
 
-        assert len(df) >= 1, f"IBM should have dividends since 2024-01-01, got 0"
+        assert len(df) >= 1, "IBM should have dividends since 2024-01-01, got 0"
         logger.info(f"  Got {len(df)} dividend records")
 
     def test_ext_etf_holdings(self):
@@ -737,7 +735,7 @@ class TestExtensionsAsync:
 
         df = await ext.adividend(CONFIG.equity_single, start_date="2024-01-01")
 
-        assert len(df) >= 1, f"IBM should have dividends since 2024-01-01, got 0"
+        assert len(df) >= 1, "IBM should have dividends since 2024-01-01, got 0"
         logger.info(f"  Async result: {len(df)} dividend records")
 
     @pytest.mark.asyncio
@@ -870,11 +868,11 @@ class TestRawOutput:
 
         df = bdp(CONFIG.equity_single, [CONFIG.price_field, CONFIG.name_field], backend="pandas")
 
-        logger.debug(f"\n  Raw DataFrame:")
+        logger.debug("\n  Raw DataFrame:")
         logger.debug(f"  {df.to_string()}")
         logger.debug(f"\n  Columns: {list(df.columns)}")
         logger.debug(f"  Dtypes:\n{df.dtypes}")
-        logger.debug(f"\n  Sample values:")
+        logger.debug("\n  Sample values:")
         for col in df.columns:
             val = df[col].iloc[0]
             logger.debug(f"    {col}: {val!r} (type: {type(val).__name__})")
@@ -886,11 +884,11 @@ class TestRawOutput:
         start, end = get_date_range(5)
         df = bdh(CONFIG.equity_single, CONFIG.price_field, start_date=start, end_date=end, backend="pandas")
 
-        logger.debug(f"\n  Raw DataFrame (first 5 rows):")
+        logger.debug("\n  Raw DataFrame (first 5 rows):")
         logger.debug(f"  {df.head().to_string()}")
         logger.debug(f"\n  Columns: {list(df.columns)}")
         logger.debug(f"  Dtypes:\n{df.dtypes}")
-        logger.debug(f"\n  Sample values:")
+        logger.debug("\n  Sample values:")
         for col in df.columns:
             val = df[col].iloc[0]
             logger.debug(f"    {col}: {val!r} (type: {type(val).__name__})")
@@ -901,7 +899,7 @@ class TestRawOutput:
 
         df = bds(CONFIG.index_ticker, "INDX_MEMBERS", backend="pandas")
 
-        logger.debug(f"\n  Raw DataFrame (first 5 rows):")
+        logger.debug("\n  Raw DataFrame (first 5 rows):")
         logger.debug(f"  {df.head().to_string()}")
         logger.debug(f"\n  Columns: {list(df.columns)}")
         logger.debug(f"  Dtypes:\n{df.dtypes}")
@@ -1753,7 +1751,7 @@ def run_tests(test_names: list[str]) -> bool:
                     asyncio.run(result)
 
             passed += 1
-            logger.info(f"PASSED ✓")
+            logger.info("PASSED ✓")
         except pytest.skip.Exception as e:
             skipped += 1
             logger.warning(f"SKIPPED: {e}")

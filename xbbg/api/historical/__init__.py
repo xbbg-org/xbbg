@@ -4,8 +4,9 @@ This module provides Bloomberg historical data functionality using a pipeline-ba
 """
 
 # pyright: reportImportCycles=false
+from __future__ import annotations
 
-from . import historical as historical  # noqa: F401
+from . import historical as historical
 from .historical import *
 
 

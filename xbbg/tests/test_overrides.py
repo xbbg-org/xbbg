@@ -171,14 +171,14 @@ class TestIssue145Regression:
     """
 
     def test_interval_excluded_from_overrides(self):
-        """interval must not appear in proc_ovrds() output (#145)."""
+        """Interval must not appear in proc_ovrds() output (#145)."""
         result = list(overrides.proc_ovrds(interval=1, DVD_Start_Dt="20180101"))
         keys = [k for k, _ in result]
         assert "interval" not in keys
         assert "DVD_Start_Dt" in keys
 
     def test_interval_excluded_from_elements(self):
-        """interval must not appear in proc_elms() output either."""
+        """Interval must not appear in proc_elms() output either."""
         result = list(overrides.proc_elms(interval=1, Per="W"))
         keys = [k for k, _ in result]
         assert "interval" not in keys

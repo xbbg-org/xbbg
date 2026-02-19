@@ -30,15 +30,15 @@ def flatten(
         https://stackoverflow.com/a/40857703/1332656
 
     Examples:
-        >>> flatten('abc')
+        >>> flatten("abc")
         ['abc']
         >>> flatten(1)
         [1]
-        >>> flatten(1.)
+        >>> flatten(1.0)
         [1.0]
-        >>> flatten(['ab', 'cd', ['xy', 'zz']])
+        >>> flatten(["ab", "cd", ["xy", "zz"]])
         ['ab', 'cd', 'xy', 'zz']
-        >>> flatten(['ab', ['xy', 'zz']], maps={'xy': '0x'})
+        >>> flatten(["ab", ["xy", "zz"]], maps={"xy": "0x"})
         ['ab', '0x', 'zz']
     """
     if iterable is None:
@@ -78,9 +78,9 @@ def fmt_dt(
         str: Date in the requested format.
 
     Examples:
-        >>> fmt_dt(dt='2018-12')
+        >>> fmt_dt(dt="2018-12")
         '2018-12-01'
-        >>> fmt_dt(dt='2018-12-31', fmt='%Y%m%d')
+        >>> fmt_dt(dt="2018-12-31", fmt="%Y%m%d")
         '20181231'
     """
     return pd.Timestamp(dt).strftime(fmt)
@@ -100,16 +100,16 @@ def cur_time(
         Relevant current time or date.
 
     Examples:
-        >>> cur_dt = pd.Timestamp('now', tz='UTC')
-        >>> cur_time(typ='date') == cur_dt.strftime('%Y-%m-%d')
+        >>> cur_dt = pd.Timestamp("now", tz="UTC")
+        >>> cur_time(typ="date") == cur_dt.strftime("%Y-%m-%d")
         True
-        >>> cur_time(typ='time') == cur_dt.strftime('%Y-%m-%d %H:%M:%S')
+        >>> cur_time(typ="time") == cur_dt.strftime("%Y-%m-%d %H:%M:%S")
         True
-        >>> cur_time(typ='time_path') == cur_dt.strftime('%Y-%m-%d/%H-%M-%S')
+        >>> cur_time(typ="time_path") == cur_dt.strftime("%Y-%m-%d/%H-%M-%S")
         True
-        >>> isinstance(cur_time(typ='raw', tz='Europe/London'), pd.Timestamp)
+        >>> isinstance(cur_time(typ="raw", tz="Europe/London"), pd.Timestamp)
         True
-        >>> cur_time(typ='') == cur_dt.date()
+        >>> cur_time(typ="") == cur_dt.date()
         True
     """
     # Use UTC by default for consistency across server locations
@@ -151,7 +151,7 @@ def to_str(
         >>> test_dict = dict(b=1, a=0, c=2, _d=3)
         >>> to_str(test_dict)
         '{b=1, a=0, c=2}'
-        >>> to_str(test_dict, sep='|')
+        >>> to_str(test_dict, sep="|")
         '{b=1|a=0|c=2}'
         >>> to_str(test_dict, public_only=False)
         '{b=1, a=0, c=2, _d=3}'
@@ -262,13 +262,13 @@ def parse_subscription_topic(ticker: str) -> str:
         str: Full subscription topic string with identifier type prefix.
 
     Examples:
-        >>> parse_subscription_topic('IBM US Equity')
+        >>> parse_subscription_topic("IBM US Equity")
         '//blp/mktdata/TICKER/IBM US Equity'
-        >>> parse_subscription_topic('/isin/US0378331005')
+        >>> parse_subscription_topic("/isin/US0378331005")
         '//blp/mktdata/ISIN/US0378331005'
-        >>> parse_subscription_topic('/cusip/037833100')
+        >>> parse_subscription_topic("/cusip/037833100")
         '//blp/mktdata/CUSIP/037833100'
-        >>> parse_subscription_topic('/figi/BBG000B9XRY4')
+        >>> parse_subscription_topic("/figi/BBG000B9XRY4")
         '//blp/mktdata/FIGI/BBG000B9XRY4'
     """
     # Check for identifier prefix format: /type/identifier

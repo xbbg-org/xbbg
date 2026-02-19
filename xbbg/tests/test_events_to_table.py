@@ -68,7 +68,8 @@ class TestMixedTypeValueColumn:
     """Regression tests for the ArrowInvalid bug on mixed-type value columns."""
 
     def test_float_and_string_values(self):
-        """The exact scenario that triggered the bug:
+        """The exact scenario that triggered the bug.
+
         FUT_CONT_SIZE=50.0 (float) + FUT_VAL_PT='50.00' (str).
         """
         events = [

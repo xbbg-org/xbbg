@@ -1,5 +1,7 @@
 """Market information utilities."""
 
+from __future__ import annotations
+
 from xbbg.markets.bloomberg import ExchangeInfo, afetch_exchange_info, fetch_exchange_info
 from xbbg.markets.info import (
     ccy_pair,

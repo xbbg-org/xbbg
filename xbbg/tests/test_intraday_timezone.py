@@ -156,7 +156,7 @@ class TestIntradayTransformerTimezone:
         assert result.num_rows == 0
 
     def test_num_events_renamed(self):
-        """numEvents column should be renamed to num_trds."""
+        """NumEvents column should be renamed to num_trds."""
         transformer = IntradayTransformer()
         result = transformer.transform(
             raw_data=_utc_bar_table(),

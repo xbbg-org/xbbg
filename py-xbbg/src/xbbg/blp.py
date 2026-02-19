@@ -14,18 +14,17 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-import functools
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-
-
+import functools
 import logging
+import time
 from typing import TYPE_CHECKING, Any, TypeAlias
 import warnings
 
 import narwhals.stable.v1 as nw
+from narwhals.typing import IntoFrame
 import pyarrow as pa
 
 from xbbg.services import (
@@ -36,8 +35,6 @@ from xbbg.services import (
     RequestParams,
     Service,
 )
-
-from narwhals.typing import IntoFrame
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -87,7 +84,6 @@ __all__ = [
     "abdtick",
     "abql",
     "absrch",
-    "abfld",
     "abeqs",
     "ablkp",
     "abport",
@@ -101,7 +97,6 @@ __all__ = [
     "bdtick",
     "bql",
     "bsrch",
-    "bfld",
     "beqs",
     "blkp",
     "bport",
@@ -551,7 +546,7 @@ def _handle_deprecated_wide_format(
     return fmt, want_wide
 
 
-def _apply_wide_pivot_bdp(df) -> "pd.DataFrame":
+def _apply_wide_pivot_bdp(df) -> pd.DataFrame:
     """Apply wide format pivot to BDP DataFrame for 0.7.7 compatibility.
 
     Converts from long format to wide format with ticker as index.
@@ -562,8 +557,6 @@ def _apply_wide_pivot_bdp(df) -> "pd.DataFrame":
     Returns:
         pandas DataFrame with ticker as index and fields as columns
     """
-    import pandas as pd
-
     # Convert to pandas if needed
     if hasattr(df, "to_pandas"):
         pdf = df.to_pandas()
@@ -576,7 +569,7 @@ def _apply_wide_pivot_bdp(df) -> "pd.DataFrame":
     return result
 
 
-def _apply_wide_pivot_bdh(df) -> "pd.DataFrame":
+def _apply_wide_pivot_bdh(df) -> pd.DataFrame:
     """Apply wide format pivot to BDH DataFrame for 0.7.7 compatibility.
 
     Converts from Long format [ticker, date, field, value] to
@@ -1351,7 +1344,6 @@ def bdp(
         df = bdp("AAPL US Equity", ["PX_LAST", "VOLUME"])
         df = bdp(["AAPL US Equity", "MSFT US Equity"], "PX_LAST", backend="polars")
     """
-    ...
 
 
 _bdp_doc = bdp.__doc__
@@ -1394,7 +1386,6 @@ def bdh(
         df = bdh("AAPL US Equity", "PX_LAST", start_date="2024-01-01")
         df = bdh(["AAPL", "MSFT"], ["PX_LAST", "VOLUME"], backend="polars")
     """
-    ...
 
 
 _bdh_doc = bdh.__doc__
@@ -1429,7 +1420,6 @@ def bds(
         df = bds("AAPL US Equity", "DVD_Hist_All")
         df = bds("SPX Index", "INDX_MEMBERS", backend="polars")
     """
-    ...
 
 
 _bds_doc = bds.__doc__
@@ -1480,7 +1470,6 @@ def bdib(
             backend="polars",
         )
     """
-    ...
 
 
 _bdib_doc = bdib.__doc__
@@ -1517,7 +1506,6 @@ def bdtick(
         df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00")
         df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", backend="polars")
     """
-    ...
 
 
 _bdtick_doc = bdtick.__doc__
@@ -1736,7 +1724,6 @@ def subscribe(
 
     See asubscribe() for full documentation.
     """
-    ...
 
 
 _subscribe_doc = subscribe.__doc__
@@ -2827,7 +2814,6 @@ def bql(
         # Index members with filter
         df = bql("get(px_last, pe_ratio) for(members('SPX Index')) with(pe_ratio > 20)")
     """
-    ...
 
 
 _bql_doc = bql.__doc__
@@ -2917,7 +2903,6 @@ def bsrch(
         # With additional parameters
         df = bsrch("COMDTY:WEATHER", LOCATION="NYC", MODEL="GFS")
     """
-    ...
 
 
 _bsrch_doc = bsrch.__doc__
@@ -3001,7 +2986,6 @@ def bflds(
         # Get info for multiple fields
         df = bflds(["PX_LAST", "VOLUME", "NAME"])
     """
-    ...
 
 
 _bflds_doc = bflds.__doc__
@@ -3121,7 +3105,6 @@ def beqs(
         # Run a Bloomberg global screen
         df = beqs("TOP_DECL_DVD", screen_type="GLOBAL")
     """
-    ...
 
 
 _beqs_doc = beqs.__doc__
@@ -3252,7 +3235,6 @@ def blkp(
         # Get more results
         df = blkp("Microsoft", max_results=50)
     """
-    ...
 
 
 _blkp_doc = blkp.__doc__
@@ -3347,7 +3329,6 @@ def bport(
         # Get multiple fields
         df = bport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
     """
-    ...
 
 
 _bport_doc = bport.__doc__
@@ -3485,7 +3466,6 @@ def bcurves(
         # Look up specific curve
         df = bcurves(curveid="YCSW0023 Index")
     """
-    ...
 
 
 _bcurves_doc = bcurves.__doc__
@@ -3593,7 +3573,6 @@ def bgovts(
         # Exact match only
         df = bgovts("T 2.5 05/15/24", partial_match=False)
     """
-    ...
 
 
 _bgovts_doc = bgovts.__doc__
@@ -3650,7 +3629,6 @@ def bops(service: str | Service = Service.REFDATA) -> list[str]:
         >>> bops("//blp/instruments")
         ['InstrumentListRequest', ...]
     """
-    ...
 
 
 _bops_doc = bops.__doc__
@@ -3756,7 +3734,6 @@ def bschema(
         >>> [c['name'] for c in op['request']['children']]
         ['securities', 'fields', 'overrides', ...]
     """
-    ...
 
 
 _bschema_doc = bschema.__doc__

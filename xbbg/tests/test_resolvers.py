@@ -1,5 +1,7 @@
 """Unit tests for market resolvers."""
 
+from __future__ import annotations
+
 import pandas as pd
 import pytest
 
@@ -15,7 +17,7 @@ class TestActiveFuturesValidation:
         # Note: We can't actually call active_futures without Bloomberg connection,
         # but we can test the validation logic by checking if ValueError is raised
         # for specific contracts vs generic ones
-        pass  # Validation happens before Bloomberg calls
+        # Validation happens before Bloomberg calls
 
     def test_specific_contract_single_digit_year_raises(self):
         """Test that specific contracts with single digit year raise ValueError."""

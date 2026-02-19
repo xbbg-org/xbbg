@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 from typing import Any
 
 try:
@@ -58,14 +60,14 @@ def load_defs(path: Path) -> dict[str, Any]:
     required = ["services", "operations", "extractors", "formats", "output_modes"]
     for key in required:
         if key not in data:
-            raise ValueError("Missing [{}] section in {}".format(key, path))
+            raise ValueError(f"Missing [{key}] section in {path}")
     return data
 
 
 def find_default_name(section: str, table: dict[str, dict[str, Any]], names: dict[str, str]) -> str:
     defaults = [key for key, data in table.items() if data.get("default") is True]
     if len(defaults) != 1:
-        raise ValueError("Section [{}] must define exactly one default item".format(section))
+        raise ValueError(f"Section [{section}] must define exactly one default item")
     return names[defaults[0]]
 
 
@@ -77,9 +79,9 @@ def validate_refs(defs: dict[str, Any]) -> None:
         service_key = op.get("service")
         extractor_key = op.get("extractor")
         if service_key is not None and service_key not in service_keys:
-            raise ValueError("Operation {} references unknown service {}".format(op_key, service_key))
+            raise ValueError(f"Operation {op_key} references unknown service {service_key}")
         if extractor_key is not None and extractor_key not in extractor_keys:
-            raise ValueError("Operation {} references unknown extractor {}".format(op_key, extractor_key))
+            raise ValueError(f"Operation {op_key} references unknown extractor {extractor_key}")
 
 
 def render_rust(defs: dict[str, Any]) -> str:
@@ -116,7 +118,7 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("pub enum Service {")
     for key, data in sorted_items(services):
         lines.append("    /// {}".format(data["doc"]))
-        lines.append("    {},".format(service_names[key]))
+        lines.append(f"    {service_names[key]},")
     lines.append("    /// Custom service URI not listed above.")
     lines.append("    Custom(String),")
     lines.append("}")
@@ -188,7 +190,7 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("pub enum Operation {")
     for key, data in sorted_items(operations):
         lines.append("    /// {}".format(data["doc"]))
-        lines.append("    {},".format(operation_names[key]))
+        lines.append(f"    {operation_names[key]},")
     lines.append("    /// Custom operation name not listed above.")
     lines.append("    Custom(String),")
     lines.append("}")
@@ -217,12 +219,7 @@ def render_rust(defs: dict[str, Any]) -> str:
             extractor_variant = "Generic"
         else:
             extractor_variant = extractor_names[extractor_key]
-        lines.append(
-            "            Self::{} => ExtractorType::{},".format(
-                operation_names[key],
-                extractor_variant,
-            )
-        )
+        lines.append(f"            Self::{operation_names[key]} => ExtractorType::{extractor_variant},")
     lines.append("            Self::Custom(_) => ExtractorType::Generic,")
     lines.append("        }")
     lines.append("    }")
@@ -235,8 +232,8 @@ def render_rust(defs: dict[str, Any]) -> str:
         if service_key is None:
             service_expr = "None"
         else:
-            service_expr = "Some(Service::{})".format(service_names[service_key])
-        lines.append("            Self::{} => {},".format(operation_names[key], service_expr))
+            service_expr = f"Some(Service::{service_names[service_key]})"
+        lines.append(f"            Self::{operation_names[key]} => {service_expr},")
     lines.append("            Self::Custom(_) => None,")
     lines.append("        }")
     lines.append("    }")
@@ -294,7 +291,7 @@ def render_rust(defs: dict[str, Any]) -> str:
         lines.append("    /// {}".format(data["doc"]))
         if extractor_names[key] == default_extractor_name:
             lines.append("    #[default]")
-        lines.append("    {},".format(extractor_names[key]))
+        lines.append(f"    {extractor_names[key]},")
     lines.append("}")
     lines.append("")
     lines.append("impl ExtractorType {")
@@ -323,7 +320,7 @@ def render_rust(defs: dict[str, Any]) -> str:
         lines.append("    /// {}".format(data["doc"]))
         if format_names[key] == default_format_name:
             lines.append("    #[default]")
-        lines.append("    {},".format(format_names[key]))
+        lines.append(f"    {format_names[key]},")
     lines.append("}")
     lines.append("")
     lines.append("impl Format {")
@@ -374,7 +371,7 @@ def render_rust(defs: dict[str, Any]) -> str:
         lines.append("    /// {}".format(data["doc"]))
         if output_mode_names[key] == default_output_mode_name:
             lines.append("    #[default]")
-        lines.append("    {},".format(output_mode_names[key]))
+        lines.append(f"    {output_mode_names[key]},")
     lines.append("}")
     lines.append("")
     lines.append("impl OutputMode {")
@@ -427,22 +424,13 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("    #[test]")
     lines.append("    fn service_roundtrip() {")
     lines.append(
-        '        assert_eq!(Service::from_str("{}").unwrap(), Service::{});'.format(
-            escape_rust_string(roundtrip_service_uri),
-            roundtrip_service_variant,
-        )
+        f'        assert_eq!(Service::from_str("{escape_rust_string(roundtrip_service_uri)}").unwrap(), Service::{roundtrip_service_variant});'
     )
     lines.append(
-        '        assert_eq!(Service::{}.as_str(), "{}");'.format(
-            roundtrip_service_variant,
-            escape_rust_string(roundtrip_service_uri),
-        )
+        f'        assert_eq!(Service::{roundtrip_service_variant}.as_str(), "{escape_rust_string(roundtrip_service_uri)}");'
     )
     lines.append(
-        '        assert_eq!(Service::{}.to_string(), "{}");'.format(
-            roundtrip_service_variant,
-            escape_rust_string(roundtrip_service_uri),
-        )
+        f'        assert_eq!(Service::{roundtrip_service_variant}.to_string(), "{escape_rust_string(roundtrip_service_uri)}");'
     )
     lines.append("    }")
     lines.append("")
@@ -471,11 +459,11 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("")
     lines.append("    #[test]")
     lines.append("    fn service_serde() {")
-    lines.append("        let svc = Service::{};".format(roundtrip_service_variant))
+    lines.append(f"        let svc = Service::{roundtrip_service_variant};")
     lines.append("        let json = serde_json::to_string(&svc).unwrap();")
-    lines.append('        assert_eq!(json, r#""{}""#);'.format(escape_rust_string(roundtrip_service_uri)))
+    lines.append(f'        assert_eq!(json, r#""{escape_rust_string(roundtrip_service_uri)}""#);')
     lines.append("        let back: Service = serde_json::from_str(&json).unwrap();")
-    lines.append("        assert_eq!(back, Service::{});".format(roundtrip_service_variant))
+    lines.append(f"        assert_eq!(back, Service::{roundtrip_service_variant});")
     lines.append("    }")
     lines.append("")
 
@@ -489,22 +477,13 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("    #[test]")
     lines.append("    fn operation_roundtrip() {")
     lines.append(
-        '        assert_eq!(Operation::from_str("{}").unwrap(), Operation::{});'.format(
-            escape_rust_string(roundtrip_operation_value),
-            roundtrip_operation_variant,
-        )
+        f'        assert_eq!(Operation::from_str("{escape_rust_string(roundtrip_operation_value)}").unwrap(), Operation::{roundtrip_operation_variant});'
     )
     lines.append(
-        '        assert_eq!(Operation::{}.as_str(), "{}");'.format(
-            roundtrip_operation_variant,
-            escape_rust_string(roundtrip_operation_value),
-        )
+        f'        assert_eq!(Operation::{roundtrip_operation_variant}.as_str(), "{escape_rust_string(roundtrip_operation_value)}");'
     )
     lines.append(
-        '        assert_eq!(Operation::{}.to_string(), "{}");'.format(
-            roundtrip_operation_variant,
-            escape_rust_string(roundtrip_operation_value),
-        )
+        f'        assert_eq!(Operation::{roundtrip_operation_variant}.to_string(), "{escape_rust_string(roundtrip_operation_value)}");'
     )
     lines.append("    }")
     lines.append("")
@@ -533,11 +512,11 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("")
     lines.append("    #[test]")
     lines.append("    fn operation_serde() {")
-    lines.append("        let op = Operation::{};".format(serde_operation_variant))
+    lines.append(f"        let op = Operation::{serde_operation_variant};")
     lines.append("        let json = serde_json::to_string(&op).unwrap();")
-    lines.append('        assert_eq!(json, r#""{}""#);'.format(escape_rust_string(serde_operation_value)))
+    lines.append(f'        assert_eq!(json, r#""{escape_rust_string(serde_operation_value)}""#);')
     lines.append("        let back: Operation = serde_json::from_str(&json).unwrap();")
-    lines.append("        assert_eq!(back, Operation::{});".format(serde_operation_variant))
+    lines.append(f"        assert_eq!(back, Operation::{serde_operation_variant});")
     lines.append("    }")
     lines.append("")
     lines.append("    #[test]")
@@ -549,10 +528,7 @@ def render_rust(defs: dict[str, Any]) -> str:
         else:
             extractor_variant = extractor_names[extractor_key]
         lines.append(
-            "        assert_eq!(Operation::{}.default_extractor(), ExtractorType::{});".format(
-                operation_names[key],
-                extractor_variant,
-            )
+            f"        assert_eq!(Operation::{operation_names[key]}.default_extractor(), ExtractorType::{extractor_variant});"
         )
     lines.append('        assert_eq!(Operation::Custom("foo".into()).default_extractor(), ExtractorType::Generic);')
     lines.append("    }")
@@ -564,13 +540,8 @@ def render_rust(defs: dict[str, Any]) -> str:
         if service_key is None:
             service_expr = "None"
         else:
-            service_expr = "Some(Service::{})".format(service_names[service_key])
-        lines.append(
-            "        assert_eq!(Operation::{}.default_service(), {});".format(
-                operation_names[key],
-                service_expr,
-            )
-        )
+            service_expr = f"Some(Service::{service_names[service_key]})"
+        lines.append(f"        assert_eq!(Operation::{operation_names[key]}.default_service(), {service_expr});")
     lines.append('        assert_eq!(Operation::Custom("foo".into()).default_service(), None);')
     lines.append("    }")
     lines.append("")
@@ -585,17 +556,9 @@ def render_rust(defs: dict[str, Any]) -> str:
     if lowercase_ops:
         for variant, value in lowercase_ops:
             lines.append(
-                '        assert_eq!(Operation::from_str("{}").unwrap(), Operation::{});'.format(
-                    escape_rust_string(value),
-                    variant,
-                )
+                f'        assert_eq!(Operation::from_str("{escape_rust_string(value)}").unwrap(), Operation::{variant});'
             )
-            lines.append(
-                '        assert_eq!(Operation::{}.as_str(), "{}");'.format(
-                    variant,
-                    escape_rust_string(value),
-                )
-            )
+            lines.append(f'        assert_eq!(Operation::{variant}.as_str(), "{escape_rust_string(value)}");')
             lines.append("")
         if lines[-1] == "":
             _ = lines.pop()
@@ -614,22 +577,13 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("    #[test]")
     lines.append("    fn format_roundtrip() {")
     lines.append(
-        '        assert_eq!(Format::from_str("{}").unwrap(), Format::{});'.format(
-            escape_rust_string(roundtrip_format_value),
-            roundtrip_format_variant,
-        )
+        f'        assert_eq!(Format::from_str("{escape_rust_string(roundtrip_format_value)}").unwrap(), Format::{roundtrip_format_variant});'
     )
     lines.append(
-        '        assert_eq!(Format::{}.as_str(), "{}");'.format(
-            roundtrip_format_variant,
-            escape_rust_string(roundtrip_format_value),
-        )
+        f'        assert_eq!(Format::{roundtrip_format_variant}.as_str(), "{escape_rust_string(roundtrip_format_value)}");'
     )
     lines.append(
-        '        assert_eq!(Format::{}.to_string(), "{}");'.format(
-            roundtrip_format_variant,
-            escape_rust_string(roundtrip_format_value),
-        )
+        f'        assert_eq!(Format::{roundtrip_format_variant}.to_string(), "{escape_rust_string(roundtrip_format_value)}");'
     )
     lines.append("    }")
     lines.append("")
@@ -656,11 +610,11 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("")
     lines.append("    #[test]")
     lines.append("    fn format_serde() {")
-    lines.append("        let fmt = Format::{};".format(serde_format_variant))
+    lines.append(f"        let fmt = Format::{serde_format_variant};")
     lines.append("        let json = serde_json::to_string(&fmt).unwrap();")
-    lines.append('        assert_eq!(json, r#""{}""#);'.format(escape_rust_string(serde_format_value)))
+    lines.append(f'        assert_eq!(json, r#""{escape_rust_string(serde_format_value)}""#);')
     lines.append("        let back: Format = serde_json::from_str(&json).unwrap();")
-    lines.append("        assert_eq!(back, Format::{});".format(serde_format_variant))
+    lines.append(f"        assert_eq!(back, Format::{serde_format_variant});")
     lines.append("    }")
     lines.append("")
 
@@ -674,22 +628,13 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("    #[test]")
     lines.append("    fn output_mode_roundtrip() {")
     lines.append(
-        '        assert_eq!(OutputMode::from_str("{}").unwrap(), OutputMode::{});'.format(
-            escape_rust_string(roundtrip_mode_value),
-            roundtrip_mode_variant,
-        )
+        f'        assert_eq!(OutputMode::from_str("{escape_rust_string(roundtrip_mode_value)}").unwrap(), OutputMode::{roundtrip_mode_variant});'
     )
     lines.append(
-        '        assert_eq!(OutputMode::{}.as_str(), "{}");'.format(
-            roundtrip_mode_variant,
-            escape_rust_string(roundtrip_mode_value),
-        )
+        f'        assert_eq!(OutputMode::{roundtrip_mode_variant}.as_str(), "{escape_rust_string(roundtrip_mode_value)}");'
     )
     lines.append(
-        '        assert_eq!(OutputMode::{}.to_string(), "{}");'.format(
-            roundtrip_mode_variant,
-            escape_rust_string(roundtrip_mode_value),
-        )
+        f'        assert_eq!(OutputMode::{roundtrip_mode_variant}.to_string(), "{escape_rust_string(roundtrip_mode_value)}");'
     )
     lines.append("    }")
     lines.append("")
@@ -716,11 +661,11 @@ def render_rust(defs: dict[str, Any]) -> str:
     lines.append("")
     lines.append("    #[test]")
     lines.append("    fn output_mode_serde() {")
-    lines.append("        let mode = OutputMode::{};".format(serde_mode_variant))
+    lines.append(f"        let mode = OutputMode::{serde_mode_variant};")
     lines.append("        let json = serde_json::to_string(&mode).unwrap();")
-    lines.append('        assert_eq!(json, r#""{}""#);'.format(escape_rust_string(serde_mode_value)))
+    lines.append(f'        assert_eq!(json, r#""{escape_rust_string(serde_mode_value)}""#);')
     lines.append("        let back: OutputMode = serde_json::from_str(&json).unwrap();")
-    lines.append("        assert_eq!(back, OutputMode::{});".format(serde_mode_variant))
+    lines.append(f"        assert_eq!(back, OutputMode::{serde_mode_variant});")
     lines.append("    }")
     lines.append("}")
 
@@ -736,6 +681,8 @@ def render_python(defs: dict[str, Any]) -> str:
 
     lines: list[str] = []
     lines.append(PY_HEADER)
+    lines.append("")
+    lines.append("from __future__ import annotations")
     lines.append("")
     lines.append("from enum import Enum")
     lines.append("")
@@ -851,12 +798,28 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _rustfmt(text: str) -> str:
+    """Run rustfmt on generated Rust code so it matches cargo fmt output."""
+    rustfmt = shutil.which("rustfmt")
+    if rustfmt is None:
+        return text
+    result = subprocess.run(
+        [rustfmt, "--edition", "2021"],
+        input=text,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    return result.stdout if result.returncode == 0 else text
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
 
     defs = load_defs(DEFS_PATH)
     validate_refs(defs)
-    rust_text = render_rust(defs)
+    rust_text = _rustfmt(render_rust(defs))
     python_text = render_python(defs)
 
     targets = [
@@ -871,7 +834,7 @@ def main(argv: list[str]) -> int:
                 stale.append(path)
         if stale:
             for path in stale:
-                print("Stale generated file: {}".format(path.relative_to(ROOT)))
+                print(f"Stale generated file: {path.relative_to(ROOT)}")
             return 1
         print("Generated files are up to date.")
         return 0
@@ -881,9 +844,9 @@ def main(argv: list[str]) -> int:
         changed = write_if_changed(path, expected)
         if changed:
             changed_any = True
-            print("Updated {}".format(path.relative_to(ROOT)))
+            print(f"Updated {path.relative_to(ROOT)}")
         else:
-            print("Unchanged {}".format(path.relative_to(ROOT)))
+            print(f"Unchanged {path.relative_to(ROOT)}")
 
     if not changed_any:
         print("No changes needed.")

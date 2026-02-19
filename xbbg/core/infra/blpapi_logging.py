@@ -4,6 +4,8 @@ This module provides integration with blpapi's internal logging system
 and adds structured logging for Bloomberg events and messages.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from contextlib import suppress
 import logging
@@ -147,7 +149,7 @@ def log_event_info(event, context: str = "") -> None:
         elif event_type == blpapi.Event.SUBSCRIPTION_STATUS:
             logger.debug("Subscription status event received")
 
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Don't log exceptions here - avoid recursive logging issues.
         # Silently ignore exceptions in logging code to prevent recursion.
         # Returning early avoids the "try/except/pass" pattern flagged by some linters
@@ -173,7 +175,7 @@ def log_message_info(msg, context: str = "") -> None:
         return
 
     # Always check for errors (important, rare, should be logged)
-    with suppress(Exception):  # noqa: BLE001
+    with suppress(Exception):
         if msg.hasElement("responseError"):
             error_elem = msg.getElement("responseError")
             if error_elem.hasElement("category"):
@@ -236,10 +238,10 @@ def log_message_info(msg, context: str = "") -> None:
                 " [%s]" % context if context else "",
             )
 
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Don't log exceptions here - avoid recursive logging issues
         # Silently ignore exceptions in logging code to prevent recursion
-        pass  # noqa: S110
+        pass
 
 
 def _get_event_type_name(event_type: int) -> str:

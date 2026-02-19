@@ -14,8 +14,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import sys
 from datetime import datetime, timezone
+import sys
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")

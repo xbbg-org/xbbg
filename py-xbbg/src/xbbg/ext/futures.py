@@ -19,16 +19,16 @@ Async functions (primary implementation):
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import datetime, timedelta
+import logging
 from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
 
 # Import Rust ext utilities for max performance
 from xbbg._core import (
-    ext_contract_index,
     ext_cdx_gen_to_specific,
+    ext_contract_index,
     ext_filter_candidates_by_cycle,
     ext_filter_valid_contracts,
     ext_generate_futures_candidates,

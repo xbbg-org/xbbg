@@ -25,8 +25,8 @@ Example usage:
     >>> xbbg.options.set_format(Format.LONG)  # doctest: +SKIP
     >>>
     >>> # Also works with strings
-    >>> xbbg.options.set_backend('polars')  # doctest: +SKIP
-    >>> xbbg.options.set_format('long')  # doctest: +SKIP
+    >>> xbbg.options.set_backend("polars")  # doctest: +SKIP
+    >>> xbbg.options.set_format("long")  # doctest: +SKIP
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def set_backend(backend: Backend | str) -> None:
         >>> options.set_backend(Backend.POLARS)  # doctest: +SKIP
         >>>
         >>> # Using string
-        >>> options.set_backend('polars')  # doctest: +SKIP
+        >>> options.set_backend("polars")  # doctest: +SKIP
     """
     global _default_backend
     if isinstance(backend, str):
@@ -116,7 +116,7 @@ def set_format(fmt: Format | str) -> None:
         >>> options.set_format(Format.LONG)  # doctest: +SKIP
         >>>
         >>> # Using string
-        >>> options.set_format('long')  # doctest: +SKIP
+        >>> options.set_format("long")  # doctest: +SKIP
     """
     global _default_format
     if isinstance(fmt, str):

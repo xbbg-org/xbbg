@@ -160,7 +160,7 @@ def test_option_chain_bql() -> None:
 def test_option_screen() -> None:
     _section("OPTION SCREEN")
 
-    print(f"\n--- option_screen(['SPY US 03/20/26 C680 Equity', 'SPY US 03/20/26 P680 Equity']) ---")
+    print("\n--- option_screen(['SPY US 03/20/26 C680 Equity', 'SPY US 03/20/26 P680 Equity']) ---")
     _safe_print(option_screen(["SPY US 03/20/26 C680 Equity", "SPY US 03/20/26 P680 Equity"]))
 
 

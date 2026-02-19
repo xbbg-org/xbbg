@@ -49,18 +49,17 @@ def etf_holdings(
 
         >>> from xbbg import blp  # doctest: +SKIP
         >>> # Get holdings for an ETF
-        >>> df = blp.etf_holdings('SPY US Equity')  # doctest: +SKIP
+        >>> df = blp.etf_holdings("SPY US Equity")  # doctest: +SKIP
         >>> df is not None  # doctest: +SKIP
         True
 
         >>> # Get holdings with additional fields
         >>> df = blp.etf_holdings(  # doctest: +SKIP
-        ...     'SPY US Equity',
-        ...     fields=['name', 'px_last']
+        ...     "SPY US Equity", fields=["name", "px_last"]
         ... )
 
         >>> # Ticker without suffix (will append ' US Equity')
-        >>> df = blp.etf_holdings('SPY')  # doctest: +SKIP
+        >>> df = blp.etf_holdings("SPY")  # doctest: +SKIP
     """
     # Normalize ticker format - ensure it has proper suffix
     if " " not in etf_ticker:
@@ -122,18 +121,17 @@ def preferreds(
 
         >>> from xbbg import blp  # doctest: +SKIP
         >>> # Find preferred stocks for Bank of America
-        >>> df = blp.preferreds('BAC US Equity')  # doctest: +SKIP
+        >>> df = blp.preferreds("BAC US Equity")  # doctest: +SKIP
         >>> df is not None  # doctest: +SKIP
         True
 
         >>> # Find preferreds with additional fields
         >>> df = blp.preferreds(  # doctest: +SKIP
-        ...     'BAC',
-        ...     fields=['cpn', 'maturity']
+        ...     "BAC", fields=["cpn", "maturity"]
         ... )
 
         >>> # Works with just the ticker symbol
-        >>> df = blp.preferreds('WFC')  # doctest: +SKIP
+        >>> df = blp.preferreds("WFC")  # doctest: +SKIP
 
     Notes:
         The underlying BQL query uses the debt() function with a filter for
@@ -205,19 +203,17 @@ def corporate_bonds(
 
         >>> from xbbg import blp  # doctest: +SKIP
         >>> # Find USD corporate bonds for Apple
-        >>> df = blp.corporate_bonds('AAPL')  # doctest: +SKIP
+        >>> df = blp.corporate_bonds("AAPL")  # doctest: +SKIP
         >>> df is not None  # doctest: +SKIP
         True
 
         >>> # Find EUR bonds for AT&T with additional fields
         >>> df = blp.corporate_bonds(  # doctest: +SKIP
-        ...     'T',
-        ...     ccy='EUR',
-        ...     fields=['name', 'cpn', 'maturity', 'amt_outstanding']
+        ...     "T", ccy="EUR", fields=["name", "cpn", "maturity", "amt_outstanding"]
         ... )
 
         >>> # Find all USD bonds for Bank of America
-        >>> df = blp.corporate_bonds('BAC', ccy='USD')  # doctest: +SKIP
+        >>> df = blp.corporate_bonds("BAC", ccy="USD")  # doctest: +SKIP
 
     Notes:
         The underlying BQL query uses bondsuniv('active') with filters for

@@ -4,8 +4,9 @@ This module provides Bloomberg reference data functionality using a pipeline-bas
 """
 
 # pyright: reportImportCycles=false
+from __future__ import annotations
 
-from . import lookup as lookup, reference as reference  # noqa: F401
+from . import lookup as lookup, reference as reference
 from .lookup import *
 from .reference import *
 
