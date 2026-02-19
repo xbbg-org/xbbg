@@ -80,7 +80,7 @@ impl BqlState {
         if let Some(beql_data) = root.get_by_str("beqlData") {
             if let Some(results) = beql_data.get_by_str("results") {
                 // Check if first result is a JSON string
-                if results.len() > 0 {
+                if !results.is_empty() {
                     if let Some(first) = results.get_element(0) {
                         if let Some(xbbg_core::Value::String(s)) = first.get_value(0) {
                             // This is a JSON-encoded response

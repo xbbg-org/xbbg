@@ -22,6 +22,7 @@ const FIELDS: &[&str] = &[
 
 const TOPICS: &[&str] = &["ESH6 Index"];
 
+#[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
     eprintln!("=== get_by_str vs get_at Diagnostic Probe ===\n");
 

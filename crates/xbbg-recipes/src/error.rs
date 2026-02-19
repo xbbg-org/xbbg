@@ -7,7 +7,7 @@ use thiserror::Error;
 pub enum RecipeError {
     /// Error from the Bloomberg async engine.
     #[error("Bloomberg engine error: {0}")]
-    Engine(#[from] xbbg_async::BlpAsyncError),
+    Engine(#[source] Box<xbbg_async::BlpAsyncError>),
 
     /// Error from xbbg-ext utilities.
     #[error("Extension utility error: {0}")]
@@ -24,6 +24,12 @@ pub enum RecipeError {
     /// General recipe error.
     #[error("Recipe error: {0}")]
     Other(String),
+}
+
+impl From<xbbg_async::BlpAsyncError> for RecipeError {
+    fn from(value: xbbg_async::BlpAsyncError) -> Self {
+        Self::Engine(Box::new(value))
+    }
 }
 
 /// Result type alias for recipe operations.

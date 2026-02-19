@@ -64,6 +64,7 @@ fn wait_service(sess: &Session) {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
     let opts = SessionOptions::new()?;
     let sess = Session::new(&opts)?;

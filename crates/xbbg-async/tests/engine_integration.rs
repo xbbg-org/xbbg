@@ -38,7 +38,8 @@ fn init_tracing() {
         unsafe {
             let _ = blpapi_sys::blpapi_Logging_registerCallback(
                 None,
-                blpapi_sys::blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR as i32,
+                blpapi_sys::blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR
+                    as blpapi_sys::blpapi_Logging_Severity_t,
             );
         }
     });
@@ -81,9 +82,6 @@ async fn test_engine_connects_successfully() {
     init_tracing();
 
     let engine = create_engine();
-
-    // If we get here without panic, connection succeeded
-    assert!(true, "Engine connected successfully");
 
     // Clean shutdown
     std::mem::forget(engine);
@@ -325,7 +323,7 @@ async fn test_bdh_multiple_tickers() {
             let unique: std::collections::HashSet<_> =
                 (0..arr.len()).filter_map(|i| arr.value(i).into()).collect();
             assert!(
-                unique.len() >= 1,
+                !unique.is_empty(),
                 "Should have data for at least one ticker"
             );
         }

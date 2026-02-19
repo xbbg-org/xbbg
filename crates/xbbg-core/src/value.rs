@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_value_conversions() {
-        assert_eq!(Value::Float64(3.14).as_f64(), Some(3.14));
+        assert_eq!(Value::Float64(12.5).as_f64(), Some(12.5));
         assert_eq!(Value::Int64(42).as_i64(), Some(42));
         assert_eq!(Value::String("hello").as_str(), Some("hello"));
         assert_eq!(Value::Bool(true).as_bool(), Some(true));

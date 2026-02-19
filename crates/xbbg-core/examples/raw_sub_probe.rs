@@ -8,9 +8,7 @@
 //! Requires Bloomberg Terminal or BPIPE connection.
 
 use std::time::Instant;
-use xbbg_core::{
-    session::Session, CorrelationId, DataType, EventType, SessionOptions, SubscriptionList,
-};
+use xbbg_core::{session::Session, CorrelationId, EventType, SessionOptions, SubscriptionList};
 
 /// Fields that mix types: float, int, string, datetime
 const FIELDS: &[&str] = &[
@@ -30,6 +28,7 @@ const FIELDS: &[&str] = &[
 
 const TOPICS: &[&str] = &["ESH6 Index", "UXH6 Index", "NQH6 Index"];
 
+#[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
     eprintln!("=== Raw Subscription Probe ===");
     eprintln!("Topics: {:?}", TOPICS);

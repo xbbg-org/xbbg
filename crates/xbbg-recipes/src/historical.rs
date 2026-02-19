@@ -127,11 +127,14 @@ fn normalize_earning_type(typ: &str) -> Result<String> {
     }
 }
 
+type OverridePairs = Vec<(String, String)>;
+type EarningOverrides = (OverridePairs, OverridePairs);
+
 fn build_earning_overrides(
     by: Option<&str>,
     ccy: Option<&str>,
     level: Option<i32>,
-) -> Result<(Vec<(String, String)>, Vec<(String, String)>)> {
+) -> Result<EarningOverrides> {
     let mut header_overrides = Vec::new();
     let mut data_overrides = Vec::new();
 

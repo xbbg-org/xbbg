@@ -160,10 +160,10 @@ fn parse_all_fields_optimized(event: &Event, names: &FieldNames) -> (usize, usiz
                                 if field.get_f64(0).is_some() {
                                     fields_extracted += 1;
                                 }
-                            } else if field.name_eq(&names.last_trade) {
-                                if unsafe { field.get_str_unchecked(0) }.is_some() {
-                                    fields_extracted += 1;
-                                }
+                            } else if field.name_eq(&names.last_trade)
+                                && unsafe { field.get_str_unchecked(0) }.is_some()
+                            {
+                                fields_extracted += 1;
                             }
                         }
                     }
@@ -828,7 +828,7 @@ fn main() {
 
     // Simulate validity bitmap packing (1000 rows)
     let validity_bytes: Vec<u8> = (0..1000).map(|i| if i % 3 == 0 { 0 } else { 1 }).collect();
-    let mut bitmap = vec![0u8; (validity_bytes.len() + 7) / 8];
+    let mut bitmap = vec![0u8; validity_bytes.len().div_ceil(8)];
 
     let start = Instant::now();
     for _ in 0..iterations {

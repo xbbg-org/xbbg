@@ -44,6 +44,7 @@ use crate::error::Result;
 ///     None,
 /// ).await?;
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub async fn recipe_yas(
     engine: &Engine,
     tickers: Vec<String>,
@@ -342,15 +343,17 @@ mod tests {
 
     #[test]
     fn test_recipe_bqr_default_event_types() {
-        let event_types: Option<Vec<String>> = None;
-        let evts = event_types.unwrap_or_else(|| vec!["BID".to_string(), "ASK".to_string()]);
+        let evts = resolve_event_types(None);
         assert_eq!(evts, vec!["BID", "ASK"]);
     }
 
     #[test]
     fn test_recipe_bqr_custom_event_types() {
-        let event_types = Some(vec!["TRADE".to_string()]);
-        let evts = event_types.unwrap_or_else(|| vec!["BID".to_string(), "ASK".to_string()]);
+        let evts = resolve_event_types(Some(vec!["TRADE".to_string()]));
         assert_eq!(evts, vec!["TRADE"]);
+    }
+
+    fn resolve_event_types(event_types: Option<Vec<String>>) -> Vec<String> {
+        event_types.unwrap_or_else(|| vec!["BID".to_string(), "ASK".to_string()])
     }
 }

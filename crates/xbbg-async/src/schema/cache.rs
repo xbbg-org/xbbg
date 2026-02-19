@@ -54,10 +54,7 @@ impl SchemaCache {
     ///
     /// E.g., "//blp/refdata" -> "blp_refdata.json"
     fn service_to_filename(service: &str) -> String {
-        let clean = service
-            .trim_start_matches("//")
-            .replace('/', "_")
-            .replace('\\', "_");
+        let clean = service.trim_start_matches("//").replace(['/', '\\'], "_");
         format!("{}.json", clean)
     }
 

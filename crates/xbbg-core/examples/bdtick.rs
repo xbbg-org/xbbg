@@ -4,6 +4,7 @@
 
 use xbbg_core::{session::Session, EventType, SessionOptions};
 
+#[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
     println!("=== xbbg-core IntradayTickRequest Test ===\n");
 

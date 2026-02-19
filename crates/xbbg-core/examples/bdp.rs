@@ -6,6 +6,7 @@
 
 use xbbg_core::{session::Session, EventType, SessionOptions};
 
+#[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
     // Create session options (default: localhost:8194)
     let opts = SessionOptions::new()?;

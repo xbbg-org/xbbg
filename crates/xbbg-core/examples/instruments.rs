@@ -91,6 +91,7 @@ fn send_and_dump(sess: &Session, req: &xbbg_core::Request) {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
     let opts = SessionOptions::new()?;
     let sess = Session::new(&opts)?;

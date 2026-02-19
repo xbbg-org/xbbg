@@ -1123,15 +1123,14 @@ impl SubscriptionStream {
         use std::ptr;
 
         // Prevent Drop from running — we're taking ownership of each field individually.
-        let mut this = ManuallyDrop::new(self);
+        let this = ManuallyDrop::new(self);
 
         // SAFETY: We read each field exactly once from the ManuallyDrop wrapper.
         // The wrapper prevents the destructor from running, so no double-free.
         unsafe {
             let rx = ptr::read(&this.rx);
             let tx = ptr::read(&this.tx);
-            let claim =
-                ptr::read(&mut this.claim).expect("into_parts called on already-closed stream");
+            let claim = ptr::read(&this.claim).expect("into_parts called on already-closed stream");
             let keys = ptr::read(&this.keys);
             let topic_to_key = ptr::read(&this.topic_to_key);
             let service = ptr::read(&this.service);

@@ -268,9 +268,8 @@ impl RequestWorker {
             }
 
             // 2. Poll Bloomberg (short timeout for responsiveness)
-            match self.session.next_event(Some(10)) {
-                Ok(ev) => self.dispatch_event(ev),
-                Err(_) => {}
+            if let Ok(ev) = self.session.next_event(Some(10)) {
+                self.dispatch_event(ev);
             }
 
             // 3. Periodically check for slow requests and warn
@@ -450,7 +449,7 @@ impl RequestWorker {
             ExtractorType::FieldInfo => UnifiedRequestState::FieldInfo(FieldInfoState::new(reply)),
             ExtractorType::IntradayBar => {
                 // If user specified extra elements, use GENERIC extractor
-                if params.elements.as_ref().map_or(false, |e| !e.is_empty()) {
+                if params.elements.as_ref().is_some_and(|e| !e.is_empty()) {
                     UnifiedRequestState::Generic(GenericState::new(reply))
                 } else {
                     let ticker = params.security.clone().unwrap_or_default();
@@ -467,7 +466,7 @@ impl RequestWorker {
             ExtractorType::IntradayTick => {
                 // If user specified extra elements (e.g., includeConditionCodes=true),
                 // use GENERIC extractor for dynamic column discovery
-                if params.elements.as_ref().map_or(false, |e| !e.is_empty()) {
+                if params.elements.as_ref().is_some_and(|e| !e.is_empty()) {
                     UnifiedRequestState::Generic(GenericState::new(reply))
                 } else {
                     let ticker = params.security.clone().unwrap_or_default();
@@ -688,7 +687,7 @@ impl RequestWorker {
     fn handle_partial_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
                 if let Some(state) = self.requests.get_mut(key as usize) {
                     state.on_partial(msg);
                     xbbg_log::trace!(worker_id = self.id, key = key, "partial response");
@@ -700,7 +699,7 @@ impl RequestWorker {
     fn handle_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
                 if self.requests.contains(key as usize) {
                     // Log round-trip time and clean up tracking
                     if let Some(t_send) = self.send_times.remove(&(key as usize)) {
@@ -727,7 +726,7 @@ impl RequestWorker {
         let n = msg.num_correlation_ids();
 
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i as usize) {
+            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
                 if msg_type == "RequestFailure" {
                     xbbg_log::error!(worker_id = self.id, key = key, "request failed");
                     if self.requests.contains(key as usize) {

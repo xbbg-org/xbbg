@@ -288,7 +288,7 @@ fn parse_fx_rate_batch(batch: &RecordBatch) -> Result<FxRatesByPair> {
     }
 
     let mut out: FxRatesByPair = HashMap::new();
-    for row in 0..batch.num_rows() {
+    for (row, date_key) in date_keys.iter().copied().enumerate() {
         if ticker_col.is_null(row) || field_col.is_null(row) {
             continue;
         }
@@ -297,7 +297,7 @@ fn parse_fx_rate_batch(batch: &RecordBatch) -> Result<FxRatesByPair> {
             continue;
         }
 
-        let Some(date_key) = date_keys[row] else {
+        let Some(date_key) = date_key else {
             continue;
         };
 
@@ -481,7 +481,7 @@ fn date32_to_naive(days_since_epoch: i32) -> Option<chrono::NaiveDate> {
     epoch.checked_add_signed(chrono::Duration::days(days_since_epoch as i64))
 }
 
-fn find_value_column<'a>(batch: &'a RecordBatch) -> Result<&'a ArrayRef> {
+fn find_value_column(batch: &RecordBatch) -> Result<&ArrayRef> {
     batch
         .column_by_name("value")
         .or_else(|| batch.column_by_name("value_f64"))
