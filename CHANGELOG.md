@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **README**: Comprehensive rewrite with full API reference tables, comparison matrix, multi-backend documentation, detailed intraday session guide, fixed income/options/CDX analytics examples, troubleshooting section, and data storage documentation
+
 ## [1.0.0a1] - 2026-02-19
 
 ### Added
