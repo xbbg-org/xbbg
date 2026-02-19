@@ -13,7 +13,6 @@ name = "xbbg_bench"
 [dependencies]
 # Crates under test
 xbbg_core = { path = "../xbbg-core" }
-xbbg-ext = { path = "../xbbg-ext" }
 
 [dev-dependencies]
 criterion = "0.5"

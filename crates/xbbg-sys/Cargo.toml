@@ -9,7 +9,7 @@ publish = false
 
 [features]
 default = ["live"]
-mock = ["datamock"]
+mock = ["datamock", "bindgen"]
 live = ["blpapi-sys"]
 
 [dependencies]
@@ -17,4 +17,4 @@ datamock = { path = "../datamock", optional = true }
 blpapi-sys = { path = "../blpapi-sys", optional = true }
 
 [build-dependencies]
-bindgen = "0.70"
+bindgen = { version = "0.70", optional = true }
