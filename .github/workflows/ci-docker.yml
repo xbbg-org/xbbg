@@ -1,0 +1,78 @@
+name: CI Docker Images
+
+on:
+  push:
+    branches: [main, feat/**, fix/**]
+    paths:
+      - docker/**
+      - .github/workflows/ci-docker.yml
+  workflow_dispatch:
+    inputs:
+      blpapi_version:
+        description: Optional Bloomberg SDK version (for example 3.25.12.1)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  sdk-version:
+    name: Resolve SDK Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Resolve Bloomberg SDK version
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.blpapi_version || '' }}" ]; then
+            VERSION="${{ inputs.blpapi_version }}"
+          else
+            VERSION=$(curl -s https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/ \
+              | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' \
+              | sort -V \
+              | tail -1)
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved Bloomberg SDK version: $VERSION"
+
+  build-images:
+    name: Build ${{ matrix.image_name }}
+    runs-on: ubuntu-latest
+    needs: sdk-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: xbbg-ci
+            dockerfile: docker/ci/Dockerfile
+          - image_name: xbbg-manylinux
+            dockerfile: docker/manylinux/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image_name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          build-args: |
+            BLPAPI_VERSION=${{ needs.sdk-version.outputs.version }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:${{ needs.sdk-version.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.image_name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image_name }}
