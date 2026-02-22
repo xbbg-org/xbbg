@@ -134,17 +134,16 @@ class TestTickModeWarning:
         """tick_mode=True with flush_threshold>1 emits UserWarning before engine call."""
         from xbbg.blp import asubscribe
 
-        with pytest.warns(UserWarning, match="tick_mode"):
-            with pytest.raises(Exception):
-                # Warning is emitted before engine call; engine call fails without Bloomberg
-                asyncio.run(
-                    asubscribe(
-                        ["AAPL US Equity"],
-                        ["LAST_PRICE"],
-                        tick_mode=True,
-                        flush_threshold=50,
-                    )
+        with pytest.warns(UserWarning, match="tick_mode"), pytest.raises((RuntimeError, OSError)):
+            # Warning is emitted before engine call; engine call fails without Bloomberg
+            asyncio.run(
+                asubscribe(
+                    ["AAPL US Equity"],
+                    ["LAST_PRICE"],
+                    tick_mode=True,
+                    flush_threshold=50,
                 )
+            )
 
 
 class TestSubscriptionStats:

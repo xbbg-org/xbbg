@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 import functools
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias
 import warnings
 
 import narwhals.stable.v1 as nw
@@ -1732,17 +1733,18 @@ async def asubscribe(
     """
     # Validate config parameters
     if flush_threshold is not None and flush_threshold < 1:
-        raise ValueError('flush_threshold must be >= 1')
+        raise ValueError("flush_threshold must be >= 1")
     if stream_capacity is not None and stream_capacity < 1:
-        raise ValueError('stream_capacity must be >= 1')
-    if overflow_policy is not None and overflow_policy not in ('drop_newest', 'drop_oldest', 'block'):
-        raise ValueError(f"overflow_policy must be one of 'drop_newest', 'drop_oldest', 'block', got {overflow_policy!r}")
+        raise ValueError("stream_capacity must be >= 1")
+    if overflow_policy is not None and overflow_policy not in ("drop_newest", "drop_oldest", "block"):
+        raise ValueError(
+            f"overflow_policy must be one of 'drop_newest', 'drop_oldest', 'block', got {overflow_policy!r}"
+        )
 
     # tick_mode=True forces flush_threshold=1
     if tick_mode and flush_threshold is not None and flush_threshold > 1:
         warnings.warn(
-            f'tick_mode=True forces flush_threshold=1, ignoring flush_threshold={flush_threshold}',
-            stacklevel=2
+            f"tick_mode=True forces flush_threshold=1, ignoring flush_threshold={flush_threshold}", stacklevel=2
         )
         flush_threshold = 1
 
@@ -1757,16 +1759,24 @@ async def asubscribe(
     logger.info("subscribe: tickers=%s fields=%s", ticker_list, field_list)
 
     # Use subscribe_with_options if service, options, or config params provided
-    if service is not None or options is not None or flush_threshold is not None or stream_capacity is not None or overflow_policy is not None:
+    if (
+        service is not None
+        or options is not None
+        or flush_threshold is not None
+        or stream_capacity is not None
+        or overflow_policy is not None
+    ):
         opt_kwargs = {
-            k: v for k, v in {
-                'flush_threshold': flush_threshold,
-                'stream_capacity': stream_capacity,
-                'overflow_policy': overflow_policy,
-            }.items() if v is not None
+            k: v
+            for k, v in {
+                "flush_threshold": flush_threshold,
+                "stream_capacity": stream_capacity,
+                "overflow_policy": overflow_policy,
+            }.items()
+            if v is not None
         }
         py_sub = await engine.subscribe_with_options(
-            service or '//blp/mktdata',
+            service or "//blp/mktdata",
             ticker_list,
             field_list,
             options or [],
@@ -1844,14 +1854,25 @@ async def astream(
             if done:
                 break
 
+
         # With callback
         def on_batch(batch):
             print(f"Got batch: {batch}")
 
+
         async for _ in xbbg.astream(["AAPL US Equity"], ["LAST_PRICE"], callback=on_batch):
             pass
     """
-    async with await asubscribe(tickers, fields, raw=raw, backend=backend, tick_mode=tick_mode, flush_threshold=flush_threshold, stream_capacity=stream_capacity, overflow_policy=overflow_policy) as sub:
+    async with await asubscribe(
+        tickers,
+        fields,
+        raw=raw,
+        backend=backend,
+        tick_mode=tick_mode,
+        flush_threshold=flush_threshold,
+        stream_capacity=stream_capacity,
+        overflow_policy=overflow_policy,
+    ) as sub:
         async for batch in sub:
             if callback is not None:
                 try:
@@ -1904,7 +1925,17 @@ def stream(
 
     async def run_stream():
         try:
-            async for batch in astream(tickers, fields, raw=raw, backend=backend, callback=callback, tick_mode=tick_mode, flush_threshold=flush_threshold, stream_capacity=stream_capacity, overflow_policy=overflow_policy):
+            async for batch in astream(
+                tickers,
+                fields,
+                raw=raw,
+                backend=backend,
+                callback=callback,
+                tick_mode=tick_mode,
+                flush_threshold=flush_threshold,
+                stream_capacity=stream_capacity,
+                overflow_policy=overflow_policy,
+            ):
                 if stop_event.is_set():
                     break
                 q.put(batch)
