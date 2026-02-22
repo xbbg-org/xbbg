@@ -815,7 +815,7 @@ impl PyEngine {
                 options,
                 flush_threshold: ft,
                 overflow_policy: op_policy,
-                stream_capacity,
+                _stream_capacity: stream_capacity,
                 metrics,
             };
 
@@ -851,6 +851,7 @@ impl PyEngine {
     ///     print(batch)
     /// ```
     #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None))]
+    #[allow(clippy::too_many_arguments)]
     fn subscribe_with_options<'py>(
         &self,
         py: Python<'py>,
@@ -912,7 +913,7 @@ impl PyEngine {
                 options,
                 flush_threshold: ft,
                 overflow_policy: op_policy,
-                stream_capacity,
+                _stream_capacity: stream_capacity,
                 metrics,
             };
 
@@ -1009,7 +1010,7 @@ struct SubscriptionStreamHandle {
     options: Vec<String>,
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
-    stream_capacity: Option<usize>,
+    _stream_capacity: Option<usize>,
     metrics: Vec<Arc<SubscriptionMetrics>>,
 }
 
@@ -1180,7 +1181,7 @@ impl PySubscription {
     /// - batches_sent: int — batches successfully sent to Python
     /// - slow_consumer: bool — True if DATALOSS was received
     #[getter]
-    fn stats(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn stats(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let guard = self.stream.blocking_lock();
         let dict = pyo3::types::PyDict::new(py);
         match guard.as_ref() {
