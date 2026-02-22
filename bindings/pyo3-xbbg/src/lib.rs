@@ -38,6 +38,7 @@
 //! ```
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration};
@@ -47,6 +48,7 @@ use pyo3_async_runtimes::tokio::future_into_py;
 use tokio::sync::Mutex;
 use xbbg_log::{debug, info, warn};
 
+use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
@@ -799,7 +801,7 @@ impl PyEngine {
 
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
-            let (rx, tx, claim, keys, topic_to_key, ft, op_policy, service, options) = stream.into_parts();
+            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) = stream.into_parts();
 
             let handle = SubscriptionStreamHandle {
                 tx,
@@ -813,6 +815,7 @@ impl PyEngine {
                 flush_threshold: ft,
                 overflow_policy: op_policy,
                 stream_capacity,
+                metrics,
             };
 
             Python::attach(|py| {
@@ -894,7 +897,7 @@ impl PyEngine {
 
             debug!("PyEngine: subscription with options created");
 
-            let (rx, tx, claim, keys, topic_to_key, ft, op_policy, service, options) = stream.into_parts();
+            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) = stream.into_parts();
 
             let handle = SubscriptionStreamHandle {
                 tx,
@@ -908,6 +911,7 @@ impl PyEngine {
                 flush_threshold: ft,
                 overflow_policy: op_policy,
                 stream_capacity,
+                metrics,
             };
 
             Python::attach(|py| {
@@ -1004,6 +1008,7 @@ struct SubscriptionStreamHandle {
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
     stream_capacity: Option<usize>,
+    metrics: Vec<Arc<SubscriptionMetrics>>,
 }
 
 #[pymethods]
@@ -1069,7 +1074,7 @@ impl PySubscription {
                 .ok_or_else(|| PyRuntimeError::new_err("subscription already closed"))?;
 
             // Add new topics using the same stream sender
-            let new_keys = claim
+            let (new_keys, new_metrics) = claim
                 .add_topics(
                     handle.service.clone(),
                     new_topics.clone(),
@@ -1088,6 +1093,7 @@ impl PySubscription {
                 handle.topics.push(topic.clone());
                 handle.keys.push(*key);
             }
+            handle.metrics.extend(new_metrics);
 
             Ok(())
         })
@@ -1162,6 +1168,45 @@ impl PySubscription {
             Some(handle) => !handle.keys.is_empty() && handle.claim.is_some(),
             None => false,
         }
+    }
+
+    /// Get subscription metrics.
+    ///
+    /// Returns a dict with keys:
+    /// - messages_received: int — total messages received from Bloomberg
+    /// - dropped_batches: int — batches dropped due to overflow
+    /// - batches_sent: int — batches successfully sent to Python
+    /// - slow_consumer: bool — True if DATALOSS was received
+    #[getter]
+    fn stats(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let guard = self.stream.blocking_lock();
+        let dict = pyo3::types::PyDict::new(py);
+        match guard.as_ref() {
+            Some(handle) => {
+                let messages_received: u64 = handle.metrics.iter()
+                    .map(|m| m.messages_received.load(Ordering::Relaxed))
+                    .sum();
+                let dropped_batches: u64 = handle.metrics.iter()
+                    .map(|m| m.dropped_batches.load(Ordering::Relaxed))
+                    .sum();
+                let batches_sent: u64 = handle.metrics.iter()
+                    .map(|m| m.batches_sent.load(Ordering::Relaxed))
+                    .sum();
+                let slow_consumer: bool = handle.metrics.iter()
+                    .any(|m| m.slow_consumer.load(Ordering::Relaxed));
+                dict.set_item("messages_received", messages_received)?;
+                dict.set_item("dropped_batches", dropped_batches)?;
+                dict.set_item("batches_sent", batches_sent)?;
+                dict.set_item("slow_consumer", slow_consumer)?;
+            }
+            None => {
+                dict.set_item("messages_received", 0u64)?;
+                dict.set_item("dropped_batches", 0u64)?;
+                dict.set_item("batches_sent", 0u64)?;
+                dict.set_item("slow_consumer", false)?;
+            }
+        }
+        Ok(dict.into())
     }
 
     /// Unsubscribe and close the stream.

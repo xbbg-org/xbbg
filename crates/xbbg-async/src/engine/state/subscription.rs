@@ -4,6 +4,7 @@
 //! without JSON intermediate serialization. Uses dynamic type dispatch
 //! to preserve all Bloomberg types (string, int, float, datetime, etc.).
 
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use arrow::array::{ArrayRef, StringBuilder, TimestampMicrosecondBuilder};
@@ -15,6 +16,13 @@ use xbbg_core::{BlpError, Message};
 
 use super::super::OverflowPolicy;
 use super::typed_builder::{ArrowType, TypedBuilder};
+
+pub struct SubscriptionMetrics {
+    pub messages_received: Arc<AtomicU64>,
+    pub dropped_batches: Arc<AtomicU64>,
+    pub batches_sent: Arc<AtomicU64>,
+    pub slow_consumer: Arc<AtomicBool>,
+}
 
 /// State for a single subscription, owned by PumpA.
 pub struct SubscriptionState {
@@ -42,6 +50,7 @@ pub struct SubscriptionState {
     pub overflow_policy: OverflowPolicy,
     /// Dropped batch count (for metrics)
     pub dropped_batches: u64,
+    pub metrics: Arc<SubscriptionMetrics>,
     /// Cached schema — invalidated when a field type is first inferred.
     cached_schema: Option<Arc<Schema>>,
 }
@@ -72,6 +81,12 @@ impl SubscriptionState {
         overflow_policy: OverflowPolicy,
     ) -> Self {
         let field_builders = fields.iter().map(|_| None).collect();
+        let metrics = Arc::new(SubscriptionMetrics {
+            messages_received: Arc::new(AtomicU64::new(0)),
+            dropped_batches: Arc::new(AtomicU64::new(0)),
+            batches_sent: Arc::new(AtomicU64::new(0)),
+            slow_consumer: Arc::new(AtomicBool::new(false)),
+        });
 
         Self {
             topic: topic.into(),
@@ -85,6 +100,7 @@ impl SubscriptionState {
             slow_consumer: false,
             overflow_policy,
             dropped_batches: 0,
+            metrics,
             cached_schema: None,
         }
     }
@@ -144,6 +160,9 @@ impl SubscriptionState {
         }
 
         self.pending_count += 1;
+        self.metrics
+            .messages_received
+            .fetch_add(1, Ordering::Relaxed);
 
         // Auto-flush if threshold reached
         if self.pending_count >= self.flush_threshold {
@@ -154,6 +173,7 @@ impl SubscriptionState {
     /// Handle DATALOSS indicator.
     pub fn on_dataloss(&mut self) {
         self.slow_consumer = true;
+        self.metrics.slow_consumer.store(true, Ordering::Relaxed);
         xbbg_log::warn!(topic = %self.topic, "DATALOSS detected - slow consumer");
     }
 
@@ -256,15 +276,20 @@ impl SubscriptionState {
                 // Blocks until space is available or the receiver is dropped.
                 if self.stream.blocking_send(Ok(batch)).is_err() {
                     xbbg_log::warn!(topic = %self.topic, "stream closed");
+                } else {
+                    self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
                 }
             }
             _ => {
                 // DropNewest and DropOldest both use try_send.
                 // DropOldest is degraded to DropNewest — proper ring buffer not yet implemented.
                 match self.stream.try_send(Ok(batch)) {
-                    Ok(()) => {}
+                    Ok(()) => {
+                        self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
+                    }
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         self.dropped_batches += 1;
+                        self.metrics.dropped_batches.fetch_add(1, Ordering::Relaxed);
                         let policy_label = match self.overflow_policy {
                             OverflowPolicy::DropNewest => "DropNewest",
                             OverflowPolicy::DropOldest => "DropOldest (degraded to DropNewest)",

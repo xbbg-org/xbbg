@@ -34,6 +34,7 @@ pub use request_pool::RequestWorkerPool;
 pub use state::{OutputFormat, SubscriptionState};
 pub use subscription_pool::{SessionClaim, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
+use state::SubscriptionMetrics;
 
 /// Slab key for O(1) correlation dispatch.
 pub type SlabKey = usize;
@@ -619,7 +620,7 @@ impl Engine {
         let claim = self.subscription_pool.claim()?;
 
         // Start the subscription
-        let keys = claim
+        let (keys, metrics) = claim
             .subscribe(
                 service.clone(),
                 topics.clone(),
@@ -645,6 +646,7 @@ impl Engine {
             topic_to_key,
             service,
             options,
+            metrics,
             flush_threshold,
             overflow_policy,
         };
@@ -971,6 +973,8 @@ pub struct SubscriptionStream {
     service: String,
     /// Subscription options.
     options: Vec<String>,
+    /// Metrics for all subscribed topics (shared with SubscriptionState).
+    metrics: Vec<Arc<SubscriptionMetrics>>,
     /// Optional flush threshold override.
     flush_threshold: Option<usize>,
     /// Optional overflow policy override.
@@ -1017,7 +1021,7 @@ impl SubscriptionStream {
         xbbg_log::debug!(topics = ?new_topics, "adding topics to subscription");
 
         // Add new topics using the same stream sender
-        let new_keys = claim
+        let (new_keys, new_metrics) = claim
             .add_topics(
                 self.service.clone(),
                 new_topics.clone(),
@@ -1035,6 +1039,7 @@ impl SubscriptionStream {
             self.topics.push(topic.clone());
             self.keys.push(*key);
         }
+        self.metrics.extend(new_metrics);
 
         Ok(())
     }
@@ -1133,6 +1138,7 @@ impl SubscriptionStream {
         SessionClaim,
         Vec<SlabKey>,
         std::collections::HashMap<String, SlabKey>,
+        Vec<Arc<SubscriptionMetrics>>,
         Option<usize>,          // flush_threshold
         Option<OverflowPolicy>, // overflow_policy
         String,      // service
@@ -1152,6 +1158,7 @@ impl SubscriptionStream {
             let claim = ptr::read(&this.claim).expect("into_parts called on already-closed stream");
             let keys = ptr::read(&this.keys);
             let topic_to_key = ptr::read(&this.topic_to_key);
+            let metrics = ptr::read(&this.metrics);
             let flush_threshold = ptr::read(&this.flush_threshold);
             let overflow_policy = ptr::read(&this.overflow_policy);
             let service = ptr::read(&this.service);
@@ -1163,6 +1170,7 @@ impl SubscriptionStream {
                 claim,
                 keys,
                 topic_to_key,
+                metrics,
                 flush_threshold,
                 overflow_policy,
                 service,

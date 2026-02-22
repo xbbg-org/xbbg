@@ -1632,6 +1632,19 @@ class Subscription:
         """Whether the subscription is still active."""
         return self._sub.is_active
 
+    @property
+    def stats(self) -> dict:
+        """Subscription metrics.
+
+        Returns:
+            dict with keys:
+                - messages_received: int - total messages received from Bloomberg
+                - dropped_batches: int - batches dropped due to overflow
+                - batches_sent: int - batches successfully sent to Python
+                - slow_consumer: bool - True if DATALOSS was received
+        """
+        return self._sub.stats
+
     async def unsubscribe(self, drain: bool = False) -> list[pa.RecordBatch] | None:
         """Close subscription and optionally drain remaining data.
 

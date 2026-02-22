@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, SessionOptions, SubscriptionList};
 
-use super::state::SubscriptionState;
+use super::state::{SubscriptionMetrics, SubscriptionState};
 use super::{BlpAsyncError, EngineConfig, OverflowPolicy, SlabKey};
 
 /// Commands sent to a subscription worker.
@@ -33,7 +33,7 @@ pub enum SubscriptionCommand {
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         /// Reply with slab keys for later unsubscribe.
-        reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
+        reply: tokio::sync::oneshot::Sender<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>)>,
     },
     /// Add topics to an existing subscription (uses same stream sender).
     AddTopics {
@@ -47,7 +47,7 @@ pub enum SubscriptionCommand {
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         /// Reply with new slab keys.
-        reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
+        reply: tokio::sync::oneshot::Sender<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>)>,
     },
     /// Stop subscriptions by key.
     Unsubscribe { keys: Vec<SlabKey> },
@@ -146,10 +146,10 @@ impl SubscriptionWorker {
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
-                            let _ = reply.send(vec![]);
+                            let _ = reply.send((vec![], vec![]));
                             continue;
                         }
-                        let keys = self.subscribe(
+                        let (keys, metrics) = self.subscribe(
                             topics,
                             fields,
                             options,
@@ -157,7 +157,7 @@ impl SubscriptionWorker {
                             overflow_policy,
                             stream,
                         );
-                        let _ = reply.send(keys);
+                        let _ = reply.send((keys, metrics));
                     }
                     Ok(SubscriptionCommand::AddTopics {
                         service,
@@ -172,11 +172,11 @@ impl SubscriptionWorker {
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
-                            let _ = reply.send(vec![]);
+                            let _ = reply.send((vec![], vec![]));
                             continue;
                         }
                         // AddTopics uses the same logic as Subscribe
-                        let keys = self.subscribe(
+                        let (keys, metrics) = self.subscribe(
                             topics,
                             fields,
                             options,
@@ -184,7 +184,7 @@ impl SubscriptionWorker {
                             overflow_policy,
                             stream,
                         );
-                        let _ = reply.send(keys);
+                        let _ = reply.send((keys, metrics));
                     }
                     Ok(SubscriptionCommand::Unsubscribe { keys }) => {
                         self.unsubscribe(keys);
@@ -213,17 +213,19 @@ impl SubscriptionWorker {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
-    ) -> Vec<SlabKey> {
+    ) -> (Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>) {
         let mut sub_list = SubscriptionList::new();
 
         let field_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
         let options_str = options.join(",");
         let mut keys = Vec::with_capacity(topics.len());
+        let mut metrics: Vec<Arc<SubscriptionMetrics>> = Vec::with_capacity(topics.len());
         let ft = flush_threshold.unwrap_or(self.config.subscription_flush_threshold);
         let op = overflow_policy.unwrap_or(self.config.overflow_policy);
 
         for topic in &topics {
             let state = SubscriptionState::with_policy(topic.clone(), fields.clone(), stream.clone(), ft, op);
+            let metrics_arc = state.metrics.clone();
             let key = self.subs.insert(state);
 
             let cid = CorrelationId::Int(key as i64);
@@ -236,11 +238,12 @@ impl SubscriptionWorker {
             }
 
             keys.push(key);
+            metrics.push(metrics_arc);
             xbbg_log::debug!(worker_id = self.id, topic = %topic, key = key, "subscription added");
         }
 
         if keys.is_empty() {
-            return keys;
+            return (keys, metrics);
         }
 
         if let Err(e) = self.session.subscribe(&sub_list, None) {
@@ -252,10 +255,10 @@ impl SubscriptionWorker {
                     self.subs.remove(key);
                 }
             }
-            return vec![];
+            return (vec![], vec![]);
         }
 
-        keys
+        (keys, metrics)
     }
 
     fn unsubscribe(&mut self, keys: Vec<SlabKey>) {
@@ -721,7 +724,7 @@ impl SessionClaim {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
-    ) -> Result<Vec<SlabKey>, BlpAsyncError> {
+    ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         let handle = self
             .handle
             .as_ref()
@@ -759,7 +762,7 @@ impl SessionClaim {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
-    ) -> Result<Vec<SlabKey>, BlpAsyncError> {
+    ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         let handle = self
             .handle
             .as_ref()
