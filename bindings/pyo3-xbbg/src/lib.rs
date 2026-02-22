@@ -755,16 +755,25 @@ impl PyEngine {
     ///     print(batch)
     /// await sub.unsubscribe()
     /// ```
-    #[pyo3(signature = (tickers, fields))]
+    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None))]
     fn subscribe<'py>(
         &self,
         py: Python<'py>,
         tickers: Vec<String>,
         fields: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<String>,
+        stream_capacity: Option<usize>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
         let fields_clone = fields.clone();
+
+        let op = overflow_policy.as_deref().map(|s| match s {
+            "drop_oldest" => OverflowPolicy::DropOldest,
+            "block" => OverflowPolicy::Block,
+            _ => OverflowPolicy::DropNewest,
+        });
 
         debug!(
             tickers = ?tickers,
@@ -774,7 +783,15 @@ impl PyEngine {
 
         future_into_py(py, async move {
             let stream = engine
-                .subscribe(tickers_clone.clone(), fields_clone.clone())
+                .subscribe_with_options(
+                    "//blp/mktdata".to_string(),
+                    tickers_clone.clone(),
+                    fields_clone.clone(),
+                    vec![],
+                    stream_capacity,
+                    flush_threshold,
+                    op,
+                )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
 
@@ -782,7 +799,7 @@ impl PyEngine {
 
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
-            let (rx, tx, claim, keys, topic_to_key, service, options) = stream.into_parts();
+            let (rx, tx, claim, keys, topic_to_key, ft, op_policy, service, options) = stream.into_parts();
 
             let handle = SubscriptionStreamHandle {
                 tx,
@@ -793,6 +810,9 @@ impl PyEngine {
                 topic_to_key,
                 service,
                 options,
+                flush_threshold: ft,
+                overflow_policy: op_policy,
+                stream_capacity,
             };
 
             Python::attach(|py| {
@@ -826,7 +846,7 @@ impl PyEngine {
     /// async for batch in sub:
     ///     print(batch)
     /// ```
-    #[pyo3(signature = (service, tickers, fields, options=None))]
+    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None))]
     fn subscribe_with_options<'py>(
         &self,
         py: Python<'py>,
@@ -834,12 +854,21 @@ impl PyEngine {
         tickers: Vec<String>,
         fields: Vec<String>,
         options: Option<Vec<String>>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<String>,
+        stream_capacity: Option<usize>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
         let fields_clone = fields.clone();
         let options_clone = options.clone().unwrap_or_default();
         let service_clone = service.clone();
+
+        let op = overflow_policy.as_deref().map(|s| match s {
+            "drop_oldest" => OverflowPolicy::DropOldest,
+            "block" => OverflowPolicy::Block,
+            _ => OverflowPolicy::DropNewest,
+        });
 
         debug!(
             service = %service,
@@ -856,13 +885,16 @@ impl PyEngine {
                     tickers_clone.clone(),
                     fields_clone.clone(),
                     options_clone.clone(),
+                    stream_capacity,
+                    flush_threshold,
+                    op,
                 )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
 
             debug!("PyEngine: subscription with options created");
 
-            let (rx, tx, claim, keys, topic_to_key, service, options) = stream.into_parts();
+            let (rx, tx, claim, keys, topic_to_key, ft, op_policy, service, options) = stream.into_parts();
 
             let handle = SubscriptionStreamHandle {
                 tx,
@@ -873,6 +905,9 @@ impl PyEngine {
                 topic_to_key,
                 service,
                 options,
+                flush_threshold: ft,
+                overflow_policy: op_policy,
+                stream_capacity,
             };
 
             Python::attach(|py| {
@@ -966,6 +1001,9 @@ struct SubscriptionStreamHandle {
     topic_to_key: std::collections::HashMap<String, usize>,
     service: String,
     options: Vec<String>,
+    flush_threshold: Option<usize>,
+    overflow_policy: Option<OverflowPolicy>,
+    stream_capacity: Option<usize>,
 }
 
 #[pymethods]
@@ -1037,6 +1075,8 @@ impl PySubscription {
                     new_topics.clone(),
                     handle.fields.clone(),
                     handle.options.clone(),
+                    handle.flush_threshold,
+                    handle.overflow_policy,
                     handle.tx.clone(),
                 )
                 .await
