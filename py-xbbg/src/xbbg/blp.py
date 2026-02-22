@@ -20,7 +20,7 @@ from enum import Enum
 import functools
 import logging
 import time
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, TypeAlias
 import warnings
 
 import narwhals.stable.v1 as nw
@@ -1564,24 +1564,30 @@ class Subscription:
         await sub.unsubscribe()
     """
 
-    def __init__(self, py_sub, raw: bool, backend: Backend | None):
+    def __init__(self, py_sub, raw: bool, backend: Backend | None, tick_mode: bool = False):
         """Initialize subscription wrapper.
 
         Args:
             py_sub: The underlying PySubscription from Rust
             raw: If True, yield raw Arrow batches
             backend: DataFrame backend for conversion (if not raw)
+            tick_mode: If True, convert batches to dicts (implies raw=True)
         """
         self._sub = py_sub
         self._raw = raw
         self._backend = backend
+        self._tick_mode = tick_mode
 
     def __aiter__(self):
         return self
 
-    async def __anext__(self) -> pa.RecordBatch | nw.DataFrame:
+    async def __anext__(self) -> pa.RecordBatch | nw.DataFrame | dict[str, Any]:
         """Get next batch of data."""
         batch = await self._sub.__anext__()
+
+        # Tick mode: convert RecordBatch to dict
+        if self._tick_mode:
+            return {col.name: col[0].as_py() for col in batch.columns}
 
         if self._raw:
             return batch
@@ -1654,6 +1660,12 @@ async def asubscribe(
     *,
     raw: bool = False,
     backend: Backend | str | None = None,
+    service: str | None = None,
+    options: list[str] | None = None,
+    tick_mode: bool = False,
+    flush_threshold: int | None = None,
+    stream_capacity: int | None = None,
+    overflow_policy: str | None = None,
 ) -> Subscription:
     """Create an async subscription to real-time market data.
 
@@ -1665,6 +1677,12 @@ async def asubscribe(
         fields: Fields to subscribe to (e.g., 'LAST_PRICE', 'BID', 'ASK')
         raw: If True, yield raw Arrow RecordBatches for max performance
         backend: DataFrame backend for batch conversion (ignored if raw=True)
+        service: Bloomberg service (e.g., '//blp/mktdata'). If provided, uses subscribe_with_options
+        options: List of subscription options. If provided, uses subscribe_with_options
+        tick_mode: If True, convert batches to dicts (implies raw=True)
+        flush_threshold: Batch flush threshold (validation only in Wave 1)
+        stream_capacity: Stream channel capacity (validation only in Wave 1)
+        overflow_policy: Overflow policy for stream (validation only in Wave 1)
 
     Returns:
         Subscription handle for iteration and control
@@ -1693,7 +1711,28 @@ async def asubscribe(
                 await sub.add(["MSFT US Equity"])
             if should_remove_aapl:
                 await sub.remove(["AAPL US Equity"])
+
+        # Tick mode (dict conversion)
+        sub = await xbbg.asubscribe(["AAPL US Equity"], ["LAST_PRICE"], tick_mode=True)
+        async for tick_dict in sub:
+            print(tick_dict)  # {'ticker': 'AAPL US Equity', 'LAST_PRICE': 150.25, ...}
     """
+    # Validate config parameters
+    if flush_threshold is not None and flush_threshold < 1:
+        raise ValueError('flush_threshold must be >= 1')
+    if stream_capacity is not None and stream_capacity < 1:
+        raise ValueError('stream_capacity must be >= 1')
+    if overflow_policy is not None and overflow_policy not in ('drop_newest', 'drop_oldest', 'block'):
+        raise ValueError(f"overflow_policy must be one of 'drop_newest', 'drop_oldest', 'block', got {overflow_policy!r}")
+
+    # tick_mode=True forces flush_threshold=1
+    if tick_mode and flush_threshold is not None and flush_threshold > 1:
+        warnings.warn(
+            f'tick_mode=True forces flush_threshold=1, ignoring flush_threshold={flush_threshold}',
+            stacklevel=2
+        )
+        flush_threshold = 1
+
     ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
     field_list = [fields] if isinstance(fields, str) else list(fields)
 
@@ -1703,9 +1742,19 @@ async def asubscribe(
 
     engine = _get_engine()
     logger.info("subscribe: tickers=%s fields=%s", ticker_list, field_list)
-    py_sub = await engine.subscribe(ticker_list, field_list)
 
-    return Subscription(py_sub, raw=raw, backend=effective_backend)
+    # Use subscribe_with_options if service or options provided
+    if service is not None or options is not None:
+        py_sub = await engine.subscribe_with_options(
+            service or "//blp/mktdata",
+            ticker_list,
+            field_list,
+            options or [],
+        )
+    else:
+        py_sub = await engine.subscribe(ticker_list, field_list)
+
+    return Subscription(py_sub, raw=raw or tick_mode, backend=effective_backend, tick_mode=tick_mode)
 
 
 def subscribe(
@@ -1714,6 +1763,12 @@ def subscribe(
     *,
     raw: bool = False,
     backend: Backend | str | None = None,
+    service: str | None = None,
+    options: list[str] | None = None,
+    tick_mode: bool = False,
+    flush_threshold: int | None = None,
+    stream_capacity: int | None = None,
+    overflow_policy: str | None = None,
 ) -> Subscription:
     """Create a subscription to real-time market data (sync version).
 
@@ -1739,6 +1794,8 @@ async def astream(
     *,
     raw: bool = False,
     backend: Backend | str | None = None,
+    callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
+    tick_mode: bool = False,
 ):
     """High-level async streaming - simple iteration.
 
@@ -1750,9 +1807,11 @@ async def astream(
         fields: Fields to subscribe to
         raw: If True, yield raw Arrow RecordBatches
         backend: DataFrame backend for batch conversion
+        callback: Optional callback function to invoke on each batch
+        tick_mode: If True, convert batches to dicts
 
     Yields:
-        Batches of market data (RecordBatch or DataFrame)
+        Batches of market data (RecordBatch, DataFrame, or dict)
 
     Example::
 
@@ -1760,9 +1819,21 @@ async def astream(
             print(batch)
             if done:
                 break
+
+        # With callback
+        def on_batch(batch):
+            print(f"Got batch: {batch}")
+
+        async for _ in xbbg.astream(["AAPL US Equity"], ["LAST_PRICE"], callback=on_batch):
+            pass
     """
-    async with await asubscribe(tickers, fields, raw=raw, backend=backend) as sub:
+    async with await asubscribe(tickers, fields, raw=raw, backend=backend, tick_mode=tick_mode) as sub:
         async for batch in sub:
+            if callback is not None:
+                try:
+                    callback(batch)
+                except Exception as e:
+                    logger.warning("callback raised exception: %s", e, exc_info=True)
             yield batch
 
 
@@ -1772,6 +1843,8 @@ def stream(
     *,
     raw: bool = False,
     backend: Backend | str | None = None,
+    callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
+    tick_mode: bool = False,
 ):
     """High-level sync streaming using a background thread.
 
@@ -1783,6 +1856,8 @@ def stream(
         fields: Fields to subscribe to
         raw: If True, yield raw Arrow RecordBatches
         backend: DataFrame backend for batch conversion
+        callback: Optional callback function to invoke on each batch
+        tick_mode: If True, convert batches to dicts
 
     Yields:
         Batches of market data
@@ -1802,7 +1877,7 @@ def stream(
 
     async def run_stream():
         try:
-            async for batch in astream(tickers, fields, raw=raw, backend=backend):
+            async for batch in astream(tickers, fields, raw=raw, backend=backend, callback=callback, tick_mode=tick_mode):
                 if stop_event.is_set():
                     break
                 q.put(batch)
