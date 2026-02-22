@@ -1587,7 +1587,7 @@ class Subscription:
 
         # Tick mode: convert RecordBatch to dict
         if self._tick_mode:
-            return {col.name: col[0].as_py() for col in batch.columns}
+            return {field.name: batch.column(i)[0].as_py() for i, field in enumerate(batch.schema)}
 
         if self._raw:
             return batch
@@ -1758,14 +1758,19 @@ async def asubscribe(
 
     # Use subscribe_with_options if service, options, or config params provided
     if service is not None or options is not None or flush_threshold is not None or stream_capacity is not None or overflow_policy is not None:
+        opt_kwargs = {
+            k: v for k, v in {
+                'flush_threshold': flush_threshold,
+                'stream_capacity': stream_capacity,
+                'overflow_policy': overflow_policy,
+            }.items() if v is not None
+        }
         py_sub = await engine.subscribe_with_options(
-            service or "//blp/mktdata",
+            service or '//blp/mktdata',
             ticker_list,
             field_list,
             options or [],
-            flush_threshold=flush_threshold,
-            stream_capacity=stream_capacity,
-            overflow_policy=overflow_policy,
+            **opt_kwargs,
         )
     else:
         py_sub = await engine.subscribe(ticker_list, field_list)
