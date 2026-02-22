@@ -132,7 +132,7 @@ class TestTickModeWarning:
 
     def test_tick_mode_flush_threshold_warning(self):
         """tick_mode=True with flush_threshold>1 emits UserWarning before engine call."""
-        from xbbg import BlpInternalError
+        from xbbg._core import BlpInternalError
         from xbbg.blp import asubscribe
 
         with pytest.warns(UserWarning, match="tick_mode"), pytest.raises((RuntimeError, OSError, BlpInternalError)):
