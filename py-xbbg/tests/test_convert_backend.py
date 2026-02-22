@@ -174,14 +174,6 @@ class TestConvertBackendPyArrow:
         result = _convert_backend(nw_frame, Backend.PYARROW)
         assert isinstance(result, pa.Table)
 
-    @pytest.mark.xfail(
-        reason=(
-            "Bug in _convert_backend: PYARROW path calls .to_native().to_arrow() "
-            "which fails on pandas-backed narwhals frames when polars is installed, "
-            "because the except ImportError fallback is never reached."
-        ),
-        strict=True,
-    )
     def test_convert_pyarrow_from_pandas_returns_arrow_table(self):
         """Converting pandas-backed narwhals to PYARROW should fallback to from_pandas."""
         import pyarrow as pa

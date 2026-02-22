@@ -131,28 +131,61 @@ pub fn is_specific_contract(ticker: &str) -> bool {
     if parts.is_empty() {
         return false;
     }
-
     let base = parts[0];
+    let bytes = base.as_bytes();
+    let len = bytes.len();
 
-    // Look for pattern: prefix + month_code + 1-2 digits
-    for (i, c) in base.chars().enumerate() {
-        if VALID_MONTH_CODES.contains(&c) {
-            // Check if followed by 1-2 digits
-            let rest = &base[i + 1..];
-            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
-                let len = rest.len();
-                if len == 1 || len == 2 {
-                    // Additional check: if len==1 and base is short (like "ES1"), it's generic
-                    // But if len==1 and there's a month code before digit, it's specific
-                    if i > 0 {
-                        return true;
-                    }
-                }
-            }
+    // Scan from the end: find trailing 1-2 year digits, then check for month code.
+    // Pattern: [prefix][month_code][year_digits] where prefix is the root symbol.
+    //
+    // For 1-digit year: require prefix (root) length >= 2 to avoid false positives
+    // on generic tickers like "UX1" (prefix="U", would be misread as month=X, year=1).
+    // For 2-digit year: require prefix (root) length >= 1.
+    //
+    // Examples:
+    //   "ESH24" -> prefix="ES", month='H', year="24" -> specific
+    //   "UXZ5"  -> prefix="UX", month='Z', year="5"  -> specific
+    //   "UX1"   -> prefix="U",  month='X', year="1"  -> prefix too short -> generic
+    //   "ES1"   -> no valid month code before '1'       -> generic
+
+    // Count trailing digits
+    let mut digit_count = 0;
+    for &b in bytes.iter().rev() {
+        if b.is_ascii_digit() {
+            digit_count += 1;
+        } else {
+            break;
         }
     }
 
-    false
+    // Need exactly 1 or 2 trailing digits
+    if digit_count == 0 || digit_count > 2 {
+        return false;
+    }
+
+    // Check if the character immediately before the trailing digits is a valid month code
+    let month_pos = len - digit_count - 1;
+    if month_pos == 0 {
+        // Month code would be the first character -- no prefix, can't be specific
+        return false;
+    }
+
+    let month_char = bytes[month_pos] as char;
+    if !VALID_MONTH_CODES.contains(&month_char) {
+        return false;
+    }
+
+    // Prefix is everything before the month code
+    let prefix_len = month_pos;
+
+    // For 1-digit year, require root prefix of at least 2 chars to avoid
+    // misclassifying generic tickers like "UX1" (root=UX, index=1).
+    // For 2-digit year, root prefix of 1+ is sufficient (e.g., "WH24").
+    if digit_count == 1 && prefix_len < 2 {
+        return false;
+    }
+
+    true
 }
 
 /// Normalize tickers to a list, handling single string or slice input.
@@ -247,6 +280,7 @@ mod tests {
         assert!(!is_specific_contract("ES1 Index"));
         assert!(!is_specific_contract("CL1 Comdty"));
         assert!(!is_specific_contract("SPY1 US Equity"));
+        assert!(!is_specific_contract("UX1 Index"));  // VIX generic 1st
 
         // Specific tickers
         assert!(is_specific_contract("ESH24 Index"));

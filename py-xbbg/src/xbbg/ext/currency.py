@@ -92,6 +92,11 @@ async def aconvert_ccy(
     if "ticker" not in nw_df.columns:
         return nw_df.to_native()
 
+
+    # Need a value column to convert -- if absent, nothing to do
+    if "value" not in nw_df.columns:
+        return nw_df.to_native()
+
     tickers = nw_df["ticker"].unique().to_list()
     tickers = [t for t in tickers if t]  # drop empty/null
 
