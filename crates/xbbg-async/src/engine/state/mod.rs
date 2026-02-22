@@ -27,4 +27,4 @@ pub use intradaybar_stream::IntradayBarStreamState;
 pub use intradaytick::IntradayTickState;
 pub use intradaytick_stream::IntradayTickStreamState;
 pub use refdata::{LongMode, OutputFormat, RefDataState};
-pub use subscription::SubscriptionState;
+pub use subscription::{SubscriptionMetrics, SubscriptionState};
