@@ -1743,13 +1743,16 @@ async def asubscribe(
     engine = _get_engine()
     logger.info("subscribe: tickers=%s fields=%s", ticker_list, field_list)
 
-    # Use subscribe_with_options if service or options provided
-    if service is not None or options is not None:
+    # Use subscribe_with_options if service, options, or config params provided
+    if service is not None or options is not None or flush_threshold is not None or stream_capacity is not None or overflow_policy is not None:
         py_sub = await engine.subscribe_with_options(
             service or "//blp/mktdata",
             ticker_list,
             field_list,
             options or [],
+            flush_threshold=flush_threshold,
+            stream_capacity=stream_capacity,
+            overflow_policy=overflow_policy,
         )
     else:
         py_sub = await engine.subscribe(ticker_list, field_list)
@@ -1796,6 +1799,9 @@ async def astream(
     backend: Backend | str | None = None,
     callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
     tick_mode: bool = False,
+    flush_threshold: int | None = None,
+    stream_capacity: int | None = None,
+    overflow_policy: str | None = None,
 ):
     """High-level async streaming - simple iteration.
 
@@ -1827,7 +1833,7 @@ async def astream(
         async for _ in xbbg.astream(["AAPL US Equity"], ["LAST_PRICE"], callback=on_batch):
             pass
     """
-    async with await asubscribe(tickers, fields, raw=raw, backend=backend, tick_mode=tick_mode) as sub:
+    async with await asubscribe(tickers, fields, raw=raw, backend=backend, tick_mode=tick_mode, flush_threshold=flush_threshold, stream_capacity=stream_capacity, overflow_policy=overflow_policy) as sub:
         async for batch in sub:
             if callback is not None:
                 try:
@@ -1845,6 +1851,9 @@ def stream(
     backend: Backend | str | None = None,
     callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
     tick_mode: bool = False,
+    flush_threshold: int | None = None,
+    stream_capacity: int | None = None,
+    overflow_policy: str | None = None,
 ):
     """High-level sync streaming using a background thread.
 
@@ -1877,7 +1886,7 @@ def stream(
 
     async def run_stream():
         try:
-            async for batch in astream(tickers, fields, raw=raw, backend=backend, callback=callback, tick_mode=tick_mode):
+            async for batch in astream(tickers, fields, raw=raw, backend=backend, callback=callback, tick_mode=tick_mode, flush_threshold=flush_threshold, stream_capacity=stream_capacity, overflow_policy=overflow_policy):
                 if stop_event.is_set():
                     break
                 q.put(batch)
