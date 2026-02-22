@@ -280,7 +280,7 @@ mod tests {
         assert!(!is_specific_contract("ES1 Index"));
         assert!(!is_specific_contract("CL1 Comdty"));
         assert!(!is_specific_contract("SPY1 US Equity"));
-        assert!(!is_specific_contract("UX1 Index"));  // VIX generic 1st
+        assert!(!is_specific_contract("UX1 Index")); // VIX generic 1st
 
         // Specific tickers
         assert!(is_specific_contract("ESH24 Index"));
