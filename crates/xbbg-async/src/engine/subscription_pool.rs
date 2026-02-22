@@ -721,6 +721,7 @@ impl SessionClaim {
     /// * `fields` - Fields to subscribe to
     /// * `options` - Subscription options (e.g., ["VWAP_START_TIME=09:30"])
     /// * `stream` - Channel to send data batches (or errors) to
+    #[allow(clippy::too_many_arguments)]
     pub async fn subscribe(
         &self,
         service: String,
@@ -759,6 +760,7 @@ impl SessionClaim {
     }
 
     /// Add topics to an existing subscription.
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_topics(
         &self,
         service: String,

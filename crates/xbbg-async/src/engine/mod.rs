@@ -603,6 +603,7 @@ impl Engine {
     /// * `topics` - Securities to subscribe to
     /// * `fields` - Fields to subscribe to
     /// * `options` - Subscription options (e.g., ["VWAP_START_TIME=09:30"])
+    #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_with_options(
         &self,
         service: String,
