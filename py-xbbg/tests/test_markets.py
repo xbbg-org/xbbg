@@ -31,8 +31,35 @@ def _load_module_from_file(module_name: str, file_path: str):
     return module
 
 
+def _find_markets_dir() -> str:
+    """Find the xbbg/markets directory from installed package or source tree.
+
+    In CI, the wheel is installed into site-packages and tests are copied to a
+    temp directory, so the relative ``../src/`` path does not exist.  We first
+    resolve the installed package location via ``importlib.util.find_spec``
+    (which does NOT trigger ``__init__.py`` for a top-level package) and fall
+    back to the development source tree.
+    """
+    # Try 1: installed package (CI / pip install)
+    try:
+        spec = importlib.util.find_spec("xbbg")
+        if spec is not None and spec.submodule_search_locations:
+            candidate = os.path.join(spec.submodule_search_locations[0], "markets")
+            if os.path.isdir(candidate):
+                return candidate
+    except (ImportError, ModuleNotFoundError, ValueError):
+        pass
+
+    # Try 2: source tree (development)
+    candidate = os.path.join(os.path.dirname(__file__), "..", "src", "xbbg", "markets")
+    if os.path.isdir(candidate):
+        return candidate
+
+    raise FileNotFoundError("Cannot find xbbg.markets package directory. Install xbbg or run from the source tree.")
+
+
 # Get the markets directory
-markets_dir = os.path.join(os.path.dirname(__file__), "..", "src", "xbbg", "markets")
+markets_dir = _find_markets_dir()
 
 # Load modules directly from files
 overrides_module = _load_module_from_file("xbbg.markets.overrides", os.path.join(markets_dir, "overrides.py"))
