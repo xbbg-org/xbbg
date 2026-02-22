@@ -585,6 +585,9 @@ impl Engine {
             topics,
             fields,
             vec![],
+            None,
+            None,
+            None,
         )
         .await
     }
@@ -605,8 +608,12 @@ impl Engine {
         topics: Vec<String>,
         fields: Vec<String>,
         options: Vec<String>,
+        stream_capacity: Option<usize>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
-        let (tx, rx) = mpsc::channel(self.config.subscription_stream_capacity);
+        let (tx, rx) =
+            mpsc::channel(stream_capacity.unwrap_or(self.config.subscription_stream_capacity));
 
         // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
         let claim = self.subscription_pool.claim()?;
@@ -618,6 +625,8 @@ impl Engine {
                 topics.clone(),
                 fields.clone(),
                 options.clone(),
+                flush_threshold,
+                overflow_policy,
                 tx.clone(),
             )
             .await?;
@@ -636,6 +645,8 @@ impl Engine {
             topic_to_key,
             service,
             options,
+            flush_threshold,
+            overflow_policy,
         };
 
         Ok(stream)
@@ -960,6 +971,10 @@ pub struct SubscriptionStream {
     service: String,
     /// Subscription options.
     options: Vec<String>,
+    /// Optional flush threshold override.
+    flush_threshold: Option<usize>,
+    /// Optional overflow policy override.
+    overflow_policy: Option<OverflowPolicy>,
 }
 
 impl SubscriptionStream {
@@ -1008,6 +1023,8 @@ impl SubscriptionStream {
                 new_topics.clone(),
                 self.fields.clone(),
                 self.options.clone(),
+                self.flush_threshold,
+                self.overflow_policy,
                 self.tx.clone(),
             )
             .await?;
@@ -1116,6 +1133,8 @@ impl SubscriptionStream {
         SessionClaim,
         Vec<SlabKey>,
         std::collections::HashMap<String, SlabKey>,
+        Option<usize>,          // flush_threshold
+        Option<OverflowPolicy>, // overflow_policy
         String,      // service
         Vec<String>, // options
     ) {
@@ -1133,10 +1152,22 @@ impl SubscriptionStream {
             let claim = ptr::read(&this.claim).expect("into_parts called on already-closed stream");
             let keys = ptr::read(&this.keys);
             let topic_to_key = ptr::read(&this.topic_to_key);
+            let flush_threshold = ptr::read(&this.flush_threshold);
+            let overflow_policy = ptr::read(&this.overflow_policy);
             let service = ptr::read(&this.service);
             let options = ptr::read(&this.options);
 
-            (rx, tx, claim, keys, topic_to_key, service, options)
+            (
+                rx,
+                tx,
+                claim,
+                keys,
+                topic_to_key,
+                flush_threshold,
+                overflow_policy,
+                service,
+                options,
+            )
         }
     }
 }

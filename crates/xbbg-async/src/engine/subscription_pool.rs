@@ -17,7 +17,7 @@ use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, SessionOptions, SubscriptionList};
 
 use super::state::SubscriptionState;
-use super::{BlpAsyncError, EngineConfig, SlabKey};
+use super::{BlpAsyncError, EngineConfig, OverflowPolicy, SlabKey};
 
 /// Commands sent to a subscription worker.
 pub enum SubscriptionCommand {
@@ -29,6 +29,8 @@ pub enum SubscriptionCommand {
         fields: Vec<String>,
         /// Subscription options (e.g., ["VWAP_START_TIME=09:30"])
         options: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         /// Reply with slab keys for later unsubscribe.
         reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
@@ -41,6 +43,8 @@ pub enum SubscriptionCommand {
         fields: Vec<String>,
         /// Subscription options
         options: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         /// Reply with new slab keys.
         reply: tokio::sync::oneshot::Sender<Vec<SlabKey>>,
@@ -134,6 +138,8 @@ impl SubscriptionWorker {
                         topics,
                         fields,
                         options,
+                        flush_threshold,
+                        overflow_policy,
                         stream,
                         reply,
                     }) => {
@@ -143,7 +149,14 @@ impl SubscriptionWorker {
                             let _ = reply.send(vec![]);
                             continue;
                         }
-                        let keys = self.subscribe(topics, fields, options, stream);
+                        let keys = self.subscribe(
+                            topics,
+                            fields,
+                            options,
+                            flush_threshold,
+                            overflow_policy,
+                            stream,
+                        );
                         let _ = reply.send(keys);
                     }
                     Ok(SubscriptionCommand::AddTopics {
@@ -151,6 +164,8 @@ impl SubscriptionWorker {
                         topics,
                         fields,
                         options,
+                        flush_threshold,
+                        overflow_policy,
                         stream,
                         reply,
                     }) => {
@@ -161,7 +176,14 @@ impl SubscriptionWorker {
                             continue;
                         }
                         // AddTopics uses the same logic as Subscribe
-                        let keys = self.subscribe(topics, fields, options, stream);
+                        let keys = self.subscribe(
+                            topics,
+                            fields,
+                            options,
+                            flush_threshold,
+                            overflow_policy,
+                            stream,
+                        );
                         let _ = reply.send(keys);
                     }
                     Ok(SubscriptionCommand::Unsubscribe { keys }) => {
@@ -188,6 +210,8 @@ impl SubscriptionWorker {
         topics: Vec<String>,
         fields: Vec<String>,
         options: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Vec<SlabKey> {
         let mut sub_list = SubscriptionList::new();
@@ -195,15 +219,11 @@ impl SubscriptionWorker {
         let field_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
         let options_str = options.join(",");
         let mut keys = Vec::with_capacity(topics.len());
+        let ft = flush_threshold.unwrap_or(self.config.subscription_flush_threshold);
+        let op = overflow_policy.unwrap_or(self.config.overflow_policy);
 
         for topic in &topics {
-            let state = SubscriptionState::with_policy(
-                topic.clone(),
-                fields.clone(),
-                stream.clone(),
-                self.config.subscription_flush_threshold,
-                self.config.overflow_policy,
-            );
+            let state = SubscriptionState::with_policy(topic.clone(), fields.clone(), stream.clone(), ft, op);
             let key = self.subs.insert(state);
 
             let cid = CorrelationId::Int(key as i64);
@@ -698,6 +718,8 @@ impl SessionClaim {
         topics: Vec<String>,
         fields: Vec<String>,
         options: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
         let handle = self
@@ -716,6 +738,8 @@ impl SessionClaim {
                 topics,
                 fields,
                 options,
+                flush_threshold,
+                overflow_policy,
                 stream,
                 reply: reply_tx,
             })
@@ -732,6 +756,8 @@ impl SessionClaim {
         topics: Vec<String>,
         fields: Vec<String>,
         options: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Result<Vec<SlabKey>, BlpAsyncError> {
         let handle = self
@@ -750,6 +776,8 @@ impl SessionClaim {
                 topics,
                 fields,
                 options,
+                flush_threshold,
+                overflow_policy,
                 stream,
                 reply: reply_tx,
             })
