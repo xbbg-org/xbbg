@@ -801,7 +801,8 @@ impl PyEngine {
 
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
-            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) = stream.into_parts();
+            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
+                stream.into_parts();
 
             let handle = SubscriptionStreamHandle {
                 tx,
@@ -897,7 +898,8 @@ impl PyEngine {
 
             debug!("PyEngine: subscription with options created");
 
-            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) = stream.into_parts();
+            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
+                stream.into_parts();
 
             let handle = SubscriptionStreamHandle {
                 tx,
@@ -1183,16 +1185,24 @@ impl PySubscription {
         let dict = pyo3::types::PyDict::new(py);
         match guard.as_ref() {
             Some(handle) => {
-                let messages_received: u64 = handle.metrics.iter()
+                let messages_received: u64 = handle
+                    .metrics
+                    .iter()
                     .map(|m| m.messages_received.load(Ordering::Relaxed))
                     .sum();
-                let dropped_batches: u64 = handle.metrics.iter()
+                let dropped_batches: u64 = handle
+                    .metrics
+                    .iter()
                     .map(|m| m.dropped_batches.load(Ordering::Relaxed))
                     .sum();
-                let batches_sent: u64 = handle.metrics.iter()
+                let batches_sent: u64 = handle
+                    .metrics
+                    .iter()
                     .map(|m| m.batches_sent.load(Ordering::Relaxed))
                     .sum();
-                let slow_consumer: bool = handle.metrics.iter()
+                let slow_consumer: bool = handle
+                    .metrics
+                    .iter()
                     .any(|m| m.slow_consumer.load(Ordering::Relaxed));
                 dict.set_item("messages_received", messages_received)?;
                 dict.set_item("dropped_batches", dropped_batches)?;

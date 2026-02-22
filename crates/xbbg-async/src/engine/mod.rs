@@ -31,10 +31,10 @@ use crate::services::Operation;
 pub use crate::services::ExtractorType;
 
 pub use request_pool::RequestWorkerPool;
+use state::SubscriptionMetrics;
 pub use state::{OutputFormat, SubscriptionState};
 pub use subscription_pool::{SessionClaim, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
-use state::SubscriptionMetrics;
 
 /// Slab key for O(1) correlation dispatch.
 pub type SlabKey = usize;
@@ -1141,8 +1141,8 @@ impl SubscriptionStream {
         Vec<Arc<SubscriptionMetrics>>,
         Option<usize>,          // flush_threshold
         Option<OverflowPolicy>, // overflow_policy
-        String,      // service
-        Vec<String>, // options
+        String,                 // service
+        Vec<String>,            // options
     ) {
         use std::mem::ManuallyDrop;
         use std::ptr;

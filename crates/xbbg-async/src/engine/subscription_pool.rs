@@ -224,7 +224,13 @@ impl SubscriptionWorker {
         let op = overflow_policy.unwrap_or(self.config.overflow_policy);
 
         for topic in &topics {
-            let state = SubscriptionState::with_policy(topic.clone(), fields.clone(), stream.clone(), ft, op);
+            let state = SubscriptionState::with_policy(
+                topic.clone(),
+                fields.clone(),
+                stream.clone(),
+                ft,
+                op,
+            );
             let metrics_arc = state.metrics.clone();
             let key = self.subs.insert(state);
 
