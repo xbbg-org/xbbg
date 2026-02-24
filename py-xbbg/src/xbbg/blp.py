@@ -699,6 +699,7 @@ async def arequest(
     output: OutputMode | str = OutputMode.ARROW,
     extractor: ExtractorHint | str | None = None,
     format: Format | str | None = None,
+    include_security_errors: bool = False,
     backend: Backend | str | None = None,
 ):
     """Async generic Bloomberg request.
@@ -731,6 +732,8 @@ async def arequest(
         extractor: Override the auto-detected extractor. Use ExtractorHint.BULK for
             bulk data fields. If None, auto-detected from operation.
         format: Output format hint for result structure.
+        include_security_errors: Include ``__SECURITY_ERROR__`` rows for
+            failed securities on ReferenceData requests.
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -829,6 +832,7 @@ async def arequest(
         output=OutputMode(output) if isinstance(output, str) else output,
         extractor=extractor_hint,
         format=format_hint,
+        include_security_errors=include_security_errors,
     )
     params.validate()
 
@@ -875,6 +879,7 @@ def request(
     field_types: dict[str, str] | None = None,
     output: OutputMode | str = OutputMode.ARROW,
     extractor: ExtractorHint | str | None = None,
+    include_security_errors: bool = False,
     backend: Backend | str | None = None,
 ):
     """Generic Bloomberg request (sync wrapper).
@@ -910,6 +915,7 @@ def request(
             field_types=field_types,
             output=output,
             extractor=extractor,
+            include_security_errors=include_security_errors,
             backend=backend,
         )
     )
@@ -927,6 +933,7 @@ async def abdp(
     backend: Backend | str | None = None,
     format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
+    include_security_errors: bool = False,
     **kwargs,
 ):
     """Async Bloomberg reference data (BDP).
@@ -943,6 +950,8 @@ async def abdp(
             - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
+        include_security_errors: Include ``__SECURITY_ERROR__`` rows for
+            securities that Bloomberg rejected.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -989,6 +998,7 @@ async def abdp(
         elements=elements if elements else None,
         field_types=resolved_types,
         format=fmt,
+        include_security_errors=include_security_errors,
         backend=None,  # Get narwhals DataFrame, we'll convert below
     )
 
@@ -1323,6 +1333,7 @@ def bdp(
     backend: Backend | str | None = None,
     format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
+    include_security_errors: bool = False,
     **kwargs,
 ) -> DataFrameResult:
     """Bloomberg reference data (BDP).
@@ -1335,6 +1346,8 @@ def bdp(
         backend: DataFrame backend to return. If None, uses global default.
         format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
+        include_security_errors: Include ``__SECURITY_ERROR__`` rows for
+            securities that Bloomberg rejected.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
