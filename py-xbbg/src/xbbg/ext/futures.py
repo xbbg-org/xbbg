@@ -27,13 +27,11 @@ import narwhals.stable.v1 as nw
 
 # Import Rust ext utilities for max performance
 from xbbg._core import (
-    ext_cdx_gen_to_specific,
     ext_contract_index,
     ext_filter_candidates_by_cycle,
     ext_filter_valid_contracts,
     ext_generate_futures_candidates,
     ext_parse_date,
-    ext_previous_cdx_series,
     ext_validate_generic_ticker,
 )
 from xbbg.ext._utils import _pivot_bdp_to_wide
@@ -57,13 +55,114 @@ def _parse_date(dt: str | date) -> datetime:
     raise ValueError(f"Cannot parse date: {dt}")
 
 
+_FLD_ROLLING_SERIES = "ROLLING_SERIES"
+_FLD_OTR_INDICATOR = "ON_THE_RUN_CURRENT_BD_INDICATOR"
+_FLD_ACCRUAL_START = "CDS_FIRST_ACCRUAL_START_DATE"
+_FLD_VERSION = "VERSION"
+
+_CDX_FIELDS = [_FLD_ROLLING_SERIES, _FLD_OTR_INDICATOR, _FLD_ACCRUAL_START, _FLD_VERSION]
+
+
+def _extract_field_value(nw_df, field_name: str):
+    """Extract a scalar value from a SEMI_LONG frame by field name."""
+    field_upper = field_name.upper()
+
+    # LONG / SEMI_LONG format: ticker, field, value
+    if "field" in nw_df.columns and "value" in nw_df.columns:
+        rows = nw_df.filter(nw.col("field").str.to_uppercase() == field_upper).select("value")
+        if len(rows) == 0:
+            return None
+        return rows.item(0, 0)
+
+    # Wide fallback
+    if field_name in nw_df.columns and len(nw_df) > 0:
+        return nw_df[field_name][0]
+
+    lower_name = field_name.lower()
+    if lower_name in nw_df.columns and len(nw_df) > 0:
+        return nw_df[lower_name][0]
+
+    return None
+
+
+def _parse_series_token(tok: str) -> int | None:
+    """Parse ``S{n}`` token and return series number."""
+    if not tok.startswith("S"):
+        return None
+    digits = tok[1:]
+    if not digits.isdigit():
+        return None
+    return int(digits)
+
+
+def _find_series_token_index(tokens: list[str]) -> int | None:
+    """Find series token index (``S{n}``) in tokenized CDX ticker."""
+    for idx, token in enumerate(tokens):
+        if _parse_series_token(token) is not None:
+            return idx
+    return None
+
+
+def _append_version_to_ticker(ticker: str, version: int) -> str:
+    """Insert ``V{version}`` token after series token."""
+    tokens = ticker.split()
+    series_idx = _find_series_token_index(tokens)
+    if series_idx is None:
+        return ticker
+
+    if series_idx + 1 < len(tokens) and tokens[series_idx + 1].startswith("V") and tokens[series_idx + 1][1:].isdigit():
+        tokens.pop(series_idx + 1)
+
+    tokens.insert(series_idx + 1, f"V{version}")
+    return " ".join(tokens)
+
+
+def _strip_version_from_ticker(ticker: str) -> str:
+    """Remove ``V{n}`` token from resolved CDX ticker if present."""
+    tokens = ticker.split()
+    series_idx = _find_series_token_index(tokens)
+    if series_idx is None:
+        return ticker
+
+    if series_idx + 1 < len(tokens) and tokens[series_idx + 1].startswith("V") and tokens[series_idx + 1][1:].isdigit():
+        tokens.pop(series_idx + 1)
+    return " ".join(tokens)
+
+
+async def _resolve_version_for_ticker(ticker: str, **kwargs) -> str:
+    """Resolve CDX version for a series ticker and append ``V{n}`` when needed."""
+    from xbbg import abdp
+
+    try:
+        meta = await abdp(tickers=ticker, flds=[_FLD_VERSION], **kwargs)
+    except (ValueError, TypeError, KeyError):
+        return ticker
+
+    nw_meta = nw.from_native(meta)
+    if len(nw_meta) == 0:
+        return ticker
+
+    version_raw = _extract_field_value(nw_meta, _FLD_VERSION)
+    if version_raw is None:
+        return ticker
+
+    try:
+        version = int(version_raw)
+    except (TypeError, ValueError):
+        return ticker
+
+    if version > 1:
+        return _append_version_to_ticker(ticker, version)
+    return ticker
+
+
 # =============================================================================
 # Async implementations (primary)
 # =============================================================================
 
 
 def _filter_valid_contracts_from_df(
-    nw_df: nw.DataFrame,
+    nw_df,
     dt_parsed: datetime,
 ) -> list[str]:
     """Filter and sort futures contracts by maturity date using Rust.
@@ -322,8 +421,12 @@ async def acdx_ticker(
 ) -> str:
     """Async resolve generic CDX ticker to specific series.
 
-    Maps a generic CDX index ticker to the specific series for a date.
-    Uses Rust for CDX ticker parsing and series resolution.
+    Methodology matches the release/0.x resolver logic:
+    - Fetch ``ROLLING_SERIES``, ``VERSION``, ``ON_THE_RUN_CURRENT_BD_INDICATOR``,
+      and ``CDS_FIRST_ACCRUAL_START_DATE``.
+    - Resolve ``GEN`` to ``S{series}``.
+    - Append ``V{n}`` token when ``VERSION > 1``.
+    - If the requested date is before accrual start, fall back to prior series.
 
     Args:
         gen_ticker: Generic CDX ticker (e.g., 'CDX IG CDSI GEN 5Y Corp').
@@ -331,7 +434,8 @@ async def acdx_ticker(
         **kwargs: Additional arguments passed to abdp.
 
     Returns:
-        Specific series ticker (e.g., 'CDX IG CDSI S45 5Y Corp').
+        Specific series ticker (e.g., ``CDX IG CDSI S45 5Y Corp`` or
+        ``CDX HY CDSI S44 V2 5Y Corp``).
 
     Example::
 
@@ -349,47 +453,74 @@ async def acdx_ticker(
 
     dt_parsed = _parse_date(dt)
 
-    # Get CDX metadata
     try:
-        info = await abdp(
-            tickers=gen_ticker,
-            flds=["rolling_series", "on_the_run_current_bd_indicator", "cds_first_accrual_start_date"],
-            **kwargs,
-        )
+        info = await abdp(tickers=gen_ticker, flds=_CDX_FIELDS, **kwargs)
     except (ValueError, TypeError, KeyError):
         logger.warning("Failed to get CDX info")
         return ""
 
     nw_info = nw.from_native(info)
-    nw_info = _pivot_bdp_to_wide(nw_info)
 
-    if len(nw_info) == 0 or "rolling_series" not in nw_info.columns:
+    if len(nw_info) == 0:
         return ""
 
-    series = nw_info["rolling_series"][0]
+    ticker_data = nw_info
+    if "ticker" in nw_info.columns:
+        ticker_data = nw_info.filter(nw.col("ticker") == gen_ticker)
+        if len(ticker_data) == 0:
+            ticker_data = nw_info
+
+    otr = _extract_field_value(ticker_data, _FLD_OTR_INDICATOR)
+    if otr is not None and str(otr).upper() != "Y":
+        logger.warning(
+            "Generic ticker %s has ON_THE_RUN_CURRENT_BD_INDICATOR=%r (expected 'Y')",
+            gen_ticker,
+            otr,
+        )
+
+    series_raw = _extract_field_value(ticker_data, _FLD_ROLLING_SERIES)
+    if series_raw is None:
+        return ""
+
     try:
-        series = int(series)
+        series = int(series_raw)
     except (ValueError, TypeError):
         return ""
 
-    # Convert generic to specific using Rust
-    try:
-        resolved = ext_cdx_gen_to_specific(gen_ticker, series)
-    except ValueError:
+    version: int | None = None
+    version_raw = _extract_field_value(ticker_data, _FLD_VERSION)
+    if version_raw is not None:
+        try:
+            version = int(version_raw)
+        except (ValueError, TypeError):
+            version = None
+
+    start_dt = None
+    start_dt_raw = _extract_field_value(ticker_data, _FLD_ACCRUAL_START)
+    if start_dt_raw is not None:
+        try:
+            start_dt = _parse_date(start_dt_raw)
+        except (ValueError, TypeError):
+            start_dt = None
+
+    tokens = gen_ticker.split()
+    if "GEN" not in tokens:
+        logger.warning("Generic ticker %s does not contain GEN token", gen_ticker)
         return ""
 
-    # Check if dt is before first accrual date of current series
-    if "cds_first_accrual_start_date" in nw_info.columns:
-        try:
-            start_dt = _parse_date(nw_info["cds_first_accrual_start_date"][0])
-            if dt_parsed < start_dt and series > 1:
-                # Use prior series via Rust
-                try:
-                    resolved = ext_cdx_gen_to_specific(gen_ticker, series - 1)
-                except ValueError:
-                    pass
-        except (ValueError, TypeError):
-            logger.debug("Failed to parse first accrual date")
+    gen_idx = tokens.index("GEN")
+    tokens[gen_idx] = f"S{series}"
+    if version is not None and version > 1:
+        tokens.insert(gen_idx + 1, f"V{version}")
+    resolved = " ".join(tokens)
+
+    # If request date is before current-series accrual start, use previous series
+    if start_dt is not None and dt_parsed < start_dt and series > 1:
+        prev_tokens = _strip_version_from_ticker(resolved).split()
+        series_idx = _find_series_token_index(prev_tokens)
+        if series_idx is not None:
+            prev_tokens[series_idx] = f"S{series - 1}"
+            resolved = " ".join(prev_tokens)
 
     return resolved
 
@@ -402,95 +533,96 @@ async def aactive_cdx(
 ) -> str:
     """Async get the most active CDX contract for a date.
 
-    Selects the most active CDX series based on recent trading activity.
-
-    Args:
-        gen_ticker: Generic CDX ticker (e.g., 'CDX IG CDSI GEN 5Y Corp').
-        dt: Reference date.
-        lookback_days: Number of days to look back for activity (default: 10).
-        **kwargs: Additional arguments passed to abdp/abdh.
-
-    Returns:
-        Most active CDX series ticker.
-
-    Example::
-
-        import asyncio
-        from xbbg.ext.futures import aactive_cdx
-
-
-        async def main():
-            ticker = await aactive_cdx("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
-
-
-        asyncio.run(main())
+    Methodology matches release/0.x:
+    1) resolve current series via ``acdx_ticker``
+    2) derive previous series candidate (version-aware)
+    3) prefer previous if date is before current accrual start
+    4) otherwise compare recency of ``PX_LAST`` over lookback window
     """
     from xbbg import abdh, abdp
 
-    # Get current series
     cur = await acdx_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs)
     if not cur:
         return ""
 
     dt_parsed = _parse_date(dt)
 
-    # Get previous series using Rust
-    try:
-        prev = ext_previous_cdx_series(cur)
-    except ValueError:
-        prev = None
+    prev = ""
+    prev_base = _strip_version_from_ticker(cur)
+    parts = prev_base.split()
+    idx = _find_series_token_index(parts)
+    if idx is not None:
+        series = _parse_series_token(parts[idx])
+        if series is not None and series > 1:
+            parts[idx] = f"S{series - 1}"
+            prev = " ".join(parts)
 
     if not prev:
         return cur
 
-    # Check if dt is before current series' accrual start
+    prev = await _resolve_version_for_ticker(prev, **kwargs)
+
+    # Before accrual start, prior series should be active
     try:
-        cur_meta = await abdp(cur, ["cds_first_accrual_start_date"], **kwargs)
+        cur_meta = await abdp(tickers=cur, flds=[_FLD_ACCRUAL_START], **kwargs)
         nw_meta = nw.from_native(cur_meta)
-        nw_meta = _pivot_bdp_to_wide(nw_meta)
-        if len(nw_meta) > 0 and "cds_first_accrual_start_date" in nw_meta.columns:
-            cur_start = _parse_date(nw_meta["cds_first_accrual_start_date"][0])
+        cur_start_raw = _extract_field_value(nw_meta, _FLD_ACCRUAL_START)
+        if cur_start_raw is not None:
+            cur_start = _parse_date(cur_start_raw)
             if dt_parsed < cur_start:
                 return prev
     except (ValueError, TypeError):
         logger.debug("Failed to check CDX metadata")
 
-    # Compare activity based on PX_LAST availability
-    end = dt_parsed
+    # Compare activity using latest non-null PX_LAST date
     start = dt_parsed - timedelta(days=lookback_days)
+    end = dt_parsed
 
     try:
-        px = await abdh([cur, prev], ["PX_LAST"], start_date=start, end_date=end, **kwargs)
+        px = await abdh(tickers=[cur, prev], flds=["PX_LAST"], start_date=start, end_date=end, **kwargs)
         nw_px = nw.from_native(px)
 
         if len(nw_px) == 0:
             return cur
 
-        # LONG format: {ticker, date, field, value}
-        # Find which ticker has the most recent non-null PX_LAST
+        latest_dates: dict[str, str] = {}
+
+        # LONG format: ticker/date/field/value
         if "field" in nw_px.columns and "value" in nw_px.columns:
-            px_rows = nw_px.filter(nw.col("field").str.to_lowercase() == "px_last")
-            # Filter out null/empty values
+            px_rows = nw_px.filter(nw.col("field").str.to_uppercase() == "PX_LAST")
+            px_rows = px_rows.filter(~nw.col("value").is_null())
             px_rows = px_rows.filter(nw.col("value") != "")
 
-            if "date" in px_rows.columns:
-                px_rows = px_rows.sort("date", descending=True)
-
-            # Check current series first
-            cur_rows = px_rows.filter(nw.col("ticker") == cur)
-            prev_rows = px_rows.filter(nw.col("ticker") == prev)
-
-            if len(cur_rows) > 0 and len(prev_rows) > 0:
-                # Both have data — compare latest dates
-                cur_date = cur_rows["date"][0]
-                prev_date = prev_rows["date"][0]
-                if prev_date > cur_date:
-                    return prev
+            if len(px_rows) == 0 or "date" not in px_rows.columns:
                 return cur
-            elif len(cur_rows) > 0:
+
+            for ticker in [cur, prev]:
+                tk_rows = px_rows.filter(nw.col("ticker") == ticker).sort("date", descending=True)
+                if len(tk_rows) > 0:
+                    latest_dates[ticker] = str(tk_rows["date"][0])
+
+        # Wide format: ticker/date/PX_LAST
+        else:
+            px_col = None
+            if "PX_LAST" in nw_px.columns:
+                px_col = "PX_LAST"
+            elif "px_last" in nw_px.columns:
+                px_col = "px_last"
+
+            if px_col is None or "date" not in nw_px.columns:
                 return cur
-            elif len(prev_rows) > 0:
-                return prev
+
+            px_rows = nw_px.filter(~nw.col(px_col).is_null())
+            for ticker in [cur, prev]:
+                tk_rows = px_rows.filter(nw.col("ticker") == ticker).sort("date", descending=True)
+                if len(tk_rows) > 0:
+                    latest_dates[ticker] = str(tk_rows["date"][0])
+
+        best_ticker = cur
+        best_date = latest_dates.get(cur, "")
+        if prev in latest_dates and latest_dates[prev] > best_date:
+            best_ticker = prev
+        return best_ticker
 
     except (ValueError, TypeError, KeyError):
         logger.debug("Failed to compare CDX activity")
