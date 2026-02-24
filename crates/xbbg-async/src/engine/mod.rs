@@ -123,6 +123,8 @@ pub struct RequestParams {
     pub options: Option<Vec<(String, String)>>,
     /// Manual field type overrides (for future type resolution)
     pub field_types: Option<HashMap<String, String>>,
+    /// Include security error rows in RefData long output when present.
+    pub include_security_errors: bool,
     /// Search spec for FieldSearchRequest (//blp/apiflds)
     pub search_spec: Option<String>,
     /// Field IDs for FieldInfoRequest (//blp/apiflds)

@@ -414,6 +414,7 @@ impl RequestWorker {
                     OutputFormat::Long,
                     long_mode,
                     field_types,
+                    params.include_security_errors,
                     reply,
                 ))
             }

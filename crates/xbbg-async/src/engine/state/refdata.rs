@@ -44,6 +44,10 @@ pub struct RefDataState {
     format: OutputFormat,
     /// Long format mode (only used when format == Long)
     long_mode: LongMode,
+    /// Include security error rows in output.
+    include_security_errors: bool,
+    /// Security identifiers that returned securityError.
+    failed_securities: Vec<String>,
     /// Column set for building the output
     columns: ColumnSet,
     /// Reply channel
@@ -53,7 +57,14 @@ pub struct RefDataState {
 impl RefDataState {
     /// Create a new refdata state with Long format (default).
     pub fn new(fields: Vec<String>, reply: oneshot::Sender<Result<RecordBatch, BlpError>>) -> Self {
-        Self::with_format(fields, OutputFormat::Long, LongMode::String, None, reply)
+        Self::with_format(
+            fields,
+            OutputFormat::Long,
+            LongMode::String,
+            None,
+            false,
+            reply,
+        )
     }
 
     /// Create a new refdata state with specified format.
@@ -62,6 +73,7 @@ impl RefDataState {
         format: OutputFormat,
         long_mode: LongMode,
         field_types: Option<HashMap<String, String>>,
+        include_security_errors: bool,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
     ) -> Self {
         // Convert string types to ArrowType
@@ -82,6 +94,8 @@ impl RefDataState {
             field_types: arrow_types,
             format,
             long_mode,
+            include_security_errors,
+            failed_securities: Vec::new(),
             columns,
             reply,
         }
@@ -95,6 +109,31 @@ impl RefDataState {
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
+
+        if !self.failed_securities.is_empty() {
+            xbbg_log::warn!(
+                count = self.failed_securities.len(),
+                tickers = ?self.failed_securities,
+                "ReferenceData completed with security failures"
+            );
+        }
+
+        if self.columns.row_count() == 0 && !self.failed_securities.is_empty() {
+            let detail = format!(
+                "All securities failed: {}",
+                self.failed_securities.join(", ")
+            );
+            let _ = self.reply.send(Err(BlpError::RequestFailure {
+                service: "//blp/refdata".to_string(),
+                operation: Some("ReferenceDataRequest".to_string()),
+                cid: None,
+                label: Some(detail),
+                request_id: None,
+                source: None,
+            }));
+            return;
+        }
+
         let reply = self.reply;
         let result = match self.format {
             OutputFormat::Long => match self.long_mode {
@@ -171,9 +210,48 @@ impl RefDataState {
                 .unwrap_or("");
 
             // Check for security error
-            if sec.get_by_str("securityError").is_some() {
-                trace!(ticker = ticker, "Security has error, skipping");
+            if let Some(security_error) = sec.get_by_str("securityError") {
+                let category = security_error
+                    .get_by_str("category")
+                    .and_then(|e| e.get_str(0))
+                    .unwrap_or("");
+                let code = security_error
+                    .get_by_str("code")
+                    .and_then(|e| e.get_i32(0))
+                    .unwrap_or_default();
+                let message = security_error
+                    .get_by_str("message")
+                    .and_then(|e| e.get_str(0))
+                    .unwrap_or("");
+
+                xbbg_log::warn!(
+                    ticker = ticker,
+                    category = category,
+                    code = code,
+                    message = message,
+                    "ReferenceData securityError; skipping security"
+                );
+
+                self.failed_securities.push(ticker.to_string());
+
+                if self.include_security_errors {
+                    let subcategory = security_error
+                        .get_by_str("subcategory")
+                        .and_then(|e| e.get_str(0))
+                        .unwrap_or("");
+                    self.append_security_error_row(ticker, code, category, subcategory, message);
+                }
                 continue;
+            }
+
+            if let Some(field_exceptions) = sec.get_by_str("fieldExceptions") {
+                if !field_exceptions.is_empty() {
+                    xbbg_log::warn!(
+                        ticker = ticker,
+                        count = field_exceptions.len(),
+                        "ReferenceData fieldExceptions present"
+                    );
+                }
             }
 
             // Get fieldData
@@ -191,6 +269,44 @@ impl RefDataState {
                 }
             }
         }
+    }
+
+    fn append_security_error_row(
+        &mut self,
+        ticker: &str,
+        code: i32,
+        category: &str,
+        subcategory: &str,
+        message: &str,
+    ) {
+        let detail =
+            format!("code={code} category={category} subcategory={subcategory} message={message}");
+
+        match self.long_mode {
+            LongMode::String => {
+                self.columns.append_str("ticker", ticker);
+                self.columns.append_str("field", "__SECURITY_ERROR__");
+                self.columns.append_str("value", &detail);
+            }
+            LongMode::WithMetadata => {
+                self.columns.append_str("ticker", ticker);
+                self.columns.append_str("field", "__SECURITY_ERROR__");
+                self.columns.append_str("value", &detail);
+                self.columns.append_str("dtype", "string");
+            }
+            LongMode::Typed => {
+                self.columns.append_str("ticker", ticker);
+                self.columns.append_str("field", "__SECURITY_ERROR__");
+                self.columns.append_null("value_f64");
+                self.columns.append_null("value_i64");
+                self.columns.append_str("value_str", &detail);
+                self.columns.append_null("value_bool");
+                self.columns.append_null("value_date");
+                self.columns.append_null("value_ts");
+            }
+        }
+
+        self.columns.end_row();
     }
 
     /// Process security in long format (one row per field).
