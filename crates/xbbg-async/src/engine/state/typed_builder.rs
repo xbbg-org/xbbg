@@ -332,6 +332,41 @@ pub struct ColumnSet {
 }
 
 impl ColumnSet {
+    fn default_order_type(name: &str) -> ArrowType {
+        match name {
+            "value_f64" => ArrowType::Float64,
+            "value_i64" => ArrowType::Int64,
+            "value_bool" => ArrowType::Bool,
+            "value_date" => ArrowType::Date32,
+            "value_ts" => ArrowType::TimestampMicros,
+            _ => ArrowType::String,
+        }
+    }
+
+    fn build_empty_with_order(&self, order: &[&str]) -> Result<RecordBatch, BlpError> {
+        if order.is_empty() {
+            return Ok(RecordBatch::new_empty(Arc::new(Schema::empty())));
+        }
+
+        let mut fields = Vec::with_capacity(order.len());
+        let mut arrays: Vec<ArrayRef> = Vec::with_capacity(order.len());
+
+        for &name in order {
+            let arrow_type = self
+                .type_hints
+                .get(name)
+                .copied()
+                .unwrap_or_else(|| Self::default_order_type(name));
+            fields.push(Field::new(name, arrow_type.to_arrow_datatype(), true));
+            arrays.push(TypedBuilder::new(arrow_type).finish());
+        }
+
+        let schema = Arc::new(Schema::new(fields));
+        RecordBatch::try_new(schema, arrays).map_err(|e| BlpError::Internal {
+            detail: format!("build empty RecordBatch from order: {e}"),
+        })
+    }
+
     /// Create a new empty ColumnSet.
     pub fn new() -> Self {
         Self {
@@ -431,10 +466,7 @@ impl ColumnSet {
     pub fn finish(self) -> Result<RecordBatch, BlpError> {
         if self.columns.is_empty() {
             // Return empty batch with no columns
-            let schema = Arc::new(Schema::empty());
-            return RecordBatch::try_new(schema, vec![]).map_err(|e| BlpError::Internal {
-                detail: format!("build empty RecordBatch: {e}"),
-            });
+            return Ok(RecordBatch::new_empty(Arc::new(Schema::empty())));
         }
 
         // Build schema and arrays
@@ -457,29 +489,8 @@ impl ColumnSet {
     /// Columns not in `order` are appended at the end.
     /// Columns in `order` but not in the set are skipped.
     pub fn finish_with_order(mut self, order: &[&str]) -> Result<RecordBatch, BlpError> {
-        // If no data received but we have type hints, create empty columns from hints
-        if self.columns.is_empty() && !self.type_hints.is_empty() {
-            let mut fields = Vec::with_capacity(order.len());
-            let mut arrays: Vec<ArrayRef> = Vec::with_capacity(order.len());
-
-            for &name in order {
-                if let Some(arrow_type) = self.type_hints.get(name) {
-                    fields.push(Field::new(name, arrow_type.to_arrow_datatype(), true));
-                    arrays.push(TypedBuilder::new(*arrow_type).finish());
-                }
-            }
-
-            let schema = Arc::new(Schema::new(fields));
-            return RecordBatch::try_new(schema, arrays).map_err(|e| BlpError::Internal {
-                detail: format!("build empty RecordBatch from hints: {e}"),
-            });
-        }
-
         if self.columns.is_empty() {
-            let schema = Arc::new(Schema::empty());
-            return RecordBatch::try_new(schema, vec![]).map_err(|e| BlpError::Internal {
-                detail: format!("build empty RecordBatch: {e}"),
-            });
+            return self.build_empty_with_order(order);
         }
 
         let mut fields = Vec::with_capacity(self.columns.len());
@@ -626,5 +637,33 @@ mod tests {
 
         let batch = cols.finish().unwrap();
         assert_eq!(batch.schema().field(0).data_type(), &DataType::Float64);
+    }
+
+    #[test]
+    fn test_finish_with_order_empty_columns_non_matching_hints() {
+        let cols = ColumnSet::with_type_hints([("PX_LAST".to_string(), ArrowType::Float64)]);
+        let batch = cols
+            .finish_with_order(&["ticker", "field", "value"])
+            .unwrap();
+
+        assert_eq!(batch.num_rows(), 0);
+        assert_eq!(batch.num_columns(), 3);
+        assert_eq!(batch.schema().field(0).name(), "ticker");
+        assert_eq!(batch.schema().field(1).name(), "field");
+        assert_eq!(batch.schema().field(2).name(), "value");
+    }
+
+    #[test]
+    fn test_finish_with_order_empty_columns_no_hints() {
+        let cols = ColumnSet::new();
+        let batch = cols
+            .finish_with_order(&["ticker", "field", "value"])
+            .unwrap();
+
+        assert_eq!(batch.num_rows(), 0);
+        assert_eq!(batch.num_columns(), 3);
+        assert_eq!(batch.schema().field(0).name(), "ticker");
+        assert_eq!(batch.schema().field(1).name(), "field");
+        assert_eq!(batch.schema().field(2).name(), "value");
     }
 }
