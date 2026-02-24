@@ -1,0 +1,570 @@
+"""CDX index extension functions.
+
+Convenience wrappers for CDX credit default swap index analytics.
+Returns DataFrame in the configured backend format.
+Uses high-performance Rust utilities from xbbg._core.
+
+Sync functions (wrap async with asyncio.run):
+    - cdx_info(): CDX reference metadata
+    - cdx_defaults(): Default history
+    - cdx_pricing(): Market pricing
+    - cdx_risk(): Risk metrics
+    - cdx_basis(): Basis analytics
+    - cdx_default_prob(): Default probability
+    - cdx_cashflows(): Cash flow schedule
+    - cdx_curve(): Term structure
+
+Async functions (primary implementation):
+    - acdx_info(): Async CDX reference metadata
+    - acdx_defaults(): Async default history
+    - acdx_pricing(): Async market pricing
+    - acdx_risk(): Async risk metrics
+    - acdx_basis(): Async basis analytics
+    - acdx_default_prob(): Async default probability
+    - acdx_cashflows(): Async cash flow schedule
+    - acdx_curve(): Async term structure
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from narwhals.typing import IntoDataFrame
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "acdx_info",
+    "acdx_defaults",
+    "acdx_pricing",
+    "acdx_risk",
+    "acdx_basis",
+    "acdx_default_prob",
+    "acdx_cashflows",
+    "acdx_curve",
+    "cdx_info",
+    "cdx_defaults",
+    "cdx_pricing",
+    "cdx_risk",
+    "cdx_basis",
+    "cdx_default_prob",
+    "cdx_cashflows",
+    "cdx_curve",
+]
+
+# Field constants
+_CDX_INFO_FIELDS = [
+    "ROLLING_SERIES",
+    "VERSION",
+    "ON_THE_RUN_CURRENT_BD_INDICATOR",
+    "CDS_FIRST_ACCRUAL_START_DATE",
+    "NAME",
+    "NUM_CURRENT_COMPANIES_CCY_TKR",
+    "NUM_ORIG_COMPANIES_CRNCY_TKR",
+    "PX_LAST",
+]
+
+_CDX_PRICING_FIELDS = [
+    "PX_LAST",
+    "PX_BID",
+    "PX_ASK",
+    "UPFRONT_LAST",
+    "UPFRONT_BID",
+    "UPFRONT_ASK",
+    "CDS_FLAT_SPREAD",
+    "UPFRONT_FEE",
+    "PV_CDS_PREMIUM_LEG",
+    "PV_CDS_DEFAULT_LEG",
+]
+
+_CDX_RISK_FIELDS = [
+    "SW_CNV_BPV",
+    "SW_EQV_BPV",
+    "CDS_SPREAD_MID_MODIFIED_DURATION",
+    "CDS_SPREAD_MID_CONVEXITY",
+    "RECOVERY_RATE_SEN",
+    "CDS_RECOVERY_RT",
+]
+
+_CDX_BASIS_FIELDS = [
+    "CDS_INDEX_INTRINSIC_VALUE",
+    "CDS_INDEX_INTRINSIC_BASIS_VALUE",
+    "CDS_IDX_DUR_BASED_INTRINSIC_VAL",
+    "CDS_INDEX_DUR_BASED_BASIS_VAL",
+    "PX_LAST",
+]
+
+_CDX_CURVE_FIELDS = [
+    "PX_LAST",
+    "UPFRONT_LAST",
+    "CDS_FLAT_SPREAD",
+    "SW_CNV_BPV",
+    "CURRENT_TENOR",
+]
+
+_CDX_COMMON_TENORS = ["1Y", "2Y", "3Y", "4Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y"]
+_CDX_CURVE_DEFAULT_TENORS = ["3Y", "5Y", "7Y", "10Y"]
+
+
+# =============================================================================
+# Async implementations (primary)
+# =============================================================================
+
+
+async def acdx_info(ticker: str, **kwargs) -> IntoDataFrame:
+    """Async CDX reference metadata.
+
+    Retrieves CDX index reference information including series, version,
+    on-the-run status, accrual dates, name, and constituent counts.
+
+    Args:
+        ticker: CDX index ticker (e.g., "CDX IG CDSI GEN 5Y Corp").
+        **kwargs: Additional arguments passed to abdp().
+
+    Returns:
+        DataFrame with CDX reference data. Columns include:
+            - ROLLING_SERIES: Series number
+            - VERSION: Index version
+            - ON_THE_RUN_CURRENT_BD_INDICATOR: On-the-run status
+            - CDS_FIRST_ACCRUAL_START_DATE: First accrual date
+            - NAME: Index name
+            - NUM_CURRENT_COMPANIES_CCY_TKR: Current constituent count
+            - NUM_ORIG_COMPANIES_CRNCY_TKR: Original constituent count
+            - PX_LAST: Last price
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_info
+
+
+        async def main():
+            df = await acdx_info("CDX IG CDSI GEN 5Y Corp")
+            print(df)
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abdp
+
+    return await abdp(tickers=ticker, flds=_CDX_INFO_FIELDS, **kwargs)
+
+
+async def acdx_defaults(ticker: str, **kwargs) -> IntoDataFrame:
+    """Async CDX default history.
+
+    Retrieves the history of defaults that have occurred in the CDX index.
+
+    Args:
+        ticker: CDX index ticker (e.g., "CDX IG CDSI GEN 5Y Corp").
+        **kwargs: Additional arguments passed to abds().
+
+    Returns:
+        DataFrame with default information for constituents that have defaulted.
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_defaults
+
+
+        async def main():
+            df = await acdx_defaults("CDX IG CDSI GEN 5Y Corp")
+            print(df)
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abds
+
+    return await abds(tickers=ticker, flds="CDS_INDEX_DEFAULT_INFORMATION", **kwargs)
+
+
+async def acdx_pricing(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
+    """Async CDX market pricing.
+
+    Retrieves CDX index pricing data including bid/ask spreads, upfront fees,
+    and present value of premium and default legs.
+
+    Args:
+        ticker: CDX index ticker (e.g., "CDX IG CDSI GEN 5Y Corp").
+        recovery_rate: Optional recovery rate override (0-100). If provided,
+            sets CDS_RR override for pricing calculations.
+        **kwargs: Additional arguments passed to abdp().
+
+    Returns:
+        DataFrame with CDX pricing data. Columns include:
+            - PX_LAST: Last price
+            - PX_BID: Bid price
+            - PX_ASK: Ask price
+            - UPFRONT_LAST: Last upfront fee
+            - UPFRONT_BID: Bid upfront fee
+            - UPFRONT_ASK: Ask upfront fee
+            - CDS_FLAT_SPREAD: Flat spread
+            - UPFRONT_FEE: Upfront fee
+            - PV_CDS_PREMIUM_LEG: Present value of premium leg
+            - PV_CDS_DEFAULT_LEG: Present value of default leg
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_pricing
+
+
+        async def main():
+            # Get pricing with default recovery rate
+            df = await acdx_pricing("CDX IG CDSI GEN 5Y Corp")
+
+            # Get pricing with custom recovery rate
+            df = await acdx_pricing("CDX IG CDSI GEN 5Y Corp", recovery_rate=40)
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abdp
+
+    overrides: dict[str, str] = {}
+    if recovery_rate is not None:
+        overrides["CDS_RR"] = str(recovery_rate)
+
+    return await abdp(tickers=ticker, flds=_CDX_PRICING_FIELDS, overrides=overrides, **kwargs)
+
+
+async def acdx_risk(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
+    """Async CDX risk metrics.
+
+    Retrieves CDX index risk metrics including duration, convexity, and
+    sensitivity measures.
+
+    Args:
+        ticker: CDX index ticker (e.g., "CDX IG CDSI GEN 5Y Corp").
+        recovery_rate: Optional recovery rate override (0-100). If provided,
+            sets CDS_RR override for risk calculations.
+        **kwargs: Additional arguments passed to abdp().
+
+    Returns:
+        DataFrame with CDX risk data. Columns include:
+            - SW_CNV_BPV: Swap convexity basis point value
+            - SW_EQV_BPV: Swap equivalent basis point value
+            - CDS_SPREAD_MID_MODIFIED_DURATION: Modified duration
+            - CDS_SPREAD_MID_CONVEXITY: Convexity
+            - RECOVERY_RATE_SEN: Recovery rate sensitivity
+            - CDS_RECOVERY_RT: Recovery rate
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_risk
+
+
+        async def main():
+            # Get risk metrics with default recovery rate
+            df = await acdx_risk("CDX IG CDSI GEN 5Y Corp")
+
+            # Get risk metrics with custom recovery rate
+            df = await acdx_risk("CDX IG CDSI GEN 5Y Corp", recovery_rate=40)
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abdp
+
+    overrides: dict[str, str] = {}
+    if recovery_rate is not None:
+        overrides["CDS_RR"] = str(recovery_rate)
+
+    return await abdp(tickers=ticker, flds=_CDX_RISK_FIELDS, overrides=overrides, **kwargs)
+
+
+async def acdx_basis(ticker: str, **kwargs) -> IntoDataFrame:
+    """Async CDX basis analytics.
+
+    Retrieves CDX index basis data including intrinsic value and basis spreads.
+
+    Args:
+        ticker: CDX index ticker (e.g., "CDX IG CDSI GEN 5Y Corp").
+        **kwargs: Additional arguments passed to abdp().
+
+    Returns:
+        DataFrame with CDX basis data. Columns include:
+            - CDS_INDEX_INTRINSIC_VALUE: Intrinsic value
+            - CDS_INDEX_INTRINSIC_BASIS_VALUE: Intrinsic basis value
+            - CDS_IDX_DUR_BASED_INTRINSIC_VAL: Duration-based intrinsic value
+            - CDS_INDEX_DUR_BASED_BASIS_VAL: Duration-based basis value
+            - PX_LAST: Last price
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_basis
+
+
+        async def main():
+            df = await acdx_basis("CDX IG CDSI GEN 5Y Corp")
+            print(df)
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abdp
+
+    return await abdp(tickers=ticker, flds=_CDX_BASIS_FIELDS, **kwargs)
+
+
+async def acdx_default_prob(ticker: str, **kwargs) -> IntoDataFrame:
+    """Async CDX default probability.
+
+    Retrieves implied default probability information for the CDX index.
+
+    Args:
+        ticker: CDX index ticker (e.g., "CDX IG CDSI GEN 5Y Corp").
+        **kwargs: Additional arguments passed to abds().
+
+    Returns:
+        DataFrame with default probability data.
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_default_prob
+
+
+        async def main():
+            df = await acdx_default_prob("CDX IG CDSI GEN 5Y Corp")
+            print(df)
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abds
+
+    return await abds(tickers=ticker, flds="CDS_DEFAULT_PROB", **kwargs)
+
+
+async def acdx_cashflows(ticker: str, **kwargs) -> IntoDataFrame:
+    """Async CDX cash flow schedule.
+
+    Retrieves the cash flow schedule for the CDX index including premium
+    and protection leg payments.
+
+    Args:
+        ticker: CDX index ticker (e.g., "CDX IG CDSI GEN 5Y Corp").
+        **kwargs: Additional arguments passed to abds().
+
+    Returns:
+        DataFrame with CDX cash flow schedule data.
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_cashflows
+
+
+        async def main():
+            df = await acdx_cashflows("CDX IG CDSI GEN 5Y Corp")
+            print(df)
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abds
+
+    return await abds(tickers=ticker, flds="CASHFLOW_SCHEDULE", **kwargs)
+
+
+async def acdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs) -> IntoDataFrame:
+    """Async CDX term structure curve.
+
+    Retrieves CDX index data across multiple tenors to construct a term
+    structure curve. Automatically identifies the tenor token in the generic
+    ticker and builds tenor-specific tickers.
+
+    Args:
+        gen_ticker: Generic CDX ticker with tenor placeholder
+            (e.g., "CDX IG CDSI GEN 5Y Corp"). The function will identify
+            which token is the tenor and replace it with requested tenors.
+        tenors: List of tenors to retrieve (e.g., ["3Y", "5Y", "7Y", "10Y"]).
+            Default: ["3Y", "5Y", "7Y", "10Y"].
+        **kwargs: Additional arguments passed to abdp().
+
+    Returns:
+        DataFrame with CDX curve data across tenors. Columns include:
+            - PX_LAST: Last price
+            - UPFRONT_LAST: Last upfront fee
+            - CDS_FLAT_SPREAD: Flat spread
+            - SW_CNV_BPV: Swap convexity basis point value
+            - CURRENT_TENOR: Tenor
+
+    Example::
+
+        import asyncio
+        from xbbg.ext.cdx import acdx_curve
+
+
+        async def main():
+            # Get default tenors (3Y, 5Y, 7Y, 10Y)
+            df = await acdx_curve("CDX IG CDSI GEN 5Y Corp")
+
+            # Get custom tenors
+            df = await acdx_curve("CDX IG CDSI GEN 5Y Corp", tenors=["2Y", "5Y", "10Y"])
+
+
+        asyncio.run(main())
+    """
+    from xbbg import abdp
+
+    requested_tenors = tenors or _CDX_CURVE_DEFAULT_TENORS
+    tokens = gen_ticker.split()
+
+    # Find which token is a tenor
+    tenor_idx = next((idx for idx, tok in enumerate(tokens) if tok in _CDX_COMMON_TENORS), None)
+
+    if tenor_idx is None:
+        # No tenor found, use generic ticker as-is
+        curve_tickers = [gen_ticker]
+    else:
+        # Build tenor-specific tickers
+        curve_tickers = []
+        for tenor in requested_tenors:
+            tenor_tokens = list(tokens)
+            tenor_tokens[tenor_idx] = tenor
+            curve_tickers.append(" ".join(tenor_tokens))
+
+    return await abdp(tickers=curve_tickers, flds=_CDX_CURVE_FIELDS, **kwargs)
+
+
+# =============================================================================
+# Sync wrappers
+# =============================================================================
+
+
+def cdx_info(ticker: str, **kwargs) -> IntoDataFrame:
+    """Get CDX reference metadata.
+
+    Sync wrapper for acdx_info(). See acdx_info() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_info
+
+        # Get CDX reference data
+        df = cdx_info("CDX IG CDSI GEN 5Y Corp")
+    """
+    return asyncio.run(acdx_info(ticker=ticker, **kwargs))
+
+
+def cdx_defaults(ticker: str, **kwargs) -> IntoDataFrame:
+    """Get CDX default history.
+
+    Sync wrapper for acdx_defaults(). See acdx_defaults() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_defaults
+
+        # Get CDX default history
+        df = cdx_defaults("CDX IG CDSI GEN 5Y Corp")
+    """
+    return asyncio.run(acdx_defaults(ticker=ticker, **kwargs))
+
+
+def cdx_pricing(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
+    """Get CDX market pricing.
+
+    Sync wrapper for acdx_pricing(). See acdx_pricing() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_pricing
+
+        # Get CDX pricing
+        df = cdx_pricing("CDX IG CDSI GEN 5Y Corp")
+
+        # Get pricing with custom recovery rate
+        df = cdx_pricing("CDX IG CDSI GEN 5Y Corp", recovery_rate=40)
+    """
+    return asyncio.run(acdx_pricing(ticker=ticker, recovery_rate=recovery_rate, **kwargs))
+
+
+def cdx_risk(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
+    """Get CDX risk metrics.
+
+    Sync wrapper for acdx_risk(). See acdx_risk() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_risk
+
+        # Get CDX risk metrics
+        df = cdx_risk("CDX IG CDSI GEN 5Y Corp")
+
+        # Get risk metrics with custom recovery rate
+        df = cdx_risk("CDX IG CDSI GEN 5Y Corp", recovery_rate=40)
+    """
+    return asyncio.run(acdx_risk(ticker=ticker, recovery_rate=recovery_rate, **kwargs))
+
+
+def cdx_basis(ticker: str, **kwargs) -> IntoDataFrame:
+    """Get CDX basis analytics.
+
+    Sync wrapper for acdx_basis(). See acdx_basis() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_basis
+
+        # Get CDX basis data
+        df = cdx_basis("CDX IG CDSI GEN 5Y Corp")
+    """
+    return asyncio.run(acdx_basis(ticker=ticker, **kwargs))
+
+
+def cdx_default_prob(ticker: str, **kwargs) -> IntoDataFrame:
+    """Get CDX default probability.
+
+    Sync wrapper for acdx_default_prob(). See acdx_default_prob() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_default_prob
+
+        # Get CDX default probability
+        df = cdx_default_prob("CDX IG CDSI GEN 5Y Corp")
+    """
+    return asyncio.run(acdx_default_prob(ticker=ticker, **kwargs))
+
+
+def cdx_cashflows(ticker: str, **kwargs) -> IntoDataFrame:
+    """Get CDX cash flow schedule.
+
+    Sync wrapper for acdx_cashflows(). See acdx_cashflows() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_cashflows
+
+        # Get CDX cash flow schedule
+        df = cdx_cashflows("CDX IG CDSI GEN 5Y Corp")
+    """
+    return asyncio.run(acdx_cashflows(ticker=ticker, **kwargs))
+
+
+def cdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs) -> IntoDataFrame:
+    """Get CDX term structure curve.
+
+    Sync wrapper for acdx_curve(). See acdx_curve() for full documentation.
+
+    Example::
+
+        from xbbg.ext.cdx import cdx_curve
+
+        # Get default tenors (3Y, 5Y, 7Y, 10Y)
+        df = cdx_curve("CDX IG CDSI GEN 5Y Corp")
+
+        # Get custom tenors
+        df = cdx_curve("CDX IG CDSI GEN 5Y Corp", tenors=["2Y", "5Y", "10Y"])
+    """
+    return asyncio.run(acdx_curve(gen_ticker=gen_ticker, tenors=tenors, **kwargs))
