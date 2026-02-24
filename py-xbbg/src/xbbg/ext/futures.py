@@ -19,22 +19,16 @@ Async functions (primary implementation):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import datetime, timedelta
 import logging
+import re
 from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
 
-# Import Rust ext utilities for max performance
-from xbbg._core import (
-    ext_contract_index,
-    ext_filter_candidates_by_cycle,
-    ext_filter_valid_contracts,
-    ext_generate_futures_candidates,
-    ext_parse_date,
-    ext_validate_generic_ticker,
-)
-from xbbg.ext._utils import _pivot_bdp_to_wide
+# Import Rust date parser (shared with other ext modules)
+from xbbg._core import ext_parse_date
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +54,122 @@ _FLD_OTR_INDICATOR = "ON_THE_RUN_CURRENT_BD_INDICATOR"
 _FLD_ACCRUAL_START = "CDS_FIRST_ACCRUAL_START_DATE"
 _FLD_VERSION = "VERSION"
 
+_FUTURES_MONTH_CODES = "FGHJKMNQUVXZ"
+
 _CDX_FIELDS = [_FLD_ROLLING_SERIES, _FLD_OTR_INDICATOR, _FLD_ACCRUAL_START, _FLD_VERSION]
+
+
+def _parse_generic_ticker(gen_ticker: str) -> tuple[str, int, str]:
+    """Parse generic futures ticker into ``(root, n, asset_type)``."""
+    parts = gen_ticker.split()
+    if len(parts) < 2:
+        raise ValueError(f"Unknown asset type for generic ticker: {gen_ticker}")
+
+    asset = parts[-1]
+
+    if asset in ["Index", "Curncy", "Comdty"]:
+        ticker = " ".join(parts[:-1])
+        root = ticker[:-1]
+        n = int(ticker[-1])
+        return root, n, asset
+
+    if asset == "Equity":
+        ticker = parts[0]
+        root = ticker[:-1]
+        n = int(ticker[-1])
+        return root, n, " ".join(parts[1:])
+
+    raise ValueError(f"Unknown asset type for generic ticker: {gen_ticker}")
+
+
+def _find_col(columns: list[str], candidates: list[str]) -> str | None:
+    """Find first matching column name (case-insensitive)."""
+    lowered = {col.lower(): col for col in columns}
+    for candidate in candidates:
+        match = lowered.get(candidate.lower())
+        if match is not None:
+            return match
+    return None
+
+
+def _coerce_datetime(value) -> datetime | None:
+    """Convert Bloomberg date-like values to ``datetime``."""
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value
+
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        return datetime(value.year, value.month, value.day)
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    candidates = [text]
+    if "T" in text:
+        candidates.append(text.split("T", 1)[0])
+    if " " in text:
+        candidates.append(text.split(" ", 1)[0])
+
+    for candidate in candidates:
+        try:
+            return _parse_date(candidate)
+        except (ValueError, TypeError):
+            continue
+
+    return None
+
+
+async def _resolve_chain(gen_ticker: str, dt: datetime, **kwargs) -> list[tuple[str, datetime]]:
+    """Resolve futures chain via ``FUT_CHAIN_LAST_TRADE_DATES`` at ``CHAIN_DATE``."""
+    from xbbg import abds
+
+    chain_date = dt.strftime("%Y%m%d")
+    overrides = {"CHAIN_DATE": chain_date}
+
+    try:
+        chain = await abds(
+            tickers=gen_ticker,
+            flds="FUT_CHAIN_LAST_TRADE_DATES",
+            overrides=overrides,
+            **kwargs,
+        )
+    except (ValueError, TypeError, KeyError):
+        logger.warning("Failed to get futures chain for %s", gen_ticker)
+        return []
+
+    nw_chain = nw.from_native(chain)
+    if len(nw_chain) == 0:
+        logger.warning("Empty futures chain for %s at %s", gen_ticker, chain_date)
+        return []
+
+    ticker_col = _find_col(
+        list(nw_chain.columns),
+        ["future's_ticker", "futures_ticker", "security_description", "ticker"],
+    )
+    date_col = _find_col(
+        list(nw_chain.columns),
+        ["last_trade_date", "last_tradeable_dt", "date"],
+    )
+
+    if ticker_col is None or date_col is None:
+        logger.warning("Unexpected FUT_CHAIN_LAST_TRADE_DATES columns: %s", list(nw_chain.columns))
+        return []
+
+    contracts: list[tuple[str, datetime]] = []
+    for row in nw_chain.iter_rows(named=True):
+        ticker = row.get(ticker_col)
+        expiry_raw = row.get(date_col)
+        expiry = _coerce_datetime(expiry_raw)
+        if ticker is None or expiry is None:
+            continue
+        if expiry > dt:
+            contracts.append((str(ticker).strip(), expiry))
+
+    contracts.sort(key=lambda item: item[1])
+    return contracts
 
 
 def _extract_field_value(nw_df, field_name: str):
@@ -161,32 +270,6 @@ async def _resolve_version_for_ticker(ticker: str, **kwargs) -> str:
 # =============================================================================
 
 
-def _filter_valid_contracts_from_df(
-    nw_df,
-    dt_parsed: datetime,
-) -> list[str]:
-    """Filter and sort futures contracts by maturity date using Rust.
-
-    Extracts (ticker, maturity_date_str) pairs from a pivoted BDP DataFrame
-    and delegates filtering/sorting to the Rust implementation.
-
-    Args:
-        nw_df: Pivoted DataFrame with ``ticker`` and ``last_tradeable_dt`` columns.
-        dt_parsed: Reference date; contracts maturing on or before this date
-            are excluded.
-
-    Returns:
-        Sorted list of ticker strings for contracts maturing after *dt_parsed*.
-    """
-    matu_dates = nw_df["last_tradeable_dt"].to_list()
-    tickers = nw_df["ticker"].to_list()
-
-    # Build (ticker, maturity_str) pairs for Rust
-    contracts = [(str(t), str(m)) for t, m in zip(tickers, matu_dates, strict=False) if m is not None]
-
-    return ext_filter_valid_contracts(contracts, dt_parsed.year, dt_parsed.month, dt_parsed.day)
-
-
 async def afut_ticker(
     gen_ticker: str,
     dt: str | date,
@@ -195,14 +278,13 @@ async def afut_ticker(
     """Async resolve generic futures ticker to specific contract.
 
     Maps a generic futures ticker (e.g., 'ES1 Index') to the specific
-    contract for a given date. Queries Bloomberg for FUT_GEN_MONTH to
-    determine the actual trading cycle, then uses Rust for candidate
-    generation and filtering.
+    contract for a given date using Bloomberg's futures chain bulk field
+    (``FUT_CHAIN_LAST_TRADE_DATES``) with ``CHAIN_DATE``.
 
     Args:
         gen_ticker: Generic futures ticker (e.g., 'ES1 Index', 'CL1 Comdty').
         dt: Reference date for contract resolution.
-        **kwargs: Additional arguments passed to abdp.
+        **kwargs: Additional arguments passed to abds.
 
     Returns:
         Specific contract ticker (e.g., 'ESH24 Index').
@@ -221,84 +303,29 @@ async def afut_ticker(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     dt_parsed = _parse_date(dt)
 
-    # Get contract index (0-based) using Rust
     try:
-        idx = ext_contract_index(gen_ticker)
-    except ValueError:
+        _root, n, _asset_type = _parse_generic_ticker(gen_ticker)
+    except ValueError as exc:
+        logger.error(str(exc))
         return ""
 
-    # Determine candidate count — enough to cover the index + buffer
-    t_info = gen_ticker.split()
-    asset = t_info[-1] if t_info else ""
-    month_ext = 4 if asset == "Comdty" else 2
-    count = max(idx + month_ext, 3)
+    contracts = await _resolve_chain(gen_ticker, dt_parsed, **kwargs)
 
-    # Query Bloomberg for the actual trading cycle (e.g., "HMUZ")
-    try:
-        cycle_data = await abdp(tickers=gen_ticker, flds="fut_gen_month", **kwargs)
-        cycle_nw = nw.from_native(cycle_data)
-        cycle_nw = _pivot_bdp_to_wide(cycle_nw)
-        cycle = cycle_nw["fut_gen_month"][0] if len(cycle_nw) > 0 and "fut_gen_month" in cycle_nw.columns else ""
-    except (ValueError, TypeError, KeyError, IndexError):
-        cycle = ""
-
-    # Generate monthly candidates using Rust, then filter by Bloomberg cycle
-    try:
-        candidates = ext_generate_futures_candidates(
+    if len(contracts) < n:
+        logger.warning(
+            "Not enough contracts expiring after %s for %s (need %d, found %d)",
+            dt_parsed.date(),
             gen_ticker,
-            dt_parsed.year,
-            dt_parsed.month,
-            dt_parsed.day,
-            "M",  # always monthly — Bloomberg cycle handles filtering
-            count * 3,  # generate extra so filtering still yields enough
+            n,
+            len(contracts),
         )
-    except ValueError:
         return ""
 
-    if not candidates:
-        return ""
-
-    # Filter by the cycle Bloomberg gave us
-    if cycle:
-        candidates = ext_filter_candidates_by_cycle(candidates, cycle)
-        if not candidates:
-            return ""
-
-    # Trim to needed count
-    candidates = candidates[:count]
-
-    fut_candidates = [c[0] for c in candidates]  # Extract ticker strings
-
-    # Get maturity dates from Bloomberg
-    try:
-        fut_matu = await abdp(tickers=fut_candidates, flds="last_tradeable_dt", **kwargs)
-    except (ValueError, TypeError, KeyError):
-        logger.warning("Failed to get maturity data for futures candidates")
-        # Try with fewer candidates
-        try:
-            fut_matu = await abdp(tickers=fut_candidates[:-1], flds="last_tradeable_dt", **kwargs)
-        except (ValueError, TypeError, KeyError):
-            logger.warning("Failed to get maturity data with fewer candidates")
-            return ""
-
-    # Convert to narwhals and pivot from long to wide format
-    nw_df = nw.from_native(fut_matu)
-    nw_df = _pivot_bdp_to_wide(nw_df)
-
-    if len(nw_df) == 0 or "last_tradeable_dt" not in nw_df.columns:
-        return ""
-
-    # Filter and sort using Rust (high performance)
-    valid_tickers = _filter_valid_contracts_from_df(nw_df, dt_parsed)
-
-    if len(valid_tickers) <= idx:
-        return ""
-
-    return valid_tickers[idx]
+    result = contracts[n - 1][0]
+    logger.debug("Resolved %s @ %s -> %s", gen_ticker, dt_parsed.date(), result)
+    return result
 
 
 async def aactive_futures(
@@ -336,82 +363,95 @@ async def aactive_futures(
 
         asyncio.run(main())
     """
-    from xbbg import abdh, abdp
-
-    # Validate that ticker is generic using Rust
-    ext_validate_generic_ticker(ticker)
+    from xbbg import abdh
 
     dt_parsed = _parse_date(dt)
+
+    # Reject specific contracts (e.g., UXZ24 Index)
+    ticker_base = ticker.rsplit(" ", 1)[0]
+    month_code_pattern = rf"[{re.escape(_FUTURES_MONTH_CODES)}]"
+    match = re.search(rf"(.+)({month_code_pattern})(\d{{1,2}})$", ticker_base)
+    if match:
+        _prefix, _month_char, digits = match.groups()
+        if len(digits) == 2:
+            msg = (
+                f"'{ticker}' appears to be a specific contract "
+                f"(ends with month code + 2-digit year), not a generic one. "
+                f"Use a generic ticker like 'UX1 Index' instead of 'UXZ24 Index'."
+            )
+            raise ValueError(msg)
+        if len(digits) == 1 and len(ticker_base) > 3:
+            msg = (
+                f"'{ticker}' appears to be a specific contract, "
+                f"not a generic one. Use a generic ticker like "
+                f"'UX1 Index' instead of 'UXZ5 Index'."
+            )
+            raise ValueError(msg)
 
     # Parse ticker components
     t_info = ticker.split()
     prefix, asset = " ".join(t_info[:-1]), t_info[-1]
 
-    # Get front and second month contracts
-    f1 = f"{prefix[:-1]}1 {asset}"
-    f2 = f"{prefix[:-1]}2 {asset}"
+    gen_1 = f"{prefix[:-1]}1 {asset}"
+    contracts = await _resolve_chain(gen_1, dt_parsed, **kwargs)
 
-    # Resolve to specific contracts
-    fut_1 = await afut_ticker(gen_ticker=f1, dt=dt_parsed, **kwargs)
-    fut_2 = await afut_ticker(gen_ticker=f2, dt=dt_parsed, **kwargs)
-
-    if not fut_1:
+    if not contracts:
+        logger.error("Failed to resolve chain for %s", gen_1)
         return ""
 
-    if not fut_2:
+    fut_1, fut_1_expiry = contracts[0]
+
+    if len(contracts) < 2:
         return fut_1
 
-    # Get maturity dates
-    fut_tk = await abdp(tickers=[fut_1, fut_2], flds="last_tradeable_dt", **kwargs)
-    nw_tk = nw.from_native(fut_tk)
-    nw_tk = _pivot_bdp_to_wide(nw_tk)
+    fut_2 = contracts[1][0]
 
-    if len(nw_tk) == 0 or "last_tradeable_dt" not in nw_tk.columns:
+    # If date is well before first expiry, keep front month
+    if dt_parsed.month < fut_1_expiry.month and dt_parsed.year == fut_1_expiry.year:
         return fut_1
 
-    # If current date is before first contract's maturity, use front month
-    first_row = nw_tk.filter(nw.col("ticker") == fut_1)
-    if len(first_row) > 0:
-        first_matu = first_row["last_tradeable_dt"][0]
-        if isinstance(first_matu, str):
-            first_matu = _parse_date(first_matu)
-        if hasattr(first_matu, "year") and dt_parsed < first_matu:
-            return fut_1
-
-    # Otherwise, compare volume over last 10 days
-    # abdh returns LONG format: {ticker, date, field, value}
-    start = dt_parsed - timedelta(days=10)
-    volume = await abdh(tickers=[fut_1, fut_2], flds="volume", start_date=start, end_date=dt_parsed, **kwargs)
+    # Compare latest volume over recent window
+    start_date = dt_parsed - timedelta(days=15)
+    volume = await abdh(
+        tickers=[fut_1, fut_2],
+        flds="volume",
+        start_date=start_date,
+        end_date=dt_parsed,
+        **kwargs,
+    )
     nw_vol = nw.from_native(volume)
 
     if len(nw_vol) == 0:
         return fut_1
 
-    # LONG format: filter to volume rows, get latest value per ticker
+    latest_volumes: dict[str, float] = {}
+
+    # LONG format
     if "field" in nw_vol.columns and "value" in nw_vol.columns:
         vol_rows = nw_vol.filter(nw.col("field").str.to_lowercase() == "volume")
-        if len(vol_rows) == 0:
-            return fut_1
-
-        # Sort by date desc, take latest per ticker
         if "date" in vol_rows.columns:
             vol_rows = vol_rows.sort("date", descending=True)
 
-        best_ticker = fut_1
-        max_vol = 0.0
         for tk in [fut_1, fut_2]:
             tk_rows = vol_rows.filter(nw.col("ticker") == tk)
             if len(tk_rows) > 0:
-                try:
-                    vol = float(tk_rows["value"][0])
-                    if vol > max_vol:
-                        max_vol = vol
-                        best_ticker = tk
-                except (ValueError, TypeError):
-                    pass
-        return best_ticker
+                with contextlib.suppress(ValueError, TypeError):
+                    latest_volumes[tk] = float(tk_rows["value"][0])
 
-    return fut_1
+    # Wide fallback
+    else:
+        vol_col = "volume" if "volume" in nw_vol.columns else "VOLUME" if "VOLUME" in nw_vol.columns else None
+        if vol_col is not None and "date" in nw_vol.columns:
+            for tk in [fut_1, fut_2]:
+                tk_rows = nw_vol.filter(nw.col("ticker") == tk).sort("date", descending=True)
+                if len(tk_rows) > 0:
+                    with contextlib.suppress(ValueError, TypeError):
+                        latest_volumes[tk] = float(tk_rows[vol_col][0])
+
+    if not latest_volumes:
+        return fut_1
+
+    return max(latest_volumes, key=lambda key: latest_volumes.get(key, 0.0))
 
 
 async def acdx_ticker(
