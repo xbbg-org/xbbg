@@ -103,6 +103,7 @@ fn ext_infer_timezone(country_iso: &str) -> Option<String> {
     am=None,
     pm=None
 ))]
+#[allow(clippy::too_many_arguments)]
 fn ext_set_exchange_override(
     ticker: &str,
     timezone: Option<&str>,
