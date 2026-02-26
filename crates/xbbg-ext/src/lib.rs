@@ -22,6 +22,12 @@ pub use constants::{DVD_COLS, DVD_TYPES, ETF_COLS, FUTURES_MONTHS, MONTH_CODES};
 pub use markets::sessions::{
     derive_sessions, get_market_rule, infer_timezone_from_country, MarketRule, SessionWindows,
 };
+pub use markets::{
+    clear_exchange_override, get_exchange_override, get_exchange_override_patch,
+    has_exchange_override, list_exchange_overrides, market_timing, session_times_to_utc,
+    set_exchange_override, ExchangeInfo, ExchangeInfoSource, MarketInfo, MarketTiming,
+    OverridePatch,
+};
 pub use resolvers::futures::filter_valid_contracts;
 pub use transforms::historical::build_earning_header_rename;
 pub use transforms::{

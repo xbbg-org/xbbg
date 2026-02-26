@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Market rule loaded from TOML. Defines how to derive sessions from regular trading hours.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 pub struct MarketRule {
     #[serde(default)]
     pub pre_minutes: i32,
@@ -19,7 +19,7 @@ pub struct MarketRule {
 }
 
 /// Derived trading session windows. Times are "HH:MM" strings.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 pub struct SessionWindows {
     pub day: Option<(String, String)>,
     pub allday: Option<(String, String)>,
