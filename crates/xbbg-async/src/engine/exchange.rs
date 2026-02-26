@@ -223,48 +223,90 @@ fn get_string(batch: &arrow::record_batch::RecordBatch, col: &str) -> Option<Str
     if batch.num_rows() == 0 {
         return None;
     }
-    let arr = batch.column_by_name(col)?;
+    if let Some(arr) = batch.column_by_name(col) {
+        return value_as_string(arr.as_ref(), 0).and_then(clean_value);
+    }
 
-    if let Some(v) = arr.as_any().downcast_ref::<StringArray>() {
-        return (!v.is_null(0)).then(|| v.value(0).trim().to_string());
-    }
-    if let Some(v) = arr.as_any().downcast_ref::<Int32Array>() {
-        return (!v.is_null(0)).then(|| v.value(0).to_string());
-    }
-    if let Some(v) = arr.as_any().downcast_ref::<Int64Array>() {
-        return (!v.is_null(0)).then(|| v.value(0).to_string());
-    }
-    if let Some(v) = arr.as_any().downcast_ref::<Float64Array>() {
-        return (!v.is_null(0)).then(|| v.value(0).to_string());
-    }
-    if let Some(v) = arr.as_any().downcast_ref::<BooleanArray>() {
-        return (!v.is_null(0)).then(|| v.value(0).to_string());
-    }
-    None
+    get_long_field_value(batch, col).and_then(clean_value)
 }
 
 fn get_f64(batch: &arrow::record_batch::RecordBatch, col: &str) -> Option<f64> {
     if batch.num_rows() == 0 {
         return None;
     }
-    let arr = batch.column_by_name(col)?;
-
-    if let Some(v) = arr.as_any().downcast_ref::<Float64Array>() {
-        return (!v.is_null(0)).then(|| v.value(0));
-    }
-    if let Some(v) = arr.as_any().downcast_ref::<Int32Array>() {
-        return (!v.is_null(0)).then(|| v.value(0) as f64);
-    }
-    if let Some(v) = arr.as_any().downcast_ref::<Int64Array>() {
-        return (!v.is_null(0)).then(|| v.value(0) as f64);
-    }
-    if let Some(v) = arr.as_any().downcast_ref::<StringArray>() {
-        if v.is_null(0) {
-            return None;
+    if let Some(arr) = batch.column_by_name(col) {
+        if let Some(v) = arr.as_any().downcast_ref::<Float64Array>() {
+            return (!v.is_null(0)).then(|| v.value(0));
         }
-        return v.value(0).trim().parse::<f64>().ok();
+        if let Some(v) = arr.as_any().downcast_ref::<Int32Array>() {
+            return (!v.is_null(0)).then(|| v.value(0) as f64);
+        }
+        if let Some(v) = arr.as_any().downcast_ref::<Int64Array>() {
+            return (!v.is_null(0)).then(|| v.value(0) as f64);
+        }
+        if let Some(v) = arr.as_any().downcast_ref::<StringArray>() {
+            if v.is_null(0) {
+                return None;
+            }
+            return parse_f64(v.value(0));
+        }
+    }
+
+    get_long_field_value(batch, col).and_then(|s| parse_f64(&s))
+}
+
+fn get_long_field_value(batch: &arrow::record_batch::RecordBatch, field_name: &str) -> Option<String> {
+    let fields = batch
+        .column_by_name("field")?
+        .as_any()
+        .downcast_ref::<StringArray>()?;
+    let values = batch.column_by_name("value")?;
+
+    for row in 0..batch.num_rows() {
+        if fields.is_null(row) {
+            continue;
+        }
+        if !fields.value(row).eq_ignore_ascii_case(field_name) {
+            continue;
+        }
+        return value_as_string(values.as_ref(), row);
     }
     None
+}
+
+fn value_as_string(arr: &dyn Array, row: usize) -> Option<String> {
+    if let Some(v) = arr.as_any().downcast_ref::<StringArray>() {
+        return (!v.is_null(row)).then(|| v.value(row).to_string());
+    }
+    if let Some(v) = arr.as_any().downcast_ref::<Int32Array>() {
+        return (!v.is_null(row)).then(|| v.value(row).to_string());
+    }
+    if let Some(v) = arr.as_any().downcast_ref::<Int64Array>() {
+        return (!v.is_null(row)).then(|| v.value(row).to_string());
+    }
+    if let Some(v) = arr.as_any().downcast_ref::<Float64Array>() {
+        return (!v.is_null(row)).then(|| v.value(row).to_string());
+    }
+    if let Some(v) = arr.as_any().downcast_ref::<BooleanArray>() {
+        return (!v.is_null(row)).then(|| v.value(row).to_string());
+    }
+    None
+}
+
+fn clean_value(raw: String) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("nan") {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn parse_f64(raw: &str) -> Option<f64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("nan") {
+        return None;
+    }
+    trimmed.parse::<f64>().ok()
 }
 
 #[cfg(test)]
@@ -285,6 +327,20 @@ mod tests {
             .collect();
         let arrays: Vec<ArrayRef> = columns.into_iter().map(|(_, array)| array).collect();
         RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).expect("valid single-row batch")
+    }
+
+    fn long_batch(rows: Vec<(&str, Option<&str>)>) -> RecordBatch {
+        let fields = Arc::new(StringArray::from(
+            rows.iter().map(|(f, _)| Some(*f)).collect::<Vec<_>>(),
+        )) as ArrayRef;
+        let values = Arc::new(StringArray::from(
+            rows.iter().map(|(_, v)| *v).collect::<Vec<_>>(),
+        )) as ArrayRef;
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("field", DataType::Utf8, true),
+            Field::new("value", DataType::Utf8, true),
+        ]));
+        RecordBatch::try_new(schema, vec![fields, values]).expect("valid long batch")
     }
 
     #[test]
@@ -430,6 +486,31 @@ mod tests {
         assert_eq!(
             info.sessions.day,
             Some(("08:00".to_string(), "16:30".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_exchange_info_handles_long_refdata_shape() {
+        let batch = long_batch(vec![
+            ("IANA_TIME_ZONE", Some("America/New_York")),
+            ("TIME_ZONE_NUM", Some("-5")),
+            ("ID_MIC_PRIM_EXCH", Some("XNGS")),
+            ("EXCH_CODE", Some("US")),
+            ("COUNTRY_ISO", Some("US")),
+            ("TRADING_DAY_START_TIME_EOD", Some("09:30:00.000000")),
+            ("TRADING_DAY_END_TIME_EOD", Some("16:30:00.000000")),
+            ("FUT_TRADING_HRS", None),
+        ]);
+
+        let info = parse_exchange_info("AAPL US Equity", &batch);
+        assert_eq!(info.source, ExchangeInfoSource::Bloomberg);
+        assert_eq!(info.timezone, "America/New_York");
+        assert_eq!(info.mic.as_deref(), Some("XNGS"));
+        assert_eq!(info.exch_code.as_deref(), Some("US"));
+        assert_eq!(info.utc_offset, Some(-5.0));
+        assert_eq!(
+            info.sessions.day,
+            Some(("09:30".to_string(), "16:30".to_string()))
         );
     }
 
