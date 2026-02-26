@@ -251,8 +251,11 @@ class TestOptionChain:
         from xbbg.ext.options import PutCall, option_chain
 
         df = option_chain(
-            UNDERLYING, put_call=PutCall.CALL, expiry_dt=EXPIRY_ISO,
-            strike=STRIKE, points=5,
+            UNDERLYING,
+            put_call=PutCall.CALL,
+            expiry_dt=EXPIRY_ISO,
+            strike=STRIKE,
+            points=5,
         )
         pdf = df.to_pandas()
 
