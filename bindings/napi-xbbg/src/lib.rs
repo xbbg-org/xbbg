@@ -12,7 +12,6 @@ use tokio::sync::Mutex;
 use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams};
 use xbbg_async::{BlpAsyncError, ValidationMode};
-use xbbg_recipes;
 use xbbg_core::BlpError;
 
 type StreamBatchResult = std::result::Result<RecordBatch, BlpError>;
