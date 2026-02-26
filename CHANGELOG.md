@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **`bqr()`/`abqr()` Bloomberg Quote Request**: Tick-level dealer quotes with `date_offset` (`-2d`, `-1w`, `-3h`), `start_date`/`end_date` date ranges, and optional `include_broker_codes`, `include_spread_price`, `include_yield`, `include_condition_codes`, `include_exchange_codes` parameters. Generic extractor fallback reshaped via `_reshape_bqr_generic()`
+- **`bflds()`/`abflds()` unified field metadata lookup**: Single function for both field info (`fields=[...]`) and keyword search (`search_spec='...'`). `bfld`/`abfld` provided as backward-compatible aliases. Convenience wrappers `fieldInfo()`/`fieldSearch()` preserved
+- **`include_security_errors` option for `bdp()`/`arequest()`**: Optionally surface per-security failures as rows in the result DataFrame instead of silently dropping them
+- **Extension modules (`xbbg.ext`)**: `bonds` (6 functions), `options` (6 functions + 5 enums), `cdx` (8 functions) for fixed income, equity options, and credit default swap index analytics
+- **Streaming performance enhancements**: Per-subscription config (`flush_threshold`, `overflow_policy`, `stream_capacity`), observability metrics via shared atomics, `tick_mode` support
+- **Live integration tests**: 69 tests across `test_ext_bonds.py` (21), `test_ext_options.py` (20), `test_ext_cdx.py` (22) covering all ext module functions
+- **Streaming tests**: Tests for `tick_mode`, per-subscription config, and observability metrics
+
+### Changed
+
+- **README**: Updated API reference tables with `bflds()`, expanded BQR section with spread/yield/broker parameters and examples
+- **Futures resolver**: Aligned with `release/0.x` chain methodology (`FUT_CHAIN_LAST_TRADE_DATES`)
+- **CDX resolver**: Aligned methodology with `release/0.x`
+
+### Removed
+
+- **Legacy `xbbg/` Python package directory**: Fully removed; all code now lives in `py-xbbg/src/xbbg/`
+
+### Fixed
+
+- **Empty `RecordBatch` construction**: Handle empty ordered RecordBatch in `xbbg-async` without panic
+- **Security failure surfacing**: `refdata` extractor now properly surfaces per-security errors instead of silently dropping them
+- **`FIELD_SEARCH` extractor**: Corrected to use `ExtractorHint.FIELD_INFO` instead of generic extractor
+- **Unused `logging` import in `ext/options.py`**: Removed to pass ruff lint
+- **Test imports**: `BlpInternalError` imported from `_core` (Rust) instead of `exceptions` (Python)
+- **CI fixes**: Resolved 4 Python test failures, clippy warnings (`too_many_arguments`, `SubscriptionMetrics` re-export), ruff check/format violations, cargo fmt formatting, module path for `test_markets.py`, Linux test runtime setup
+
 ## [1.0.0a2] - 2026-02-19
 
 ### Changed
