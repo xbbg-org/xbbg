@@ -41,7 +41,8 @@ use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration};
+use chrono::NaiveDate;
+use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes::tokio::future_into_py;
@@ -52,6 +53,7 @@ use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
+use xbbg_ext::{ExchangeInfo, MarketInfo, MarketTiming};
 
 mod ext;
 mod markets;
@@ -501,6 +503,73 @@ impl PyEngine {
 
             Python::attach(|py| record_batch_to_pyarrow(py, batch))
         })
+    }
+
+    /// Resolve exchange metadata using override -> cache -> Bloomberg waterfall.
+    fn resolve_exchange<'py>(
+        &self,
+        py: Python<'py>,
+        ticker: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+        future_into_py(py, async move {
+            let info = engine.resolve_exchange(&ticker).await;
+            Python::attach(|py| exchange_info_to_pydict(py, &info))
+        })
+    }
+
+    /// Fetch market-level metadata (exchange, timezone, futures cycle info).
+    fn fetch_market_info<'py>(
+        &self,
+        py: Python<'py>,
+        ticker: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+        future_into_py(py, async move {
+            let info = engine
+                .fetch_market_info(&ticker)
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+            Python::attach(|py| market_info_to_pydict(py, &info))
+        })
+    }
+
+    /// Resolve market timing (BOD/EOD/FINISHED) for a ticker/date.
+    #[pyo3(signature = (ticker, date, timing="EOD", tz=None))]
+    fn market_timing<'py>(
+        &self,
+        py: Python<'py>,
+        ticker: String,
+        date: String,
+        timing: &str,
+        tz: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let engine = self.engine.clone();
+        let timing = MarketTiming::from_str(timing)
+            .ok_or_else(|| PyValueError::new_err("timing must be one of: BOD, EOD, FINISHED"))?;
+        let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+            .map_err(|_| PyValueError::new_err("date must be YYYY-MM-DD"))?;
+
+        future_into_py(py, async move {
+            let value = engine
+                .resolve_market_timing(&ticker, date, timing, tz.as_deref())
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+            Python::attach(|py| Ok(value.into_pyobject(py)?.into_any().unbind()))
+        })
+    }
+
+    /// Invalidate exchange cache (one ticker or all entries).
+    #[pyo3(signature = (ticker=None))]
+    fn invalidate_exchange_cache(&self, ticker: Option<String>) {
+        self.engine.invalidate_exchange_cache(ticker.as_deref());
+    }
+
+    /// Persist exchange cache to disk.
+    fn save_exchange_cache(&self) -> PyResult<()> {
+        self.engine
+            .save_exchange_cache()
+            .map_err(PyRuntimeError::new_err)
     }
 
     // =========================================================================
@@ -1454,6 +1523,32 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         field_ids,
         format,
     })
+}
+
+fn exchange_info_to_pydict(py: Python<'_>, info: &ExchangeInfo) -> PyResult<Py<PyAny>> {
+    let dict = PyDict::new(py);
+    dict.set_item("ticker", &info.ticker)?;
+    dict.set_item("mic", info.mic.clone())?;
+    dict.set_item("exch_code", info.exch_code.clone())?;
+    dict.set_item("timezone", &info.timezone)?;
+    dict.set_item("utc_offset", info.utc_offset)?;
+    dict.set_item("source", info.source.as_str())?;
+    dict.set_item("day", info.sessions.day.clone())?;
+    dict.set_item("allday", info.sessions.allday.clone())?;
+    dict.set_item("pre", info.sessions.pre.clone())?;
+    dict.set_item("post", info.sessions.post.clone())?;
+    dict.set_item("am", info.sessions.am.clone())?;
+    dict.set_item("pm", info.sessions.pm.clone())?;
+    Ok(dict.into_any().unbind())
+}
+
+fn market_info_to_pydict(py: Python<'_>, info: &MarketInfo) -> PyResult<Py<PyAny>> {
+    let dict = PyDict::new(py);
+    dict.set_item("exch", info.exch.clone())?;
+    dict.set_item("tz", info.tz.clone())?;
+    dict.set_item("freq", info.freq.clone())?;
+    dict.set_item("is_fut", info.is_fut)?;
+    Ok(dict.into_any().unbind())
 }
 
 /// Convert Arrow RecordBatch to PyArrow RecordBatch using zero-copy FFI.

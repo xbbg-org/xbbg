@@ -8,6 +8,10 @@ pub type Result<T> = std::result::Result<T, ExtError>;
 /// Errors that can occur in xbbg-ext operations.
 #[derive(Debug, Error)]
 pub enum ExtError {
+    /// Invalid user input for market/exchange utilities.
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+
     /// Failed to parse a date string.
     #[error("failed to parse date '{0}': expected format YYYY-MM-DD, YYYYMMDD, or YYYY/MM/DD")]
     DateParse(String),

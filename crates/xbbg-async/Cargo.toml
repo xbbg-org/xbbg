@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 xbbg_core = { path = "../xbbg-core" }
+xbbg-ext = { path = "../xbbg-ext" }
 thiserror = "2.0"
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "sync", "time"] }
 xbbg-log = { path = "../xbbg-log" }
