@@ -90,6 +90,15 @@ __all__ = [
     "abport",
     "abcurves",
     "abgovts",
+    # Field metadata
+    "abflds",
+    "bflds",
+    "abfld",
+    "bfld",
+    "afieldInfo",
+    "fieldInfo",
+    "afieldSearch",
+    "fieldSearch",
     # Sync API (wrappers)
     "bdp",
     "bdh",
@@ -3059,46 +3068,73 @@ bsrch.__annotations__ = _bsrch_annotations
 
 
 # =============================================================================
-# BFLD API - Bloomberg Field Search
+# BFLDS API - Bloomberg Field Metadata
 # =============================================================================
 
 
 async def abflds(
-    fields: str | Sequence[str],
+    fields: str | list[str] | None = None,
     *,
+    search_spec: str | None = None,
     backend: Backend | str | None = None,
+    **kwargs,
 ) -> DataFrameResult:
-    """Async Bloomberg Field Info (BFLD) request.
+    """Async Bloomberg field metadata lookup (BFLDS).
 
-    Get metadata about specific Bloomberg fields including description,
-    data type, and category.
+    Unified field function: get metadata for specific fields, or search by keyword.
 
     Args:
-        fields: Field name or list of field names (e.g., "PX_LAST", ["PX_LAST", "VOLUME"]).
+        fields: Single field or list of fields to get metadata for.
+            Mutually exclusive with search_spec.
+        search_spec: Search term to find fields by name/description.
+            Mutually exclusive with fields.
         backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Infrastructure options (e.g., port, server).
 
     Returns:
-        DataFrame with columns: field, datatype, description, category, etc.
+        DataFrame with field information or search results.
+
+    Raises:
+        ValueError: If neither fields nor search_spec is provided, or both are provided.
 
     Example::
 
-        # Get info for a single field
-        df = await abflds("PX_LAST")
+        # Get info for specific fields
+        df = await abflds(fields=["PX_LAST", "VOLUME"])
 
-        # Get info for multiple fields
-        df = await abflds(["PX_LAST", "VOLUME", "NAME"])
+        # Search for fields by keyword
+        df = await abflds(search_spec="vwap")
     """
-    field_list = [fields] if isinstance(fields, str) else list(fields)
-    logger.debug("abflds: fields=%s", field_list)
+    logger.debug("abflds: fields=%s search_spec=%s", fields, search_spec)
 
-    # Send field info request via arequest
-    # The //blp/apiflds service uses FieldInfoRequest with field_ids
-    nw_df = await arequest(
-        service=Service.APIFLDS,
-        operation=Operation.FIELD_INFO,
-        fields=field_list,
-        backend=None,
-    )
+    # Validate mutually exclusive parameters
+    if fields is not None and search_spec is not None:
+        raise ValueError("Cannot specify both 'fields' and 'search_spec'")
+    if fields is None and search_spec is None:
+        raise ValueError("Must specify either 'fields' or 'search_spec'")
+
+    # Normalize fields to list
+    if fields is not None:
+        if isinstance(fields, str):
+            field_list = [fields]
+        else:
+            field_list = list(fields)
+
+        nw_df = await arequest(
+            service=Service.APIFLDS,
+            operation=Operation.FIELD_INFO,
+            fields=field_list,
+            backend=None,
+        )
+    else:
+        # search_spec is not None
+        nw_df = await arequest(
+            service=Service.APIFLDS,
+            operation=Operation.FIELD_SEARCH,
+            fields=[search_spec],
+            extractor=ExtractorHint.FIELD_INFO,
+            backend=None,
+        )
 
     logger.debug("abflds: received %d rows", len(nw_df))
 
@@ -3106,31 +3142,29 @@ async def abflds(
 
 
 def bflds(
-    fields: str | Sequence[str],
+    fields: str | list[str] | None = None,
     *,
+    search_spec: str | None = None,
     backend: Backend | str | None = None,
+    **kwargs,
 ) -> DataFrameResult:
-    """Bloomberg Field Info (BFLD) request.
+    """Bloomberg field metadata lookup (BFLDS).
 
     Sync wrapper around abflds(). For async usage, use abflds() directly.
 
-    Get metadata about specific Bloomberg fields including description,
-    data type, and category.
-
     Args:
-        fields: Field name or list of field names (e.g., "PX_LAST", ["PX_LAST", "VOLUME"]).
+        fields: Single field or list of fields to get metadata for.
+        search_spec: Search term to find fields by name/description.
         backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Infrastructure options.
 
     Returns:
-        DataFrame with columns: field, datatype, description, category, etc.
+        DataFrame with field information or search results.
 
     Example::
 
-        # Get info for a single field
-        df = bflds("PX_LAST")
-
-        # Get info for multiple fields
-        df = bflds(["PX_LAST", "VOLUME", "NAME"])
+        df = bflds(fields=["PX_LAST", "VOLUME"])
+        df = bflds(search_spec="vwap")
     """
 
 
@@ -3139,6 +3173,10 @@ _bflds_annotations = bflds.__annotations__
 bflds = _sync_wrapper(abflds)
 bflds.__doc__ = _bflds_doc
 bflds.__annotations__ = _bflds_annotations
+
+# Backward-compatible aliases
+abfld = abflds
+bfld = bflds
 
 
 # =============================================================================
@@ -3726,6 +3764,62 @@ _bgovts_annotations = bgovts.__annotations__
 bgovts = _sync_wrapper(abgovts)
 bgovts.__doc__ = _bgovts_doc
 bgovts.__annotations__ = _bgovts_annotations
+
+
+async def afieldInfo(
+    fields: str | list[str],
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> DataFrameResult:
+    """Get metadata about Bloomberg fields (async).
+
+    Convenience wrapper around abflds(fields=...).
+
+    Args:
+        fields: Single field or list of fields to get metadata for.
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Infrastructure options.
+
+    Returns:
+        DataFrame with field information.
+
+    Example::
+
+        df = await afieldInfo(["PX_LAST", "VOLUME"])
+    """
+    return await abflds(fields=fields, backend=backend, **kwargs)
+
+
+fieldInfo = _sync_wrapper(afieldInfo)
+
+
+async def afieldSearch(
+    searchterm: str,
+    *,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> DataFrameResult:
+    """Search for Bloomberg fields by keyword (async).
+
+    Convenience wrapper around abflds(search_spec=...).
+
+    Args:
+        searchterm: Search term to find fields by name/description.
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Infrastructure options.
+
+    Returns:
+        DataFrame with search results.
+
+    Example::
+
+        df = await afieldSearch("vwap")
+    """
+    return await abflds(search_spec=searchterm, backend=backend, **kwargs)
+
+
+fieldSearch = _sync_wrapper(afieldSearch)
 
 
 # ─── Schema Introspection API ────────────────────────────────────────────────
