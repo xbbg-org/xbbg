@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD013 MD031 MD032 MD033 MD036 MD041 MD051 MD060 -->
 <div align="center">
 
-<a href="https://github.com/alpha-xone/xbbg"><img src="docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
+<a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
 
 <!-- markdownlint-disable MD036 -->
 **xbbg: An intuitive Bloomberg API for Python**
