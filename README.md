@@ -211,6 +211,7 @@ xbbg is the **only Python library** that provides:
 | **`bds()`** | Bulk/multi-row data | Portfolio holdings<br>Fixed income cash flows<br>Corporate actions |
 | **`abdp()`** | Async reference data | Non-blocking operations<br>Concurrent requests<br>Web application friendly |
 | **`abds()`** | Async bulk data | Parallel bulk queries<br>Same API as `bds()` |
+| **`bflds()`** | Unified field metadata | Get field info or search by keyword<br>Single function for both use cases |
 | **`fieldInfo()`** | Field metadata lookup | Data types & descriptions<br>Discover available fields |
 | **`fieldSearch()`** | Search Bloomberg fields | Find fields by keyword<br>Explore data catalog |
 | **`lookupSecurity()`** | Find tickers by name | Company name search<br>Asset class filtering |
@@ -281,7 +282,7 @@ xbbg is the **only Python library** that provides:
 |----------|-------------|--------------|
 | **`beqs()`** | Bloomberg Equity Screening | Custom screening criteria<br>Private & public screens |
 | **`bql()`** | Bloomberg Query Language | SQL-like syntax<br>Complex transformations<br>Options chain analysis |
-| **`bqr()`** | Bloomberg Quote Request | Tick-level dealer quotes<br>Broker attribution codes<br>Date offset support (-2d, -1w) |
+| **`bqr()`** | Bloomberg Quote Request | Tick-level dealer quotes<br>Broker attribution codes<br>Spread price & yield data<br>Date offset support (-2d, -1w) |
 | **`bsrch()`** | SRCH (Search) queries | Fixed income searches<br>Commodity screens<br>Weather data |
 | **`bta()`** | Technical Analysis | 50+ technical indicators<br>Custom studies |
 | **`etf_holdings()`** | ETF holdings via BQL | Complete holdings list<br>Weights & positions |
@@ -843,13 +844,13 @@ T 4.5 05/15/38 Govt       33.093531         4.348     9.324928
 #### Field Information and Search
 
 ```python
-# Get metadata about fields
-blp.fieldInfo(['PX_LAST', 'VOLUME'])
-```
+# Unified field lookup (recommended)
+blp.bflds(fields=['PX_LAST', 'VOLUME'])  # Get metadata for specific fields
+blp.bflds(search_spec='vwap')            # Search for fields by keyword
 
-```python
-# Search for fields by name or description
-blp.fieldSearch('vwap')
+# Convenience aliases
+blp.fieldInfo(['PX_LAST', 'VOLUME'])     # Same as bflds(fields=...)
+blp.fieldSearch('vwap')                  # Same as bflds(search_spec=...)
 ```
 
 #### Security Lookup
@@ -1287,28 +1288,35 @@ Out[17]:
 # Bloomberg Quote Request (BQR) - Dealer quotes with broker codes
 # Emulates Excel =BQR() function for fixed income dealer quotes
 
-# Get quotes from last 2 days with broker attribution
-# blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", date_offset="-2d")  # doctest: +SKIP
+# Get quotes from last 2 days
+# blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', date_offset='-2d')  # doctest: +SKIP
 
 # Using ISIN with MSG1 pricing source
-# blp.bqr("/isin/US123456789@MSG1", date_offset="-2d")  # doctest: +SKIP
+# blp.bqr('/isin/US123456789@MSG1', date_offset='-2d')  # doctest: +SKIP
+
+# With broker codes and spread data
+# blp.bqr(  # doctest: +SKIP
+#     'XYZ 4.5 01/15/30@MSG1 Corp',
+#     date_offset='-2d',
+#     include_broker_codes=True,
+#     include_spread_price=True,
+# )
 
 # With explicit date range
-# blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", start_date="2024-01-15", end_date="2024-01-17")  # doctest: +SKIP
+# blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', start_date='2024-01-15', end_date='2024-01-17')  # doctest: +SKIP
 
 # Get only trade events
-# blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", date_offset="-1d", event_types=["TRADE"])  # doctest: +SKIP
-```
+# blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', date_offset='-1d', event_types=['TRADE'])  # doctest: +SKIP
 
 ```pydocstring
 Out[18]:
-                              ticker                 time event_type   price   size broker_buy broker_sell
-0  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:00        BID   98.75  10000       DLRA         NaN
-1  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:05        ASK   99.00   5000        NaN        DLRB
-2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE   98.85   2500       DLRC        DLRC
+                              ticker                 time event_type   price      size spread_price broker_buy broker_sell
+0  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:00        BID   98.75  10000000         29.0       DLRA         NaN
+1  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:05        ASK   99.00   5000000         24.1        NaN        DLRB
+2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE   98.85   2500000          NaN       DLRC        DLRC
 ```
 
-**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula. Use the `@MSG1` pricing source suffix to get dealer-level quote attribution. The `broker_buy` and `broker_sell` columns identify the contributing dealers (4-character codes).
+**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula. Use the `@MSG1` pricing source suffix to get dealer-level quote attribution. Optional parameters include `include_broker_codes`, `include_spread_price`, `include_yield`, `include_condition_codes`, and `include_exchange_codes`.
 
 ### 📡 Real-time
 

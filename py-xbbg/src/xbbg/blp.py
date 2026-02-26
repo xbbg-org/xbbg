@@ -90,6 +90,9 @@ __all__ = [
     "abport",
     "abcurves",
     "abgovts",
+    # Quote request
+    "abqr",
+    "bqr",
     # Field metadata
     "abflds",
     "bflds",
@@ -3068,8 +3071,284 @@ bsrch.__annotations__ = _bsrch_annotations
 
 
 # =============================================================================
-# BFLDS API - Bloomberg Field Metadata
+# BQR API - Bloomberg Quote Request
 # =============================================================================
+
+
+def _parse_date_offset(offset: str, reference: datetime) -> datetime:
+    """Parse date offset string like '-2d', '-1w', '-1m', '-3h'."""
+    import re
+
+    offset = offset.strip().lower()
+    match = re.match(r"^(-?\d+)([dwmh])$", offset)
+    if not match:
+        raise ValueError(f"Invalid date offset format: {offset}. Use format like '-2d', '-1w', '-1m', '-3h'")
+
+    value = int(match.group(1))
+    unit = match.group(2)
+
+    if unit == "d":
+        return reference + timedelta(days=value)
+    if unit == "w":
+        return reference + timedelta(weeks=value)
+    if unit == "m":
+        return reference + timedelta(days=value * 30)
+    if unit == "h":
+        return reference + timedelta(hours=value)
+    raise ValueError(f"Unknown time unit: {unit}")
+
+
+def _reshape_bqr_generic(pdf: pd.DataFrame, ticker: str) -> nw.DataFrame:
+    """Reshape generic extractor output into structured BQR rows.
+
+    When includeBrokerCodes (or similar) is set, the Rust tick extractor
+    falls back to the generic flattener. This function groups the flat
+    path/value rows back into one row per tick with proper columns.
+    """
+    import re
+
+    # Skip non-tick paths (e.g., tickData.eidData)
+    tick_rows = pdf[pdf["path"].str.contains(r"tickData\[\d+\]", regex=True)]
+    if tick_rows.empty:
+        return nw.from_native(pa.table({"ticker": [], "time": [], "type": [], "value": [], "size": []}))
+
+    # Collect all unique field names first (for consistent columns)
+    all_fields: set[str] = set()
+    for path in tick_rows["path"]:
+        m = re.search(r"tickData\[(\d+)\]\.(\w+)", path)
+        if m:
+            all_fields.add(m.group(2))
+
+    # Group by tick index
+    records: list[dict[str, Any]] = []
+    current_idx: str | None = None
+    current_record: dict[str, Any] = {}
+
+    for _, row in tick_rows.iterrows():
+        path = row["path"]
+        m = re.search(r"tickData\[(\d+)\]\.(\w+)", path)
+        if not m:
+            continue
+        idx, field = m.group(1), m.group(2)
+
+        if idx != current_idx:
+            if current_record:
+                records.append(current_record)
+            current_idx = idx
+            # Initialize with all fields as None for consistent columns
+            current_record = {"ticker": ticker}
+            for f in all_fields:
+                current_record[f] = None
+
+        # Use value_str for strings, value_num for numbers
+        val = row["value_str"] if row["value_str"] else row["value_num"]
+        current_record[field] = val
+
+    if current_record:
+        records.append(current_record)
+
+    if not records:
+        return nw.from_native(pa.table({"ticker": [], "time": [], "type": [], "value": [], "size": []}))
+
+    result = pa.Table.from_pylist(records)
+
+    # Reorder: ticker first, then standard tick fields, then extras
+    cols = result.column_names
+    priority = ["ticker", "time", "type", "value", "size"]
+    ordered = [c for c in priority if c in cols]
+    ordered += [c for c in cols if c not in priority]
+    result = result.select(ordered)
+
+    return nw.from_native(result)
+
+
+async def abqr(
+    ticker: str,
+    date_offset: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    *,
+    event_types: Sequence[str] | None = None,
+    include_broker_codes: bool = False,
+    include_spread_price: bool = False,
+    include_yield: bool = False,
+    include_condition_codes: bool = False,
+    include_exchange_codes: bool = False,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> DataFrameResult:
+    """Async Bloomberg Quote Request (BQR).
+
+    Retrieves dealer quote data using IntradayTickRequest with BID/ASK events.
+    Emulates the Excel =BQR() function.
+
+    Args:
+        ticker: Security identifier. Supports Bloomberg tickers with pricing
+            source qualifiers (e.g., 'IBM US Equity@MSG1', '/isin/US037833FB15@MSG1').
+        date_offset: Date offset from now (e.g., '-2d', '-1w', '-3h').
+            Mutually exclusive with start_date/end_date.
+        start_date: Start date (e.g., '2024-01-15'). Defaults to 2 days ago.
+        end_date: End date (e.g., '2024-01-17'). Defaults to today.
+        event_types: Event types to retrieve. Defaults to ['BID', 'ASK'].
+        include_broker_codes: Include broker/dealer codes (default False).
+        include_spread_price: Include spread price for bonds (default False).
+        include_yield: Include yield data for bonds (default False).
+        include_condition_codes: Include trade condition codes (default False).
+        include_exchange_codes: Include exchange codes (default False).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional options.
+
+    Returns:
+        DataFrame with columns: ticker, time, type, value, size,
+        plus optional brokerBuyCode, brokerSellCode, spreadPrice, etc.
+
+    Example::
+
+        # With date offset (like Excel BQR)
+        df = await abqr("IBM US Equity@MSG1", date_offset="-2d")
+
+        # Bond with broker codes and spread
+        df = await abqr(
+            "US037833FB15@MSG1 Corp",
+            date_offset="-2d",
+            include_broker_codes=True,
+            include_spread_price=True,
+        )
+
+        # With explicit date range
+        df = await abqr(
+            "XYZ 4.5 01/15/30@MSG1 Corp",
+            start_date="2024-01-15",
+            end_date="2024-01-17",
+        )
+
+        # Trade events only
+        df = await abqr(
+            "XYZ 4.5 01/15/30@MSG1 Corp",
+            date_offset="-1d",
+            event_types=["TRADE"],
+        )
+    """
+    # Default event types
+    if event_types is None:
+        event_types = ["BID", "ASK"]
+
+    # Calculate time range
+    now = datetime.now()
+    time_fmt = "%Y-%m-%dT%H:%M:%S"
+
+    if date_offset:
+        end_dt = now
+        start_dt = _parse_date_offset(date_offset, now)
+        s_dt = start_dt.strftime(time_fmt)
+        e_dt = end_dt.strftime(time_fmt)
+    elif start_date is not None:
+        # Convert date strings to datetime (start of day / end of day)
+        s_dt = _fmt_date(start_date, "%Y-%m-%d") + "T00:00:00"
+        if end_date is not None:
+            e_dt = _fmt_date(end_date, "%Y-%m-%d") + "T23:59:59"
+        else:
+            e_dt = now.strftime(time_fmt)
+    else:
+        # Default: last 2 days
+        start_dt = now - timedelta(days=2)
+        s_dt = start_dt.strftime(time_fmt)
+        e_dt = now.strftime(time_fmt)
+
+    # Build elements for optional include flags
+    elements: list[tuple[str, Any]] = []
+    if include_broker_codes:
+        elements.append(("includeBrokerCodes", "true"))
+    if include_spread_price:
+        elements.append(("includeSpreadPrice", "true"))
+    if include_yield:
+        elements.append(("includeYield", "true"))
+    if include_condition_codes:
+        elements.append(("includeConditionCodes", "true"))
+    if include_exchange_codes:
+        elements.append(("includeExchangeCodes", "true"))
+
+    logger.debug(
+        "abqr: ticker=%s start=%s end=%s events=%s",
+        ticker,
+        s_dt,
+        e_dt,
+        event_types,
+    )
+
+    # When extra fields (broker codes, etc.) are requested, the Rust tick
+    # extractor falls back to generic output. Detect this and reshape.
+    has_extras = bool(elements)
+
+    nw_df = await arequest(
+        service=Service.REFDATA,
+        operation=Operation.INTRADAY_TICK,
+        security=ticker,
+        start_datetime=s_dt,
+        end_datetime=e_dt,
+        event_types=list(event_types),
+        elements=elements if elements else None,
+        backend=None,
+    )
+
+    logger.debug("abqr: received %d rows", len(nw_df))
+
+    # Post-process generic output when broker/condition/exchange codes present
+    pdf = nw_df.to_pandas()
+    if has_extras and "path" in pdf.columns:
+        nw_df = _reshape_bqr_generic(pdf, ticker)
+
+    return _convert_backend(nw_df, backend)
+
+
+def bqr(
+    ticker: str,
+    date_offset: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    *,
+    event_types: Sequence[str] | None = None,
+    include_broker_codes: bool = False,
+    include_spread_price: bool = False,
+    include_yield: bool = False,
+    include_condition_codes: bool = False,
+    include_exchange_codes: bool = False,
+    backend: Backend | str | None = None,
+    **kwargs,
+) -> DataFrameResult:
+    """Bloomberg Quote Request (BQR).
+
+    Sync wrapper around abqr(). For async usage, use abqr() directly.
+
+    Args:
+        ticker: Security identifier (e.g., 'IBM US Equity@MSG1').
+        date_offset: Date offset from now (e.g., '-2d', '-1w', '-3h').
+        start_date: Start date (e.g., '2024-01-15'). Defaults to 2 days ago.
+        end_date: End date (e.g., '2024-01-17'). Defaults to today.
+        event_types: Event types to retrieve. Defaults to ['BID', 'ASK'].
+        include_broker_codes: Include broker/dealer codes (default False).
+        include_spread_price: Include spread price for bonds (default False).
+        include_yield: Include yield data for bonds (default False).
+        include_condition_codes: Include trade condition codes (default False).
+        include_exchange_codes: Include exchange codes (default False).
+        backend: DataFrame backend to return. If None, uses global default.
+        **kwargs: Additional options.
+
+    Returns:
+        DataFrame with quote data.
+
+    Example::
+
+        df = bqr("IBM US Equity@MSG1", date_offset="-2d")
+        df = bqr("US037833FB15@MSG1 Corp", date_offset="-2d", include_broker_codes=True, include_spread_price=True)
+    """
+
+
+_bqr_doc = bqr.__doc__
+_bqr_annotations = bqr.__annotations__
+bqr = _sync_wrapper(abqr)
+bqr.__doc__ = _bqr_doc
+bqr.__annotations__ = _bqr_annotations
 
 
 async def abflds(
