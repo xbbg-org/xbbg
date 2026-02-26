@@ -13,7 +13,7 @@ pub enum MarketTiming {
 }
 
 impl MarketTiming {
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_uppercase().as_str() {
             "BOD" => Some(Self::Bod),
             "EOD" => Some(Self::Eod),

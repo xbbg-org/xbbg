@@ -545,7 +545,7 @@ impl PyEngine {
         tz: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
-        let timing = MarketTiming::from_str(timing)
+        let timing = MarketTiming::parse(timing)
             .ok_or_else(|| PyValueError::new_err("timing must be one of: BOD, EOD, FINISHED"))?;
         let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
             .map_err(|_| PyValueError::new_err("date must be YYYY-MM-DD"))?;

@@ -98,21 +98,10 @@ impl OverridePatch {
 }
 
 /// Market-level metadata used by higher-level APIs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MarketInfo {
     pub exch: Option<String>,
     pub tz: Option<String>,
     pub freq: Option<String>,
     pub is_fut: bool,
-}
-
-impl Default for MarketInfo {
-    fn default() -> Self {
-        Self {
-            exch: None,
-            tz: None,
-            freq: None,
-            is_fut: false,
-        }
-    }
 }
