@@ -1,5 +1,5 @@
 [env]
-XBBG_DEV_SDK_ROOT = { value = "vendor/blpapi-sdk/3.25.12.1", relative = true }
+XBBG_DEV_SDK_ROOT = { value = "vendor/blpapi-sdk/3.26.1.1", relative = true }
 # Note: LIBCLANG_PATH is NOT set here — it varies per machine.
 # If you need bindgen locally, set it in your shell environment:
 #   Windows (VS BuildTools): set LIBCLANG_PATH=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin

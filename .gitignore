@@ -27,6 +27,9 @@ Logs/
 # Rust build artifacts (Cargo)
 /target/
 
+# JavaScript dependencies
+**/node_modules/
+
 # Ignore local PMC mapping and cache files
 xbbg/markets/pmc_map.json
 xbbg/markets/cached/pmc_cache.pkl

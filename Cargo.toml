@@ -13,7 +13,7 @@ members = [
     "crates/datamock-sys",
     # Language bindings
     "bindings/pyo3-xbbg",
-    # "bindings/napi-xbbg",
+    "bindings/napi-xbbg",
     # "bindings/dotnet-xbbg",
     # Applications
     # "apps/xbbg-cli",
