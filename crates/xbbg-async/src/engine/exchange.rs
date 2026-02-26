@@ -255,7 +255,10 @@ fn get_f64(batch: &arrow::record_batch::RecordBatch, col: &str) -> Option<f64> {
     get_long_field_value(batch, col).and_then(|s| parse_f64(&s))
 }
 
-fn get_long_field_value(batch: &arrow::record_batch::RecordBatch, field_name: &str) -> Option<String> {
+fn get_long_field_value(
+    batch: &arrow::record_batch::RecordBatch,
+    field_name: &str,
+) -> Option<String> {
     let fields = batch
         .column_by_name("field")?
         .as_any()

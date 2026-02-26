@@ -27,9 +27,7 @@ impl ParseCallbacks for RenameCallback {
 fn main() {
     // Check for mutual exclusivity at build time
     #[cfg(all(feature = "mock", feature = "live"))]
-    {
-        panic!("Features 'mock' and 'live' are mutually exclusive");
-    }
+    compile_error!("Features 'mock' and 'live' are mutually exclusive");
 
     #[cfg(feature = "mock")]
     {
