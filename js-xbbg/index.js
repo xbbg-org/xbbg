@@ -219,6 +219,7 @@ class Engine {
       service: '//blp/bqlsvc',
       operation: 'sendQuery',
       elements: [{ key: 'expression', value: String(query) }],
+      backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
       extractor: 'bql',
@@ -232,6 +233,7 @@ class Engine {
       service: '//blp/refdata',
       operation: 'BeqsRequest',
       elements,
+      backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
     });
@@ -242,6 +244,7 @@ class Engine {
       service: '//blp/exrsvc',
       operation: 'ExcelGetGridRequest',
       searchSpec: String(searchSpec),
+      backend: options.backend,
       overrides: mapObjectToPairs(options.overrides),
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -255,6 +258,7 @@ class Engine {
       service: '//blp/tasvc',
       operation: 'studyRequest',
       security: String(ticker),
+      backend: options.backend,
       jsonElements: JSON.stringify(studyObj),
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -267,6 +271,7 @@ class Engine {
         service: '//blp/apiflds',
         operation: 'FieldSearchRequest',
         searchSpec: String(options.searchSpec),
+        backend: options.backend,
         kwargs: mapObjectToPairs(options.kwargs),
         format: options.format,
       });
@@ -276,6 +281,7 @@ class Engine {
       service: '//blp/apiflds',
       operation: 'FieldInfoRequest',
       fieldIds: fields,
+      backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
     });
@@ -286,6 +292,7 @@ class Engine {
       service: '//blp/instruments',
       operation: 'instrumentListRequest',
       elements: [{ key: 'query', value: String(query) }],
+      backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
     });
@@ -297,6 +304,7 @@ class Engine {
       operation: 'PortfolioDataRequest',
       security: String(portfolio),
       fields: Array.isArray(fields) ? fields : [fields],
+      backend: options.backend,
       overrides: mapObjectToPairs(options.overrides),
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -308,6 +316,7 @@ class Engine {
       service: '//blp/instruments',
       operation: 'curveListRequest',
       elements: [{ key: 'query', value: String(ticker) }],
+      backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
     });
@@ -318,6 +327,7 @@ class Engine {
       service: '//blp/instruments',
       operation: 'govtListRequest',
       elements: [{ key: 'query', value: String(ticker) }],
+      backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
     });
@@ -464,26 +474,29 @@ class Engine {
     return this.bflds({ searchSpec: String(searchSpec), ...options });
   }
 
+  _ipcToBackend(buffer, backend) {
+    if (backend === Backend.JSON) {
+      return Array.from(tableFromIPC(buffer));
+    }
+    if (backend === Backend.POLARS) {
+      let pl;
+      try { pl = require('nodejs-polars'); }
+      catch { throw new Error('nodejs-polars is required for Polars backend. Install: npm install nodejs-polars'); }
+      return pl.readIPC(buffer);
+    }
+    return tableFromIPC(buffer);
+  }
+
   async bqr(ticker, options = {}) {
     try {
       const buffer = await this._inner.recipeBqr(
         String(ticker),
-        options.startDatetime || '',
-        options.endDatetime || '',
+        options.startDatetime || undefined,
+        options.endDatetime || undefined,
         options.eventTypes || null,
         options.includeBrokerCodes !== false,
       );
-      const backend = options.backend || Backend.ARROW;
-      if (backend === Backend.JSON) {
-        return Array.from(tableFromIPC(buffer));
-      }
-      if (backend === Backend.POLARS) {
-        let pl;
-        try { pl = require('nodejs-polars'); }
-        catch { throw new Error('nodejs-polars is required for Polars backend. Install: npm install nodejs-polars'); }
-        return pl.readIPC(buffer);
-      }
-      return tableFromIPC(buffer);
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
     } catch (err) {
       throw wrapError(err);
     }
@@ -509,6 +522,7 @@ module.exports = {
   BlpValidationError,
   BlpTimeoutError,
   BlpInternalError,
+  wrapError,
   version: native.version,
   setLogLevel: native.setLogLevel,
   getLogLevel: native.getLogLevel,

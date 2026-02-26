@@ -8,7 +8,7 @@ try {
   const requiredExports = [
     'Engine', 'Subscription', 'connect', 'Backend', 'Format',
     'BlpError', 'BlpSessionError', 'BlpRequestError', 'BlpValidationError',
-    'BlpTimeoutError', 'BlpInternalError', 'version', 'setLogLevel', 'getLogLevel'
+    'BlpTimeoutError', 'BlpInternalError', 'wrapError', 'version', 'setLogLevel', 'getLogLevel'
   ];
   for (const key of requiredExports) {
     assert(key in api, `Missing export: ${key}`);
@@ -138,6 +138,24 @@ try {
   // Test 16: requestRaw method exists
   assert(typeof engine.requestRaw === 'function');
   console.log('PASS: requestRaw method exists');
+
+  // Test 17: wrapError maps NAPI error prefixes to correct classes
+  const { wrapError } = require('./errors');
+  const wrapCases = [
+    ['Session start failed: x', api.BlpSessionError],
+    ['Failed to open service: x', api.BlpSessionError],
+    ['Request failed: x', api.BlpRequestError],
+    ['Subscription failed: x', api.BlpRequestError],
+    ['Invalid argument: x', api.BlpValidationError],
+    ['Request timed out', api.BlpTimeoutError],
+    ['Internal error: x', api.BlpInternalError],
+    ['some unknown error', api.BlpError],
+  ];
+  for (const [msg, Cls] of wrapCases) {
+    const e = wrapError(new Error(msg));
+    assert(e instanceof Cls, `wrapError('${msg}') → ${e.constructor.name}, expected ${Cls.name}`);
+  }
+  console.log('PASS: wrapError prefix mapping');
 
   console.log('ALL TESTS PASSED');
 } catch (error) {
