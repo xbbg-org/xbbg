@@ -7,6 +7,8 @@
 //! Workers use slab-indexed correlation IDs for O(1) dispatch.
 //! Pool sizes are configurable with sensible defaults.
 
+mod exchange;
+mod exchange_cache;
 mod request_pool;
 pub mod state;
 mod subscription_pool;
@@ -25,6 +27,7 @@ use xbbg_core::BlpError;
 use crate::errors::BlpAsyncError;
 use crate::request_builder::RequestBuilder;
 use crate::services::Operation;
+use exchange_cache::ExchangeCache;
 
 // ExtractorType is defined in services.rs (generated from defs/bloomberg.toml).
 // Re-export here so existing `use xbbg_async::engine::ExtractorType` paths keep working.
@@ -458,6 +461,8 @@ pub struct Engine {
     config: Arc<EngineConfig>,
     /// Schema cache (in-memory + disk)
     schema_cache: crate::schema::SchemaCache,
+    /// Exchange metadata cache (in-memory + disk)
+    exchange_cache: ExchangeCache,
 }
 
 impl Engine {
@@ -503,6 +508,7 @@ impl Engine {
             rt,
             config,
             schema_cache: crate::schema::SchemaCache::new(),
+            exchange_cache: ExchangeCache::new(),
         })
     }
 
