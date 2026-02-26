@@ -4,7 +4,19 @@ Bloomberg data API for Node.js — powered by Rust.
 
 ## Status
 
-🚧 **Placeholder** — pending completion of core Python implementation.
+🚧 **Experimental alpha** — native N-API bindings are implemented, high-level API is in active development.
+
+## Local Development
+
+```bash
+# Build native addon from workspace root
+cargo build -p napi-xbbg
+
+# Run JS smoke test from js-xbbg/
+npm test
+```
+
+The JS package automatically loads the built `.node` addon from common workspace paths (`target/debug` and `target/release`).
 
 ## Planned Usage
 
