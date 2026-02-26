@@ -8,8 +8,8 @@ def test_engine_exchange_resolution_live():
         PyEngine,
         ext_clear_exchange_override,
         ext_get_exchange_override,
-        ext_set_exchange_override,
         ext_session_times_to_utc,
+        ext_set_exchange_override,
     )
 
     start_utc, end_utc = ext_session_times_to_utc(

@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **Streaming performance enhancements**: Per-subscription config (`flush_threshold`, `overflow_policy`, `stream_capacity`), observability metrics via shared atomics, `tick_mode` support
 - **Live integration tests**: 69 tests across `test_ext_bonds.py` (21), `test_ext_options.py` (20), `test_ext_cdx.py` (22) covering all ext module functions
 - **Streaming tests**: Tests for `tick_mode`, per-subscription config, and observability metrics
+- **Rust exchange/session APIs**: Added low-level exchange resolution support with `ExchangeInfo` metadata, runtime exchange overrides, session timezone conversion utilities, and `market_timing` helpers in the Rust layer (`xbbg-ext`, `xbbg-async`, `pyo3-xbbg`)
+- **Live exchange smoke test**: Added `py-xbbg/tests/live/test_exchange_resolution.py` covering override precedence, UTC session conversion, live `resolve_exchange`, `fetch_market_info`, and `market_timing`
 
 ### Changed
 
@@ -35,6 +37,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **Unused `logging` import in `ext/options.py`**: Removed to pass ruff lint
 - **Test imports**: `BlpInternalError` imported from `_core` (Rust) instead of `exceptions` (Python)
 - **CI fixes**: Resolved 4 Python test failures, clippy warnings (`too_many_arguments`, `SubscriptionMetrics` re-export), ruff check/format violations, cargo fmt formatting, module path for `test_markets.py`, Linux test runtime setup
+- **Exchange refdata parsing shape support**: `resolve_exchange` now handles both WIDE and LONG refdata responses by mapping `(field, value)` rows when Bloomberg returns long-shape metadata
 
 ## [1.0.0a2] - 2026-02-19
 
