@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0a3] - 2026-02-27
+
 ### Added
 
 - **`bqr()`/`abqr()` Bloomberg Quote Request**: Tick-level dealer quotes with `date_offset` (`-2d`, `-1w`, `-3h`), `start_date`/`end_date` date ranges, and optional `include_broker_codes`, `include_spread_price`, `include_yield`, `include_condition_codes`, `include_exchange_codes` parameters. Generic extractor fallback reshaped via `_reshape_bqr_generic()`
@@ -916,7 +918,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a3...HEAD
+[1.0.0a3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...v1.0.0a3
 [1.0.0a2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a1...v1.0.0a2
 [1.0.0a1]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...v1.0.0a1
 [0.12.0]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...v0.12.0
