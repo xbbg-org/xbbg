@@ -1573,12 +1573,13 @@ class TestFieldCache:
         assert result is not None
         logger.info(f"  Resolved {len(result)} field types")
 
-    def test_get_field_info(self):
+    @pytest.mark.asyncio
+    async def test_get_field_info(self):
         """FieldCache: get field info."""
         from xbbg import get_field_info
 
         try:
-            info = get_field_info(["PX_LAST"])
+            info = await get_field_info(["PX_LAST"])
             logger.info(f"  Field info: {info}")
         except Exception as e:
             pytest.skip(f"Field cache not populated: {e}")
