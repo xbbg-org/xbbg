@@ -325,7 +325,7 @@ xbbg is the **only Python library** that provides:
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
-- **Python dependencies (core)**: `narwhals>=1.30`, `pyarrow>=22.0.0`, `lief>=0.17`
+- **Python dependencies (core)**: `narwhals>=1.30`, `pyarrow>=22.0.0`
 
 - **Optional backends** (install separately if needed):
   - `pandas` - For pandas DataFrame output (`pip install pandas`)
