@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pyarrow as pa
 import pytest
 
 from xbbg import blp
 from xbbg.services import Operation, Service
-
-
-class _FakePdf:
-    def __init__(self, columns: list[str]):
-        self.columns = columns
 
 
 class _FakeNwDf:
@@ -20,14 +16,19 @@ class _FakeNwDf:
     def __len__(self):
         return 1
 
-    def to_pandas(self):
-        return _FakePdf(self._columns)
+    def to_arrow(self):
+        return pa.table({name: [None] for name in self._columns})
+
+
+class _NoArrowFrame:
+    def __len__(self):
+        return 1
 
 
 @pytest.mark.asyncio
 async def test_abqr_generated_routes_intraday_tick_defaults(monkeypatch):
     captured: dict[str, Any] = {}
-    fake_df = _FakeNwDf(columns=[])
+    fake_df = _NoArrowFrame()
 
     async def fake_arequest(*, service, operation, backend, **kwargs):
         captured["service"] = service
@@ -130,3 +131,45 @@ async def test_abqr_generated_uses_explicit_date_range_and_event_types(monkeypat
     assert kwargs["end_datetime"] == "2024-01-17T23:59:59"
     assert kwargs["event_types"] == ["TRADE"]
     assert result is fake_df
+
+
+def test_reshape_bqr_generic_uses_arrow_table_without_pandas():
+    table = pa.table(
+        {
+            "path": [
+                "tickData[0].time",
+                "tickData[0].type",
+                "tickData[0].value",
+                "tickData[0].size",
+                "tickData[0].brokerBuyCode",
+                "tickData.eidData[0]",
+            ],
+            "value_str": [
+                "2026-03-03T09:30:00",
+                "BID",
+                None,
+                None,
+                "ABCD",
+                None,
+            ],
+            "value_num": [
+                None,
+                None,
+                123.45,
+                1000.0,
+                None,
+                None,
+            ],
+        }
+    )
+
+    result = blp._reshape_bqr_generic(table, "AAPL US Equity")
+    rows = result.to_arrow().to_pylist()
+
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "AAPL US Equity"
+    assert rows[0]["time"] == "2026-03-03T09:30:00"
+    assert rows[0]["type"] == "BID"
+    assert rows[0]["value"] == 123.45
+    assert rows[0]["size"] == 1000.0
+    assert rows[0]["brokerBuyCode"] == "ABCD"

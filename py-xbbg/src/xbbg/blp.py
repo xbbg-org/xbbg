@@ -3192,7 +3192,7 @@ def _parse_date_offset(offset: str, reference: datetime) -> datetime:
     raise ValueError(f"Unknown time unit: {unit}")
 
 
-def _reshape_bqr_generic(pdf: pd.DataFrame, ticker: str) -> nw.DataFrame:
+def _reshape_bqr_generic(table: pa.Table, ticker: str) -> nw.DataFrame:
     """Reshape generic extractor output into structured BQR rows.
 
     When includeBrokerCodes (or similar) is set, the Rust tick extractor
@@ -3201,48 +3201,46 @@ def _reshape_bqr_generic(pdf: pd.DataFrame, ticker: str) -> nw.DataFrame:
     """
     import re
 
-    # Skip non-tick paths (e.g., tickData.eidData)
-    tick_rows = pdf[pdf["path"].str.contains(r"tickData\[\d+\]", regex=True)]
-    if tick_rows.empty:
+    if "path" not in table.column_names:
         return nw.from_native(pa.table({"ticker": [], "time": [], "type": [], "value": [], "size": []}))
 
-    # Collect all unique field names first (for consistent columns)
+    paths = table["path"].to_pylist()
+    value_strs = table["value_str"].to_pylist() if "value_str" in table.column_names else [None] * len(paths)
+    value_nums = table["value_num"].to_pylist() if "value_num" in table.column_names else [None] * len(paths)
+
+    pattern = re.compile(r"tickData\[(\d+)\]\.(\w+)")
+
+    tick_values: list[tuple[str, str, Any]] = []
     all_fields: set[str] = set()
-    for path in tick_rows["path"]:
-        m = re.search(r"tickData\[(\d+)\]\.(\w+)", path)
-        if m:
-            all_fields.add(m.group(2))
 
-    # Group by tick index
-    records: list[dict[str, Any]] = []
-    current_idx: str | None = None
-    current_record: dict[str, Any] = {}
-
-    for _, row in tick_rows.iterrows():
-        path = row["path"]
-        m = re.search(r"tickData\[(\d+)\]\.(\w+)", path)
-        if not m:
+    for row_idx, path in enumerate(paths):
+        if not isinstance(path, str):
             continue
-        idx, field = m.group(1), m.group(2)
+        match = pattern.search(path)
+        if not match:
+            continue
 
-        if idx != current_idx:
-            if current_record:
-                records.append(current_record)
-            current_idx = idx
-            # Initialize with all fields as None for consistent columns
-            current_record = {"ticker": ticker}
-            for f in all_fields:
-                current_record[f] = None
+        idx, field = match.group(1), match.group(2)
+        all_fields.add(field)
 
-        # Use value_str for strings, value_num for numbers
-        val = row["value_str"] if row["value_str"] else row["value_num"]
-        current_record[field] = val
+        value_str = value_strs[row_idx]
+        value_num = value_nums[row_idx]
+        value = value_str if value_str not in (None, "") else value_num
+        tick_values.append((idx, field, value))
 
-    if current_record:
-        records.append(current_record)
-
-    if not records:
+    if not tick_values:
         return nw.from_native(pa.table({"ticker": [], "time": [], "type": [], "value": [], "size": []}))
+
+    records_by_idx: dict[str, dict[str, Any]] = {}
+    for idx, field, value in tick_values:
+        if idx not in records_by_idx:
+            record: dict[str, Any] = {"ticker": ticker}
+            for name in all_fields:
+                record[name] = None
+            records_by_idx[idx] = record
+        records_by_idx[idx][field] = value
+
+    records = list(records_by_idx.values())
 
     result = pa.Table.from_pylist(records)
 
@@ -3388,9 +3386,10 @@ async def abqr(
     logger.debug("abqr: received %d rows", len(nw_df))
 
     # Post-process generic output when broker/condition/exchange codes present
-    pdf = nw_df.to_pandas()
-    if has_extras and "path" in pdf.columns:
-        nw_df = _reshape_bqr_generic(pdf, ticker)
+    if has_extras:
+        table = nw_df.to_arrow()
+        if "path" in table.column_names:
+            nw_df = _reshape_bqr_generic(table, ticker)
 
     return _convert_backend(nw_df, backend)
 
@@ -4364,9 +4363,10 @@ def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
     def postprocess(nw_df: Any) -> DataFrameResult:
         logger.debug("abqr: received %d rows", len(nw_df))
         result = nw_df
-        pdf = result.to_pandas()
-        if has_extras and "path" in pdf.columns:
-            result = _reshape_bqr_generic(pdf, ticker)
+        if has_extras:
+            table = result.to_arrow()
+            if "path" in table.column_names:
+                result = _reshape_bqr_generic(table, ticker)
         return _convert_backend(result, backend)
 
     return _EndpointPlan(
