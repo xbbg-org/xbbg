@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Endpoint-factory regression tests**: Added focused coverage for generated `abflds`/`bflds` and `abqr`/`bqr` routing, validation, and reshape behavior in `py-xbbg/tests/test_endpoint_factory_bflds.py` and `py-xbbg/tests/test_endpoint_factory_bqr.py`
+
+### Changed
+
+- **Template endpoint generation in `blp.py`**: Migrated clean-fit wrappers to generated async/sync endpoints backed by `_GeneratedEndpointSpec` and `_EndpointPlan`, including `abdp`/`bdp`, `abdh`/`bdh`, `abds`/`bds`, `abdib`/`bdib`, `abdtick`/`bdtick`, `abql`/`bql`, `abqr`/`bqr`, `absrch`/`bsrch`, `abeqs`/`beqs`, `ablkp`/`blkp`, `abport`/`bport`, `abcurves`/`bcurves`, `abgovts`/`bgovts`, and `abflds`/`bflds`
+
+### Fixed
+
+- **`bqr` pandas dependency regression**: Removed unconditional `to_pandas()` conversion in BQR postprocessing; quote requests now use Arrow-native checks/reshape and run without requiring pandas for standard flows
+
 ## [1.0.0a3] - 2026-02-27
 
 ### Added
