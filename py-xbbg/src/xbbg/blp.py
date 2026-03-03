@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 import functools
+import inspect
 import logging
 import time
 from typing import TYPE_CHECKING, Any, TypeAlias
@@ -1336,6 +1337,99 @@ def _sync_wrapper(async_func):
         return asyncio.run(async_func(*args, **kwargs))
 
     return wrapper
+
+
+@dataclass(frozen=True)
+class _EndpointPlan:
+    request_kwargs: dict[str, Any]
+    backend: Backend | str | None
+    postprocess: Callable[[Any], DataFrameResult] | None = None
+    service: Service | None = None
+    operation: Operation | None = None
+    extractor: ExtractorHint | None = None
+
+
+@dataclass(frozen=True)
+class _GeneratedEndpointSpec:
+    async_name: str
+    sync_name: str
+    service: Service
+    operation: Operation
+    builder: Callable[[dict[str, Any]], Awaitable[_EndpointPlan] | _EndpointPlan]
+    sync_doc_var: str
+    sync_annotations_var: str
+    extractor: ExtractorHint | None = None
+
+
+_GENERATED_ENDPOINT_SPECS: dict[str, _GeneratedEndpointSpec] = {}
+
+
+def _strip_signature_annotations(func: Callable[..., Any]) -> str:
+    signature = inspect.signature(func)
+    stripped_params = [param.replace(annotation=inspect._empty) for param in signature.parameters.values()]
+    stripped = signature.replace(parameters=stripped_params, return_annotation=inspect._empty)
+    return str(stripped)
+
+
+async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: dict[str, Any]) -> DataFrameResult:
+    plan_or_awaitable = spec.builder(call_args)
+    plan = await plan_or_awaitable if inspect.isawaitable(plan_or_awaitable) else plan_or_awaitable
+
+    request_kwargs = dict(plan.request_kwargs)
+    if plan.extractor is not None:
+        request_kwargs["extractor"] = plan.extractor
+    elif spec.extractor is not None and "extractor" not in request_kwargs:
+        request_kwargs["extractor"] = spec.extractor
+
+    service = plan.service if plan.service is not None else spec.service
+    operation = plan.operation if plan.operation is not None else spec.operation
+
+    nw_df = await arequest(
+        service=service,
+        operation=operation,
+        backend=None,
+        **request_kwargs,
+    )
+
+    if plan.postprocess is not None:
+        return plan.postprocess(nw_df)
+
+    return _convert_backend(nw_df, plan.backend)
+
+
+def _build_generated_async(spec: _GeneratedEndpointSpec, async_template: Callable[..., Any]) -> Callable[..., Any]:
+    signature_text = _strip_signature_annotations(async_template)
+    source = (
+        f"async def {spec.async_name}{signature_text}:\n"
+        f"    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS[{spec.async_name!r}], locals())"
+    )
+    namespace: dict[str, Any] = {}
+    exec(source, globals(), namespace)
+    generated = namespace[spec.async_name]
+    generated.__doc__ = async_template.__doc__
+    generated.__annotations__ = dict(getattr(async_template, "__annotations__", {}))
+    generated.__module__ = __name__
+    generated.__qualname__ = spec.async_name
+    return generated
+
+
+def _install_generated_endpoint(spec: _GeneratedEndpointSpec) -> None:
+    async_template = globals()[spec.async_name]
+    generated_async = _build_generated_async(spec, async_template)
+    globals()[spec.async_name] = generated_async
+
+    generated_sync = _sync_wrapper(generated_async)
+    generated_sync.__name__ = spec.sync_name
+    generated_sync.__qualname__ = spec.sync_name
+    generated_sync.__doc__ = globals().get(spec.sync_doc_var)
+    generated_sync.__annotations__ = dict(globals().get(spec.sync_annotations_var, {}))
+    generated_sync.__module__ = __name__
+    globals()[spec.sync_name] = generated_sync
+
+
+def _install_generated_endpoints() -> None:
+    for spec in _GENERATED_ENDPOINT_SPECS.values():
+        _install_generated_endpoint(spec)
 
 
 def bdp(
@@ -4043,6 +4137,526 @@ _bgovts_annotations = bgovts.__annotations__
 bgovts = _sync_wrapper(abgovts)
 bgovts.__doc__ = _bgovts_doc
 bgovts.__annotations__ = _bgovts_annotations
+
+
+async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
+    ticker_list = _normalize_tickers(args["tickers"])
+    field_list = _normalize_fields(args.get("flds"))
+    kwargs = dict(args.get("kwargs", {}))
+
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
+    fmt, want_wide = _handle_deprecated_wide_format(args.get("format"), pivot_index="ticker")
+
+    resolved_types = await _get_engine().resolve_field_types(
+        field_list,
+        args.get("field_types"),
+        "string",
+    )
+
+    return _EndpointPlan(
+        request_kwargs={
+            "securities": ticker_list,
+            "fields": field_list,
+            "overrides": overrides if overrides else None,
+            "elements": elements if elements else None,
+            "field_types": resolved_types,
+            "format": fmt,
+            "include_security_errors": args.get("include_security_errors", False),
+        },
+        backend=args.get("backend"),
+        postprocess=_apply_wide_pivot_bdp if want_wide else None,
+    )
+
+
+async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
+    ticker_list = _normalize_tickers(args["tickers"])
+    field_list = _normalize_fields(args.get("flds"))
+    kwargs = dict(args.get("kwargs", {}))
+
+    fmt, want_wide = _handle_deprecated_wide_format(args.get("format"), pivot_index=["ticker", "date"])
+
+    end_value = args.get("end_date", "today")
+    start_value = args.get("start_date")
+
+    e_dt = _fmt_date(end_value, "%Y%m%d")
+    if start_value is None:
+        end_dt_parsed = datetime.strptime(e_dt, "%Y%m%d")
+        s_dt = (end_dt_parsed - timedelta(weeks=8)).strftime("%Y%m%d")
+    else:
+        s_dt = _fmt_date(start_value, "%Y%m%d")
+
+    options: list[tuple[str, str]] = []
+    adjust = kwargs.pop("adjust", None)
+    if adjust == "all":
+        options.extend(
+            [
+                ("adjustmentSplit", "true"),
+                ("adjustmentNormal", "true"),
+                ("adjustmentAbnormal", "true"),
+            ]
+        )
+    elif adjust == "dvd":
+        options.extend(
+            [
+                ("adjustmentNormal", "true"),
+                ("adjustmentAbnormal", "true"),
+            ]
+        )
+    elif adjust == "split":
+        options.append(("adjustmentSplit", "true"))
+
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.HISTORICAL_DATA, kwargs)
+
+    resolved_types = await _get_engine().resolve_field_types(
+        field_list,
+        args.get("field_types"),
+        "float64",
+    )
+
+    return _EndpointPlan(
+        request_kwargs={
+            "securities": ticker_list,
+            "fields": field_list,
+            "start_date": s_dt,
+            "end_date": e_dt,
+            "overrides": overrides if overrides else None,
+            "elements": elements if elements else None,
+            "options": options if options else None,
+            "field_types": resolved_types,
+            "format": fmt,
+        },
+        backend=args.get("backend"),
+        postprocess=_apply_wide_pivot_bdh if want_wide else None,
+    )
+
+
+async def _build_abds_plan(args: dict[str, Any]) -> _EndpointPlan:
+    ticker_list = _normalize_tickers(args["tickers"])
+    kwargs = dict(args.get("kwargs", {}))
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
+
+    return _EndpointPlan(
+        request_kwargs={
+            "securities": ticker_list,
+            "fields": [args["flds"]],
+            "overrides": overrides if overrides else None,
+            "elements": elements if elements else None,
+        },
+        backend=args.get("backend"),
+    )
+
+
+async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+
+    start_dt = args.get("start_datetime")
+    end_dt = args.get("end_datetime")
+    dt_value = args.get("dt")
+
+    if start_dt is not None and end_dt is not None:
+        s_dt = datetime.fromisoformat(start_dt.replace(" ", "T")).isoformat()
+        e_dt = datetime.fromisoformat(end_dt.replace(" ", "T")).isoformat()
+    elif dt_value is not None:
+        cur_dt = datetime.fromisoformat(dt_value.replace(" ", "T")).strftime("%Y-%m-%d")
+        s_dt = f"{cur_dt}T00:00:00"
+        e_dt = f"{cur_dt}T23:59:59"
+    else:
+        raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
+
+    elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
+
+    return _EndpointPlan(
+        request_kwargs={
+            "security": args["ticker"],
+            "event_type": args["typ"],
+            "interval": args["interval"],
+            "start_datetime": s_dt,
+            "end_datetime": e_dt,
+            "elements": elements if elements else None,
+        },
+        backend=args.get("backend"),
+    )
+
+
+async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+
+    s_dt = datetime.fromisoformat(args["start_datetime"].replace(" ", "T")).isoformat()
+    e_dt = datetime.fromisoformat(args["end_datetime"].replace(" ", "T")).isoformat()
+
+    event_types = args.get("event_types")
+    if event_types is None:
+        event_types = ["TRADE"]
+
+    elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
+
+    return _EndpointPlan(
+        request_kwargs={
+            "security": args["ticker"],
+            "start_datetime": s_dt,
+            "end_datetime": e_dt,
+            "event_types": list(event_types),
+            "elements": elements if elements else None,
+        },
+        backend=args.get("backend"),
+    )
+
+
+def _build_abql_plan(args: dict[str, Any]) -> _EndpointPlan:
+    return _EndpointPlan(
+        request_kwargs={"overrides": {"expression": args["expression"]}},
+        backend=args.get("backend"),
+    )
+
+
+def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
+    event_types = args.get("event_types")
+    if event_types is None:
+        event_types = ["BID", "ASK"]
+
+    now = datetime.now()
+    time_fmt = "%Y-%m-%dT%H:%M:%S"
+
+    date_offset = args.get("date_offset")
+    start_date = args.get("start_date")
+    end_date = args.get("end_date")
+
+    if date_offset:
+        end_dt = now
+        start_dt = _parse_date_offset(date_offset, now)
+        s_dt = start_dt.strftime(time_fmt)
+        e_dt = end_dt.strftime(time_fmt)
+    elif start_date is not None:
+        s_dt = _fmt_date(start_date, "%Y-%m-%d") + "T00:00:00"
+        if end_date is not None:
+            e_dt = _fmt_date(end_date, "%Y-%m-%d") + "T23:59:59"
+        else:
+            e_dt = now.strftime(time_fmt)
+    else:
+        start_dt = now - timedelta(days=2)
+        s_dt = start_dt.strftime(time_fmt)
+        e_dt = now.strftime(time_fmt)
+
+    elements: list[tuple[str, Any]] = []
+    if args.get("include_broker_codes"):
+        elements.append(("includeBrokerCodes", "true"))
+    if args.get("include_spread_price"):
+        elements.append(("includeSpreadPrice", "true"))
+    if args.get("include_yield"):
+        elements.append(("includeYield", "true"))
+    if args.get("include_condition_codes"):
+        elements.append(("includeConditionCodes", "true"))
+    if args.get("include_exchange_codes"):
+        elements.append(("includeExchangeCodes", "true"))
+
+    has_extras = bool(elements)
+    ticker = args["ticker"]
+    backend = args.get("backend")
+
+    logger.debug(
+        "abqr: ticker=%s start=%s end=%s events=%s",
+        ticker,
+        s_dt,
+        e_dt,
+        event_types,
+    )
+
+    def postprocess(nw_df: Any) -> DataFrameResult:
+        logger.debug("abqr: received %d rows", len(nw_df))
+        result = nw_df
+        pdf = result.to_pandas()
+        if has_extras and "path" in pdf.columns:
+            result = _reshape_bqr_generic(pdf, ticker)
+        return _convert_backend(result, backend)
+
+    return _EndpointPlan(
+        request_kwargs={
+            "security": ticker,
+            "start_datetime": s_dt,
+            "end_datetime": e_dt,
+            "event_types": list(event_types),
+            "elements": elements if elements else None,
+        },
+        backend=backend,
+        postprocess=postprocess,
+    )
+
+
+def _build_absrch_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+    overrides: dict[str, str] = {"Domain": args["domain"]}
+    for key, value in kwargs.items():
+        overrides[key] = str(value)
+
+    return _EndpointPlan(
+        request_kwargs={"overrides": overrides},
+        backend=args.get("backend"),
+    )
+
+
+async def _build_abeqs_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+    routed_elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.BEQS, kwargs)
+
+    elements: list[tuple[str, Any]] = [
+        ("screenName", args["screen"]),
+        ("screenType", args["screen_type"]),
+        ("Group", args["group"]),
+    ]
+    if args.get("asof"):
+        elements.append(("asOfDate", _fmt_date(args["asof"])))
+    elements.extend(routed_elements)
+
+    return _EndpointPlan(
+        request_kwargs={
+            "elements": elements,
+            "overrides": overrides if overrides else None,
+        },
+        backend=args.get("backend"),
+    )
+
+
+async def _build_ablkp_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.INSTRUMENT_LIST, kwargs)
+
+    elements: list[tuple[str, Any]] = [
+        ("query", args["query"]),
+        ("yellowKeyFilter", args["yellowkey"]),
+        ("languageOverride", args["language"]),
+        ("maxResults", args["max_results"]),
+    ]
+    elements.extend(routed_elements)
+
+    return _EndpointPlan(
+        request_kwargs={"elements": elements},
+        backend=args.get("backend"),
+    )
+
+
+async def _build_abport_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+    field_list = _normalize_fields(args["fields"])
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.PORTFOLIO_DATA, kwargs)
+
+    return _EndpointPlan(
+        request_kwargs={
+            "securities": [args["portfolio"]],
+            "fields": field_list,
+            "elements": elements if elements else None,
+            "overrides": overrides if overrides else None,
+        },
+        backend=args.get("backend"),
+    )
+
+
+async def _build_abcurves_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.CURVE_LIST, kwargs)
+
+    elements: list[tuple[str, Any]] = []
+    if args.get("country") is not None:
+        elements.append(("countryCode", args["country"]))
+    if args.get("currency") is not None:
+        elements.append(("currencyCode", args["currency"]))
+    if args.get("curve_type") is not None:
+        elements.append(("type", args["curve_type"]))
+    if args.get("subtype") is not None:
+        elements.append(("subtype", args["subtype"]))
+    if args.get("curveid") is not None:
+        elements.append(("curveid", args["curveid"]))
+    if args.get("bbgid") is not None:
+        elements.append(("bbgid", args["bbgid"]))
+    elements.extend(routed_elements)
+
+    return _EndpointPlan(
+        request_kwargs={"elements": elements if elements else None},
+        backend=args.get("backend"),
+    )
+
+
+async def _build_abgovts_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
+    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.GOVT_LIST, kwargs)
+
+    elements: list[tuple[str, Any]] = []
+    if args.get("query") is not None:
+        elements.append(("ticker", args["query"]))
+    elements.append(("partialMatch", args["partial_match"]))
+    elements.extend(routed_elements)
+
+    return _EndpointPlan(
+        request_kwargs={"elements": elements if elements else None},
+        backend=args.get("backend"),
+    )
+
+
+def _build_abflds_plan(args: dict[str, Any]) -> _EndpointPlan:
+    fields = args.get("fields")
+    search_spec = args.get("search_spec")
+
+    if fields is not None and search_spec is not None:
+        raise ValueError("Cannot specify both 'fields' and 'search_spec'")
+    if fields is None and search_spec is None:
+        raise ValueError("Must specify either 'fields' or 'search_spec'")
+
+    if fields is not None:
+        field_list = [fields] if isinstance(fields, str) else list(fields)
+        return _EndpointPlan(
+            request_kwargs={"fields": field_list},
+            backend=args.get("backend"),
+            service=Service.APIFLDS,
+            operation=Operation.FIELD_INFO,
+        )
+
+    return _EndpointPlan(
+        request_kwargs={"fields": [search_spec]},
+        backend=args.get("backend"),
+        service=Service.APIFLDS,
+        operation=Operation.FIELD_SEARCH,
+        extractor=ExtractorHint.FIELD_INFO,
+    )
+
+
+_GENERATED_ENDPOINT_SPECS.update(
+    {
+        "abdp": _GeneratedEndpointSpec(
+            async_name="abdp",
+            sync_name="bdp",
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            builder=_build_abdp_plan,
+            sync_doc_var="_bdp_doc",
+            sync_annotations_var="_bdp_annotations",
+        ),
+        "abdh": _GeneratedEndpointSpec(
+            async_name="abdh",
+            sync_name="bdh",
+            service=Service.REFDATA,
+            operation=Operation.HISTORICAL_DATA,
+            builder=_build_abdh_plan,
+            sync_doc_var="_bdh_doc",
+            sync_annotations_var="_bdh_annotations",
+        ),
+        "abds": _GeneratedEndpointSpec(
+            async_name="abds",
+            sync_name="bds",
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            builder=_build_abds_plan,
+            sync_doc_var="_bds_doc",
+            sync_annotations_var="_bds_annotations",
+            extractor=ExtractorHint.BULK,
+        ),
+        "abdib": _GeneratedEndpointSpec(
+            async_name="abdib",
+            sync_name="bdib",
+            service=Service.REFDATA,
+            operation=Operation.INTRADAY_BAR,
+            builder=_build_abdib_plan,
+            sync_doc_var="_bdib_doc",
+            sync_annotations_var="_bdib_annotations",
+        ),
+        "abdtick": _GeneratedEndpointSpec(
+            async_name="abdtick",
+            sync_name="bdtick",
+            service=Service.REFDATA,
+            operation=Operation.INTRADAY_TICK,
+            builder=_build_abdtick_plan,
+            sync_doc_var="_bdtick_doc",
+            sync_annotations_var="_bdtick_annotations",
+        ),
+        "abql": _GeneratedEndpointSpec(
+            async_name="abql",
+            sync_name="bql",
+            service=Service.BQLSVC,
+            operation=Operation.BQL_SEND_QUERY,
+            builder=_build_abql_plan,
+            sync_doc_var="_bql_doc",
+            sync_annotations_var="_bql_annotations",
+            extractor=ExtractorHint.BQL,
+        ),
+        "abqr": _GeneratedEndpointSpec(
+            async_name="abqr",
+            sync_name="bqr",
+            service=Service.REFDATA,
+            operation=Operation.INTRADAY_TICK,
+            builder=_build_abqr_plan,
+            sync_doc_var="_bqr_doc",
+            sync_annotations_var="_bqr_annotations",
+        ),
+        "absrch": _GeneratedEndpointSpec(
+            async_name="absrch",
+            sync_name="bsrch",
+            service=Service.EXRSVC,
+            operation=Operation.EXCEL_GET_GRID,
+            builder=_build_absrch_plan,
+            sync_doc_var="_bsrch_doc",
+            sync_annotations_var="_bsrch_annotations",
+            extractor=ExtractorHint.BSRCH,
+        ),
+        "abeqs": _GeneratedEndpointSpec(
+            async_name="abeqs",
+            sync_name="beqs",
+            service=Service.REFDATA,
+            operation=Operation.BEQS,
+            builder=_build_abeqs_plan,
+            sync_doc_var="_beqs_doc",
+            sync_annotations_var="_beqs_annotations",
+            extractor=ExtractorHint.GENERIC,
+        ),
+        "ablkp": _GeneratedEndpointSpec(
+            async_name="ablkp",
+            sync_name="blkp",
+            service=Service.INSTRUMENTS,
+            operation=Operation.INSTRUMENT_LIST,
+            builder=_build_ablkp_plan,
+            sync_doc_var="_blkp_doc",
+            sync_annotations_var="_blkp_annotations",
+            extractor=ExtractorHint.GENERIC,
+        ),
+        "abport": _GeneratedEndpointSpec(
+            async_name="abport",
+            sync_name="bport",
+            service=Service.REFDATA,
+            operation=Operation.PORTFOLIO_DATA,
+            builder=_build_abport_plan,
+            sync_doc_var="_bport_doc",
+            sync_annotations_var="_bport_annotations",
+        ),
+        "abcurves": _GeneratedEndpointSpec(
+            async_name="abcurves",
+            sync_name="bcurves",
+            service=Service.INSTRUMENTS,
+            operation=Operation.CURVE_LIST,
+            builder=_build_abcurves_plan,
+            sync_doc_var="_bcurves_doc",
+            sync_annotations_var="_bcurves_annotations",
+            extractor=ExtractorHint.GENERIC,
+        ),
+        "abgovts": _GeneratedEndpointSpec(
+            async_name="abgovts",
+            sync_name="bgovts",
+            service=Service.INSTRUMENTS,
+            operation=Operation.GOVT_LIST,
+            builder=_build_abgovts_plan,
+            sync_doc_var="_bgovts_doc",
+            sync_annotations_var="_bgovts_annotations",
+            extractor=ExtractorHint.GENERIC,
+        ),
+        "abflds": _GeneratedEndpointSpec(
+            async_name="abflds",
+            sync_name="bflds",
+            service=Service.APIFLDS,
+            operation=Operation.FIELD_INFO,
+            builder=_build_abflds_plan,
+            sync_doc_var="_bflds_doc",
+            sync_annotations_var="_bflds_annotations",
+        ),
+    }
+)
+
+_install_generated_endpoints()
 
 
 async def afieldInfo(
