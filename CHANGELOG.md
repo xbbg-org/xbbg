@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b1] - 2026-03-03
+
 ### Added
 
 - **Endpoint-factory regression tests**: Added focused coverage for generated `abflds`/`bflds` and `abqr`/`bqr` routing, validation, and reshape behavior in `py-xbbg/tests/test_endpoint_factory_bflds.py` and `py-xbbg/tests/test_endpoint_factory_bqr.py`
@@ -930,7 +932,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a3...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b1...HEAD
+[1.0.0b1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a3...v1.0.0b1
 [1.0.0a3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...v1.0.0a3
 [1.0.0a2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a1...v1.0.0a2
 [1.0.0a1]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...v1.0.0a1
