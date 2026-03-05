@@ -149,5 +149,3 @@ class OutputMode(str, Enum):
 
     JSON = "json"
     """Return raw JSON as a single-column Arrow table."""
-
-

@@ -784,7 +784,9 @@ class TestLogging:
 
         # arequest logs a centralized INFO line per Bloomberg request
         log_messages = [r.message for r in caplog.records]
-        assert any("bloomberg" in msg and "ReferenceDataRequest" in msg for msg in log_messages), f"Expected bloomberg request log, got: {log_messages}"
+        assert any("bloomberg" in msg and "ReferenceDataRequest" in msg for msg in log_messages), (
+            f"Expected bloomberg request log, got: {log_messages}"
+        )
 
     def test_rust_logging_bridges_to_python(self, single_ticker, single_field, caplog):
         """Rust tracing events should appear in Python logging."""
