@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b2] - 2026-03-05
+
 ### Added
 
 - **Field-validation toggle for refdata/histdata requests**: Added optional `validate_fields` request parameter in `request()`/`arequest()` and typed wrappers (`abdp`/`bdp`, `abdh`/`bdh`, `abds`/`bds`). This supports per-request strict validation override while still honoring engine-level `validation_mode` defaults.
@@ -951,7 +953,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b2...HEAD
+[1.0.0b2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b1...v1.0.0b2
 [1.0.0b1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a3...v1.0.0b1
 [1.0.0a3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...v1.0.0a3
 [1.0.0a2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a1...v1.0.0a2
