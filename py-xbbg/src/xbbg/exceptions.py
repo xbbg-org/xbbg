@@ -21,6 +21,45 @@ BlpTimeoutError = _core.BlpTimeoutError
 BlpInternalError = _core.BlpInternalError
 
 
+def _init_request_error(
+    self,
+    message: str,
+    *,
+    service: str | None = None,
+    operation: str | None = None,
+    request_id: str | None = None,
+    code: int | None = None,
+) -> None:
+    """Back-compat init for request-derived errors with context attributes."""
+    Exception.__init__(self, message)
+    self.service = service
+    self.operation = operation
+    self.request_id = request_id
+    self.code = code
+
+
+def _init_validation_error(
+    self,
+    message: str,
+    *,
+    element: str | None = None,
+    suggestion: str | None = None,
+    valid_values: list[str] | None = None,
+) -> None:
+    """Back-compat init for validation errors with parsed metadata."""
+    Exception.__init__(self, message)
+    self.element = element
+    self.suggestion = suggestion
+    self.valid_values = valid_values
+
+
+# Back-compat constructor behavior expected by tests and existing callers.
+BlpRequestError.__init__ = _init_request_error
+BlpSecurityError.__init__ = _init_request_error
+BlpFieldError.__init__ = _init_request_error
+BlpValidationError.__init__ = _init_validation_error
+
+
 class BlpBPipeError(BlpError):
     """B-PIPE license required for this operation.
 

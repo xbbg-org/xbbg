@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sized
+
 import pyarrow as pa
 import pytest
 
@@ -67,6 +69,7 @@ async def test_arequest_passes_include_security_errors_to_engine(monkeypatch):
     )
 
     assert captured["include_security_errors"] is True
+    assert isinstance(result, Sized)
     assert len(result) == 1
 
 
@@ -99,6 +102,7 @@ async def test_arequest_omits_include_security_errors_when_false(monkeypatch):
     )
 
     assert "include_security_errors" not in captured
+    assert isinstance(result, Sized)
     assert len(result) == 1
 
 
@@ -111,7 +115,7 @@ async def test_abdp_forwards_include_security_errors(monkeypatch):
 
     class FakeEngine:
         async def resolve_field_types(self, field_list, field_types, default_type):
-            return field_types or {field: default_type for field in field_list}
+            return field_types or dict.fromkeys(field_list, default_type)
 
     async def fake_route_kwargs(_service, _operation, _kwargs):
         return [], []
@@ -128,6 +132,7 @@ async def test_abdp_forwards_include_security_errors(monkeypatch):
     result = await blp.abdp("IBM US Equity", "PX_LAST", include_security_errors=True)
 
     assert captured["include_security_errors"] is True
+    assert isinstance(result, Sized)
     assert len(result) == 1
 
 
@@ -139,7 +144,7 @@ def test_bdp_forwards_include_security_errors(monkeypatch):
 
     class FakeEngine:
         async def resolve_field_types(self, field_list, field_types, default_type):
-            return field_types or {field: default_type for field in field_list}
+            return field_types or dict.fromkeys(field_list, default_type)
 
     async def fake_route_kwargs(_service, _operation, _kwargs):
         return [], []
@@ -153,6 +158,7 @@ def test_bdp_forwards_include_security_errors(monkeypatch):
     monkeypatch.setattr(blp, "arequest", fake_arequest)
     monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
 
+    assert callable(blp.bdp)
     result = blp.bdp("IBM US Equity", "PX_LAST", include_security_errors=True)
 
     assert captured["include_security_errors"] is True

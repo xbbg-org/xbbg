@@ -601,7 +601,10 @@ impl Engine {
         }
 
         let operation = Operation::from_str(&params.operation).unwrap();
-        if !matches!(operation, Operation::ReferenceData | Operation::HistoricalData) {
+        if !matches!(
+            operation,
+            Operation::ReferenceData | Operation::HistoricalData
+        ) {
             return Ok(());
         }
 
