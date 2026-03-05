@@ -1480,6 +1480,11 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .transpose()?
         .unwrap_or(false);
 
+    let validate_fields: Option<bool> = dict
+        .get_item("validate_fields")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     let search_spec: Option<String> = dict
         .get_item("search_spec")?
         .map(|v| v.extract())
@@ -1519,6 +1524,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         options,
         field_types,
         include_security_errors,
+        validate_fields,
         search_spec,
         field_ids,
         format,

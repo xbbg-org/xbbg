@@ -157,6 +157,26 @@ __all__ = [
 ]
 
 
+# Generated sync wrappers are installed dynamically by _install_generated_endpoints().
+# Define placeholders so static analysis recognizes these exported names.
+(
+    bdp,
+    bdh,
+    bds,
+    bdib,
+    bdtick,
+    bql,
+    bsrch,
+    bqr,
+    bflds,
+    beqs,
+    blkp,
+    bport,
+    bcurves,
+    bgovts,
+) = (None,) * 14
+
+
 # Backend configuration
 _default_backend: Backend | None = None
 
@@ -713,6 +733,7 @@ async def arequest(
     extractor: ExtractorHint | str | None = None,
     format: Format | str | None = None,
     include_security_errors: bool = False,
+    validate_fields: bool | None = None,
     backend: Backend | str | None = None,
 ):
     """Async generic Bloomberg request.
@@ -747,6 +768,9 @@ async def arequest(
         format: Output format hint for result structure.
         include_security_errors: Include ``__SECURITY_ERROR__`` rows for
             failed securities on ReferenceData requests.
+        validate_fields: Optional per-request override for field validation.
+            ``True`` forces strict validation, ``False`` disables it, and
+            ``None`` follows engine-level validation mode.
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -846,6 +870,7 @@ async def arequest(
         extractor=extractor_hint,
         format=format_hint,
         include_security_errors=include_security_errors,
+        validate_fields=validate_fields,
     )
     params.validate()
 
@@ -893,6 +918,7 @@ def request(
     output: OutputMode | str = OutputMode.ARROW,
     extractor: ExtractorHint | str | None = None,
     include_security_errors: bool = False,
+    validate_fields: bool | None = None,
     backend: Backend | str | None = None,
 ):
     """Generic Bloomberg request (sync wrapper).
@@ -929,6 +955,7 @@ def request(
             output=output,
             extractor=extractor,
             include_security_errors=include_security_errors,
+            validate_fields=validate_fields,
             backend=backend,
         )
     )
@@ -947,6 +974,7 @@ async def abdp(
     format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
     include_security_errors: bool = False,
+    validate_fields: bool | None = None,
     **kwargs,
 ):
     """Async Bloomberg reference data (BDP).
@@ -965,6 +993,9 @@ async def abdp(
             If None, types are auto-resolved from Bloomberg field metadata.
         include_security_errors: Include ``__SECURITY_ERROR__`` rows for
             securities that Bloomberg rejected.
+        validate_fields: Optional per-request override for field validation.
+            ``True`` forces strict validation, ``False`` disables it, and
+            ``None`` follows engine-level validation mode.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -982,46 +1013,7 @@ async def abdp(
             abdp("MSFT US Equity", "PX_LAST"),
         )
     """
-    ticker_list = _normalize_tickers(tickers)
-    field_list = _normalize_fields(flds)
-
-    # Route kwargs to elements/overrides using schema introspection
-    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
-
-    # Handle deprecated WIDE format
-    fmt, want_wide = _handle_deprecated_wide_format(format, pivot_index="ticker")
-
-    logger.debug("abdp: tickers=%s fields=%s", ticker_list, field_list)
-
-    # Resolve field types if not manually provided
-    engine = _get_engine()
-    resolved_types = await engine.resolve_field_types(
-        field_list,
-        field_types,  # Manual overrides take precedence
-        "string",  # Default type for BDP
-    )
-
-    # Use generic arequest with ReferenceDataRequest
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.REFERENCE_DATA,
-        securities=ticker_list,
-        fields=field_list,
-        overrides=overrides if overrides else None,
-        elements=elements if elements else None,
-        field_types=resolved_types,
-        format=fmt,
-        include_security_errors=include_security_errors,
-        backend=None,  # Get narwhals DataFrame, we'll convert below
-    )
-
-    logger.debug("abdp: received %d rows", len(nw_df))
-
-    # Handle deprecated wide format
-    if want_wide:
-        return _apply_wide_pivot_bdp(nw_df)
-
-    return _convert_backend(nw_df, backend)
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abdp"], locals())
 
 
 async def abdh(
@@ -1033,6 +1025,7 @@ async def abdh(
     backend: Backend | str | None = None,
     format: Format | str | None = None,
     field_types: dict[str, str] | None = None,
+    validate_fields: bool | None = None,
     **kwargs,
 ):
     """Async Bloomberg historical data (BDH).
@@ -1051,6 +1044,9 @@ async def abdh(
             - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
+        validate_fields: Optional per-request override for field validation.
+            ``True`` forces strict validation, ``False`` disables it, and
+            ``None`` follows engine-level validation mode.
         **kwargs: Additional overrides and infrastructure options.
             adjust: Adjustment type ('all', 'dvd', 'split', '-', None).
 
@@ -1069,72 +1065,7 @@ async def abdh(
             abdh("MSFT US Equity", "PX_LAST"),
         )
     """
-    ticker_list = _normalize_tickers(tickers)
-    field_list = _normalize_fields(flds)
-
-    # Handle deprecated WIDE format
-    fmt, want_wide = _handle_deprecated_wide_format(format, pivot_index=["ticker", "date"])
-
-    # Handle dates
-    e_dt = _fmt_date(end_date, "%Y%m%d")
-    if start_date is None:
-        end_dt_parsed = datetime.strptime(e_dt, "%Y%m%d")
-        s_dt = (end_dt_parsed - timedelta(weeks=8)).strftime("%Y%m%d")
-    else:
-        s_dt = _fmt_date(start_date, "%Y%m%d")
-
-    # Build options list
-    options: list[tuple[str, str]] = []
-    adjust = kwargs.pop("adjust", None)
-    if adjust:
-        if adjust == "all":
-            options.append(("adjustmentSplit", "true"))
-            options.append(("adjustmentNormal", "true"))
-            options.append(("adjustmentAbnormal", "true"))
-        elif adjust == "dvd":
-            options.append(("adjustmentNormal", "true"))
-            options.append(("adjustmentAbnormal", "true"))
-        elif adjust == "split":
-            options.append(("adjustmentSplit", "true"))
-        elif adjust == "-":
-            pass  # No adjustments
-
-    # Route remaining kwargs to elements/overrides using schema introspection
-    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.HISTORICAL_DATA, kwargs)
-
-    logger.debug("abdh: tickers=%s fields=%s start=%s end=%s", ticker_list, field_list, s_dt, e_dt)
-
-    # Resolve field types if not manually provided
-    engine = _get_engine()
-    resolved_types = await engine.resolve_field_types(
-        field_list,
-        field_types,  # Manual overrides take precedence
-        "float64",  # Default type for BDH
-    )
-
-    # Use generic arequest with HistoricalDataRequest
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.HISTORICAL_DATA,
-        securities=ticker_list,
-        fields=field_list,
-        start_date=s_dt,
-        end_date=e_dt,
-        overrides=overrides if overrides else None,
-        elements=elements if elements else None,
-        options=options if options else None,
-        field_types=resolved_types,
-        format=fmt,
-        backend=None,  # Get narwhals DataFrame, we'll convert below
-    )
-
-    logger.debug("abdh: received %d rows", len(nw_df))
-
-    # Handle deprecated wide format
-    if want_wide:
-        return _apply_wide_pivot_bdh(nw_df)
-
-    return _convert_backend(nw_df, backend)
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abdh"], locals())
 
 
 async def abds(
@@ -1142,6 +1073,7 @@ async def abds(
     flds: str,
     *,
     backend: Backend | str | None = None,
+    validate_fields: bool | None = None,
     **kwargs,
 ):
     """Async Bloomberg bulk data (BDS).
@@ -1150,6 +1082,9 @@ async def abds(
         tickers: Single ticker or list of tickers.
         flds: Single field name (bulk fields return multiple rows).
         backend: DataFrame backend to return. If None, uses global default.
+        validate_fields: Optional per-request override for field validation.
+            ``True`` forces strict validation, ``False`` disables it, and
+            ``None`` follows engine-level validation mode.
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
@@ -1160,29 +1095,7 @@ async def abds(
         df = await abds("AAPL US Equity", "DVD_Hist_All")
         df = await abds("SPX Index", "INDX_MEMBERS", backend="polars")
     """
-    ticker_list = _normalize_tickers(tickers)
-
-    # Route kwargs to elements/overrides using schema introspection
-    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
-
-    logger.debug("abds: tickers=%s field=%s", ticker_list, flds)
-
-    # Use generic arequest with ReferenceDataRequest but BULK extractor
-    # BDS uses the same Bloomberg operation as BDP, but returns multi-row results
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.REFERENCE_DATA,
-        securities=ticker_list,
-        fields=[flds],  # BDS takes a single field
-        overrides=overrides if overrides else None,
-        elements=elements if elements else None,
-        extractor=ExtractorHint.BULK,  # Use bulk extractor for multi-row results
-        backend=None,  # Get narwhals DataFrame, we'll convert below
-    )
-
-    logger.debug("abds: received %d rows", len(nw_df))
-
-    return _convert_backend(nw_df, backend)
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abds"], locals())
 
 
 async def abdib(
@@ -1229,39 +1142,7 @@ async def abdib(
         # 10-second bars
         df = await abdib("AAPL US Equity", dt="2024-12-01", interval=10, intervalHasSeconds=True)
     """
-    # Determine datetime range
-    if start_datetime is not None and end_datetime is not None:
-        s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
-        e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
-    elif dt is not None:
-        # Single day request - use full day
-        cur_dt = datetime.fromisoformat(dt.replace(" ", "T")).strftime("%Y-%m-%d")
-        s_dt = f"{cur_dt}T00:00:00"
-        e_dt = f"{cur_dt}T23:59:59"
-    else:
-        raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
-
-    # Route kwargs to elements using schema introspection
-    elements, _overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
-
-    logger.debug("abdib: ticker=%s interval=%d start=%s end=%s", ticker, interval, s_dt, e_dt)
-
-    # Use generic arequest with IntradayBarRequest
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.INTRADAY_BAR,
-        security=ticker,
-        event_type=typ,
-        interval=interval,
-        start_datetime=s_dt,
-        end_datetime=e_dt,
-        elements=elements if elements else None,
-        backend=None,  # Get narwhals DataFrame, we'll convert below
-    )
-
-    logger.debug("abdib: received %d bars", len(nw_df))
-
-    return _convert_backend(nw_df, backend)
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abdib"], locals())
 
 
 async def abdtick(
@@ -1295,33 +1176,7 @@ async def abdtick(
         )
         df = await abdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", backend="polars")
     """
-    s_dt = datetime.fromisoformat(start_datetime.replace(" ", "T")).isoformat()
-    e_dt = datetime.fromisoformat(end_datetime.replace(" ", "T")).isoformat()
-
-    # Default to TRADE events if not specified
-    if event_types is None:
-        event_types = ["TRADE"]
-
-    # Route kwargs to elements using schema introspection
-    elements, _overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
-
-    logger.debug("abdtick: ticker=%s start=%s end=%s event_types=%s", ticker, s_dt, e_dt, event_types)
-
-    # Use generic arequest with IntradayTickRequest
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.INTRADAY_TICK,
-        security=ticker,
-        start_datetime=s_dt,
-        end_datetime=e_dt,
-        event_types=list(event_types),
-        elements=elements if elements else None,
-        backend=None,  # Get narwhals DataFrame, we'll convert below
-    )
-
-    logger.debug("abdtick: received %d ticks", len(nw_df))
-
-    return _convert_backend(nw_df, backend)
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abdtick"], locals())
 
 
 # =============================================================================
@@ -1356,8 +1211,6 @@ class _GeneratedEndpointSpec:
     service: Service
     operation: Operation
     builder: Callable[[dict[str, Any]], Awaitable[_EndpointPlan] | _EndpointPlan]
-    sync_doc_var: str
-    sync_annotations_var: str
     extractor: ExtractorHint | None = None
 
 
@@ -1421,8 +1274,8 @@ def _install_generated_endpoint(spec: _GeneratedEndpointSpec) -> None:
     generated_sync = _sync_wrapper(generated_async)
     generated_sync.__name__ = spec.sync_name
     generated_sync.__qualname__ = spec.sync_name
-    generated_sync.__doc__ = globals().get(spec.sync_doc_var)
-    generated_sync.__annotations__ = dict(globals().get(spec.sync_annotations_var, {}))
+    generated_sync.__doc__ = async_template.__doc__
+    generated_sync.__annotations__ = dict(getattr(async_template, "__annotations__", {}))
     generated_sync.__module__ = __name__
     globals()[spec.sync_name] = generated_sync
 
@@ -1432,207 +1285,7 @@ def _install_generated_endpoints() -> None:
         _install_generated_endpoint(spec)
 
 
-def bdp(
-    tickers: str | Sequence[str],
-    flds: str | Sequence[str] | None = None,
-    *,
-    backend: Backend | str | None = None,
-    format: Format | str | None = None,
-    field_types: dict[str, str] | None = None,
-    include_security_errors: bool = False,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg reference data (BDP).
-
-    Sync wrapper around abdp(). For async usage, use abdp() directly.
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Single field or list of fields to query.
-        backend: DataFrame backend to return. If None, uses global default.
-        format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
-        field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
-        include_security_errors: Include ``__SECURITY_ERROR__`` rows for
-            securities that Bloomberg rejected.
-        **kwargs: Bloomberg overrides and infrastructure options.
-
-    Returns:
-        DataFrame in long format with columns: ticker, field, value
-
-    Example::
-
-        df = bdp("AAPL US Equity", ["PX_LAST", "VOLUME"])
-        df = bdp(["AAPL US Equity", "MSFT US Equity"], "PX_LAST", backend="polars")
-    """
-
-
-_bdp_doc = bdp.__doc__
-_bdp_annotations = bdp.__annotations__
-bdp = _sync_wrapper(abdp)
-bdp.__doc__ = _bdp_doc
-bdp.__annotations__ = _bdp_annotations
-
-
-def bdh(
-    tickers: str | Sequence[str],
-    flds: str | Sequence[str] | None = None,
-    start_date: str | None = None,
-    end_date: str = "today",
-    *,
-    backend: Backend | str | None = None,
-    format: Format | str | None = None,
-    field_types: dict[str, str] | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg historical data (BDH).
-
-    Sync wrapper around abdh(). For async usage, use abdh() directly.
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Single field or list of fields. Defaults to ['PX_LAST'].
-        start_date: Start date. Defaults to 8 weeks before end_date.
-        end_date: End date. Defaults to 'today'.
-        backend: DataFrame backend to return. If None, uses global default.
-        format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
-        field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
-        **kwargs: Additional overrides and infrastructure options.
-
-    Returns:
-        DataFrame in long format with columns: ticker, date, field, value
-
-    Example::
-
-        df = bdh("AAPL US Equity", "PX_LAST", start_date="2024-01-01")
-        df = bdh(["AAPL", "MSFT"], ["PX_LAST", "VOLUME"], backend="polars")
-    """
-
-
-_bdh_doc = bdh.__doc__
-_bdh_annotations = bdh.__annotations__
-bdh = _sync_wrapper(abdh)
-bdh.__doc__ = _bdh_doc
-bdh.__annotations__ = _bdh_annotations
-
-
-def bds(
-    tickers: str | Sequence[str],
-    flds: str,
-    *,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg bulk data (BDS).
-
-    Sync wrapper around abds(). For async usage, use abds() directly.
-
-    Args:
-        tickers: Single ticker or list of tickers.
-        flds: Single field name (bulk fields return multiple rows).
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Bloomberg overrides and infrastructure options.
-
-    Returns:
-        DataFrame with bulk data, multiple rows per ticker.
-
-    Example::
-
-        df = bds("AAPL US Equity", "DVD_Hist_All")
-        df = bds("SPX Index", "INDX_MEMBERS", backend="polars")
-    """
-
-
-_bds_doc = bds.__doc__
-_bds_annotations = bds.__annotations__
-bds = _sync_wrapper(abds)
-bds.__doc__ = _bds_doc
-bds.__annotations__ = _bds_annotations
-
-
-def bdib(
-    ticker: str,
-    dt: str | None = None,
-    session: str = "allday",
-    typ: str = "TRADE",
-    *,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
-    interval: int = 1,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg intraday bar data (BDIB).
-
-    Sync wrapper around abdib(). For async usage, use abdib() directly.
-
-    Args:
-        ticker: Ticker name.
-        dt: Date to download (for single-day requests).
-        session: Trading session name.
-        typ: Event type (TRADE, BID, ASK, etc.).
-        start_datetime: Explicit start datetime for multi-day requests.
-        end_datetime: Explicit end datetime for multi-day requests.
-        interval: Bar interval in minutes (default: 1).
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional options.
-
-    Returns:
-        DataFrame with intraday bar data.
-
-    Example::
-
-        df = bdib("AAPL US Equity", dt="2024-12-01")
-        df = bdib(
-            "AAPL US Equity",
-            start_datetime="2024-12-01 09:30",
-            end_datetime="2024-12-01 16:00",
-            interval=5,
-            backend="polars",
-        )
-    """
-
-
-_bdib_doc = bdib.__doc__
-_bdib_annotations = bdib.__annotations__
-bdib = _sync_wrapper(abdib)
-bdib.__doc__ = _bdib_doc
-bdib.__annotations__ = _bdib_annotations
-
-
-def bdtick(
-    ticker: str,
-    start_datetime: str,
-    end_datetime: str,
-    *,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg tick data (BDTICK).
-
-    Sync wrapper around abdtick(). For async usage, use abdtick() directly.
-
-    Args:
-        ticker: Ticker name.
-        start_datetime: Start datetime.
-        end_datetime: End datetime.
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional options.
-
-    Returns:
-        DataFrame with tick data.
-
-    Example::
-
-        df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00")
-        df = bdtick("AAPL US Equity", "2024-12-01 09:30", "2024-12-01 10:00", backend="polars")
-    """
-
-
-_bdtick_doc = bdtick.__doc__
-_bdtick_annotations = bdtick.__annotations__
-bdtick = _sync_wrapper(abdtick)
-bdtick.__doc__ = _bdtick_doc
-bdtick.__annotations__ = _bdtick_annotations
+# Generated endpoint sync wrappers are installed via _install_generated_endpoints().
 
 
 # =============================================================================
@@ -3018,61 +2671,7 @@ async def abql(
         # Time series
         df = await abql("get(px_last) for('AAPL US Equity') with(dates=range(-5d, 0d))")
     """
-    logger.debug("abql: expression=%s", expression)
-
-    # Send BQL request via arequest with BQL extractor (parsed in Rust)
-    nw_df = await arequest(
-        service=Service.BQLSVC,
-        operation=Operation.BQL_SEND_QUERY,
-        overrides={"expression": expression},
-        extractor=ExtractorHint.BQL,
-        backend=None,
-    )
-
-    logger.debug("abql: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
-
-    return _convert_backend(nw_df, backend)
-
-
-def bql(
-    expression: str,
-    *,
-    backend: Backend | str | None = None,
-) -> DataFrameResult:
-    """Bloomberg Query Language (BQL) request.
-
-    Sync wrapper around abql(). For async usage, use abql() directly.
-
-    BQL is Bloomberg's powerful query language for financial analytics.
-    It allows you to query data across universes of securities with
-    complex filters, calculations, and time series operations.
-
-    Args:
-        expression: BQL expression string.
-        backend: DataFrame backend to return. If None, uses global default.
-
-    Returns:
-        DataFrame with columns: id, <field1>, <field2>, ...
-        Where 'id' is the security identifier from the BQL universe.
-
-    Example::
-
-        # Get price for a single security
-        df = bql("get(px_last) for('AAPL US Equity')")
-
-        # Holdings of an ETF
-        df = bql("get(id_isin, weights) for(holdings('SPY US Equity'))")
-
-        # Index members with filter
-        df = bql("get(px_last, pe_ratio) for(members('SPX Index')) with(pe_ratio > 20)")
-    """
-
-
-_bql_doc = bql.__doc__
-_bql_annotations = bql.__annotations__
-bql = _sync_wrapper(abql)
-bql.__doc__ = _bql_doc
-bql.__annotations__ = _bql_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abql"], locals())
 
 
 # =============================================================================
@@ -3106,62 +2705,7 @@ async def absrch(
         # With additional parameters
         df = await absrch("COMDTY:WEATHER", LOCATION="NYC", MODEL="GFS")
     """
-    logger.debug("absrch: domain=%s kwargs=%s", domain, kwargs)
-
-    # Build overrides dict with Domain and any extra parameters
-    overrides: dict[str, str] = {"Domain": domain}
-    for key, value in kwargs.items():
-        overrides[key] = str(value)
-
-    # Send bsrch request via arequest with BSRCH extractor (parsed in Rust)
-    nw_df = await arequest(
-        service=Service.EXRSVC,
-        operation=Operation.EXCEL_GET_GRID,
-        overrides=overrides,
-        extractor=ExtractorHint.BSRCH,
-        backend=None,
-    )
-
-    logger.debug("absrch: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
-
-    return _convert_backend(nw_df, backend)
-
-
-def bsrch(
-    domain: str,
-    *,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg Search (BSRCH) request.
-
-    Sync wrapper around absrch(). For async usage, use absrch() directly.
-
-    BSRCH executes saved Bloomberg searches and returns matching securities.
-
-    Args:
-        domain: The saved search domain/name (e.g., "FI:SOVR", "COMDTY:PRECIOUS").
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional search parameters passed as request elements.
-
-    Returns:
-        DataFrame with columns from the saved search results.
-
-    Example::
-
-        # Sovereign bonds
-        df = bsrch("FI:SOVR")
-
-        # With additional parameters
-        df = bsrch("COMDTY:WEATHER", LOCATION="NYC", MODEL="GFS")
-    """
-
-
-_bsrch_doc = bsrch.__doc__
-_bsrch_annotations = bsrch.__annotations__
-bsrch = _sync_wrapper(absrch)
-bsrch.__doc__ = _bsrch_doc
-bsrch.__annotations__ = _bsrch_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["absrch"], locals())
 
 
 # =============================================================================
@@ -3321,127 +2865,7 @@ async def abqr(
             event_types=["TRADE"],
         )
     """
-    # Default event types
-    if event_types is None:
-        event_types = ["BID", "ASK"]
-
-    # Calculate time range
-    now = datetime.now()
-    time_fmt = "%Y-%m-%dT%H:%M:%S"
-
-    if date_offset:
-        end_dt = now
-        start_dt = _parse_date_offset(date_offset, now)
-        s_dt = start_dt.strftime(time_fmt)
-        e_dt = end_dt.strftime(time_fmt)
-    elif start_date is not None:
-        # Convert date strings to datetime (start of day / end of day)
-        s_dt = _fmt_date(start_date, "%Y-%m-%d") + "T00:00:00"
-        if end_date is not None:
-            e_dt = _fmt_date(end_date, "%Y-%m-%d") + "T23:59:59"
-        else:
-            e_dt = now.strftime(time_fmt)
-    else:
-        # Default: last 2 days
-        start_dt = now - timedelta(days=2)
-        s_dt = start_dt.strftime(time_fmt)
-        e_dt = now.strftime(time_fmt)
-
-    # Build elements for optional include flags
-    elements: list[tuple[str, Any]] = []
-    if include_broker_codes:
-        elements.append(("includeBrokerCodes", "true"))
-    if include_spread_price:
-        elements.append(("includeSpreadPrice", "true"))
-    if include_yield:
-        elements.append(("includeYield", "true"))
-    if include_condition_codes:
-        elements.append(("includeConditionCodes", "true"))
-    if include_exchange_codes:
-        elements.append(("includeExchangeCodes", "true"))
-
-    logger.debug(
-        "abqr: ticker=%s start=%s end=%s events=%s",
-        ticker,
-        s_dt,
-        e_dt,
-        event_types,
-    )
-
-    # When extra fields (broker codes, etc.) are requested, the Rust tick
-    # extractor falls back to generic output. Detect this and reshape.
-    has_extras = bool(elements)
-
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.INTRADAY_TICK,
-        security=ticker,
-        start_datetime=s_dt,
-        end_datetime=e_dt,
-        event_types=list(event_types),
-        elements=elements if elements else None,
-        backend=None,
-    )
-
-    logger.debug("abqr: received %d rows", len(nw_df))
-
-    # Post-process generic output when broker/condition/exchange codes present
-    if has_extras:
-        table = nw_df.to_arrow()
-        if "path" in table.column_names:
-            nw_df = _reshape_bqr_generic(table, ticker)
-
-    return _convert_backend(nw_df, backend)
-
-
-def bqr(
-    ticker: str,
-    date_offset: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    *,
-    event_types: Sequence[str] | None = None,
-    include_broker_codes: bool = False,
-    include_spread_price: bool = False,
-    include_yield: bool = False,
-    include_condition_codes: bool = False,
-    include_exchange_codes: bool = False,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg Quote Request (BQR).
-
-    Sync wrapper around abqr(). For async usage, use abqr() directly.
-
-    Args:
-        ticker: Security identifier (e.g., 'IBM US Equity@MSG1').
-        date_offset: Date offset from now (e.g., '-2d', '-1w', '-3h').
-        start_date: Start date (e.g., '2024-01-15'). Defaults to 2 days ago.
-        end_date: End date (e.g., '2024-01-17'). Defaults to today.
-        event_types: Event types to retrieve. Defaults to ['BID', 'ASK'].
-        include_broker_codes: Include broker/dealer codes (default False).
-        include_spread_price: Include spread price for bonds (default False).
-        include_yield: Include yield data for bonds (default False).
-        include_condition_codes: Include trade condition codes (default False).
-        include_exchange_codes: Include exchange codes (default False).
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional options.
-
-    Returns:
-        DataFrame with quote data.
-
-    Example::
-
-        df = bqr("IBM US Equity@MSG1", date_offset="-2d")
-        df = bqr("US037833FB15@MSG1 Corp", date_offset="-2d", include_broker_codes=True, include_spread_price=True)
-    """
-
-
-_bqr_doc = bqr.__doc__
-_bqr_annotations = bqr.__annotations__
-bqr = _sync_wrapper(abqr)
-bqr.__doc__ = _bqr_doc
-bqr.__annotations__ = _bqr_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abqr"], locals())
 
 
 async def abflds(
@@ -3477,78 +2901,7 @@ async def abflds(
         # Search for fields by keyword
         df = await abflds(search_spec="vwap")
     """
-    logger.debug("abflds: fields=%s search_spec=%s", fields, search_spec)
-
-    # Validate mutually exclusive parameters
-    if fields is not None and search_spec is not None:
-        raise ValueError("Cannot specify both 'fields' and 'search_spec'")
-    if fields is None and search_spec is None:
-        raise ValueError("Must specify either 'fields' or 'search_spec'")
-
-    # Normalize fields to list
-    if fields is not None:
-        if isinstance(fields, str):
-            field_list = [fields]
-        else:
-            field_list = list(fields)
-
-        nw_df = await arequest(
-            service=Service.APIFLDS,
-            operation=Operation.FIELD_INFO,
-            fields=field_list,
-            backend=None,
-        )
-    else:
-        # search_spec is not None
-        nw_df = await arequest(
-            service=Service.APIFLDS,
-            operation=Operation.FIELD_SEARCH,
-            fields=[search_spec],
-            extractor=ExtractorHint.FIELD_INFO,
-            backend=None,
-        )
-
-    logger.debug("abflds: received %d rows", len(nw_df))
-
-    return _convert_backend(nw_df, backend)
-
-
-def bflds(
-    fields: str | list[str] | None = None,
-    *,
-    search_spec: str | None = None,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg field metadata lookup (BFLDS).
-
-    Sync wrapper around abflds(). For async usage, use abflds() directly.
-
-    Args:
-        fields: Single field or list of fields to get metadata for.
-        search_spec: Search term to find fields by name/description.
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Infrastructure options.
-
-    Returns:
-        DataFrame with field information or search results.
-
-    Example::
-
-        df = bflds(fields=["PX_LAST", "VOLUME"])
-        df = bflds(search_spec="vwap")
-    """
-
-
-_bflds_doc = bflds.__doc__
-_bflds_annotations = bflds.__annotations__
-bflds = _sync_wrapper(abflds)
-bflds.__doc__ = _bflds_doc
-bflds.__annotations__ = _bflds_annotations
-
-# Backward-compatible aliases
-abfld = abflds
-bfld = bflds
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abflds"], locals())
 
 
 # =============================================================================
@@ -3591,83 +2944,7 @@ async def abeqs(
         # Run a Bloomberg global screen
         df = await abeqs("TOP_DECL_DVD", screen_type="GLOBAL")
     """
-    logger.debug("abeqs: screen=%s asof=%s type=%s group=%s", screen, asof, screen_type, group)
-
-    # Route kwargs to elements and overrides using schema introspection
-    routed_elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.BEQS, dict(kwargs))
-
-    # Build elements for BEQS request (core elements first)
-    elements: list[tuple[str, Any]] = [
-        ("screenName", screen),
-        ("screenType", screen_type),
-        ("Group", group),
-    ]
-
-    if asof:
-        elements.append(("asOfDate", _fmt_date(asof)))
-
-    # Add routed elements
-    elements.extend(routed_elements)
-
-    # Send BEQS request via arequest with GENERIC extractor (parsed in Rust)
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.BEQS,
-        elements=elements,
-        overrides=overrides if overrides else None,
-        extractor=ExtractorHint.GENERIC,
-        backend=None,
-    )
-
-    logger.debug("abeqs: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
-
-    return _convert_backend(nw_df, backend)
-
-
-def beqs(
-    screen: str,
-    *,
-    asof: str | None = None,
-    screen_type: str = "PRIVATE",
-    group: str = "General",
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg Equity Screening (BEQS) request.
-
-    Sync wrapper around abeqs(). For async usage, use abeqs() directly.
-
-    Execute a saved Bloomberg equity screen and return matching securities.
-
-    Args:
-        screen: Screen name as saved in Bloomberg.
-        asof: As-of date for the screen (YYYYMMDD format).
-        screen_type: Screen type - "PRIVATE" (custom) or "GLOBAL" (Bloomberg).
-        group: Group name if screen is organized into groups.
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional request parameters.
-
-    Returns:
-        DataFrame with columns: ticker, and any fields from the screen.
-
-    Example::
-
-        # Run a private screen
-        df = beqs("MyScreen")
-
-        # Run with as-of date
-        df = beqs("MyScreen", asof="20240101")
-
-        # Run a Bloomberg global screen
-        df = beqs("TOP_DECL_DVD", screen_type="GLOBAL")
-    """
-
-
-_beqs_doc = beqs.__doc__
-_beqs_annotations = beqs.__annotations__
-beqs = _sync_wrapper(abeqs)
-beqs.__doc__ = _beqs_doc
-beqs.__annotations__ = _beqs_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abeqs"], locals())
 
 
 # =============================================================================
@@ -3717,87 +2994,7 @@ async def ablkp(
         # Get more results
         df = await ablkp("Microsoft", max_results=50)
     """
-    logger.debug("ablkp: query=%s yellowkey=%s max_results=%d", query, yellowkey, max_results)
-
-    # Route kwargs to elements using schema introspection
-    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.INSTRUMENT_LIST, dict(kwargs))
-
-    # Build elements for instrumentListRequest (core elements first)
-    elements: list[tuple[str, Any]] = [
-        ("query", query),
-        ("yellowKeyFilter", yellowkey),
-        ("languageOverride", language),
-        ("maxResults", max_results),
-    ]
-
-    # Add routed elements
-    elements.extend(routed_elements)
-
-    # Send request via arequest with GENERIC extractor (parsed in Rust)
-    nw_df = await arequest(
-        service=Service.INSTRUMENTS,
-        operation=Operation.INSTRUMENT_LIST,
-        elements=elements,
-        extractor=ExtractorHint.GENERIC,
-        backend=None,
-    )
-
-    logger.debug("ablkp: received %d rows", len(nw_df))
-
-    return _convert_backend(nw_df, backend)
-
-
-def blkp(
-    query: str,
-    *,
-    yellowkey: str = "YK_FILTER_NONE",
-    language: str = "LANG_OVERRIDE_NONE",
-    max_results: int = 20,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg security lookup (BLKP) request.
-
-    Sync wrapper around ablkp(). For async usage, use ablkp() directly.
-
-    Search for securities by company name or partial ticker.
-
-    Args:
-        query: Search query (company name or partial ticker).
-        yellowkey: Asset class filter. Common values:
-            - "YK_FILTER_NONE" (default, all asset classes)
-            - "YK_FILTER_EQTY" (equities only)
-            - "YK_FILTER_CORP" (corporate bonds)
-            - "YK_FILTER_GOVT" (government bonds)
-            - "YK_FILTER_INDX" (indices)
-            - "YK_FILTER_CURR" (currencies)
-            - "YK_FILTER_CMDT" (commodities)
-        language: Language override for results.
-        max_results: Maximum number of results (default: 20, max: 1000).
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional request parameters.
-
-    Returns:
-        DataFrame with columns: security, description.
-
-    Example::
-
-        # Search for Apple
-        df = blkp("Apple")
-
-        # Search for equities only
-        df = blkp("NVDA", yellowkey="YK_FILTER_EQTY")
-
-        # Get more results
-        df = blkp("Microsoft", max_results=50)
-    """
-
-
-_blkp_doc = blkp.__doc__
-_blkp_annotations = blkp.__annotations__
-blkp = _sync_wrapper(ablkp)
-blkp.__doc__ = _blkp_doc
-blkp.__annotations__ = _blkp_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["ablkp"], locals())
 
 
 # =============================================================================
@@ -3833,65 +3030,7 @@ async def abport(
         # Get multiple fields
         df = await abport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
     """
-    field_list = _normalize_fields(fields)
-    logger.debug("abport: portfolio=%s fields=%s", portfolio, field_list)
-
-    # Route kwargs to elements and overrides
-    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.PORTFOLIO_DATA, dict(kwargs))
-
-    # Send PortfolioDataRequest via arequest
-    nw_df = await arequest(
-        service=Service.REFDATA,
-        operation=Operation.PORTFOLIO_DATA,
-        securities=[portfolio],
-        fields=field_list,
-        elements=elements if elements else None,
-        overrides=overrides if overrides else None,
-        backend=None,
-    )
-
-    logger.debug("abport: received %d rows, %d columns", len(nw_df), len(nw_df.columns))
-
-    return _convert_backend(nw_df, backend)
-
-
-def bport(
-    portfolio: str,
-    fields: str | Sequence[str],
-    *,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg portfolio data (BPORT) request.
-
-    Sync wrapper around abport(). For async usage, use abport() directly.
-
-    Get portfolio holdings and related data using PortfolioDataRequest.
-
-    Args:
-        portfolio: Portfolio identifier/name.
-        fields: Field name or list of fields (e.g., "PORTFOLIO_MWEIGHT").
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional request parameters/overrides.
-
-    Returns:
-        DataFrame with portfolio data.
-
-    Example::
-
-        # Get portfolio weights
-        df = bport("MY_PORTFOLIO", "PORTFOLIO_MWEIGHT")
-
-        # Get multiple fields
-        df = bport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
-    """
-
-
-_bport_doc = bport.__doc__
-_bport_annotations = bport.__annotations__
-bport = _sync_wrapper(abport)
-bport.__doc__ = _bport_doc
-bport.__annotations__ = _bport_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abport"], locals())
 
 
 # =============================================================================
@@ -3938,97 +3077,7 @@ async def abcurves(
         # Look up specific curve
         df = await abcurves(curveid="YCSW0023 Index")
     """
-    logger.debug(
-        "abcurves: country=%s currency=%s type=%s",
-        country,
-        currency,
-        curve_type,
-    )
-
-    # Route kwargs to elements using schema introspection
-    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.CURVE_LIST, dict(kwargs))
-
-    # Build elements for curveListRequest
-    elements: list[tuple[str, Any]] = []
-
-    if country is not None:
-        elements.append(("countryCode", country))
-    if currency is not None:
-        elements.append(("currencyCode", currency))
-    if curve_type is not None:
-        elements.append(("type", curve_type))
-    if subtype is not None:
-        elements.append(("subtype", subtype))
-    if curveid is not None:
-        elements.append(("curveid", curveid))
-    if bbgid is not None:
-        elements.append(("bbgid", bbgid))
-
-    # Add routed elements
-    elements.extend(routed_elements)
-
-    # Send request via arequest with GENERIC extractor
-    nw_df = await arequest(
-        service=Service.INSTRUMENTS,
-        operation=Operation.CURVE_LIST,
-        elements=elements if elements else None,
-        extractor=ExtractorHint.GENERIC,
-        backend=None,
-    )
-
-    logger.debug("abcurves: received %d rows", len(nw_df))
-
-    return _convert_backend(nw_df, backend)
-
-
-def bcurves(
-    *,
-    country: str | None = None,
-    currency: str | None = None,
-    curve_type: str | None = None,
-    subtype: str | None = None,
-    curveid: str | None = None,
-    bbgid: str | None = None,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg yield curve list (BCURVES) request.
-
-    Sync wrapper around abcurves(). For async usage, use abcurves() directly.
-
-    Search for yield curves by country, currency, type, or other filters.
-
-    Args:
-        country: Country code filter (e.g., "US", "GB", "DE").
-        currency: Currency code filter (e.g., "USD", "EUR", "GBP").
-        curve_type: Curve type filter (e.g., "GOVERNMENT", "CORPORATE").
-        subtype: Curve subtype filter.
-        curveid: Specific curve ID to look up.
-        bbgid: Bloomberg Global ID filter.
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional request parameters.
-
-    Returns:
-        DataFrame with yield curve information.
-
-    Example::
-
-        # List US yield curves
-        df = bcurves(country="US")
-
-        # List USD government curves
-        df = bcurves(currency="USD", curve_type="GOVERNMENT")
-
-        # Look up specific curve
-        df = bcurves(curveid="YCSW0023 Index")
-    """
-
-
-_bcurves_doc = bcurves.__doc__
-_bcurves_annotations = bcurves.__annotations__
-bcurves = _sync_wrapper(abcurves)
-bcurves.__doc__ = _bcurves_doc
-bcurves.__annotations__ = _bcurves_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abcurves"], locals())
 
 
 # =============================================================================
@@ -4067,75 +3116,7 @@ async def abgovts(
         # Exact match only
         df = await abgovts("T 2.5 05/15/24", partial_match=False)
     """
-    logger.debug("abgovts: query=%s partial_match=%s", query, partial_match)
-
-    # Route kwargs to elements using schema introspection
-    routed_elements, _ = await _aroute_kwargs(Service.INSTRUMENTS, Operation.GOVT_LIST, dict(kwargs))
-
-    # Build elements for govtListRequest
-    elements: list[tuple[str, Any]] = []
-
-    if query is not None:
-        elements.append(("ticker", query))
-    elements.append(("partialMatch", partial_match))
-
-    # Add routed elements
-    elements.extend(routed_elements)
-
-    # Send request via arequest with GENERIC extractor
-    nw_df = await arequest(
-        service=Service.INSTRUMENTS,
-        operation=Operation.GOVT_LIST,
-        elements=elements if elements else None,
-        extractor=ExtractorHint.GENERIC,
-        backend=None,
-    )
-
-    logger.debug("abgovts: received %d rows", len(nw_df))
-
-    return _convert_backend(nw_df, backend)
-
-
-def bgovts(
-    query: str | None = None,
-    *,
-    partial_match: bool = True,
-    backend: Backend | str | None = None,
-    **kwargs,
-) -> DataFrameResult:
-    """Bloomberg government securities list (BGOVTS) request.
-
-    Sync wrapper around abgovts(). For async usage, use abgovts() directly.
-
-    Search for government securities by ticker or name.
-
-    Args:
-        query: Search query (ticker or partial name).
-        partial_match: If True, match partial ticker names (default: True).
-        backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional request parameters.
-
-    Returns:
-        DataFrame with government securities information.
-
-    Example::
-
-        # Search for US Treasury securities
-        df = bgovts("T")
-
-        # Search for German government bonds
-        df = bgovts("DBR")
-
-        # Exact match only
-        df = bgovts("T 2.5 05/15/24", partial_match=False)
-    """
-
-
-_bgovts_doc = bgovts.__doc__
-_bgovts_annotations = bgovts.__annotations__
-bgovts = _sync_wrapper(abgovts)
-bgovts.__doc__ = _bgovts_doc
-bgovts.__annotations__ = _bgovts_annotations
+    return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abgovts"], locals())
 
 
 async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
@@ -4161,6 +3142,7 @@ async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
             "field_types": resolved_types,
             "format": fmt,
             "include_security_errors": args.get("include_security_errors", False),
+            "validate_fields": args.get("validate_fields"),
         },
         backend=args.get("backend"),
         postprocess=_apply_wide_pivot_bdp if want_wide else None,
@@ -4223,6 +3205,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
             "options": options if options else None,
             "field_types": resolved_types,
             "format": fmt,
+            "validate_fields": args.get("validate_fields"),
         },
         backend=args.get("backend"),
         postprocess=_apply_wide_pivot_bdh if want_wide else None,
@@ -4240,6 +3223,7 @@ async def _build_abds_plan(args: dict[str, Any]) -> _EndpointPlan:
             "fields": [args["flds"]],
             "overrides": overrides if overrides else None,
             "elements": elements if elements else None,
+            "validate_fields": args.get("validate_fields"),
         },
         backend=args.get("backend"),
     )
@@ -4526,8 +3510,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.REFERENCE_DATA,
             builder=_build_abdp_plan,
-            sync_doc_var="_bdp_doc",
-            sync_annotations_var="_bdp_annotations",
         ),
         "abdh": _GeneratedEndpointSpec(
             async_name="abdh",
@@ -4535,8 +3517,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.HISTORICAL_DATA,
             builder=_build_abdh_plan,
-            sync_doc_var="_bdh_doc",
-            sync_annotations_var="_bdh_annotations",
         ),
         "abds": _GeneratedEndpointSpec(
             async_name="abds",
@@ -4544,8 +3524,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.REFERENCE_DATA,
             builder=_build_abds_plan,
-            sync_doc_var="_bds_doc",
-            sync_annotations_var="_bds_annotations",
             extractor=ExtractorHint.BULK,
         ),
         "abdib": _GeneratedEndpointSpec(
@@ -4554,8 +3532,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.INTRADAY_BAR,
             builder=_build_abdib_plan,
-            sync_doc_var="_bdib_doc",
-            sync_annotations_var="_bdib_annotations",
         ),
         "abdtick": _GeneratedEndpointSpec(
             async_name="abdtick",
@@ -4563,8 +3539,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.INTRADAY_TICK,
             builder=_build_abdtick_plan,
-            sync_doc_var="_bdtick_doc",
-            sync_annotations_var="_bdtick_annotations",
         ),
         "abql": _GeneratedEndpointSpec(
             async_name="abql",
@@ -4572,8 +3546,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.BQLSVC,
             operation=Operation.BQL_SEND_QUERY,
             builder=_build_abql_plan,
-            sync_doc_var="_bql_doc",
-            sync_annotations_var="_bql_annotations",
             extractor=ExtractorHint.BQL,
         ),
         "abqr": _GeneratedEndpointSpec(
@@ -4582,8 +3554,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.INTRADAY_TICK,
             builder=_build_abqr_plan,
-            sync_doc_var="_bqr_doc",
-            sync_annotations_var="_bqr_annotations",
         ),
         "absrch": _GeneratedEndpointSpec(
             async_name="absrch",
@@ -4591,8 +3561,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.EXRSVC,
             operation=Operation.EXCEL_GET_GRID,
             builder=_build_absrch_plan,
-            sync_doc_var="_bsrch_doc",
-            sync_annotations_var="_bsrch_annotations",
             extractor=ExtractorHint.BSRCH,
         ),
         "abeqs": _GeneratedEndpointSpec(
@@ -4601,8 +3569,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.BEQS,
             builder=_build_abeqs_plan,
-            sync_doc_var="_beqs_doc",
-            sync_annotations_var="_beqs_annotations",
             extractor=ExtractorHint.GENERIC,
         ),
         "ablkp": _GeneratedEndpointSpec(
@@ -4611,8 +3577,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.INSTRUMENTS,
             operation=Operation.INSTRUMENT_LIST,
             builder=_build_ablkp_plan,
-            sync_doc_var="_blkp_doc",
-            sync_annotations_var="_blkp_annotations",
             extractor=ExtractorHint.GENERIC,
         ),
         "abport": _GeneratedEndpointSpec(
@@ -4621,8 +3585,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.REFDATA,
             operation=Operation.PORTFOLIO_DATA,
             builder=_build_abport_plan,
-            sync_doc_var="_bport_doc",
-            sync_annotations_var="_bport_annotations",
         ),
         "abcurves": _GeneratedEndpointSpec(
             async_name="abcurves",
@@ -4630,8 +3592,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.INSTRUMENTS,
             operation=Operation.CURVE_LIST,
             builder=_build_abcurves_plan,
-            sync_doc_var="_bcurves_doc",
-            sync_annotations_var="_bcurves_annotations",
             extractor=ExtractorHint.GENERIC,
         ),
         "abgovts": _GeneratedEndpointSpec(
@@ -4640,8 +3600,6 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.INSTRUMENTS,
             operation=Operation.GOVT_LIST,
             builder=_build_abgovts_plan,
-            sync_doc_var="_bgovts_doc",
-            sync_annotations_var="_bgovts_annotations",
             extractor=ExtractorHint.GENERIC,
         ),
         "abflds": _GeneratedEndpointSpec(
@@ -4650,13 +3608,15 @@ _GENERATED_ENDPOINT_SPECS.update(
             service=Service.APIFLDS,
             operation=Operation.FIELD_INFO,
             builder=_build_abflds_plan,
-            sync_doc_var="_bflds_doc",
-            sync_annotations_var="_bflds_annotations",
         ),
     }
 )
 
 _install_generated_endpoints()
+
+# Backward-compatible aliases
+abfld = abflds
+bfld = bflds
 
 
 async def afieldInfo(

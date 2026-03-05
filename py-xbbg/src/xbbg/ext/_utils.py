@@ -10,12 +10,29 @@ Functions:
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable, Coroutine
 from datetime import date
+import functools
+from typing import Any, ParamSpec, TypeVar
 
 import narwhals.stable.v1 as nw
 
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
 
-def _pivot_bdp_to_wide(nw_df: nw.DataFrame) -> nw.DataFrame:
+
+def _syncify(async_func: Callable[_P, Coroutine[Any, Any, _T]]) -> Callable[_P, _T]:
+    """Create a synchronous wrapper for an async function."""
+
+    @functools.wraps(async_func)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        return asyncio.run(async_func(*args, **kwargs))
+
+    return wrapper
+
+
+def _pivot_bdp_to_wide(nw_df):
     """Pivot bdp result from long format (ticker, field, value) to wide format.
 
     If the dataframe already has the expected columns (not in long format),
@@ -49,7 +66,7 @@ def _pivot_bdp_to_wide(nw_df: nw.DataFrame) -> nw.DataFrame:
         all_fields.update(k for k in row_data if k != "ticker")
 
     # Create lists for each column
-    columns: dict[str, list] = {"ticker": []}
+    columns: dict[str, list[Any]] = {"ticker": []}
     for field in all_fields:
         columns[field] = []
 

@@ -73,6 +73,9 @@ class RequestParams:
         format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
         include_security_errors: When True for ReferenceData requests, include
             ``__SECURITY_ERROR__`` rows for securities that failed.
+        validate_fields: Optional per-request override for field validation.
+            ``True`` forces strict validation, ``False`` disables it, and
+            ``None`` (default) follows engine configuration.
     """
 
     service: str | Service
@@ -96,6 +99,7 @@ class RequestParams:
     extractor: ExtractorHint | None = None
     format: Format | None = None
     include_security_errors: bool = False
+    validate_fields: bool | None = None
 
     def __post_init__(self) -> None:
         """Convert enums to strings and set defaults."""
@@ -239,5 +243,7 @@ class RequestParams:
             result["format"] = self.format.value if isinstance(self.format, Format) else self.format
         if self.include_security_errors:
             result["include_security_errors"] = True
+        if self.validate_fields is not None:
+            result["validate_fields"] = self.validate_fields
 
         return result

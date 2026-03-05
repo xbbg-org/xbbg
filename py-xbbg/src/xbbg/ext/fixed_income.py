@@ -19,7 +19,6 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-import asyncio
 from datetime import date
 from enum import IntEnum
 from typing import TYPE_CHECKING
@@ -31,7 +30,7 @@ from xbbg._core import (
     ext_build_yas_overrides,
     ext_normalize_tickers,
 )
-from xbbg.ext._utils import _fmt_date
+from xbbg.ext._utils import _fmt_date, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -364,127 +363,7 @@ async def abqr(
     )
 
 
-# =============================================================================
-# Sync wrappers
-# =============================================================================
-
-
-def yas(
-    tickers: str | list[str],
-    flds: str | list[str] = "YAS_BOND_YLD",
-    *,
-    settle_dt: str | date | None = None,
-    yield_type: YieldType | int | None = None,
-    spread: float | None = None,
-    yield_: float | None = None,
-    price: float | None = None,
-    benchmark: str | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get yield and spread analysis for fixed income securities.
-
-    Sync wrapper for ayas(). See ayas() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-        from xbbg.ext.fixed_income import YieldType
-
-        # Get yield to maturity for a bond
-        df = ext.yas("US912810TM69 Govt", "YAS_BOND_YLD")
-
-        # Calculate price from yield
-        df = ext.yas(
-            "US912810TM69 Govt",
-            "YAS_BOND_PX",
-            yield_=4.5,
-            yield_type=YieldType.YTM,
-        )
-    """
-    return asyncio.run(
-        ayas(
-            tickers=tickers,
-            flds=flds,
-            settle_dt=settle_dt,
-            yield_type=yield_type,
-            spread=spread,
-            yield_=yield_,
-            price=price,
-            benchmark=benchmark,
-            **kwargs,
-        )
-    )
-
-
-def preferreds(
-    equity_ticker: str,
-    *,
-    fields: list[str] | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Find preferred stocks for a company using BQL.
-
-    Sync wrapper for apreferreds(). See apreferreds() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get preferred stocks for Bank of America
-        df = ext.preferreds("BAC US Equity")
-    """
-    return asyncio.run(apreferreds(equity_ticker=equity_ticker, fields=fields, **kwargs))
-
-
-def corporate_bonds(
-    ticker: str,
-    *,
-    ccy: str | None = "USD",
-    fields: list[str] | None = None,
-    active_only: bool = True,
-    **kwargs,
-) -> IntoDataFrame:
-    """Find corporate bonds for a company using BQL.
-
-    Sync wrapper for acorporate_bonds(). See acorporate_bonds() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get active USD corporate bonds for Apple
-        df = ext.corporate_bonds("AAPL")
-    """
-    return asyncio.run(acorporate_bonds(ticker=ticker, ccy=ccy, fields=fields, active_only=active_only, **kwargs))
-
-
-def bqr(
-    ticker: str,
-    *,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
-    event_types: list[str] | None = None,
-    include_broker_codes: bool = True,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get dealer quotes with broker attribution (Bloomberg Quote Request).
-
-    Sync wrapper for abqr(). See abqr() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get dealer quotes for a government bond
-        df = ext.bqr("US912810TM69 Govt")
-    """
-    return asyncio.run(
-        abqr(
-            ticker=ticker,
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            event_types=event_types,
-            include_broker_codes=include_broker_codes,
-            **kwargs,
-        )
-    )
+yas = _syncify(ayas)
+preferreds = _syncify(apreferreds)
+corporate_bonds = _syncify(acorporate_bonds)
+bqr = _syncify(abqr)

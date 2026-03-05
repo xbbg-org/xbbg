@@ -23,11 +23,10 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from typing import TYPE_CHECKING
 
-from xbbg.ext._utils import _fmt_date
+from xbbg.ext._utils import _fmt_date, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -684,197 +683,12 @@ async def aoption_screen(
     )
 
 
-# =============================================================================
-# Sync wrappers
-# =============================================================================
-
-
-def option_info(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get option contract metadata.
-
-    Sync wrapper for aoption_info(). See aoption_info() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get option contract metadata
-        df = ext.option_info("AAPL US 01/17/25 C200 Equity")
-    """
-    return asyncio.run(aoption_info(ticker=ticker, **kwargs))
-
-
-def option_greeks(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get option Greeks and implied volatility.
-
-    Sync wrapper for aoption_greeks(). See aoption_greeks() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get Greeks for an option
-        df = ext.option_greeks("AAPL US 01/17/25 C200 Equity")
-    """
-    return asyncio.run(aoption_greeks(ticker=ticker, **kwargs))
-
-
-def option_pricing(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get option pricing and value decomposition.
-
-    Sync wrapper for aoption_pricing(). See aoption_pricing() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get option pricing
-        df = ext.option_pricing("AAPL US 01/17/25 C200 Equity")
-    """
-    return asyncio.run(aoption_pricing(ticker=ticker, **kwargs))
-
-
-def option_chain(
-    underlying: str,
-    *,
-    put_call: PutCall | str | None = None,
-    expiry_dt: str | None = None,
-    strike: StrikeRef | str | float | None = None,
-    points: float | None = None,
-    periodicity: ChainPeriodicity | str | None = None,
-    exercise_type: ExerciseType | str | None = None,
-    expiry_match: ExpiryMatch | str | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get option chain via CHAIN_TICKERS overrides.
-
-    Sync wrapper for aoption_chain(). See aoption_chain() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-        from xbbg.ext.options import PutCall
-
-        # Get all call options
-        df = ext.option_chain("AAPL US Equity", put_call=PutCall.CALL)
-    """
-    return asyncio.run(
-        aoption_chain(
-            underlying=underlying,
-            put_call=put_call,
-            expiry_dt=expiry_dt,
-            strike=strike,
-            points=points,
-            periodicity=periodicity,
-            exercise_type=exercise_type,
-            expiry_match=expiry_match,
-            **kwargs,
-        )
-    )
-
-
-def option_chain_bql(
-    underlying: str,
-    *,
-    put_call: PutCall | str | None = None,
-    expiry_start: str | None = None,
-    expiry_end: str | None = None,
-    strike_low: float | None = None,
-    strike_high: float | None = None,
-    delta_low: float | None = None,
-    delta_high: float | None = None,
-    gamma_low: float | None = None,
-    gamma_high: float | None = None,
-    vega_low: float | None = None,
-    vega_high: float | None = None,
-    theta_low: float | None = None,
-    theta_high: float | None = None,
-    ivol_low: float | None = None,
-    ivol_high: float | None = None,
-    moneyness_low: float | None = None,
-    moneyness_high: float | None = None,
-    min_open_int: float | None = None,
-    min_volume: float | None = None,
-    min_bid: float | None = None,
-    max_ask: float | None = None,
-    exch_code: str | None = None,
-    exercise_type: ExerciseType | str | None = None,
-    extra_filters: str | None = None,
-    get_fields: list[str] | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get option chain via BQL with rich filtering.
-
-    Sync wrapper for aoption_chain_bql(). See aoption_chain_bql() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-        from xbbg.ext.options import PutCall
-
-        # Get calls expiring in January 2025
-        df = ext.option_chain_bql(
-            "AAPL US Equity",
-            put_call=PutCall.CALL,
-            expiry_start="2025-01-01",
-            expiry_end="2025-01-31",
-        )
-    """
-    return asyncio.run(
-        aoption_chain_bql(
-            underlying=underlying,
-            put_call=put_call,
-            expiry_start=expiry_start,
-            expiry_end=expiry_end,
-            strike_low=strike_low,
-            strike_high=strike_high,
-            delta_low=delta_low,
-            delta_high=delta_high,
-            gamma_low=gamma_low,
-            gamma_high=gamma_high,
-            vega_low=vega_low,
-            vega_high=vega_high,
-            theta_low=theta_low,
-            theta_high=theta_high,
-            ivol_low=ivol_low,
-            ivol_high=ivol_high,
-            moneyness_low=moneyness_low,
-            moneyness_high=moneyness_high,
-            min_open_int=min_open_int,
-            min_volume=min_volume,
-            min_bid=min_bid,
-            max_ask=max_ask,
-            exch_code=exch_code,
-            exercise_type=exercise_type,
-            extra_filters=extra_filters,
-            get_fields=get_fields,
-            **kwargs,
-        )
-    )
-
-
-def option_screen(
-    tickers: list[str],
-    flds: list[str] | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Screen multiple options with custom fields.
-
-    Sync wrapper for aoption_screen(). See aoption_screen() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Screen multiple options
-        tickers = [
-            "AAPL US 01/17/25 C200 Equity",
-            "AAPL US 01/17/25 C210 Equity",
-            "AAPL US 01/17/25 P190 Equity",
-        ]
-        df = ext.option_screen(tickers)
-    """
-    return asyncio.run(aoption_screen(tickers=tickers, flds=flds, **kwargs))
+option_info = _syncify(aoption_info)
+option_greeks = _syncify(aoption_greeks)
+option_pricing = _syncify(aoption_pricing)
+option_chain = _syncify(aoption_chain)
+option_chain_bql = _syncify(aoption_chain_bql)
+option_screen = _syncify(aoption_screen)
 
 
 __all__ = [

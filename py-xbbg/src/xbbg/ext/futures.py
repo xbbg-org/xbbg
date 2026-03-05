@@ -18,7 +18,6 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 from datetime import datetime, timedelta
 import logging
@@ -29,6 +28,7 @@ import narwhals.stable.v1 as nw
 
 # Import Rust date parser (shared with other ext modules)
 from xbbg._core import ext_parse_date
+from xbbg.ext._utils import _syncify
 
 logger = logging.getLogger(__name__)
 
@@ -670,81 +670,7 @@ async def aactive_cdx(
     return cur
 
 
-# =============================================================================
-# Sync wrappers
-# =============================================================================
-
-
-def fut_ticker(
-    gen_ticker: str,
-    dt: str | date,
-    **kwargs,
-) -> str:
-    """Resolve generic futures ticker to specific contract.
-
-    Sync wrapper for afut_ticker(). See afut_ticker() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get March 2024 E-mini S&P contract
-        ticker = ext.fut_ticker("ES1 Index", "2024-01-15")
-    """
-    return asyncio.run(afut_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs))
-
-
-def active_futures(
-    ticker: str,
-    dt: str | date,
-    **kwargs,
-) -> str:
-    """Get the most active futures contract for a date.
-
-    Sync wrapper for aactive_futures(). See aactive_futures() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get most active E-mini S&P contract
-        ticker = ext.active_futures("ES1 Index", "2024-01-15")
-    """
-    return asyncio.run(aactive_futures(ticker=ticker, dt=dt, **kwargs))
-
-
-def cdx_ticker(
-    gen_ticker: str,
-    dt: str | date,
-    **kwargs,
-) -> str:
-    """Resolve generic CDX ticker to specific series.
-
-    Sync wrapper for acdx_ticker(). See acdx_ticker() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        ticker = ext.cdx_ticker("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
-    """
-    return asyncio.run(acdx_ticker(gen_ticker=gen_ticker, dt=dt, **kwargs))
-
-
-def active_cdx(
-    gen_ticker: str,
-    dt: str | date,
-    lookback_days: int = 10,
-    **kwargs,
-) -> str:
-    """Get the most active CDX contract for a date.
-
-    Sync wrapper for aactive_cdx(). See aactive_cdx() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        ticker = ext.active_cdx("CDX IG CDSI GEN 5Y Corp", "2024-01-15")
-    """
-    return asyncio.run(aactive_cdx(gen_ticker=gen_ticker, dt=dt, lookback_days=lookback_days, **kwargs))
+fut_ticker = _syncify(afut_ticker)
+active_futures = _syncify(aactive_futures)
+cdx_ticker = _syncify(acdx_ticker)
+active_cdx = _syncify(aactive_cdx)

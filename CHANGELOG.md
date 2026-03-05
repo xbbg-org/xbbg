@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Field-validation toggle for refdata/histdata requests**: Added optional `validate_fields` request parameter in `request()`/`arequest()` and typed wrappers (`abdp`/`bdp`, `abdh`/`bdh`, `abds`/`bds`). This supports per-request strict validation override while still honoring engine-level `validation_mode` defaults.
+- **Engine-side field-validation enforcement**: `xbbg-async` now validates requested fields for `ReferenceDataRequest` and `HistoricalDataRequest` before dispatch when validation is enabled, returning configuration errors for unknown Bloomberg fields in strict mode.
+- **Live validation toggle smoke script**: Added `py-xbbg/tests/live/field_validation_toggle_smoke.py` to verify on/off behavior against a connected Bloomberg session.
+- **Request-plumbing coverage for `validate_fields`**: Added `py-xbbg/tests/test_validate_fields_toggle.py` to verify Python parameter serialization and forwarding through async/sync wrappers.
+
+### Changed
+
+- **Canonical exception exports**: `xbbg.exceptions` now re-exports Rust `_core` exception classes (`BlpError`, `BlpRequestError`, etc.) as the single source of truth, with Python-only exceptions remaining additive.
+- **Validation helper compatibility**: Preserved `BlpValidationError.from_rust_error(...)` by attaching the compatibility classmethod to the canonical Rust-backed validation exception.
+- **Generated sync wrapper metadata**: `blp.py` generated sync wrappers now derive `__doc__` and `__annotations__` from async templates directly; remaining manual generated sync wrapper boilerplate was removed.
+- **Integration logging expectations**: Updated logging integration assertions to match centralized `arequest` request logging (`bloomberg ... ReferenceDataRequest`) instead of deprecated endpoint-specific debug strings.
+- **Optional pandas integration paths**: Updated pandas-dependent integration tests to use `pytest.importorskip("pandas")`, avoiding hard failures when pandas is not installed.
+
+### Fixed
+
+- **`except BlpError` catchability gap**: Runtime exceptions raised by Rust (for example `BlpRequestError`) are now catchable via `xbbg.exceptions.BlpError` import paths because both now point to the same canonical Rust exception hierarchy.
+
 ## [1.0.0b1] - 2026-03-03
 
 ### Added

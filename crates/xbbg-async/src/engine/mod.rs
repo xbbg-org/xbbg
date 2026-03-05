@@ -26,7 +26,7 @@ use xbbg_core::BlpError;
 
 use crate::errors::BlpAsyncError;
 use crate::request_builder::RequestBuilder;
-use crate::services::Operation;
+use crate::services::{Operation, Service};
 use exchange_cache::ExchangeCache;
 
 // ExtractorType is defined in services.rs (generated from defs/bloomberg.toml).
@@ -128,6 +128,12 @@ pub struct RequestParams {
     pub field_types: Option<HashMap<String, String>>,
     /// Include security error rows in RefData long output when present.
     pub include_security_errors: bool,
+    /// Optional per-request field validation override.
+    ///
+    /// - Some(true): force strict field validation for this request
+    /// - Some(false): disable field validation for this request
+    /// - None: follow engine-level validation_mode
+    pub validate_fields: Option<bool>,
     /// Search spec for FieldSearchRequest (//blp/apiflds)
     pub search_spec: Option<String>,
     /// Field IDs for FieldInfoRequest (//blp/apiflds)
@@ -519,6 +525,7 @@ impl Engine {
     /// All request types are handled by the same pool of workers.
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
         let params = self.prepare_request_params(params)?;
+        self.maybe_validate_request_fields(&params).await?;
         self.request_pool.request(params).await
     }
 
@@ -528,6 +535,7 @@ impl Engine {
         params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
         let params = self.prepare_request_params(params)?;
+        self.maybe_validate_request_fields(&params).await?;
         self.request_pool.request_stream(params).await
     }
 
@@ -571,6 +579,56 @@ impl Engine {
         }
 
         Ok(params)
+    }
+
+    /// Validate request fields against Bloomberg field metadata when enabled.
+    async fn maybe_validate_request_fields(
+        &self,
+        params: &RequestParams,
+    ) -> Result<(), BlpAsyncError> {
+        let validation_mode = match params.validate_fields {
+            Some(true) => ValidationMode::Strict,
+            Some(false) => ValidationMode::Disabled,
+            None => self.config.validation_mode,
+        };
+
+        if validation_mode == ValidationMode::Disabled {
+            return Ok(());
+        }
+
+        if params.service != Service::RefData.to_string() {
+            return Ok(());
+        }
+
+        let operation = Operation::from_str(&params.operation).unwrap();
+        if !matches!(operation, Operation::ReferenceData | Operation::HistoricalData) {
+            return Ok(());
+        }
+
+        let Some(fields) = params.fields.as_ref() else {
+            return Ok(());
+        };
+        if fields.is_empty() {
+            return Ok(());
+        }
+
+        let invalid_fields = self.validate_fields(fields).await?;
+        if invalid_fields.is_empty() {
+            return Ok(());
+        }
+
+        let detail = format!("Unknown Bloomberg field(s): {}", invalid_fields.join(", "));
+        if validation_mode == ValidationMode::Lenient {
+            xbbg_log::warn!(
+                service = %params.service,
+                operation = %params.operation,
+                invalid_fields = ?invalid_fields,
+                "field validation warning"
+            );
+            return Ok(());
+        }
+
+        Err(BlpAsyncError::ConfigError { detail })
     }
 
     // ─── Subscriptions ───────────────────────────────────────────────────────
@@ -770,7 +828,8 @@ impl Engine {
             ..Default::default()
         };
 
-        let batch = self.request(params).await?;
+        let params = self.prepare_request_params(params)?;
+        let batch = self.request_pool.request(params).await?;
 
         // Get the field column from the response
         let field_col = batch
