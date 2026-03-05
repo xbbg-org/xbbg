@@ -744,6 +744,8 @@ def render_python(defs: dict[str, Any]) -> str:
         value_key="value",
     )
 
+    while lines and lines[-1] == "":
+        _ = lines.pop()
     return "\n".join(lines) + "\n"
 
 
