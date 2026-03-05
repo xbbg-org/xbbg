@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from xbbg.ext._utils import _fmt_date, _syncify
+from xbbg.ext._utils import _abdp_fields, _abds_field, _fmt_date, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -181,9 +181,7 @@ async def abond_info(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_BOND_INFO_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_INFO_FIELDS, **kwargs)
 
 
 async def abond_risk(
@@ -228,13 +226,13 @@ async def abond_risk(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abdp(tickers=ticker, flds=_BOND_RISK_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_RISK_FIELDS, overrides=overrides, **kwargs)
 
 
 async def abond_spreads(
@@ -281,15 +279,15 @@ async def abond_spreads(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
     if benchmark is not None:
         overrides["YAS_BNCHMRK_BOND"] = benchmark
 
-    return await abdp(tickers=ticker, flds=_BOND_SPREAD_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_SPREAD_FIELDS, overrides=overrides, **kwargs)
 
 
 async def abond_cashflows(
@@ -326,13 +324,13 @@ async def abond_cashflows(
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abds(tickers=ticker, flds=_FLD_DES_CASH_FLOW, overrides=overrides, **kwargs)
+    return await _abds_field(tickers=ticker, field=_FLD_DES_CASH_FLOW, overrides=overrides, **kwargs)
 
 
 async def abond_key_rates(
@@ -388,13 +386,13 @@ async def abond_key_rates(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abdp(tickers=ticker, flds=_BOND_KEY_RATE_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_KEY_RATE_FIELDS, overrides=overrides, **kwargs)
 
 
 async def abond_curve(
@@ -445,15 +443,15 @@ async def abond_curve(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abdp(
+    return await _abdp_fields(
         tickers=tickers,
-        flds=flds or _BOND_CURVE_DEFAULT_FIELDS,
+        fields=flds or _BOND_CURVE_DEFAULT_FIELDS,
         overrides=overrides,
         **kwargs,
     )

@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from xbbg.ext._utils import _syncify
+from xbbg.ext._utils import _abdp_fields, _abds_field, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -149,9 +149,7 @@ async def acdx_info(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_CDX_INFO_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_INFO_FIELDS, **kwargs)
 
 
 async def acdx_defaults(ticker: str, **kwargs) -> IntoDataFrame:
@@ -179,9 +177,7 @@ async def acdx_defaults(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
-    return await abds(tickers=ticker, flds="CDS_INDEX_DEFAULT_INFORMATION", **kwargs)
+    return await _abds_field(tickers=ticker, field="CDS_INDEX_DEFAULT_INFORMATION", **kwargs)
 
 
 async def acdx_pricing(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
@@ -225,13 +221,11 @@ async def acdx_pricing(ticker: str, *, recovery_rate: float | None = None, **kwa
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if recovery_rate is not None:
         overrides["CDS_RR"] = str(recovery_rate)
 
-    return await abdp(tickers=ticker, flds=_CDX_PRICING_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_PRICING_FIELDS, overrides=overrides, **kwargs)
 
 
 async def acdx_risk(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
@@ -271,13 +265,11 @@ async def acdx_risk(ticker: str, *, recovery_rate: float | None = None, **kwargs
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if recovery_rate is not None:
         overrides["CDS_RR"] = str(recovery_rate)
 
-    return await abdp(tickers=ticker, flds=_CDX_RISK_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_RISK_FIELDS, overrides=overrides, **kwargs)
 
 
 async def acdx_basis(ticker: str, **kwargs) -> IntoDataFrame:
@@ -310,9 +302,7 @@ async def acdx_basis(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_CDX_BASIS_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_BASIS_FIELDS, **kwargs)
 
 
 async def acdx_default_prob(ticker: str, **kwargs) -> IntoDataFrame:
@@ -340,9 +330,7 @@ async def acdx_default_prob(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
-    return await abds(tickers=ticker, flds="CDS_DEFAULT_PROB", **kwargs)
+    return await _abds_field(tickers=ticker, field="CDS_DEFAULT_PROB", **kwargs)
 
 
 async def acdx_cashflows(ticker: str, **kwargs) -> IntoDataFrame:
@@ -371,9 +359,7 @@ async def acdx_cashflows(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
-    return await abds(tickers=ticker, flds="CASHFLOW_SCHEDULE", **kwargs)
+    return await _abds_field(tickers=ticker, field="CASHFLOW_SCHEDULE", **kwargs)
 
 
 async def acdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs) -> IntoDataFrame:
@@ -415,8 +401,6 @@ async def acdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs)
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     requested_tenors = tenors or _CDX_CURVE_DEFAULT_TENORS
     tokens = gen_ticker.split()
 
@@ -434,7 +418,7 @@ async def acdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs)
             tenor_tokens[tenor_idx] = tenor
             curve_tickers.append(" ".join(tenor_tokens))
 
-    return await abdp(tickers=curve_tickers, flds=_CDX_CURVE_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=curve_tickers, fields=_CDX_CURVE_FIELDS, **kwargs)
 
 
 cdx_info = _syncify(acdx_info)

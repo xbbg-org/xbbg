@@ -278,158 +278,141 @@ def configure_ide_stubs(
             project_root = parent
             break
 
-    def _configure_vscode() -> str | None:
-        """Configure VS Code if settings.json exists."""
-        vscode_settings = project_root / ".vscode" / "settings.json"
-        if not vscode_settings.exists():
+    def _load_toml_module():
+        try:
+            import tomllib
+
+            return tomllib
+        except ImportError:
+            try:
+                return __import__("tomli")
+            except ImportError:
+                return None
+
+    toml_module = _load_toml_module()
+
+    def _configure_json_list_setting(
+        config_path: Path,
+        key: str,
+        *,
+        indent: int,
+        label: str,
+    ) -> str | None:
+        if not config_path.exists():
             return None
         try:
-            settings = json.loads(vscode_settings.read_text())
-            extra_paths = settings.get("python.analysis.extraPaths", [])
-            if stubs_str not in extra_paths:
-                extra_paths.append(stubs_str)
-                settings["python.analysis.extraPaths"] = extra_paths
-                vscode_settings.write_text(json.dumps(settings, indent=4))
-                return f"Configured VS Code: added {stubs_str} to python.analysis.extraPaths"
-            return f"VS Code already configured with {stubs_str}"
+            config = json.loads(config_path.read_text())
+            values = config.get(key, [])
+            if stubs_str in values:
+                return f"{label} already configured with {stubs_str}"
+            values.append(stubs_str)
+            config[key] = values
+            config_path.write_text(json.dumps(config, indent=indent))
+            return f"Configured {label}: added {stubs_str} to {key}"
         except (OSError, json.JSONDecodeError):
             return None
+
+    def _load_toml_config(path: Path) -> tuple[str, dict[str, Any]] | None:
+        if toml_module is None or not path.exists():
+            return None
+        try:
+            content = path.read_text()
+            parsed = toml_module.loads(content)
+            return content, parsed
+        except Exception:
+            return None
+
+    def _insert_setting(content: str, section_header: str, setting_line: str) -> str | None:
+        if section_header not in content:
+            return None
+        return content.replace(section_header, f"{section_header}\n{setting_line}", 1)
+
+    def _configure_vscode() -> str | None:
+        return _configure_json_list_setting(
+            project_root / ".vscode" / "settings.json",
+            "python.analysis.extraPaths",
+            indent=4,
+            label="VS Code",
+        )
 
     def _configure_pyright() -> str | None:
-        """Configure Pyright if pyrightconfig.json exists."""
-        pyright_config = project_root / "pyrightconfig.json"
-        if not pyright_config.exists():
-            return None
-        try:
-            config = json.loads(pyright_config.read_text())
-            extra_paths = config.get("extraPaths", [])
-            if stubs_str not in extra_paths:
-                extra_paths.append(stubs_str)
-                config["extraPaths"] = extra_paths
-                pyright_config.write_text(json.dumps(config, indent=2))
-                return f"Configured Pyright: added {stubs_str} to extraPaths"
-            return f"Pyright already configured with {stubs_str}"
-        except (OSError, json.JSONDecodeError):
-            return None
+        return _configure_json_list_setting(
+            project_root / "pyrightconfig.json",
+            "extraPaths",
+            indent=2,
+            label="Pyright",
+        )
 
     def _configure_pyproject_pyright() -> str | None:
-        """Configure pyproject.toml if [tool.pyright] section exists."""
         pyproject = project_root / "pyproject.toml"
-        if not pyproject.exists():
+        loaded = _load_toml_config(pyproject)
+        if loaded is None:
             return None
 
-        try:
-            import tomllib
-        except ImportError:
-            try:
-                import tomli as tomllib  # type: ignore[import-not-found]
-            except ImportError:
-                return None
-
-        try:
-            content = pyproject.read_text()
-            config = tomllib.loads(content)
-
-            # Only modify if [tool.pyright] section exists
-            if "tool" not in config or "pyright" not in config["tool"]:
-                return None
-
-            extra_paths = config["tool"]["pyright"].get("extraPaths", [])
-            if stubs_str in extra_paths:
-                return f"pyproject.toml [tool.pyright] already configured with {stubs_str}"
-
-            # Add extraPaths to existing [tool.pyright]
-            if "extraPaths" in content:
-                # Complex case - don't modify
-                return None
-            else:
-                new_content = content.replace("[tool.pyright]", f'[tool.pyright]\nextraPaths = ["{stubs_str}"]')
-                pyproject.write_text(new_content)
-                return f"Configured pyproject.toml: added {stubs_str} to [tool.pyright].extraPaths"
-        except Exception:
+        content, config = loaded
+        if "tool" not in config or "pyright" not in config["tool"]:
             return None
+
+        extra_paths = config["tool"]["pyright"].get("extraPaths", [])
+        if stubs_str in extra_paths:
+            return f"pyproject.toml [tool.pyright] already configured with {stubs_str}"
+
+        if "extraPaths" in content:
+            return None
+
+        new_content = _insert_setting(content, "[tool.pyright]", f'extraPaths = ["{stubs_str}"]')
+        if new_content is None:
+            return None
+        pyproject.write_text(new_content)
+        return f"Configured pyproject.toml: added {stubs_str} to [tool.pyright].extraPaths"
 
     def _configure_ty() -> str | None:
-        """Configure ty if ty.toml exists."""
         ty_config = project_root / "ty.toml"
-        if not ty_config.exists():
+        loaded = _load_toml_config(ty_config)
+        if loaded is None:
             return None
 
-        try:
-            import tomllib
-        except ImportError:
-            try:
-                import tomli as tomllib  # type: ignore[import-not-found]
-            except ImportError:
-                return None
+        content, config = loaded
+        extra_paths = config.get("environment", {}).get("extra-paths", [])
+        if stubs_str in extra_paths:
+            return f"ty.toml already configured with {stubs_str}"
 
-        try:
-            content = ty_config.read_text()
-            config = tomllib.loads(content)
-
-            extra_paths = config.get("environment", {}).get("extra-paths", [])
-            if stubs_str in extra_paths:
-                return f"ty.toml already configured with {stubs_str}"
-
-            # Add extra-paths to [environment] section
-            if "extra-paths" in content:
-                # Complex case - don't modify
-                return None
-            elif "[environment]" in content:
-                new_content = content.replace("[environment]", f'[environment]\nextra-paths = ["{stubs_str}"]')
-                ty_config.write_text(new_content)
-                return f"Configured ty.toml: added {stubs_str} to [environment].extra-paths"
-            else:
-                # No [environment] section - don't create it
-                return None
-        except Exception:
+        if "extra-paths" in content:
             return None
+
+        new_content = _insert_setting(content, "[environment]", f'extra-paths = ["{stubs_str}"]')
+        if new_content is None:
+            return None
+        ty_config.write_text(new_content)
+        return f"Configured ty.toml: added {stubs_str} to [environment].extra-paths"
 
     def _configure_pyproject_ty() -> str | None:
-        """Configure pyproject.toml if [tool.ty] section exists."""
         pyproject = project_root / "pyproject.toml"
-        if not pyproject.exists():
+        loaded = _load_toml_config(pyproject)
+        if loaded is None:
             return None
 
-        try:
-            import tomllib
-        except ImportError:
-            try:
-                import tomli as tomllib  # type: ignore[import-not-found]
-            except ImportError:
-                return None
-
-        try:
-            content = pyproject.read_text()
-            config = tomllib.loads(content)
-
-            # Only modify if [tool.ty] section exists
-            if "tool" not in config or "ty" not in config["tool"]:
-                return None
-
-            extra_paths = config["tool"]["ty"].get("environment", {}).get("extra-paths", [])
-            if stubs_str in extra_paths:
-                return f"pyproject.toml [tool.ty] already configured with {stubs_str}"
-
-            # Add extra-paths - check if environment section exists
-            if "extra-paths" in content:
-                # Complex case - don't modify
-                return None
-            elif "[tool.ty.environment]" in content:
-                new_content = content.replace(
-                    "[tool.ty.environment]", f'[tool.ty.environment]\nextra-paths = ["{stubs_str}"]'
-                )
-                pyproject.write_text(new_content)
-                return f"Configured pyproject.toml: added {stubs_str} to [tool.ty.environment].extra-paths"
-            elif "[tool.ty]" in content:
-                # Add environment.extra-paths inline
-                new_content = content.replace("[tool.ty]", f'[tool.ty]\nenvironment.extra-paths = ["{stubs_str}"]')
-                pyproject.write_text(new_content)
-                return f"Configured pyproject.toml: added {stubs_str} to [tool.ty].environment.extra-paths"
-            else:
-                return None
-        except Exception:
+        content, config = loaded
+        if "tool" not in config or "ty" not in config["tool"]:
             return None
+
+        extra_paths = config["tool"]["ty"].get("environment", {}).get("extra-paths", [])
+        if stubs_str in extra_paths:
+            return f"pyproject.toml [tool.ty] already configured with {stubs_str}"
+
+        if "extra-paths" in content:
+            return None
+
+        new_content = _insert_setting(content, "[tool.ty.environment]", f'extra-paths = ["{stubs_str}"]')
+        if new_content is not None:
+            pyproject.write_text(new_content)
+            return f"Configured pyproject.toml: added {stubs_str} to [tool.ty.environment].extra-paths"
+
+        new_content = _insert_setting(content, "[tool.ty]", f'environment.extra-paths = ["{stubs_str}"]')
+        if new_content is None:
+            return None
+        pyproject.write_text(new_content)
+        return f"Configured pyproject.toml: added {stubs_str} to [tool.ty].environment.extra-paths"
 
     # Configure specific IDE if requested
     if ide:
@@ -439,23 +422,22 @@ def configure_ide_stubs(
             if result:
                 return result
             return "VS Code not configured: .vscode/settings.json not found"
-        elif ide_lower == "pyright":
+        if ide_lower == "pyright":
             result = _configure_pyright()
             if result:
                 return result
             return "Pyright not configured: pyrightconfig.json not found"
-        elif ide_lower == "pyproject":
+        if ide_lower == "pyproject":
             result = _configure_pyproject_pyright()
             if result:
                 return result
             return "pyproject.toml not configured: [tool.pyright] section not found"
-        elif ide_lower == "ty":
+        if ide_lower == "ty":
             result = _configure_ty() or _configure_pyproject_ty()
             if result:
                 return result
             return "ty not configured: ty.toml or [tool.ty] section not found"
-        else:
-            return f"Unknown IDE: {ide}. Use 'vscode', 'pyright', 'pyproject', or 'ty'"
+        return f"Unknown IDE: {ide}. Use 'vscode', 'pyright', 'pyproject', or 'ty'"
 
     # Auto-detect: try each in order
     for configure_fn in [

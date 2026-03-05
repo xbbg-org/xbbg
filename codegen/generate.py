@@ -35,6 +35,27 @@ def sorted_items(table: dict[str, Any]) -> list[tuple[str, Any]]:
     return sorted(table.items(), key=lambda pair: pair[0])
 
 
+def _render_python_enum(
+    lines: list[str],
+    *,
+    class_name: str,
+    class_doc: str,
+    table: dict[str, dict[str, Any]],
+    value_key: str,
+) -> None:
+    lines.append(f"class {class_name}(str, Enum):")
+    lines.append(f'    """{class_doc}"""')
+    lines.append("")
+    for key, data in sorted_items(table):
+        lines.append(f'    {key} = "{escape_python_string(data[value_key])}"')
+        lines.append(f'    """{escape_python_doc(data["doc"])}"""')
+        lines.append("")
+    if lines[-1] == "":
+        _ = lines.pop()
+    lines.append("")
+    lines.append("")
+
+
 def rust_name(key: str, data: dict[str, Any]) -> str:
     value = data.get("rust_name")
     if isinstance(value, str) and value:
@@ -687,88 +708,41 @@ def render_python(defs: dict[str, Any]) -> str:
     lines.append("from enum import Enum")
     lines.append("")
     lines.append("")
-    lines.append("class Service(str, Enum):")
-    lines.append('    """Bloomberg service URIs."""')
-    lines.append("")
-    for key, data in sorted_items(services):
-        lines.append(
-            '    {} = "{}"'.format(
-                key,
-                escape_python_string(data["uri"]),
-            )
-        )
-        lines.append('    """{}"""'.format(escape_python_doc(data["doc"])))
-        lines.append("")
-    if lines[-1] == "":
-        _ = lines.pop()
-
-    lines.append("")
-    lines.append("")
-    lines.append("class Operation(str, Enum):")
-    lines.append('    """Bloomberg request operation names."""')
-    lines.append("")
-    for key, data in sorted_items(operations):
-        lines.append(
-            '    {} = "{}"'.format(
-                key,
-                escape_python_string(data["value"]),
-            )
-        )
-        lines.append('    """{}"""'.format(escape_python_doc(data["doc"])))
-        lines.append("")
-    if lines[-1] == "":
-        _ = lines.pop()
-
-    lines.append("")
-    lines.append("")
-    lines.append("class ExtractorHint(str, Enum):")
-    lines.append('    """Hint for which Arrow extractor to use."""')
-    lines.append("")
-    for key, data in sorted_items(extractors):
-        lines.append(
-            '    {} = "{}"'.format(
-                key,
-                escape_python_string(data["value"]),
-            )
-        )
-        lines.append('    """{}"""'.format(escape_python_doc(data["doc"])))
-        lines.append("")
-    if lines[-1] == "":
-        _ = lines.pop()
-
-    lines.append("")
-    lines.append("")
-    lines.append("class Format(str, Enum):")
-    lines.append('    """Output format for reference data."""')
-    lines.append("")
-    for key, data in sorted_items(formats):
-        lines.append(
-            '    {} = "{}"'.format(
-                key,
-                escape_python_string(data["value"]),
-            )
-        )
-        lines.append('    """{}"""'.format(escape_python_doc(data["doc"])))
-        lines.append("")
-    if lines[-1] == "":
-        _ = lines.pop()
-
-    lines.append("")
-    lines.append("")
-    lines.append("class OutputMode(str, Enum):")
-    lines.append('    """Output mode for generic requests."""')
-    lines.append("")
-    for key, data in sorted_items(output_modes):
-        lines.append(
-            '    {} = "{}"'.format(
-                key,
-                escape_python_string(data["value"]),
-            )
-        )
-        lines.append('    """{}"""'.format(escape_python_doc(data["doc"])))
-        lines.append("")
-    if lines[-1] == "":
-        _ = lines.pop()
+    _render_python_enum(
+        lines,
+        class_name="Service",
+        class_doc="Bloomberg service URIs.",
+        table=services,
+        value_key="uri",
+    )
+    _render_python_enum(
+        lines,
+        class_name="Operation",
+        class_doc="Bloomberg request operation names.",
+        table=operations,
+        value_key="value",
+    )
+    _render_python_enum(
+        lines,
+        class_name="ExtractorHint",
+        class_doc="Hint for which Arrow extractor to use.",
+        table=extractors,
+        value_key="value",
+    )
+    _render_python_enum(
+        lines,
+        class_name="Format",
+        class_doc="Output format for reference data.",
+        table=formats,
+        value_key="value",
+    )
+    _render_python_enum(
+        lines,
+        class_name="OutputMode",
+        class_doc="Output mode for generic requests.",
+        table=output_modes,
+        value_key="value",
+    )
 
     return "\n".join(lines) + "\n"
 

@@ -11,7 +11,7 @@ Functions:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Sequence
 from datetime import date
 import functools
 from typing import Any, ParamSpec, TypeVar
@@ -30,6 +30,28 @@ def _syncify(async_func: Callable[_P, Coroutine[Any, Any, _T]]) -> Callable[_P, 
         return asyncio.run(async_func(*args, **kwargs))
 
     return wrapper
+
+
+async def _abdp_fields(
+    tickers: str | Sequence[str],
+    fields: str | Sequence[str],
+    **kwargs,
+) -> Any:
+    """Run abdp with shared field-query boilerplate."""
+    from xbbg.blp import abdp
+
+    return await abdp(tickers=tickers, flds=fields, **kwargs)
+
+
+async def _abds_field(
+    tickers: str | Sequence[str],
+    field: str,
+    **kwargs,
+) -> Any:
+    """Run abds with shared field-query boilerplate."""
+    from xbbg.blp import abds
+
+    return await abds(tickers=tickers, flds=field, **kwargs)
 
 
 def _pivot_bdp_to_wide(nw_df):

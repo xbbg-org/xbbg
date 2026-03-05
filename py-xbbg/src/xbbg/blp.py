@@ -394,6 +394,13 @@ def get_backend() -> Backend | None:
     return _default_backend
 
 
+def _resolve_backend(backend: Backend | str | None) -> Backend | None:
+    """Resolve per-request backend with global fallback."""
+    if backend is None:
+        return _default_backend
+    return Backend(backend) if isinstance(backend, str) else backend
+
+
 def _get_engine():
     """Get or create the shared engine instance."""
     global _engine
@@ -657,7 +664,7 @@ def _convert_backend(
         DataFrame/LazyFrame in the requested backend format
     """
     # Resolve effective backend
-    effective = (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
+    effective = _resolve_backend(backend)
 
     # Handle already-converted DataFrames (avoid double-conversion)
     # Check for pandas DataFrame
@@ -803,13 +810,8 @@ async def arequest(
         )
     """
     # Normalize inputs
-    securities_list: list[str] | None = None
-    if securities is not None:
-        securities_list = [securities] if isinstance(securities, str) else list(securities)
-
-    fields_list: list[str] | None = None
-    if fields is not None:
-        fields_list = [fields] if isinstance(fields, str) else list(fields)
+    securities_list = _normalize_tickers(securities) if securities is not None else None
+    fields_list = _normalize_fields(fields) if fields is not None else None
 
     overrides_list: list[tuple[str, str]] | None = None
     elements_list: list[tuple[str, Any]] | None = None
@@ -936,29 +938,6 @@ def request(
             fields=["PX_LAST", "VOLUME"],
         )
     """
-    return asyncio.run(
-        arequest(
-            service,
-            operation,
-            securities=securities,
-            security=security,
-            fields=fields,
-            overrides=overrides,
-            start_date=start_date,
-            end_date=end_date,
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            event_type=event_type,
-            interval=interval,
-            options=options,
-            field_types=field_types,
-            output=output,
-            extractor=extractor,
-            include_security_errors=include_security_errors,
-            validate_fields=validate_fields,
-            backend=backend,
-        )
-    )
 
 
 # =============================================================================
@@ -1194,6 +1173,19 @@ def _sync_wrapper(async_func):
     return wrapper
 
 
+def _bind_sync_wrapper(sync_func: Callable[..., Any], async_func: Callable[..., Any]) -> Callable[..., Any]:
+    """Bind sync function metadata to an async wrapper."""
+
+    @functools.wraps(sync_func)
+    def wrapped(*args, **kwargs):
+        return asyncio.run(async_func(*args, **kwargs))
+
+    return wrapped
+
+
+request = _bind_sync_wrapper(request, arequest)
+
+
 @dataclass(frozen=True)
 class _EndpointPlan:
     request_kwargs: dict[str, Any]
@@ -1376,7 +1368,7 @@ class Subscription:
         Args:
             tickers: Single ticker or list of tickers to add
         """
-        ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+        ticker_list = _normalize_tickers(tickers)
         logger.debug("subscription add: %s", ticker_list)
         await self._sub.add(ticker_list)
 
@@ -1386,7 +1378,7 @@ class Subscription:
         Args:
             tickers: Single ticker or list of tickers to remove
         """
-        ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+        ticker_list = _normalize_tickers(tickers)
         logger.debug("subscription remove: %s", ticker_list)
         await self._sub.remove(ticker_list)
 
@@ -1520,12 +1512,10 @@ async def asubscribe(
         )
         flush_threshold = 1
 
-    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
-    field_list = [fields] if isinstance(fields, str) else list(fields)
+    ticker_list = _normalize_tickers(tickers)
+    field_list = _normalize_fields(fields)
 
-    effective_backend = (
-        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
-    )
+    effective_backend = _resolve_backend(backend)
 
     engine = _get_engine()
     logger.info("subscribe: tickers=%s fields=%s", ticker_list, field_list)
@@ -1582,13 +1572,10 @@ def subscribe(
 
     See asubscribe() for full documentation.
     """
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
 
 
-_subscribe_doc = subscribe.__doc__
-_subscribe_annotations = subscribe.__annotations__
-subscribe = _sync_wrapper(asubscribe)
-subscribe.__doc__ = _subscribe_doc
-subscribe.__annotations__ = _subscribe_annotations
+subscribe = _bind_sync_wrapper(subscribe, asubscribe)
 
 
 async def astream(
@@ -1778,13 +1765,13 @@ async def avwap(
         # With specific fields
         sub = await xbbg.avwap("AAPL US Equity", ["RT_PX_VWAP", "RT_VWAP_VOLUME", "RT_VWAP_TURNOVER"])
     """
-    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+    ticker_list = _normalize_tickers(tickers)
 
     # Default fields if not provided
     if fields is None:
         field_list = ["RT_PX_VWAP", "RT_VWAP_VOLUME"]
     else:
-        field_list = [fields] if isinstance(fields, str) else list(fields)
+        field_list = _normalize_fields(fields)
 
     # Build subscription options
     options: list[str] = []
@@ -1793,9 +1780,7 @@ async def avwap(
     if end_time:
         options.append(f"VWAP_END_TIME={end_time}")
 
-    effective_backend = (
-        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
-    )
+    effective_backend = _resolve_backend(backend)
 
     engine = _get_engine()
     py_sub = await engine.subscribe_with_options(
@@ -1824,16 +1809,10 @@ def vwap(
 
     See avwap() for full documentation.
     """
-    return asyncio.run(
-        avwap(
-            tickers,
-            fields,
-            start_time=start_time,
-            end_time=end_time,
-            raw=raw,
-            backend=backend,
-        )
-    )
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
+
+
+vwap = _bind_sync_wrapper(vwap, avwap)
 
 
 # =============================================================================
@@ -1881,10 +1860,8 @@ async def amktbar(
     logger.debug("amktbar: tickers=%s interval=%d", tickers, interval)
 
     # Normalize inputs
-    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
-    effective_backend = (
-        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
-    )
+    ticker_list = _normalize_tickers(tickers)
+    effective_backend = _resolve_backend(backend)
 
     # Build subscription options
     options: list[str] = [f"interval={interval}"]
@@ -1921,16 +1898,10 @@ def mktbar(
 
     See amktbar() for full documentation.
     """
-    return asyncio.run(
-        amktbar(
-            tickers,
-            interval=interval,
-            start_time=start_time,
-            end_time=end_time,
-            raw=raw,
-            backend=backend,
-        )
-    )
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
+
+
+mktbar = _bind_sync_wrapper(mktbar, amktbar)
 
 
 # =============================================================================
@@ -1976,10 +1947,8 @@ async def adepth(
     logger.debug("adepth: tickers=%s", tickers)
 
     # Normalize inputs
-    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
-    effective_backend = (
-        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
-    )
+    ticker_list = _normalize_tickers(tickers)
+    effective_backend = _resolve_backend(backend)
 
     # Get engine and subscribe
     engine = _get_engine()
@@ -2016,13 +1985,10 @@ def depth(
 
     See adepth() for full documentation.
     """
-    return asyncio.run(
-        adepth(
-            tickers,
-            raw=raw,
-            backend=backend,
-        )
-    )
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
+
+
+depth = _bind_sync_wrapper(depth, adepth)
 
 
 # =============================================================================
@@ -2072,9 +2038,7 @@ async def achains(
 
     logger.debug("achains: underlying=%s chain_type=%s", underlying, chain_type)
 
-    effective_backend = (
-        (Backend(backend) if isinstance(backend, str) else backend) if backend is not None else _default_backend
-    )
+    effective_backend = _resolve_backend(backend)
 
     # Build subscription options
     options: list[str] = [f"chainType={chain_type}"]
@@ -2115,14 +2079,10 @@ def chains(
 
     See achains() for full documentation.
     """
-    return asyncio.run(
-        achains(
-            underlying,
-            chain_type=chain_type,
-            raw=raw,
-            backend=backend,
-        )
-    )
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
+
+
+chains = _bind_sync_wrapper(chains, achains)
 
 
 # =============================================================================
@@ -2374,7 +2334,7 @@ async def abta(
     """
     import warnings
 
-    ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
+    ticker_list = _normalize_tickers(tickers)
     engine = _get_engine()
 
     async def fetch_single(ticker: str) -> pa.RecordBatch | Exception:
@@ -2432,17 +2392,10 @@ def bta(
 
     See abta() for full documentation.
     """
-    return asyncio.run(
-        abta(
-            tickers,
-            study,
-            start_date=start_date,
-            end_date=end_date,
-            periodicity=periodicity,
-            interval=interval,
-            **study_params,
-        )
-    )
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
+
+
+bta = _bind_sync_wrapper(bta, abta)
 
 
 def ta_studies() -> list[str]:
@@ -3485,7 +3438,7 @@ def _build_abflds_plan(args: dict[str, Any]) -> _EndpointPlan:
         raise ValueError("Must specify either 'fields' or 'search_spec'")
 
     if fields is not None:
-        field_list = [fields] if isinstance(fields, str) else list(fields)
+        field_list = _normalize_fields(fields)
         return _EndpointPlan(
             request_kwargs={"fields": field_list},
             backend=args.get("backend"),
@@ -3722,13 +3675,10 @@ def bops(service: str | Service = Service.REFDATA) -> list[str]:
         >>> bops("//blp/instruments")
         ['InstrumentListRequest', ...]
     """
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
 
 
-_bops_doc = bops.__doc__
-_bops_annotations = bops.__annotations__
-bops = _sync_wrapper(abops)
-bops.__doc__ = _bops_doc
-bops.__annotations__ = _bops_annotations
+bops = _bind_sync_wrapper(bops, abops)
 
 
 async def abschema(
@@ -3827,13 +3777,10 @@ def bschema(
         >>> [c['name'] for c in op['request']['children']]
         ['securities', 'fields', 'overrides', ...]
     """
+    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
 
 
-_bschema_doc = bschema.__doc__
-_bschema_annotations = bschema.__annotations__
-bschema = _sync_wrapper(abschema)
-bschema.__doc__ = _bschema_doc
-bschema.__annotations__ = _bschema_annotations
+bschema = _bind_sync_wrapper(bschema, abschema)
 
 
 def _element_to_dict(elem) -> dict:

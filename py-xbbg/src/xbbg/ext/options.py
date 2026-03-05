@@ -24,9 +24,9 @@ Async functions (primary implementation):
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from xbbg.ext._utils import _fmt_date, _syncify
+from xbbg.ext._utils import _abdp_fields, _abds_field, _fmt_date, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -209,9 +209,7 @@ async def aoption_info(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_OPTION_INFO_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_OPTION_INFO_FIELDS, **kwargs)
 
 
 async def aoption_greeks(ticker: str, **kwargs) -> IntoDataFrame:
@@ -246,9 +244,7 @@ async def aoption_greeks(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_OPTION_GREEKS_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_OPTION_GREEKS_FIELDS, **kwargs)
 
 
 async def aoption_pricing(ticker: str, **kwargs) -> IntoDataFrame:
@@ -286,9 +282,7 @@ async def aoption_pricing(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_OPTION_PRICING_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_OPTION_PRICING_FIELDS, **kwargs)
 
 
 async def aoption_chain(
@@ -350,15 +344,15 @@ async def aoption_chain(
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
     overrides: dict[str, str] = {}
 
     if put_call is not None:
         overrides[_OVRD_CHAIN_PUT_CALL_TYPE] = str(put_call)
 
     if expiry_dt is not None:
-        overrides[_OVRD_CHAIN_EXP_DT] = _fmt_date(expiry_dt)
+        formatted_expiry = _fmt_date(expiry_dt)
+        if formatted_expiry is not None:
+            overrides[_OVRD_CHAIN_EXP_DT] = formatted_expiry
 
     if strike is not None:
         if isinstance(strike, StrEnum):
@@ -387,7 +381,7 @@ async def aoption_chain(
             for k, v in existing:
                 overrides[k] = str(v)
 
-    return await abds(tickers=underlying, flds="CHAIN_TICKERS", overrides=overrides, **kwargs)
+    return await _abds_field(tickers=underlying, field="CHAIN_TICKERS", overrides=overrides, **kwargs)
 
 
 async def aoption_chain_bql(
@@ -419,7 +413,7 @@ async def aoption_chain_bql(
     extra_filters: str | None = None,
     get_fields: list[str] | None = None,
     **kwargs,
-) -> IntoDataFrame:
+) -> Any:
     """Async get option chain via BQL with rich filtering.
 
     Retrieves option chain using Bloomberg Query Language (BQL) with
@@ -499,7 +493,7 @@ async def aoption_chain_bql(
 
         asyncio.run(main())
     """
-    from xbbg import abql
+    from xbbg import blp
 
     # Default get fields
     default_get = [
@@ -608,7 +602,7 @@ async def aoption_chain_bql(
 
     query = f"get({get_clause}) for({for_clause})"
 
-    return await abql(query, **kwargs)
+    return await blp.abql(query, **kwargs)
 
 
 async def aoption_screen(
@@ -674,11 +668,9 @@ async def aoption_screen(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(
+    return await _abdp_fields(
         tickers=tickers,
-        flds=flds or _OPTION_SCREEN_DEFAULT_FIELDS,
+        fields=flds or _OPTION_SCREEN_DEFAULT_FIELDS,
         **kwargs,
     )
 
