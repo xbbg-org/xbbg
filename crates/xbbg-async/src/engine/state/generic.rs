@@ -15,6 +15,7 @@ use arrow::datatypes::{DataType as ArrowDataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
 
+use super::value_utils::{format_date32, format_timestamp_micros};
 use xbbg_core::{BlpError, DataType, Element, Message, Value};
 
 /// State for a generic request that flattens elements to tabular format.
@@ -219,25 +220,5 @@ impl GenericState {
         .map_err(|e| BlpError::Internal {
             detail: format!("build RecordBatch: {e}"),
         })
-    }
-}
-
-/// Format days since epoch as YYYY-MM-DD string.
-fn format_date32(days: i32) -> String {
-    use chrono::{Duration, NaiveDate};
-    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-    let date = epoch + Duration::days(days as i64);
-    date.format("%Y-%m-%d").to_string()
-}
-
-/// Format microseconds since epoch as ISO datetime string.
-fn format_timestamp_micros(micros: i64) -> String {
-    use chrono::DateTime;
-    let secs = micros / 1_000_000;
-    let nanos = ((micros % 1_000_000) * 1000) as u32;
-    if let Some(dt) = DateTime::from_timestamp(secs, nanos) {
-        dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-    } else {
-        format!("{}us", micros)
     }
 }

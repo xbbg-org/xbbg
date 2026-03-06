@@ -29,6 +29,7 @@ import narwhals.stable.v1 as nw
 from narwhals.typing import IntoFrame
 import pyarrow as pa
 
+from ._exports import BLP_MODULE_EXPORTS
 from xbbg.services import (
     ExtractorHint,
     Format,
@@ -72,89 +73,7 @@ class Backend(str, Enum):
     DUCKDB = "duckdb"
 
 
-__all__ = [
-    "Backend",
-    # EngineConfig is re-exported from __init__.py -> _core.PyEngineConfig
-    # Generic API (power users)
-    "arequest",
-    "request",
-    # Async API (typed convenience)
-    "abdp",
-    "abdh",
-    "abds",
-    "abdib",
-    "abdtick",
-    "abql",
-    "absrch",
-    "abeqs",
-    "ablkp",
-    "abport",
-    "abcurves",
-    "abgovts",
-    # Quote request
-    "abqr",
-    "bqr",
-    # Field metadata
-    "abflds",
-    "bflds",
-    "abfld",
-    "bfld",
-    "afieldInfo",
-    "fieldInfo",
-    "afieldSearch",
-    "fieldSearch",
-    # Sync API (wrappers)
-    "bdp",
-    "bdh",
-    "bds",
-    "bdib",
-    "bdtick",
-    "bql",
-    "bsrch",
-    "beqs",
-    "blkp",
-    "bport",
-    "bcurves",
-    "bgovts",
-    # Streaming API
-    "Tick",
-    "Subscription",
-    "asubscribe",
-    "subscribe",
-    "astream",
-    "stream",
-    # VWAP Streaming
-    "avwap",
-    "vwap",
-    # Market Bar Streaming
-    "amktbar",
-    "mktbar",
-    # Market Depth Streaming
-    "adepth",
-    "depth",
-    # Chain Streaming
-    "achains",
-    "chains",
-    # Technical Analysis
-    "abta",
-    "bta",
-    "ta_studies",
-    # Config
-    "configure",
-    "set_backend",
-    "get_backend",
-    # Re-exports from services
-    "Service",
-    "Operation",
-    "OutputMode",
-    "RequestParams",
-    "ExtractorHint",
-    # Schema introspection
-    "abops",
-    "bops",
-    "abschema",
-    "bschema",
-]
+__all__ = list(BLP_MODULE_EXPORTS)
 
 
 # Generated sync wrappers are installed dynamically by _install_generated_endpoints().
@@ -914,47 +833,6 @@ async def arequest(
     nw_df = nw.from_native(table)
     return _convert_backend(nw_df, backend)
 
-
-def request(
-    service: str | Service,
-    operation: str | Operation,
-    *,
-    request_operation: str | Operation | None = None,
-    securities: str | Sequence[str] | None = None,
-    security: str | None = None,
-    fields: str | Sequence[str] | None = None,
-    overrides: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
-    event_type: str | None = None,
-    interval: int | None = None,
-    options: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
-    field_types: dict[str, str] | None = None,
-    output: OutputMode | str = OutputMode.ARROW,
-    extractor: ExtractorHint | str | None = None,
-    include_security_errors: bool = False,
-    validate_fields: bool | None = None,
-    backend: Backend | str | None = None,
-):
-    """Generic Bloomberg request (sync wrapper).
-
-    Sync wrapper around arequest(). For async usage, use arequest() directly.
-
-    See arequest() for full documentation.
-
-    Example::
-
-        # Query field metadata
-        df = request(
-            Service.APIFLDS,
-            Operation.FIELD_INFO,
-            fields=["PX_LAST", "VOLUME"],
-        )
-    """
-
-
 # =============================================================================
 # Async API - Typed Convenience Functions
 # =============================================================================
@@ -1178,29 +1056,6 @@ async def abdtick(
 # =============================================================================
 
 
-def _sync_wrapper(async_func):
-    """Create a sync wrapper for an async function."""
-
-    @functools.wraps(async_func)
-    def wrapper(*args, **kwargs):
-        return asyncio.run(async_func(*args, **kwargs))
-
-    return wrapper
-
-
-def _bind_sync_wrapper(sync_func: Callable[..., Any], async_func: Callable[..., Any]) -> Callable[..., Any]:
-    """Bind sync function metadata to an async wrapper."""
-
-    @functools.wraps(sync_func)
-    def wrapped(*args, **kwargs):
-        return asyncio.run(async_func(*args, **kwargs))
-
-    return wrapped
-
-
-request = _bind_sync_wrapper(request, arequest)
-
-
 @dataclass(frozen=True)
 class _EndpointPlan:
     request_kwargs: dict[str, Any]
@@ -1229,6 +1084,24 @@ def _strip_signature_annotations(func: Callable[..., Any]) -> str:
     stripped_params = [param.replace(annotation=inspect._empty) for param in signature.parameters.values()]
     stripped = signature.replace(parameters=stripped_params, return_annotation=inspect._empty)
     return str(stripped)
+
+def _build_sync_wrapper(
+    sync_name: str,
+    async_func: Callable[..., Any],
+    *,
+    template: Callable[..., Any] | None = None,
+) -> Callable[..., Any]:
+    template_func = template if template is not None else async_func
+
+    @functools.wraps(template_func)
+    def wrapped(*args, **kwargs):
+        return asyncio.run(async_func(*args, **kwargs))
+
+    wrapped.__name__ = sync_name
+    wrapped.__qualname__ = sync_name
+    wrapped.__module__ = __name__
+    wrapped.__signature__ = inspect.signature(template_func)
+    return wrapped
 
 
 async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: dict[str, Any]) -> DataFrameResult:
@@ -1278,13 +1151,7 @@ def _install_generated_endpoint(spec: _GeneratedEndpointSpec) -> None:
     generated_async = _build_generated_async(spec, async_template)
     globals()[spec.async_name] = generated_async
 
-    generated_sync = _sync_wrapper(generated_async)
-    generated_sync.__name__ = spec.sync_name
-    generated_sync.__qualname__ = spec.sync_name
-    generated_sync.__doc__ = async_template.__doc__
-    generated_sync.__annotations__ = dict(getattr(async_template, "__annotations__", {}))
-    generated_sync.__module__ = __name__
-    globals()[spec.sync_name] = generated_sync
+    globals()[spec.sync_name] = _build_sync_wrapper(spec.sync_name, generated_async, template=async_template)
 
 
 def _install_generated_endpoints() -> None:
@@ -1564,35 +1431,6 @@ async def asubscribe(
 
     return Subscription(py_sub, raw=raw or tick_mode, backend=effective_backend, tick_mode=tick_mode)
 
-
-def subscribe(
-    tickers: str | list[str],
-    fields: str | list[str],
-    *,
-    raw: bool = False,
-    backend: Backend | str | None = None,
-    service: str | None = None,
-    options: list[str] | None = None,
-    tick_mode: bool = False,
-    flush_threshold: int | None = None,
-    stream_capacity: int | None = None,
-    overflow_policy: str | None = None,
-) -> Subscription:
-    """Create a subscription to real-time market data (sync version).
-
-    Note: This returns an async Subscription. Use in an async context
-    or call methods with asyncio.run().
-
-    For simple sync iteration, use stream() instead.
-
-    See asubscribe() for full documentation.
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
-
-
-subscribe = _bind_sync_wrapper(subscribe, asubscribe)
-
-
 async def astream(
     tickers: str | list[str],
     fields: str | list[str],
@@ -1807,29 +1645,6 @@ async def avwap(
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
 
-
-def vwap(
-    tickers: str | list[str],
-    fields: str | list[str] | None = None,
-    *,
-    start_time: str | None = None,
-    end_time: str | None = None,
-    raw: bool = False,
-    backend: Backend | str | None = None,
-) -> Subscription:
-    """Subscribe to real-time VWAP data (sync version).
-
-    Note: This returns an async Subscription. Use in an async context
-    or call methods with asyncio.run().
-
-    See avwap() for full documentation.
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
-
-
-vwap = _bind_sync_wrapper(vwap, avwap)
-
-
 # =============================================================================
 # MKTBAR API - Real-time Streaming OHLC Bars
 # =============================================================================
@@ -1896,29 +1711,6 @@ async def amktbar(
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
 
-
-def mktbar(
-    tickers: str | list[str],
-    *,
-    interval: int = 1,
-    start_time: str | None = None,
-    end_time: str | None = None,
-    raw: bool = False,
-    backend: Backend | str | None = None,
-) -> Subscription:
-    """Subscribe to real-time streaming OHLC bars (sync version).
-
-    Note: This returns an async Subscription. Use in an async context
-    or call methods with asyncio.run().
-
-    See amktbar() for full documentation.
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
-
-
-mktbar = _bind_sync_wrapper(mktbar, amktbar)
-
-
 # =============================================================================
 # MKTDEPTH API - Level 2 Market Depth (B-PIPE Only)
 # =============================================================================
@@ -1981,30 +1773,6 @@ async def adepth(
         raise
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
-
-
-def depth(
-    tickers: str | list[str],
-    *,
-    raw: bool = False,
-    backend: Backend | str | None = None,
-) -> Subscription:
-    """Subscribe to Level 2 market depth / order book data (sync version).
-
-    .. warning::
-        **Requires Bloomberg B-PIPE license.** This feature is not available
-        with standard Terminal connections.
-
-    Note: This returns an async Subscription. Use in an async context
-    or call methods with asyncio.run().
-
-    See adepth() for full documentation.
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
-
-
-depth = _bind_sync_wrapper(depth, adepth)
-
 
 # =============================================================================
 # MKTLIST API - Option/Futures Chains (B-PIPE Only)
@@ -2074,31 +1842,6 @@ async def achains(
         raise
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
-
-
-def chains(
-    underlying: str,
-    *,
-    chain_type: str = "OPTIONS",
-    raw: bool = False,
-    backend: Backend | str | None = None,
-) -> Subscription:
-    """Subscribe to option or futures chain updates (sync version).
-
-    .. warning::
-        **Requires Bloomberg B-PIPE license.** This feature is not available
-        with standard Terminal connections.
-
-    Note: This returns an async Subscription. Use in an async context
-    or call methods with asyncio.run().
-
-    See achains() for full documentation.
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
-
-
-chains = _bind_sync_wrapper(chains, achains)
-
 
 # =============================================================================
 # Technical Analysis API - Bloomberg Technical Analysis Service
@@ -2391,26 +2134,6 @@ async def abta(
     # Combine all batches into a single table
     table = pa.concat_tables([pa.Table.from_batches([b]) for b in batches])
     return _convert_backend(nw.from_native(table), _default_backend)
-
-
-def bta(
-    tickers: str | list[str],
-    study: str,
-    *,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    periodicity: str = "DAILY",
-    interval: int | None = None,
-    **study_params,
-) -> DataFrameResult:
-    """Get technical analysis study data (sync).
-
-    See abta() for full documentation.
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
-
-
-bta = _bind_sync_wrapper(bta, abta)
 
 
 def ta_studies() -> list[str]:
@@ -3611,10 +3334,6 @@ async def afieldInfo(
     """
     return await abflds(fields=fields, backend=backend, **kwargs)
 
-
-fieldInfo = _sync_wrapper(afieldInfo)
-
-
 async def afieldSearch(
     searchterm: str,
     *,
@@ -3638,10 +3357,6 @@ async def afieldSearch(
         df = await afieldSearch("vwap")
     """
     return await abflds(search_spec=searchterm, backend=backend, **kwargs)
-
-
-fieldSearch = _sync_wrapper(afieldSearch)
-
 
 # ─── Schema Introspection API ────────────────────────────────────────────────
 
@@ -3669,31 +3384,6 @@ async def abops(service: str | Service = Service.REFDATA) -> list[str]:
 
     service_uri = service.value if isinstance(service, Service) else service
     return await schema.alist_operations(service_uri)
-
-
-def bops(service: str | Service = Service.REFDATA) -> list[str]:
-    """List available operations for a Bloomberg service.
-
-    Sync wrapper around abops(). For async usage, use abops() directly.
-
-    Args:
-        service: Service URI or Service enum (default: //blp/refdata)
-
-    Returns:
-        List of operation names.
-
-    Example::
-
-        >>> bops()
-        ['ReferenceDataRequest', 'HistoricalDataRequest', ...]
-
-        >>> bops("//blp/instruments")
-        ['InstrumentListRequest', ...]
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
-
-
-bops = _bind_sync_wrapper(bops, abops)
 
 
 async def abschema(
@@ -3762,40 +3452,24 @@ async def abschema(
     }
 
 
-def bschema(
-    service: str | Service = Service.REFDATA,
-    operation: str | Operation | None = None,
-) -> dict:
-    """Get Bloomberg service or operation schema.
-
-    Sync wrapper around abschema(). For async usage, use abschema() directly.
-
-    Returns introspected schema with element definitions, types, and enum values.
-    Schemas are cached locally (~/.xbbg/schemas/) for fast subsequent access.
-
-    Args:
-        service: Service URI or Service enum (default: //blp/refdata)
-        operation: Optional operation name. If None, returns full service schema.
-
-    Returns:
-        Dictionary with schema information.
-
-    Example::
-
-        >>> # List operations
-        >>> schema = bschema()
-        >>> [op['name'] for op in schema['operations']]
-        ['ReferenceDataRequest', 'HistoricalDataRequest', ...]
-
-        >>> # Get operation details
-        >>> op = bschema(operation="ReferenceDataRequest")
-        >>> [c['name'] for c in op['request']['children']]
-        ['securities', 'fields', 'overrides', ...]
-    """
-    raise RuntimeError("sync wrapper placeholder should be rebound at import time")
+def _install_manual_sync_wrappers() -> None:
+    for sync_name, async_func in (
+        ("request", arequest),
+        ("subscribe", asubscribe),
+        ("vwap", avwap),
+        ("mktbar", amktbar),
+        ("depth", adepth),
+        ("chains", achains),
+        ("bta", abta),
+        ("fieldInfo", afieldInfo),
+        ("fieldSearch", afieldSearch),
+        ("bops", abops),
+        ("bschema", abschema),
+    ):
+        globals()[sync_name] = _build_sync_wrapper(sync_name, async_func)
 
 
-bschema = _bind_sync_wrapper(bschema, abschema)
+_install_manual_sync_wrappers()
 
 
 def _element_to_dict(elem) -> dict:

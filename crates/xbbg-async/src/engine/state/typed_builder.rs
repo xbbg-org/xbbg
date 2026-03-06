@@ -17,6 +17,8 @@ use arrow::record_batch::RecordBatch;
 use indexmap::IndexMap;
 use xbbg_core::{BlpError, Value};
 
+use super::value_utils::{format_date32, format_time64_micros, format_timestamp_micros};
+
 /// Arrow type identifier (subset of Arrow types we support).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ArrowType {
@@ -524,36 +526,6 @@ impl ColumnSet {
 impl Default for ColumnSet {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Format days since epoch as YYYY-MM-DD string.
-fn format_date32(days: i32) -> String {
-    use chrono::{Duration, NaiveDate};
-    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-    let date = epoch + Duration::days(days as i64);
-    date.format("%Y-%m-%d").to_string()
-}
-
-/// Format microseconds from midnight as HH:MM:SS.ffffff string.
-fn format_time64_micros(micros: i64) -> String {
-    let total_secs = micros / 1_000_000;
-    let frac_us = (micros % 1_000_000).unsigned_abs();
-    let h = total_secs / 3600;
-    let m = (total_secs % 3600) / 60;
-    let s = total_secs % 60;
-    format!("{:02}:{:02}:{:02}.{:06}", h, m, s, frac_us)
-}
-
-/// Format microseconds since epoch as ISO datetime string.
-fn format_timestamp_micros(micros: i64) -> String {
-    use chrono::DateTime;
-    let secs = micros / 1_000_000;
-    let nanos = ((micros % 1_000_000) * 1000) as u32;
-    if let Some(dt) = DateTime::from_timestamp(secs, nanos) {
-        dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-    } else {
-        format!("{}us", micros)
     }
 }
 
