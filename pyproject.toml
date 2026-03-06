@@ -25,7 +25,6 @@ dynamic = ["version"]
 dependencies = [
   "narwhals>=1.30",
   "pyarrow>=22.0.0",
-  "lief>=0.17",
 ]
 
 [project.optional-dependencies]

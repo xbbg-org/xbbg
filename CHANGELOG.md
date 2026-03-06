@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Fixed
 
 - **Additional GIL release coverage in PyO3 bindings**: Released the GIL around synchronous cache-save calls, Arrow pivot/format inspection helpers, and subscription metadata snapshots so Python threads are not blocked during disk I/O, pure Rust Arrow work, or waits on subscription state locks.
+- **Removed unused `lief` dependency**: Dropped `lief>=0.17` from core `[project.dependencies]`; the package was never imported anywhere in the codebase.
 
 ## [1.0.0b2] - 2026-03-05
 
