@@ -468,8 +468,9 @@ pub struct EngineConfig {
     pub warmup_services: Vec<String>,
     /// Validation mode for requests (default: Strict)
     pub validation_mode: ValidationMode,
+    /// Custom path for the field cache JSON file (default: ~/.xbbg/field_cache.json)
+    pub field_cache_path: Option<std::path::PathBuf>,
 }
-
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
@@ -487,6 +488,7 @@ impl Default for EngineConfig {
                 crate::services::Service::ApiFlds.to_string(),
             ],
             validation_mode: ValidationMode::default(),
+            field_cache_path: None,
         }
     }
 }
@@ -515,6 +517,9 @@ impl Engine {
     /// Create and start a new Engine with worker pools.
     pub fn start(config: EngineConfig) -> Result<Self, BlpAsyncError> {
         let config = Arc::new(config);
+
+        // Initialize field cache with configured path (must happen before any field resolution)
+        crate::field_cache::init_global_resolver(config.field_cache_path.clone());
 
         let rt = Arc::new(
             tokio::runtime::Builder::new_multi_thread()
@@ -851,6 +856,11 @@ impl Engine {
     /// Save the field type cache to disk.
     pub fn save_field_cache(&self) -> Result<(), String> {
         crate::field_cache::global_resolver().save_to_disk()
+    }
+
+    /// Get field cache statistics including the active cache file path.
+    pub fn field_cache_stats(&self) -> (usize, std::path::PathBuf) {
+        crate::field_cache::global_resolver().stats()
     }
 
     /// Validate Bloomberg field names.

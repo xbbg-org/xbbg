@@ -221,7 +221,7 @@ def configure(
     Args:
         config: An EngineConfig object with all settings.
         **kwargs: Override individual fields (host, port, request_pool_size,
-            subscription_pool_size, etc.).
+            subscription_pool_size, field_cache_path, etc.).
 
     Raises:
         RuntimeError: If called after the engine has already started.
@@ -241,6 +241,9 @@ def configure(
         # Option 3: EngineConfig + overrides
         cfg = EngineConfig(request_pool_size=4)
         xbbg.configure(cfg, subscription_pool_size=2)
+
+        # Option 4: Custom field cache location
+        xbbg.configure(field_cache_path='/data/bloomberg/field_cache.json')
     """
     global _config, _engine
 

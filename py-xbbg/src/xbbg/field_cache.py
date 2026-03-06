@@ -135,6 +135,18 @@ def clear_field_cache() -> None:
     engine.clear_field_cache()
 
 
+def get_field_cache_stats() -> dict[str, int | str]:
+    """Get field cache statistics including the resolved cache file location.
+
+    Returns:
+        Dict with:
+            - entry_count: Number of cached field entries currently loaded
+            - cache_path: Active cache JSON path used by the Rust resolver
+    """
+    engine = _get_engine()
+    return engine.field_cache_stats()
+
+
 # ---------------------------------------------------------------------------
 # FieldTypeCache class — facade over the Rust resolver
 # ---------------------------------------------------------------------------
@@ -147,8 +159,10 @@ class FieldTypeCache:
     All caching, type mapping, and disk persistence is handled in Rust.
 
     The ``cache_path`` parameter is accepted for API compatibility but
-    ignored — the Rust resolver manages its own cache location
-    (``~/.xbbg/field_cache.json``).
+    ignored. The Rust resolver manages its own cache location, using either
+    the default path or ``xbbg.configure(field_cache_path=...)`` before the
+    engine starts. Use :attr:`cache_path` or :attr:`stats` to inspect the
+    active location.
 
     Example::
 
@@ -216,3 +230,13 @@ class FieldTypeCache:
     def clear_cache(self) -> None:
         """Clear both memory and disk cache."""
         clear_field_cache()
+
+    @property
+    def stats(self) -> dict[str, int | str]:
+        """Field cache stats from the shared Rust resolver."""
+        return get_field_cache_stats()
+
+    @property
+    def cache_path(self) -> str:
+        """Resolved path to the active field cache JSON file."""
+        return str(self.stats["cache_path"])

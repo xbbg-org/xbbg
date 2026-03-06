@@ -24,6 +24,7 @@ FIELD_CACHE_EXPORTS = (
     "aresolve_field_types",
     "cache_field_types",
     "get_field_info",
+    "get_field_cache_stats",
     "clear_field_cache",
 )
 

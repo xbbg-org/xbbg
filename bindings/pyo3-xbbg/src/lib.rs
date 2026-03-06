@@ -316,6 +316,10 @@ pub struct PyEngineConfig {
     /// Services to pre-warm on startup (default: ["//blp/refdata", "//blp/apiflds"])
     #[pyo3(get, set)]
     pub warmup_services: Vec<String>,
+    /// Custom path for field cache JSON file (default: ~/.xbbg/field_cache.json)
+    /// Set to None to use the default path.
+    #[pyo3(get, set)]
+    pub field_cache_path: Option<String>,
 }
 
 #[pymethods]
@@ -339,6 +343,7 @@ impl PyEngineConfig {
             subscription_stream_capacity: defaults.subscription_stream_capacity,
             overflow_policy: defaults.overflow_policy.to_string(),
             warmup_services: defaults.warmup_services,
+            field_cache_path: None,
         };
 
         if let Some(kw) = kwargs {
@@ -375,21 +380,26 @@ impl PyEngineConfig {
             if let Some(v) = kw.get_item("warmup_services")? {
                 config.warmup_services = v.extract()?;
             }
+            if let Some(v) = kw.get_item("field_cache_path")? {
+                config.field_cache_path = v.extract()?;
+            }
         }
 
         Ok(config)
     }
 
     fn __repr__(&self) -> String {
+        let fcp_display = self.field_cache_path.as_deref().unwrap_or("default");
         format!(
             "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, \
-             validation_mode='{}', overflow_policy='{}', warmup_services={:?})",
+             validation_mode='{}', overflow_policy='{}', field_cache_path='{}', warmup_services={:?})",
             self.host,
             self.port,
             self.request_pool_size,
             self.subscription_pool_size,
             self.validation_mode,
             self.overflow_policy,
+            fcp_display,
             self.warmup_services
         )
     }
@@ -421,6 +431,7 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             subscription_stream_capacity: py_config.subscription_stream_capacity,
             overflow_policy,
             warmup_services: py_config.warmup_services.clone(),
+            field_cache_path: py_config.field_cache_path.as_ref().map(std::path::PathBuf::from),
         })
     }
 }
@@ -666,6 +677,15 @@ impl PyEngine {
         self.engine
             .save_field_cache()
             .map_err(PyRuntimeError::new_err)
+    }
+
+    /// Get field cache statistics including the active cache path.
+    fn field_cache_stats(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let (entry_count, cache_path) = self.engine.field_cache_stats();
+        let dict = PyDict::new(py);
+        dict.set_item("entry_count", entry_count)?;
+        dict.set_item("cache_path", cache_path.to_string_lossy().into_owned())?;
+        Ok(dict.into())
     }
 
     /// Validate Bloomberg field names.

@@ -2,7 +2,7 @@
 //!
 //! Provides automatic field type resolution using a hierarchy:
 //! 1. Manual Override (from Python)
-//! 2. Physical Cache (~/.xbbg/field_cache.json)
+//! 2. Physical Cache (default: `~/.xbbg/field_cache.json`, configurable via `EngineConfig`)
 //! 3. API Query (//blp/apiflds service)
 //! 4. Defaults (bdp=String, bdh=Float64)
 
@@ -141,9 +141,17 @@ impl FieldTypeResolver {
         #[cfg(not(windows))]
         let home = std::env::var("HOME").ok().map(PathBuf::from);
 
-        home.unwrap_or_else(|| PathBuf::from("."))
-            .join(".xbbg")
-            .join("field_cache.json")
+        match home {
+            Some(h) => h.join(".xbbg").join("field_cache.json"),
+            None => {
+                warn!(
+                    "Home directory not found (USERPROFILE/HOME not set). \
+                     Field cache will use current directory. Set field_cache_path in \
+                     EngineConfig to specify a persistent location."
+                );
+                PathBuf::from(".").join(".xbbg").join("field_cache.json")
+            }
+        }
     }
 
     /// Ensure cache is loaded from disk.
@@ -158,27 +166,38 @@ impl FieldTypeResolver {
     /// Load cache from JSON file.
     fn load_from_disk(&self) {
         if !self.cache_path.exists() {
-            debug!(path = %self.cache_path.display(), "Cache file does not exist");
+            info!(
+                path = %self.cache_path.display(),
+                "No field cache file found, will build cache from API queries"
+            );
             return;
         }
 
         let file = match fs::File::open(&self.cache_path) {
             Ok(f) => f,
             Err(e) => {
-                warn!(error = %e, "Failed to open cache file");
+                warn!(
+                    error = %e,
+                    path = %self.cache_path.display(),
+                    "Cannot read field cache file. Field types will be re-queried from \
+                     Bloomberg on each session. Check file permissions or set \
+                     field_cache_path in EngineConfig."
+                );
                 return;
             }
         };
-
         let reader = BufReader::new(file);
         let entries: Vec<FieldInfo> = match serde_json::from_reader(reader) {
             Ok(v) => v,
             Err(e) => {
-                warn!(error = %e, "Failed to parse cache file");
+                warn!(
+                    error = %e,
+                    path = %self.cache_path.display(),
+                    "Field cache file is corrupt, ignoring. Will rebuild from API queries."
+                );
                 return;
             }
         };
-
         let mut cache = self.cache.write().unwrap();
         for info in entries {
             let key = info.field_id.to_uppercase();
@@ -194,7 +213,14 @@ impl FieldTypeResolver {
 
         // Ensure directory exists
         if let Some(parent) = self.cache_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Failed to create cache dir: {e}"))?;
+            if let Err(e) = fs::create_dir_all(parent) {
+                return Err(format!(
+                    "Cannot create field cache directory '{}': {e}. \
+                     Field types will not persist between sessions. \
+                     Set field_cache_path in EngineConfig to a writable location.",
+                    parent.display()
+                ));
+            }
         }
 
         let cache = self.cache.read().unwrap();
@@ -207,11 +233,15 @@ impl FieldTypeResolver {
         let entries: Vec<&FieldInfo> = cache.values().collect();
 
         let file = fs::File::create(&self.cache_path)
-            .map_err(|e| format!("Failed to create file: {e}"))?;
+            .map_err(|e| format!(
+                "Cannot write field cache to '{}': {e}. \
+                 Field types will not persist between sessions.",
+                self.cache_path.display()
+            ))?;
         let writer = BufWriter::new(file);
 
         serde_json::to_writer_pretty(writer, &entries)
-            .map_err(|e| format!("Failed to write JSON: {e}"))?;
+            .map_err(|e| format!("Failed to serialize field cache: {e}"))?;
 
         info!(count = cache.len(), path = %self.cache_path.display(), "Saved field cache");
         Ok(())
@@ -365,13 +395,33 @@ impl Default for FieldTypeResolver {
     }
 }
 
-/// Global field type resolver (lazily initialized).
-static GLOBAL_RESOLVER: once_cell::sync::Lazy<Arc<FieldTypeResolver>> =
-    once_cell::sync::Lazy::new(|| Arc::new(FieldTypeResolver::new()));
+/// Global field type resolver (initialized on first access or via `init_global_resolver`).
+static GLOBAL_RESOLVER: std::sync::OnceLock<Arc<FieldTypeResolver>> = std::sync::OnceLock::new();
+
+/// Initialize the global field type resolver with an optional custom cache path.
+///
+/// If already initialized (e.g., from a previous `Engine::start()` call), this is a no-op
+/// and the existing resolver is returned. The cache path cannot be changed after initialization.
+pub fn init_global_resolver(cache_path: Option<PathBuf>) -> Arc<FieldTypeResolver> {
+    GLOBAL_RESOLVER
+        .get_or_init(|| {
+            let resolver = match cache_path {
+                Some(ref path) => {
+                    info!(path = %path.display(), "Using custom field cache path");
+                    FieldTypeResolver::with_cache_path(path.clone())
+                }
+                None => FieldTypeResolver::new(),
+            };
+            Arc::new(resolver)
+        })
+        .clone()
+}
 
 /// Get the global field type resolver.
+///
+/// If not yet initialized, creates one with the default cache path.
 pub fn global_resolver() -> Arc<FieldTypeResolver> {
-    GLOBAL_RESOLVER.clone()
+    init_global_resolver(None)
 }
 
 #[cfg(test)]
