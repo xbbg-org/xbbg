@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 SDK_EXPORTS = (
     "get_sdk_info",
     "set_sdk_path",

@@ -29,7 +29,6 @@ import narwhals.stable.v1 as nw
 from narwhals.typing import IntoFrame
 import pyarrow as pa
 
-from ._exports import BLP_MODULE_EXPORTS
 from xbbg.services import (
     ExtractorHint,
     Format,
@@ -38,6 +37,8 @@ from xbbg.services import (
     RequestParams,
     Service,
 )
+
+from ._exports import BLP_MODULE_EXPORTS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
