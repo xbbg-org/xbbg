@@ -200,27 +200,26 @@ impl HistDataState {
         date_value: &Option<Value>,
         row: &xbbg_core::Element,
     ) {
-        let field_names = self.field_names.clone();
+        let long_mode = self.long_mode;
+        let field_names = &self.field_names;
+        let field_types = &self.field_types;
+        let columns = &mut self.columns;
+
         for field_name in field_names {
             // Get the field value
-            let value = row.get_by_str(&field_name).and_then(|e| e.get_value(0));
-            let dtype = value.as_ref().map(|v| self.get_dtype(&field_name, v));
+            let value = row.get_by_str(field_name).and_then(|e| e.get_value(0));
+            let dtype = value
+                .as_ref()
+                .map(|v| dtype_from_hints(field_types, field_name, v));
 
-            append_long_value_row(
-                &mut self.columns,
-                self.long_mode,
-                &field_name,
-                &value,
-                dtype,
-                |columns| {
-                    columns.append_str("ticker", ticker);
-                    if let Some(date_value) = date_value {
-                        columns.append("date", date_value.clone());
-                    } else {
-                        columns.append_null("date");
-                    }
-                },
-            );
+            append_long_value_row(columns, long_mode, field_name, &value, dtype, |columns| {
+                columns.append_str("ticker", ticker);
+                if let Some(date_value) = date_value {
+                    columns.append("date", date_value.clone());
+                } else {
+                    columns.append_null("date");
+                }
+            });
         }
     }
 
@@ -231,10 +230,10 @@ impl HistDataState {
         date_value: &Option<Value>,
         row: &xbbg_core::Element,
     ) {
-        let field_names = self.field_names.clone();
+        let field_names = &self.field_names;
         append_wide_row(
             &mut self.columns,
-            &field_names,
+            field_names,
             |columns| {
                 columns.append_str("ticker", ticker);
                 if let Some(date_value) = date_value {
@@ -246,14 +245,17 @@ impl HistDataState {
             |field_name| row.get_by_str(field_name).and_then(|e| e.get_value(0)),
         );
     }
+}
 
-    /// Get dtype string for a value.
-    fn get_dtype(&self, field_name: &str, value: &Value) -> &'static str {
-        // Use type hint if available
-        if let Some(hint) = self.field_types.get(field_name) {
-            return hint.type_name();
-        }
-        // Otherwise infer from value
-        ArrowType::from_value(value).type_name()
+fn dtype_from_hints(
+    field_types: &HashMap<String, ArrowType>,
+    field_name: &str,
+    value: &Value<'_>,
+) -> &'static str {
+    // Use type hint if available
+    if let Some(hint) = field_types.get(field_name) {
+        return hint.type_name();
     }
+    // Otherwise infer from value
+    ArrowType::from_value(value).type_name()
 }

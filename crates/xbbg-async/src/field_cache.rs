@@ -232,12 +232,13 @@ impl FieldTypeResolver {
         // Collect entries
         let entries: Vec<&FieldInfo> = cache.values().collect();
 
-        let file = fs::File::create(&self.cache_path)
-            .map_err(|e| format!(
+        let file = fs::File::create(&self.cache_path).map_err(|e| {
+            format!(
                 "Cannot write field cache to '{}': {e}. \
                  Field types will not persist between sessions.",
                 self.cache_path.display()
-            ))?;
+            )
+        })?;
         let writer = BufWriter::new(file);
 
         serde_json::to_writer_pretty(writer, &entries)

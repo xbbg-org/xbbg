@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::refdata::LongMode;
 use super::typed_builder::ColumnSet;
 use xbbg_core::Value;
@@ -18,14 +20,16 @@ pub(crate) fn append_long_value_row<F>(
     match long_mode {
         LongMode::String => {
             if let Some(value) = value.as_ref() {
-                columns.append_str("value", &value_to_string(value));
+                let value_str = value_to_string(value);
+                columns.append_str("value", value_str.as_ref());
             } else {
                 columns.append_null("value");
             }
         }
         LongMode::WithMetadata => {
             if let Some(value) = value.as_ref() {
-                columns.append_str("value", &value_to_string(value));
+                let value_str = value_to_string(value);
+                columns.append_str("value", value_str.as_ref());
                 columns.append_str("dtype", dtype.unwrap_or("null"));
             } else {
                 columns.append_null("value");
@@ -182,18 +186,18 @@ pub(crate) fn format_timestamp_micros(micros: i64) -> String {
     }
 }
 
-pub(crate) fn value_to_string(value: &Value<'_>) -> String {
+pub(crate) fn value_to_string<'a>(value: &'a Value<'a>) -> Cow<'a, str> {
     match value {
-        Value::Null => String::new(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int32(i) => i.to_string(),
-        Value::Int64(i) => i.to_string(),
-        Value::Float64(f) => f.to_string(),
-        Value::String(s) | Value::Enum(s) => s.to_string(),
-        Value::Date32(days) => format_date32(*days),
-        Value::TimestampMicros(micros) => format_timestamp_micros(*micros),
-        Value::Datetime(dt) => format_timestamp_micros(dt.to_micros()),
-        Value::Time64Micros(micros) => format_time64_micros(*micros),
-        Value::Byte(b) => b.to_string(),
+        Value::Null => Cow::Borrowed(""),
+        Value::Bool(b) => Cow::Owned(b.to_string()),
+        Value::Int32(i) => Cow::Owned(i.to_string()),
+        Value::Int64(i) => Cow::Owned(i.to_string()),
+        Value::Float64(f) => Cow::Owned(f.to_string()),
+        Value::String(s) | Value::Enum(s) => Cow::Borrowed(s),
+        Value::Date32(days) => Cow::Owned(format_date32(*days)),
+        Value::TimestampMicros(micros) => Cow::Owned(format_timestamp_micros(*micros)),
+        Value::Datetime(dt) => Cow::Owned(format_timestamp_micros(dt.to_micros())),
+        Value::Time64Micros(micros) => Cow::Owned(format_time64_micros(*micros)),
+        Value::Byte(b) => Cow::Owned(b.to_string()),
     }
 }
