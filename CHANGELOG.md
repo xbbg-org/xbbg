@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b3] - 2026-03-06
+
 ### Added
 
 - **Backend enum and availability checks** ([#234](https://github.com/alpha-xone/xbbg/issues/234)): Ported `Backend` enum and backend availability infrastructure from `release/0.x` into `py-xbbg/src/xbbg/backend.py`. The canonical `Backend` enum now has all 13 backends (added `CUDF`, `MODIN`, `DASK`, `IBIS`, `PYSPARK`, `SQLFRAME`). New public helpers: `is_backend_available()`, `check_backend()`, `get_available_backends()`, `print_backend_status()`, `validate_backend_format()`, `is_format_supported()`, `get_supported_formats()`, `check_format_compatibility()`. Includes `MIN_VERSIONS`, `PACKAGE_NAMES`, `MODULE_NAMES`, and `SUPPORTED_FORMATS` dicts for version validation and actionable install instructions.
@@ -967,7 +969,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b2...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b3...HEAD
+[1.0.0b3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b2...v1.0.0b3
 [1.0.0b2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b1...v1.0.0b2
 [1.0.0b1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a3...v1.0.0b1
 [1.0.0a3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...v1.0.0a3
