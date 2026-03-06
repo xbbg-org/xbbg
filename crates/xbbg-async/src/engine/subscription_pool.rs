@@ -515,10 +515,103 @@ impl SubscriptionWorker {
     }
 }
 
+/// Cloneable command path for a claimed subscription worker.
+///
+/// This handle can enqueue commands on the worker, but it does not own the
+/// worker lease. Releasing the session back to the pool still requires the
+/// single-owner [`SessionClaim`].
+#[derive(Clone)]
+pub struct SubscriptionCommandHandle {
+    id: usize,
+    cmd_tx: mpsc::Sender<SubscriptionCommand>,
+}
+
+impl SubscriptionCommandHandle {
+    /// Start a new subscription on the claimed worker.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn subscribe(
+        &self,
+        service: String,
+        topics: Vec<String>,
+        fields: Vec<String>,
+        options: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+    ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
+        self.cmd_tx
+            .send(SubscriptionCommand::Subscribe {
+                service,
+                topics,
+                fields,
+                options,
+                flush_threshold,
+                overflow_policy,
+                stream,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+
+        reply_rx.await.map_err(|_| BlpAsyncError::ChannelClosed)
+    }
+
+    /// Add topics to an existing subscription.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn add_topics(
+        &self,
+        service: String,
+        topics: Vec<String>,
+        fields: Vec<String>,
+        options: Vec<String>,
+        flush_threshold: Option<usize>,
+        overflow_policy: Option<OverflowPolicy>,
+        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+    ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
+        self.cmd_tx
+            .send(SubscriptionCommand::AddTopics {
+                service,
+                topics,
+                fields,
+                options,
+                flush_threshold,
+                overflow_policy,
+                stream,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+
+        reply_rx.await.map_err(|_| BlpAsyncError::ChannelClosed)
+    }
+
+    /// Unsubscribe topics on the claimed worker.
+    pub async fn unsubscribe(&self, keys: Vec<SlabKey>) -> Result<(), BlpAsyncError> {
+        self.cmd_tx
+            .send(SubscriptionCommand::Unsubscribe { keys })
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+
+        Ok(())
+    }
+
+    /// Get the worker ID behind this command path.
+    pub fn worker_id(&self) -> usize {
+        self.id
+    }
+
+    fn signal_shutdown(&self) {
+        let _ = self.cmd_tx.try_send(SubscriptionCommand::Shutdown);
+    }
+}
+
 /// Handle to a subscription worker.
 pub struct SubscriptionWorkerHandle {
-    pub id: usize,
-    pub cmd_tx: mpsc::Sender<SubscriptionCommand>,
+    command: SubscriptionCommandHandle,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -546,15 +639,22 @@ impl SubscriptionWorkerHandle {
             })?;
 
         Ok(Self {
-            id,
-            cmd_tx,
+            command: SubscriptionCommandHandle { id, cmd_tx },
             thread: Some(thread),
         })
     }
 
+    fn id(&self) -> usize {
+        self.command.id
+    }
+
+    fn command_handle(&self) -> SubscriptionCommandHandle {
+        self.command.clone()
+    }
+
     /// Signal shutdown without waiting (non-blocking).
     fn signal_shutdown(&self) {
-        let _ = self.cmd_tx.try_send(SubscriptionCommand::Shutdown);
+        self.command.signal_shutdown();
     }
 
     /// Shutdown and wait for thread to finish (blocking).
@@ -621,7 +721,7 @@ impl SubscriptionSessionPool {
             let mut available = self.available.lock();
             if let Some(handle) = available.pop() {
                 xbbg_log::debug!(
-                    worker_id = handle.id,
+                    worker_id = handle.id(),
                     remaining = available.len(),
                     "claimed session from pool"
                 );
@@ -655,7 +755,7 @@ impl SubscriptionSessionPool {
     fn release(&self, handle: SubscriptionWorkerHandle) {
         let mut available = self.available.lock();
         xbbg_log::debug!(
-            worker_id = handle.id,
+            worker_id = handle.id(),
             pool_size = available.len() + 1,
             "session returned to pool"
         );
@@ -706,13 +806,25 @@ impl Drop for SubscriptionSessionPool {
 /// Handle to a claimed session.
 ///
 /// Releases the session back to the pool on drop.
-/// Uses `Arc` internally for `'static` lifetime (required for PyO3).
 pub struct SessionClaim {
     handle: Option<SubscriptionWorkerHandle>,
     pool: Arc<SubscriptionSessionPool>,
 }
 
 impl SessionClaim {
+    /// Clone the command path for this claimed worker.
+    ///
+    /// The returned handle can be used outside short-lived metadata locks, while
+    /// the [`SessionClaim`] continues to own the pool lease.
+    pub fn command_handle(&self) -> Result<SubscriptionCommandHandle, BlpAsyncError> {
+        self.handle
+            .as_ref()
+            .map(SubscriptionWorkerHandle::command_handle)
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "session already released".to_string(),
+            })
+    }
+
     /// Subscribe to topics on this session.
     ///
     /// # Arguments
@@ -732,18 +844,8 @@ impl SessionClaim {
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
-        let handle = self
-            .handle
-            .as_ref()
-            .ok_or_else(|| BlpAsyncError::ConfigError {
-                detail: "session already released".to_string(),
-            })?;
-
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-
-        handle
-            .cmd_tx
-            .send(SubscriptionCommand::Subscribe {
+        self.command_handle()?
+            .subscribe(
                 service,
                 topics,
                 fields,
@@ -751,12 +853,8 @@ impl SessionClaim {
                 flush_threshold,
                 overflow_policy,
                 stream,
-                reply: reply_tx,
-            })
+            )
             .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?;
-
-        reply_rx.await.map_err(|_| BlpAsyncError::ChannelClosed)
     }
 
     /// Add topics to an existing subscription.
@@ -771,18 +869,8 @@ impl SessionClaim {
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
-        let handle = self
-            .handle
-            .as_ref()
-            .ok_or_else(|| BlpAsyncError::ConfigError {
-                detail: "session already released".to_string(),
-            })?;
-
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-
-        handle
-            .cmd_tx
-            .send(SubscriptionCommand::AddTopics {
+        self.command_handle()?
+            .add_topics(
                 service,
                 topics,
                 fields,
@@ -790,35 +878,18 @@ impl SessionClaim {
                 flush_threshold,
                 overflow_policy,
                 stream,
-                reply: reply_tx,
-            })
+            )
             .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?;
-
-        reply_rx.await.map_err(|_| BlpAsyncError::ChannelClosed)
     }
 
     /// Unsubscribe from topics on this session.
     pub async fn unsubscribe(&self, keys: Vec<SlabKey>) -> Result<(), BlpAsyncError> {
-        let handle = self
-            .handle
-            .as_ref()
-            .ok_or_else(|| BlpAsyncError::ConfigError {
-                detail: "session already released".to_string(),
-            })?;
-
-        handle
-            .cmd_tx
-            .send(SubscriptionCommand::Unsubscribe { keys })
-            .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?;
-
-        Ok(())
+        self.command_handle()?.unsubscribe(keys).await
     }
 
     /// Get the worker ID.
     pub fn worker_id(&self) -> Option<usize> {
-        self.handle.as_ref().map(|h| h.id)
+        self.handle.as_ref().map(SubscriptionWorkerHandle::id)
     }
 }
 

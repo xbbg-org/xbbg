@@ -83,8 +83,10 @@ fn ext_pivot_to_wide(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<Py<Py
     let rust_batch = RecordBatch::from_pyarrow_bound(batch)
         .map_err(|e| PyValueError::new_err(format!("invalid RecordBatch: {e}")))?;
 
-    // Pivot
-    let result = pivot_to_wide(&rust_batch).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    // Release the GIL while running the Arrow transform on owned Rust data.
+    let result = py
+        .detach(move || pivot_to_wide(&rust_batch))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
     // Convert back to PyArrow
     result
@@ -95,10 +97,10 @@ fn ext_pivot_to_wide(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<Py<Py
 
 /// Check if a RecordBatch is in long format (ticker, field, value).
 #[pyfunction]
-fn ext_is_long_format(batch: &Bound<'_, PyAny>) -> PyResult<bool> {
+fn ext_is_long_format(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<bool> {
     let rust_batch = RecordBatch::from_pyarrow_bound(batch)
         .map_err(|e| PyValueError::new_err(format!("invalid RecordBatch: {e}")))?;
-    Ok(is_long_format(&rust_batch))
+    Ok(py.detach(move || is_long_format(&rust_batch)))
 }
 
 // =============================================================================

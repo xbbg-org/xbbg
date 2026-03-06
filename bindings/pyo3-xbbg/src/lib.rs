@@ -37,7 +37,7 @@
 //! RUST_LOG=xbbg_core=trace,xbbg_async=debug python my_script.py
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -50,7 +50,9 @@ use tokio::sync::{watch, Mutex};
 use xbbg_log::{debug, info, warn};
 
 use xbbg_async::engine::state::SubscriptionMetrics;
-use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
+use xbbg_async::engine::{
+    Engine, EngineConfig, ExtractorType, RequestParams, SubscriptionCommandHandle,
+};
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
 use xbbg_ext::{ExchangeInfo, MarketInfo, MarketTiming};
@@ -60,6 +62,7 @@ mod markets;
 mod recipes;
 
 type StreamBatchResult = Result<arrow::record_batch::RecordBatch, BlpError>;
+type StreamSender = tokio::sync::mpsc::Sender<StreamBatchResult>;
 type StreamReceiver = tokio::sync::mpsc::Receiver<StreamBatchResult>;
 type SharedStreamReceiver = Arc<Mutex<Option<StreamReceiver>>>;
 type SubscriptionMetricsMap = HashMap<usize, Arc<SubscriptionMetrics>>;
@@ -431,7 +434,10 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             subscription_stream_capacity: py_config.subscription_stream_capacity,
             overflow_policy,
             warmup_services: py_config.warmup_services.clone(),
-            field_cache_path: py_config.field_cache_path.as_ref().map(std::path::PathBuf::from),
+            field_cache_path: py_config
+                .field_cache_path
+                .as_ref()
+                .map(std::path::PathBuf::from),
         })
     }
 }
@@ -617,9 +623,9 @@ impl PyEngine {
     }
 
     /// Persist exchange cache to disk.
-    fn save_exchange_cache(&self) -> PyResult<()> {
-        self.engine
-            .save_exchange_cache()
+    fn save_exchange_cache(&self, py: Python<'_>) -> PyResult<()> {
+        let engine = self.engine.clone();
+        py.detach(move || engine.save_exchange_cache())
             .map_err(PyRuntimeError::new_err)
     }
 
@@ -673,9 +679,9 @@ impl PyEngine {
     }
 
     /// Save the field type cache to disk.
-    fn save_field_cache(&self) -> PyResult<()> {
-        self.engine
-            .save_field_cache()
+    fn save_field_cache(&self, py: Python<'_>) -> PyResult<()> {
+        let engine = self.engine.clone();
+        py.detach(move || engine.save_field_cache())
             .map_err(PyRuntimeError::new_err)
     }
 
@@ -953,6 +959,7 @@ impl PyEngine {
                 let py_sub = PySubscription {
                     rx: Arc::new(Mutex::new(Some(rx))),
                     stream: Arc::new(Mutex::new(Some(handle))),
+                    ops: Arc::new(Mutex::new(())),
                     close_signal,
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
@@ -1053,6 +1060,7 @@ impl PyEngine {
                 let py_sub = PySubscription {
                     rx: Arc::new(Mutex::new(Some(rx))),
                     stream: Arc::new(Mutex::new(Some(handle))),
+                    ops: Arc::new(Mutex::new(())),
                     close_signal,
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
@@ -1121,21 +1129,24 @@ impl PyEngine {
 /// - `Ok(batch)` — yields a PyArrow RecordBatch
 /// - `Err(error)` — raises a Python exception (BlpRequestError, BlpInternalError, etc.)
 ///
-/// Design: Uses separate locks for rx (data receiving) vs stream (add/remove/metadata)
-/// to avoid lock contention between iterating and modifying subscriptions.
+/// Design: Uses separate locks for rx (data receiving) vs stream (metadata snapshots),
+/// plus a dedicated operation lock to serialize add/remove/unsubscribe without holding
+/// the stream metadata lock across Bloomberg awaits.
 #[pyclass]
 pub struct PySubscription {
     /// Receiver for incoming data - separate lock so iteration doesn't block add/remove
     rx: SharedStreamReceiver,
     /// Stream handle for metadata and modification operations
     stream: Arc<Mutex<Option<SubscriptionStreamHandle>>>,
+    /// Serializes add/remove/unsubscribe without holding the stream lock across await.
+    ops: Arc<Mutex<()>>,
     /// Signal used to wake pending iteration during unsubscribe/close.
     close_signal: watch::Sender<bool>,
 }
 
 /// Internal handle for subscription metadata and operations (without the receiver)
 struct SubscriptionStreamHandle {
-    tx: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, BlpError>>,
+    tx: StreamSender,
     claim: Option<xbbg_async::engine::SessionClaim>,
     keys: Vec<usize>,
     topics: Vec<String>,
@@ -1147,6 +1158,155 @@ struct SubscriptionStreamHandle {
     overflow_policy: Option<OverflowPolicy>,
     _stream_capacity: Option<usize>,
     metrics: SubscriptionMetricsMap,
+}
+
+struct PendingAdd {
+    command: SubscriptionCommandHandle,
+    new_topics: Vec<String>,
+    service: String,
+    fields: Vec<String>,
+    options: Vec<String>,
+    flush_threshold: Option<usize>,
+    overflow_policy: Option<OverflowPolicy>,
+    tx: StreamSender,
+}
+
+struct PendingRemove {
+    command: SubscriptionCommandHandle,
+    topics: Vec<String>,
+    keys: Vec<usize>,
+}
+
+impl SubscriptionStreamHandle {
+    fn prepare_add(&self, tickers: Vec<String>) -> PyResult<Option<PendingAdd>> {
+        let claim = self
+            .claim
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("subscription already closed"))?;
+        let command = claim.command_handle().map_err(blp_async_error_to_pyerr)?;
+
+        let mut seen_topics = HashSet::new();
+        let new_topics: Vec<String> = tickers
+            .into_iter()
+            .filter(|t| !self.topic_to_key.contains_key(t) && seen_topics.insert(t.clone()))
+            .collect();
+
+        if new_topics.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(PendingAdd {
+            command,
+            new_topics,
+            service: self.service.clone(),
+            fields: self.fields.clone(),
+            options: self.options.clone(),
+            flush_threshold: self.flush_threshold,
+            overflow_policy: self.overflow_policy,
+            tx: self.tx.clone(),
+        }))
+    }
+
+    fn apply_add(
+        &mut self,
+        topics: &[String],
+        new_keys: Vec<usize>,
+        new_metrics: Vec<Arc<SubscriptionMetrics>>,
+    ) {
+        for ((topic, key), metric) in topics
+            .iter()
+            .zip(new_keys.iter())
+            .zip(new_metrics.into_iter())
+        {
+            self.topic_to_key.insert(topic.clone(), *key);
+            self.topics.push(topic.clone());
+            self.keys.push(*key);
+            self.metrics.insert(*key, metric);
+        }
+    }
+
+    fn prepare_remove(&self, tickers: Vec<String>) -> PyResult<Option<PendingRemove>> {
+        let claim = self
+            .claim
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("subscription already closed"))?;
+        let command = claim.command_handle().map_err(blp_async_error_to_pyerr)?;
+
+        let mut seen_keys = HashSet::new();
+        let mut topics = Vec::new();
+        let mut keys = Vec::new();
+
+        for ticker in tickers {
+            if let Some(&key) = self.topic_to_key.get(&ticker) {
+                if seen_keys.insert(key) {
+                    topics.push(ticker);
+                    keys.push(key);
+                }
+            }
+        }
+
+        if keys.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(PendingRemove {
+            command,
+            topics,
+            keys,
+        }))
+    }
+
+    fn apply_remove(&mut self, topics: &[String]) {
+        for topic in topics {
+            if let Some(key) = self.topic_to_key.remove(topic) {
+                self.topics.retain(|t| t != topic);
+                self.keys.retain(|k| *k != key);
+                self.metrics.remove(&key);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct SubscriptionSnapshot {
+    present: bool,
+    topics: Vec<String>,
+    fields: Vec<String>,
+    is_active: bool,
+    messages_received: u64,
+    dropped_batches: u64,
+    batches_sent: u64,
+    slow_consumer: bool,
+}
+
+impl PySubscription {
+    fn snapshot_from_stream(
+        stream: &Arc<Mutex<Option<SubscriptionStreamHandle>>>,
+    ) -> SubscriptionSnapshot {
+        let guard = stream.blocking_lock();
+        match guard.as_ref() {
+            Some(handle) => {
+                let (messages_received, dropped_batches, batches_sent, slow_consumer) =
+                    subscription_metrics_totals(&handle.metrics);
+                SubscriptionSnapshot {
+                    present: true,
+                    topics: handle.topics.clone(),
+                    fields: handle.fields.clone(),
+                    is_active: !handle.keys.is_empty() && handle.claim.is_some(),
+                    messages_received,
+                    dropped_batches,
+                    batches_sent,
+                    slow_consumer,
+                }
+            }
+            None => SubscriptionSnapshot::default(),
+        }
+    }
+
+    fn snapshot(&self, py: Python<'_>) -> SubscriptionSnapshot {
+        let stream = self.stream.clone();
+        py.detach(move || Self::snapshot_from_stream(&stream))
+    }
 }
 
 #[pymethods]
@@ -1189,134 +1349,109 @@ impl PySubscription {
     }
 
     /// Add tickers to the subscription dynamically.
-    /// Only locks the stream handle, not rx - so iteration can continue.
+    /// Iteration can continue while Bloomberg work is in flight.
     #[pyo3(signature = (tickers))]
     fn add<'py>(&self, py: Python<'py>, tickers: Vec<String>) -> PyResult<Bound<'py, PyAny>> {
         let stream = self.stream.clone();
+        let ops = self.ops.clone();
 
         debug!(tickers = ?tickers, "PySubscription: adding tickers");
 
         future_into_py(py, async move {
-            let mut guard = stream.lock().await;
-            let handle = guard
-                .as_mut()
-                .ok_or_else(|| PyRuntimeError::new_err("subscription closed"))?;
+            let _op_guard = ops.lock().await;
 
-            // Filter out already subscribed topics
-            let new_topics: Vec<String> = tickers
-                .into_iter()
-                .filter(|t| !handle.topic_to_key.contains_key(t))
-                .collect();
+            let pending = {
+                let guard = stream.lock().await;
+                let handle = guard
+                    .as_ref()
+                    .ok_or_else(|| PyRuntimeError::new_err("subscription closed"))?;
+                handle.prepare_add(tickers)?
+            };
 
-            if new_topics.is_empty() {
+            let Some(pending) = pending else {
                 return Ok(());
-            }
-
-            let claim = handle
-                .claim
-                .as_ref()
-                .ok_or_else(|| PyRuntimeError::new_err("subscription already closed"))?;
+            };
 
             // Add new topics using the same stream sender
-            let (new_keys, new_metrics) = claim
+            let (new_keys, new_metrics) = pending
+                .command
                 .add_topics(
-                    handle.service.clone(),
-                    new_topics.clone(),
-                    handle.fields.clone(),
-                    handle.options.clone(),
-                    handle.flush_threshold,
-                    handle.overflow_policy,
-                    handle.tx.clone(),
+                    pending.service.clone(),
+                    pending.new_topics.clone(),
+                    pending.fields.clone(),
+                    pending.options.clone(),
+                    pending.flush_threshold,
+                    pending.overflow_policy,
+                    pending.tx.clone(),
                 )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
 
-            // Track new topics
-            for ((topic, key), metric) in new_topics
-                .iter()
-                .zip(new_keys.iter())
-                .zip(new_metrics.into_iter())
-            {
-                handle.topic_to_key.insert(topic.clone(), *key);
-                handle.topics.push(topic.clone());
-                handle.keys.push(*key);
-                handle.metrics.insert(*key, metric);
-            }
+            let mut guard = stream.lock().await;
+            let handle = guard
+                .as_mut()
+                .ok_or_else(|| PyRuntimeError::new_err("subscription closed"))?;
+            handle.apply_add(&pending.new_topics, new_keys, new_metrics);
 
             Ok(())
         })
     }
 
     /// Remove tickers from the subscription dynamically.
-    /// Only locks the stream handle, not rx - so iteration can continue.
+    /// Iteration can continue while Bloomberg work is in flight.
     #[pyo3(signature = (tickers))]
     fn remove<'py>(&self, py: Python<'py>, tickers: Vec<String>) -> PyResult<Bound<'py, PyAny>> {
         let stream = self.stream.clone();
+        let ops = self.ops.clone();
 
         debug!(tickers = ?tickers, "PySubscription: removing tickers");
 
         future_into_py(py, async move {
+            let _op_guard = ops.lock().await;
+
+            let pending = {
+                let guard = stream.lock().await;
+                let handle = guard
+                    .as_ref()
+                    .ok_or_else(|| PyRuntimeError::new_err("subscription closed"))?;
+                handle.prepare_remove(tickers)?
+            };
+
+            let Some(pending) = pending else {
+                return Ok(());
+            };
+
+            pending
+                .command
+                .unsubscribe(pending.keys.clone())
+                .await
+                .map_err(blp_async_error_to_pyerr)?;
+
             let mut guard = stream.lock().await;
             let handle = guard
                 .as_mut()
                 .ok_or_else(|| PyRuntimeError::new_err("subscription closed"))?;
-
-            // Find keys for topics to remove
-            let mut keys_to_remove = Vec::new();
-            for topic in &tickers {
-                if let Some(key) = handle.topic_to_key.remove(topic) {
-                    keys_to_remove.push(key);
-                    handle.topics.retain(|t| t != topic);
-                    handle.keys.retain(|k| *k != key);
-                    handle.metrics.remove(&key);
-                }
-            }
-
-            if keys_to_remove.is_empty() {
-                return Ok(());
-            }
-
-            let claim = handle
-                .claim
-                .as_ref()
-                .ok_or_else(|| PyRuntimeError::new_err("subscription already closed"))?;
-
-            claim
-                .unsubscribe(keys_to_remove)
-                .await
-                .map_err(blp_async_error_to_pyerr)?;
+            handle.apply_remove(&pending.topics);
             Ok(())
         })
     }
 
     /// Get the currently subscribed tickers.
     #[getter]
-    fn tickers(&self) -> Vec<String> {
-        let guard = self.stream.blocking_lock();
-        match guard.as_ref() {
-            Some(handle) => handle.topics.clone(),
-            None => vec![],
-        }
+    fn tickers(&self, py: Python<'_>) -> Vec<String> {
+        self.snapshot(py).topics
     }
 
     /// Get the subscribed fields.
     #[getter]
-    fn fields(&self) -> Vec<String> {
-        let guard = self.stream.blocking_lock();
-        match guard.as_ref() {
-            Some(handle) => handle.fields.clone(),
-            None => vec![],
-        }
+    fn fields(&self, py: Python<'_>) -> Vec<String> {
+        self.snapshot(py).fields
     }
 
     /// Check if the subscription is still active.
     #[getter]
-    fn is_active(&self) -> bool {
-        let guard = self.stream.blocking_lock();
-        match guard.as_ref() {
-            Some(handle) => !handle.keys.is_empty() && handle.claim.is_some(),
-            None => false,
-        }
+    fn is_active(&self, py: Python<'_>) -> bool {
+        self.snapshot(py).is_active
     }
 
     /// Get subscription metrics.
@@ -1328,24 +1463,12 @@ impl PySubscription {
     /// - slow_consumer: bool — True if DATALOSS was received
     #[getter]
     fn stats(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let guard = self.stream.blocking_lock();
+        let snapshot = self.snapshot(py);
         let dict = pyo3::types::PyDict::new(py);
-        match guard.as_ref() {
-            Some(handle) => {
-                let (messages_received, dropped_batches, batches_sent, slow_consumer) =
-                    subscription_metrics_totals(&handle.metrics);
-                dict.set_item("messages_received", messages_received)?;
-                dict.set_item("dropped_batches", dropped_batches)?;
-                dict.set_item("batches_sent", batches_sent)?;
-                dict.set_item("slow_consumer", slow_consumer)?;
-            }
-            None => {
-                dict.set_item("messages_received", 0u64)?;
-                dict.set_item("dropped_batches", 0u64)?;
-                dict.set_item("batches_sent", 0u64)?;
-                dict.set_item("slow_consumer", false)?;
-            }
-        }
+        dict.set_item("messages_received", snapshot.messages_received)?;
+        dict.set_item("dropped_batches", snapshot.dropped_batches)?;
+        dict.set_item("batches_sent", snapshot.batches_sent)?;
+        dict.set_item("slow_consumer", snapshot.slow_consumer)?;
         Ok(dict.into())
     }
 
@@ -1356,11 +1479,13 @@ impl PySubscription {
     fn unsubscribe<'py>(&self, py: Python<'py>, drain: bool) -> PyResult<Bound<'py, PyAny>> {
         let stream_arc = self.stream.clone();
         let rx_arc = self.rx.clone();
+        let ops = self.ops.clone();
         let close_signal = self.close_signal.clone();
 
         debug!(drain = drain, "PySubscription: unsubscribing");
 
         future_into_py(py, async move {
+            let _op_guard = ops.lock().await;
             let _ = close_signal.send(true);
 
             // Take the stream handle first so add/remove operations stop immediately.
@@ -1428,18 +1553,15 @@ impl PySubscription {
         self.unsubscribe(py, false)
     }
 
-    fn __repr__(&self) -> String {
-        let guard = self.stream.blocking_lock();
-        match guard.as_ref() {
-            Some(handle) => {
-                format!(
-                    "Subscription(tickers={:?}, fields={:?}, active={})",
-                    handle.topics,
-                    handle.fields,
-                    !handle.keys.is_empty() && handle.claim.is_some()
-                )
-            }
-            None => "Subscription(closed)".to_string(),
+    fn __repr__(&self, py: Python<'_>) -> String {
+        let snapshot = self.snapshot(py);
+        if snapshot.present {
+            format!(
+                "Subscription(tickers={:?}, fields={:?}, active={})",
+                snapshot.topics, snapshot.fields, snapshot.is_active
+            )
+        } else {
+            "Subscription(closed)".to_string()
         }
     }
 }

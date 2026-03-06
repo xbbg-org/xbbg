@@ -14,7 +14,7 @@ pub mod state;
 mod subscription_pool;
 mod worker;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -36,7 +36,7 @@ pub use crate::services::ExtractorType;
 pub use request_pool::RequestWorkerPool;
 use state::SubscriptionMetrics;
 pub use state::{OutputFormat, SubscriptionState};
-pub use subscription_pool::{SessionClaim, SubscriptionSessionPool};
+pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
 
 /// Slab key for O(1) correlation dispatch.
@@ -1109,6 +1109,15 @@ pub struct SubscriptionStream {
 }
 
 impl SubscriptionStream {
+    fn command_handle(&self) -> Result<SubscriptionCommandHandle, BlpAsyncError> {
+        self.claim
+            .as_ref()
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "subscription already closed".to_string(),
+            })?
+            .command_handle()
+    }
+
     /// Receive the next batch of data or an error.
     ///
     /// Returns:
@@ -1128,17 +1137,13 @@ impl SubscriptionStream {
     ///
     /// New tickers will start receiving data on the same stream.
     pub async fn add(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
-        let claim = self
-            .claim
-            .as_ref()
-            .ok_or_else(|| BlpAsyncError::ConfigError {
-                detail: "subscription already closed".to_string(),
-            })?;
+        let command = self.command_handle()?;
+        let mut seen_topics = HashSet::new();
 
         // Filter out already subscribed topics
         let new_topics: Vec<String> = topics
             .into_iter()
-            .filter(|t| !self.topic_to_key.contains_key(t))
+            .filter(|t| !self.topic_to_key.contains_key(t) && seen_topics.insert(t.clone()))
             .collect();
 
         if new_topics.is_empty() {
@@ -1148,7 +1153,7 @@ impl SubscriptionStream {
         xbbg_log::debug!(topics = ?new_topics, "adding topics to subscription");
 
         // Add new topics using the same stream sender
-        let (new_keys, new_metrics) = claim
+        let (new_keys, new_metrics) = command
             .add_topics(
                 self.service.clone(),
                 new_topics.clone(),
@@ -1179,21 +1184,18 @@ impl SubscriptionStream {
     ///
     /// Removed tickers will stop receiving data.
     pub async fn remove(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
-        let claim = self
-            .claim
-            .as_ref()
-            .ok_or_else(|| BlpAsyncError::ConfigError {
-                detail: "subscription already closed".to_string(),
-            })?;
+        let command = self.command_handle()?;
+        let mut seen_keys = HashSet::new();
 
         // Find keys for topics to remove
         let mut keys_to_remove = Vec::new();
-        for topic in &topics {
-            if let Some(key) = self.topic_to_key.remove(topic) {
-                keys_to_remove.push(key);
-                self.topics.retain(|t| t != topic);
-                self.keys.retain(|k| *k != key);
-                self.metrics.remove(&key);
+        let mut topics_to_remove = Vec::new();
+        for topic in topics {
+            if let Some(&key) = self.topic_to_key.get(&topic) {
+                if seen_keys.insert(key) {
+                    keys_to_remove.push(key);
+                    topics_to_remove.push(topic);
+                }
             }
         }
 
@@ -1201,9 +1203,19 @@ impl SubscriptionStream {
             return Ok(());
         }
 
-        xbbg_log::debug!(topics = ?topics, keys = ?keys_to_remove, "removing topics from subscription");
+        xbbg_log::debug!(topics = ?topics_to_remove, keys = ?keys_to_remove, "removing topics from subscription");
 
-        claim.unsubscribe(keys_to_remove).await
+        command.unsubscribe(keys_to_remove.clone()).await?;
+
+        for topic in topics_to_remove {
+            if let Some(key) = self.topic_to_key.remove(&topic) {
+                self.topics.retain(|t| t != &topic);
+                self.keys.retain(|k| *k != key);
+                self.metrics.remove(&key);
+            }
+        }
+
+        Ok(())
     }
 
     /// Get the currently subscribed topics.
