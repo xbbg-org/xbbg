@@ -90,6 +90,8 @@ pub struct RequestParams {
     pub service: String,
     /// Request operation name (e.g., "ReferenceDataRequest")
     pub operation: String,
+    /// Actual Bloomberg operation name when using the RawRequest marker.
+    pub request_operation: Option<String>,
     /// Extractor type hint for Arrow conversion
     pub extractor: ExtractorType,
     /// Whether extractor was explicitly provided by the caller.
@@ -106,8 +108,6 @@ pub struct RequestParams {
     pub elements: Option<Vec<(String, String)>>,
     /// Raw kwargs to route into elements/overrides using schema-driven logic.
     pub kwargs: Option<HashMap<String, String>>,
-    /// JSON request body for complex nested structures (e.g., tasvc studyRequest)
-    pub json_elements: Option<String>,
     /// Start date (YYYYMMDD for bdh)
     pub start_date: Option<String>,
     /// End date (YYYYMMDD for bdh)
@@ -143,6 +143,21 @@ pub struct RequestParams {
 }
 
 impl RequestParams {
+    pub(crate) fn is_raw_request(&self) -> bool {
+        matches!(
+            Operation::from_str(&self.operation).unwrap(),
+            Operation::RawRequest
+        )
+    }
+
+    pub(crate) fn effective_operation(&self) -> &str {
+        if self.is_raw_request() {
+            self.request_operation.as_deref().unwrap_or_default()
+        } else {
+            &self.operation
+        }
+    }
+
     /// Apply default values derived from operation semantics.
     pub fn with_defaults(mut self) -> Self {
         if !self.extractor_set {
@@ -160,13 +175,22 @@ impl RequestParams {
             });
         }
 
-        if self.operation.is_empty() {
+        let operation = Operation::from_str(&self.operation).unwrap();
+        if matches!(operation, Operation::RawRequest) {
+            if self
+                .request_operation
+                .as_ref()
+                .is_none_or(|operation| operation.is_empty())
+            {
+                return Err(BlpAsyncError::ConfigError {
+                    detail: "request_operation is required for RawRequest".to_string(),
+                });
+            }
+        } else if self.operation.is_empty() {
             return Err(BlpAsyncError::ConfigError {
                 detail: "operation is required".to_string(),
             });
         }
-
-        let operation = Operation::from_str(&self.operation).unwrap();
 
         match operation {
             Operation::ReferenceData => self.validate_reference_data(),
@@ -365,6 +389,22 @@ impl RequestParams {
     }
 }
 
+fn merge_raw_kwargs_into_elements(params: &mut RequestParams, kwargs: HashMap<String, String>) {
+    if kwargs.is_empty() {
+        return;
+    }
+
+    let mut keys: Vec<String> = kwargs.keys().cloned().collect();
+    keys.sort();
+
+    let elements = params.elements.get_or_insert_with(Vec::new);
+    for key in keys {
+        if let Some(value) = kwargs.get(&key) {
+            elements.push((key, value.clone()));
+        }
+    }
+}
+
 /// Validation mode for request validation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ValidationMode {
@@ -548,6 +588,11 @@ impl Engine {
         params.validate()?;
 
         let kwargs = params.kwargs.take().unwrap_or_default();
+        if params.is_raw_request() {
+            merge_raw_kwargs_into_elements(&mut params, kwargs);
+            return Ok(params);
+        }
+
         let routed = RequestBuilder::route_kwargs(
             &self.schema_cache,
             &params.service,
@@ -690,7 +735,7 @@ impl Engine {
         let claim = self.subscription_pool.claim()?;
 
         // Start the subscription
-        let (keys, metrics) = claim
+        let (keys, raw_metrics) = claim
             .subscribe(
                 service.clone(),
                 topics.clone(),
@@ -705,6 +750,7 @@ impl Engine {
         // Build topic -> key mapping
         let topic_to_key: std::collections::HashMap<String, SlabKey> =
             topics.iter().cloned().zip(keys.iter().cloned()).collect();
+        let metrics = keys.iter().cloned().zip(raw_metrics).collect();
 
         let stream = SubscriptionStream {
             rx,
@@ -1044,8 +1090,8 @@ pub struct SubscriptionStream {
     service: String,
     /// Subscription options.
     options: Vec<String>,
-    /// Metrics for all subscribed topics (shared with SubscriptionState).
-    metrics: Vec<Arc<SubscriptionMetrics>>,
+    /// Metrics keyed by slab key for active subscribed topics.
+    metrics: std::collections::HashMap<SlabKey, Arc<SubscriptionMetrics>>,
     /// Optional flush threshold override.
     flush_threshold: Option<usize>,
     /// Optional overflow policy override.
@@ -1105,12 +1151,16 @@ impl SubscriptionStream {
             .await?;
 
         // Track new topics
-        for (topic, key) in new_topics.iter().zip(new_keys.iter()) {
+        for ((topic, key), metric) in new_topics
+            .iter()
+            .zip(new_keys.iter())
+            .zip(new_metrics.into_iter())
+        {
             self.topic_to_key.insert(topic.clone(), *key);
             self.topics.push(topic.clone());
             self.keys.push(*key);
+            self.metrics.insert(*key, metric);
         }
-        self.metrics.extend(new_metrics);
 
         Ok(())
     }
@@ -1133,6 +1183,7 @@ impl SubscriptionStream {
                 keys_to_remove.push(key);
                 self.topics.retain(|t| t != topic);
                 self.keys.retain(|k| *k != key);
+                self.metrics.remove(&key);
             }
         }
 
@@ -1185,6 +1236,7 @@ impl SubscriptionStream {
         self.keys.clear();
         self.topics.clear();
         self.topic_to_key.clear();
+        self.metrics.clear();
 
         Ok(remaining)
     }
@@ -1209,7 +1261,7 @@ impl SubscriptionStream {
         SessionClaim,
         Vec<SlabKey>,
         std::collections::HashMap<String, SlabKey>,
-        Vec<Arc<SubscriptionMetrics>>,
+        std::collections::HashMap<SlabKey, Arc<SubscriptionMetrics>>,
         Option<usize>,          // flush_threshold
         Option<OverflowPolicy>, // overflow_policy
         String,                 // service
@@ -1254,5 +1306,61 @@ impl SubscriptionStream {
 impl Drop for SubscriptionStream {
     fn drop(&mut self) {
         // Session is automatically released when claim is dropped
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_request_uses_request_operation_for_validation_and_dispatch() {
+        let params = RequestParams {
+            service: Service::RefData.to_string(),
+            operation: Operation::RawRequest.to_string(),
+            request_operation: Some(Operation::ReferenceData.to_string()),
+            ..Default::default()
+        };
+
+        assert!(params.is_raw_request());
+        assert_eq!(params.effective_operation(), "ReferenceDataRequest");
+        assert!(params.validate().is_ok());
+    }
+
+    #[test]
+    fn raw_request_requires_request_operation() {
+        let params = RequestParams {
+            service: Service::RefData.to_string(),
+            operation: Operation::RawRequest.to_string(),
+            ..Default::default()
+        };
+
+        let err = params.validate().unwrap_err().to_string();
+        assert!(err.contains("request_operation is required for RawRequest"));
+    }
+
+    #[test]
+    fn merge_raw_kwargs_into_elements_preserves_existing_elements_and_sorts_kwargs() {
+        let mut params = RequestParams {
+            elements: Some(vec![("alpha".to_string(), "1".to_string())]),
+            ..Default::default()
+        };
+
+        merge_raw_kwargs_into_elements(
+            &mut params,
+            HashMap::from([
+                ("zeta".to_string(), "9".to_string()),
+                ("beta".to_string(), "2".to_string()),
+            ]),
+        );
+
+        assert_eq!(
+            params.elements,
+            Some(vec![
+                ("alpha".to_string(), "1".to_string()),
+                ("beta".to_string(), "2".to_string()),
+                ("zeta".to_string(), "9".to_string()),
+            ])
+        );
     }
 }

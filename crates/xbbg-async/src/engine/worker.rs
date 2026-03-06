@@ -29,6 +29,35 @@ use super::state::{
 };
 use super::{EngineConfig, ExtractorType, RequestParams};
 
+fn iter_named_request_parameters(
+    params: &RequestParams,
+) -> impl Iterator<Item = (&str, &str)> + '_ {
+    params
+        .elements
+        .iter()
+        .flat_map(|pairs| pairs.iter())
+        .chain(params.options.iter().flat_map(|pairs| pairs.iter()))
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+}
+
+fn apply_named_request_parameter(
+    request: &mut xbbg_core::Request,
+    name: &str,
+    value: &str,
+) -> Result<(), BlpError> {
+    if name.contains('.') {
+        if let Ok(int_val) = value.parse::<i32>() {
+            request.set_nested_int(name, int_val)?;
+        } else {
+            request.set_nested_str(name, value)?;
+        }
+    } else if request.set_str(name, value).is_err() {
+        request.append_str(name, value)?;
+    }
+
+    Ok(())
+}
+
 /// Commands sent to a request worker.
 pub enum WorkerCommand {
     /// Execute a request and send result via oneshot channel.
@@ -366,7 +395,7 @@ impl RequestWorker {
         let service = self.services.get(&params.service).unwrap();
         xbbg_log::debug!(
             worker_id = self.id,
-            operation = %params.operation,
+            operation = %params.effective_operation(),
             securities = ?params.securities,
             start_date = ?params.start_date,
             end_date = ?params.end_date,
@@ -383,7 +412,7 @@ impl RequestWorker {
             worker_id = self.id,
             key = key,
             service = %params.service,
-            operation = %params.operation,
+            operation = %params.effective_operation(),
             "request sent"
         );
         Ok(())
@@ -521,7 +550,7 @@ impl RequestWorker {
             worker_id = self.id,
             key = key,
             service = %params.service,
-            operation = %params.operation,
+            operation = %params.effective_operation(),
             "stream request sent"
         );
         Ok(())
@@ -533,8 +562,9 @@ impl RequestWorker {
         service: &Service,
         params: &RequestParams,
     ) -> Result<xbbg_core::Request, BlpError> {
-        xbbg_log::trace!(operation = %params.operation, "creating request");
-        let mut request = service.create_request(&params.operation)?;
+        let operation = params.effective_operation();
+        xbbg_log::trace!(operation = %operation, "creating request");
+        let mut request = service.create_request(operation)?;
         xbbg_log::trace!("request created");
 
         // Set securities (multi or single)
@@ -603,26 +633,11 @@ impl RequestWorker {
             request.set_int("interval", interval as i32)?;
         }
 
-        // Set generic elements (for BQL, bsrch, options, etc.)
-        // - Dotted paths (e.g., "priceSource.securityName") use set_nested_str for nested elements
-        // - Non-dotted names try set_str first (for scalars), fall back to append_str (for arrays)
-        if let Some(ref elements) = params.elements {
-            for (name, value) in elements {
-                if name.contains('.') {
-                    // Nested element path - use set_nested_str
-                    // Try as string first, then try as integer if it looks like a number
-                    if let Ok(int_val) = value.parse::<i32>() {
-                        request.set_nested_int(name, int_val)?;
-                    } else {
-                        request.set_nested_str(name, value)?;
-                    }
-                } else {
-                    // Non-nested: try scalar set first, fall back to append for arrays
-                    if request.set_str(name, value).is_err() {
-                        request.append_str(name, value)?;
-                    }
-                }
-            }
+        // Apply generic request parameters from both `elements` and request-level `options`.
+        // - Dotted paths (e.g., "priceSource.securityName") use nested setters
+        // - Non-dotted names try scalar set first, fall back to append for arrays
+        for (name, value) in iter_named_request_parameters(params) {
+            apply_named_request_parameter(&mut request, name, value)?;
         }
 
         // Set apiflds field IDs
@@ -842,5 +857,37 @@ impl Drop for WorkerHandle {
         // Non-blocking: just signal, don't wait
         // Thread will terminate when it sees Shutdown or when process exits
         self.signal_shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::RequestParams;
+
+    #[test]
+    fn iter_named_request_parameters_includes_options_after_elements() {
+        let params = RequestParams {
+            elements: Some(vec![(
+                "periodicitySelection".to_string(),
+                "DAILY".to_string(),
+            )]),
+            options: Some(vec![
+                ("adjustmentSplit".to_string(), "true".to_string()),
+                ("adjustmentNormal".to_string(), "true".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        let collected: Vec<(&str, &str)> = iter_named_request_parameters(&params).collect();
+
+        assert_eq!(
+            collected,
+            vec![
+                ("periodicitySelection", "DAILY"),
+                ("adjustmentSplit", "true"),
+                ("adjustmentNormal", "true"),
+            ]
+        );
     }
 }

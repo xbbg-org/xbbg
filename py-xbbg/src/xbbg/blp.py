@@ -722,6 +722,7 @@ async def arequest(
     service: str | Service,
     operation: str | Operation,
     *,
+    request_operation: str | Operation | None = None,
     securities: str | Sequence[str] | None = None,
     security: str | None = None,
     fields: str | Sequence[str] | None = None,
@@ -755,6 +756,8 @@ async def arequest(
     Args:
         service: Bloomberg service URI (e.g., Service.REFDATA or "//blp/refdata").
         operation: Request operation name (e.g., Operation.REFERENCE_DATA).
+        request_operation: Actual Bloomberg operation name when using
+            ``Operation.RAW_REQUEST`` as the low-level escape hatch.
         securities: List of security identifiers (for multi-security requests).
         security: Single security identifier (for intraday requests).
         fields: List of field names to retrieve.
@@ -808,6 +811,16 @@ async def arequest(
             securities=["AAPL US Equity"],
             fields=["PX_LAST"],
         )
+
+        # Raw request marker with explicit Bloomberg operation
+        df = await arequest(
+            Service.REFDATA,
+            Operation.RAW_REQUEST,
+            request_operation=Operation.REFERENCE_DATA,
+            extractor=ExtractorHint.REFDATA,
+            securities=["AAPL US Equity"],
+            fields=["PX_LAST"],
+        )
     """
     # Normalize inputs
     securities_list = _normalize_tickers(securities) if securities is not None else None
@@ -854,6 +867,7 @@ async def arequest(
     params = RequestParams(
         service=service,
         operation=operation,
+        request_operation=request_operation,
         securities=securities_list,
         security=security,
         fields=fields_list,
@@ -905,6 +919,7 @@ def request(
     service: str | Service,
     operation: str | Operation,
     *,
+    request_operation: str | Operation | None = None,
     securities: str | Sequence[str] | None = None,
     security: str | None = None,
     fields: str | Sequence[str] | None = None,

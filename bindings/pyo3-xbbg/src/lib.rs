@@ -46,7 +46,7 @@ use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes::tokio::future_into_py;
-use tokio::sync::Mutex;
+use tokio::sync::{watch, Mutex};
 use xbbg_log::{debug, info, warn};
 
 use xbbg_async::engine::state::SubscriptionMetrics;
@@ -62,6 +62,44 @@ mod recipes;
 type StreamBatchResult = Result<arrow::record_batch::RecordBatch, BlpError>;
 type StreamReceiver = tokio::sync::mpsc::Receiver<StreamBatchResult>;
 type SharedStreamReceiver = Arc<Mutex<Option<StreamReceiver>>>;
+type SubscriptionMetricsMap = HashMap<usize, Arc<SubscriptionMetrics>>;
+
+async fn wait_for_subscription_close(close_rx: &mut watch::Receiver<bool>) {
+    if *close_rx.borrow() {
+        return;
+    }
+
+    while close_rx.changed().await.is_ok() {
+        if *close_rx.borrow() {
+            return;
+        }
+    }
+}
+
+fn subscription_metrics_totals(metrics: &SubscriptionMetricsMap) -> (u64, u64, u64, bool) {
+    let messages_received = metrics
+        .values()
+        .map(|m| m.messages_received.load(Ordering::Relaxed))
+        .sum();
+    let dropped_batches = metrics
+        .values()
+        .map(|m| m.dropped_batches.load(Ordering::Relaxed))
+        .sum();
+    let batches_sent = metrics
+        .values()
+        .map(|m| m.batches_sent.load(Ordering::Relaxed))
+        .sum();
+    let slow_consumer = metrics
+        .values()
+        .any(|m| m.slow_consumer.load(Ordering::Relaxed));
+
+    (
+        messages_received,
+        dropped_batches,
+        batches_sent,
+        slow_consumer,
+    )
+}
 
 // =============================================================================
 // Python Exception Hierarchy (mirrors py-xbbg/src/xbbg/exceptions.py)
@@ -458,10 +496,12 @@ impl PyEngine {
     /// Required keys:
     /// - service: Bloomberg service URI (e.g., "//blp/refdata")
     /// - operation: Request operation name (e.g., "ReferenceDataRequest")
+    ///   Use "" / Operation.RAW_REQUEST together with request_operation for raw mode.
     ///
     /// Optional keys:
     /// - extractor: Extractor type hint (e.g., "refdata", "histdata", "intraday_bar")
     ///   If omitted, Rust resolves a default from `operation`.
+    /// - request_operation: Actual Bloomberg operation name when operation=""
     ///
     /// Optional keys (depend on request type):
     /// - securities: List of security identifiers
@@ -873,6 +913,7 @@ impl PyEngine {
             let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
                 stream.into_parts();
 
+            let (close_signal, _) = watch::channel(false);
             let handle = SubscriptionStreamHandle {
                 tx,
                 claim: Some(claim),
@@ -892,6 +933,7 @@ impl PyEngine {
                 let py_sub = PySubscription {
                     rx: Arc::new(Mutex::new(Some(rx))),
                     stream: Arc::new(Mutex::new(Some(handle))),
+                    close_signal,
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
             })
@@ -971,6 +1013,7 @@ impl PyEngine {
             let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
                 stream.into_parts();
 
+            let (close_signal, _) = watch::channel(false);
             let handle = SubscriptionStreamHandle {
                 tx,
                 claim: Some(claim),
@@ -990,6 +1033,7 @@ impl PyEngine {
                 let py_sub = PySubscription {
                     rx: Arc::new(Mutex::new(Some(rx))),
                     stream: Arc::new(Mutex::new(Some(handle))),
+                    close_signal,
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
             })
@@ -1065,6 +1109,8 @@ pub struct PySubscription {
     rx: SharedStreamReceiver,
     /// Stream handle for metadata and modification operations
     stream: Arc<Mutex<Option<SubscriptionStreamHandle>>>,
+    /// Signal used to wake pending iteration during unsubscribe/close.
+    close_signal: watch::Sender<bool>,
 }
 
 /// Internal handle for subscription metadata and operations (without the receiver)
@@ -1080,7 +1126,7 @@ struct SubscriptionStreamHandle {
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
     _stream_capacity: Option<usize>,
-    metrics: Vec<Arc<SubscriptionMetrics>>,
+    metrics: SubscriptionMetricsMap,
 }
 
 #[pymethods]
@@ -1098,20 +1144,26 @@ impl PySubscription {
     /// Raises StopAsyncIteration when the subscription is closed.
     fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let rx = self.rx.clone();
+        let close_signal = self.close_signal.clone();
 
         future_into_py(py, async move {
+            let mut close_rx = close_signal.subscribe();
             let item = {
                 let mut guard = rx.lock().await;
                 let rx_ref = guard
                     .as_mut()
                     .ok_or_else(|| PyStopAsyncIteration::new_err("subscription closed"))?;
-                rx_ref.recv().await
+                tokio::select! {
+                    item = rx_ref.recv() => Ok(item),
+                    _ = wait_for_subscription_close(&mut close_rx) => Err(()),
+                }
             };
 
             match item {
-                Some(Ok(batch)) => Python::attach(|py| record_batch_to_pyarrow(py, batch)),
-                Some(Err(blp_err)) => Err(blp_error_to_pyerr(blp_err)),
-                None => Err(PyStopAsyncIteration::new_err("subscription ended")),
+                Ok(Some(Ok(batch))) => Python::attach(|py| record_batch_to_pyarrow(py, batch)),
+                Ok(Some(Err(blp_err))) => Err(blp_error_to_pyerr(blp_err)),
+                Ok(None) => Err(PyStopAsyncIteration::new_err("subscription ended")),
+                Err(()) => Err(PyStopAsyncIteration::new_err("subscription closed")),
             }
         })
     }
@@ -1160,12 +1212,16 @@ impl PySubscription {
                 .map_err(blp_async_error_to_pyerr)?;
 
             // Track new topics
-            for (topic, key) in new_topics.iter().zip(new_keys.iter()) {
+            for ((topic, key), metric) in new_topics
+                .iter()
+                .zip(new_keys.iter())
+                .zip(new_metrics.into_iter())
+            {
                 handle.topic_to_key.insert(topic.clone(), *key);
                 handle.topics.push(topic.clone());
                 handle.keys.push(*key);
+                handle.metrics.insert(*key, metric);
             }
-            handle.metrics.extend(new_metrics);
 
             Ok(())
         })
@@ -1192,6 +1248,7 @@ impl PySubscription {
                     keys_to_remove.push(key);
                     handle.topics.retain(|t| t != topic);
                     handle.keys.retain(|k| *k != key);
+                    handle.metrics.remove(&key);
                 }
             }
 
@@ -1255,25 +1312,8 @@ impl PySubscription {
         let dict = pyo3::types::PyDict::new(py);
         match guard.as_ref() {
             Some(handle) => {
-                let messages_received: u64 = handle
-                    .metrics
-                    .iter()
-                    .map(|m| m.messages_received.load(Ordering::Relaxed))
-                    .sum();
-                let dropped_batches: u64 = handle
-                    .metrics
-                    .iter()
-                    .map(|m| m.dropped_batches.load(Ordering::Relaxed))
-                    .sum();
-                let batches_sent: u64 = handle
-                    .metrics
-                    .iter()
-                    .map(|m| m.batches_sent.load(Ordering::Relaxed))
-                    .sum();
-                let slow_consumer: bool = handle
-                    .metrics
-                    .iter()
-                    .any(|m| m.slow_consumer.load(Ordering::Relaxed));
+                let (messages_received, dropped_batches, batches_sent, slow_consumer) =
+                    subscription_metrics_totals(&handle.metrics);
                 dict.set_item("messages_received", messages_received)?;
                 dict.set_item("dropped_batches", dropped_batches)?;
                 dict.set_item("batches_sent", batches_sent)?;
@@ -1296,17 +1336,16 @@ impl PySubscription {
     fn unsubscribe<'py>(&self, py: Python<'py>, drain: bool) -> PyResult<Bound<'py, PyAny>> {
         let stream_arc = self.stream.clone();
         let rx_arc = self.rx.clone();
+        let close_signal = self.close_signal.clone();
 
         debug!(drain = drain, "PySubscription: unsubscribing");
 
         future_into_py(py, async move {
-            // Take both the stream handle and rx
+            let _ = close_signal.send(true);
+
+            // Take the stream handle first so add/remove operations stop immediately.
             let handle = {
                 let mut guard = stream_arc.lock().await;
-                guard.take()
-            };
-            let rx = {
-                let mut guard = rx_arc.lock().await;
                 guard.take()
             };
 
@@ -1314,6 +1353,10 @@ impl PySubscription {
 
             // Drain remaining batches if requested (skip errors)
             if drain {
+                let rx = {
+                    let mut guard = rx_arc.lock().await;
+                    guard.take()
+                };
                 if let Some(mut rx) = rx {
                     while let Ok(item) = rx.try_recv() {
                         if let Ok(batch) = item {
@@ -1404,6 +1447,11 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         }
         None => (ExtractorType::default(), false),
     };
+
+    let request_operation: Option<String> = dict
+        .get_item("request_operation")?
+        .map(|v| v.extract())
+        .transpose()?;
 
     // Optional fields
     let securities: Option<Vec<String>> = dict
@@ -1497,14 +1545,10 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
 
     let format: Option<String> = dict.get_item("format")?.map(|v| v.extract()).transpose()?;
 
-    let json_elements: Option<String> = dict
-        .get_item("json_elements")?
-        .map(|v| v.extract())
-        .transpose()?;
-
     Ok(RequestParams {
         service,
         operation,
+        request_operation,
         extractor,
         extractor_set,
         securities,
@@ -1513,7 +1557,6 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         overrides,
         elements,
         kwargs,
-        json_elements,
         start_date,
         end_date,
         start_datetime,
@@ -1665,5 +1708,36 @@ fn get_log_level() -> &'static str {
         xbbg_log::Level::INFO => "info",
         xbbg_log::Level::WARN => "warn",
         xbbg_log::Level::ERROR => "error",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicU64};
+
+    fn metrics(
+        messages_received: u64,
+        dropped_batches: u64,
+        batches_sent: u64,
+        slow_consumer: bool,
+    ) -> Arc<SubscriptionMetrics> {
+        Arc::new(SubscriptionMetrics {
+            messages_received: Arc::new(AtomicU64::new(messages_received)),
+            dropped_batches: Arc::new(AtomicU64::new(dropped_batches)),
+            batches_sent: Arc::new(AtomicU64::new(batches_sent)),
+            slow_consumer: Arc::new(AtomicBool::new(slow_consumer)),
+        })
+    }
+
+    #[test]
+    fn subscription_metrics_totals_only_counts_active_entries() {
+        let mut metrics_map = SubscriptionMetricsMap::new();
+        metrics_map.insert(10, metrics(5, 1, 4, false));
+        metrics_map.insert(11, metrics(7, 2, 6, true));
+
+        metrics_map.remove(&10);
+
+        assert_eq!(subscription_metrics_totals(&metrics_map), (7, 2, 6, true));
     }
 }

@@ -52,12 +52,13 @@ class RequestParams:
     Attributes:
         service: Bloomberg service URI (e.g., ``"//blp/refdata"``).
         operation: Request operation name (e.g., ``"ReferenceDataRequest"``).
+        request_operation: Actual Bloomberg operation name when using
+            ``Operation.RAW_REQUEST`` as the low-level escape hatch.
         securities: List of security identifiers (for multi-security requests).
         security: Single security identifier (for intraday requests).
         fields: List of field names to retrieve.
         overrides: List of (field, value) tuples for field overrides.
         elements: List of (name, value) tuples for generic request elements (BQL, bsrch).
-        json_elements: JSON string for complex nested request structures (tasvc).
         start_date: Start date for historical requests (YYYYMMDD format).
         end_date: End date for historical requests (YYYYMMDD format).
         start_datetime: Start datetime for intraday requests (ISO format).
@@ -80,12 +81,12 @@ class RequestParams:
 
     service: str | Service
     operation: str | Operation
+    request_operation: str | Operation | None = None
     securities: Sequence[str] | None = None
     security: str | None = None
     fields: Sequence[str] | None = None
     overrides: Sequence[tuple[str, str]] | None = None
     elements: Sequence[tuple[str, str]] | None = None
-    json_elements: str | None = None
     start_date: str | None = None
     end_date: str | None = None
     start_datetime: str | None = None
@@ -107,6 +108,8 @@ class RequestParams:
             self.service = self.service.value
         if isinstance(self.operation, Operation):
             self.operation = self.operation.value
+        if isinstance(self.request_operation, Operation):
+            self.request_operation = self.request_operation.value
         if isinstance(self.output, str):
             self.output = OutputMode(self.output)
 
@@ -118,6 +121,12 @@ class RequestParams:
         """
         if not self.service:
             raise BlpValidationError("service is required")
+
+        if self.operation == Operation.RAW_REQUEST.value:
+            if not self.request_operation:
+                raise BlpValidationError("request_operation is required for RawRequest")
+            return
+
         if not self.operation:
             raise BlpValidationError("operation is required")
 
@@ -196,6 +205,9 @@ class RequestParams:
             "operation": self.operation,
         }
 
+        if self.request_operation is not None:
+            result["request_operation"] = self.request_operation
+
         # Only pass extractor when explicitly set by the caller
         if self.extractor is not None:
             result["extractor"] = self.extractor.value
@@ -217,8 +229,6 @@ class RequestParams:
             result["overrides"] = list(self.overrides)
         if self.elements is not None:
             result["elements"] = list(self.elements)
-        if self.json_elements is not None:
-            result["json_elements"] = self.json_elements
         if self.start_date is not None:
             result["start_date"] = self.start_date
         if self.end_date is not None:
