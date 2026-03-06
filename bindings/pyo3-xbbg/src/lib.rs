@@ -1096,6 +1096,7 @@ impl PyEngine {
 
 impl PyEngine {
     /// Shared helper: release GIL and start Engine on a blocking thread.
+    #[allow(clippy::result_large_err)]
     fn start_engine(py: Python<'_>, config: EngineConfig) -> PyResult<Self> {
         // Release GIL during blocking Engine::start().
         // Engine::start() creates Bloomberg sessions and waits for them to connect,

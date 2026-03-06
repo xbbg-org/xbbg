@@ -222,7 +222,7 @@ def configure(
         xbbg.configure(cfg, subscription_pool_size=2)
 
         # Option 4: Custom field cache location
-        xbbg.configure(field_cache_path='/data/bloomberg/field_cache.json')
+        xbbg.configure(field_cache_path="/data/bloomberg/field_cache.json")
     """
     global _config, _engine
 
@@ -815,6 +815,7 @@ async def arequest(
     nw_df = nw.from_native(table)
     return _convert_backend(nw_df, backend)
 
+
 # =============================================================================
 # Async API - Typed Convenience Functions
 # =============================================================================
@@ -1066,6 +1067,7 @@ def _strip_signature_annotations(func: Callable[..., Any]) -> str:
     stripped_params = [param.replace(annotation=inspect._empty) for param in signature.parameters.values()]
     stripped = signature.replace(parameters=stripped_params, return_annotation=inspect._empty)
     return str(stripped)
+
 
 def _build_sync_wrapper(
     sync_name: str,
@@ -1413,6 +1415,7 @@ async def asubscribe(
 
     return Subscription(py_sub, raw=raw or tick_mode, backend=effective_backend, tick_mode=tick_mode)
 
+
 async def astream(
     tickers: str | list[str],
     fields: str | list[str],
@@ -1627,6 +1630,7 @@ async def avwap(
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
 
+
 # =============================================================================
 # MKTBAR API - Real-time Streaming OHLC Bars
 # =============================================================================
@@ -1693,6 +1697,7 @@ async def amktbar(
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
 
+
 # =============================================================================
 # MKTDEPTH API - Level 2 Market Depth (B-PIPE Only)
 # =============================================================================
@@ -1755,6 +1760,7 @@ async def adepth(
         raise
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
+
 
 # =============================================================================
 # MKTLIST API - Option/Futures Chains (B-PIPE Only)
@@ -1824,6 +1830,7 @@ async def achains(
         raise
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
+
 
 # =============================================================================
 # Technical Analysis API - Bloomberg Technical Analysis Service
@@ -3316,6 +3323,7 @@ async def afieldInfo(
     """
     return await abflds(fields=fields, backend=backend, **kwargs)
 
+
 async def afieldSearch(
     searchterm: str,
     *,
@@ -3339,6 +3347,7 @@ async def afieldSearch(
         df = await afieldSearch("vwap")
     """
     return await abflds(search_spec=searchterm, backend=backend, **kwargs)
+
 
 # ─── Schema Introspection API ────────────────────────────────────────────────
 

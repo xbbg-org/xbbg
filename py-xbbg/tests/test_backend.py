@@ -61,8 +61,19 @@ class TestBackendEnum:
     def test_all_expected_backends_exist(self):
         """All expected backend names should be present."""
         expected = {
-            "NARWHALS", "NARWHALS_LAZY", "PANDAS", "POLARS", "POLARS_LAZY",
-            "PYARROW", "DUCKDB", "CUDF", "MODIN", "DASK", "IBIS", "PYSPARK", "SQLFRAME",
+            "NARWHALS",
+            "NARWHALS_LAZY",
+            "PANDAS",
+            "POLARS",
+            "POLARS_LAZY",
+            "PYARROW",
+            "DUCKDB",
+            "CUDF",
+            "MODIN",
+            "DASK",
+            "IBIS",
+            "PYSPARK",
+            "SQLFRAME",
         }
         actual = {b.name for b in Backend}
         assert actual == expected
@@ -93,8 +104,12 @@ class TestBackendEnum:
     def test_backend_eager_variants(self):
         """Eager backends should not have '_lazy' suffix."""
         eager_backends = [
-            Backend.NARWHALS, Backend.PANDAS, Backend.POLARS, Backend.PYARROW,
-            Backend.CUDF, Backend.MODIN,
+            Backend.NARWHALS,
+            Backend.PANDAS,
+            Backend.POLARS,
+            Backend.PYARROW,
+            Backend.CUDF,
+            Backend.MODIN,
         ]
         for backend in eager_backends:
             assert "_lazy" not in backend.value
