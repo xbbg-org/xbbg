@@ -17,7 +17,6 @@ import atexit
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
 import functools
 import inspect
 import logging
@@ -39,6 +38,7 @@ from xbbg.services import (
 )
 
 from ._exports import BLP_MODULE_EXPORTS
+from .backend import Backend
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -50,28 +50,6 @@ if TYPE_CHECKING:
 DataFrameResult: TypeAlias = nw.DataFrame | nw.LazyFrame | IntoFrame
 
 logger = logging.getLogger(__name__)
-
-
-class Backend(str, Enum):
-    """DataFrame backend options for xbbg functions.
-
-    Attributes:
-        NARWHALS: Return narwhals DataFrame (default). Convert with .to_pandas(), .to_polars(), etc.
-        NARWHALS_LAZY: Return narwhals LazyFrame. Call .collect() to materialize.
-        PANDAS: Return pandas DataFrame directly.
-        POLARS: Return polars DataFrame directly.
-        POLARS_LAZY: Return polars LazyFrame directly. Call .collect() to materialize.
-        PYARROW: Return pyarrow Table directly.
-        DUCKDB: Return DuckDB relation (lazy). Call .df() or .arrow() to materialize.
-    """
-
-    NARWHALS = "narwhals"
-    NARWHALS_LAZY = "narwhals_lazy"
-    PANDAS = "pandas"
-    POLARS = "polars"
-    POLARS_LAZY = "polars_lazy"
-    PYARROW = "pyarrow"
-    DUCKDB = "duckdb"
 
 
 __all__ = list(BLP_MODULE_EXPORTS)

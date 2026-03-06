@@ -12,6 +12,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from ._exports import (
+    BACKEND_EXPORTS,
     CORE_EXPORTS,
     EXCEPTION_EXPORTS,
     FIELD_CACHE_EXPORTS,
@@ -88,6 +89,7 @@ def _build_lazy_attr_exports() -> dict[str, tuple[str, str]]:
         ("_sdk", SDK_EXPORTS),
         ("_core", CORE_EXPORTS),
         ("blp", PACKAGE_BLP_EXPORTS),
+        ("backend", BACKEND_EXPORTS),
         ("field_cache", FIELD_CACHE_EXPORTS),
         ("services", SERVICE_EXPORTS),
         ("schema", SCHEMA_LOOKUP_EXPORTS),

@@ -66,6 +66,17 @@ MODULE_EXPORTS = (
     "markets",
 )
 
+BACKEND_EXPORTS = (
+    "is_backend_available",
+    "check_backend",
+    "get_available_backends",
+    "print_backend_status",
+    "is_format_supported",
+    "get_supported_formats",
+    "check_format_compatibility",
+    "validate_backend_format",
+)
+
 PACKAGE_GENERIC_EXPORTS = (
     "arequest",
     "request",
@@ -179,6 +190,7 @@ PACKAGE_EXPORTS = (
     *SCHEMA_EXPORTS,
     *EXCEPTION_EXPORTS,
     *MODULE_EXPORTS,
+    *BACKEND_EXPORTS,
 )
 
 BLP_MODULE_EXPORTS = (
