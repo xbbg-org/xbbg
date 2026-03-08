@@ -10,12 +10,44 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use arrow::array::{Array, RecordBatch, StringArray};
 use arrow::datatypes::DataType;
 use serde::{Deserialize, Serialize};
 use xbbg_log::{debug, info, warn};
+
+fn recover_read_lock<'a, T>(
+    lock: &'a RwLock<T>,
+    lock_name: &'static str,
+) -> RwLockReadGuard<'a, T> {
+    match lock.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                lock = lock_name,
+                "field cache lock poisoned; recovering read access"
+            );
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn recover_write_lock<'a, T>(
+    lock: &'a RwLock<T>,
+    lock_name: &'static str,
+) -> RwLockWriteGuard<'a, T> {
+    match lock.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                lock = lock_name,
+                "field cache lock poisoned; recovering write access"
+            );
+            poisoned.into_inner()
+        }
+    }
+}
 
 /// Bloomberg field type as returned by //blp/apiflds.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,10 +188,10 @@ impl FieldTypeResolver {
 
     /// Ensure cache is loaded from disk.
     fn ensure_loaded(&self) {
-        let loaded = *self.loaded.read().unwrap();
+        let loaded = *recover_read_lock(&self.loaded, "field_cache_loaded");
         if !loaded {
             self.load_from_disk();
-            *self.loaded.write().unwrap() = true;
+            *recover_write_lock(&self.loaded, "field_cache_loaded") = true;
         }
     }
 
@@ -198,7 +230,7 @@ impl FieldTypeResolver {
                 return;
             }
         };
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = recover_write_lock(&self.cache, "field_cache");
         for info in entries {
             let key = info.field_id.to_uppercase();
             cache.insert(key, info);
@@ -223,7 +255,7 @@ impl FieldTypeResolver {
             }
         }
 
-        let cache = self.cache.read().unwrap();
+        let cache = recover_read_lock(&self.cache, "field_cache");
         if cache.is_empty() {
             debug!("Cache is empty, nothing to save");
             return Ok(());
@@ -251,7 +283,7 @@ impl FieldTypeResolver {
     /// Get field info from cache.
     pub fn get(&self, field_id: &str) -> Option<FieldInfo> {
         self.ensure_loaded();
-        let cache = self.cache.read().unwrap();
+        let cache = recover_read_lock(&self.cache, "field_cache");
         cache.get(&field_id.to_uppercase()).cloned()
     }
 
@@ -263,7 +295,7 @@ impl FieldTypeResolver {
     /// Insert field info into cache.
     pub fn insert(&self, info: FieldInfo) {
         self.ensure_loaded();
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = recover_write_lock(&self.cache, "field_cache");
         cache.insert(info.field_id.to_uppercase(), info);
     }
 
@@ -295,7 +327,7 @@ impl FieldTypeResolver {
             return;
         };
 
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = recover_write_lock(&self.cache, "field_cache");
         for i in 0..batch.num_rows() {
             if fields.is_null(i) || types.is_null(i) {
                 continue;
@@ -337,7 +369,7 @@ impl FieldTypeResolver {
         self.ensure_loaded();
 
         let mut result = HashMap::new();
-        let cache = self.cache.read().unwrap();
+        let cache = recover_read_lock(&self.cache, "field_cache");
 
         for field in fields {
             let field_upper = field.to_uppercase();
@@ -366,7 +398,7 @@ impl FieldTypeResolver {
     /// Get list of fields that are not in cache.
     pub fn get_uncached_fields(&self, fields: &[String]) -> Vec<String> {
         self.ensure_loaded();
-        let cache = self.cache.read().unwrap();
+        let cache = recover_read_lock(&self.cache, "field_cache");
 
         fields
             .iter()
@@ -377,7 +409,7 @@ impl FieldTypeResolver {
 
     /// Clear all cached field info.
     pub fn clear(&self) {
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = recover_write_lock(&self.cache, "field_cache");
         cache.clear();
         info!("Cleared field cache");
     }
@@ -385,7 +417,7 @@ impl FieldTypeResolver {
     /// Get cache statistics.
     pub fn stats(&self) -> (usize, PathBuf) {
         self.ensure_loaded();
-        let cache = self.cache.read().unwrap();
+        let cache = recover_read_lock(&self.cache, "field_cache");
         (cache.len(), self.cache_path.clone())
     }
 }
