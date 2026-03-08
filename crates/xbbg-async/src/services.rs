@@ -101,7 +101,10 @@ impl<'de> Deserialize<'de> for Service {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(Self::from_str(&s).unwrap()) // Infallible
+        Ok(match Self::from_str(&s) {
+            Ok(service) => service,
+            Err(never) => match never {},
+        })
     }
 }
 
@@ -260,7 +263,10 @@ impl<'de> Deserialize<'de> for Operation {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(Self::from_str(&s).unwrap()) // Infallible
+        Ok(match Self::from_str(&s) {
+            Ok(operation) => operation,
+            Err(never) => match never {},
+        })
     }
 }
 
