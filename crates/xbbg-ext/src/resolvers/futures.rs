@@ -3,7 +3,7 @@
 //! Provides logic for generating futures contract candidates and resolving
 //! generic tickers to specific contracts.
 
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, Months, NaiveDate};
 
 use crate::constants::{MONTH_NUM_TO_CODE, QUARTERLY_MONTHS};
 use crate::error::{ExtError, Result};
@@ -81,7 +81,7 @@ pub fn generate_futures_candidates(
     let parts = parse_ticker_parts(gen_ticker)?;
 
     // Generate contract months
-    let months = generate_contract_months(dt, freq, count);
+    let months = generate_contract_months(dt, freq, count)?;
 
     // Check if we're in the same month as reference date
     let now = chrono::Local::now().naive_local().date();
@@ -100,15 +100,21 @@ pub fn generate_futures_candidates(
 }
 
 /// Generate contract months starting from a given date.
-fn generate_contract_months(start: NaiveDate, freq: RollFrequency, count: usize) -> Vec<NaiveDate> {
+fn generate_contract_months(
+    start: NaiveDate,
+    freq: RollFrequency,
+    count: usize,
+) -> Result<Vec<NaiveDate>> {
     let mut months = Vec::with_capacity(count);
-    let mut current = start.with_day(1).unwrap_or(start);
+    let mut current = start.with_day(1).ok_or_else(|| {
+        ExtError::Internal(format!("failed to normalize contract month from {start}"))
+    })?;
 
     match freq {
         RollFrequency::Monthly => {
             while months.len() < count {
                 months.push(current);
-                current = next_month(current);
+                current = next_month(current)?;
             }
         }
         RollFrequency::Quarterly => {
@@ -117,21 +123,19 @@ fn generate_contract_months(start: NaiveDate, freq: RollFrequency, count: usize)
                 if QUARTERLY_MONTHS.contains(&current.month()) {
                     months.push(current);
                 }
-                current = next_month(current);
+                current = next_month(current)?;
             }
         }
     }
 
-    months
+    Ok(months)
 }
 
 /// Get the next month from a date.
-fn next_month(date: NaiveDate) -> NaiveDate {
-    if date.month() == 12 {
-        NaiveDate::from_ymd_opt(date.year() + 1, 1, 1).unwrap()
-    } else {
-        NaiveDate::from_ymd_opt(date.year(), date.month() + 1, 1).unwrap()
-    }
+fn next_month(date: NaiveDate) -> Result<NaiveDate> {
+    date.checked_add_months(Months::new(1))
+        .and_then(|next| next.with_day(1))
+        .ok_or_else(|| ExtError::Internal(format!("failed to compute next month from {date}")))
 }
 
 /// Build a specific contract ticker from parts and month.

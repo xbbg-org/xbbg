@@ -78,7 +78,10 @@ pub fn cdx_series_from_ticker(ticker: &str) -> Result<CdxInfo> {
     };
 
     // Asset is last part
-    let asset = parts.last().unwrap().to_string();
+    let asset = parts
+        .last()
+        .ok_or_else(|| ExtError::InvalidTicker(ticker.to_string()))?
+        .to_string();
 
     Ok(CdxInfo {
         index,
