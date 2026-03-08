@@ -147,24 +147,30 @@ fn ext_set_exchange_override(
 
 /// Get runtime override for a ticker.
 #[pyfunction]
-fn ext_get_exchange_override(ticker: &str) -> Option<ExchangeInfoDict> {
-    markets::get_exchange_override(ticker).map(to_exchange_info_dict)
+fn ext_get_exchange_override(ticker: &str) -> PyResult<Option<ExchangeInfoDict>> {
+    markets::get_exchange_override(ticker)
+        .map(|info| info.map(to_exchange_info_dict))
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// Clear one override (or all when ticker is None).
 #[pyfunction]
 #[pyo3(signature = (ticker=None))]
-fn ext_clear_exchange_override(ticker: Option<&str>) {
-    markets::clear_exchange_override(ticker);
+fn ext_clear_exchange_override(ticker: Option<&str>) -> PyResult<()> {
+    markets::clear_exchange_override(ticker).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// List all runtime overrides.
 #[pyfunction]
-fn ext_list_exchange_overrides() -> HashMap<String, ExchangeInfoDict> {
+fn ext_list_exchange_overrides() -> PyResult<HashMap<String, ExchangeInfoDict>> {
     markets::list_exchange_overrides()
-        .into_iter()
-        .map(|(k, v)| (k, to_exchange_info_dict(v)))
-        .collect()
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+        .map(|overrides| {
+            overrides
+                .into_iter()
+                .map(|(k, v)| (k, to_exchange_info_dict(v)))
+                .collect()
+        })
 }
 
 /// Convert local exchange session times to UTC ISO timestamps.
