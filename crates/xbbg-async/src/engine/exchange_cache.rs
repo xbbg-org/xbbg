@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use chrono::Utc;
 
@@ -16,6 +16,30 @@ pub struct ExchangeCache {
 }
 
 impl ExchangeCache {
+    fn cache_read(&self) -> Result<RwLockReadGuard<'_, HashMap<String, ExchangeInfo>>, String> {
+        self.cache
+            .read()
+            .map_err(|_| "exchange cache lock poisoned".to_string())
+    }
+
+    fn cache_write(&self) -> Result<RwLockWriteGuard<'_, HashMap<String, ExchangeInfo>>, String> {
+        self.cache
+            .write()
+            .map_err(|_| "exchange cache lock poisoned".to_string())
+    }
+
+    fn loaded_read(&self) -> Result<RwLockReadGuard<'_, bool>, String> {
+        self.loaded
+            .read()
+            .map_err(|_| "exchange cache lock poisoned".to_string())
+    }
+
+    fn loaded_write(&self) -> Result<RwLockWriteGuard<'_, bool>, String> {
+        self.loaded
+            .write()
+            .map_err(|_| "exchange cache lock poisoned".to_string())
+    }
+
     pub fn new() -> Self {
         Self::with_cache_path(Self::default_cache_path())
     }
@@ -28,55 +52,53 @@ impl ExchangeCache {
         }
     }
 
-    pub fn get(&self, ticker: &str) -> Option<ExchangeInfo> {
-        self.ensure_loaded();
+    pub fn get(&self, ticker: &str) -> Result<Option<ExchangeInfo>, String> {
+        self.ensure_loaded()?;
         let key = ticker.trim();
         if key.is_empty() {
-            return None;
+            return Ok(None);
         }
-        self.cache
-            .read()
-            .expect("exchange cache lock poisoned")
+        Ok(self
+            .cache_read()?
             .get(key)
             .cloned()
-            .map(ExchangeInfo::as_cache_hit)
+            .map(ExchangeInfo::as_cache_hit))
     }
 
-    pub fn put(&self, ticker: &str, mut info: ExchangeInfo) {
-        self.ensure_loaded();
+    pub fn put(&self, ticker: &str, mut info: ExchangeInfo) -> Result<(), String> {
+        self.ensure_loaded()?;
         let key = ticker.trim();
         if key.is_empty() {
-            return;
+            return Ok(());
         }
         info.cached_at = Some(Utc::now());
         if info.source == ExchangeInfoSource::Fallback {
             info.source = ExchangeInfoSource::Bloomberg;
         }
-        self.cache
-            .write()
-            .expect("exchange cache lock poisoned")
-            .insert(key.to_string(), info);
+        self.cache_write()?.insert(key.to_string(), info);
+        Ok(())
     }
 
-    pub fn invalidate(&self, ticker: Option<&str>) {
-        self.ensure_loaded();
-        let mut guard = self.cache.write().expect("exchange cache lock poisoned");
+    pub fn invalidate(&self, ticker: Option<&str>) -> Result<(), String> {
+        self.ensure_loaded()?;
+        let mut guard = self.cache_write()?;
         match ticker {
             Some(t) if !t.trim().is_empty() => {
                 guard.remove(t.trim());
             }
             _ => guard.clear(),
         }
+        Ok(())
     }
 
     pub fn save_to_disk(&self) -> Result<(), String> {
-        self.ensure_loaded();
+        self.ensure_loaded()?;
 
         if let Some(parent) = self.cache_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create cache dir failed: {e}"))?;
         }
 
-        let guard = self.cache.read().expect("exchange cache lock poisoned");
+        let guard = self.cache_read()?;
         let entries: Vec<&ExchangeInfo> = guard.values().collect();
 
         let file = fs::File::create(&self.cache_path)
@@ -86,24 +108,25 @@ impl ExchangeCache {
             .map_err(|e| format!("write exchange cache JSON failed: {e}"))
     }
 
-    fn ensure_loaded(&self) {
-        let loaded = *self.loaded.read().expect("exchange cache lock poisoned");
+    fn ensure_loaded(&self) -> Result<(), String> {
+        let loaded = *self.loaded_read()?;
         if loaded {
-            return;
+            return Ok(());
         }
-        self.load_from_disk();
-        *self.loaded.write().expect("exchange cache lock poisoned") = true;
+        self.load_from_disk()?;
+        *self.loaded_write()? = true;
+        Ok(())
     }
 
-    fn load_from_disk(&self) {
+    fn load_from_disk(&self) -> Result<(), String> {
         if !self.cache_path.exists() {
-            return;
+            return Ok(());
         }
         let file = match fs::File::open(&self.cache_path) {
             Ok(f) => f,
             Err(e) => {
                 xbbg_log::warn!(error = %e, path = %self.cache_path.display(), "failed to open exchange cache");
-                return;
+                return Ok(());
             }
         };
         let reader = BufReader::new(file);
@@ -111,15 +134,16 @@ impl ExchangeCache {
             Ok(v) => v,
             Err(e) => {
                 xbbg_log::warn!(error = %e, path = %self.cache_path.display(), "failed to parse exchange cache");
-                return;
+                return Ok(());
             }
         };
 
-        let mut guard = self.cache.write().expect("exchange cache lock poisoned");
+        let mut guard = self.cache_write()?;
         for mut entry in entries {
             entry.source = ExchangeInfoSource::Cache;
             guard.insert(entry.ticker.clone(), entry);
         }
+        Ok(())
     }
 
     fn default_cache_path() -> PathBuf {

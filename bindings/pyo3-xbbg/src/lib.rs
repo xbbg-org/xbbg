@@ -618,8 +618,10 @@ impl PyEngine {
 
     /// Invalidate exchange cache (one ticker or all entries).
     #[pyo3(signature = (ticker=None))]
-    fn invalidate_exchange_cache(&self, ticker: Option<String>) {
-        self.engine.invalidate_exchange_cache(ticker.as_deref());
+    fn invalidate_exchange_cache(&self, ticker: Option<String>) -> PyResult<()> {
+        self.engine
+            .invalidate_exchange_cache(ticker.as_deref())
+            .map_err(PyRuntimeError::new_err)
     }
 
     /// Persist exchange cache to disk.
@@ -937,7 +939,7 @@ impl PyEngine {
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
             let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
-                stream.into_parts();
+                stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
             let handle = SubscriptionStreamHandle {
@@ -1038,7 +1040,7 @@ impl PyEngine {
             debug!("PyEngine: subscription with options created");
 
             let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
-                stream.into_parts();
+                stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
             let handle = SubscriptionStreamHandle {
