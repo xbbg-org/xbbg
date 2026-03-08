@@ -158,9 +158,9 @@ pub(crate) fn append_wide_row<'a, F, G>(
 }
 
 pub(crate) fn format_date32(days: i32) -> String {
-    use chrono::{Duration, NaiveDate};
+    use chrono::{DateTime, Duration, Utc};
 
-    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+    let epoch = DateTime::<Utc>::UNIX_EPOCH.date_naive();
     let date = epoch + Duration::days(days as i64);
     date.format("%Y-%m-%d").to_string()
 }

@@ -39,6 +39,13 @@ pub use state::{OutputFormat, SubscriptionState};
 pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
 
+fn parse_operation_lossless(operation: &str) -> Operation {
+    match Operation::from_str(operation) {
+        Ok(operation) => operation,
+        Err(never) => match never {},
+    }
+}
+
 /// Slab key for O(1) correlation dispatch.
 pub type SlabKey = usize;
 
@@ -145,7 +152,7 @@ pub struct RequestParams {
 impl RequestParams {
     pub(crate) fn is_raw_request(&self) -> bool {
         matches!(
-            Operation::from_str(&self.operation).unwrap(),
+            parse_operation_lossless(&self.operation),
             Operation::RawRequest
         )
     }
@@ -161,7 +168,7 @@ impl RequestParams {
     /// Apply default values derived from operation semantics.
     pub fn with_defaults(mut self) -> Self {
         if !self.extractor_set {
-            let operation = Operation::from_str(&self.operation).unwrap();
+            let operation = parse_operation_lossless(&self.operation);
             self.extractor = operation.default_extractor();
         }
         self
@@ -175,7 +182,7 @@ impl RequestParams {
             });
         }
 
-        let operation = Operation::from_str(&self.operation).unwrap();
+        let operation = parse_operation_lossless(&self.operation);
         if matches!(operation, Operation::RawRequest) {
             if self
                 .request_operation
@@ -650,7 +657,7 @@ impl Engine {
             return Ok(());
         }
 
-        let operation = Operation::from_str(&params.operation).unwrap();
+        let operation = parse_operation_lossless(&params.operation);
         if !matches!(
             operation,
             Operation::ReferenceData | Operation::HistoricalData
@@ -1274,21 +1281,26 @@ impl SubscriptionStream {
     /// so they can use independent locks and avoid contention.
     ///
     /// Consumes self without running Drop (since we're taking ownership of parts).
+    ///
+    /// Returns an error if the stream was already closed and no longer owns a session claim.
     #[allow(clippy::type_complexity)]
     pub fn into_parts(
         self,
-    ) -> (
-        mpsc::Receiver<Result<RecordBatch, BlpError>>,
-        mpsc::Sender<Result<RecordBatch, BlpError>>,
-        SessionClaim,
-        Vec<SlabKey>,
-        std::collections::HashMap<String, SlabKey>,
-        std::collections::HashMap<SlabKey, Arc<SubscriptionMetrics>>,
-        Option<usize>,          // flush_threshold
-        Option<OverflowPolicy>, // overflow_policy
-        String,                 // service
-        Vec<String>,            // options
-    ) {
+    ) -> Result<
+        (
+            mpsc::Receiver<Result<RecordBatch, BlpError>>,
+            mpsc::Sender<Result<RecordBatch, BlpError>>,
+            SessionClaim,
+            Vec<SlabKey>,
+            std::collections::HashMap<String, SlabKey>,
+            std::collections::HashMap<SlabKey, Arc<SubscriptionMetrics>>,
+            Option<usize>,          // flush_threshold
+            Option<OverflowPolicy>, // overflow_policy
+            String,                 // service
+            Vec<String>,            // options
+        ),
+        BlpError,
+    > {
         use std::mem::ManuallyDrop;
         use std::ptr;
 
@@ -1300,7 +1312,7 @@ impl SubscriptionStream {
         unsafe {
             let rx = ptr::read(&this.rx);
             let tx = ptr::read(&this.tx);
-            let claim = ptr::read(&this.claim).expect("into_parts called on already-closed stream");
+            let claim = ptr::read(&this.claim);
             let keys = ptr::read(&this.keys);
             let topic_to_key = ptr::read(&this.topic_to_key);
             let metrics = ptr::read(&this.metrics);
@@ -1309,7 +1321,14 @@ impl SubscriptionStream {
             let service = ptr::read(&this.service);
             let options = ptr::read(&this.options);
 
-            (
+            let Some(claim) = claim else {
+                return Err(BlpError::Internal {
+                    detail: "SubscriptionStream::into_parts called on already-closed stream"
+                        .to_string(),
+                });
+            };
+
+            Ok((
                 rx,
                 tx,
                 claim,
@@ -1320,7 +1339,7 @@ impl SubscriptionStream {
                 overflow_policy,
                 service,
                 options,
-            )
+            ))
         }
     }
 }

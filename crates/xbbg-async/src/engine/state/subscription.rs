@@ -293,7 +293,7 @@ impl SubscriptionState {
                         let policy_label = match self.overflow_policy {
                             OverflowPolicy::DropNewest => "DropNewest",
                             OverflowPolicy::DropOldest => "DropOldest (degraded to DropNewest)",
-                            _ => unreachable!(),
+                            OverflowPolicy::Block => "Block",
                         };
                         xbbg_log::warn!(
                             topic = %self.topic,

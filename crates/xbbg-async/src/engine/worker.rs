@@ -392,7 +392,15 @@ impl RequestWorker {
         let cid = CorrelationId::Int(key as i64);
 
         // Build request from params
-        let service = self.services.get(&params.service).unwrap();
+        let service = self
+            .services
+            .get(&params.service)
+            .ok_or_else(|| BlpError::Internal {
+                detail: format!(
+                    "service '{}' missing from worker cache after ensure_service",
+                    params.service
+                ),
+            })?;
         xbbg_log::debug!(
             worker_id = self.id,
             operation = %params.effective_operation(),
@@ -542,7 +550,15 @@ impl RequestWorker {
         let key = self.requests.insert(state);
         let cid = CorrelationId::Int(key as i64);
 
-        let service = self.services.get(&params.service).unwrap();
+        let service = self
+            .services
+            .get(&params.service)
+            .ok_or_else(|| BlpError::Internal {
+                detail: format!(
+                    "service '{}' missing from worker cache after ensure_service",
+                    params.service
+                ),
+            })?;
         let request = self.build_request_from_params(service, &params)?;
 
         self.session.send_request(&request, None, Some(&cid))?;
