@@ -45,4 +45,8 @@ pub enum ExtError {
     /// Empty data - operation cannot proceed.
     #[error("empty data: {0}")]
     EmptyData(String),
+
+    /// Internal invariant or infrastructure failure.
+    #[error("internal error: {0}")]
+    Internal(String),
 }

@@ -42,16 +42,18 @@ struct ExchangesToml {
     country_tz: HashMap<String, String>,
 }
 
-static EXCHANGES: OnceLock<ExchangesToml> = OnceLock::new();
+static EXCHANGES: OnceLock<Result<ExchangesToml, toml::de::Error>> = OnceLock::new();
 
-fn exchanges() -> &'static ExchangesToml {
+fn exchanges() -> Option<&'static ExchangesToml> {
     EXCHANGES
-        .get_or_init(|| toml::from_str(EXCHANGES_TOML).expect("defs/exchanges.toml is invalid"))
+        .get_or_init(|| toml::from_str(EXCHANGES_TOML))
+        .as_ref()
+        .ok()
 }
 
 /// Look up a MarketRule by MIC code, then fallback to exchange code.
 pub fn get_market_rule(mic: Option<&str>, exch_code: Option<&str>) -> Option<&'static MarketRule> {
-    let data = exchanges();
+    let data = exchanges()?;
     if let Some(mic_code) = mic.map(str::trim).filter(|s| !s.is_empty()) {
         if let Some(rule) = data.mic.get(mic_code) {
             return Some(rule);
@@ -68,7 +70,7 @@ pub fn get_market_rule(mic: Option<&str>, exch_code: Option<&str>) -> Option<&'s
 /// Infer IANA timezone from country ISO code.
 pub fn infer_timezone_from_country(country_iso: &str) -> Option<&'static str> {
     let key = country_iso.trim().to_uppercase();
-    exchanges().country_tz.get(&key).map(String::as_str)
+    exchanges()?.country_tz.get(&key).map(String::as_str)
 }
 
 /// Derive session windows from regular trading hours and a market rule.
