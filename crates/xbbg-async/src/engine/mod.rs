@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
+use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
 use xbbg_core::BlpError;
@@ -59,6 +60,136 @@ pub enum OverflowPolicy {
     DropOldest,
     /// Block the producer until space is available (use with caution)
     Block,
+}
+
+/// Why Bloomberg stopped a single subscribed topic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SubscriptionFailureKind {
+    Failure,
+    Terminated,
+}
+
+impl SubscriptionFailureKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Failure => "failure",
+            Self::Terminated => "terminated",
+        }
+    }
+}
+
+/// Recorded non-fatal failure for a single topic in a multi-topic subscription.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubscriptionFailureInfo {
+    pub topic: String,
+    pub reason: String,
+    pub kind: SubscriptionFailureKind,
+}
+
+/// Shared subscription status visible to worker and consumer-facing handles.
+#[derive(Default)]
+pub struct SubscriptionStatusState {
+    keys: Vec<SlabKey>,
+    topics: Vec<String>,
+    topic_to_key: HashMap<String, SlabKey>,
+    metrics: HashMap<SlabKey, Arc<SubscriptionMetrics>>,
+    failures: Vec<SubscriptionFailureInfo>,
+}
+
+pub type SharedSubscriptionStatus = Arc<Mutex<SubscriptionStatusState>>;
+
+impl SubscriptionStatusState {
+    pub fn from_active(
+        topics: Vec<String>,
+        keys: Vec<SlabKey>,
+        metrics: HashMap<SlabKey, Arc<SubscriptionMetrics>>,
+    ) -> Self {
+        let topic_to_key = topics.iter().cloned().zip(keys.iter().copied()).collect();
+        Self {
+            keys,
+            topics,
+            topic_to_key,
+            metrics,
+            failures: Vec::new(),
+        }
+    }
+
+    pub fn add_active(
+        &mut self,
+        topics: &[String],
+        keys: &[SlabKey],
+        metrics: Vec<Arc<SubscriptionMetrics>>,
+    ) {
+        for ((topic, key), metric) in topics.iter().zip(keys.iter()).zip(metrics.into_iter()) {
+            self.topic_to_key.insert(topic.clone(), *key);
+            self.topics.push(topic.clone());
+            self.keys.push(*key);
+            self.metrics.insert(*key, metric);
+        }
+    }
+
+    pub fn remove_topic(&mut self, topic: &str) -> Option<SlabKey> {
+        let key = self.topic_to_key.remove(topic)?;
+        self.topics.retain(|existing| existing != topic);
+        self.keys.retain(|existing| *existing != key);
+        self.metrics.remove(&key);
+        Some(key)
+    }
+
+    pub fn remove_key(&mut self, key: SlabKey) -> Option<String> {
+        let topic = self
+            .topic_to_key
+            .iter()
+            .find_map(|(topic, existing_key)| (*existing_key == key).then(|| topic.clone()))?;
+        self.remove_topic(&topic);
+        Some(topic)
+    }
+
+    pub fn record_failure(
+        &mut self,
+        key: SlabKey,
+        reason: String,
+        kind: SubscriptionFailureKind,
+    ) -> Option<String> {
+        let topic = self.remove_key(key)?;
+        self.failures.push(SubscriptionFailureInfo {
+            topic: topic.clone(),
+            reason,
+            kind,
+        });
+        Some(topic)
+    }
+
+    pub fn clear_active(&mut self) {
+        self.keys.clear();
+        self.topics.clear();
+        self.topic_to_key.clear();
+        self.metrics.clear();
+    }
+
+    pub fn keys(&self) -> &[SlabKey] {
+        &self.keys
+    }
+
+    pub fn topics(&self) -> &[String] {
+        &self.topics
+    }
+
+    pub fn fields_metrics(&self) -> &HashMap<SlabKey, Arc<SubscriptionMetrics>> {
+        &self.metrics
+    }
+
+    pub fn topic_to_key(&self) -> &HashMap<String, SlabKey> {
+        &self.topic_to_key
+    }
+
+    pub fn failures(&self) -> &[SubscriptionFailureInfo] {
+        &self.failures
+    }
+
+    pub fn has_active_topics(&self) -> bool {
+        !self.keys.is_empty()
+    }
 }
 
 impl std::str::FromStr for OverflowPolicy {
@@ -742,6 +873,7 @@ impl Engine {
     ) -> Result<SubscriptionStream, BlpAsyncError> {
         let (tx, rx) =
             mpsc::channel(stream_capacity.unwrap_or(self.config.subscription_stream_capacity));
+        let status = Arc::new(Mutex::new(SubscriptionStatusState::default()));
 
         // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
         let claim = self.subscription_pool.claim()?;
@@ -756,25 +888,21 @@ impl Engine {
                 flush_threshold,
                 overflow_policy,
                 tx.clone(),
+                status.clone(),
             )
             .await?;
 
-        // Build topic -> key mapping
-        let topic_to_key: std::collections::HashMap<String, SlabKey> =
-            topics.iter().cloned().zip(keys.iter().cloned()).collect();
         let metrics = keys.iter().cloned().zip(raw_metrics).collect();
+        *status.lock() = SubscriptionStatusState::from_active(topics.clone(), keys, metrics);
 
         let stream = SubscriptionStream {
             rx,
             tx,
             claim: Some(claim),
-            keys,
-            topics,
             fields,
-            topic_to_key,
             service,
             options,
-            metrics,
+            status,
             flush_threshold,
             overflow_policy,
         };
@@ -1095,20 +1223,14 @@ pub struct SubscriptionStream {
     tx: mpsc::Sender<Result<RecordBatch, BlpError>>,
     /// Session claim (released on drop).
     claim: Option<SessionClaim>,
-    /// Current slab keys for all subscribed topics.
-    keys: Vec<SlabKey>,
-    /// Currently subscribed topics.
-    topics: Vec<String>,
     /// Subscribed fields.
     fields: Vec<String>,
-    /// Mapping from topic to its slab key for removal.
-    topic_to_key: std::collections::HashMap<String, SlabKey>,
     /// Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap").
     service: String,
     /// Subscription options.
     options: Vec<String>,
-    /// Metrics keyed by slab key for active subscribed topics.
-    metrics: std::collections::HashMap<SlabKey, Arc<SubscriptionMetrics>>,
+    /// Shared active/failed topic status.
+    status: SharedSubscriptionStatus,
     /// Optional flush threshold override.
     flush_threshold: Option<usize>,
     /// Optional overflow policy override.
@@ -1146,12 +1268,14 @@ impl SubscriptionStream {
     pub async fn add(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
         let command = self.command_handle()?;
         let mut seen_topics = HashSet::new();
+        let status = self.status.lock();
 
         // Filter out already subscribed topics
         let new_topics: Vec<String> = topics
             .into_iter()
-            .filter(|t| !self.topic_to_key.contains_key(t) && seen_topics.insert(t.clone()))
+            .filter(|t| !status.topic_to_key().contains_key(t) && seen_topics.insert(t.clone()))
             .collect();
+        drop(status);
 
         if new_topics.is_empty() {
             return Ok(());
@@ -1169,20 +1293,13 @@ impl SubscriptionStream {
                 self.flush_threshold,
                 self.overflow_policy,
                 self.tx.clone(),
+                self.status.clone(),
             )
             .await?;
 
-        // Track new topics
-        for ((topic, key), metric) in new_topics
-            .iter()
-            .zip(new_keys.iter())
-            .zip(new_metrics.into_iter())
-        {
-            self.topic_to_key.insert(topic.clone(), *key);
-            self.topics.push(topic.clone());
-            self.keys.push(*key);
-            self.metrics.insert(*key, metric);
-        }
+        self.status
+            .lock()
+            .add_active(&new_topics, &new_keys, new_metrics);
 
         Ok(())
     }
@@ -1193,18 +1310,20 @@ impl SubscriptionStream {
     pub async fn remove(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
         let command = self.command_handle()?;
         let mut seen_keys = HashSet::new();
+        let status = self.status.lock();
 
         // Find keys for topics to remove
         let mut keys_to_remove = Vec::new();
         let mut topics_to_remove = Vec::new();
         for topic in topics {
-            if let Some(&key) = self.topic_to_key.get(&topic) {
+            if let Some(&key) = status.topic_to_key().get(&topic) {
                 if seen_keys.insert(key) {
                     keys_to_remove.push(key);
                     topics_to_remove.push(topic);
                 }
             }
         }
+        drop(status);
 
         if keys_to_remove.is_empty() {
             return Ok(());
@@ -1214,20 +1333,17 @@ impl SubscriptionStream {
 
         command.unsubscribe(keys_to_remove.clone()).await?;
 
+        let mut status = self.status.lock();
         for topic in topics_to_remove {
-            if let Some(key) = self.topic_to_key.remove(&topic) {
-                self.topics.retain(|t| t != &topic);
-                self.keys.retain(|k| *k != key);
-                self.metrics.remove(&key);
-            }
+            status.remove_topic(&topic);
         }
 
         Ok(())
     }
 
     /// Get the currently subscribed topics.
-    pub fn topics(&self) -> &[String] {
-        &self.topics
+    pub fn topics(&self) -> Vec<String> {
+        self.status.lock().topics().to_vec()
     }
 
     /// Get the subscribed fields.
@@ -1237,7 +1353,7 @@ impl SubscriptionStream {
 
     /// Check if any topics are still subscribed.
     pub fn is_active(&self) -> bool {
-        !self.keys.is_empty() && self.claim.is_some()
+        self.claim.is_some() && self.status.lock().has_active_topics()
     }
 
     /// Unsubscribe from all topics and close the stream.
@@ -1257,15 +1373,13 @@ impl SubscriptionStream {
         }
 
         if let Some(claim) = self.claim.take() {
-            if !self.keys.is_empty() {
-                claim.unsubscribe(self.keys.clone()).await?;
+            let keys = self.status.lock().keys().to_vec();
+            if !keys.is_empty() {
+                claim.unsubscribe(keys).await?;
             }
         }
 
-        self.keys.clear();
-        self.topics.clear();
-        self.topic_to_key.clear();
-        self.metrics.clear();
+        self.status.lock().clear_active();
 
         Ok(remaining)
     }
@@ -1291,9 +1405,7 @@ impl SubscriptionStream {
             mpsc::Receiver<Result<RecordBatch, BlpError>>,
             mpsc::Sender<Result<RecordBatch, BlpError>>,
             SessionClaim,
-            Vec<SlabKey>,
-            std::collections::HashMap<String, SlabKey>,
-            std::collections::HashMap<SlabKey, Arc<SubscriptionMetrics>>,
+            SharedSubscriptionStatus,
             Option<usize>,          // flush_threshold
             Option<OverflowPolicy>, // overflow_policy
             String,                 // service
@@ -1313,9 +1425,7 @@ impl SubscriptionStream {
             let rx = ptr::read(&this.rx);
             let tx = ptr::read(&this.tx);
             let claim = ptr::read(&this.claim);
-            let keys = ptr::read(&this.keys);
-            let topic_to_key = ptr::read(&this.topic_to_key);
-            let metrics = ptr::read(&this.metrics);
+            let status = ptr::read(&this.status);
             let flush_threshold = ptr::read(&this.flush_threshold);
             let overflow_policy = ptr::read(&this.overflow_policy);
             let service = ptr::read(&this.service);
@@ -1332,9 +1442,7 @@ impl SubscriptionStream {
                 rx,
                 tx,
                 claim,
-                keys,
-                topic_to_key,
-                metrics,
+                status,
                 flush_threshold,
                 overflow_policy,
                 service,
@@ -1353,6 +1461,8 @@ impl Drop for SubscriptionStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicU64;
 
     #[test]
     fn raw_request_uses_request_operation_for_validation_and_dispatch() {
@@ -1403,5 +1513,33 @@ mod tests {
                 ("zeta".to_string(), "9".to_string()),
             ])
         );
+    }
+
+    #[test]
+    fn subscription_status_records_failure_and_removes_active_topic() {
+        let metric = Arc::new(SubscriptionMetrics {
+            messages_received: Arc::new(AtomicU64::new(0)),
+            dropped_batches: Arc::new(AtomicU64::new(0)),
+            batches_sent: Arc::new(AtomicU64::new(0)),
+            slow_consumer: Arc::new(AtomicBool::new(false)),
+        });
+        let mut status = SubscriptionStatusState::from_active(
+            vec!["SPY US Equity".to_string(), "/isin/BMG8192H1557".to_string()],
+            vec![10, 11],
+            HashMap::from([(10, metric.clone()), (11, metric)]),
+        );
+
+        let topic = status.record_failure(
+            11,
+            "Security is not valid for subscription [EX336]".to_string(),
+            SubscriptionFailureKind::Failure,
+        );
+
+        assert_eq!(topic.as_deref(), Some("/isin/BMG8192H1557"));
+        assert_eq!(status.topics(), &["SPY US Equity".to_string()]);
+        assert_eq!(status.keys(), &[10]);
+        assert_eq!(status.failures().len(), 1);
+        assert_eq!(status.failures()[0].kind, SubscriptionFailureKind::Failure);
+        assert_eq!(status.failures()[0].topic, "/isin/BMG8192H1557");
     }
 }

@@ -17,7 +17,10 @@ use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, SessionOptions, SubscriptionList};
 
 use super::state::{SubscriptionMetrics, SubscriptionState};
-use super::{BlpAsyncError, EngineConfig, OverflowPolicy, SlabKey};
+use super::{
+    BlpAsyncError, EngineConfig, OverflowPolicy, SharedSubscriptionStatus,
+    SubscriptionFailureKind, SlabKey,
+};
 
 /// Commands sent to a subscription worker.
 pub enum SubscriptionCommand {
@@ -32,6 +35,7 @@ pub enum SubscriptionCommand {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        status: SharedSubscriptionStatus,
         /// Reply with slab keys for later unsubscribe.
         reply: tokio::sync::oneshot::Sender<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>)>,
     },
@@ -46,6 +50,7 @@ pub enum SubscriptionCommand {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        status: SharedSubscriptionStatus,
         /// Reply with new slab keys.
         reply: tokio::sync::oneshot::Sender<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>)>,
     },
@@ -71,6 +76,8 @@ struct SubscriptionWorker {
     /// where a new subscription reuses a freed slot and then gets hit by the
     /// stale termination event meant for the old subscription.
     pending_cancel: std::collections::HashSet<SlabKey>,
+    /// Shared active/failed topic metadata for the currently claimed stream.
+    status: Option<SharedSubscriptionStatus>,
 }
 
 impl SubscriptionWorker {
@@ -105,7 +112,25 @@ impl SubscriptionWorker {
             config,
             open_services,
             pending_cancel: std::collections::HashSet::new(),
+            status: None,
         })
+    }
+
+    fn record_failure(
+        &mut self,
+        key: SlabKey,
+        reason: String,
+        kind: SubscriptionFailureKind,
+    ) -> Option<String> {
+        self.status
+            .as_ref()
+            .and_then(|status| status.lock().record_failure(key, reason, kind))
+    }
+
+    fn clear_active_status(&mut self) {
+        if let Some(status) = &self.status {
+            status.lock().clear_active();
+        }
     }
 
     /// Ensure a service is open, opening it on demand if needed.
@@ -141,8 +166,10 @@ impl SubscriptionWorker {
                         flush_threshold,
                         overflow_policy,
                         stream,
+                        status,
                         reply,
                     }) => {
+                        self.status = Some(status);
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
@@ -167,8 +194,10 @@ impl SubscriptionWorker {
                         flush_threshold,
                         overflow_policy,
                         stream,
+                        status,
                         reply,
                     }) => {
+                        self.status = Some(status);
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
@@ -397,16 +426,34 @@ impl SubscriptionWorker {
                                 "pending cancel confirmed via SubscriptionFailure"
                             );
                         } else {
-                            // Genuine subscription failure — propagate as an error.
-                            xbbg_log::error!(worker_id = self.id, key = key, reason = ?reason, "subscription failed");
+                            let reason_text = reason
+                                .clone()
+                                .unwrap_or_else(|| "subscription failed".to_string());
                             if self.subs.contains(key as usize) {
                                 let state = self.subs.remove(key as usize);
-                                state.fail(BlpError::SubscriptionFailure {
-                                    cid: Some(xbbg_core::errors::CorrelationContext::U64(
-                                        key as u64,
-                                    )),
-                                    label: reason.clone(),
-                                });
+                                let topic = self
+                                    .record_failure(
+                                        key as usize,
+                                        reason_text.clone(),
+                                        SubscriptionFailureKind::Failure,
+                                    )
+                                    .unwrap_or_else(|| state.topic.to_string());
+                                xbbg_log::warn!(
+                                    worker_id = self.id,
+                                    key = key,
+                                    topic = %topic,
+                                    reason = %reason_text,
+                                    "subscription failed for topic"
+                                );
+                                if self.subs.is_empty() && self.pending_cancel.is_empty() {
+                                    state.fail(BlpError::SubscriptionFailure {
+                                        cid: None,
+                                        label: Some(format!(
+                                            "All subscriptions failed; last failure: {} ({})",
+                                            topic, reason_text,
+                                        )),
+                                    });
+                                }
                             }
                         }
                     }
@@ -423,18 +470,34 @@ impl SubscriptionWorker {
                                 "pending cancel confirmed by Bloomberg"
                             );
                         } else {
-                            // Unexpected termination — propagate as an error.
-                            xbbg_log::info!(worker_id = self.id, key = key, reason = ?reason, "subscription terminated unexpectedly");
+                            let reason_text = reason
+                                .clone()
+                                .unwrap_or_else(|| "subscription terminated".to_string());
                             if self.subs.contains(key as usize) {
                                 let state = self.subs.remove(key as usize);
-                                state.fail(BlpError::SubscriptionFailure {
-                                    cid: Some(xbbg_core::errors::CorrelationContext::U64(
-                                        key as u64,
-                                    )),
-                                    label: reason
-                                        .clone()
-                                        .or_else(|| Some("subscription terminated".to_string())),
-                                });
+                                let topic = self
+                                    .record_failure(
+                                        key as usize,
+                                        reason_text.clone(),
+                                        SubscriptionFailureKind::Terminated,
+                                    )
+                                    .unwrap_or_else(|| state.topic.to_string());
+                                xbbg_log::warn!(
+                                    worker_id = self.id,
+                                    key = key,
+                                    topic = %topic,
+                                    reason = %reason_text,
+                                    "subscription terminated for topic"
+                                );
+                                if self.subs.is_empty() && self.pending_cancel.is_empty() {
+                                    state.fail(BlpError::SubscriptionFailure {
+                                        cid: None,
+                                        label: Some(format!(
+                                            "All subscriptions ended; last termination: {} ({})",
+                                            topic, reason_text,
+                                        )),
+                                    });
+                                }
                             }
                         }
                     }
@@ -492,8 +555,9 @@ impl SubscriptionWorker {
                              Subscription closed. Please resubscribe.",
                             self.id,
                         ),
-                    });
+                        });
                 }
+                self.clear_active_status();
             }
             "SessionConnectionUp" => {
                 xbbg_log::info!(
@@ -538,6 +602,7 @@ impl SubscriptionCommandHandle {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
@@ -550,6 +615,7 @@ impl SubscriptionCommandHandle {
                 flush_threshold,
                 overflow_policy,
                 stream,
+                status,
                 reply: reply_tx,
             })
             .await
@@ -569,6 +635,7 @@ impl SubscriptionCommandHandle {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
@@ -581,6 +648,7 @@ impl SubscriptionCommandHandle {
                 flush_threshold,
                 overflow_policy,
                 stream,
+                status,
                 reply: reply_tx,
             })
             .await
@@ -843,6 +911,7 @@ impl SessionClaim {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         self.command_handle()?
             .subscribe(
@@ -853,6 +922,7 @@ impl SessionClaim {
                 flush_threshold,
                 overflow_policy,
                 stream,
+                status,
             )
             .await
     }
@@ -868,6 +938,7 @@ impl SessionClaim {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         self.command_handle()?
             .add_topics(
@@ -878,6 +949,7 @@ impl SessionClaim {
                 flush_threshold,
                 overflow_policy,
                 stream,
+                status,
             )
             .await
     }
