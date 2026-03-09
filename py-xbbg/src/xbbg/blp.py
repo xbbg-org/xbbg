@@ -1250,8 +1250,24 @@ class Subscription:
 
     @property
     def tickers(self) -> list[str]:
-        """Currently subscribed tickers."""
+        """Currently active tickers."""
         return self._sub.tickers
+
+    @property
+    def failed_tickers(self) -> list[str]:
+        """Tickers Bloomberg rejected or terminated."""
+        return self._sub.failed_tickers
+
+    @property
+    def failures(self) -> list[dict[str, str]]:
+        """Non-fatal per-ticker subscription failures.
+
+        Each entry contains:
+            - ticker: Bloomberg topic string
+            - reason: Bloomberg failure detail
+            - kind: "failure" or "terminated"
+        """
+        return [{"ticker": ticker, "reason": reason, "kind": kind} for ticker, reason, kind in self._sub.failures]
 
     @property
     def fields(self) -> list[str]:

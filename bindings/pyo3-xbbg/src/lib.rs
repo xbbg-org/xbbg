@@ -52,6 +52,7 @@ use xbbg_log::{debug, info, warn};
 use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{
     Engine, EngineConfig, ExtractorType, RequestParams, SubscriptionCommandHandle,
+    SubscriptionFailureInfo,
 };
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
@@ -938,23 +939,20 @@ impl PyEngine {
 
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
-            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
+            let (rx, tx, claim, status, ft, op_policy, service, options) =
                 stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
             let handle = SubscriptionStreamHandle {
                 tx,
                 claim: Some(claim),
-                keys,
-                topics: tickers_clone,
                 fields: fields_clone,
-                topic_to_key,
                 service,
                 options,
                 flush_threshold: ft,
                 overflow_policy: op_policy,
                 _stream_capacity: stream_capacity,
-                metrics,
+                status,
             };
 
             Python::attach(|py| {
@@ -1039,23 +1037,20 @@ impl PyEngine {
 
             debug!("PyEngine: subscription with options created");
 
-            let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
+            let (rx, tx, claim, status, ft, op_policy, service, options) =
                 stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
             let handle = SubscriptionStreamHandle {
                 tx,
                 claim: Some(claim),
-                keys,
-                topics: tickers_clone,
                 fields: fields_clone,
-                topic_to_key,
                 service,
                 options,
                 flush_threshold: ft,
                 overflow_policy: op_policy,
                 _stream_capacity: stream_capacity,
-                metrics,
+                status,
             };
 
             Python::attach(|py| {
@@ -1151,16 +1146,13 @@ pub struct PySubscription {
 struct SubscriptionStreamHandle {
     tx: StreamSender,
     claim: Option<xbbg_async::engine::SessionClaim>,
-    keys: Vec<usize>,
-    topics: Vec<String>,
     fields: Vec<String>,
-    topic_to_key: std::collections::HashMap<String, usize>,
     service: String,
     options: Vec<String>,
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
     _stream_capacity: Option<usize>,
-    metrics: SubscriptionMetricsMap,
+    status: xbbg_async::engine::SharedSubscriptionStatus,
 }
 
 struct PendingAdd {
@@ -1172,6 +1164,7 @@ struct PendingAdd {
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
     tx: StreamSender,
+    status: xbbg_async::engine::SharedSubscriptionStatus,
 }
 
 struct PendingRemove {
@@ -1189,9 +1182,10 @@ impl SubscriptionStreamHandle {
         let command = claim.command_handle().map_err(blp_async_error_to_pyerr)?;
 
         let mut seen_topics = HashSet::new();
+        let status = self.status.lock();
         let new_topics: Vec<String> = tickers
             .into_iter()
-            .filter(|t| !self.topic_to_key.contains_key(t) && seen_topics.insert(t.clone()))
+            .filter(|t| !status.topic_to_key().contains_key(t) && seen_topics.insert(t.clone()))
             .collect();
 
         if new_topics.is_empty() {
@@ -1207,6 +1201,7 @@ impl SubscriptionStreamHandle {
             flush_threshold: self.flush_threshold,
             overflow_policy: self.overflow_policy,
             tx: self.tx.clone(),
+            status: self.status.clone(),
         }))
     }
 
@@ -1216,16 +1211,7 @@ impl SubscriptionStreamHandle {
         new_keys: Vec<usize>,
         new_metrics: Vec<Arc<SubscriptionMetrics>>,
     ) {
-        for ((topic, key), metric) in topics
-            .iter()
-            .zip(new_keys.iter())
-            .zip(new_metrics.into_iter())
-        {
-            self.topic_to_key.insert(topic.clone(), *key);
-            self.topics.push(topic.clone());
-            self.keys.push(*key);
-            self.metrics.insert(*key, metric);
-        }
+        self.status.lock().add_active(topics, &new_keys, new_metrics);
     }
 
     fn prepare_remove(&self, tickers: Vec<String>) -> PyResult<Option<PendingRemove>> {
@@ -1238,9 +1224,10 @@ impl SubscriptionStreamHandle {
         let mut seen_keys = HashSet::new();
         let mut topics = Vec::new();
         let mut keys = Vec::new();
+        let status = self.status.lock();
 
         for ticker in tickers {
-            if let Some(&key) = self.topic_to_key.get(&ticker) {
+            if let Some(&key) = status.topic_to_key().get(&ticker) {
                 if seen_keys.insert(key) {
                     topics.push(ticker);
                     keys.push(key);
@@ -1260,12 +1247,9 @@ impl SubscriptionStreamHandle {
     }
 
     fn apply_remove(&mut self, topics: &[String]) {
+        let mut status = self.status.lock();
         for topic in topics {
-            if let Some(key) = self.topic_to_key.remove(topic) {
-                self.topics.retain(|t| t != topic);
-                self.keys.retain(|k| *k != key);
-                self.metrics.remove(&key);
-            }
+            status.remove_topic(topic);
         }
     }
 }
@@ -1280,6 +1264,7 @@ struct SubscriptionSnapshot {
     dropped_batches: u64,
     batches_sent: u64,
     slow_consumer: bool,
+    failures: Vec<SubscriptionFailureInfo>,
 }
 
 impl PySubscription {
@@ -1289,17 +1274,19 @@ impl PySubscription {
         let guard = stream.blocking_lock();
         match guard.as_ref() {
             Some(handle) => {
+                let status = handle.status.lock();
                 let (messages_received, dropped_batches, batches_sent, slow_consumer) =
-                    subscription_metrics_totals(&handle.metrics);
+                    subscription_metrics_totals(status.fields_metrics());
                 SubscriptionSnapshot {
                     present: true,
-                    topics: handle.topics.clone(),
+                    topics: status.topics().to_vec(),
                     fields: handle.fields.clone(),
-                    is_active: !handle.keys.is_empty() && handle.claim.is_some(),
+                    is_active: status.has_active_topics() && handle.claim.is_some(),
                     messages_received,
                     dropped_batches,
                     batches_sent,
                     slow_consumer,
+                    failures: status.failures().to_vec(),
                 }
             }
             None => SubscriptionSnapshot::default(),
@@ -1386,6 +1373,7 @@ impl PySubscription {
                     pending.flush_threshold,
                     pending.overflow_policy,
                     pending.tx.clone(),
+                    pending.status.clone(),
                 )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
@@ -1475,6 +1463,30 @@ impl PySubscription {
         Ok(dict.into())
     }
 
+    #[getter]
+    fn failed_tickers(&self, py: Python<'_>) -> Vec<String> {
+        self.snapshot(py)
+            .failures
+            .into_iter()
+            .map(|failure| failure.topic)
+            .collect()
+    }
+
+    #[getter]
+    fn failures(&self, py: Python<'_>) -> Vec<(String, String, String)> {
+        self.snapshot(py)
+            .failures
+            .into_iter()
+            .map(|failure| {
+                (
+                    failure.topic,
+                    failure.reason,
+                    failure.kind.as_str().to_string(),
+                )
+            })
+            .collect()
+    }
+
     /// Unsubscribe and close the stream.
     ///
     /// If drain=True, returns remaining buffered batches before closing.
@@ -1517,8 +1529,9 @@ impl PySubscription {
             // Unsubscribe from Bloomberg
             if let Some(mut h) = handle {
                 if let Some(claim) = h.claim.take() {
-                    if !h.keys.is_empty() {
-                        let _ = claim.unsubscribe(h.keys.clone()).await;
+                    let keys = h.status.lock().keys().to_vec();
+                    if !keys.is_empty() {
+                        let _ = claim.unsubscribe(keys).await;
                     }
                     // claim is dropped here, returning session to pool
                 }
