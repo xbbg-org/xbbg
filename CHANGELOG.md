@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **Subscription failure isolation for mixed-topic streams**: Real-time subscriptions now treat Bloomberg `SubscriptionFailure` and unexpected `SubscriptionTerminated` events as per-ticker status instead of fatal stream errors when other topics remain healthy. Mixed subscriptions keep delivering data for valid tickers while exposing failed topics through subscription metadata.
+
+### Added
+
+- **Subscription failure metadata**: Python subscriptions now expose `failed_tickers` and `failures` so callers can inspect which topics Bloomberg rejected or terminated, along with the reported reason and failure kind.
+
 ## [1.0.0b3] - 2026-03-06
 
 ### Added

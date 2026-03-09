@@ -132,19 +132,56 @@ class TestTickModeWarning:
 
     def test_tick_mode_flush_threshold_warning(self):
         """tick_mode=True with flush_threshold>1 emits UserWarning before engine call."""
-        from xbbg._core import BlpInternalError
         from xbbg.blp import asubscribe
 
-        with pytest.warns(UserWarning, match="tick_mode"), pytest.raises((RuntimeError, OSError, BlpInternalError)):
-            # Warning is emitted before engine call; engine call fails without Bloomberg
-            asyncio.run(
-                asubscribe(
-                    ["AAPL US Equity"],
-                    ["LAST_PRICE"],
-                    tick_mode=True,
-                    flush_threshold=50,
+        captured: dict[str, object] = {}
+
+        class FakePySubscription:
+            tickers = ["AAPL US Equity"]
+            failed_tickers = []
+            failures = []
+            fields = ["LAST_PRICE"]
+            is_active = True
+            stats = {
+                "messages_received": 0,
+                "dropped_batches": 0,
+                "batches_sent": 0,
+                "slow_consumer": False,
+            }
+
+        class FakeEngine:
+            async def subscribe_with_options(self, service, tickers, fields, options, **kwargs):
+                captured.update(
+                    {
+                        "service": service,
+                        "tickers": tickers,
+                        "fields": fields,
+                        "options": options,
+                        **kwargs,
+                    }
                 )
-            )
+                return FakePySubscription()
+
+        import xbbg.blp as blp_module
+
+        original_get_engine = blp_module._get_engine
+        blp_module._get_engine = lambda: FakeEngine()
+
+        try:
+            with pytest.warns(UserWarning, match="tick_mode"):
+                sub = asyncio.run(
+                    asubscribe(
+                        ["AAPL US Equity"],
+                        ["LAST_PRICE"],
+                        tick_mode=True,
+                        flush_threshold=50,
+                    )
+                )
+        finally:
+            blp_module._get_engine = original_get_engine
+
+        assert sub._tick_mode is True
+        assert captured["flush_threshold"] == 1
 
 
 class TestSubscriptionStats:
@@ -156,6 +193,50 @@ class TestSubscriptionStats:
 
         assert hasattr(Subscription, "stats")
         assert isinstance(inspect.getattr_static(Subscription, "stats"), property)
+
+
+class TestSubscriptionFailureMetadata:
+    """Verify Subscription exposes non-fatal failure metadata."""
+
+    def test_failure_properties_exist(self):
+        from xbbg.blp import Subscription
+
+        assert isinstance(inspect.getattr_static(Subscription, "failed_tickers"), property)
+        assert isinstance(inspect.getattr_static(Subscription, "failures"), property)
+
+    def test_failure_properties_proxy_underlying_subscription(self):
+        from xbbg.blp import Subscription
+
+        class FakePySubscription:
+            tickers = ["SPY US Equity"]
+            failed_tickers = ["/isin/BMG8192H1557"]
+            failures = [
+                (
+                    "/isin/BMG8192H1557",
+                    "Security is not valid for subscription [EX336]",
+                    "failure",
+                )
+            ]
+            fields = ["LAST_PRICE"]
+            is_active = True
+            stats = {
+                "messages_received": 0,
+                "dropped_batches": 0,
+                "batches_sent": 0,
+                "slow_consumer": False,
+            }
+
+        sub = Subscription(FakePySubscription(), raw=True, backend=None)
+
+        assert sub.tickers == ["SPY US Equity"]
+        assert getattr(sub, "failed_tickers") == ["/isin/BMG8192H1557"]
+        assert getattr(sub, "failures") == [
+            {
+                "ticker": "/isin/BMG8192H1557",
+                "reason": "Security is not valid for subscription [EX336]",
+                "kind": "failure",
+            }
+        ]
 
 
 class TestBackwardCompatibility:
