@@ -51,8 +51,9 @@ use xbbg_log::{debug, info, warn};
 
 use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{
-    Engine, EngineConfig, ExtractorType, RequestParams, SubscriptionCommandHandle,
-    SubscriptionFailureInfo,
+    AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, ServiceStatusInfo,
+    SessionStatusInfo, SubscriptionCommandHandle, SubscriptionEventInfo, SubscriptionFailureInfo,
+    SubscriptionRecoveryPolicy, TopicStatusInfo,
 };
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::BlpError;
@@ -80,7 +81,7 @@ async fn wait_for_subscription_close(close_rx: &mut watch::Receiver<bool>) {
     }
 }
 
-fn subscription_metrics_totals(metrics: &SubscriptionMetricsMap) -> (u64, u64, u64, bool) {
+fn subscription_metrics_totals(metrics: &SubscriptionMetricsMap) -> (u64, u64, u64, bool, u64, u64, u64) {
     let messages_received = metrics
         .values()
         .map(|m| m.messages_received.load(Ordering::Relaxed))
@@ -96,12 +97,29 @@ fn subscription_metrics_totals(metrics: &SubscriptionMetricsMap) -> (u64, u64, u
     let slow_consumer = metrics
         .values()
         .any(|m| m.slow_consumer.load(Ordering::Relaxed));
+    let data_loss_events = metrics
+        .values()
+        .map(|m| m.data_loss_events.load(Ordering::Relaxed))
+        .sum();
+    let last_message_us = metrics
+        .values()
+        .map(|m| m.last_message_us.load(Ordering::Relaxed))
+        .max()
+        .unwrap_or(0);
+    let last_data_loss_us = metrics
+        .values()
+        .map(|m| m.last_data_loss_us.load(Ordering::Relaxed))
+        .max()
+        .unwrap_or(0);
 
     (
         messages_received,
         dropped_batches,
         batches_sent,
         slow_consumer,
+        data_loss_events,
+        last_message_us,
+        last_data_loss_us,
     )
 }
 
@@ -895,7 +913,7 @@ impl PyEngine {
     ///     print(batch)
     /// await sub.unsubscribe()
     /// ```
-    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None))]
+    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None))]
     fn subscribe<'py>(
         &self,
         py: Python<'py>,
@@ -904,6 +922,7 @@ impl PyEngine {
         flush_threshold: Option<usize>,
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
+        recovery_policy: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
@@ -913,6 +932,10 @@ impl PyEngine {
             "drop_oldest" => OverflowPolicy::DropOldest,
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
+        });
+        let recovery = recovery_policy.as_deref().map(|s| match s {
+            "resubscribe" => SubscriptionRecoveryPolicy::Resubscribe,
+            _ => SubscriptionRecoveryPolicy::None,
         });
 
         debug!(
@@ -931,6 +954,7 @@ impl PyEngine {
                     stream_capacity,
                     flush_threshold,
                     op,
+                    recovery,
                 )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
@@ -988,7 +1012,7 @@ impl PyEngine {
     /// async for batch in sub:
     ///     print(batch)
     /// ```
-    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None))]
+    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None))]
     #[allow(clippy::too_many_arguments)]
     fn subscribe_with_options<'py>(
         &self,
@@ -1000,6 +1024,7 @@ impl PyEngine {
         flush_threshold: Option<usize>,
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
+        recovery_policy: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
@@ -1011,6 +1036,10 @@ impl PyEngine {
             "drop_oldest" => OverflowPolicy::DropOldest,
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
+        });
+        let recovery = recovery_policy.as_deref().map(|s| match s {
+            "resubscribe" => SubscriptionRecoveryPolicy::Resubscribe,
+            _ => SubscriptionRecoveryPolicy::None,
         });
 
         debug!(
@@ -1031,6 +1060,7 @@ impl PyEngine {
                     stream_capacity,
                     flush_threshold,
                     op,
+                    recovery,
                 )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
@@ -1260,11 +1290,21 @@ struct SubscriptionSnapshot {
     topics: Vec<String>,
     fields: Vec<String>,
     is_active: bool,
+    all_failed: bool,
     messages_received: u64,
     dropped_batches: u64,
     batches_sent: u64,
     slow_consumer: bool,
+    data_loss_events: u64,
+    last_message_us: u64,
+    last_data_loss_us: u64,
     failures: Vec<SubscriptionFailureInfo>,
+    topic_states: Vec<TopicStatusInfo>,
+    session: SessionStatusInfo,
+    services: Vec<ServiceStatusInfo>,
+    admin: AdminStatusInfo,
+    events: Vec<SubscriptionEventInfo>,
+    effective_overflow_policy: String,
 }
 
 impl PySubscription {
@@ -1275,18 +1315,47 @@ impl PySubscription {
         match guard.as_ref() {
             Some(handle) => {
                 let status = handle.status.lock();
-                let (messages_received, dropped_batches, batches_sent, slow_consumer) =
+                let (
+                    messages_received,
+                    dropped_batches,
+                    batches_sent,
+                    slow_consumer,
+                    data_loss_events,
+                    last_message_us,
+                    last_data_loss_us,
+                ) =
                     subscription_metrics_totals(status.fields_metrics());
+                let mut topic_states: Vec<TopicStatusInfo> =
+                    status.topic_statuses().values().cloned().collect();
+                topic_states.sort_by(|left, right| left.topic.cmp(&right.topic));
+
+                let mut services: Vec<ServiceStatusInfo> = status.services().values().cloned().collect();
+                services.sort_by(|left, right| left.service.cmp(&right.service));
+
                 SubscriptionSnapshot {
                     present: true,
                     topics: status.topics().to_vec(),
                     fields: handle.fields.clone(),
                     is_active: status.has_active_topics() && handle.claim.is_some(),
+                    all_failed: !status.has_active_topics() && !status.failures().is_empty(),
                     messages_received,
                     dropped_batches,
                     batches_sent,
                     slow_consumer,
+                    data_loss_events,
+                    last_message_us,
+                    last_data_loss_us,
                     failures: status.failures().to_vec(),
+                    topic_states,
+                    session: status.session().clone(),
+                    services,
+                    admin: status.admin().clone(),
+                    events: status.events().iter().cloned().collect(),
+                    effective_overflow_policy: match handle.overflow_policy.unwrap_or(OverflowPolicy::DropNewest) {
+                        OverflowPolicy::DropNewest => "drop_newest".to_string(),
+                        OverflowPolicy::DropOldest => "drop_newest".to_string(),
+                        OverflowPolicy::Block => "block".to_string(),
+                    },
                 }
             }
             None => SubscriptionSnapshot::default(),
@@ -1445,6 +1514,11 @@ impl PySubscription {
         self.snapshot(py).is_active
     }
 
+    #[getter]
+    fn all_failed(&self, py: Python<'_>) -> bool {
+        self.snapshot(py).all_failed
+    }
+
     /// Get subscription metrics.
     ///
     /// Returns a dict with keys:
@@ -1460,7 +1534,93 @@ impl PySubscription {
         dict.set_item("dropped_batches", snapshot.dropped_batches)?;
         dict.set_item("batches_sent", snapshot.batches_sent)?;
         dict.set_item("slow_consumer", snapshot.slow_consumer)?;
+        dict.set_item("data_loss_events", snapshot.data_loss_events)?;
+        dict.set_item("last_message_us", snapshot.last_message_us)?;
+        dict.set_item("last_data_loss_us", snapshot.last_data_loss_us)?;
+        dict.set_item("effective_overflow_policy", snapshot.effective_overflow_policy)?;
         Ok(dict.into())
+    }
+
+    #[getter]
+    fn session_status(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let snapshot = self.snapshot(py);
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("state", snapshot.session.state.as_str())?;
+        dict.set_item("last_change_us", snapshot.session.last_change_us)?;
+        dict.set_item("disconnect_count", snapshot.session.disconnect_count)?;
+        dict.set_item("reconnect_count", snapshot.session.reconnect_count)?;
+        dict.set_item("recovery_policy", snapshot.session.recovery_policy.as_str())?;
+        dict.set_item("recovery_attempt_count", snapshot.session.recovery_attempt_count)?;
+        dict.set_item("recovery_success_count", snapshot.session.recovery_success_count)?;
+        dict.set_item("last_recovery_attempt_us", snapshot.session.last_recovery_attempt_us)?;
+        dict.set_item("last_recovery_success_us", snapshot.session.last_recovery_success_us)?;
+        dict.set_item("last_recovery_error", snapshot.session.last_recovery_error)?;
+        Ok(dict.into())
+    }
+
+    #[getter]
+    fn admin_status(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let snapshot = self.snapshot(py);
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item(
+            "slow_consumer_warning_active",
+            snapshot.admin.slow_consumer_warning_active,
+        )?;
+        dict.set_item(
+            "slow_consumer_warning_count",
+            snapshot.admin.slow_consumer_warning_count,
+        )?;
+        dict.set_item(
+            "slow_consumer_cleared_count",
+            snapshot.admin.slow_consumer_cleared_count,
+        )?;
+        dict.set_item("data_loss_count", snapshot.admin.data_loss_count)?;
+        dict.set_item("last_warning_us", snapshot.admin.last_warning_us)?;
+        dict.set_item("last_cleared_us", snapshot.admin.last_cleared_us)?;
+        dict.set_item("last_data_loss_us", snapshot.admin.last_data_loss_us)?;
+        Ok(dict.into())
+    }
+
+    #[getter]
+    fn service_status(&self, py: Python<'_>) -> Vec<(String, bool, i64)> {
+        self.snapshot(py)
+            .services
+            .into_iter()
+            .map(|service| (service.service, service.up, service.last_change_us))
+            .collect()
+    }
+
+    #[getter]
+    fn topic_states(&self, py: Python<'_>) -> Vec<(String, String, i64)> {
+        self.snapshot(py)
+            .topic_states
+            .into_iter()
+            .map(|topic| {
+                (
+                    topic.topic,
+                    topic.state.as_str().to_string(),
+                    topic.last_change_us,
+                )
+            })
+            .collect()
+    }
+
+    #[getter]
+    fn events(&self, py: Python<'_>) -> Vec<(i64, String, String, String, Option<String>, Option<String>)> {
+        self.snapshot(py)
+            .events
+            .into_iter()
+            .map(|event| {
+                (
+                    event.at_us,
+                    event.category.as_str().to_string(),
+                    event.level.as_str().to_string(),
+                    event.message_type,
+                    event.topic,
+                    event.detail,
+                )
+            })
+            .collect()
     }
 
     #[getter]
@@ -1885,6 +2045,9 @@ mod tests {
             dropped_batches: Arc::new(AtomicU64::new(dropped_batches)),
             batches_sent: Arc::new(AtomicU64::new(batches_sent)),
             slow_consumer: Arc::new(AtomicBool::new(slow_consumer)),
+            data_loss_events: Arc::new(AtomicU64::new(0)),
+            last_message_us: Arc::new(AtomicU64::new(0)),
+            last_data_loss_us: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -1896,6 +2059,9 @@ mod tests {
 
         metrics_map.remove(&10);
 
-        assert_eq!(subscription_metrics_totals(&metrics_map), (7, 2, 6, true));
+        assert_eq!(
+            subscription_metrics_totals(&metrics_map),
+            (7, 2, 6, true, 0, 0, 0)
+        );
     }
 }

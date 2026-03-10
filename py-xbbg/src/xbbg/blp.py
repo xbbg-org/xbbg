@@ -1270,6 +1270,61 @@ class Subscription:
         return [{"ticker": ticker, "reason": reason, "kind": kind} for ticker, reason, kind in self._sub.failures]
 
     @property
+    def topic_states(self) -> dict[str, dict[str, int | str]]:
+        """Topic lifecycle state keyed by ticker/topic."""
+        return {
+            ticker: {"state": state, "last_change_us": last_change_us}
+            for ticker, state, last_change_us in self._sub.topic_states
+        }
+
+    @property
+    def session_status(self) -> dict[str, int | str]:
+        """Session-level connection status for this subscription."""
+        return dict(self._sub.session_status)
+
+    @property
+    def admin_status(self) -> dict[str, int | bool | None]:
+        """Bloomberg admin/slow-consumer status for this subscription."""
+        return dict(self._sub.admin_status)
+
+    @property
+    def service_status(self) -> dict[str, dict[str, int | bool]]:
+        """Service availability status keyed by Bloomberg service name."""
+        return {
+            service: {"up": up, "last_change_us": last_change_us}
+            for service, up, last_change_us in self._sub.service_status
+        }
+
+    @property
+    def events(self) -> list[dict[str, str | int | None]]:
+        """Bounded lifecycle/event history for the subscription."""
+        return [
+            {
+                "at_us": at_us,
+                "category": category,
+                "level": level,
+                "message_type": message_type,
+                "topic": topic,
+                "detail": detail,
+            }
+            for at_us, category, level, message_type, topic, detail in self._sub.events
+        ]
+
+    @property
+    def status(self) -> dict[str, Any]:
+        """Combined operational status snapshot."""
+        return {
+            "active": self.is_active,
+            "all_failed": self.all_failed,
+            "tickers": self.tickers,
+            "failed_tickers": self.failed_tickers,
+            "topic_states": self.topic_states,
+            "session": self.session_status,
+            "admin": self.admin_status,
+            "services": self.service_status,
+        }
+
+    @property
     def fields(self) -> list[str]:
         """Subscribed fields."""
         return self._sub.fields
@@ -1278,6 +1333,11 @@ class Subscription:
     def is_active(self) -> bool:
         """Whether the subscription is still active."""
         return self._sub.is_active
+
+    @property
+    def all_failed(self) -> bool:
+        """Whether every requested ticker has ended in failure/termination."""
+        return self._sub.all_failed
 
     @property
     def stats(self) -> dict:
@@ -1289,6 +1349,10 @@ class Subscription:
                 - dropped_batches: int - batches dropped due to overflow
                 - batches_sent: int - batches successfully sent to Python
                 - slow_consumer: bool - True if DATALOSS was received
+                - data_loss_events: int - total Bloomberg data-loss signals observed
+                - last_message_us: int - latest receive timestamp seen from Bloomberg
+                - last_data_loss_us: int - latest data-loss timestamp seen from Bloomberg
+                - effective_overflow_policy: str - actual runtime policy used by the Rust stream
         """
         return self._sub.stats
 
@@ -1326,6 +1390,7 @@ async def asubscribe(
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
     overflow_policy: str | None = None,
+    recovery_policy: str | None = None,
 ) -> Subscription:
     """Create an async subscription to real-time market data.
 
@@ -1343,6 +1408,7 @@ async def asubscribe(
         flush_threshold: Batch flush threshold (validation only in Wave 1)
         stream_capacity: Stream channel capacity (validation only in Wave 1)
         overflow_policy: Overflow policy for stream (validation only in Wave 1)
+        recovery_policy: Optional reconnect policy: None/"none" or "resubscribe"
 
     Returns:
         Subscription handle for iteration and control
@@ -1386,6 +1452,13 @@ async def asubscribe(
         raise ValueError(
             f"overflow_policy must be one of 'drop_newest', 'drop_oldest', 'block', got {overflow_policy!r}"
         )
+    if recovery_policy is not None and recovery_policy not in ("none", "resubscribe"):
+        raise ValueError(f"recovery_policy must be one of 'none', 'resubscribe', got {recovery_policy!r}")
+    if overflow_policy == "drop_oldest":
+        warnings.warn(
+            "overflow_policy='drop_oldest' currently behaves as 'drop_newest' for performance-safe bounded streaming",
+            stacklevel=2,
+        )
 
     # tick_mode=True forces flush_threshold=1
     if tick_mode and flush_threshold is not None and flush_threshold > 1:
@@ -1409,6 +1482,7 @@ async def asubscribe(
         or flush_threshold is not None
         or stream_capacity is not None
         or overflow_policy is not None
+        or recovery_policy is not None
     ):
         opt_kwargs = {
             k: v
@@ -1416,6 +1490,7 @@ async def asubscribe(
                 "flush_threshold": flush_threshold,
                 "stream_capacity": stream_capacity,
                 "overflow_policy": overflow_policy,
+                "recovery_policy": recovery_policy,
             }.items()
             if v is not None
         }
@@ -1443,6 +1518,7 @@ async def astream(
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
     overflow_policy: str | None = None,
+    recovery_policy: str | None = None,
 ):
     """High-level async streaming - simple iteration.
 
@@ -1485,6 +1561,7 @@ async def astream(
         flush_threshold=flush_threshold,
         stream_capacity=stream_capacity,
         overflow_policy=overflow_policy,
+        recovery_policy=recovery_policy,
     ) as sub:
         async for batch in sub:
             if callback is not None:
