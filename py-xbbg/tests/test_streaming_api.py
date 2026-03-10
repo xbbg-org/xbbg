@@ -445,8 +445,8 @@ class TestSubscriptionFailureMetadata:
         sub = Subscription(FakePySubscription(), raw=True, backend=None)
 
         assert sub.tickers == ["SPY US Equity"]
-        assert getattr(sub, "failed_tickers") == ["/isin/BMG8192H1557"]
-        assert getattr(sub, "failures") == [
+        assert sub.failed_tickers == ["/isin/BMG8192H1557"]
+        assert sub.failures == [
             {
                 "ticker": "/isin/BMG8192H1557",
                 "reason": "Security is not valid for subscription [EX336]",
