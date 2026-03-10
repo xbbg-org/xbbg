@@ -19,7 +19,7 @@ use xbbg_core::{BlpError, CorrelationId, EventType, SessionOptions, Subscription
 use super::state::{SubscriptionMetrics, SubscriptionState};
 use super::{
     BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState, SharedSubscriptionStatus,
-    SubscriptionEventLevel, SubscriptionFailureKind, SubscriptionRecoveryPolicy, SlabKey,
+    SlabKey, SubscriptionEventLevel, SubscriptionFailureKind, SubscriptionRecoveryPolicy,
 };
 
 /// Commands sent to a subscription worker.
@@ -415,7 +415,7 @@ impl SubscriptionWorker {
                 if self.pending_cancel.contains(&(key as usize)) {
                     continue;
                 }
-                    if let Some(state) = self.subs.get_mut(key as usize) {
+                if let Some(state) = self.subs.get_mut(key as usize) {
                     // Check for DATALOSS
                     let elem = msg.elements();
                     if let Some(event_type) = elem.get_by_str("MKTDATA_EVENT_TYPE") {
@@ -430,7 +430,10 @@ impl SubscriptionWorker {
                                             if let Some(status) = &self.status {
                                                 status.lock().record_admin_data_loss(
                                                     Some(topic),
-                                                    Some("subscription data reported DATALOSS".to_string()),
+                                                    Some(
+                                                        "subscription data reported DATALOSS"
+                                                            .to_string(),
+                                                    ),
                                                 );
                                             }
                                             continue;
@@ -688,7 +691,7 @@ impl SubscriptionWorker {
                              Subscription closed. Please resubscribe.",
                             self.id,
                         ),
-                        });
+                    });
                 }
                 self.clear_active_status();
                 if let Some(status) = &self.status {
@@ -830,7 +833,11 @@ impl SubscriptionWorker {
         let mut sub_list = SubscriptionList::new();
         for (key, state) in self.subs.iter() {
             let cid = CorrelationId::Int(key as i64);
-            let fields: Vec<&str> = state.field_strings.iter().map(|field| field.as_str()).collect();
+            let fields: Vec<&str> = state
+                .field_strings
+                .iter()
+                .map(|field| field.as_str())
+                .collect();
             let options = self.current_options.join(",");
             if let Err(error) = sub_list.add(&state.topic, &fields, &options, &cid) {
                 if let Some(status) = &self.status {

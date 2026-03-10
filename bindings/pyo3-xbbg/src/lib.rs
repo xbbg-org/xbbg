@@ -68,6 +68,7 @@ type StreamSender = tokio::sync::mpsc::Sender<StreamBatchResult>;
 type StreamReceiver = tokio::sync::mpsc::Receiver<StreamBatchResult>;
 type SharedStreamReceiver = Arc<Mutex<Option<StreamReceiver>>>;
 type SubscriptionMetricsMap = HashMap<usize, Arc<SubscriptionMetrics>>;
+type SubscriptionEventTuple = (i64, String, String, String, Option<String>, Option<String>);
 
 async fn wait_for_subscription_close(close_rx: &mut watch::Receiver<bool>) {
     if *close_rx.borrow() {
@@ -81,7 +82,9 @@ async fn wait_for_subscription_close(close_rx: &mut watch::Receiver<bool>) {
     }
 }
 
-fn subscription_metrics_totals(metrics: &SubscriptionMetricsMap) -> (u64, u64, u64, bool, u64, u64, u64) {
+fn subscription_metrics_totals(
+    metrics: &SubscriptionMetricsMap,
+) -> (u64, u64, u64, bool, u64, u64, u64) {
     let messages_received = metrics
         .values()
         .map(|m| m.messages_received.load(Ordering::Relaxed))
@@ -913,6 +916,7 @@ impl PyEngine {
     ///     print(batch)
     /// await sub.unsubscribe()
     /// ```
+    #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None))]
     fn subscribe<'py>(
         &self,
@@ -1241,7 +1245,9 @@ impl SubscriptionStreamHandle {
         new_keys: Vec<usize>,
         new_metrics: Vec<Arc<SubscriptionMetrics>>,
     ) {
-        self.status.lock().add_active(topics, &new_keys, new_metrics);
+        self.status
+            .lock()
+            .add_active(topics, &new_keys, new_metrics);
     }
 
     fn prepare_remove(&self, tickers: Vec<String>) -> PyResult<Option<PendingRemove>> {
@@ -1323,13 +1329,13 @@ impl PySubscription {
                     data_loss_events,
                     last_message_us,
                     last_data_loss_us,
-                ) =
-                    subscription_metrics_totals(status.fields_metrics());
+                ) = subscription_metrics_totals(status.fields_metrics());
                 let mut topic_states: Vec<TopicStatusInfo> =
                     status.topic_statuses().values().cloned().collect();
                 topic_states.sort_by(|left, right| left.topic.cmp(&right.topic));
 
-                let mut services: Vec<ServiceStatusInfo> = status.services().values().cloned().collect();
+                let mut services: Vec<ServiceStatusInfo> =
+                    status.services().values().cloned().collect();
                 services.sort_by(|left, right| left.service.cmp(&right.service));
 
                 SubscriptionSnapshot {
@@ -1351,7 +1357,10 @@ impl PySubscription {
                     services,
                     admin: status.admin().clone(),
                     events: status.events().iter().cloned().collect(),
-                    effective_overflow_policy: match handle.overflow_policy.unwrap_or(OverflowPolicy::DropNewest) {
+                    effective_overflow_policy: match handle
+                        .overflow_policy
+                        .unwrap_or(OverflowPolicy::DropNewest)
+                    {
                         OverflowPolicy::DropNewest => "drop_newest".to_string(),
                         OverflowPolicy::DropOldest => "drop_newest".to_string(),
                         OverflowPolicy::Block => "block".to_string(),
@@ -1537,7 +1546,10 @@ impl PySubscription {
         dict.set_item("data_loss_events", snapshot.data_loss_events)?;
         dict.set_item("last_message_us", snapshot.last_message_us)?;
         dict.set_item("last_data_loss_us", snapshot.last_data_loss_us)?;
-        dict.set_item("effective_overflow_policy", snapshot.effective_overflow_policy)?;
+        dict.set_item(
+            "effective_overflow_policy",
+            snapshot.effective_overflow_policy,
+        )?;
         Ok(dict.into())
     }
 
@@ -1550,10 +1562,22 @@ impl PySubscription {
         dict.set_item("disconnect_count", snapshot.session.disconnect_count)?;
         dict.set_item("reconnect_count", snapshot.session.reconnect_count)?;
         dict.set_item("recovery_policy", snapshot.session.recovery_policy.as_str())?;
-        dict.set_item("recovery_attempt_count", snapshot.session.recovery_attempt_count)?;
-        dict.set_item("recovery_success_count", snapshot.session.recovery_success_count)?;
-        dict.set_item("last_recovery_attempt_us", snapshot.session.last_recovery_attempt_us)?;
-        dict.set_item("last_recovery_success_us", snapshot.session.last_recovery_success_us)?;
+        dict.set_item(
+            "recovery_attempt_count",
+            snapshot.session.recovery_attempt_count,
+        )?;
+        dict.set_item(
+            "recovery_success_count",
+            snapshot.session.recovery_success_count,
+        )?;
+        dict.set_item(
+            "last_recovery_attempt_us",
+            snapshot.session.last_recovery_attempt_us,
+        )?;
+        dict.set_item(
+            "last_recovery_success_us",
+            snapshot.session.last_recovery_success_us,
+        )?;
         dict.set_item("last_recovery_error", snapshot.session.last_recovery_error)?;
         Ok(dict.into())
     }
@@ -1606,7 +1630,7 @@ impl PySubscription {
     }
 
     #[getter]
-    fn events(&self, py: Python<'_>) -> Vec<(i64, String, String, String, Option<String>, Option<String>)> {
+    fn events(&self, py: Python<'_>) -> Vec<SubscriptionEventTuple> {
         self.snapshot(py)
             .events
             .into_iter()

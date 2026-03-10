@@ -180,7 +180,7 @@ pub struct ServiceStatusInfo {
     pub last_change_us: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AdminStatusInfo {
     pub slow_consumer_warning_active: bool,
     pub slow_consumer_warning_count: u64,
@@ -189,20 +189,6 @@ pub struct AdminStatusInfo {
     pub last_warning_us: Option<i64>,
     pub last_cleared_us: Option<i64>,
     pub last_data_loss_us: Option<i64>,
-}
-
-impl Default for AdminStatusInfo {
-    fn default() -> Self {
-        Self {
-            slow_consumer_warning_active: false,
-            slow_consumer_warning_count: 0,
-            slow_consumer_cleared_count: 0,
-            data_loss_count: 0,
-            last_warning_us: None,
-            last_cleared_us: None,
-            last_data_loss_us: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1750,14 +1736,15 @@ impl SubscriptionStream {
     pub async fn add(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
         let command = self.command_handle()?;
         let mut seen_topics = HashSet::new();
-        let status = self.status.lock();
 
         // Filter out already subscribed topics
-        let new_topics: Vec<String> = topics
-            .into_iter()
-            .filter(|t| !status.topic_to_key().contains_key(t) && seen_topics.insert(t.clone()))
-            .collect();
-        drop(status);
+        let new_topics: Vec<String> = {
+            let status = self.status.lock();
+            topics
+                .into_iter()
+                .filter(|t| !status.topic_to_key().contains_key(t) && seen_topics.insert(t.clone()))
+                .collect()
+        };
 
         if new_topics.is_empty() {
             return Ok(());
@@ -1792,20 +1779,21 @@ impl SubscriptionStream {
     pub async fn remove(&mut self, topics: Vec<String>) -> Result<(), BlpAsyncError> {
         let command = self.command_handle()?;
         let mut seen_keys = HashSet::new();
-        let status = self.status.lock();
 
         // Find keys for topics to remove
         let mut keys_to_remove = Vec::new();
         let mut topics_to_remove = Vec::new();
-        for topic in topics {
-            if let Some(&key) = status.topic_to_key().get(&topic) {
-                if seen_keys.insert(key) {
-                    keys_to_remove.push(key);
-                    topics_to_remove.push(topic);
+        {
+            let status = self.status.lock();
+            for topic in topics {
+                if let Some(&key) = status.topic_to_key().get(&topic) {
+                    if seen_keys.insert(key) {
+                        keys_to_remove.push(key);
+                        topics_to_remove.push(topic);
+                    }
                 }
             }
         }
-        drop(status);
 
         if keys_to_remove.is_empty() {
             return Ok(());
@@ -2009,7 +1997,10 @@ mod tests {
             last_data_loss_us: Arc::new(AtomicU64::new(0)),
         });
         let mut status = SubscriptionStatusState::from_active(
-            vec!["SPY US Equity".to_string(), "/isin/BMG8192H1557".to_string()],
+            vec![
+                "SPY US Equity".to_string(),
+                "/isin/BMG8192H1557".to_string(),
+            ],
             vec![10, 11],
             HashMap::from([(10, metric.clone()), (11, metric)]),
             SubscriptionRecoveryPolicy::None,
@@ -2059,7 +2050,10 @@ mod tests {
         assert_eq!(status.admin().data_loss_count, 1);
         assert_eq!(status.events().len(), 5);
         assert_eq!(
-            status.events().back().map(|event| event.message_type.as_str()),
+            status
+                .events()
+                .back()
+                .map(|event| event.message_type.as_str()),
             Some("DataLoss"),
         );
     }
