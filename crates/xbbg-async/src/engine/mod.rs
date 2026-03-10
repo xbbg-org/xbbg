@@ -14,9 +14,10 @@ pub mod state;
 mod subscription_pool;
 mod worker;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
@@ -69,6 +70,191 @@ pub enum SubscriptionFailureKind {
     Terminated,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TopicLifecycleState {
+    Pending,
+    Started,
+    Streaming,
+    Unsubscribing,
+    Unsubscribed,
+    Failed,
+    Terminated,
+}
+
+impl TopicLifecycleState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Started => "started",
+            Self::Streaming => "streaming",
+            Self::Unsubscribing => "unsubscribing",
+            Self::Unsubscribed => "unsubscribed",
+            Self::Failed => "failed",
+            Self::Terminated => "terminated",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionLifecycleState {
+    Starting,
+    Up,
+    Down,
+    Terminated,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SubscriptionRecoveryPolicy {
+    #[default]
+    None,
+    Resubscribe,
+}
+
+impl SubscriptionRecoveryPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Resubscribe => "resubscribe",
+        }
+    }
+}
+
+impl SessionLifecycleState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Starting => "starting",
+            Self::Up => "up",
+            Self::Down => "down",
+            Self::Terminated => "terminated",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SubscriptionEventCategory {
+    Session,
+    Service,
+    Admin,
+    Subscription,
+}
+
+impl SubscriptionEventCategory {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Session => "session",
+            Self::Service => "service",
+            Self::Admin => "admin",
+            Self::Subscription => "subscription",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SubscriptionEventLevel {
+    Info,
+    Warning,
+    Error,
+}
+
+impl SubscriptionEventLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warning => "warning",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TopicStatusInfo {
+    pub topic: String,
+    pub state: TopicLifecycleState,
+    pub last_change_us: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServiceStatusInfo {
+    pub service: String,
+    pub up: bool,
+    pub last_change_us: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdminStatusInfo {
+    pub slow_consumer_warning_active: bool,
+    pub slow_consumer_warning_count: u64,
+    pub slow_consumer_cleared_count: u64,
+    pub data_loss_count: u64,
+    pub last_warning_us: Option<i64>,
+    pub last_cleared_us: Option<i64>,
+    pub last_data_loss_us: Option<i64>,
+}
+
+impl Default for AdminStatusInfo {
+    fn default() -> Self {
+        Self {
+            slow_consumer_warning_active: false,
+            slow_consumer_warning_count: 0,
+            slow_consumer_cleared_count: 0,
+            data_loss_count: 0,
+            last_warning_us: None,
+            last_cleared_us: None,
+            last_data_loss_us: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionStatusInfo {
+    pub state: SessionLifecycleState,
+    pub last_change_us: i64,
+    pub disconnect_count: u64,
+    pub reconnect_count: u64,
+    pub recovery_policy: SubscriptionRecoveryPolicy,
+    pub recovery_attempt_count: u64,
+    pub recovery_success_count: u64,
+    pub last_recovery_attempt_us: Option<i64>,
+    pub last_recovery_success_us: Option<i64>,
+    pub last_recovery_error: Option<String>,
+}
+
+impl Default for SessionStatusInfo {
+    fn default() -> Self {
+        Self {
+            state: SessionLifecycleState::Starting,
+            last_change_us: timestamp_now_us(),
+            disconnect_count: 0,
+            reconnect_count: 0,
+            recovery_policy: SubscriptionRecoveryPolicy::None,
+            recovery_attempt_count: 0,
+            recovery_success_count: 0,
+            last_recovery_attempt_us: None,
+            last_recovery_success_us: None,
+            last_recovery_error: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubscriptionEventInfo {
+    pub at_us: i64,
+    pub category: SubscriptionEventCategory,
+    pub level: SubscriptionEventLevel,
+    pub message_type: String,
+    pub topic: Option<String>,
+    pub detail: Option<String>,
+}
+
+const SUBSCRIPTION_EVENT_HISTORY_LIMIT: usize = 128;
+
+fn timestamp_now_us() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_micros() as i64)
+        .unwrap_or(0)
+}
+
 impl SubscriptionFailureKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -84,6 +270,7 @@ pub struct SubscriptionFailureInfo {
     pub topic: String,
     pub reason: String,
     pub kind: SubscriptionFailureKind,
+    pub at_us: i64,
 }
 
 /// Shared subscription status visible to worker and consumer-facing handles.
@@ -92,8 +279,14 @@ pub struct SubscriptionStatusState {
     keys: Vec<SlabKey>,
     topics: Vec<String>,
     topic_to_key: HashMap<String, SlabKey>,
+    key_to_topic: HashMap<SlabKey, String>,
     metrics: HashMap<SlabKey, Arc<SubscriptionMetrics>>,
     failures: Vec<SubscriptionFailureInfo>,
+    topic_states: HashMap<String, TopicStatusInfo>,
+    events: VecDeque<SubscriptionEventInfo>,
+    session: SessionStatusInfo,
+    services: HashMap<String, ServiceStatusInfo>,
+    admin: AdminStatusInfo,
 }
 
 pub type SharedSubscriptionStatus = Arc<Mutex<SubscriptionStatusState>>;
@@ -103,15 +296,41 @@ impl SubscriptionStatusState {
         topics: Vec<String>,
         keys: Vec<SlabKey>,
         metrics: HashMap<SlabKey, Arc<SubscriptionMetrics>>,
+        recovery_policy: SubscriptionRecoveryPolicy,
     ) -> Self {
-        let topic_to_key = topics.iter().cloned().zip(keys.iter().copied()).collect();
-        Self {
+        let mut status = Self {
             keys,
             topics,
-            topic_to_key,
+            topic_to_key: HashMap::new(),
+            key_to_topic: HashMap::new(),
             metrics,
             failures: Vec::new(),
+            topic_states: HashMap::new(),
+            events: VecDeque::with_capacity(SUBSCRIPTION_EVENT_HISTORY_LIMIT),
+            session: SessionStatusInfo {
+                state: SessionLifecycleState::Up,
+                recovery_policy,
+                ..SessionStatusInfo::default()
+            },
+            services: HashMap::new(),
+            admin: AdminStatusInfo::default(),
+        };
+        let now = timestamp_now_us();
+        let topics = status.topics.clone();
+        let keys = status.keys.clone();
+        for (topic, key) in topics.into_iter().zip(keys.into_iter()) {
+            status.topic_to_key.insert(topic.clone(), key);
+            status.key_to_topic.insert(key, topic.clone());
+            status.topic_states.insert(
+                topic.clone(),
+                TopicStatusInfo {
+                    topic,
+                    state: TopicLifecycleState::Pending,
+                    last_change_us: now,
+                },
+            );
         }
+        status
     }
 
     pub fn add_active(
@@ -120,11 +339,21 @@ impl SubscriptionStatusState {
         keys: &[SlabKey],
         metrics: Vec<Arc<SubscriptionMetrics>>,
     ) {
+        let now = timestamp_now_us();
         for ((topic, key), metric) in topics.iter().zip(keys.iter()).zip(metrics.into_iter()) {
             self.topic_to_key.insert(topic.clone(), *key);
+            self.key_to_topic.insert(*key, topic.clone());
             self.topics.push(topic.clone());
             self.keys.push(*key);
             self.metrics.insert(*key, metric);
+            self.topic_states.insert(
+                topic.clone(),
+                TopicStatusInfo {
+                    topic: topic.clone(),
+                    state: TopicLifecycleState::Pending,
+                    last_change_us: now,
+                },
+            );
         }
     }
 
@@ -136,12 +365,101 @@ impl SubscriptionStatusState {
         Some(key)
     }
 
-    pub fn remove_key(&mut self, key: SlabKey) -> Option<String> {
-        let topic = self
-            .topic_to_key
-            .iter()
-            .find_map(|(topic, existing_key)| (*existing_key == key).then(|| topic.clone()))?;
-        self.remove_topic(&topic);
+    pub fn topic_for_key(&self, key: SlabKey) -> Option<&str> {
+        self.key_to_topic.get(&key).map(String::as_str)
+    }
+
+    pub fn topic_statuses(&self) -> &HashMap<String, TopicStatusInfo> {
+        &self.topic_states
+    }
+
+    pub fn session(&self) -> &SessionStatusInfo {
+        &self.session
+    }
+
+    pub fn set_recovery_policy(&mut self, recovery_policy: SubscriptionRecoveryPolicy) {
+        self.session.recovery_policy = recovery_policy;
+    }
+
+    pub fn services(&self) -> &HashMap<String, ServiceStatusInfo> {
+        &self.services
+    }
+
+    pub fn admin(&self) -> &AdminStatusInfo {
+        &self.admin
+    }
+
+    pub fn events(&self) -> &VecDeque<SubscriptionEventInfo> {
+        &self.events
+    }
+
+    fn finalize_key(&mut self, key: SlabKey) -> Option<String> {
+        let topic = self.key_to_topic.remove(&key)?;
+        self.topic_to_key.remove(&topic);
+        self.topics.retain(|existing| existing != &topic);
+        self.keys.retain(|existing| *existing != key);
+        self.metrics.remove(&key);
+        Some(topic)
+    }
+
+    pub fn push_event(
+        &mut self,
+        category: SubscriptionEventCategory,
+        level: SubscriptionEventLevel,
+        message_type: impl Into<String>,
+        topic: Option<String>,
+        detail: Option<String>,
+    ) {
+        if self.events.len() >= SUBSCRIPTION_EVENT_HISTORY_LIMIT {
+            self.events.pop_front();
+        }
+        self.events.push_back(SubscriptionEventInfo {
+            at_us: timestamp_now_us(),
+            category,
+            level,
+            message_type: message_type.into(),
+            topic,
+            detail,
+        });
+    }
+
+    fn update_topic_state(&mut self, topic: &str, state: TopicLifecycleState) {
+        let now = timestamp_now_us();
+        self.topic_states
+            .entry(topic.to_string())
+            .and_modify(|status| {
+                status.state = state;
+                status.last_change_us = now;
+            })
+            .or_insert_with(|| TopicStatusInfo {
+                topic: topic.to_string(),
+                state,
+                last_change_us: now,
+            });
+    }
+
+    pub fn mark_topic_started(&mut self, key: SlabKey) -> Option<String> {
+        let topic = self.topic_for_key(key)?.to_string();
+        self.update_topic_state(&topic, TopicLifecycleState::Started);
+        Some(topic)
+    }
+
+    pub fn mark_topic_streaming(&mut self, key: SlabKey) -> Option<String> {
+        let topic = self.topic_for_key(key)?.to_string();
+        self.update_topic_state(&topic, TopicLifecycleState::Streaming);
+        Some(topic)
+    }
+
+    pub fn mark_topic_unsubscribing(&mut self, key: SlabKey) -> Option<String> {
+        let topic = self.topic_for_key(key)?.to_string();
+        let _ = self.remove_topic(&topic);
+        self.update_topic_state(&topic, TopicLifecycleState::Unsubscribing);
+        Some(topic)
+    }
+
+    pub fn mark_topic_unsubscribed(&mut self, key: SlabKey) -> Option<String> {
+        let topic = self.finalize_key(key)?;
+        self.update_topic_state(&topic, TopicLifecycleState::Unsubscribed);
         Some(topic)
     }
 
@@ -151,11 +469,17 @@ impl SubscriptionStatusState {
         reason: String,
         kind: SubscriptionFailureKind,
     ) -> Option<String> {
-        let topic = self.remove_key(key)?;
+        let topic = self.finalize_key(key)?;
+        let state = match kind {
+            SubscriptionFailureKind::Failure => TopicLifecycleState::Failed,
+            SubscriptionFailureKind::Terminated => TopicLifecycleState::Terminated,
+        };
+        self.update_topic_state(&topic, state);
         self.failures.push(SubscriptionFailureInfo {
             topic: topic.clone(),
             reason,
             kind,
+            at_us: timestamp_now_us(),
         });
         Some(topic)
     }
@@ -164,6 +488,7 @@ impl SubscriptionStatusState {
         self.keys.clear();
         self.topics.clear();
         self.topic_to_key.clear();
+        self.key_to_topic.clear();
         self.metrics.clear();
     }
 
@@ -189,6 +514,156 @@ impl SubscriptionStatusState {
 
     pub fn has_active_topics(&self) -> bool {
         !self.keys.is_empty()
+    }
+
+    pub fn record_subscription_event(
+        &mut self,
+        message_type: &str,
+        topic: Option<String>,
+        detail: Option<String>,
+        level: SubscriptionEventLevel,
+    ) {
+        self.push_event(
+            SubscriptionEventCategory::Subscription,
+            level,
+            message_type,
+            topic,
+            detail,
+        );
+    }
+
+    pub fn record_session_state(
+        &mut self,
+        state: SessionLifecycleState,
+        message_type: &str,
+        detail: Option<String>,
+    ) {
+        let now = timestamp_now_us();
+        if self.session.state == SessionLifecycleState::Down && state == SessionLifecycleState::Up {
+            self.session.reconnect_count += 1;
+        }
+        if state == SessionLifecycleState::Down {
+            self.session.disconnect_count += 1;
+        }
+        self.session.state = state;
+        self.session.last_change_us = now;
+        let level = match state {
+            SessionLifecycleState::Down | SessionLifecycleState::Terminated => {
+                SubscriptionEventLevel::Error
+            }
+            _ => SubscriptionEventLevel::Info,
+        };
+        self.push_event(
+            SubscriptionEventCategory::Session,
+            level,
+            message_type,
+            None,
+            detail,
+        );
+    }
+
+    pub fn record_service_state(
+        &mut self,
+        service: String,
+        up: bool,
+        message_type: &str,
+        detail: Option<String>,
+    ) {
+        let now = timestamp_now_us();
+        self.services.insert(
+            service.clone(),
+            ServiceStatusInfo {
+                service: service.clone(),
+                up,
+                last_change_us: now,
+            },
+        );
+        self.push_event(
+            SubscriptionEventCategory::Service,
+            if up {
+                SubscriptionEventLevel::Info
+            } else {
+                SubscriptionEventLevel::Warning
+            },
+            message_type,
+            Some(service),
+            detail,
+        );
+    }
+
+    pub fn record_admin_warning(&mut self, message_type: &str, detail: Option<String>) {
+        self.admin.slow_consumer_warning_active = true;
+        self.admin.slow_consumer_warning_count += 1;
+        self.admin.last_warning_us = Some(timestamp_now_us());
+        self.push_event(
+            SubscriptionEventCategory::Admin,
+            SubscriptionEventLevel::Warning,
+            message_type,
+            None,
+            detail,
+        );
+    }
+
+    pub fn record_admin_warning_cleared(&mut self, message_type: &str, detail: Option<String>) {
+        self.admin.slow_consumer_warning_active = false;
+        self.admin.slow_consumer_cleared_count += 1;
+        self.admin.last_cleared_us = Some(timestamp_now_us());
+        self.push_event(
+            SubscriptionEventCategory::Admin,
+            SubscriptionEventLevel::Info,
+            message_type,
+            None,
+            detail,
+        );
+    }
+
+    pub fn record_admin_data_loss(&mut self, topic: Option<String>, detail: Option<String>) {
+        self.admin.data_loss_count += 1;
+        self.admin.last_data_loss_us = Some(timestamp_now_us());
+        self.push_event(
+            SubscriptionEventCategory::Admin,
+            SubscriptionEventLevel::Warning,
+            "DataLoss",
+            topic,
+            detail,
+        );
+    }
+
+    pub fn record_recovery_attempt(&mut self, detail: Option<String>) {
+        self.session.recovery_attempt_count += 1;
+        self.session.last_recovery_attempt_us = Some(timestamp_now_us());
+        self.session.last_recovery_error = None;
+        self.push_event(
+            SubscriptionEventCategory::Session,
+            SubscriptionEventLevel::Info,
+            "RecoveryAttempt",
+            None,
+            detail,
+        );
+    }
+
+    pub fn record_recovery_success(&mut self, detail: Option<String>) {
+        self.session.recovery_success_count += 1;
+        self.session.last_recovery_success_us = Some(timestamp_now_us());
+        self.session.last_recovery_error = None;
+        self.push_event(
+            SubscriptionEventCategory::Session,
+            SubscriptionEventLevel::Info,
+            "RecoverySucceeded",
+            None,
+            detail,
+        );
+    }
+
+    pub fn record_recovery_error(&mut self, detail: String) {
+        self.session.last_recovery_error = Some(detail.clone());
+        self.push_event(
+            SubscriptionEventCategory::Session,
+            SubscriptionEventLevel::Warning,
+            "RecoveryFailed",
+            None,
+            Some(detail),
+        );
     }
 }
 
@@ -846,6 +1321,7 @@ impl Engine {
             None,
             None,
             None,
+            None,
         )
         .await
     }
@@ -870,6 +1346,7 @@ impl Engine {
         stream_capacity: Option<usize>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
+        recovery_policy: Option<SubscriptionRecoveryPolicy>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
         let (tx, rx) =
             mpsc::channel(stream_capacity.unwrap_or(self.config.subscription_stream_capacity));
@@ -893,7 +1370,12 @@ impl Engine {
             .await?;
 
         let metrics = keys.iter().cloned().zip(raw_metrics).collect();
-        *status.lock() = SubscriptionStatusState::from_active(topics.clone(), keys, metrics);
+        *status.lock() = SubscriptionStatusState::from_active(
+            topics.clone(),
+            keys,
+            metrics,
+            recovery_policy.unwrap_or_default(),
+        );
 
         let stream = SubscriptionStream {
             rx,
@@ -1522,11 +2004,15 @@ mod tests {
             dropped_batches: Arc::new(AtomicU64::new(0)),
             batches_sent: Arc::new(AtomicU64::new(0)),
             slow_consumer: Arc::new(AtomicBool::new(false)),
+            data_loss_events: Arc::new(AtomicU64::new(0)),
+            last_message_us: Arc::new(AtomicU64::new(0)),
+            last_data_loss_us: Arc::new(AtomicU64::new(0)),
         });
         let mut status = SubscriptionStatusState::from_active(
             vec!["SPY US Equity".to_string(), "/isin/BMG8192H1557".to_string()],
             vec![10, 11],
             HashMap::from([(10, metric.clone()), (11, metric)]),
+            SubscriptionRecoveryPolicy::None,
         );
 
         let topic = status.record_failure(
@@ -1541,5 +2027,40 @@ mod tests {
         assert_eq!(status.failures().len(), 1);
         assert_eq!(status.failures()[0].kind, SubscriptionFailureKind::Failure);
         assert_eq!(status.failures()[0].topic, "/isin/BMG8192H1557");
+        assert_eq!(
+            status.topic_statuses()["/isin/BMG8192H1557"].state,
+            TopicLifecycleState::Failed,
+        );
+    }
+
+    #[test]
+    fn subscription_status_tracks_session_and_admin_events() {
+        let mut status = SubscriptionStatusState::default();
+
+        status.record_session_state(
+            SessionLifecycleState::Down,
+            "SessionConnectionDown",
+            Some("worker=0 active_subscriptions=2".to_string()),
+        );
+        status.record_session_state(
+            SessionLifecycleState::Up,
+            "SessionConnectionUp",
+            Some("worker=0 active_subscriptions=2".to_string()),
+        );
+        status.record_admin_warning("SlowConsumerWarning", None);
+        status.record_admin_warning_cleared("SlowConsumerWarningCleared", None);
+        status.record_admin_data_loss(Some("SPY US Equity".to_string()), None);
+
+        assert_eq!(status.session().state, SessionLifecycleState::Up);
+        assert_eq!(status.session().disconnect_count, 1);
+        assert_eq!(status.session().reconnect_count, 1);
+        assert_eq!(status.admin().slow_consumer_warning_count, 1);
+        assert_eq!(status.admin().slow_consumer_cleared_count, 1);
+        assert_eq!(status.admin().data_loss_count, 1);
+        assert_eq!(status.events().len(), 5);
+        assert_eq!(
+            status.events().back().map(|event| event.message_type.as_str()),
+            Some("DataLoss"),
+        );
     }
 }

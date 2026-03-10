@@ -18,8 +18,8 @@ use xbbg_core::{BlpError, CorrelationId, EventType, SessionOptions, Subscription
 
 use super::state::{SubscriptionMetrics, SubscriptionState};
 use super::{
-    BlpAsyncError, EngineConfig, OverflowPolicy, SharedSubscriptionStatus,
-    SubscriptionFailureKind, SlabKey,
+    BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState, SharedSubscriptionStatus,
+    SubscriptionEventLevel, SubscriptionFailureKind, SubscriptionRecoveryPolicy, SlabKey,
 };
 
 /// Commands sent to a subscription worker.
@@ -78,6 +78,8 @@ struct SubscriptionWorker {
     pending_cancel: std::collections::HashSet<SlabKey>,
     /// Shared active/failed topic metadata for the currently claimed stream.
     status: Option<SharedSubscriptionStatus>,
+    current_service: Option<String>,
+    current_options: Vec<String>,
 }
 
 impl SubscriptionWorker {
@@ -113,6 +115,8 @@ impl SubscriptionWorker {
             open_services,
             pending_cancel: std::collections::HashSet::new(),
             status: None,
+            current_service: None,
+            current_options: Vec::new(),
         })
     }
 
@@ -143,6 +147,14 @@ impl SubscriptionWorker {
             );
             self.session.open_service(service)?;
             self.open_services.insert(service.to_string());
+            if let Some(status) = &self.status {
+                status.lock().record_service_state(
+                    service.to_string(),
+                    true,
+                    "ServiceOpened",
+                    Some("service opened on demand".to_string()),
+                );
+            }
         }
         Ok(())
     }
@@ -170,6 +182,16 @@ impl SubscriptionWorker {
                         reply,
                     }) => {
                         self.status = Some(status);
+                        self.current_service = Some(service.clone());
+                        self.current_options = options.clone();
+                        if let Some(status) = &self.status {
+                            status.lock().record_service_state(
+                                service.clone(),
+                                true,
+                                "ServiceReady",
+                                Some("service available for subscription".to_string()),
+                            );
+                        }
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
@@ -198,6 +220,16 @@ impl SubscriptionWorker {
                         reply,
                     }) => {
                         self.status = Some(status);
+                        self.current_service = Some(service.clone());
+                        self.current_options = options.clone();
+                        if let Some(status) = &self.status {
+                            status.lock().record_service_state(
+                                service.clone(),
+                                true,
+                                "ServiceReady",
+                                Some("service available for subscription".to_string()),
+                            );
+                        }
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
@@ -304,7 +336,8 @@ impl SubscriptionWorker {
         let mut unsub_count = 0usize;
         for &key in &keys {
             if self.subs.contains(key) {
-                let state = &self.subs[key];
+                let state = &mut self.subs[key];
+                state.mark_closing();
                 let cid = CorrelationId::Int(key as i64);
                 // Topic and empty fields/options are sufficient for unsubscribe —
                 // Bloomberg matches on correlation ID.
@@ -330,6 +363,16 @@ impl SubscriptionWorker {
         for &key in &keys {
             if self.subs.contains(key) {
                 self.pending_cancel.insert(key);
+                if let Some(status) = &self.status {
+                    let mut status = status.lock();
+                    let topic = status.mark_topic_unsubscribing(key);
+                    status.record_subscription_event(
+                        "SubscriptionPendingCancel",
+                        topic,
+                        None,
+                        SubscriptionEventLevel::Info,
+                    );
+                }
                 xbbg_log::debug!(
                     worker_id = self.id,
                     key = key,
@@ -356,6 +399,9 @@ impl SubscriptionWorker {
                 EventType::ServiceStatus => {
                     self.handle_service_status(&msg);
                 }
+                EventType::Admin => {
+                    self.handle_admin_event(&msg);
+                }
                 _ => {}
             }
         }
@@ -369,7 +415,7 @@ impl SubscriptionWorker {
                 if self.pending_cancel.contains(&(key as usize)) {
                     continue;
                 }
-                if let Some(state) = self.subs.get_mut(key as usize) {
+                    if let Some(state) = self.subs.get_mut(key as usize) {
                     // Check for DATALOSS
                     let elem = msg.elements();
                     if let Some(event_type) = elem.get_by_str("MKTDATA_EVENT_TYPE") {
@@ -378,7 +424,15 @@ impl SubscriptionWorker {
                                 if let Some(subtype) = elem.get_by_str("MKTDATA_EVENT_SUBTYPE") {
                                     if let Some(sub_val) = subtype.get_str(0) {
                                         if sub_val == "DATALOSS" {
-                                            state.on_dataloss();
+                                            let topic = state.topic.to_string();
+                                            let at_us = msg.time_received_us();
+                                            state.on_dataloss(at_us);
+                                            if let Some(status) = &self.status {
+                                                status.lock().record_admin_data_loss(
+                                                    Some(topic),
+                                                    Some("subscription data reported DATALOSS".to_string()),
+                                                );
+                                            }
                                             continue;
                                         }
                                     }
@@ -387,7 +441,28 @@ impl SubscriptionWorker {
                         }
                     }
 
-                    state.on_message(msg);
+                    let first_message = state.on_message(msg);
+                    if first_message {
+                        let topic = if let Some(status) = &self.status {
+                            let mut status = status.lock();
+                            let topic = status.mark_topic_streaming(key as usize);
+                            status.record_subscription_event(
+                                "SubscriptionStreaming",
+                                topic.clone(),
+                                None,
+                                SubscriptionEventLevel::Info,
+                            );
+                            topic
+                        } else {
+                            None
+                        };
+                        xbbg_log::debug!(
+                            worker_id = self.id,
+                            key = key,
+                            topic = ?topic,
+                            "subscription entered streaming state"
+                        );
+                    }
                 }
             }
         }
@@ -411,6 +486,16 @@ impl SubscriptionWorker {
                 match msg_type {
                     "SubscriptionStarted" => {
                         xbbg_log::debug!(worker_id = self.id, key = key, "subscription started");
+                        if let Some(status) = &self.status {
+                            let mut status = status.lock();
+                            let topic = status.mark_topic_started(key as usize);
+                            status.record_subscription_event(
+                                "SubscriptionStarted",
+                                topic,
+                                None,
+                                SubscriptionEventLevel::Info,
+                            );
+                        }
                     }
                     "SubscriptionFailure" => {
                         if self.pending_cancel.remove(&(key as usize)) {
@@ -418,7 +503,18 @@ impl SubscriptionWorker {
                             // when a subscription is cancelled before it fully starts. Since this was
                             // explicitly requested via unsubscribe(), silently clean up.
                             if self.subs.contains(key as usize) {
-                                self.subs.remove(key as usize);
+                                let mut state = self.subs.remove(key as usize);
+                                state.mark_closing();
+                                if let Some(status) = &self.status {
+                                    let mut status = status.lock();
+                                    let topic = status.mark_topic_unsubscribed(key as usize);
+                                    status.record_subscription_event(
+                                        "SubscriptionCancelled",
+                                        topic,
+                                        reason.clone(),
+                                        SubscriptionEventLevel::Info,
+                                    );
+                                }
                             }
                             xbbg_log::debug!(
                                 worker_id = self.id,
@@ -430,7 +526,8 @@ impl SubscriptionWorker {
                                 .clone()
                                 .unwrap_or_else(|| "subscription failed".to_string());
                             if self.subs.contains(key as usize) {
-                                let state = self.subs.remove(key as usize);
+                                let mut state = self.subs.remove(key as usize);
+                                state.mark_closing();
                                 let topic = self
                                     .record_failure(
                                         key as usize,
@@ -445,6 +542,14 @@ impl SubscriptionWorker {
                                     reason = %reason_text,
                                     "subscription failed for topic"
                                 );
+                                if let Some(status) = &self.status {
+                                    status.lock().record_subscription_event(
+                                        "SubscriptionFailure",
+                                        Some(topic.clone()),
+                                        Some(reason_text.clone()),
+                                        SubscriptionEventLevel::Warning,
+                                    );
+                                }
                                 if self.subs.is_empty() && self.pending_cancel.is_empty() {
                                     state.fail(BlpError::SubscriptionFailure {
                                         cid: None,
@@ -462,7 +567,18 @@ impl SubscriptionWorker {
                             // This termination was explicitly requested via unsubscribe().
                             // Silently clean up the slab entry — don't propagate an error.
                             if self.subs.contains(key as usize) {
-                                self.subs.remove(key as usize);
+                                let mut state = self.subs.remove(key as usize);
+                                state.mark_closing();
+                                if let Some(status) = &self.status {
+                                    let mut status = status.lock();
+                                    let topic = status.mark_topic_unsubscribed(key as usize);
+                                    status.record_subscription_event(
+                                        "SubscriptionTerminated",
+                                        topic,
+                                        reason.clone(),
+                                        SubscriptionEventLevel::Info,
+                                    );
+                                }
                             }
                             xbbg_log::debug!(
                                 worker_id = self.id,
@@ -474,7 +590,8 @@ impl SubscriptionWorker {
                                 .clone()
                                 .unwrap_or_else(|| "subscription terminated".to_string());
                             if self.subs.contains(key as usize) {
-                                let state = self.subs.remove(key as usize);
+                                let mut state = self.subs.remove(key as usize);
+                                state.mark_closing();
                                 let topic = self
                                     .record_failure(
                                         key as usize,
@@ -489,6 +606,14 @@ impl SubscriptionWorker {
                                     reason = %reason_text,
                                     "subscription terminated for topic"
                                 );
+                                if let Some(status) = &self.status {
+                                    status.lock().record_subscription_event(
+                                        "SubscriptionTerminated",
+                                        Some(topic.clone()),
+                                        Some(reason_text.clone()),
+                                        SubscriptionEventLevel::Warning,
+                                    );
+                                }
                                 if self.subs.is_empty() && self.pending_cancel.is_empty() {
                                     state.fail(BlpError::SubscriptionFailure {
                                         cid: None,
@@ -520,6 +645,13 @@ impl SubscriptionWorker {
         match msg_type {
             "SessionStarted" => {
                 xbbg_log::info!(worker_id = self.id, "session started");
+                if let Some(status) = &self.status {
+                    status.lock().record_session_state(
+                        SessionLifecycleState::Up,
+                        "SessionStarted",
+                        None,
+                    );
+                }
             }
             "SessionConnectionDown" => {
                 xbbg_log::error!(
@@ -527,16 +659,16 @@ impl SubscriptionWorker {
                     active_subs = self.subs.len(),
                     "session connection down — SDK may attempt reconnect"
                 );
-                // Don't remove subs yet — SDK may auto-reconnect.
-                // But notify all consumers that the connection dropped.
-                for (key, state) in &self.subs {
-                    state.fail(BlpError::Internal {
-                        detail: format!(
-                            "Bloomberg session connection lost (worker={}, sub={}). \
-                             Data may be stale until reconnection.",
-                            self.id, key,
-                        ),
-                    });
+                if let Some(status) = &self.status {
+                    status.lock().record_session_state(
+                        SessionLifecycleState::Down,
+                        "SessionConnectionDown",
+                        Some(format!(
+                            "worker={} active_subscriptions={}",
+                            self.id,
+                            self.subs.len(),
+                        )),
+                    );
                 }
             }
             "SessionTerminated" => {
@@ -548,7 +680,8 @@ impl SubscriptionWorker {
                 // Session is dead. Send error to all consumers and remove all subs.
                 let keys: Vec<usize> = self.subs.iter().map(|(k, _)| k).collect();
                 for key in keys {
-                    let state = self.subs.remove(key);
+                    let mut state = self.subs.remove(key);
+                    state.mark_closing();
                     state.fail(BlpError::Internal {
                         detail: format!(
                             "Bloomberg session terminated (worker={}). \
@@ -558,6 +691,13 @@ impl SubscriptionWorker {
                         });
                 }
                 self.clear_active_status();
+                if let Some(status) = &self.status {
+                    status.lock().record_session_state(
+                        SessionLifecycleState::Terminated,
+                        "SessionTerminated",
+                        Some(format!("worker={}", self.id)),
+                    );
+                }
             }
             "SessionConnectionUp" => {
                 xbbg_log::info!(
@@ -565,6 +705,24 @@ impl SubscriptionWorker {
                     active_subs = self.subs.len(),
                     "session connection restored"
                 );
+                if let Some(status) = &self.status {
+                    let mut status = status.lock();
+                    let was_down = status.session().state == SessionLifecycleState::Down;
+                    status.record_session_state(
+                        SessionLifecycleState::Up,
+                        "SessionConnectionUp",
+                        Some(format!(
+                            "worker={} active_subscriptions={}",
+                            self.id,
+                            self.subs.len(),
+                        )),
+                    );
+                    let recovery_policy = status.session().recovery_policy;
+                    drop(status);
+                    if was_down && recovery_policy == SubscriptionRecoveryPolicy::Resubscribe {
+                        self.recover_active_subscriptions();
+                    }
+                }
             }
             _ => {
                 xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
@@ -575,7 +733,165 @@ impl SubscriptionWorker {
     fn handle_service_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
+        let service = msg
+            .elements()
+            .get_by_str("serviceName")
+            .and_then(|value| value.get_str(0))
+            .map(str::to_string);
+        if let Some(status) = &self.status {
+            let mut status = status.lock();
+            match msg_type {
+                "ServiceDown" => {
+                    status.record_service_state(
+                        service.unwrap_or_else(|| "unknown".to_string()),
+                        false,
+                        msg_type,
+                        None,
+                    );
+                }
+                "ServiceUp" | "ServiceOpened" => {
+                    status.record_service_state(
+                        service.unwrap_or_else(|| "unknown".to_string()),
+                        true,
+                        msg_type,
+                        None,
+                    );
+                }
+                _ => {}
+            }
+        }
         xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "service status");
+    }
+
+    fn handle_admin_event(&mut self, msg: &xbbg_core::Message<'_>) {
+        let msg_type_name = msg.message_type();
+        let msg_type = msg_type_name.as_str();
+        match msg_type {
+            "SlowConsumerWarning" => {
+                if let Some(status) = &self.status {
+                    status.lock().record_admin_warning(msg_type, None);
+                }
+                xbbg_log::warn!(worker_id = self.id, "slow consumer warning");
+            }
+            "SlowConsumerWarningCleared" => {
+                for (_, state) in self.subs.iter_mut() {
+                    state.clear_slow_consumer();
+                }
+                if let Some(status) = &self.status {
+                    status.lock().record_admin_warning_cleared(msg_type, None);
+                }
+                xbbg_log::info!(worker_id = self.id, "slow consumer warning cleared");
+            }
+            "DataLoss" => {
+                let timestamp_us = msg.time_received_us();
+                let correlation_count = msg.num_correlation_ids();
+                if correlation_count == 0 {
+                    if let Some(status) = &self.status {
+                        status.lock().record_admin_data_loss(None, None);
+                    }
+                }
+                for index in 0..correlation_count {
+                    if let Some(CorrelationId::Int(key)) = msg.correlation_id(index) {
+                        if let Some(state) = self.subs.get_mut(key as usize) {
+                            let topic = state.topic.to_string();
+                            state.on_dataloss(timestamp_us);
+                            if let Some(status) = &self.status {
+                                status.lock().record_admin_data_loss(Some(topic), None);
+                            }
+                        }
+                    }
+                }
+                xbbg_log::warn!(worker_id = self.id, "data loss event received");
+            }
+            _ => {
+                if let Some(status) = &self.status {
+                    status.lock().push_event(
+                        super::SubscriptionEventCategory::Admin,
+                        SubscriptionEventLevel::Info,
+                        msg_type,
+                        None,
+                        None,
+                    );
+                }
+                xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "admin event");
+            }
+        }
+    }
+
+    fn recover_active_subscriptions(&mut self) {
+        if self.subs.is_empty() {
+            return;
+        }
+
+        let Some(service) = self.current_service.clone() else {
+            return;
+        };
+
+        let mut sub_list = SubscriptionList::new();
+        for (key, state) in self.subs.iter() {
+            let cid = CorrelationId::Int(key as i64);
+            let fields: Vec<&str> = state.field_strings.iter().map(|field| field.as_str()).collect();
+            let options = self.current_options.join(",");
+            if let Err(error) = sub_list.add(&state.topic, &fields, &options, &cid) {
+                if let Some(status) = &self.status {
+                    let mut status = status.lock();
+                    status.record_recovery_error(format!(
+                        "failed to prepare recovery subscription for {}: {}",
+                        state.topic, error,
+                    ));
+                }
+                xbbg_log::warn!(
+                    worker_id = self.id,
+                    topic = %state.topic,
+                    error = %error,
+                    "failed to prepare reconnect recovery"
+                );
+                return;
+            }
+        }
+
+        if let Some(status) = &self.status {
+            status.lock().record_recovery_attempt(Some(format!(
+                "service={} active_subscriptions={}",
+                service,
+                self.subs.len(),
+            )));
+        }
+
+        match self.session.subscribe(&sub_list, Some("xbbg-recovery")) {
+            Ok(()) => {
+                if let Some(status) = &self.status {
+                    status.lock().record_recovery_success(Some(format!(
+                        "service={} active_subscriptions={}",
+                        service,
+                        self.subs.len(),
+                    )));
+                }
+                xbbg_log::info!(
+                    worker_id = self.id,
+                    service = %service,
+                    active_subs = self.subs.len(),
+                    "recovery subscribe issued after reconnect"
+                );
+            }
+            Err(error) => {
+                if let Some(status) = &self.status {
+                    status.lock().record_recovery_error(format!(
+                        "service={} active_subscriptions={} error={}",
+                        service,
+                        self.subs.len(),
+                        error,
+                    ));
+                }
+                xbbg_log::warn!(
+                    worker_id = self.id,
+                    service = %service,
+                    active_subs = self.subs.len(),
+                    error = %error,
+                    "recovery subscribe failed after reconnect"
+                );
+            }
+        }
     }
 }
 
