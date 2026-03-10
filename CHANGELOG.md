@@ -10,10 +10,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Changed
 
 - **Subscription failure isolation for mixed-topic streams**: Real-time subscriptions now treat Bloomberg `SubscriptionFailure` and unexpected `SubscriptionTerminated` events as per-ticker status instead of fatal stream errors when other topics remain healthy. Mixed subscriptions keep delivering data for valid tickers while exposing failed topics through subscription metadata.
+- **Subscription lifecycle observability**: Real-time subscriptions now retain bounded status/event history for topic lifecycle transitions, session connectivity, service readiness, slow-consumer/data-loss signals, and reconnect recovery attempts so callers can inspect operational state without scraping logs.
+- **Non-fatal disconnect handling with opt-in recovery**: `SessionConnectionDown` no longer tears down healthy subscriptions by default. Callers can opt into `recovery_policy="resubscribe"` to issue reconnect-time recovery subscribes while tracking attempts, successes, and last recovery errors through subscription status metadata.
 
 ### Added
 
 - **Subscription failure metadata**: Python subscriptions now expose `failed_tickers` and `failures` so callers can inspect which topics Bloomberg rejected or terminated, along with the reported reason and failure kind.
+- **Subscription health/status surfaces**: Python subscriptions now expose `status`, `events`, `topic_states`, `session_status`, `admin_status`, `service_status`, `all_failed`, and expanded `stats` fields including data-loss counters, last-message timestamps, and effective overflow policy.
 
 ## [1.0.0b3] - 2026-03-06
 

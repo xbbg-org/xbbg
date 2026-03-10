@@ -22,10 +22,10 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==1.0.0a1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0a1))
+Latest release: xbbg==1.0.0b3 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0b3))
 <!-- xbbg:latest-release-end -->
 
-> This `main` branch now tracks the Rust-based v1 alpha line, a significant upgrade over 0.x in performance and architecture.
+> This `main` branch now tracks the Rust-based v1 beta line, a significant upgrade over 0.x in performance and architecture.
 > Need the legacy pure-Python behavior? Use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
 
 ## Table of Contents
@@ -59,7 +59,7 @@ Latest release: xbbg==1.0.0a1 (release: [notes](https://github.com/alpha-xone/xb
 ## Overview
 
 xbbg is a comprehensive Bloomberg API wrapper for Python, providing a clean, Pythonic interface to Bloomberg data services.
-This `main` branch is the v1 alpha generation: core request execution is now Rust-powered while preserving the familiar xbbg API for day-to-day workflows.
+This `main` branch is the v1 beta generation: core request execution is now Rust-powered while preserving the familiar xbbg API for day-to-day workflows.
 
 ### Key Features
 
