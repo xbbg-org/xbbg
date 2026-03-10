@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b4] - 2026-03-10
+
 ### Changed
 
 - **Subscription failure isolation for mixed-topic streams**: Real-time subscriptions now treat Bloomberg `SubscriptionFailure` and unexpected `SubscriptionTerminated` events as per-ticker status instead of fatal stream errors when other topics remain healthy. Mixed subscriptions keep delivering data for valid tickers while exposing failed topics through subscription metadata.
@@ -980,7 +982,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b3...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...HEAD
+[1.0.0b4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b3...v1.0.0b4
 [1.0.0b3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b2...v1.0.0b3
 [1.0.0b2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b1...v1.0.0b2
 [1.0.0b1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a3...v1.0.0b1
