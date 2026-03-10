@@ -205,7 +205,7 @@ jobs:
         cat /tmp/release_notes.md
         echo "============================================================"
 
-    - name: Update CHANGELOG.md
+    - name: Update CHANGELOG.md and README.md
       if: inputs.create_release == true
       run: |
         VERSION="${{ steps.new_version.outputs.new_version }}"
@@ -247,7 +247,36 @@ jobs:
         echo "CHANGELOG.md updated:"
         head -50 CHANGELOG.md
 
-    - name: Commit CHANGELOG.md changes
+        python - <<'PY'
+        from pathlib import Path
+
+        version = "${{ steps.new_version.outputs.new_version }}"
+        tag = "${{ steps.new_version.outputs.tag }}"
+
+        readme = Path("README.md")
+        text = readme.read_text(encoding="utf-8")
+
+        start = "<!-- xbbg:latest-release-start -->"
+        end = "<!-- xbbg:latest-release-end -->"
+
+        replacement = (
+            f"{start}\n"
+            f"Latest release: xbbg=={version} (release: [notes](https://github.com/${{ github.repository }}/releases/tag/{tag}))\n"
+            f"{end}"
+        )
+
+        if start not in text or end not in text:
+            raise SystemExit("README.md latest release markers not found")
+
+        before, rest = text.split(start, 1)
+        _, after = rest.split(end, 1)
+        readme.write_text(before + replacement + after, encoding="utf-8")
+        PY
+
+        echo "README.md release block updated:"
+        sed -n '20,30p' README.md
+
+    - name: Commit release doc changes
       if: inputs.create_release == true
       run: |
         VERSION="${{ steps.new_version.outputs.new_version }}"
@@ -255,11 +284,11 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
         # Check if there are changes to commit
-        if git diff --quiet CHANGELOG.md; then
-          echo "No changes to CHANGELOG.md"
+        if git diff --quiet CHANGELOG.md README.md; then
+          echo "No release doc changes"
         else
-          git add CHANGELOG.md
-          git commit -m "docs(CHANGELOG): update for ${VERSION} release"
+          git add CHANGELOG.md README.md
+          git commit -m "docs(release): update docs for ${VERSION} release"
           BRANCH="${GITHUB_REF#refs/heads/}"
           git push origin HEAD:"${BRANCH}"
         fi
