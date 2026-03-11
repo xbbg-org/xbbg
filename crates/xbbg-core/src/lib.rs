@@ -13,6 +13,7 @@ pub fn version() -> &'static str {
 }
 
 // Core types
+pub mod auth;
 pub mod datatype;
 pub mod datetime;
 pub mod element;
@@ -35,6 +36,9 @@ pub mod session;
 pub mod subscription;
 
 // Re-exports for convenience
+pub use auth::{
+    apply_session_identity_options, AuthApplication, AuthConfig, AuthOptions, AuthToken, AuthUser,
+};
 pub use correlation::CorrelationId;
 pub use datatype::DataType;
 pub use datetime::HighPrecisionDatetime;

@@ -4,9 +4,21 @@
 
 // --- Opaque types ---
 pub use xbbg_sys::{
+    blpapi_AuthApplication_t, blpapi_AuthOptions_t, blpapi_AuthToken_t, blpapi_AuthUser_t,
     blpapi_CorrelationId_t, blpapi_Element_t, blpapi_Event_t, blpapi_Identity_t,
     blpapi_MessageIterator_t, blpapi_Message_t, blpapi_Name_t, blpapi_Request_t, blpapi_Service_t,
     blpapi_SessionOptions_t, blpapi_Session_t, blpapi_SubscriptionList_t,
+};
+
+// --- Auth functions ---
+pub use xbbg_sys::{
+    blpapi_AuthApplication_create, blpapi_AuthApplication_destroy,
+    blpapi_AuthOptions_create_default, blpapi_AuthOptions_create_forAppMode,
+    blpapi_AuthOptions_create_forToken, blpapi_AuthOptions_create_forUserAndAppMode,
+    blpapi_AuthOptions_create_forUserMode, blpapi_AuthOptions_destroy, blpapi_AuthToken_create,
+    blpapi_AuthToken_destroy, blpapi_AuthUser_createWithActiveDirectoryProperty,
+    blpapi_AuthUser_createWithLogonName, blpapi_AuthUser_createWithManualOptions,
+    blpapi_AuthUser_destroy,
 };
 
 // --- Schema opaque types ---
@@ -116,7 +128,8 @@ pub use xbbg_sys::{
 // --- SessionOptions functions ---
 pub use xbbg_sys::{
     blpapi_SessionOptions_create, blpapi_SessionOptions_destroy,
-    blpapi_SessionOptions_maxEventQueueSize, blpapi_SessionOptions_setAutoRestartOnDisconnection,
+    blpapi_SessionOptions_maxEventQueueSize, blpapi_SessionOptions_setAuthenticationOptions,
+    blpapi_SessionOptions_setAutoRestartOnDisconnection,
     blpapi_SessionOptions_setBandwidthSaveModeDisabled, blpapi_SessionOptions_setConnectTimeout,
     blpapi_SessionOptions_setDefaultKeepAliveInactivityTime,
     blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout,
@@ -124,9 +137,11 @@ pub use xbbg_sys::{
     blpapi_SessionOptions_setDefaultTopicPrefix,
     blpapi_SessionOptions_setFlushPublishedEventsTimeout,
     blpapi_SessionOptions_setKeepAliveEnabled, blpapi_SessionOptions_setMaxEventQueueSize,
+    blpapi_SessionOptions_setNumStartAttempts,
     blpapi_SessionOptions_setRecordSubscriptionDataReceiveTimes,
     blpapi_SessionOptions_setServerHost, blpapi_SessionOptions_setServerPort,
     blpapi_SessionOptions_setServiceCheckTimeout, blpapi_SessionOptions_setServiceDownloadTimeout,
+    blpapi_SessionOptions_setSessionIdentityOptions,
     blpapi_SessionOptions_setSlowConsumerWarningHiWaterMark,
     blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark,
 };

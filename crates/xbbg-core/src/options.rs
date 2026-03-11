@@ -1,5 +1,7 @@
 use std::ffi::CString;
 
+use crate::auth::AuthOptions;
+use crate::correlation::CorrelationId;
 use crate::errors::{BlpError, Result};
 use crate::ffi;
 
@@ -36,6 +38,46 @@ impl SessionOptions {
         // SAFETY: self.ptr is valid (checked in new()).
         unsafe { ffi::blpapi_SessionOptions_setServerPort(self.ptr, port) };
         self
+    }
+
+    pub fn set_session_identity_options(
+        &mut self,
+        auth_options: &AuthOptions,
+    ) -> Result<CorrelationId> {
+        let mut cid = CorrelationId::default().to_ffi();
+        let rc = unsafe {
+            ffi::blpapi_SessionOptions_setSessionIdentityOptions(
+                self.ptr,
+                auth_options.as_ptr(),
+                &mut cid,
+            )
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("session identity auth options rejected: rc={rc}"),
+            });
+        }
+        Ok(CorrelationId::from_ffi(&cid))
+    }
+
+    pub fn set_authentication_options(&mut self, auth_options: &str) -> Result<&mut Self> {
+        let auth_options = CString::new(auth_options).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid auth options: {e}"),
+        })?;
+        unsafe {
+            ffi::blpapi_SessionOptions_setAuthenticationOptions(self.ptr, auth_options.as_ptr());
+        }
+        Ok(self)
+    }
+
+    pub fn set_num_start_attempts(&mut self, attempts: usize) -> Result<&mut Self> {
+        let attempts = i32::try_from(attempts).map_err(|_| BlpError::InvalidArgument {
+            detail: format!("num_start_attempts out of range: {attempts}"),
+        })?;
+        unsafe {
+            ffi::blpapi_SessionOptions_setNumStartAttempts(self.ptr, attempts);
+        }
+        Ok(self)
     }
 
     pub fn set_default_subscription_service(&mut self, svc: &str) -> Result<&mut Self> {
