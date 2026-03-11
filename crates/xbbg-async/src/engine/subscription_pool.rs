@@ -14,12 +14,13 @@ use slab::Slab;
 use tokio::sync::mpsc;
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, CorrelationId, EventType, SessionOptions, SubscriptionList};
+use xbbg_core::{BlpError, CorrelationId, EventType, SubscriptionList};
 
 use super::state::{SubscriptionMetrics, SubscriptionState};
 use super::{
-    BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState, SharedSubscriptionStatus,
-    SlabKey, SubscriptionEventLevel, SubscriptionFailureKind, SubscriptionRecoveryPolicy,
+    start_configured_session, BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState,
+    SharedSubscriptionStatus, SlabKey, SubscriptionEventLevel, SubscriptionFailureKind,
+    SubscriptionRecoveryPolicy,
 };
 
 /// Commands sent to a subscription worker.
@@ -37,7 +38,9 @@ pub enum SubscriptionCommand {
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         status: SharedSubscriptionStatus,
         /// Reply with slab keys for later unsubscribe.
-        reply: tokio::sync::oneshot::Sender<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>)>,
+        reply: tokio::sync::oneshot::Sender<
+            Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpError>,
+        >,
     },
     /// Add topics to an existing subscription (uses same stream sender).
     AddTopics {
@@ -52,7 +55,9 @@ pub enum SubscriptionCommand {
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         status: SharedSubscriptionStatus,
         /// Reply with new slab keys.
-        reply: tokio::sync::oneshot::Sender<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>)>,
+        reply: tokio::sync::oneshot::Sender<
+            Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpError>,
+        >,
     },
     /// Stop subscriptions by key.
     Unsubscribe { keys: Vec<SlabKey> },
@@ -88,16 +93,7 @@ impl SubscriptionWorker {
         config: Arc<EngineConfig>,
         cmd_rx: mpsc::Receiver<SubscriptionCommand>,
     ) -> Result<Self, BlpError> {
-        let mut opts = SessionOptions::new()?;
-        opts.set_server_host(&config.server_host)?;
-        opts.set_server_port(config.server_port);
-        opts.set_max_event_queue_size(config.max_event_queue_size);
-        let _ = opts.set_bandwidth_save_mode_disabled(true);
-        opts.set_record_subscription_receive_times(true);
-        opts.set_auto_restart_on_disconnection(true);
-
-        let session = Session::new(&opts)?;
-        session.start()?;
+        let session = start_configured_session(&config, true)?;
 
         // Pre-open the mktdata service (most common)
         session.open_service(crate::services::Service::MktData.as_str())?;
@@ -195,10 +191,10 @@ impl SubscriptionWorker {
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
-                            let _ = reply.send((vec![], vec![]));
+                            let _ = reply.send(Err(e));
                             continue;
                         }
-                        let (keys, metrics) = self.subscribe(
+                        let result = self.subscribe(
                             topics,
                             fields,
                             options,
@@ -206,7 +202,7 @@ impl SubscriptionWorker {
                             overflow_policy,
                             stream,
                         );
-                        let _ = reply.send((keys, metrics));
+                        let _ = reply.send(result);
                     }
                     Ok(SubscriptionCommand::AddTopics {
                         service,
@@ -233,11 +229,11 @@ impl SubscriptionWorker {
                         // Ensure service is open
                         if let Err(e) = self.ensure_service(&service) {
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
-                            let _ = reply.send((vec![], vec![]));
+                            let _ = reply.send(Err(e));
                             continue;
                         }
                         // AddTopics uses the same logic as Subscribe
-                        let (keys, metrics) = self.subscribe(
+                        let result = self.subscribe(
                             topics,
                             fields,
                             options,
@@ -245,7 +241,7 @@ impl SubscriptionWorker {
                             overflow_policy,
                             stream,
                         );
-                        let _ = reply.send((keys, metrics));
+                        let _ = reply.send(result);
                     }
                     Ok(SubscriptionCommand::Unsubscribe { keys }) => {
                         self.unsubscribe(keys);
@@ -274,7 +270,7 @@ impl SubscriptionWorker {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
-    ) -> (Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>) {
+    ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpError> {
         let mut sub_list = SubscriptionList::new();
 
         let field_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
@@ -310,7 +306,10 @@ impl SubscriptionWorker {
         }
 
         if keys.is_empty() {
-            return (keys, metrics);
+            return Err(BlpError::SubscriptionFailure {
+                cid: None,
+                label: Some("failed to build any subscription entries".to_string()),
+            });
         }
 
         if let Err(e) = self.session.subscribe(&sub_list, None) {
@@ -322,10 +321,10 @@ impl SubscriptionWorker {
                     self.subs.remove(key);
                 }
             }
-            return (vec![], vec![]);
+            return Err(e);
         }
 
-        (keys, metrics)
+        Ok((keys, metrics))
     }
 
     fn unsubscribe(&mut self, keys: Vec<SlabKey>) {
@@ -944,7 +943,10 @@ impl SubscriptionCommandHandle {
             .await
             .map_err(|_| BlpAsyncError::ChannelClosed)?;
 
-        reply_rx.await.map_err(|_| BlpAsyncError::ChannelClosed)
+        reply_rx
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?
+            .map_err(BlpAsyncError::BlpError)
     }
 
     /// Add topics to an existing subscription.
@@ -977,7 +979,10 @@ impl SubscriptionCommandHandle {
             .await
             .map_err(|_| BlpAsyncError::ChannelClosed)?;
 
-        reply_rx.await.map_err(|_| BlpAsyncError::ChannelClosed)
+        reply_rx
+            .await
+            .map_err(|_| BlpAsyncError::ChannelClosed)?
+            .map_err(BlpAsyncError::BlpError)
     }
 
     /// Unsubscribe topics on the claimed worker.
@@ -1009,6 +1014,7 @@ pub struct SubscriptionWorkerHandle {
 impl SubscriptionWorkerHandle {
     fn spawn(id: usize, config: Arc<EngineConfig>) -> Result<Self, BlpError> {
         let (cmd_tx, cmd_rx) = mpsc::channel(config.command_queue_size);
+        let (startup_tx, startup_rx) = std::sync::mpsc::channel();
 
         let config_clone = config.clone();
         let thread = thread::Builder::new()
@@ -1016,18 +1022,31 @@ impl SubscriptionWorkerHandle {
             .spawn(move || {
                 match SubscriptionWorker::new(id, config_clone, cmd_rx) {
                     Ok(mut worker) => {
+                        let _ = startup_tx.send(Ok(()));
                         if let Err(e) = worker.run() {
                             xbbg_log::error!(worker_id = id, error = %e, "subscription worker error");
                         }
                     }
                     Err(e) => {
-                        xbbg_log::error!(worker_id = id, error = %e, "subscription worker creation failed");
+                        let detail = e.to_string();
+                        let _ = startup_tx.send(Err(e));
+                        xbbg_log::error!(worker_id = id, error = %detail, "subscription worker creation failed");
                     }
                 }
             })
             .map_err(|e| BlpError::Internal {
                 detail: format!("failed to spawn subscription worker: {}", e),
             })?;
+
+        match startup_rx.recv() {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => return Err(err),
+            Err(err) => {
+                return Err(BlpError::Internal {
+                    detail: format!("subscription worker startup channel closed unexpectedly: {err}"),
+                });
+            }
+        }
 
         Ok(Self {
             command: SubscriptionCommandHandle { id, cmd_tx },

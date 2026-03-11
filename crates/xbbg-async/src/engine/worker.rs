@@ -20,14 +20,14 @@ use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, CorrelationId, EventType, Service, SessionOptions};
+use xbbg_core::{BlpError, CorrelationId, EventType, Service};
 
 use super::state::{
     BqlState, BsrchState, BulkDataState, FieldInfoState, GenericState, HistDataState,
     HistDataStreamState, IntradayBarState, IntradayBarStreamState, IntradayTickState,
     IntradayTickStreamState, LongMode, OutputFormat, RefDataState,
 };
-use super::{EngineConfig, ExtractorType, RequestParams};
+use super::{start_configured_session, EngineConfig, ExtractorType, RequestParams};
 
 fn iter_named_request_parameters(
     params: &RequestParams,
@@ -213,14 +213,7 @@ impl RequestWorker {
         config: Arc<EngineConfig>,
         cmd_rx: mpsc::Receiver<WorkerCommand>,
     ) -> Result<Self, BlpError> {
-        let mut opts = SessionOptions::new()?;
-        opts.set_server_host(&config.server_host)?;
-        opts.set_server_port(config.server_port);
-        opts.set_max_event_queue_size(config.max_event_queue_size);
-        let _ = opts.set_bandwidth_save_mode_disabled(true);
-
-        let session = Session::new(&opts)?;
-        session.start()?;
+        let session = start_configured_session(&config, false)?;
 
         let mut worker = Self {
             id,
@@ -391,38 +384,49 @@ impl RequestWorker {
         let key = self.requests.insert(state);
         let cid = CorrelationId::Int(key as i64);
 
-        // Build request from params
-        let service = self
-            .services
-            .get(&params.service)
-            .ok_or_else(|| BlpError::Internal {
-                detail: format!(
-                    "service '{}' missing from worker cache after ensure_service",
-                    params.service
-                ),
-            })?;
-        xbbg_log::debug!(
-            worker_id = self.id,
-            operation = %params.effective_operation(),
-            securities = ?params.securities,
-            start_date = ?params.start_date,
-            end_date = ?params.end_date,
-            "building request"
-        );
-        let request = self.build_request_from_params(service, &params)?;
-        xbbg_log::debug!(worker_id = self.id, "request built");
+        let result = (|| -> Result<(), BlpError> {
+            // Build request from params
+            let service = self
+                .services
+                .get(&params.service)
+                .ok_or_else(|| BlpError::Internal {
+                    detail: format!(
+                        "service '{}' missing from worker cache after ensure_service",
+                        params.service
+                    ),
+                })?;
+            xbbg_log::debug!(
+                worker_id = self.id,
+                operation = %params.effective_operation(),
+                securities = ?params.securities,
+                start_date = ?params.start_date,
+                end_date = ?params.end_date,
+                "building request"
+            );
+            let request = self.build_request_from_params(service, &params)?;
+            xbbg_log::debug!(worker_id = self.id, "request built");
 
-        let t_send = std::time::Instant::now();
-        self.session.send_request(&request, None, Some(&cid))?;
-        self.send_times.insert(key, t_send);
+            let t_send = std::time::Instant::now();
+            self.session.send_request(&request, None, Some(&cid))?;
+            self.send_times.insert(key, t_send);
 
-        xbbg_log::debug!(
-            worker_id = self.id,
-            key = key,
-            service = %params.service,
-            operation = %params.effective_operation(),
-            "request sent"
-        );
+            xbbg_log::debug!(
+                worker_id = self.id,
+                key = key,
+                service = %params.service,
+                operation = %params.effective_operation(),
+                "request sent"
+            );
+            Ok(())
+        })();
+
+        if let Err(err) = result {
+            if self.requests.contains(key) {
+                self.requests.remove(key).fail(err);
+            }
+            self.send_times.remove(&key);
+            return Ok(());
+        }
         Ok(())
     }
 
@@ -550,25 +554,37 @@ impl RequestWorker {
         let key = self.requests.insert(state);
         let cid = CorrelationId::Int(key as i64);
 
-        let service = self
-            .services
-            .get(&params.service)
-            .ok_or_else(|| BlpError::Internal {
-                detail: format!(
-                    "service '{}' missing from worker cache after ensure_service",
-                    params.service
-                ),
-            })?;
-        let request = self.build_request_from_params(service, &params)?;
+        let result = (|| -> Result<(), BlpError> {
+            let service = self
+                .services
+                .get(&params.service)
+                .ok_or_else(|| BlpError::Internal {
+                    detail: format!(
+                        "service '{}' missing from worker cache after ensure_service",
+                        params.service
+                    ),
+                })?;
+            let request = self.build_request_from_params(service, &params)?;
 
-        self.session.send_request(&request, None, Some(&cid))?;
-        xbbg_log::debug!(
-            worker_id = self.id,
-            key = key,
-            service = %params.service,
-            operation = %params.effective_operation(),
-            "stream request sent"
-        );
+            self.session.send_request(&request, None, Some(&cid))?;
+            xbbg_log::debug!(
+                worker_id = self.id,
+                key = key,
+                service = %params.service,
+                operation = %params.effective_operation(),
+                "stream request sent"
+            );
+            Ok(())
+        })();
+
+        if let Err(err) = result {
+            if self.requests.contains(key) {
+                self.requests.remove(key).fail(err);
+            }
+            self.send_times.remove(&key);
+            return Ok(());
+        }
+
         Ok(())
     }
 
@@ -824,23 +840,37 @@ impl WorkerHandle {
     /// Spawn a new worker on a dedicated thread.
     pub fn spawn(id: usize, config: Arc<EngineConfig>) -> Result<Self, BlpError> {
         let (cmd_tx, cmd_rx) = mpsc::channel(config.command_queue_size);
+        let (startup_tx, startup_rx) = std::sync::mpsc::channel();
 
         let config_clone = config.clone();
         let thread = thread::Builder::new()
             .name(format!("xbbg-worker-{}", id))
             .spawn(move || match RequestWorker::new(id, config_clone, cmd_rx) {
                 Ok(mut worker) => {
+                    let _ = startup_tx.send(Ok(()));
                     if let Err(e) = worker.run() {
                         xbbg_log::error!(worker_id = id, error = %e, "worker error");
                     }
                 }
                 Err(e) => {
-                    xbbg_log::error!(worker_id = id, error = %e, "worker creation failed");
+                    let detail = e.to_string();
+                    let _ = startup_tx.send(Err(e));
+                    xbbg_log::error!(worker_id = id, error = %detail, "worker creation failed");
                 }
             })
             .map_err(|e| BlpError::Internal {
                 detail: format!("failed to spawn worker thread: {}", e),
             })?;
+
+        match startup_rx.recv() {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => return Err(err),
+            Err(err) => {
+                return Err(BlpError::Internal {
+                    detail: format!("worker startup channel closed unexpectedly: {err}"),
+                });
+            }
+        }
 
         Ok(Self {
             id,

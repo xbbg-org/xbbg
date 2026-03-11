@@ -24,7 +24,8 @@ use arrow::record_batch::RecordBatch;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
-use xbbg_core::BlpError;
+use xbbg_core::session::Session;
+use xbbg_core::{apply_session_identity_options, AuthConfig, BlpError, SessionOptions};
 
 use crate::errors::BlpAsyncError;
 use crate::request_builder::RequestBuilder;
@@ -41,10 +42,68 @@ pub use state::{OutputFormat, SubscriptionState};
 pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
 
+const SESSION_STARTUP_TIMEOUT_MS: u32 = 30_000;
+
 fn parse_operation_lossless(operation: &str) -> Operation {
     match Operation::from_str(operation) {
         Ok(operation) => operation,
         Err(never) => match never {},
+    }
+}
+
+fn configure_session_options(
+    options: &mut SessionOptions,
+    config: &EngineConfig,
+    record_subscription_receive_times: bool,
+) -> Result<(), BlpError> {
+    options.set_server_host(&config.server_host)?;
+    options.set_server_port(config.server_port);
+    options.set_num_start_attempts(config.num_start_attempts)?;
+    options.set_auto_restart_on_disconnection(config.auto_restart_on_disconnection);
+    options.set_max_event_queue_size(config.max_event_queue_size);
+    let _ = options.set_bandwidth_save_mode_disabled(true);
+
+    if record_subscription_receive_times {
+        options.set_record_subscription_receive_times(true);
+    }
+
+    if let Some(auth_config) = config.auth.as_ref() {
+        let _ = apply_session_identity_options(options, auth_config)?;
+    }
+
+    Ok(())
+}
+
+fn start_configured_session(
+    config: &EngineConfig,
+    record_subscription_receive_times: bool,
+) -> Result<Session, BlpError> {
+    let mut options = SessionOptions::new()?;
+    configure_session_options(&mut options, config, record_subscription_receive_times)?;
+
+    let session = Session::new(&options)?;
+    session
+        .start_and_wait(SESSION_STARTUP_TIMEOUT_MS)
+        .map_err(|err| attach_auth_context(err, config.auth.as_ref()))?;
+    Ok(session)
+}
+
+fn attach_auth_context(error: BlpError, auth: Option<&AuthConfig>) -> BlpError {
+    let Some(auth) = auth else {
+        return error;
+    };
+
+    match error {
+        BlpError::SessionStart { source, label } => {
+            let label = match label {
+                Some(existing) => {
+                    Some(format!("auth_method={} - {}", auth.method_name(), existing))
+                }
+                None => Some(format!("auth_method={}", auth.method_name())),
+            };
+            BlpError::SessionStart { source, label }
+        }
+        other => other,
     }
 }
 
@@ -1069,6 +1128,12 @@ pub struct EngineConfig {
     pub validation_mode: ValidationMode,
     /// Custom path for the field cache JSON file (default: ~/.xbbg/field_cache.json)
     pub field_cache_path: Option<std::path::PathBuf>,
+    /// Structured Bloomberg session auth configuration.
+    pub auth: Option<AuthConfig>,
+    /// Number of times the SDK will attempt to connect before giving up.
+    pub num_start_attempts: usize,
+    /// Whether the SDK should auto-restart the session after disconnection.
+    pub auto_restart_on_disconnection: bool,
 }
 impl Default for EngineConfig {
     fn default() -> Self {
@@ -1088,6 +1153,9 @@ impl Default for EngineConfig {
             ],
             validation_mode: ValidationMode::default(),
             field_cache_path: None,
+            auth: None,
+            num_start_attempts: 3,
+            auto_restart_on_disconnection: true,
         }
     }
 }
@@ -1958,6 +2026,15 @@ mod tests {
 
         let err = params.validate().unwrap_err().to_string();
         assert!(err.contains("request_operation is required for RawRequest"));
+    }
+
+    #[test]
+    fn engine_config_defaults_include_auth_defaults() {
+        let config = EngineConfig::default();
+
+        assert_eq!(config.auth, None);
+        assert_eq!(config.num_start_attempts, 3);
+        assert!(config.auto_restart_on_disconnection);
     }
 
     #[test]

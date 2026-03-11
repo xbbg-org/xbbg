@@ -3,11 +3,13 @@
 use std::cell::Cell;
 use std::ffi::CString;
 use std::marker::PhantomData;
+use std::time::{Duration, Instant};
 
 use crate::correlation::CorrelationId;
 use crate::errors::{BlpError, Result};
 use crate::event::Event;
 use crate::identity::Identity;
+use crate::message::Message;
 use crate::request::Request;
 use crate::service::Service;
 use crate::subscription::SubscriptionList;
@@ -92,6 +94,8 @@ unsafe impl Send for Session {}
 // Bloomberg API requires serialized access to session methods
 
 impl Session {
+    const STARTUP_POLL_TIMEOUT_MS: u32 = 250;
+
     /// Create a new session with the given options.
     ///
     /// Creates a session but does not start it. Call `start()` to initiate the connection.
@@ -146,6 +150,63 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    pub fn wait_until_started(&self, timeout_ms: u32) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_ms));
+
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(BlpError::Timeout);
+            }
+
+            let remaining = deadline.saturating_duration_since(now);
+            let poll_timeout = remaining
+                .min(Duration::from_millis(u64::from(
+                    Self::STARTUP_POLL_TIMEOUT_MS,
+                )))
+                .as_millis() as u32;
+
+            let poll_timeout = poll_timeout.max(1);
+            let event = match self.next_event(Some(poll_timeout)) {
+                Ok(event) => event,
+                Err(BlpError::Timeout) => continue,
+                Err(err) => return Err(err),
+            };
+            for msg in event.messages() {
+                match msg.message_type().as_str() {
+                    "SessionStarted" => return Ok(()),
+                    "SessionStartupFailure" => {
+                        return Err(startup_error_from_message("session startup failure", &msg));
+                    }
+                    "SessionTerminated" => {
+                        return Err(startup_error_from_message(
+                            "session terminated during startup",
+                            &msg,
+                        ));
+                    }
+                    "AuthorizationFailure" => {
+                        return Err(startup_error_from_message(
+                            "session identity authorization failed",
+                            &msg,
+                        ));
+                    }
+                    "AuthorizationRevoked" => {
+                        return Err(startup_error_from_message(
+                            "session identity authorization revoked",
+                            &msg,
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    pub fn start_and_wait(&self, timeout_ms: u32) -> Result<()> {
+        self.start()?;
+        self.wait_until_started(timeout_ms)
     }
 
     /// Stop the session.
@@ -399,6 +460,37 @@ impl Session {
 
         Identity::from_raw(identity_ptr)
     }
+}
+
+fn startup_error_from_message(default_label: &str, msg: &Message<'_>) -> BlpError {
+    let label = extract_reason_description(msg).unwrap_or_else(|| default_label.to_string());
+    BlpError::SessionStart {
+        source: None,
+        label: Some(label),
+    }
+}
+
+fn extract_reason_description(msg: &Message<'_>) -> Option<String> {
+    let reason = msg.elements().get_by_str("reason")?;
+    if let Some(description) = reason
+        .get_by_str("description")
+        .and_then(|value| value.get_str(0))
+    {
+        return Some(description.to_string());
+    }
+    if let Some(category) = reason
+        .get_by_str("category")
+        .and_then(|value| value.get_str(0))
+    {
+        return Some(category.to_string());
+    }
+    if let Some(message) = reason
+        .get_by_str("message")
+        .and_then(|value| value.get_str(0))
+    {
+        return Some(message.to_string());
+    }
+    None
 }
 
 impl Drop for Session {
