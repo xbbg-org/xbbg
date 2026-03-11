@@ -56,7 +56,7 @@ use xbbg_async::engine::{
     SubscriptionRecoveryPolicy, TopicStatusInfo,
 };
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
-use xbbg_core::BlpError;
+use xbbg_core::{AuthConfig, BlpError};
 use xbbg_ext::{ExchangeInfo, MarketInfo, MarketTiming};
 
 mod ext;
@@ -345,6 +345,30 @@ pub struct PyEngineConfig {
     /// Set to None to use the default path.
     #[pyo3(get, set)]
     pub field_cache_path: Option<String>,
+    /// Optional auth method: "user", "app", "userapp", "dir", "manual", or "token".
+    #[pyo3(get, set)]
+    pub auth_method: Option<String>,
+    /// Bloomberg application name for app/userapp/manual auth.
+    #[pyo3(get, set)]
+    pub app_name: Option<String>,
+    /// Active Directory property for dir auth.
+    #[pyo3(get, set)]
+    pub dir_property: Option<String>,
+    /// Manual Bloomberg user id for manual auth.
+    #[pyo3(get, set)]
+    pub user_id: Option<String>,
+    /// Manual Bloomberg ip address for manual auth.
+    #[pyo3(get, set)]
+    pub ip_address: Option<String>,
+    /// Manual token for token auth.
+    #[pyo3(get, set)]
+    pub token: Option<String>,
+    /// Number of Bloomberg start attempts before giving up (default: 3).
+    #[pyo3(get, set)]
+    pub num_start_attempts: usize,
+    /// Whether Bloomberg should auto-restart the session on disconnect (default: True).
+    #[pyo3(get, set)]
+    pub auto_restart_on_disconnection: bool,
 }
 
 #[pymethods]
@@ -369,6 +393,14 @@ impl PyEngineConfig {
             overflow_policy: defaults.overflow_policy.to_string(),
             warmup_services: defaults.warmup_services,
             field_cache_path: None,
+            auth_method: None,
+            app_name: None,
+            dir_property: None,
+            user_id: None,
+            ip_address: None,
+            token: None,
+            num_start_attempts: defaults.num_start_attempts,
+            auto_restart_on_disconnection: defaults.auto_restart_on_disconnection,
         };
 
         if let Some(kw) = kwargs {
@@ -408,6 +440,30 @@ impl PyEngineConfig {
             if let Some(v) = kw.get_item("field_cache_path")? {
                 config.field_cache_path = v.extract()?;
             }
+            if let Some(v) = kw.get_item("auth_method")? {
+                config.auth_method = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("app_name")? {
+                config.app_name = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("dir_property")? {
+                config.dir_property = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("user_id")? {
+                config.user_id = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("ip_address")? {
+                config.ip_address = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("token")? {
+                config.token = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("num_start_attempts")? {
+                config.num_start_attempts = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("auto_restart_on_disconnection")? {
+                config.auto_restart_on_disconnection = v.extract()?;
+            }
         }
 
         Ok(config)
@@ -415,19 +471,78 @@ impl PyEngineConfig {
 
     fn __repr__(&self) -> String {
         let fcp_display = self.field_cache_path.as_deref().unwrap_or("default");
+        let auth_method = self.auth_method.as_deref().unwrap_or("none");
         format!(
             "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, \
-             validation_mode='{}', overflow_policy='{}', field_cache_path='{}', warmup_services={:?})",
+             validation_mode='{}', overflow_policy='{}', auth_method='{}', field_cache_path='{}', warmup_services={:?})",
             self.host,
             self.port,
             self.request_pool_size,
             self.subscription_pool_size,
             self.validation_mode,
             self.overflow_policy,
+            auth_method,
             fcp_display,
             self.warmup_services
         )
     }
+}
+
+fn require_auth_value(value: &Option<String>, field: &str, method: &str) -> PyResult<String> {
+    value
+        .clone()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            PyValueError::new_err(format!("{field} is required for auth_method='{method}'"))
+        })
+}
+
+fn build_auth_config(py_config: &PyEngineConfig) -> PyResult<Option<AuthConfig>> {
+    let method = match py_config.auth_method.as_deref() {
+        None => {
+            if py_config.app_name.is_some()
+                || py_config.dir_property.is_some()
+                || py_config.user_id.is_some()
+                || py_config.ip_address.is_some()
+                || py_config.token.is_some()
+            {
+                return Err(PyValueError::new_err(
+                    "auth_method is required when auth-specific fields are provided",
+                ));
+            }
+            return Ok(None);
+        }
+        Some(method) => method.trim().to_ascii_lowercase(),
+    };
+
+    let auth = match method.as_str() {
+        "" | "none" => None,
+        "user" => Some(AuthConfig::User),
+        "app" => Some(AuthConfig::App {
+            app_name: require_auth_value(&py_config.app_name, "app_name", &method)?,
+        }),
+        "userapp" => Some(AuthConfig::UserApp {
+            app_name: require_auth_value(&py_config.app_name, "app_name", &method)?,
+        }),
+        "dir" | "directory" => Some(AuthConfig::Directory {
+            property_name: require_auth_value(&py_config.dir_property, "dir_property", &method)?,
+        }),
+        "manual" => Some(AuthConfig::Manual {
+            app_name: require_auth_value(&py_config.app_name, "app_name", &method)?,
+            user_id: require_auth_value(&py_config.user_id, "user_id", &method)?,
+            ip_address: require_auth_value(&py_config.ip_address, "ip_address", &method)?,
+        }),
+        "token" => Some(AuthConfig::Token {
+            token: require_auth_value(&py_config.token, "token", &method)?,
+        }),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "Invalid auth_method: {other}. Must be one of ['none', 'user', 'app', 'userapp', 'dir', 'manual', 'token']",
+            )));
+        }
+    };
+
+    Ok(auth)
 }
 
 impl TryFrom<&PyEngineConfig> for EngineConfig {
@@ -443,6 +558,8 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             .overflow_policy
             .parse()
             .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?;
+
+        let auth = build_auth_config(py_config)?;
 
         Ok(EngineConfig {
             server_host: py_config.host.clone(),
@@ -460,6 +577,9 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
                 .field_cache_path
                 .as_ref()
                 .map(std::path::PathBuf::from),
+            auth,
+            num_start_attempts: py_config.num_start_attempts,
+            auto_restart_on_disconnection: py_config.auto_restart_on_disconnection,
         })
     }
 }
@@ -2086,6 +2206,101 @@ mod tests {
         assert_eq!(
             subscription_metrics_totals(&metrics_map),
             (7, 2, 6, true, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn py_engine_config_defaults_include_auth_defaults() {
+        let config = PyEngineConfig::new(None).expect("default config");
+        assert_eq!(config.auth_method, None);
+        assert_eq!(config.num_start_attempts, 3);
+        assert!(config.auto_restart_on_disconnection);
+    }
+
+    #[test]
+    fn py_engine_config_maps_manual_auth_to_engine_config() {
+        Python::initialize();
+        Python::attach(|py| {
+            let kwargs = PyDict::new(py);
+            kwargs
+                .set_item("auth_method", "manual")
+                .expect("auth_method");
+            kwargs.set_item("app_name", "my-app").expect("app_name");
+            kwargs.set_item("user_id", "123456").expect("user_id");
+            kwargs
+                .set_item("ip_address", "10.0.0.1")
+                .expect("ip_address");
+
+            let config = PyEngineConfig::new(Some(&kwargs)).expect("manual auth config");
+            let engine_config: EngineConfig = (&config).try_into().expect("engine config");
+
+            assert_eq!(
+                engine_config.auth,
+                Some(AuthConfig::Manual {
+                    app_name: "my-app".to_string(),
+                    user_id: "123456".to_string(),
+                    ip_address: "10.0.0.1".to_string(),
+                })
+            );
+        });
+    }
+
+    #[test]
+    fn py_engine_config_rejects_missing_auth_fields() {
+        Python::initialize();
+        Python::attach(|py| {
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("auth_method", "app").expect("auth_method");
+
+            let config = PyEngineConfig::new(Some(&kwargs)).expect("partial auth config");
+            let err = match EngineConfig::try_from(&config) {
+                Ok(_) => panic!("missing app_name should fail"),
+                Err(err) => err,
+            };
+            assert!(err.to_string().contains("app_name is required"));
+        });
+    }
+
+    #[test]
+    fn build_auth_config_supports_all_auth_methods() {
+        let mut config = PyEngineConfig::new(None).expect("default config");
+
+        config.auth_method = Some("user".to_string());
+        assert_eq!(build_auth_config(&config).expect("user auth"), Some(AuthConfig::User));
+
+        config.auth_method = Some("app".to_string());
+        config.app_name = Some("app-name".to_string());
+        assert_eq!(
+            build_auth_config(&config).expect("app auth"),
+            Some(AuthConfig::App {
+                app_name: "app-name".to_string(),
+            })
+        );
+
+        config.auth_method = Some("userapp".to_string());
+        assert_eq!(
+            build_auth_config(&config).expect("userapp auth"),
+            Some(AuthConfig::UserApp {
+                app_name: "app-name".to_string(),
+            })
+        );
+
+        config.auth_method = Some("dir".to_string());
+        config.dir_property = Some("mail=jane@example.com".to_string());
+        assert_eq!(
+            build_auth_config(&config).expect("dir auth"),
+            Some(AuthConfig::Directory {
+                property_name: "mail=jane@example.com".to_string(),
+            })
+        );
+
+        config.auth_method = Some("token".to_string());
+        config.token = Some("tok-123".to_string());
+        assert_eq!(
+            build_auth_config(&config).expect("token auth"),
+            Some(AuthConfig::Token {
+                token: "tok-123".to_string(),
+            })
         );
     }
 }
