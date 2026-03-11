@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import functools
 import inspect
@@ -41,8 +41,6 @@ from ._exports import BLP_MODULE_EXPORTS
 from .backend import Backend
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     import pandas as pd
 
 # Type alias for backend conversion return types
@@ -83,6 +81,120 @@ _config = None  # PyEngineConfig instance or None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
+
+RequestHandler: TypeAlias = Callable[["RequestContext"], Awaitable[DataFrameResult]]
+RequestMiddleware: TypeAlias = Callable[
+    ["RequestContext", RequestHandler],
+    DataFrameResult | Awaitable[DataFrameResult],
+]
+
+
+@dataclass(slots=True)
+class RequestContext:
+    """Mutable context object passed through the request middleware chain."""
+
+    request_id: str
+    params: RequestParams
+    params_dict: dict[str, Any]
+    backend: Backend | str | None
+    securities: list[str]
+    fields: list[str]
+    metadata: dict[str, Any] = field(default_factory=dict)
+    started_at: float = field(default_factory=time.perf_counter)
+    elapsed_ms: float | None = None
+    batch: pa.RecordBatch | None = None
+    table: pa.Table | None = None
+    frame: DataFrameResult | None = None
+    error: Exception | None = None
+
+
+_request_middleware: list[RequestMiddleware] = []
+
+_ENGINE_CONFIG_FIELDS = (
+    "host",
+    "port",
+    "request_pool_size",
+    "subscription_pool_size",
+    "validation_mode",
+    "subscription_flush_threshold",
+    "max_event_queue_size",
+    "command_queue_size",
+    "subscription_stream_capacity",
+    "overflow_policy",
+    "warmup_services",
+    "field_cache_path",
+    "auth_method",
+    "app_name",
+    "dir_property",
+    "user_id",
+    "ip_address",
+    "token",
+    "num_start_attempts",
+    "auto_restart_on_disconnection",
+)
+
+
+async def _await_request_value(value: DataFrameResult | Awaitable[DataFrameResult]) -> DataFrameResult:
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+def add_middleware(middleware: RequestMiddleware) -> RequestMiddleware:
+    """Register a request middleware callable.
+
+    Middleware is called as ``middleware(context, call_next)`` and may be sync or async.
+    Returning the middleware makes this usable as a decorator.
+    """
+
+    _request_middleware.append(middleware)
+    return middleware
+
+
+def remove_middleware(middleware: RequestMiddleware) -> None:
+    """Remove a previously registered middleware callable."""
+
+    _request_middleware.remove(middleware)
+
+
+def clear_middleware() -> None:
+    """Remove all registered middleware."""
+
+    _request_middleware.clear()
+
+
+def get_middleware() -> tuple[RequestMiddleware, ...]:
+    """Return the currently registered middleware chain."""
+
+    return tuple(_request_middleware)
+
+
+def set_middleware(middleware: Sequence[RequestMiddleware]) -> None:
+    """Replace the current middleware chain."""
+
+    _request_middleware[:] = list(middleware)
+
+
+async def _run_request_middleware(
+    context: RequestContext,
+    terminal: RequestHandler,
+) -> DataFrameResult:
+    async def invoke(index: int, current_context: RequestContext) -> DataFrameResult:
+        if index >= len(_request_middleware):
+            return await terminal(current_context)
+
+        middleware = _request_middleware[index]
+
+        async def call_next(next_context: RequestContext) -> DataFrameResult:
+            return await invoke(index + 1, next_context)
+
+        try:
+            return await _await_request_value(middleware(current_context, call_next))
+        except Exception as exc:
+            current_context.error = exc
+            raise
+
+    return await invoke(0, context)
 
 
 # =============================================================================
@@ -176,6 +288,72 @@ def is_connected() -> bool:
         print(xbbg.is_connected())  # True - engine created
     """
     return _engine is not None
+
+
+def _clone_engine_config(config):
+    cloned = type(config)()
+    for name in _ENGINE_CONFIG_FIELDS:
+        value = getattr(config, name)
+        if isinstance(value, list):
+            value = list(value)
+        setattr(cloned, name, value)
+    return cloned
+
+
+def _normalize_connect_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(kwargs)
+
+    unsupported = {name for name in ("sess", "tls_options") if name in normalized}
+    if unsupported:
+        unsupported_list = ", ".join(sorted(unsupported))
+        raise NotImplementedError(
+            f"Rust-backed connect() does not currently support {unsupported_list}. "
+            "Use engine/session configuration instead."
+        )
+
+    if "server" in normalized and "server_host" not in normalized and "host" not in normalized:
+        normalized["host"] = normalized.pop("server")
+    if "server_host" in normalized:
+        normalized["host"] = normalized.pop("server_host")
+    if "server_port" in normalized:
+        normalized["port"] = normalized.pop("server_port")
+
+    return normalized
+
+
+def connect(max_attempt: int = 3, auto_restart: bool = True, **kwargs):
+    """Configure auth/connection settings and eagerly create the shared engine.
+
+    This mirrors the older 0.x `connect()` shape closely, but returns the Rust
+    `PyEngine` instead of a raw `blpapi.Session`.
+    """
+
+    global _config
+
+    if max_attempt < 1:
+        raise ValueError("max_attempt must be at least 1")
+
+    normalized = _normalize_connect_kwargs(kwargs)
+
+    config = _clone_engine_config(_config) if _config is not None else None
+    if config is None:
+        from . import _core
+
+        config = _core.PyEngineConfig()
+    for key, value in normalized.items():
+        setattr(config, key, value)
+    config.num_start_attempts = max_attempt
+    config.auto_restart_on_disconnection = auto_restart
+
+    shutdown()
+    _config = config
+    return _get_engine()
+
+
+def disconnect() -> None:
+    """Disconnect the shared engine and clear connection/auth configuration."""
+
+    reset()
 
 
 def configure(
@@ -614,6 +792,36 @@ def _convert_backend(
     return nw_df
 
 
+async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
+    engine = _get_engine()
+    started = time.perf_counter()
+
+    try:
+        batch = await engine.request(context.params_dict)
+    except Exception as exc:
+        context.elapsed_ms = (time.perf_counter() - started) * 1000
+        context.error = exc
+        raise
+
+    context.batch = batch
+    context.elapsed_ms = (time.perf_counter() - started) * 1000
+
+    logger.info(
+        "bloomberg %s.%s: %d rows in %.1fms | securities=%s fields=%s",
+        context.params.service,
+        context.params.operation,
+        batch.num_rows,
+        context.elapsed_ms,
+        context.securities or None,
+        context.fields or None,
+    )
+
+    context.table = pa.Table.from_batches([batch])
+    nw_df = nw.from_native(context.table)
+    context.frame = _convert_backend(nw_df, context.backend)
+    return context.frame
+
+
 # =============================================================================
 # Generic API - Power Users
 # =============================================================================
@@ -791,29 +999,21 @@ async def arequest(
     )
     params.validate()
 
-    # Get engine and send request
-    engine = _get_engine()
     params_dict = params.to_dict()
-
-    # Call the generic request method on the engine
-    t0 = time.perf_counter()
-    batch = await engine.request(params_dict)
-    elapsed_ms = (time.perf_counter() - t0) * 1000
-
-    logger.info(
-        "bloomberg %s.%s: %d rows in %.1fms | securities=%s fields=%s",
-        params.service,
-        params.operation,
-        batch.num_rows,
-        elapsed_ms,
-        securities_list,
-        fields_list,
+    context = RequestContext(
+        request_id=f"req-{time.time_ns()}",
+        params=params,
+        params_dict=params_dict,
+        backend=backend,
+        securities=list(securities_list or []),
+        fields=list(fields_list or []),
     )
 
-    # Convert RecordBatch to Table for narwhals native support (zero-copy)
-    table = pa.Table.from_batches([batch])
-    nw_df = nw.from_native(table)
-    return _convert_backend(nw_df, backend)
+    try:
+        return await _run_request_middleware(context, _execute_request_terminal)
+    except Exception as exc:
+        context.error = exc
+        raise
 
 
 # =============================================================================

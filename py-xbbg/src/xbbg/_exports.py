@@ -141,8 +141,19 @@ PACKAGE_TA_EXPORTS = (
 
 PACKAGE_CONFIG_EXPORTS = (
     "configure",
+    "connect",
+    "disconnect",
     "set_backend",
     "get_backend",
+)
+
+PACKAGE_MIDDLEWARE_EXPORTS = (
+    "RequestContext",
+    "add_middleware",
+    "remove_middleware",
+    "clear_middleware",
+    "get_middleware",
+    "set_middleware",
 )
 
 PACKAGE_LIFECYCLE_EXPORTS = (
@@ -166,6 +177,7 @@ PACKAGE_BLP_EXPORTS = (
     *PACKAGE_STREAMING_EXPORTS,
     *PACKAGE_TA_EXPORTS,
     *PACKAGE_CONFIG_EXPORTS,
+    *PACKAGE_MIDDLEWARE_EXPORTS,
     *PACKAGE_LIFECYCLE_EXPORTS,
     *PACKAGE_BLP_SCHEMA_EXPORTS,
 )
@@ -181,6 +193,7 @@ PACKAGE_EXPORTS = (
     *PACKAGE_STREAMING_EXPORTS,
     *PACKAGE_TA_EXPORTS,
     *PACKAGE_CONFIG_EXPORTS,
+    *PACKAGE_MIDDLEWARE_EXPORTS,
     *PACKAGE_LIFECYCLE_EXPORTS,
     *CORE_EXPORTS,
     *PACKAGE_BLP_SCHEMA_EXPORTS,
@@ -251,8 +264,16 @@ BLP_MODULE_EXPORTS = (
     "ta_study_params",
     "generate_ta_stubs",
     "configure",
+    "connect",
+    "disconnect",
     "set_backend",
     "get_backend",
+    "RequestContext",
+    "add_middleware",
+    "remove_middleware",
+    "clear_middleware",
+    "get_middleware",
+    "set_middleware",
     "Service",
     "Operation",
     "OutputMode",
