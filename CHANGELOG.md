@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Rust-backed Bloomberg session authentication for v1**: Added structured auth support across the Rust core, async engine, and PyO3 bindings for `user`, `app`, `userapp`, `dir`, `manual`, and `token` auth modes, enabling SAPI/B-PIPE session configuration from the v1 Python API.
+- **Request middleware chain for telemetry and wrappers**: Added `RequestContext` plus middleware registration helpers around `arequest()` so callers can layer centralized request instrumentation, logging, caching, and wrapper behavior without patching individual endpoint functions.
+
+### Changed
+
+- **`configure()` is now the canonical engine/session setup surface**: Connection/auth setup now flows through `configure()` with support for legacy aliases such as `server_host`, `server_port`, `max_attempt`, and `auto_restart`, while the temporary `connect()` / `disconnect()` wrappers were removed before release.
+
+### Fixed
+
+- **Auth/session startup failures now propagate with context**: Request and subscription workers now wait for Bloomberg startup/auth events before proceeding, so failed authentication and session-start problems surface as actionable errors instead of being swallowed or masked by later service-open failures.
+- **Rust/Python CI regressions in the new auth path**: Cleaned release-blocking lint and formatting issues in the new auth/middleware code paths so the full Linux/Windows CI matrix passes with the beta 5 changes.
+
 ## [1.0.0b4] - 2026-03-10
 
 ### Changed
