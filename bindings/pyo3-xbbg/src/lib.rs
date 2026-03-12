@@ -2266,7 +2266,10 @@ mod tests {
         let mut config = PyEngineConfig::new(None).expect("default config");
 
         config.auth_method = Some("user".to_string());
-        assert_eq!(build_auth_config(&config).expect("user auth"), Some(AuthConfig::User));
+        assert_eq!(
+            build_auth_config(&config).expect("user auth"),
+            Some(AuthConfig::User)
+        );
 
         config.auth_method = Some("app".to_string());
         config.app_name = Some("app-name".to_string());

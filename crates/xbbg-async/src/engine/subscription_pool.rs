@@ -11,7 +11,7 @@ use std::thread::{self, JoinHandle};
 use arrow::record_batch::RecordBatch;
 use parking_lot::Mutex;
 use slab::Slab;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, SubscriptionList};
@@ -22,6 +22,9 @@ use super::{
     SharedSubscriptionStatus, SlabKey, SubscriptionEventLevel, SubscriptionFailureKind,
     SubscriptionRecoveryPolicy,
 };
+
+type SubscriptionReplyPayload = (Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>);
+type SubscriptionReply = Result<SubscriptionReplyPayload, BlpError>;
 
 /// Commands sent to a subscription worker.
 pub enum SubscriptionCommand {
@@ -38,9 +41,7 @@ pub enum SubscriptionCommand {
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         status: SharedSubscriptionStatus,
         /// Reply with slab keys for later unsubscribe.
-        reply: tokio::sync::oneshot::Sender<
-            Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpError>,
-        >,
+        reply: oneshot::Sender<SubscriptionReply>,
     },
     /// Add topics to an existing subscription (uses same stream sender).
     AddTopics {
@@ -55,9 +56,7 @@ pub enum SubscriptionCommand {
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         status: SharedSubscriptionStatus,
         /// Reply with new slab keys.
-        reply: tokio::sync::oneshot::Sender<
-            Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpError>,
-        >,
+        reply: oneshot::Sender<SubscriptionReply>,
     },
     /// Stop subscriptions by key.
     Unsubscribe { keys: Vec<SlabKey> },
@@ -926,7 +925,7 @@ impl SubscriptionCommandHandle {
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        let (reply_tx, reply_rx) = oneshot::channel();
 
         self.cmd_tx
             .send(SubscriptionCommand::Subscribe {
@@ -962,7 +961,7 @@ impl SubscriptionCommandHandle {
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        let (reply_tx, reply_rx) = oneshot::channel();
 
         self.cmd_tx
             .send(SubscriptionCommand::AddTopics {
@@ -1043,7 +1042,9 @@ impl SubscriptionWorkerHandle {
             Ok(Err(err)) => return Err(err),
             Err(err) => {
                 return Err(BlpError::Internal {
-                    detail: format!("subscription worker startup channel closed unexpectedly: {err}"),
+                    detail: format!(
+                        "subscription worker startup channel closed unexpectedly: {err}"
+                    ),
                 });
             }
         }
