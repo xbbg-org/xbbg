@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b5] - 2026-03-12
+
 ### Added
 
 - **Rust-backed Bloomberg session authentication for v1**: Added structured auth support across the Rust core, async engine, and PyO3 bindings for `user`, `app`, `userapp`, `dir`, `manual`, and `token` auth modes, enabling SAPI/B-PIPE session configuration from the v1 Python API.
@@ -996,7 +998,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...HEAD
+[1.0.0b5]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...v1.0.0b5
 [1.0.0b4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b3...v1.0.0b4
 [1.0.0b3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b2...v1.0.0b3
 [1.0.0b2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b1...v1.0.0b2
