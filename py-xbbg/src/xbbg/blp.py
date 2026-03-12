@@ -110,29 +110,6 @@ class RequestContext:
 
 _request_middleware: list[RequestMiddleware] = []
 
-_ENGINE_CONFIG_FIELDS = (
-    "host",
-    "port",
-    "request_pool_size",
-    "subscription_pool_size",
-    "validation_mode",
-    "subscription_flush_threshold",
-    "max_event_queue_size",
-    "command_queue_size",
-    "subscription_stream_capacity",
-    "overflow_policy",
-    "warmup_services",
-    "field_cache_path",
-    "auth_method",
-    "app_name",
-    "dir_property",
-    "user_id",
-    "ip_address",
-    "token",
-    "num_start_attempts",
-    "auto_restart_on_disconnection",
-)
-
 
 async def _await_request_value(value: DataFrameResult | Awaitable[DataFrameResult]) -> DataFrameResult:
     if inspect.isawaitable(value):
@@ -146,32 +123,27 @@ def add_middleware(middleware: RequestMiddleware) -> RequestMiddleware:
     Middleware is called as ``middleware(context, call_next)`` and may be sync or async.
     Returning the middleware makes this usable as a decorator.
     """
-
     _request_middleware.append(middleware)
     return middleware
 
 
 def remove_middleware(middleware: RequestMiddleware) -> None:
     """Remove a previously registered middleware callable."""
-
     _request_middleware.remove(middleware)
 
 
 def clear_middleware() -> None:
     """Remove all registered middleware."""
-
     _request_middleware.clear()
 
 
 def get_middleware() -> tuple[RequestMiddleware, ...]:
     """Return the currently registered middleware chain."""
-
     return tuple(_request_middleware)
 
 
 def set_middleware(middleware: Sequence[RequestMiddleware]) -> None:
     """Replace the current middleware chain."""
-
     _request_middleware[:] = list(middleware)
 
 
@@ -290,70 +262,33 @@ def is_connected() -> bool:
     return _engine is not None
 
 
-def _clone_engine_config(config):
-    cloned = type(config)()
-    for name in _ENGINE_CONFIG_FIELDS:
-        value = getattr(config, name)
-        if isinstance(value, list):
-            value = list(value)
-        setattr(cloned, name, value)
-    return cloned
-
-
-def _normalize_connect_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+def _normalize_config_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(kwargs)
 
     unsupported = {name for name in ("sess", "tls_options") if name in normalized}
     if unsupported:
         unsupported_list = ", ".join(sorted(unsupported))
         raise NotImplementedError(
-            f"Rust-backed connect() does not currently support {unsupported_list}. "
-            "Use engine/session configuration instead."
+            f"xbbg.configure() does not currently support {unsupported_list}. Use engine/session configuration instead."
         )
 
-    if "server" in normalized and "server_host" not in normalized and "host" not in normalized:
-        normalized["host"] = normalized.pop("server")
+    if "server" in normalized:
+        server = normalized.pop("server")
+        if "server_host" not in normalized and "host" not in normalized:
+            normalized["host"] = server
     if "server_host" in normalized:
         normalized["host"] = normalized.pop("server_host")
     if "server_port" in normalized:
         normalized["port"] = normalized.pop("server_port")
 
+    if "max_attempt" in normalized:
+        max_attempt = normalized.pop("max_attempt")
+        normalized.setdefault("num_start_attempts", max_attempt)
+    if "auto_restart" in normalized:
+        auto_restart = normalized.pop("auto_restart")
+        normalized.setdefault("auto_restart_on_disconnection", auto_restart)
+
     return normalized
-
-
-def connect(max_attempt: int = 3, auto_restart: bool = True, **kwargs):
-    """Configure auth/connection settings and eagerly create the shared engine.
-
-    This mirrors the older 0.x `connect()` shape closely, but returns the Rust
-    `PyEngine` instead of a raw `blpapi.Session`.
-    """
-
-    global _config
-
-    if max_attempt < 1:
-        raise ValueError("max_attempt must be at least 1")
-
-    normalized = _normalize_connect_kwargs(kwargs)
-
-    config = _clone_engine_config(_config) if _config is not None else None
-    if config is None:
-        from . import _core
-
-        config = _core.PyEngineConfig()
-    for key, value in normalized.items():
-        setattr(config, key, value)
-    config.num_start_attempts = max_attempt
-    config.auto_restart_on_disconnection = auto_restart
-
-    shutdown()
-    _config = config
-    return _get_engine()
-
-
-def disconnect() -> None:
-    """Disconnect the shared engine and clear connection/auth configuration."""
-
-    reset()
 
 
 def configure(
@@ -368,6 +303,11 @@ def configure(
     Can be called with an EngineConfig object, keyword arguments, or both
     (kwargs override config fields). All defaults come from Rust.
 
+    Legacy connection-style aliases are also accepted and normalized here:
+    `server` / `server_host` -> `host`, `server_port` -> `port`,
+    `max_attempt` -> `num_start_attempts`, and `auto_restart` ->
+    `auto_restart_on_disconnection`.
+
     See ``EngineConfig()`` for available fields and their defaults::
 
         >>> from xbbg import EngineConfig
@@ -378,10 +318,15 @@ def configure(
     Args:
         config: An EngineConfig object with all settings.
         **kwargs: Override individual fields (host, port, request_pool_size,
-            subscription_pool_size, field_cache_path, etc.).
+            subscription_pool_size, field_cache_path, auth_method, app_name,
+            user_id, ip_address, token, etc.). Legacy aliases like
+            `server_host`, `server_port`, `max_attempt`, and `auto_restart`
+            are also supported.
 
     Raises:
         RuntimeError: If called after the engine has already started.
+        NotImplementedError: If unsupported session-only options such as
+            `sess` or `tls_options` are provided.
 
     Example::
 
@@ -399,10 +344,27 @@ def configure(
         cfg = EngineConfig(request_pool_size=4)
         xbbg.configure(cfg, subscription_pool_size=2)
 
-        # Option 4: Custom field cache location
+        # Option 4: Legacy-style auth/server aliases also work
+        xbbg.configure(
+            auth_method="manual",
+            app_name="my-app",
+            user_id="123456",
+            ip_address="10.0.0.1",
+            server_host="bpipe-host",
+            server_port=8195,
+            max_attempt=5,
+            auto_restart=False,
+        )
+
+        # Option 5: Custom field cache location
         xbbg.configure(field_cache_path="/data/bloomberg/field_cache.json")
     """
     global _config, _engine
+
+    normalized = _normalize_config_kwargs(kwargs)
+
+    if (num_start_attempts := normalized.get("num_start_attempts")) is not None and num_start_attempts < 1:
+        raise ValueError("num_start_attempts must be at least 1")
 
     if _engine is not None:
         raise RuntimeError(
@@ -414,11 +376,11 @@ def configure(
     if config is not None:
         # Start from the provided config, apply kwargs on top
         _config = config
-        for key, value in kwargs.items():
+        for key, value in normalized.items():
             setattr(_config, key, value)
     else:
         # Build from kwargs; PyEngineConfig fills Rust defaults for anything unset
-        _config = _core.PyEngineConfig(**kwargs)
+        _config = _core.PyEngineConfig(**normalized)
 
     logger.info("Engine configured: %s", _config)
 

@@ -141,14 +141,11 @@ def test_arequest_middleware_can_short_circuit(monkeypatch):
     assert called is False
 
 
-def test_connect_normalizes_legacy_auth_kwargs(monkeypatch):
-    sentinel = object()
-    shutdown_calls: list[bool] = []
-    blp._config = DummyConfig()
-    monkeypatch.setattr(blp, "shutdown", lambda: shutdown_calls.append(True))
-    monkeypatch.setattr(blp, "_get_engine", lambda: sentinel)
+def test_configure_normalizes_legacy_auth_kwargs():
+    config = DummyConfig()
 
-    result = blp.connect(
+    blp.configure(
+        config,
         max_attempt=5,
         auto_restart=False,
         auth_method="manual",
@@ -159,8 +156,7 @@ def test_connect_normalizes_legacy_auth_kwargs(monkeypatch):
         server_port=8195,
     )
 
-    assert result is sentinel
-    assert shutdown_calls == [True]
+    assert blp._config is config
     assert isinstance(blp._config, DummyConfig)
     assert blp._config.host == "bpipe-host"
     assert blp._config.port == 8195
@@ -170,28 +166,47 @@ def test_connect_normalizes_legacy_auth_kwargs(monkeypatch):
     assert blp._config.ip_address == "10.0.0.1"
     assert blp._config.num_start_attempts == 5
     assert blp._config.auto_restart_on_disconnection is False
+    assert blp._engine is None
 
 
-def test_connect_rejects_unsupported_session_inputs():
+def test_configure_consumes_server_alias_when_host_overrides_it():
+    config = DummyConfig()
+
+    blp.configure(config, server="legacy-host", host="preferred-host", server_port=8195)
+
+    assert blp._config is config
+    assert blp._config.host == "preferred-host"
+    assert blp._config.port == 8195
+    assert not hasattr(blp._config, "server")
+
+
+def test_configure_rejects_unsupported_session_inputs():
     with pytest.raises(NotImplementedError, match="sess"):
-        blp.connect(sess=object())
+        blp.configure(sess=object())
 
 
-def test_disconnect_resets_engine(monkeypatch):
-    calls: list[bool] = []
-    monkeypatch.setattr(blp, "reset", lambda: calls.append(True))
-
-    blp.disconnect()
-
-    assert calls == [True]
+def test_configure_rejects_invalid_num_start_attempts():
+    with pytest.raises(ValueError, match="num_start_attempts"):
+        blp.configure(max_attempt=0)
 
 
-def test_public_exports_include_connect_and_middleware_helpers():
-    assert "connect" in xbbg.__all__
-    assert "disconnect" in xbbg.__all__
+def test_configure_still_rejects_after_engine_start():
+    blp._engine = object()
+
+    with pytest.raises(RuntimeError, match="Cannot configure after engine has started"):
+        blp.configure(host="bpipe-host")
+
+
+def test_public_exports_include_configure_and_middleware_helpers():
+    assert "configure" in xbbg.__all__
+    assert "reset" in xbbg.__all__
     assert "add_middleware" in xbbg.__all__
     assert "RequestContext" in xbbg.__all__
-    assert callable(xbbg.connect)
+    assert "connect" not in xbbg.__all__
+    assert "disconnect" not in xbbg.__all__
+    assert not hasattr(xbbg, "connect")
+    assert not hasattr(xbbg, "disconnect")
+    assert callable(xbbg.configure)
     assert callable(xbbg.add_middleware)
 
 

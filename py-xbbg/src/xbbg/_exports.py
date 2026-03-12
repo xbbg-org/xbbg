@@ -141,8 +141,6 @@ PACKAGE_TA_EXPORTS = (
 
 PACKAGE_CONFIG_EXPORTS = (
     "configure",
-    "connect",
-    "disconnect",
     "set_backend",
     "get_backend",
 )
@@ -264,8 +262,6 @@ BLP_MODULE_EXPORTS = (
     "ta_study_params",
     "generate_ta_stubs",
     "configure",
-    "connect",
-    "disconnect",
     "set_backend",
     "get_backend",
     "RequestContext",
