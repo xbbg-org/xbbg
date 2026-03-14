@@ -20,14 +20,15 @@ use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, CorrelationId, EventType, Service};
+use xbbg_core::{BlpError, EventType, Service};
 
+use super::dispatch::DispatchKey;
 use super::state::{
     BqlState, BsrchState, BulkDataState, FieldInfoState, GenericState, HistDataState,
     HistDataStreamState, IntradayBarState, IntradayBarStreamState, IntradayTickState,
     IntradayTickStreamState, LongMode, OutputFormat, RefDataState,
 };
-use super::{start_configured_session, EngineConfig, ExtractorType, RequestParams};
+use super::{start_configured_session, EngineConfig, ExtractorType, RequestParams, SlabKey};
 
 fn iter_named_request_parameters(
     params: &RequestParams,
@@ -199,9 +200,9 @@ struct RequestWorker {
     /// Configuration.
     config: Arc<EngineConfig>,
     /// Send times for round-trip measurement.
-    send_times: HashMap<usize, std::time::Instant>,
+    send_times: HashMap<SlabKey, std::time::Instant>,
     /// Track which requests we've already warned about (to avoid log spam).
-    warned_requests: std::collections::HashSet<usize>,
+    warned_requests: std::collections::HashSet<SlabKey>,
     /// Counter for slow request check interval.
     poll_counter: u32,
 }
@@ -382,7 +383,8 @@ impl RequestWorker {
         xbbg_log::debug!(worker_id = self.id, "request state created");
 
         let key = self.requests.insert(state);
-        let cid = CorrelationId::Int(key as i64);
+        let dispatch_key = DispatchKey::from_slab_key(key);
+        let cid = dispatch_key.to_correlation_id();
 
         let result = (|| -> Result<(), BlpError> {
             // Build request from params
@@ -407,8 +409,26 @@ impl RequestWorker {
             xbbg_log::debug!(worker_id = self.id, "request built");
 
             let t_send = std::time::Instant::now();
-            self.session.send_request(&request, None, Some(&cid))?;
-            self.send_times.insert(key, t_send);
+            let actual_cid = self.session.send_request(&request, None, Some(&cid))?;
+            let actual_dispatch_key =
+                DispatchKey::from_correlation_id(&actual_cid).ok_or_else(|| {
+                    BlpError::Internal {
+                        detail: format!(
+                            "Bloomberg returned non-dispatch correlation ID for request: {:?}",
+                            actual_cid
+                        ),
+                    }
+                })?;
+            let actual_key = actual_dispatch_key.to_slab_key();
+            if actual_key != key {
+                return Err(BlpError::Internal {
+                    detail: format!(
+                        "Bloomberg returned unexpected dispatch correlation ID {:?} for slab key {}",
+                        actual_cid, key
+                    ),
+                });
+            }
+            self.send_times.insert(actual_key, t_send);
 
             xbbg_log::debug!(
                 worker_id = self.id,
@@ -552,7 +572,8 @@ impl RequestWorker {
         };
 
         let key = self.requests.insert(state);
-        let cid = CorrelationId::Int(key as i64);
+        let dispatch_key = DispatchKey::from_slab_key(key);
+        let cid = dispatch_key.to_correlation_id();
 
         let result = (|| -> Result<(), BlpError> {
             let service = self
@@ -566,7 +587,25 @@ impl RequestWorker {
                 })?;
             let request = self.build_request_from_params(service, &params)?;
 
-            self.session.send_request(&request, None, Some(&cid))?;
+            let actual_cid = self.session.send_request(&request, None, Some(&cid))?;
+            let actual_dispatch_key =
+                DispatchKey::from_correlation_id(&actual_cid).ok_or_else(|| {
+                    BlpError::Internal {
+                        detail: format!(
+                        "Bloomberg returned non-dispatch correlation ID for stream request: {:?}",
+                        actual_cid
+                    ),
+                    }
+                })?;
+            let actual_key = actual_dispatch_key.to_slab_key();
+            if actual_key != key {
+                return Err(BlpError::Internal {
+                    detail: format!(
+                        "Bloomberg returned unexpected stream dispatch correlation ID {:?} for slab key {}",
+                        actual_cid, key
+                    ),
+                });
+            }
             xbbg_log::debug!(
                 worker_id = self.id,
                 key = key,
@@ -735,8 +774,12 @@ impl RequestWorker {
     fn handle_partial_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
-                if let Some(state) = self.requests.get_mut(key as usize) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
+                if let Some(state) = self.requests.get_mut(key) {
                     state.on_partial(msg);
                     xbbg_log::trace!(worker_id = self.id, key = key, "partial response");
                 }
@@ -747,10 +790,14 @@ impl RequestWorker {
     fn handle_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
-                if self.requests.contains(key as usize) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
+                if self.requests.contains(key) {
                     // Log round-trip time and clean up tracking
-                    if let Some(t_send) = self.send_times.remove(&(key as usize)) {
+                    if let Some(t_send) = self.send_times.remove(&key) {
                         let rtt_ms = t_send.elapsed().as_micros() as f64 / 1000.0;
                         xbbg_log::info!(
                             worker_id = self.id,
@@ -759,8 +806,8 @@ impl RequestWorker {
                             "bloomberg_roundtrip"
                         );
                     }
-                    self.warned_requests.remove(&(key as usize));
-                    let state = self.requests.remove(key as usize);
+                    self.warned_requests.remove(&key);
+                    let state = self.requests.remove(key);
                     state.finish_and_reply(msg);
                     xbbg_log::debug!(worker_id = self.id, key = key, "response completed");
                 }
@@ -774,14 +821,18 @@ impl RequestWorker {
         let n = msg.num_correlation_ids();
 
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
                 if msg_type == "RequestFailure" {
                     xbbg_log::error!(worker_id = self.id, key = key, "request failed");
-                    if self.requests.contains(key as usize) {
+                    if self.requests.contains(key) {
                         // Clean up tracking
-                        self.send_times.remove(&(key as usize));
-                        self.warned_requests.remove(&(key as usize));
-                        let state = self.requests.remove(key as usize);
+                        self.send_times.remove(&key);
+                        self.warned_requests.remove(&key);
+                        let state = self.requests.remove(key);
                         state.fail(BlpError::Internal {
                             detail: "RequestFailure".into(),
                         });

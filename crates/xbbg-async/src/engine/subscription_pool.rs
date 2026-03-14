@@ -14,8 +14,9 @@ use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, CorrelationId, EventType, SubscriptionList};
+use xbbg_core::{BlpError, EventType, SubscriptionList};
 
+use super::dispatch::DispatchKey;
 use super::state::{SubscriptionMetrics, SubscriptionState};
 use super::{
     start_configured_session, BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState,
@@ -290,7 +291,7 @@ impl SubscriptionWorker {
             let metrics_arc = state.metrics.clone();
             let key = self.subs.insert(state);
 
-            let cid = CorrelationId::Int(key as i64);
+            let cid = DispatchKey::from_slab_key(key).to_correlation_id();
             if let Err(e) = sub_list.add(topic, &field_refs, &options_str, &cid) {
                 xbbg_log::error!(worker_id = self.id, topic = %topic, error = %e, "failed to add topic");
                 // Clean up phantom slab entry — sub_list.add failed so Bloomberg
@@ -336,7 +337,7 @@ impl SubscriptionWorker {
             if self.subs.contains(key) {
                 let state = &mut self.subs[key];
                 state.mark_closing();
-                let cid = CorrelationId::Int(key as i64);
+                let cid = DispatchKey::from_slab_key(key).to_correlation_id();
                 // Topic and empty fields/options are sufficient for unsubscribe —
                 // Bloomberg matches on correlation ID.
                 if let Err(e) = unsub_list.add(&state.topic, &[], "", &cid) {
@@ -408,12 +409,16 @@ impl SubscriptionWorker {
     fn handle_subscription_data(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
                 // Skip in-flight data for subscriptions we've already cancelled.
-                if self.pending_cancel.contains(&(key as usize)) {
+                if self.pending_cancel.contains(&key) {
                     continue;
                 }
-                if let Some(state) = self.subs.get_mut(key as usize) {
+                if let Some(state) = self.subs.get_mut(key) {
                     // Check for DATALOSS
                     let elem = msg.elements();
                     if let Some(event_type) = elem.get_by_str("MKTDATA_EVENT_TYPE") {
@@ -446,7 +451,7 @@ impl SubscriptionWorker {
                     if first_message {
                         let topic = if let Some(status) = &self.status {
                             let mut status = status.lock();
-                            let topic = status.mark_topic_streaming(key as usize);
+                            let topic = status.mark_topic_streaming(key);
                             status.record_subscription_event(
                                 "SubscriptionStreaming",
                                 topic.clone(),
@@ -483,13 +488,17 @@ impl SubscriptionWorker {
             .map(|s| s.to_string());
 
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
                 match msg_type {
                     "SubscriptionStarted" => {
                         xbbg_log::debug!(worker_id = self.id, key = key, "subscription started");
                         if let Some(status) = &self.status {
                             let mut status = status.lock();
-                            let topic = status.mark_topic_started(key as usize);
+                            let topic = status.mark_topic_started(key);
                             status.record_subscription_event(
                                 "SubscriptionStarted",
                                 topic,
@@ -499,16 +508,16 @@ impl SubscriptionWorker {
                         }
                     }
                     "SubscriptionFailure" => {
-                        if self.pending_cancel.remove(&(key as usize)) {
+                        if self.pending_cancel.remove(&key) {
                             // Bloomberg sends SubscriptionFailure (instead of SubscriptionTerminated)
                             // when a subscription is cancelled before it fully starts. Since this was
                             // explicitly requested via unsubscribe(), silently clean up.
-                            if self.subs.contains(key as usize) {
-                                let mut state = self.subs.remove(key as usize);
+                            if self.subs.contains(key) {
+                                let mut state = self.subs.remove(key);
                                 state.mark_closing();
                                 if let Some(status) = &self.status {
                                     let mut status = status.lock();
-                                    let topic = status.mark_topic_unsubscribed(key as usize);
+                                    let topic = status.mark_topic_unsubscribed(key);
                                     status.record_subscription_event(
                                         "SubscriptionCancelled",
                                         topic,
@@ -526,12 +535,12 @@ impl SubscriptionWorker {
                             let reason_text = reason
                                 .clone()
                                 .unwrap_or_else(|| "subscription failed".to_string());
-                            if self.subs.contains(key as usize) {
-                                let mut state = self.subs.remove(key as usize);
+                            if self.subs.contains(key) {
+                                let mut state = self.subs.remove(key);
                                 state.mark_closing();
                                 let topic = self
                                     .record_failure(
-                                        key as usize,
+                                        key,
                                         reason_text.clone(),
                                         SubscriptionFailureKind::Failure,
                                     )
@@ -564,15 +573,15 @@ impl SubscriptionWorker {
                         }
                     }
                     "SubscriptionTerminated" => {
-                        if self.pending_cancel.remove(&(key as usize)) {
+                        if self.pending_cancel.remove(&key) {
                             // This termination was explicitly requested via unsubscribe().
                             // Silently clean up the slab entry — don't propagate an error.
-                            if self.subs.contains(key as usize) {
-                                let mut state = self.subs.remove(key as usize);
+                            if self.subs.contains(key) {
+                                let mut state = self.subs.remove(key);
                                 state.mark_closing();
                                 if let Some(status) = &self.status {
                                     let mut status = status.lock();
-                                    let topic = status.mark_topic_unsubscribed(key as usize);
+                                    let topic = status.mark_topic_unsubscribed(key);
                                     status.record_subscription_event(
                                         "SubscriptionTerminated",
                                         topic,
@@ -590,12 +599,12 @@ impl SubscriptionWorker {
                             let reason_text = reason
                                 .clone()
                                 .unwrap_or_else(|| "subscription terminated".to_string());
-                            if self.subs.contains(key as usize) {
-                                let mut state = self.subs.remove(key as usize);
+                            if self.subs.contains(key) {
+                                let mut state = self.subs.remove(key);
                                 state.mark_closing();
                                 let topic = self
                                     .record_failure(
-                                        key as usize,
+                                        key,
                                         reason_text.clone(),
                                         SubscriptionFailureKind::Terminated,
                                     )
@@ -792,8 +801,13 @@ impl SubscriptionWorker {
                     }
                 }
                 for index in 0..correlation_count {
-                    if let Some(CorrelationId::Int(key)) = msg.correlation_id(index) {
-                        if let Some(state) = self.subs.get_mut(key as usize) {
+                    if let Some(correlation_id) = msg.correlation_id(index) {
+                        let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id)
+                        else {
+                            continue;
+                        };
+                        let key = dispatch_key.to_slab_key();
+                        if let Some(state) = self.subs.get_mut(key) {
                             let topic = state.topic.to_string();
                             state.on_dataloss(timestamp_us);
                             if let Some(status) = &self.status {
@@ -830,7 +844,7 @@ impl SubscriptionWorker {
 
         let mut sub_list = SubscriptionList::new();
         for (key, state) in self.subs.iter() {
-            let cid = CorrelationId::Int(key as i64);
+            let cid = DispatchKey::from_slab_key(key).to_correlation_id();
             let fields: Vec<&str> = state
                 .field_strings
                 .iter()
