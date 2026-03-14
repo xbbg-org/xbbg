@@ -174,9 +174,10 @@ impl Session {
                 Err(BlpError::Timeout) => continue,
                 Err(err) => return Err(err),
             };
+            let mut saw_session_started = false;
             for msg in event.messages() {
                 match msg.message_type().as_str() {
-                    "SessionStarted" => return Ok(()),
+                    "SessionStarted" => saw_session_started = true,
                     "SessionStartupFailure" => {
                         return Err(startup_error_from_message("session startup failure", &msg));
                     }
@@ -200,6 +201,9 @@ impl Session {
                     }
                     _ => {}
                 }
+            }
+            if saw_session_started {
+                return Ok(());
             }
         }
     }
@@ -342,13 +346,13 @@ impl Session {
     /// * `cid` - Optional correlation ID for tracking the response
     ///
     /// # Returns
-    /// Ok(()) on success, Err on failure
+    /// The actual correlation ID used on success, Err on failure
     pub fn send_request(
         &self,
         req: &Request,
         identity: Option<&Identity>,
         cid: Option<&CorrelationId>,
-    ) -> Result<()> {
+    ) -> Result<CorrelationId> {
         // Prepare correlation ID
         let mut cid_ffi = match cid {
             Some(c) => c.to_ffi(),
@@ -380,7 +384,7 @@ impl Session {
             });
         }
 
-        Ok(())
+        Ok(CorrelationId::from_ffi(&cid_ffi))
     }
 
     /// Subscribe to market data

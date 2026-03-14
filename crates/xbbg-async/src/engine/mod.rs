@@ -4,9 +4,10 @@
 //! - RequestWorkerPool: Pre-warmed workers for all request types (bdp/bdh/bds/bdib/bdtick)
 //! - SubscriptionSessionPool: Pre-warmed sessions for subscriptions (each gets dedicated session)
 //!
-//! Workers use slab-indexed correlation IDs for O(1) dispatch.
+//! Workers encode stable dispatch keys into Bloomberg correlation IDs for O(1) dispatch.
 //! Pool sizes are configurable with sensible defaults.
 
+mod dispatch;
 mod exchange;
 mod exchange_cache;
 mod request_pool;
