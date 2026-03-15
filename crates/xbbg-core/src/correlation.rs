@@ -20,20 +20,15 @@ use std::ffi::c_void;
 /// let default_cid = CorrelationId::default();
 /// assert!(matches!(default_cid, CorrelationId::Unset));
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum CorrelationId {
     /// Unset correlation ID. The Bloomberg SDK may autogenerate one internally.
+    #[default]
     Unset,
     /// Integer correlation ID
     Int(i64),
     /// Pointer correlation ID (for advanced use cases)
     Ptr(*mut c_void),
-}
-
-impl Default for CorrelationId {
-    fn default() -> Self {
-        CorrelationId::Unset
-    }
 }
 
 impl CorrelationId {
