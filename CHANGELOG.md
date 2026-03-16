@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b6] - 2026-03-16
+
 ### Changed
 
 - **Internal correlation ID dispatch overhaul**: The async engine no longer uses raw Bloomberg integer correlation IDs as direct slab indexes. All request and session dispatch now routes through an explicit dispatch-key layer at the session boundary, preventing ID collisions between auth subscriptions and user requests and aligning lifecycle tracking with Bloomberg SDK semantics.
@@ -1006,7 +1008,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...HEAD
+[1.0.0b6]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...v1.0.0b6
 [1.0.0b5]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...v1.0.0b5
 [1.0.0b4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b3...v1.0.0b4
 [1.0.0b3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b2...v1.0.0b3
