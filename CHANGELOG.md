@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Changed
 
 - **Internal correlation ID dispatch overhaul**: The async engine no longer uses raw Bloomberg integer correlation IDs as direct slab indexes. All request and session dispatch now routes through an explicit dispatch-key layer at the session boundary, preventing ID collisions between auth subscriptions and user requests and aligning lifecycle tracking with Bloomberg SDK semantics.
+- **Logging levels better match the quiet-by-default workflow**: Request roundtrip telemetry and Python subscription lifecycle messages now emit at `DEBUG` instead of `INFO`, while exchange metadata fetch failures that cleanly fall back now emit at `WARNING` instead of `ERROR`, keeping normal control-flow noise out of default logs without hiding real request telemetry.
 
 ### Fixed
 
