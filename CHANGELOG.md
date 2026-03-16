@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal correlation ID dispatch overhaul**: The async engine no longer uses raw Bloomberg integer correlation IDs as direct slab indexes. All request and session dispatch now routes through an explicit dispatch-key layer at the session boundary, preventing ID collisions between auth subscriptions and user requests and aligning lifecycle tracking with Bloomberg SDK semantics.
+
+### Fixed
+
+- **SAPI authentication fails with `BLPAPI_ERROR_DUPLICATE_CORRELATIONID`** ([#248](https://github.com/alpha-xone/xbbg/issues/248)): `CorrelationId::default()` returned `Int(0)`, which is a valid explicit correlation ID. When `setSessionIdentityOptions` registered `Int(0)` for the auth flow, subsequent `sendRequest` calls with the same default ID were rejected as duplicates (rc=131077). The default is now `CorrelationId::Unset` (maps to `BLPAPI_CORRELATION_TYPE_UNSET` in the FFI struct), matching the official Python `blpapi` behavior where the SDK auto-generates unique IDs. Affects all SAPI authentication modes (`app`, `user`, `userapp`, `dir`, `token`).
+
 ## [1.0.0b5] - 2026-03-12
 
 ### Added
