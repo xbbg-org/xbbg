@@ -799,7 +799,7 @@ impl RequestWorker {
                     // Log round-trip time and clean up tracking
                     if let Some(t_send) = self.send_times.remove(&key) {
                         let rtt_ms = t_send.elapsed().as_micros() as f64 / 1000.0;
-                        xbbg_log::info!(
+                        xbbg_log::debug!(
                             worker_id = self.id,
                             rtt_ms = rtt_ms,
                             key = key,

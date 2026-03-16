@@ -1527,7 +1527,7 @@ class Subscription:
         Returns:
             List of remaining batches if drain=True, else None
         """
-        logger.info("unsubscribe: drain=%s", drain)
+        logger.debug("unsubscribe: drain=%s", drain)
         return await self._sub.unsubscribe(drain)
 
     async def __aenter__(self):
@@ -1635,7 +1635,7 @@ async def asubscribe(
     effective_backend = _resolve_backend(backend)
 
     engine = _get_engine()
-    logger.info("subscribe: tickers=%s fields=%s", ticker_list, field_list)
+    logger.debug("subscribe: tickers=%s fields=%s", ticker_list, field_list)
 
     # Use subscribe_with_options if service, options, or config params provided
     if (
