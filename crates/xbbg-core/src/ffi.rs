@@ -156,6 +156,9 @@ pub use xbbg_sys::{
     blpapi_TlsOptions_setTlsHandshakeTimeoutMs,
 };
 
+// --- ZfpUtil functions ---
+pub use xbbg_sys::blpapi_ZfpUtil_getOptionsForLeasedLines;
+
 // --- HighPrecisionDatetime (defined locally for layout control) ---
 
 /// Bloomberg high-precision datetime structure.

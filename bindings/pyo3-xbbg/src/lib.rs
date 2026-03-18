@@ -330,6 +330,8 @@ pub struct PyEngineConfig {
     /// Multiple servers for failover: list of (host, port) tuples. Overrides host/port when set.
     #[pyo3(get, set)]
     pub servers: Vec<(String, u16)>,
+    #[pyo3(get, set)]
+    pub zfp_remote: Option<String>,
     /// Number of pre-warmed request workers (default: 2)
     #[pyo3(get, set)]
     pub request_pool_size: usize,
@@ -423,6 +425,7 @@ impl PyEngineConfig {
             host: defaults.server_host,
             port: defaults.server_port,
             servers: Vec::new(),
+            zfp_remote: None,
             request_pool_size: defaults.request_pool_size,
             subscription_pool_size: defaults.subscription_pool_size,
             validation_mode: defaults.validation_mode.to_string(),
@@ -464,6 +467,9 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("servers")? {
                 config.servers = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("zfp_remote")? {
+                config.zfp_remote = v.extract()?;
             }
             if let Some(v) = kw.get_item("request_pool_size")? {
                 config.request_pool_size = v.extract()?;
@@ -656,6 +662,12 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             server_host: py_config.host.clone(),
             server_port: py_config.port,
             servers: py_config.servers.clone(),
+            zfp_remote: py_config
+                .zfp_remote
+                .as_deref()
+                .map(|s| s.parse())
+                .transpose()
+                .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?,
             request_pool_size: py_config.request_pool_size,
             subscription_pool_size: py_config.subscription_pool_size,
             validation_mode,

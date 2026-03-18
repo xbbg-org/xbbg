@@ -101,6 +101,12 @@ fn start_configured_session(
     record_subscription_receive_times: bool,
 ) -> Result<Session, BlpError> {
     let mut options = SessionOptions::new()?;
+
+    if let Some(ref zfp_remote) = config.zfp_remote {
+        let tls = build_tls_options(config)?;
+        xbbg_core::zfp::configure_zfp_options(&mut options, &tls, *zfp_remote)?;
+    }
+
     configure_session_options(&mut options, config, record_subscription_receive_times)?;
 
     let session = Session::new(&options)?;
@@ -108,6 +114,31 @@ fn start_configured_session(
         .start_and_wait(SESSION_STARTUP_TIMEOUT_MS)
         .map_err(|err| attach_auth_context(err, config.auth.as_ref()))?;
     Ok(session)
+}
+
+fn build_tls_options(config: &EngineConfig) -> Result<xbbg_core::tls::TlsOptions, BlpError> {
+    let creds = config.tls_client_credentials.as_deref().ok_or_else(|| {
+        BlpError::InvalidArgument {
+            detail: "ZFP requires tls_client_credentials".into(),
+        }
+    })?;
+    let trust = config.tls_trust_material.as_deref().ok_or_else(|| {
+        BlpError::InvalidArgument {
+            detail: "ZFP requires tls_trust_material".into(),
+        }
+    })?;
+    let password = config
+        .tls_client_credentials_password
+        .as_deref()
+        .unwrap_or("");
+    let mut tls = xbbg_core::tls::TlsOptions::from_files(creds, password, trust)?;
+    if let Some(ms) = config.tls_handshake_timeout_ms {
+        tls.set_tls_handshake_timeout_ms(ms);
+    }
+    if let Some(ms) = config.tls_crl_fetch_timeout_ms {
+        tls.set_crl_fetch_timeout_ms(ms);
+    }
+    Ok(tls)
 }
 
 fn attach_auth_context(error: BlpError, auth: Option<&AuthConfig>) -> BlpError {
@@ -1172,6 +1203,8 @@ pub struct EngineConfig {
     /// Multiple servers for failover. When non-empty, overrides server_host/server_port.
     /// SDK tries servers in order — index 0 first, then index 1, etc.
     pub servers: Vec<(String, u16)>,
+    /// ZFP over leased lines. When set, overrides host/port/servers.
+    pub zfp_remote: Option<xbbg_core::zfp::ZfpRemote>,
     /// Max event queue size (Bloomberg SDK setting)
     pub max_event_queue_size: usize,
     /// Command channel capacity (backpressure)
@@ -1223,6 +1256,7 @@ impl Default for EngineConfig {
             server_host: "localhost".to_string(),
             server_port: 8194,
             servers: Vec::new(),
+            zfp_remote: None,
             max_event_queue_size: 10_000,
             command_queue_size: 256,
             subscription_flush_threshold: 1,

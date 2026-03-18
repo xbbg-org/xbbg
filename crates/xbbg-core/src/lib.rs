@@ -35,6 +35,7 @@ pub mod service;
 pub mod session;
 pub mod subscription;
 pub mod tls;
+pub mod zfp;
 
 // Re-exports for convenience
 pub use auth::{
