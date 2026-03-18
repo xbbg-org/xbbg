@@ -959,7 +959,11 @@ impl SubscriptionWorker {
                         SubscriptionEventLevel::Info,
                         "Reconnected",
                         None,
-                        Some(format!("service={} subscriptions={}", service, self.subs.len())),
+                        Some(format!(
+                            "service={} subscriptions={}",
+                            service,
+                            self.subs.len()
+                        )),
                     );
                 }
                 xbbg_log::info!(

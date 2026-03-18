@@ -59,3 +59,9 @@ pub use value::{OwnedValue, Value};
 pub use schema::{
     Constant, ConstantList, Operation, SchemaElementDefinition, SchemaStatus, SchemaTypeDefinition,
 };
+
+pub fn sdk_version() -> (i32, i32, i32, i32) {
+    let (mut major, mut minor, mut patch, mut build) = (0, 0, 0, 0);
+    unsafe { ffi::blpapi_getVersionInfo(&mut major, &mut minor, &mut patch, &mut build) };
+    (major, minor, patch, build)
+}

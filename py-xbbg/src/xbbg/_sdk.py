@@ -166,9 +166,19 @@ def get_sdk_info() -> dict:
                 }
             )
 
+    runtime_version = None
+    try:
+        from . import _core
+
+        major, minor, patch, build = _core.sdk_version()
+        runtime_version = f"{major}.{minor}.{patch}.{build}"
+    except Exception:
+        pass
+
     info = {
         "sources": sources,
         "active": sources[0]["name"] if sources else None,
+        "runtime_version": runtime_version,
     }
     _sdk_info = info
     return info

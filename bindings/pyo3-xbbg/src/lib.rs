@@ -2191,6 +2191,12 @@ fn version() -> String {
     xbbg_core::version().to_string()
 }
 
+#[gen_stub_pyfunction]
+#[pyfunction]
+fn sdk_version() -> (i32, i32, i32, i32) {
+    xbbg_core::sdk_version()
+}
+
 #[pymodule]
 #[pyo3(name = "_core")]
 fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -2216,6 +2222,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     let pkg_version = git_version.strip_prefix('v').unwrap_or(git_version);
     m.add("__version__", pkg_version)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
+    m.add_function(wrap_pyfunction!(sdk_version, m)?)?;
     m.add_class::<PyEngine>()?;
     m.add_class::<PyEngineConfig>()?;
     m.add_class::<PySubscription>()?;

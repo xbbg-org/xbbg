@@ -276,4 +276,11 @@ extern "C" {
         timePoint: *const blpapi_TimePoint_t,
         offset: i16,
     ) -> i32;
+
+    pub fn blpapi_getVersionInfo(
+        majorVersion: *mut i32,
+        minorVersion: *mut i32,
+        patchVersion: *mut i32,
+        buildVersion: *mut i32,
+    );
 }
