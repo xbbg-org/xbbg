@@ -454,15 +454,100 @@ impl Session {
         Ok(())
     }
 
-    /// Create an identity for authorization
-    ///
-    /// # Returns
-    /// A new Identity on success, or an error if creation fails
     pub fn create_identity(&self) -> Result<Identity> {
-        // SAFETY: We're calling the Bloomberg API with a valid pointer
         let identity_ptr = unsafe { crate::ffi::blpapi_Session_createIdentity(self.ptr) };
-
         Identity::from_raw(identity_ptr)
+    }
+
+    pub fn generate_token(&self, cid: Option<&CorrelationId>) -> Result<CorrelationId> {
+        let mut cid_ffi = match cid {
+            Some(c) => c.to_ffi(),
+            None => CorrelationId::default().to_ffi(),
+        };
+
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_generateToken(
+                self.ptr,
+                &mut cid_ffi,
+                std::ptr::null_mut(), // eventQueue (null = use session's queue)
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_generateToken failed with rc={rc}"),
+            });
+        }
+
+        Ok(CorrelationId::from_ffi(&cid_ffi))
+    }
+
+    pub fn send_authorization_request(
+        &self,
+        request: &Request,
+        identity: &mut Identity,
+        cid: Option<&CorrelationId>,
+    ) -> Result<CorrelationId> {
+        let mut cid_ffi = match cid {
+            Some(c) => c.to_ffi(),
+            None => CorrelationId::default().to_ffi(),
+        };
+
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_sendAuthorizationRequest(
+                self.ptr,
+                request.as_ptr(),
+                identity.as_ptr(),
+                &mut cid_ffi,
+                std::ptr::null_mut(), // eventQueue
+                std::ptr::null(),     // requestLabel
+                0,                    // requestLabelLen
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_sendAuthorizationRequest failed with rc={rc}"),
+            });
+        }
+
+        Ok(CorrelationId::from_ffi(&cid_ffi))
+    }
+
+    pub fn subscribe_with_identity(
+        &self,
+        subs: &SubscriptionList,
+        identity: &Identity,
+        label: Option<&str>,
+    ) -> Result<()> {
+        let (label_ptr, label_len, _label_cstring) = match label {
+            Some(l) => {
+                let cs = CString::new(l).map_err(|e| BlpError::InvalidArgument {
+                    detail: format!("invalid label: {e}"),
+                })?;
+                let len = l.len() as i32;
+                (cs.as_ptr(), len, Some(cs))
+            }
+            None => (std::ptr::null(), 0, None),
+        };
+
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_subscribe(
+                self.ptr,
+                subs.as_ptr(),
+                identity.as_ptr(),
+                label_ptr,
+                label_len,
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_subscribe (with identity) failed with rc={rc}"),
+            });
+        }
+
+        Ok(())
     }
 }
 

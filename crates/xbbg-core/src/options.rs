@@ -300,6 +300,10 @@ impl SessionOptions {
         Ok(self)
     }
 
+    pub fn set_tls_options(&mut self, tls: &crate::tls::TlsOptions) {
+        unsafe { ffi::blpapi_SessionOptions_setTlsOptions(self.ptr, tls.as_ptr()) };
+    }
+
     pub(crate) fn as_raw(&self) -> *mut ffi::blpapi_SessionOptions_t {
         self.ptr
     }

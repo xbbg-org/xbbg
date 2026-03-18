@@ -7,7 +7,7 @@ pub use xbbg_sys::{
     blpapi_AuthApplication_t, blpapi_AuthOptions_t, blpapi_AuthToken_t, blpapi_AuthUser_t,
     blpapi_CorrelationId_t, blpapi_Element_t, blpapi_Event_t, blpapi_Identity_t,
     blpapi_MessageIterator_t, blpapi_Message_t, blpapi_Name_t, blpapi_Request_t, blpapi_Service_t,
-    blpapi_SessionOptions_t, blpapi_Session_t, blpapi_SubscriptionList_t,
+    blpapi_SessionOptions_t, blpapi_Session_t, blpapi_SubscriptionList_t, blpapi_TlsOptions_t,
 };
 
 // --- Auth functions ---
@@ -65,7 +65,8 @@ pub use xbbg_sys::{
 // --- Session functions ---
 pub use xbbg_sys::{
     blpapi_Session_create, blpapi_Session_createIdentity, blpapi_Session_destroy,
-    blpapi_Session_getService, blpapi_Session_nextEvent, blpapi_Session_openService,
+    blpapi_Session_generateToken, blpapi_Session_getService, blpapi_Session_nextEvent,
+    blpapi_Session_openService, blpapi_Session_sendAuthorizationRequest,
     blpapi_Session_sendRequest, blpapi_Session_start, blpapi_Session_stop,
     blpapi_Session_subscribe, blpapi_Session_tryNextEvent, blpapi_Session_unsubscribe,
 };
@@ -144,7 +145,14 @@ pub use xbbg_sys::{
     blpapi_SessionOptions_setServiceCheckTimeout, blpapi_SessionOptions_setServiceDownloadTimeout,
     blpapi_SessionOptions_setSessionIdentityOptions,
     blpapi_SessionOptions_setSlowConsumerWarningHiWaterMark,
-    blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark,
+    blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark, blpapi_SessionOptions_setTlsOptions,
+};
+
+// --- TlsOptions functions ---
+pub use xbbg_sys::{
+    blpapi_TlsOptions_createFromBlobs, blpapi_TlsOptions_createFromFiles,
+    blpapi_TlsOptions_destroy, blpapi_TlsOptions_setCrlFetchTimeoutMs,
+    blpapi_TlsOptions_setTlsHandshakeTimeoutMs,
 };
 
 // --- HighPrecisionDatetime (defined locally for layout control) ---

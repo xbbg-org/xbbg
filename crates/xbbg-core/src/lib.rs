@@ -34,6 +34,7 @@ pub mod schema;
 pub mod service;
 pub mod session;
 pub mod subscription;
+pub mod tls;
 
 // Re-exports for convenience
 pub use auth::{
