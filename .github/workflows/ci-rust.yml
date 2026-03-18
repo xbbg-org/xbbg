@@ -894,7 +894,7 @@ jobs:
     needs: [sdk-version, ci-status]
     if: needs.ci-status.result == 'success' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
+    continue-on-error: true
     permissions:
       contents: write
     env:
@@ -904,6 +904,9 @@ jobs:
         with:
           ref: ${{ github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install libclang
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev
 
       - name: Cache Bloomberg SDK
         id: cache-sdk
