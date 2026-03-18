@@ -555,6 +555,110 @@ blp.bdp(tickers='NVDA US Equity', flds=['Security_Name'])
 
 You can also pass `server` and `port` as kwargs to individual function calls for ad-hoc connections.
 
+### Engine Architecture
+
+xbbg v1 is powered by a Rust async engine with **pre-warmed worker pools**:
+
+```
+┌─────────────────────────────────────────────────┐
+│                   xbbg Engine                   │
+│                                                 │
+│  ┌──────────────────────┐  ┌─────────────────┐  │
+│  │  Request Worker Pool │  │ Subscription    │  │
+│  │  (request_pool_size) │  │ Session Pool    │  │
+│  │                      │  │ (sub_pool_size) │  │
+│  │  Worker 1 ──session  │  │                 │  │
+│  │  Worker 2 ──session  │  │  Session 1      │  │
+│  │  ...                 │  │  ...            │  │
+│  └──────────────────────┘  └─────────────────┘  │
+│           │ round-robin          │ isolated      │
+│           ▼                      ▼               │
+│    bdp/bdh/bds/bdib       subscribe/stream       │
+│    bql/bsrch/beqs         vwap/mktbar/depth      │
+└─────────────────────────────────────────────────┘
+```
+
+- **Request workers** each hold an independent Bloomberg session. Concurrent `bdp`/`bdh`/`bds` calls are dispatched round-robin across workers, so `request_pool_size=4` allows 4 parallel Bloomberg requests.
+- **Subscription sessions** are isolated per session to avoid cross-contamination between topic streams. Each `subscribe()` call gets its own Bloomberg session from the pool.
+- Workers are **pre-warmed** at first use — sessions are started and services opened before your first request, eliminating cold-start latency.
+
+### EngineConfig Reference
+
+Call `configure()` before any Bloomberg request to tune the engine. All fields have sensible defaults:
+
+```python
+from xbbg import configure, EngineConfig
+
+# Keyword arguments (most common)
+configure(request_pool_size=4, subscription_pool_size=2)
+
+# Or use an EngineConfig object
+configure(EngineConfig(request_pool_size=4, subscription_pool_size=2))
+```
+
+#### Connection & Session
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `host` | `'localhost'` | Bloomberg server host. Aliases: `server_host`, `server` |
+| `port` | `8194` | Bloomberg server port. Alias: `server_port` |
+| `num_start_attempts` | `3` | Retries before giving up on session start. Alias: `max_attempt` |
+| `auto_restart_on_disconnection` | `True` | Auto-reconnect on session disconnect. Alias: `auto_restart` |
+
+#### Worker Pools
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `request_pool_size` | `2` | Number of pre-warmed request workers (parallel Bloomberg sessions for bdp/bdh/bds/etc.) |
+| `subscription_pool_size` | `1` | Number of pre-warmed subscription sessions (isolated sessions for subscribe/stream) |
+| `warmup_services` | `['//blp/refdata', '//blp/apiflds']` | Services to pre-open on startup |
+
+#### Subscription Tuning
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `subscription_flush_threshold` | `1` | Ticks buffered before flushing to Python (increase for throughput, decrease for latency) |
+| `subscription_stream_capacity` | `256` | Backpressure buffer size per subscription stream |
+| `overflow_policy` | `'drop_newest'` | Slow consumer policy: `'drop_newest'`, `'drop_oldest'`, or `'block'` |
+
+#### Internal Buffers
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_event_queue_size` | `10000` | Bloomberg SDK event queue depth |
+| `command_queue_size` | `256` | Internal command channel capacity |
+
+#### Validation
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `validation_mode` | `'disabled'` | Field validation: `'disabled'`, `'strict'` (reject unknown fields), or `'lenient'` (warn) |
+| `field_cache_path` | `~/.xbbg/field_cache.json` | Path for persistent field type cache. Set to customize location |
+
+#### Authentication (SAPI / B-PIPE)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `auth_method` | `None` | Auth mode: `'user'`, `'app'`, `'userapp'`, `'dir'`, `'manual'`, or `'token'` |
+| `app_name` | `None` | Application name (required for `app`, `userapp`, `manual`) |
+| `user_id` | `None` | Bloomberg user ID (required for `manual`) |
+| `ip_address` | `None` | Bloomberg IP address (required for `manual`) |
+| `dir_property` | `None` | Active Directory property (required for `dir`) |
+| `token` | `None` | Auth token (required for `token`) |
+
+**Auth mode examples:**
+
+```python
+# B-PIPE application auth
+configure(auth_method='app', app_name='myapp:8888', host='bpipe-host')
+
+# Manual auth (SAPI)
+configure(auth_method='manual', app_name='myapp', user_id='12345', ip_address='10.0.0.1')
+
+# Active Directory auth
+configure(auth_method='dir', dir_property='mail')
+```
+
 ### Async Functions
 
 Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. In the v1 architecture, async implementations are the canonical source of truth and sync functions delegate via `_run_sync()`.
