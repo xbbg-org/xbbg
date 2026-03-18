@@ -894,6 +894,7 @@ jobs:
     needs: [sdk-version, ci-status]
     if: needs.ci-status.result == 'success' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     continue-on-error: true
     permissions:
       contents: write
@@ -905,8 +906,11 @@ jobs:
           ref: ${{ github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install libclang
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev
+      - name: Configure git for container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Cache Bloomberg SDK
         id: cache-sdk
@@ -942,8 +946,6 @@ jobs:
 
       - name: Commit stubs if changed
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add py-xbbg/src/xbbg/_core/__init__.pyi py-xbbg/src/xbbg/__init__.pyi py-xbbg/src/xbbg/py.typed
           if git diff --cached --quiet; then
             echo "Type stubs are already up to date"
