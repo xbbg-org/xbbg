@@ -161,6 +161,18 @@ pub use xbbg_sys::{
     blpapi_Identity_getSeatType, blpapi_Identity_hasEntitlements, blpapi_Identity_isAuthorized,
 };
 
+// --- Logging functions ---
+pub use xbbg_sys::{
+    blpapi_Logging_Severity_t, blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_DEBUG,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_FATAL,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_INFO,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_OFF,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_TRACE,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_WARN, blpapi_Logging_logTestMessage,
+    blpapi_Logging_registerCallback,
+};
+
 // --- ZfpUtil functions ---
 pub use xbbg_sys::blpapi_ZfpUtil_getOptionsForLeasedLines;
 

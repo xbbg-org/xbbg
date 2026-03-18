@@ -1249,6 +1249,9 @@ pub struct EngineConfig {
     pub retry_policy: RetryPolicy,
     /// Interval in ms between worker health checks (default: 30000).
     pub health_check_interval_ms: u64,
+    /// Bloomberg SDK internal log level. Bridges SDK logs into xbbg tracing.
+    /// Must be set before first session starts. Default: Off.
+    pub sdk_log_level: crate::sdk_logging::SdkLogLevel,
 }
 impl Default for EngineConfig {
     fn default() -> Self {
@@ -1282,6 +1285,7 @@ impl Default for EngineConfig {
             recovery_timeout_ms: 30_000,
             retry_policy: RetryPolicy::default(),
             health_check_interval_ms: 30_000,
+            sdk_log_level: crate::sdk_logging::SdkLogLevel::Off,
         }
     }
 }
@@ -1309,9 +1313,10 @@ pub struct Engine {
 impl Engine {
     /// Create and start a new Engine with worker pools.
     pub fn start(config: EngineConfig) -> Result<Self, BlpAsyncError> {
+        crate::sdk_logging::register_sdk_logging(config.sdk_log_level);
+
         let config = Arc::new(config);
 
-        // Initialize field cache with configured path (must happen before any field resolution)
         crate::field_cache::init_global_resolver(config.field_cache_path.clone());
 
         let rt = Arc::new(

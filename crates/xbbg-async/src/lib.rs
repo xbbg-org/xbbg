@@ -6,6 +6,7 @@ mod errors;
 pub mod field_cache;
 pub mod request_builder;
 pub mod schema;
+pub mod sdk_logging;
 pub mod services;
 
 pub use errors::BlpAsyncError;

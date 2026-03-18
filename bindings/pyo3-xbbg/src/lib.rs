@@ -409,6 +409,8 @@ pub struct PyEngineConfig {
     pub retry_max_delay_ms: u64,
     #[pyo3(get, set)]
     pub health_check_interval_ms: u64,
+    #[pyo3(get, set)]
+    pub sdk_log_level: String,
 }
 
 #[gen_stub_pymethods]
@@ -456,6 +458,7 @@ impl PyEngineConfig {
             retry_backoff_factor: 2.0,
             retry_max_delay_ms: 30_000,
             health_check_interval_ms: 30_000,
+            sdk_log_level: "off".to_string(),
         };
 
         if let Some(kw) = kwargs {
@@ -560,6 +563,9 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("health_check_interval_ms")? {
                 config.health_check_interval_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("sdk_log_level")? {
+                config.sdk_log_level = v.extract()?;
             }
         }
 
@@ -698,6 +704,10 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
                 max_delay_ms: py_config.retry_max_delay_ms,
             },
             health_check_interval_ms: py_config.health_check_interval_ms,
+            sdk_log_level: py_config
+                .sdk_log_level
+                .parse()
+                .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?,
         })
     }
 }
@@ -2260,6 +2270,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Logging control (zero-GIL)
     m.add_function(wrap_pyfunction!(set_log_level, m)?)?;
     m.add_function(wrap_pyfunction!(get_log_level, m)?)?;
+    m.add_function(wrap_pyfunction!(enable_sdk_logging, m)?)?;
 
     // Register ext functions (date, pivot, ticker, futures, cdx, currency utilities)
     ext::register_ext_module(m)?;
@@ -2308,6 +2319,16 @@ fn get_log_level() -> &'static str {
         xbbg_log::Level::WARN => "warn",
         xbbg_log::Level::ERROR => "error",
     }
+}
+
+#[gen_stub_pyfunction]
+#[pyfunction]
+fn enable_sdk_logging(level: &str) -> PyResult<()> {
+    let lvl: xbbg_async::sdk_logging::SdkLogLevel = level
+        .parse()
+        .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?;
+    xbbg_async::sdk_logging::register_sdk_logging(lvl);
+    Ok(())
 }
 
 define_stub_info_gatherer!(stub_info);
