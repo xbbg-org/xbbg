@@ -153,10 +153,13 @@ pip index versions xbbg
 
 | Branch | Purpose |
 |--------|---------|
-| `main` | Production-ready code, all releases tagged here |
+| `main` | v1.x development (Rust-backed beta line) |
+| `release/0.x` | v0.x maintenance releases (pure-Python stable line) |
 | `feat/*` | New features (PRs to main) |
-| `fix/*` | Bug fixes (PRs to main) |
+| `fix/*` | Bug fixes (PRs to main or release/0.x) |
 | `chore/*` | Maintenance tasks |
+
+> **Note:** When releasing from `release/0.x`, the downstream `update-readme` and `update-index` workflows will target `main` by default. Review and revert any unintended changes to `main` after a `release/0.x` release.
 
 ### After Merging PRs
 

@@ -27,13 +27,12 @@ Thank you for your interest in contributing to xbbg!
 
 3. Install dependencies and build:
    ```bash
-   uv sync --extra dev
-   uv run python -m pip install -e .
+   uv sync
    ```
 
 4. Run tests:
    ```bash
-   uv run pytest
+   uv run pytest py-xbbg/tests -q
    ```
 
 ## Code Style
