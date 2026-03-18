@@ -338,6 +338,18 @@ def _normalize_config_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     if "auto_restart" in normalized:
         auto_restart = normalized.pop("auto_restart")
         normalized.setdefault("auto_restart_on_disconnection", auto_restart)
+    if "max_recovery" in normalized:
+        max_recovery = normalized.pop("max_recovery")
+        normalized.setdefault("max_recovery_attempts", max_recovery)
+    if "retry_max" in normalized:
+        retry_max = normalized.pop("retry_max")
+        normalized.setdefault("retry_max_retries", retry_max)
+    if "retry_delay" in normalized:
+        retry_delay = normalized.pop("retry_delay")
+        normalized.setdefault("retry_initial_delay_ms", retry_delay)
+    if "retry_backoff" in normalized:
+        retry_backoff = normalized.pop("retry_backoff")
+        normalized.setdefault("retry_backoff_factor", retry_backoff)
 
     return normalized
 

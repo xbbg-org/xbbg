@@ -29,4 +29,22 @@ pub enum BlpAsyncError {
 
     #[error("timeout")]
     Timeout,
+
+    /// Bloomberg session lost — transport dropped or session terminated.
+    ///
+    /// In-flight requests on the affected worker have been failed immediately.
+    /// Callers should retry with a different worker or wait for the pool to
+    /// recover.
+    #[error("session lost on worker {worker_id} ({in_flight_count} in-flight requests failed)")]
+    SessionLost {
+        worker_id: usize,
+        in_flight_count: usize,
+    },
+
+    /// All request workers in the pool are dead.
+    ///
+    /// No healthy worker is available to accept requests. The pool needs
+    /// worker replacement (Phase 4) or manual intervention.
+    #[error("all {pool_size} request workers are dead — no healthy worker available")]
+    AllWorkersDown { pool_size: usize },
 }

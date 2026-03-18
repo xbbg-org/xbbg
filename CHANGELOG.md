@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **`Engine` class** for non-global multi-engine routing. Create independent engine instances and scope them via `with engine:` (sync) or `async with engine:` (async). The global `configure()` + `blp.bdp()` API is unchanged — `Engine` is fully opt-in.
 - **TLS support** for encrypted B-PIPE connections: `tls_client_credentials`, `tls_trust_material`, `tls_handshake_timeout_ms` on `EngineConfig` and `configure()`.
 - **Identity lifecycle FFI**: `Session.generate_token()`, `Session.send_authorization_request()`, `Session.subscribe_with_identity()` for multi-user entitlement flows.
+- **Reconnect resilience (Phases 1–3)** for the Rust engine (#245):
+  - **Fail-fast on session death**: request workers now immediately drain all in-flight requests with an error on `SessionTerminated`/`SessionConnectionDown` instead of letting callers hang indefinitely. Workers are marked `Dead` and restored to `Healthy` on `SessionConnectionUp`.
+  - **Service re-open before re-subscribe**: `recover_active_subscriptions()` now re-opens all previously opened services before re-issuing subscriptions after reconnect, fixing a critical gap where recovery could silently fail.
+  - **Health-aware dispatch**: request pool round-robin skips `Dead` workers; returns `AllWorkersDown` immediately if the entire pool is dead.
+  - **Retry with exponential backoff**: `RetryPolicy` on `EngineConfig` (`retry_max_retries`, `retry_initial_delay_ms`, `retry_backoff_factor`, `retry_max_delay_ms`) enables automatic retry of transient request failures.
+  - **Recovery limits**: `max_recovery_attempts` and `recovery_timeout_ms` cap subscription recovery to prevent infinite loops.
+  - **Lifecycle events**: `ConnectionLost`, `Reconnected`, and `RecoveryFailed` events emitted to subscription status for observability.
+  - **New error variants**: `BlpAsyncError::SessionLost` and `AllWorkersDown` mapped to Python `BlpSessionError`.
+  - **Python surface**: all new config fields exposed in `EngineConfig`, `configure()`, and `Engine()`; `engine.worker_health()` returns per-worker health status.
 
 ### Changed
 

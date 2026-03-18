@@ -74,6 +74,7 @@ struct SubscriptionWorker {
     config: Arc<EngineConfig>,
     /// Services that have been opened on this session.
     open_services: std::collections::HashSet<String>,
+    opened_services: Vec<String>,
     /// Keys pending Bloomberg's SubscriptionTerminated confirmation.
     ///
     /// When we explicitly unsubscribe, the slab entry stays alive until Bloomberg
@@ -99,6 +100,8 @@ impl SubscriptionWorker {
         session.open_service(crate::services::Service::MktData.as_str())?;
         let mut open_services = std::collections::HashSet::new();
         open_services.insert(crate::services::Service::MktData.to_string());
+        let mut opened_services = Vec::new();
+        opened_services.push(crate::services::Service::MktData.to_string());
 
         xbbg_log::info!(worker_id = id, "subscription worker pre-warmed");
 
@@ -109,6 +112,7 @@ impl SubscriptionWorker {
             cmd_rx,
             config,
             open_services,
+            opened_services,
             pending_cancel: std::collections::HashSet::new(),
             status: None,
             current_service: None,
@@ -143,6 +147,10 @@ impl SubscriptionWorker {
             );
             self.session.open_service(service)?;
             self.open_services.insert(service.to_string());
+            let opened_name = service.to_string();
+            if !self.opened_services.contains(&opened_name) {
+                self.opened_services.push(opened_name);
+            }
             if let Some(status) = &self.status {
                 status.lock().record_service_state(
                     service.to_string(),
@@ -679,6 +687,17 @@ impl SubscriptionWorker {
                             self.subs.len(),
                         )),
                     );
+                    status.lock().push_event(
+                        super::SubscriptionEventCategory::Lifecycle,
+                        SubscriptionEventLevel::Warning,
+                        "ConnectionLost",
+                        None,
+                        Some(format!(
+                            "worker={} active_subscriptions={}",
+                            self.id,
+                            self.subs.len(),
+                        )),
+                    );
                 }
             }
             "SessionTerminated" => {
@@ -838,9 +857,58 @@ impl SubscriptionWorker {
             return;
         }
 
+        if let Some(status) = &self.status {
+            let attempt_count = status.lock().session().recovery_attempt_count;
+            if attempt_count as usize >= self.config.max_recovery_attempts {
+                xbbg_log::warn!(
+                    worker_id = self.id,
+                    attempts = attempt_count,
+                    max = self.config.max_recovery_attempts,
+                    "max recovery attempts reached — giving up"
+                );
+                return;
+            }
+        }
+
         let Some(service) = self.current_service.clone() else {
             return;
         };
+
+        let services_to_reopen = self.opened_services.clone();
+        for service_name in &services_to_reopen {
+            match self.session.open_service(service_name) {
+                Ok(()) => {
+                    xbbg_log::info!(
+                        worker_id = self.id,
+                        service = %service_name,
+                        "re-opened service after reconnect"
+                    );
+                }
+                Err(error) => {
+                    if let Some(status) = &self.status {
+                        let mut status = status.lock();
+                        status.record_recovery_error(format!(
+                            "failed to re-open service {} after reconnect: {}",
+                            service_name, error,
+                        ));
+                        status.push_event(
+                            super::SubscriptionEventCategory::Lifecycle,
+                            SubscriptionEventLevel::Error,
+                            "RecoveryFailed",
+                            None,
+                            Some(format!("service={} error={}", service_name, error)),
+                        );
+                    }
+                    xbbg_log::error!(
+                        worker_id = self.id,
+                        service = %service_name,
+                        error = %error,
+                        "failed to re-open service during recovery — aborting recovery"
+                    );
+                    return;
+                }
+            }
+        }
 
         let mut sub_list = SubscriptionList::new();
         for (key, state) in self.subs.iter() {
@@ -880,11 +948,19 @@ impl SubscriptionWorker {
         match self.session.subscribe(&sub_list, Some("xbbg-recovery")) {
             Ok(()) => {
                 if let Some(status) = &self.status {
-                    status.lock().record_recovery_success(Some(format!(
+                    let mut status = status.lock();
+                    status.record_recovery_success(Some(format!(
                         "service={} active_subscriptions={}",
                         service,
                         self.subs.len(),
                     )));
+                    status.push_event(
+                        super::SubscriptionEventCategory::Lifecycle,
+                        SubscriptionEventLevel::Info,
+                        "Reconnected",
+                        None,
+                        Some(format!("service={} subscriptions={}", service, self.subs.len())),
+                    );
                 }
                 xbbg_log::info!(
                     worker_id = self.id,
@@ -895,12 +971,20 @@ impl SubscriptionWorker {
             }
             Err(error) => {
                 if let Some(status) = &self.status {
-                    status.lock().record_recovery_error(format!(
+                    let mut status = status.lock();
+                    status.record_recovery_error(format!(
                         "service={} active_subscriptions={} error={}",
                         service,
                         self.subs.len(),
                         error,
                     ));
+                    status.push_event(
+                        super::SubscriptionEventCategory::Lifecycle,
+                        SubscriptionEventLevel::Error,
+                        "RecoveryFailed",
+                        None,
+                        Some(format!("service={} error={}", service, error)),
+                    );
                 }
                 xbbg_log::warn!(
                     worker_id = self.id,

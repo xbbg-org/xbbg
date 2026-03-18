@@ -12,6 +12,7 @@
 //! used services pre-opened for low-latency request handling.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
@@ -28,7 +29,9 @@ use super::state::{
     HistDataStreamState, IntradayBarState, IntradayBarStreamState, IntradayTickState,
     IntradayTickStreamState, LongMode, OutputFormat, RefDataState,
 };
-use super::{start_configured_session, EngineConfig, ExtractorType, RequestParams, SlabKey};
+use super::{
+    start_configured_session, EngineConfig, ExtractorType, RequestParams, SlabKey, WorkerHealth,
+};
 
 fn iter_named_request_parameters(
     params: &RequestParams,
@@ -205,6 +208,7 @@ struct RequestWorker {
     warned_requests: std::collections::HashSet<SlabKey>,
     /// Counter for slow request check interval.
     poll_counter: u32,
+    health: Arc<AtomicU8>,
 }
 
 impl RequestWorker {
@@ -213,6 +217,7 @@ impl RequestWorker {
         id: usize,
         config: Arc<EngineConfig>,
         cmd_rx: mpsc::Receiver<WorkerCommand>,
+        health: Arc<AtomicU8>,
     ) -> Result<Self, BlpError> {
         let session = start_configured_session(&config, false)?;
 
@@ -226,6 +231,7 @@ impl RequestWorker {
             send_times: HashMap::new(),
             warned_requests: std::collections::HashSet::new(),
             poll_counter: 0,
+            health,
         };
 
         // Pre-warm commonly used services
@@ -842,6 +848,30 @@ impl RequestWorker {
         }
     }
 
+    fn drain_in_flight_requests(&mut self, reason: &str) {
+        let in_flight = self.requests.len();
+        if in_flight == 0 {
+            return;
+        }
+
+        let keys: Vec<SlabKey> = self.requests.iter().map(|(k, _)| k).collect();
+        for key in keys {
+            self.send_times.remove(&key);
+            self.warned_requests.remove(&key);
+            let state = self.requests.remove(key);
+            state.fail(BlpError::Internal {
+                detail: format!("{} (worker={})", reason, self.id),
+            });
+        }
+
+        xbbg_log::error!(
+            worker_id = self.id,
+            drained = in_flight,
+            reason = reason,
+            "drained in-flight requests"
+        );
+    }
+
     fn handle_session_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
@@ -849,20 +879,17 @@ impl RequestWorker {
             "SessionStarted" => {
                 xbbg_log::info!(worker_id = self.id, "session started");
             }
-            "SessionTerminated" | "SessionConnectionDown" => {
-                let in_flight = self.requests.len();
-                xbbg_log::error!(
-                    worker_id = self.id,
-                    in_flight_requests = in_flight,
-                    "session terminated/down"
-                );
-                if in_flight > 0 {
-                    xbbg_log::warn!(
-                        worker_id = self.id,
-                        count = in_flight,
-                        "in-flight requests will not receive Bloomberg responses"
-                    );
-                }
+            "SessionTerminated" => {
+                self.drain_in_flight_requests("Bloomberg session terminated");
+                self.health.store(2, Ordering::Release);
+            }
+            "SessionConnectionDown" => {
+                self.drain_in_flight_requests("Bloomberg session connection lost");
+                self.health.store(2, Ordering::Release);
+            }
+            "SessionConnectionUp" => {
+                self.health.store(0, Ordering::Release);
+                xbbg_log::info!(worker_id = self.id, "session connection restored");
             }
             _ => {
                 xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
@@ -885,6 +912,7 @@ pub struct WorkerHandle {
     pub cmd_tx: mpsc::Sender<WorkerCommand>,
     /// Thread handle (for shutdown).
     thread: Option<JoinHandle<()>>,
+    health: Arc<AtomicU8>,
 }
 
 impl WorkerHandle {
@@ -892,23 +920,27 @@ impl WorkerHandle {
     pub fn spawn(id: usize, config: Arc<EngineConfig>) -> Result<Self, BlpError> {
         let (cmd_tx, cmd_rx) = mpsc::channel(config.command_queue_size);
         let (startup_tx, startup_rx) = std::sync::mpsc::channel();
+        let health = Arc::new(AtomicU8::new(0));
 
         let config_clone = config.clone();
+        let worker_health = health.clone();
         let thread = thread::Builder::new()
             .name(format!("xbbg-worker-{}", id))
-            .spawn(move || match RequestWorker::new(id, config_clone, cmd_rx) {
-                Ok(mut worker) => {
-                    let _ = startup_tx.send(Ok(()));
-                    if let Err(e) = worker.run() {
-                        xbbg_log::error!(worker_id = id, error = %e, "worker error");
+            .spawn(
+                move || match RequestWorker::new(id, config_clone, cmd_rx, worker_health) {
+                    Ok(mut worker) => {
+                        let _ = startup_tx.send(Ok(()));
+                        if let Err(e) = worker.run() {
+                            xbbg_log::error!(worker_id = id, error = %e, "worker error");
+                        }
                     }
-                }
-                Err(e) => {
-                    let detail = e.to_string();
-                    let _ = startup_tx.send(Err(e));
-                    xbbg_log::error!(worker_id = id, error = %detail, "worker creation failed");
-                }
-            })
+                    Err(e) => {
+                        let detail = e.to_string();
+                        let _ = startup_tx.send(Err(e));
+                        xbbg_log::error!(worker_id = id, error = %detail, "worker creation failed");
+                    }
+                },
+            )
             .map_err(|e| BlpError::Internal {
                 detail: format!("failed to spawn worker thread: {}", e),
             })?;
@@ -927,7 +959,17 @@ impl WorkerHandle {
             id,
             cmd_tx,
             thread: Some(thread),
+            health,
         })
+    }
+
+    pub fn health(&self) -> WorkerHealth {
+        match self.health.load(Ordering::Acquire) {
+            0 => WorkerHealth::Healthy,
+            1 => WorkerHealth::Degraded,
+            2 => WorkerHealth::Dead,
+            _ => WorkerHealth::Dead,
+        }
     }
 
     /// Signal shutdown without waiting (non-blocking).

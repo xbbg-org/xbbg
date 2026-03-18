@@ -197,6 +197,43 @@ impl SubscriptionRecoveryPolicy {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WorkerHealth {
+    #[default]
+    Healthy,
+    Degraded,
+    Dead,
+}
+
+impl WorkerHealth {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Degraded => "degraded",
+            Self::Dead => "dead",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RetryPolicy {
+    pub max_retries: u32,
+    pub initial_delay_ms: u64,
+    pub backoff_factor: f64,
+    pub max_delay_ms: u64,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_retries: 0,
+            initial_delay_ms: 1000,
+            backoff_factor: 2.0,
+            max_delay_ms: 30_000,
+        }
+    }
+}
+
 impl SessionLifecycleState {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -214,6 +251,7 @@ pub enum SubscriptionEventCategory {
     Service,
     Admin,
     Subscription,
+    Lifecycle,
 }
 
 impl SubscriptionEventCategory {
@@ -223,6 +261,7 @@ impl SubscriptionEventCategory {
             Self::Service => "service",
             Self::Admin => "admin",
             Self::Subscription => "subscription",
+            Self::Lifecycle => "lifecycle",
         }
     }
 }
@@ -1163,6 +1202,14 @@ pub struct EngineConfig {
     pub num_start_attempts: usize,
     /// Whether the SDK should auto-restart the session after disconnection.
     pub auto_restart_on_disconnection: bool,
+    /// Max attempts to recover subscriptions after reconnect (default: 3).
+    pub max_recovery_attempts: usize,
+    /// Timeout in ms for the full recovery sequence (default: 30000).
+    pub recovery_timeout_ms: u64,
+    /// Retry policy for transient request failures (default: no retry).
+    pub retry_policy: RetryPolicy,
+    /// Interval in ms between worker health checks (default: 30000).
+    pub health_check_interval_ms: u64,
 }
 impl Default for EngineConfig {
     fn default() -> Self {
@@ -1190,6 +1237,10 @@ impl Default for EngineConfig {
             tls_crl_fetch_timeout_ms: None,
             num_start_attempts: 3,
             auto_restart_on_disconnection: true,
+            max_recovery_attempts: 3,
+            recovery_timeout_ms: 30_000,
+            retry_policy: RetryPolicy::default(),
+            health_check_interval_ms: 30_000,
         }
     }
 }
@@ -1765,6 +1816,10 @@ impl Engine {
     /// Get the tokio runtime (for spawning tasks).
     pub fn runtime(&self) -> &Arc<tokio::runtime::Runtime> {
         &self.rt
+    }
+
+    pub fn request_pool_health(&self) -> Vec<(usize, WorkerHealth)> {
+        self.request_pool.worker_health()
     }
 }
 

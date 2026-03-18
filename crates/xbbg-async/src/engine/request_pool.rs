@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, oneshot};
 use xbbg_core::BlpError;
 
 use super::worker::{WorkerCommand, WorkerHandle};
-use super::{BlpAsyncError, EngineConfig, RequestParams};
+use super::{BlpAsyncError, EngineConfig, RequestParams, WorkerHealth};
 
 /// Pool of request workers with round-robin dispatch.
 pub struct RequestWorkerPool {
@@ -58,36 +58,112 @@ impl RequestWorkerPool {
         })
     }
 
-    /// Get the next worker using round-robin scheduling.
-    fn next_worker(&self) -> &WorkerHandle {
-        let idx = self.next_worker.fetch_add(1, Ordering::Relaxed) % self.workers.len();
-        &self.workers[idx]
+    fn next_healthy_worker(&self) -> Result<&WorkerHandle, BlpAsyncError> {
+        let len = self.workers.len();
+        let start = self.next_worker.fetch_add(1, Ordering::Relaxed) % len;
+
+        for offset in 0..len {
+            let idx = (start + offset) % len;
+            let worker = &self.workers[idx];
+            if worker.health() != WorkerHealth::Dead {
+                return Ok(worker);
+            }
+        }
+
+        Err(BlpAsyncError::AllWorkersDown { pool_size: len })
+    }
+
+    fn retry_delay(&self, attempt: usize) -> u64 {
+        if attempt == 0 {
+            return 0;
+        }
+
+        let policy = &self.config.retry_policy;
+        let exponent = (attempt - 1) as f64;
+        let delay = (policy.initial_delay_ms as f64) * policy.backoff_factor.powf(exponent);
+        let bounded = if delay.is_finite() {
+            delay.min(policy.max_delay_ms as f64)
+        } else {
+            policy.max_delay_ms as f64
+        };
+
+        bounded.max(0.0).round() as u64
+    }
+
+    fn is_retryable(&self, error: &BlpError) -> bool {
+        match error {
+            BlpError::Internal { detail } => {
+                let detail = detail.to_ascii_lowercase();
+                detail.contains("session")
+                    || detail.contains("connection")
+                    || detail.contains("transport")
+            }
+            _ => false,
+        }
     }
 
     /// Dispatch a request to an available worker and wait for the result.
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
+        let max_attempts = 1 + self.config.retry_policy.max_retries as usize;
+        let mut last_error = None;
 
-        let worker = self.next_worker();
-        xbbg_log::debug!(
-            worker_id = worker.id,
-            service = %params.service,
-            operation = %params.operation,
-            "dispatching request"
-        );
-        worker
-            .cmd_tx
-            .send(WorkerCommand::Request {
-                params,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                let delay = self.retry_delay(attempt);
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                xbbg_log::info!(attempt = attempt, delay_ms = delay, "retrying request");
+            }
 
-        reply_rx
-            .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?
-            .map_err(BlpAsyncError::BlpError)
+            let worker = match self.next_healthy_worker() {
+                Ok(worker) => worker,
+                Err(error) => {
+                    last_error = Some(error);
+                    continue;
+                }
+            };
+
+            let (reply_tx, reply_rx) = oneshot::channel();
+
+            xbbg_log::debug!(
+                worker_id = worker.id,
+                service = %params.service,
+                operation = %params.operation,
+                attempt = attempt,
+                "dispatching request"
+            );
+
+            if worker
+                .cmd_tx
+                .send(WorkerCommand::Request {
+                    params: params.clone(),
+                    reply: reply_tx,
+                })
+                .await
+                .is_err()
+            {
+                if attempt + 1 < max_attempts {
+                    last_error = Some(BlpAsyncError::ChannelClosed);
+                    continue;
+                }
+                return Err(BlpAsyncError::ChannelClosed);
+            }
+
+            match reply_rx.await {
+                Ok(Ok(batch)) => return Ok(batch),
+                Ok(Err(error)) if self.is_retryable(&error) && attempt + 1 < max_attempts => {
+                    last_error = Some(BlpAsyncError::BlpError(error));
+                    continue;
+                }
+                Ok(Err(error)) => return Err(BlpAsyncError::BlpError(error)),
+                Err(_) if attempt + 1 < max_attempts => {
+                    last_error = Some(BlpAsyncError::ChannelClosed);
+                    continue;
+                }
+                Err(_) => return Err(BlpAsyncError::ChannelClosed),
+            }
+        }
+
+        Err(last_error.unwrap_or(BlpAsyncError::ChannelClosed))
     }
 
     /// Dispatch a streaming request to an available worker.
@@ -99,7 +175,7 @@ impl RequestWorkerPool {
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
         let (stream_tx, stream_rx) = mpsc::channel(self.config.subscription_stream_capacity);
 
-        let worker = self.next_worker();
+        let worker = self.next_healthy_worker()?;
         xbbg_log::debug!(
             worker_id = worker.id,
             service = %params.service,
@@ -123,6 +199,13 @@ impl RequestWorkerPool {
         self.workers.len()
     }
 
+    pub fn worker_health(&self) -> Vec<(usize, WorkerHealth)> {
+        self.workers
+            .iter()
+            .map(|worker| (worker.id, worker.health()))
+            .collect()
+    }
+
     /// Introspect a service's schema via a worker.
     pub async fn introspect_schema(
         &self,
@@ -130,7 +213,7 @@ impl RequestWorkerPool {
     ) -> Result<crate::schema::ServiceSchema, BlpAsyncError> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
-        let worker = self.next_worker();
+        let worker = self.next_healthy_worker()?;
         worker
             .cmd_tx
             .send(WorkerCommand::IntrospectSchema {

@@ -52,9 +52,9 @@ use xbbg_log::{debug, info, warn};
 
 use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{
-    AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, ServiceStatusInfo,
-    SessionStatusInfo, SubscriptionCommandHandle, SubscriptionEventInfo, SubscriptionFailureInfo,
-    SubscriptionRecoveryPolicy, TopicStatusInfo,
+    AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy,
+    ServiceStatusInfo, SessionStatusInfo, SubscriptionCommandHandle, SubscriptionEventInfo,
+    SubscriptionFailureInfo, SubscriptionRecoveryPolicy, TopicStatusInfo,
 };
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::{AuthConfig, BlpError};
@@ -271,6 +271,17 @@ fn blp_async_error_to_pyerr(e: BlpAsyncError) -> PyErr {
         }
         BlpAsyncError::Cancelled => BlpRequestError::new_err("Request was cancelled"),
         BlpAsyncError::Timeout => BlpTimeoutError::new_err("Request timed out"),
+        BlpAsyncError::SessionLost {
+            worker_id,
+            in_flight_count,
+        } => BlpSessionError::new_err(format!(
+            "session lost on worker {} ({} in-flight requests failed)",
+            worker_id, in_flight_count,
+        )),
+        BlpAsyncError::AllWorkersDown { pool_size } => BlpSessionError::new_err(format!(
+            "all {} request workers are dead — no healthy worker available",
+            pool_size,
+        )),
     }
 }
 
@@ -379,6 +390,20 @@ pub struct PyEngineConfig {
     /// Whether Bloomberg should auto-restart the session on disconnect (default: True).
     #[pyo3(get, set)]
     pub auto_restart_on_disconnection: bool,
+    #[pyo3(get, set)]
+    pub max_recovery_attempts: usize,
+    #[pyo3(get, set)]
+    pub recovery_timeout_ms: u64,
+    #[pyo3(get, set)]
+    pub retry_max_retries: u32,
+    #[pyo3(get, set)]
+    pub retry_initial_delay_ms: u64,
+    #[pyo3(get, set)]
+    pub retry_backoff_factor: f64,
+    #[pyo3(get, set)]
+    pub retry_max_delay_ms: u64,
+    #[pyo3(get, set)]
+    pub health_check_interval_ms: u64,
 }
 
 #[gen_stub_pymethods]
@@ -417,6 +442,13 @@ impl PyEngineConfig {
             tls_crl_fetch_timeout_ms: None,
             num_start_attempts: defaults.num_start_attempts,
             auto_restart_on_disconnection: defaults.auto_restart_on_disconnection,
+            max_recovery_attempts: 3,
+            recovery_timeout_ms: 30_000,
+            retry_max_retries: 0,
+            retry_initial_delay_ms: 1000,
+            retry_backoff_factor: 2.0,
+            retry_max_delay_ms: 30_000,
+            health_check_interval_ms: 30_000,
         };
 
         if let Some(kw) = kwargs {
@@ -494,6 +526,27 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("auto_restart_on_disconnection")? {
                 config.auto_restart_on_disconnection = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("max_recovery_attempts")? {
+                config.max_recovery_attempts = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("recovery_timeout_ms")? {
+                config.recovery_timeout_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("retry_max_retries")? {
+                config.retry_max_retries = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("retry_initial_delay_ms")? {
+                config.retry_initial_delay_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("retry_backoff_factor")? {
+                config.retry_backoff_factor = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("retry_max_delay_ms")? {
+                config.retry_max_delay_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("health_check_interval_ms")? {
+                config.health_check_interval_ms = v.extract()?;
             }
         }
 
@@ -616,6 +669,15 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             tls_crl_fetch_timeout_ms: py_config.tls_crl_fetch_timeout_ms,
             num_start_attempts: py_config.num_start_attempts,
             auto_restart_on_disconnection: py_config.auto_restart_on_disconnection,
+            max_recovery_attempts: py_config.max_recovery_attempts,
+            recovery_timeout_ms: py_config.recovery_timeout_ms,
+            retry_policy: RetryPolicy {
+                max_retries: py_config.retry_max_retries,
+                initial_delay_ms: py_config.retry_initial_delay_ms,
+                backoff_factor: py_config.retry_backoff_factor,
+                max_delay_ms: py_config.retry_max_delay_ms,
+            },
+            health_check_interval_ms: py_config.health_check_interval_ms,
         })
     }
 }
@@ -1271,6 +1333,11 @@ impl PyEngine {
     fn signal_shutdown(&self) {
         info!("PyEngine: signal_shutdown called");
         self.engine.signal_shutdown();
+    }
+
+    fn worker_health(&self) -> PyResult<Vec<(usize, String)>> {
+        // TODO: replace with self.engine.request_pool_health() once Engine exposes it.
+        Ok(Vec::new())
     }
 
     /// Check if engine is available.
