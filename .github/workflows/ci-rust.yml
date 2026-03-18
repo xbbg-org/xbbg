@@ -535,7 +535,7 @@ jobs:
           mkdir -p build-wheel
           mv dist/*.whl build-wheel/
           uv pip install --system delocate
-          delocate-wheel -w dist/ build-wheel/*.whl --exclude libblpapi3_64.so --exclude libblpapi3.dylib
+          delocate-wheel -w dist/ build-wheel/*.whl --exclude libblpapi3_64.so --exclude libblpapi3.dylib --require-archs arm64
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
