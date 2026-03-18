@@ -462,25 +462,33 @@ class PyEngineConfig:
         Manual Bloomberg ip address for manual auth.
         """
     @property
-    def token(self) -> typing.Optional[builtins.str]:
-        r"""
-        Manual token for token auth.
-        """
+    def token(self) -> typing.Optional[builtins.str]: ...
     @token.setter
-    def token(self, value: typing.Optional[builtins.str]) -> None:
-        r"""
-        Manual token for token auth.
-        """
+    def token(self, value: typing.Optional[builtins.str]) -> None: ...
     @property
-    def num_start_attempts(self) -> builtins.int:
-        r"""
-        Number of Bloomberg start attempts before giving up (default: 3).
-        """
+    def tls_client_credentials(self) -> typing.Optional[builtins.str]: ...
+    @tls_client_credentials.setter
+    def tls_client_credentials(self, value: typing.Optional[builtins.str]) -> None: ...
+    @property
+    def tls_client_credentials_password(self) -> typing.Optional[builtins.str]: ...
+    @tls_client_credentials_password.setter
+    def tls_client_credentials_password(self, value: typing.Optional[builtins.str]) -> None: ...
+    @property
+    def tls_trust_material(self) -> typing.Optional[builtins.str]: ...
+    @tls_trust_material.setter
+    def tls_trust_material(self, value: typing.Optional[builtins.str]) -> None: ...
+    @property
+    def tls_handshake_timeout_ms(self) -> typing.Optional[builtins.int]: ...
+    @tls_handshake_timeout_ms.setter
+    def tls_handshake_timeout_ms(self, value: typing.Optional[builtins.int]) -> None: ...
+    @property
+    def tls_crl_fetch_timeout_ms(self) -> typing.Optional[builtins.int]: ...
+    @tls_crl_fetch_timeout_ms.setter
+    def tls_crl_fetch_timeout_ms(self, value: typing.Optional[builtins.int]) -> None: ...
+    @property
+    def num_start_attempts(self) -> builtins.int: ...
     @num_start_attempts.setter
-    def num_start_attempts(self, value: builtins.int) -> None:
-        r"""
-        Number of Bloomberg start attempts before giving up (default: 3).
-        """
+    def num_start_attempts(self, value: builtins.int) -> None: ...
     @property
     def auto_restart_on_disconnection(self) -> builtins.bool:
         r"""
