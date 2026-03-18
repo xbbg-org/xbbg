@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b7] - 2026-03-18
+
 ### Added
 
 - **Python type stubs** for `xbbg._core` via `pyo3-stub-gen`: auto-generated `.pyi` files provide full IDE autocompletion and type-checker support for `EngineConfig`, `Engine`, `Subscription`, and all Rust-backed functions. Includes `py.typed` PEP 561 marker.
@@ -1043,7 +1045,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...HEAD
+[1.0.0b7]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...v1.0.0b7
 [1.0.0b6]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...v1.0.0b6
 [1.0.0b5]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...v1.0.0b5
 [1.0.0b4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b3...v1.0.0b4

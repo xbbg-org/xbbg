@@ -7,6 +7,7 @@ __all__ = [
     "PyEngine",
     "PyEngineConfig",
     "PySubscription",
+    "enable_sdk_logging",
     "ext_build_corporate_bonds_query",
     "ext_build_earning_header_rename",
     "ext_build_etf_holdings_query",
@@ -63,6 +64,7 @@ __all__ = [
     "recipe_preferreds",
     "recipe_turnover",
     "recipe_yas",
+    "sdk_version",
     "set_log_level",
     "version",
 ]
@@ -271,6 +273,7 @@ class PyEngine:
         This is called automatically during Python interpreter shutdown via atexit.
         You usually don't need to call this directly.
         """
+    def worker_health(self) -> builtins.list[tuple[builtins.int, builtins.str]]: ...
     def is_available(self) -> builtins.bool:
         r"""
         Check if engine is available.
@@ -309,6 +312,20 @@ class PyEngineConfig:
         r"""
         Bloomberg server port (default: 8194)
         """
+    @property
+    def servers(self) -> builtins.list[tuple[builtins.str, builtins.int]]:
+        r"""
+        Multiple servers for failover: list of (host, port) tuples. Overrides host/port when set.
+        """
+    @servers.setter
+    def servers(self, value: builtins.list[tuple[builtins.str, builtins.int]]) -> None:
+        r"""
+        Multiple servers for failover: list of (host, port) tuples. Overrides host/port when set.
+        """
+    @property
+    def zfp_remote(self) -> typing.Optional[builtins.str]: ...
+    @zfp_remote.setter
+    def zfp_remote(self, value: typing.Optional[builtins.str]) -> None: ...
     @property
     def request_pool_size(self) -> builtins.int:
         r"""
@@ -499,6 +516,38 @@ class PyEngineConfig:
         r"""
         Whether Bloomberg should auto-restart the session on disconnect (default: True).
         """
+    @property
+    def max_recovery_attempts(self) -> builtins.int: ...
+    @max_recovery_attempts.setter
+    def max_recovery_attempts(self, value: builtins.int) -> None: ...
+    @property
+    def recovery_timeout_ms(self) -> builtins.int: ...
+    @recovery_timeout_ms.setter
+    def recovery_timeout_ms(self, value: builtins.int) -> None: ...
+    @property
+    def retry_max_retries(self) -> builtins.int: ...
+    @retry_max_retries.setter
+    def retry_max_retries(self, value: builtins.int) -> None: ...
+    @property
+    def retry_initial_delay_ms(self) -> builtins.int: ...
+    @retry_initial_delay_ms.setter
+    def retry_initial_delay_ms(self, value: builtins.int) -> None: ...
+    @property
+    def retry_backoff_factor(self) -> builtins.float: ...
+    @retry_backoff_factor.setter
+    def retry_backoff_factor(self, value: builtins.float) -> None: ...
+    @property
+    def retry_max_delay_ms(self) -> builtins.int: ...
+    @retry_max_delay_ms.setter
+    def retry_max_delay_ms(self, value: builtins.int) -> None: ...
+    @property
+    def health_check_interval_ms(self) -> builtins.int: ...
+    @health_check_interval_ms.setter
+    def health_check_interval_ms(self, value: builtins.int) -> None: ...
+    @property
+    def sdk_log_level(self) -> builtins.str: ...
+    @sdk_log_level.setter
+    def sdk_log_level(self, value: builtins.str) -> None: ...
     def __new__(cls, **kwargs: typing.Any) -> PyEngineConfig:
         r"""
         Create a new configuration with defaults.
@@ -606,6 +655,8 @@ class PySubscription:
         Context manager exit - unsubscribes automatically.
         """
     def __repr__(self) -> builtins.str: ...
+
+def enable_sdk_logging(level: builtins.str) -> None: ...
 
 def ext_build_corporate_bonds_query(ticker: builtins.str, ccy: typing.Optional[builtins.str] = None, extra_fields: typing.Sequence[builtins.str] = [], active_only: builtins.bool = True) -> builtins.str:
     r"""
@@ -1056,6 +1107,8 @@ def recipe_yas(engine: PyEngine, tickers: typing.Sequence[builtins.str], fields:
         price: Price override
         benchmark: Benchmark security for spread calculation
     """
+
+def sdk_version() -> tuple[builtins.int, builtins.int, builtins.int, builtins.int]: ...
 
 def set_log_level(level: builtins.str) -> None:
     r"""
