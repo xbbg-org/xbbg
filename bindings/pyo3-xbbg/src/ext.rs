@@ -7,8 +7,8 @@ use arrow::record_batch::RecordBatch;
 use chrono::Datelike;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::*;
 
 use xbbg_ext::constants::{DVD_TYPES, FUTURES_MONTHS, MONTH_CODES};
 use xbbg_ext::resolvers::cdx::{cdx_series_from_ticker, gen_to_specific, previous_series_ticker};

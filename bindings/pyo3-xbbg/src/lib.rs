@@ -45,8 +45,8 @@ use chrono::NaiveDate;
 use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pyo3_stub_gen::{define_stub_info_gatherer, derive::*};
 use pyo3_async_runtimes::tokio::future_into_py;
+use pyo3_stub_gen::{define_stub_info_gatherer, derive::*};
 use tokio::sync::{watch, Mutex};
 use xbbg_log::{debug, info, warn};
 
