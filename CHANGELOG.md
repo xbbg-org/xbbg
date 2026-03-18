@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **`Engine` class** for non-global multi-engine routing. Create independent engine instances and scope them via `with engine:` (sync) or `async with engine:` (async). The global `configure()` + `blp.bdp()` API is unchanged — `Engine` is fully opt-in.
 - **TLS support** for encrypted B-PIPE connections: `tls_client_credentials`, `tls_trust_material`, `tls_handshake_timeout_ms` on `EngineConfig` and `configure()`.
 - **Identity lifecycle FFI**: `Session.generate_token()`, `Session.send_authorization_request()`, `Session.subscribe_with_identity()` for multi-user entitlement flows.
+- **Runtime SDK version**: `get_sdk_info()` now includes `runtime_version` field reporting the linked Bloomberg C SDK version via `blpapi_getVersionInfo()` (e.g., `"3.26.2.1"`). Also available as `xbbg._core.sdk_version()` → `(major, minor, patch, build)` tuple.
 - **Reconnect resilience (Phases 1–3)** for the Rust engine (#245):
   - **Fail-fast on session death**: request workers now immediately drain all in-flight requests with an error on `SessionTerminated`/`SessionConnectionDown` instead of letting callers hang indefinitely. Workers are marked `Dead` and restored to `Healthy` on `SessionConnectionUp`.
   - **Service re-open before re-subscribe**: `recover_active_subscriptions()` now re-opens all previously opened services before re-issuing subscriptions after reconnect, fixing a critical gap where recovery could silently fail.
