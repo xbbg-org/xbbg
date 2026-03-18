@@ -274,7 +274,6 @@ xbbg is the **only Python library** that provides:
 |----------|-------------|--------------|
 | **`bdib()`** | Intraday bar data | Sub-minute bars (10s intervals)<br>Session filtering (open/close)<br>Exchange-aware timing<br>Timezone control (`tz` parameter) |
 | **`bdtick()`** | Tick-by-tick data | Trade & quote events<br>Condition codes<br>Exchange/broker details |
-| **`exchange_tz()`** | Exchange timezone lookup | Returns IANA timezone string for any ticker |
 
 ### Screening & Advanced Queries
 
@@ -437,9 +436,6 @@ opening = blp.bdib('SPY US Equity', dt='2024-01-15', session='day_open_30')
 
 # Get data in UTC instead of exchange local time
 bars_utc = blp.bdib('SPY US Equity', dt='2024-01-15', tz='UTC')
-
-# Look up exchange timezone for a ticker
-tz = blp.exchange_tz('AAPL US Equity')  # → 'America/New_York'
 ```
 
 </details>
@@ -549,7 +545,7 @@ blp.configure(server_host='192.168.1.100', server_port=18194)
 blp.configure(
     server_host='192.168.1.100',
     server_port=18194,
-    auth='app',
+    auth_method='app',
     app_name='myapp:SAPI',
 )
 
@@ -657,7 +653,7 @@ print_backend_status()
 #### Usage
 
 ```python
-from xbbg import blp, Backend, Format
+from xbbg import blp, Backend
 
 # Get data as Polars DataFrame
 df_polars = blp.bdp('AAPL US Equity', 'PX_LAST', backend=Backend.POLARS)
@@ -682,13 +678,13 @@ Control the shape of your data with the `format` parameter:
 | `wide` | Tickers as columns (pandas only) | Time series alignment, Excel-like |
 
 ```python
-from xbbg import blp, Format
+from xbbg import blp
 
-# Long format (tidy data)
-df_long = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'], format=Format.LONG)
+# Long format (tidy data, default)
+df_long = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'], format='long')
 
-# Wide format (Excel-like)
-df_wide = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format=Format.WIDE)
+# Semi-long format (one row per ticker, fields as columns)
+df_semi = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format='semi_long')
 ```
 
 #### Global Configuration
@@ -696,19 +692,13 @@ df_wide = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format=For
 Set defaults for your entire session:
 
 ```python
-from xbbg import set_backend, set_format, Backend, Format
+from xbbg import set_backend, Backend
 
 # Set Polars as default backend
 set_backend(Backend.POLARS)
 
-# Set long format as default
-set_format(Format.LONG)
-
-# Use new typed output format
-set_format(Format.LONG_TYPED)
-
-# All subsequent calls use these defaults
-df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame in long format
+# All subsequent calls use this default
+df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame
 ```
 
 #### Why Multi-Backend?
@@ -1208,14 +1198,6 @@ bars_utc = blp.bdib('SPY US Equity', dt='2024-01-15', tz='UTC')
 # Convert to a specific timezone
 bars_london = blp.bdib('SPY US Equity', dt='2024-01-15', tz='Europe/London')
 # Index: 2024-01-15 14:31:00+00:00, 2024-01-15 14:32:00+00:00, ...
-```
-
-To look up the exchange timezone for any ticker, use `exchange_tz()`:
-
-```python
-blp.exchange_tz('AAPL US Equity')   # → 'America/New_York'
-blp.exchange_tz('7974 JT Equity')   # → 'Asia/Tokyo'
-blp.exchange_tz('BHP AU Equity')    # → 'Australia/Sydney'
 ```
 
 ```python
