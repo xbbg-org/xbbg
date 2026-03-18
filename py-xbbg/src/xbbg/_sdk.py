@@ -8,47 +8,15 @@ _sdk_info: dict | None = None
 _manual_sdk_path: Path | None = None
 
 
-def _get_lib_version(lib_path: Path) -> str | None:
-    """Extract version from a shared library using lief.
-
-    Supports PE (Windows) and ELF (Linux) binaries.
-    """
+def _get_lib_version(_lib_path: Path) -> str | None:
+    """Get the version of the linked Bloomberg C SDK at runtime."""
     try:
-        import lief
+        from . import _core
 
-        binary = lief.parse(str(lib_path))
-        if binary is None:
-            return None
-
-        # Windows PE: check version resources
-        if isinstance(binary, lief.PE.Binary):
-            rm = binary.resources_manager
-            if rm.has_version and rm.version:
-                ffi = rm.version[0].file_info
-                if ffi:
-                    major = (ffi.product_version_ms >> 16) & 0xFFFF
-                    minor = ffi.product_version_ms & 0xFFFF
-                    build = (ffi.product_version_ls >> 16) & 0xFFFF
-                    revision = ffi.product_version_ls & 0xFFFF
-                    return f"{major}.{minor}.{build}.{revision}"
-
-        # Linux ELF: check for version in strings or SONAME
-        if isinstance(binary, lief.ELF.Binary):
-            import re
-
-            # Try to find version in .rodata section strings
-            for section in binary.sections:
-                if section.name == ".rodata":
-                    content = bytes(section.content)
-                    text = content.decode("latin-1", errors="ignore")
-                    # Look for Bloomberg version pattern
-                    match = re.search(r"(\d+\.\d+\.\d+\.\d+)", text)
-                    if match and match.group(1).startswith("3."):
-                        return match.group(1)
+        major, minor, patch, build = _core.sdk_version()
+        return f"{major}.{minor}.{patch}.{build}"
     except Exception:
-        pass
-
-    return None
+        return None
 
 
 def _find_sdk_lib(sdk_path: Path) -> Path | None:
