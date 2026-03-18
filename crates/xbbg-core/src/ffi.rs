@@ -156,6 +156,11 @@ pub use xbbg_sys::{
     blpapi_TlsOptions_setTlsHandshakeTimeoutMs,
 };
 
+// --- Identity functions ---
+pub use xbbg_sys::{
+    blpapi_Identity_getSeatType, blpapi_Identity_hasEntitlements, blpapi_Identity_isAuthorized,
+};
+
 // --- ZfpUtil functions ---
 pub use xbbg_sys::blpapi_ZfpUtil_getOptionsForLeasedLines;
 

@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   - **Python surface**: all new config fields exposed in `EngineConfig`, `configure()`, and `Engine()`; `engine.worker_health()` returns per-worker health status.
 - **Multi-server failover** via `servers` kwarg (#250). Pass a list of `(host, port)` tuples for automatic Bloomberg SDK failover using `setServerAddress(host, port, index)`. Existing `host`/`port` kwargs unchanged for single-server use.
 - **ZFP over leased lines** via `zfp_remote` kwarg (#255). Set to `"8194"` or `"8196"` with TLS credentials to connect via Bloomberg Zero Footprint without a local Terminal. Uses `ZfpUtil::getOptionsForLeasedLines` from the SDK.
+- **Identity entitlement checking** (#252): `Identity.is_authorized(service)`, `Identity.has_entitlements(service, eids)`, and `Identity.seat_type()` for B-PIPE multi-user entitlement verification.
 
 ### Changed
 
