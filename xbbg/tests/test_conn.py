@@ -45,7 +45,7 @@ class TestBugRegressions:
         SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
             # This should NOT raise TypeError: got multiple values for keyword argument 'port'
@@ -63,9 +63,9 @@ class TestBugRegressions:
         SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
         mock_service = MagicMock()
-        mock_service._Service__handle = "valid_service_handle"
+        mock_service.isValid.return_value = True
         mock_session.getService.return_value = mock_service
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
@@ -139,13 +139,13 @@ class TestBugRegressions:
         manager = SessionManager()
 
         mock_stale_session = MagicMock()
-        mock_stale_session._Session__handle = None  # Stale: handle is None
+        mock_stale_session.isValid.return_value = False  # Stale: handle is None
 
         con_key = "//localhost:8194"
         manager._sessions[con_key] = mock_stale_session
 
         mock_new_session = MagicMock()
-        mock_new_session._Session__handle = "valid_handle"
+        mock_new_session.isValid.return_value = True
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_new_session):
             manager.get_session(port=8194)
@@ -231,7 +231,7 @@ class TestSessionManagerSingleton:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session) as mock_connect:
             result = manager.get_session(port=8194)
@@ -247,7 +247,7 @@ class TestSessionManagerSingleton:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
         manager._sessions["//localhost:8194"] = mock_session
 
         with patch("xbbg.core.infra.conn.connect_bbg") as mock_connect:
@@ -263,7 +263,7 @@ class TestSessionManagerSingleton:
         manager = SessionManager()
 
         mock_default = MagicMock()
-        mock_default._Session__handle = "valid_handle"
+        mock_default.isValid.return_value = True
         manager._default_session = mock_default
 
         with patch("xbbg.core.infra.conn.connect_bbg") as mock_connect:
@@ -292,7 +292,7 @@ class TestSessionManagerSingleton:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = None  # Stale
+        mock_session.isValid.return_value = False  # Stale
         manager._default_session = mock_session
 
         result = manager.get_default_session()
@@ -375,9 +375,9 @@ class TestServiceManagement:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
         mock_service = MagicMock()
-        mock_service._Service__handle = "valid_service_handle"
+        mock_service.isValid.return_value = True
         mock_session.getService.return_value = mock_service
 
         manager._sessions["//localhost:8194"] = mock_session
@@ -396,11 +396,11 @@ class TestServiceManagement:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
         manager._sessions["//localhost:8194"] = mock_session
 
         mock_service = MagicMock()
-        mock_service._Service__handle = "valid_service_handle"
+        mock_service.isValid.return_value = True
         manager._services["//localhost:8194//blp/refdata"] = mock_service
 
         result = manager.get_service("//blp/refdata", port=8194, server_host="localhost")
@@ -432,7 +432,7 @@ class TestEdgeCasesFromIssues:
         # Create a mock that is an instance of the mock blpapi.Session
         mock_session = MagicMock(spec=blpapi.Session)
         mock_session.start.return_value = True
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
 
         result = connect(sess=mock_session)
 
@@ -593,7 +593,7 @@ class TestEdgeCasesFromIssues:
         mock_opts.setServerPort.assert_called_once_with(18194)
 
     def test_get_service_stale_handle_recreates(self):
-        """General: Stale service with _Service__handle=None triggers recreation.
+        """General: Stale service with isValid()=False triggers recreation.
 
         Verifies that a cached service with an invalid handle is recreated.
         """
@@ -602,17 +602,17 @@ class TestEdgeCasesFromIssues:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
         manager._sessions["//localhost:8194"] = mock_session
 
         # Create a stale service with handle=None
         mock_stale_service = MagicMock()
-        mock_stale_service._Service__handle = None
+        mock_stale_service.isValid.return_value = False
         manager._services["//localhost:8194//blp/refdata"] = mock_stale_service
 
         # New service to be returned
         mock_new_service = MagicMock()
-        mock_new_service._Service__handle = "valid_service_handle"
+        mock_new_service.isValid.return_value = True
         mock_session.getService.return_value = mock_new_service
 
         result = manager.get_service("//blp/refdata", port=8194, server_host="localhost")
@@ -712,7 +712,7 @@ class TestArequest:
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         mock_request = MagicMock()
 
@@ -747,7 +747,7 @@ class TestArequest:
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         mock_request = MagicMock()
         msg1 = MagicMock()
@@ -785,7 +785,7 @@ class TestArequest:
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         # blpapi exceptions expect (description, errorCode) in __str__
         exc = blpapi.InvalidStateException("Session not started", 0)
@@ -826,7 +826,7 @@ class TestArequest:
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         mock_request = MagicMock()
         msg = MagicMock()
@@ -860,7 +860,7 @@ class TestArequest:
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         mock_request = MagicMock()
 
@@ -901,7 +901,7 @@ class TestArequest:
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         mock_request = MagicMock()
         msg = MagicMock()
@@ -990,7 +990,7 @@ class TestAgetSession:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
             result = asyncio.run(manager.aget_session(port=8194))
@@ -1005,7 +1005,7 @@ class TestAgetSession:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
         manager._sessions["//localhost:8194"] = mock_session
 
         with patch("xbbg.core.infra.conn.connect_bbg") as mock_connect:
@@ -1021,11 +1021,11 @@ class TestAgetSession:
         manager = SessionManager()
 
         mock_stale = MagicMock()
-        mock_stale._Session__handle = None
+        mock_stale.isValid.return_value = False
         manager._sessions["//localhost:8194"] = mock_stale
 
         mock_new = MagicMock()
-        mock_new._Session__handle = "valid"
+        mock_new.isValid.return_value = True
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_new):
             result = asyncio.run(manager.aget_session(port=8194))
@@ -1040,7 +1040,7 @@ class TestAgetSession:
         manager = SessionManager()
 
         mock_default = MagicMock()
-        mock_default._Session__handle = "valid"
+        mock_default.isValid.return_value = True
         manager._default_session = mock_default
 
         with patch("xbbg.core.infra.conn.connect_bbg") as mock_connect:
@@ -1056,9 +1056,9 @@ class TestAgetSession:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
         mock_service = MagicMock()
-        mock_service._Service__handle = "valid_svc"
+        mock_service.isValid.return_value = True
         mock_session.getService.return_value = mock_service
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
@@ -1075,11 +1075,11 @@ class TestAgetSession:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
         manager._sessions["//localhost:8194"] = mock_session
 
         mock_service = MagicMock()
-        mock_service._Service__handle = "valid_svc"
+        mock_service.isValid.return_value = True
         manager._services["//localhost:8194//blp/refdata"] = mock_service
 
         result = asyncio.run(manager.aget_service("//blp/refdata", port=8194))
@@ -1094,15 +1094,15 @@ class TestAgetSession:
         manager = SessionManager()
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
         manager._sessions["//localhost:8194"] = mock_session
 
         mock_stale_svc = MagicMock()
-        mock_stale_svc._Service__handle = None
+        mock_stale_svc.isValid.return_value = False
         manager._services["//localhost:8194//blp/refdata"] = mock_stale_svc
 
         mock_new_svc = MagicMock()
-        mock_new_svc._Service__handle = "valid_svc"
+        mock_new_svc.isValid.return_value = True
         mock_session.getService.return_value = mock_new_svc
 
         result = asyncio.run(manager.aget_service("//blp/refdata", port=8194))
@@ -1161,7 +1161,7 @@ class TestConnectionFlows:
 
         mock_session = MagicMock(spec=blpapi.Session)
         mock_session.start.return_value = True
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         session = connect(sess=mock_session)
 
@@ -1178,7 +1178,7 @@ class TestConnectionFlows:
         # Connect
         mock_session1 = MagicMock(spec=blpapi.Session)
         mock_session1.start.return_value = True
-        mock_session1._Session__handle = "valid"
+        mock_session1.isValid.return_value = True
         connect(sess=mock_session1)
 
         assert bbg_session() is mock_session1
@@ -1189,7 +1189,7 @@ class TestConnectionFlows:
 
         # Reconnect -- should create a new session
         mock_session2 = MagicMock()
-        mock_session2._Session__handle = "valid_new"
+        mock_session2.isValid.return_value = True
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session2):
             result = bbg_session()
@@ -1202,9 +1202,9 @@ class TestConnectionFlows:
         from xbbg.core.infra.conn import bbg_service
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
         mock_service = MagicMock()
-        mock_service._Service__handle = "valid_svc"
+        mock_service.isValid.return_value = True
         mock_session.getService.return_value = mock_service
 
         with patch("xbbg.core.infra.conn.connect_bbg", return_value=mock_session):
@@ -1218,11 +1218,11 @@ class TestConnectionFlows:
         from xbbg.core.infra.conn import _session_manager, bbg_service
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
         mock_refdata = MagicMock()
-        mock_refdata._Service__handle = "valid_ref"
+        mock_refdata.isValid.return_value = True
         mock_mktbar = MagicMock()
-        mock_mktbar._Service__handle = "valid_mkt"
+        mock_mktbar.isValid.return_value = True
 
         mock_session.getService.side_effect = [mock_refdata, mock_mktbar]
 
@@ -1243,7 +1243,7 @@ class TestConnectionFlows:
 
         mock_session = MagicMock(spec=blpapi.Session)
         mock_session.start.return_value = True
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         connect(sess=mock_session, server_host="bpipe.corp.com", server_port=8195)
 
@@ -1255,7 +1255,7 @@ class TestConnectionFlows:
         from xbbg.core.infra.conn import arequest
 
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid"
+        mock_session.isValid.return_value = True
 
         mock_request = MagicMock()
         msg = MagicMock()

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **blpapi 3.26.2 compatibility**: Session and service handle validation now works with both legacy blpapi (<= 3.26.1) and modern blpapi (>= 3.26.2) which refactored `Session`/`Service` to inherit from `CHandle`. Previously, `blp.connect()` sessions were silently discarded and subsequent API calls fell back to localhost, causing `ConnectionError` for remote SAPI connections (#249)
+
 ## [0.12.1] - 2026-02-19
 
 ### Fixed

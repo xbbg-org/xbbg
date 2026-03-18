@@ -22,6 +22,26 @@ _PORT_ = 8194
 _blpapi_logging_registered = False
 
 
+def _is_handle_valid(obj: Any) -> bool:
+    """Check if a blpapi object still holds a valid internal handle.
+
+    Compatible with both legacy blpapi (<= 3.26.1) where Session/Service
+    store ``__handle`` directly, and modern blpapi (>= 3.26.2) where they
+    inherit from ``CHandle`` which provides ``isValid()``.
+    """
+    # Modern blpapi (>= 3.26.2): CHandle base class provides isValid()
+    if hasattr(obj, "isValid"):
+        return obj.isValid()
+    # Legacy blpapi: walk MRO to find the name-mangled __handle attribute
+    for cls in type(obj).__mro__:
+        mangled = f"_{cls.__name__}__handle"
+        try:
+            return getattr(obj, mangled) is not None
+        except AttributeError:
+            continue
+    return False
+
+
 def _stop_session_quietly(session: Any) -> None:
     """Stop a Bloomberg session, suppressing any errors."""
     try:
@@ -79,7 +99,7 @@ class SessionManager:
             Default session or None if not set/invalid.
         """
         # Check if session exists and handle is still valid
-        if self._default_session is not None and getattr(self._default_session, "_Session__handle", None) is None:
+        if self._default_session is not None and not _is_handle_valid(self._default_session):
             self._default_session = None
         return self._default_session
 
@@ -127,7 +147,7 @@ class SessionManager:
         if con_key in self._sessions:
             session = self._sessions[con_key]
             # Check if session handle is still valid
-            if getattr(session, "_Session__handle", None) is None:
+            if not _is_handle_valid(session):
                 logger.info("Removing stale Bloomberg session (handle invalidated): %s", con_key)
                 del self._sessions[con_key]
                 _stop_session_quietly(session)
@@ -172,7 +192,7 @@ class SessionManager:
         if serv_key in self._services:
             svc = self._services[serv_key]
             # Check if service handle is still valid
-            if getattr(svc, "_Service__handle", None) is None:
+            if not _is_handle_valid(svc):
                 logger.info("Removing stale Bloomberg service (handle invalidated): %s", serv_key)
                 del self._services[serv_key]
             else:
@@ -210,7 +230,7 @@ class SessionManager:
             # Check again inside lock
             if con_key in self._sessions:
                 session = self._sessions[con_key]
-                if getattr(session, "_Session__handle", None) is None:
+                if not _is_handle_valid(session):
                     logger.info("Removing stale Bloomberg session (handle invalidated): %s", con_key)
                     del self._sessions[con_key]
                     _stop_session_quietly(session)
@@ -228,7 +248,7 @@ class SessionManager:
 
         if serv_key in self._services:
             svc = self._services[serv_key]
-            if getattr(svc, "_Service__handle", None) is not None:
+            if _is_handle_valid(svc):
                 return svc
             logger.info("Removing stale Bloomberg service (handle invalidated): %s", serv_key)
             del self._services[serv_key]

@@ -23,7 +23,7 @@ class TestConnLogging:
 
         # Create a mock session with invalid handle
         mock_session = MagicMock()
-        mock_session._Session__handle = None  # Invalid handle
+        mock_session.isValid.return_value = False  # Invalid handle
 
         # Store in manager's sessions dict
         con_key = "//localhost:8194"
@@ -35,7 +35,7 @@ class TestConnLogging:
             patch("xbbg.core.infra.conn.connect_bbg") as mock_connect,
         ):
             mock_new_session = MagicMock()
-            mock_new_session._Session__handle = "valid_handle"
+            mock_new_session.isValid.return_value = True
             mock_connect.return_value = mock_new_session
 
             # This should detect stale session, log INFO, and create new one
@@ -56,7 +56,7 @@ class TestConnLogging:
 
         # Create a mock service with invalid handle
         mock_service = MagicMock()
-        mock_service._Service__handle = None  # Invalid handle
+        mock_service.isValid.return_value = False  # Invalid handle
 
         # Store in manager's services dict
         serv_key = "//localhost:8194//blp/refdata"
@@ -64,14 +64,14 @@ class TestConnLogging:
 
         # Create a mock session for get_service to use
         mock_session = MagicMock()
-        mock_session._Session__handle = "valid_handle"
+        mock_session.isValid.return_value = True
         manager._sessions["//localhost:8194"] = mock_session
 
         with caplog.at_level(logging.INFO, logger="xbbg.core.infra.conn"):
             # Mock session.openService and session.getService
             mock_session.openService = MagicMock()
             mock_new_service = MagicMock()
-            mock_new_service._Service__handle = "valid_service_handle"
+            mock_new_service.isValid.return_value = True
             mock_session.getService = MagicMock(return_value=mock_new_service)
 
             # This should detect stale service, log INFO, and create new one
