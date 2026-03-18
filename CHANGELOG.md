@@ -10,12 +10,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Added
 
 - **Python type stubs** for `xbbg._core` via `pyo3-stub-gen`: auto-generated `.pyi` files provide full IDE autocompletion and type-checker support for `EngineConfig`, `Engine`, `Subscription`, and all Rust-backed functions. Includes `py.typed` PEP 561 marker.
+- **macOS ARM64 wheel builds** in CI and release workflows. Wheels are now built and tested for Linux x86_64, Windows x86_64, and macOS ARM64 across Python 3.10–3.14.
+- **CI auto-regeneration of type stubs**: stubs are regenerated and auto-committed after all CI checks pass, ensuring `.pyi` files stay in sync with Rust annotations.
 
 ### Changed
 
 - **Engine Architecture & EngineConfig documentation**: README now includes a full reference for all 20+ `EngineConfig` fields (worker pools, subscription tuning, buffers, validation, auth), an ASCII architecture diagram, and auth mode examples.
 - **API surface updated to v1**: README function tables, examples, and Connection Options section now reflect v1 names (`blkp`, `bport`, `earnings`, `convert_ccy`, `configure()`, `subscribe`/`stream`, etc.) and remove stale v0.x references (`lookupSecurity`, `exchange_tz`, `set_format`, `Format` enum).
 - **Dev setup and contributing guides** updated for v1 project structure (`py-xbbg/src` paths, Astro docs, `uv sync` dependency-groups).
+
+### Fixed
+
+- **cargo-deny advisory ignores** for unmaintained `unic-*` crates (transitive deps of `rustpython-parser` via `pyo3-stub-gen`, build-time only).
 
 ## [1.0.0b6] - 2026-03-16
 
