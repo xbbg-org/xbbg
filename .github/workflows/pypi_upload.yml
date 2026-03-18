@@ -236,11 +236,11 @@ jobs:
           mkdir -p dist
           cp build-wheel/*.whl dist/
 
-      - name: Fix macOS wheel platform tag
+      - name: Move macOS wheel to dist
         if: runner.os == 'macOS'
         run: |
-          uv pip install --system delocate
-          delocate-wheel -w dist/ build-wheel/*.whl --exclude libblpapi3_64.so --exclude libblpapi3.dylib --require-archs arm64
+          mkdir -p dist
+          cp build-wheel/*.whl dist/
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
