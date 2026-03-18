@@ -184,6 +184,7 @@ PACKAGE_EXPORTS = (
     "__version__",
     "_core",
     "Backend",
+    "Engine",
     "EngineConfig",
     *PACKAGE_GENERIC_EXPORTS,
     *PACKAGE_SYNC_EXPORTS,

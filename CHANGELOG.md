@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **Python type stubs** for `xbbg._core` via `pyo3-stub-gen`: auto-generated `.pyi` files provide full IDE autocompletion and type-checker support for `EngineConfig`, `Engine`, `Subscription`, and all Rust-backed functions. Includes `py.typed` PEP 561 marker.
 - **macOS ARM64 wheel builds** in CI and release workflows. Wheels are now built and tested for Linux x86_64, Windows x86_64, and macOS ARM64 across Python 3.10–3.14.
 - **CI auto-regeneration of type stubs**: stubs are regenerated and auto-committed after all CI checks pass, ensuring `.pyi` files stay in sync with Rust annotations.
+- **`Engine` class** for non-global multi-engine routing. Create independent engine instances and scope them via `with engine:` (sync) or `async with engine:` (async). The global `configure()` + `blp.bdp()` API is unchanged — `Engine` is fully opt-in.
+- **TLS support** for encrypted B-PIPE connections: `tls_client_credentials`, `tls_trust_material`, `tls_handshake_timeout_ms` on `EngineConfig` and `configure()`.
+- **Identity lifecycle FFI**: `Session.generate_token()`, `Session.send_authorization_request()`, `Session.subscribe_with_identity()` for multi-user entitlement flows.
 
 ### Changed
 

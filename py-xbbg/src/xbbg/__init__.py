@@ -84,7 +84,10 @@ def _import_core():
 
 
 def _build_lazy_attr_exports() -> dict[str, tuple[str, str]]:
-    exports = {"EngineConfig": ("_core", "PyEngineConfig")}
+    exports = {
+        "EngineConfig": ("_core", "PyEngineConfig"),
+        "Engine": ("blp", "Engine"),
+    }
     module_groups = (
         ("_sdk", SDK_EXPORTS),
         ("_core", CORE_EXPORTS),

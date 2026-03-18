@@ -72,6 +72,24 @@ fn configure_session_options(
         let _ = apply_session_identity_options(options, auth_config)?;
     }
 
+    if let (Some(creds), Some(trust)) = (
+        config.tls_client_credentials.as_ref(),
+        config.tls_trust_material.as_ref(),
+    ) {
+        let password = config
+            .tls_client_credentials_password
+            .as_deref()
+            .unwrap_or("");
+        let mut tls = xbbg_core::tls::TlsOptions::from_files(creds, password, trust)?;
+        if let Some(ms) = config.tls_handshake_timeout_ms {
+            tls.set_tls_handshake_timeout_ms(ms);
+        }
+        if let Some(ms) = config.tls_crl_fetch_timeout_ms {
+            tls.set_crl_fetch_timeout_ms(ms);
+        }
+        options.set_tls_options(&tls);
+    }
+
     Ok(())
 }
 
@@ -1131,6 +1149,16 @@ pub struct EngineConfig {
     pub field_cache_path: Option<std::path::PathBuf>,
     /// Structured Bloomberg session auth configuration.
     pub auth: Option<AuthConfig>,
+    /// TLS client credentials file path (PKCS#12).
+    pub tls_client_credentials: Option<String>,
+    /// TLS client credentials password.
+    pub tls_client_credentials_password: Option<String>,
+    /// TLS trust material file path (PKCS#7).
+    pub tls_trust_material: Option<String>,
+    /// TLS handshake timeout in milliseconds.
+    pub tls_handshake_timeout_ms: Option<i32>,
+    /// CRL fetch timeout in milliseconds.
+    pub tls_crl_fetch_timeout_ms: Option<i32>,
     /// Number of times the SDK will attempt to connect before giving up.
     pub num_start_attempts: usize,
     /// Whether the SDK should auto-restart the session after disconnection.
@@ -1155,6 +1183,11 @@ impl Default for EngineConfig {
             validation_mode: ValidationMode::default(),
             field_cache_path: None,
             auth: None,
+            tls_client_credentials: None,
+            tls_client_credentials_password: None,
+            tls_trust_material: None,
+            tls_handshake_timeout_ms: None,
+            tls_crl_fetch_timeout_ms: None,
             num_start_attempts: 3,
             auto_restart_on_disconnection: true,
         }

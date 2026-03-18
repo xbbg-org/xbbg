@@ -362,10 +362,18 @@ pub struct PyEngineConfig {
     /// Manual Bloomberg ip address for manual auth.
     #[pyo3(get, set)]
     pub ip_address: Option<String>,
-    /// Manual token for token auth.
     #[pyo3(get, set)]
     pub token: Option<String>,
-    /// Number of Bloomberg start attempts before giving up (default: 3).
+    #[pyo3(get, set)]
+    pub tls_client_credentials: Option<String>,
+    #[pyo3(get, set)]
+    pub tls_client_credentials_password: Option<String>,
+    #[pyo3(get, set)]
+    pub tls_trust_material: Option<String>,
+    #[pyo3(get, set)]
+    pub tls_handshake_timeout_ms: Option<i32>,
+    #[pyo3(get, set)]
+    pub tls_crl_fetch_timeout_ms: Option<i32>,
     #[pyo3(get, set)]
     pub num_start_attempts: usize,
     /// Whether Bloomberg should auto-restart the session on disconnect (default: True).
@@ -402,6 +410,11 @@ impl PyEngineConfig {
             user_id: None,
             ip_address: None,
             token: None,
+            tls_client_credentials: None,
+            tls_client_credentials_password: None,
+            tls_trust_material: None,
+            tls_handshake_timeout_ms: None,
+            tls_crl_fetch_timeout_ms: None,
             num_start_attempts: defaults.num_start_attempts,
             auto_restart_on_disconnection: defaults.auto_restart_on_disconnection,
         };
@@ -460,6 +473,21 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("token")? {
                 config.token = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("tls_client_credentials")? {
+                config.tls_client_credentials = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("tls_client_credentials_password")? {
+                config.tls_client_credentials_password = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("tls_trust_material")? {
+                config.tls_trust_material = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("tls_handshake_timeout_ms")? {
+                config.tls_handshake_timeout_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("tls_crl_fetch_timeout_ms")? {
+                config.tls_crl_fetch_timeout_ms = v.extract()?;
             }
             if let Some(v) = kw.get_item("num_start_attempts")? {
                 config.num_start_attempts = v.extract()?;
@@ -581,6 +609,11 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
                 .as_ref()
                 .map(std::path::PathBuf::from),
             auth,
+            tls_client_credentials: py_config.tls_client_credentials.clone(),
+            tls_client_credentials_password: py_config.tls_client_credentials_password.clone(),
+            tls_trust_material: py_config.tls_trust_material.clone(),
+            tls_handshake_timeout_ms: py_config.tls_handshake_timeout_ms,
+            tls_crl_fetch_timeout_ms: py_config.tls_crl_fetch_timeout_ms,
             num_start_attempts: py_config.num_start_attempts,
             auto_restart_on_disconnection: py_config.auto_restart_on_disconnection,
         })

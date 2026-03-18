@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import contextvars
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -81,6 +82,56 @@ _config = None  # PyEngineConfig instance or None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
+
+# Scoped engine for multi-engine routing (async-safe via contextvars)
+_active_engine: contextvars.ContextVar["Engine | None"] = contextvars.ContextVar("_active_engine", default=None)
+
+
+class Engine:
+    """Non-global Bloomberg engine for multi-source routing.
+
+    Use as a context manager to scope all ``blp.*`` calls to this engine:
+
+        engine = blp.Engine(host="bpipe.firm.com", auth_method="app", app_name="myapp")
+        with engine:
+            df = blp.bdp(...)  # uses this engine, not the global
+
+    Or pass directly to individual calls:
+
+        df = blp.bdp(..., engine=engine)
+
+    The global ``configure()`` + ``blp.bdp()`` API is unaffected.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        from . import _core
+
+        normalized = _normalize_config_kwargs(kwargs)
+        config = _core.PyEngineConfig(**normalized)
+        self._py_engine = _core.PyEngine.with_config(config)
+        self._token: contextvars.Token | None = None
+
+    def __enter__(self) -> "Engine":
+        self._token = _active_engine.set(self)
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        if self._token is not None:
+            _active_engine.reset(self._token)
+            self._token = None
+
+    async def __aenter__(self) -> "Engine":
+        self._token = _active_engine.set(self)
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        if self._token is not None:
+            _active_engine.reset(self._token)
+            self._token = None
+
+    def shutdown(self) -> None:
+        self._py_engine.signal_shutdown()
+
 
 RequestHandler: TypeAlias = Callable[["RequestContext"], Awaitable[DataFrameResult]]
 RequestMiddleware: TypeAlias = Callable[
@@ -442,18 +493,23 @@ def _resolve_backend(backend: Backend | str | None) -> Backend | None:
     return Backend(backend) if isinstance(backend, str) else backend
 
 
-def _get_engine():
-    """Get or create the shared engine instance."""
+def _get_engine(*, engine: "Engine | None" = None):
+    """Get the active engine: explicit arg > contextvar scope > global singleton."""
+    if engine is not None:
+        return engine._py_engine
+
+    scoped = _active_engine.get()
+    if scoped is not None:
+        return scoped._py_engine
+
     global _engine
     if _engine is None:
         from . import _core
 
         if _config is not None:
-            # Use user-provided configuration (already a PyEngineConfig)
             logger.debug("Creating PyEngine with config: %s", _config)
             _engine = _core.PyEngine.with_config(_config)
         else:
-            # Use Rust defaults
             logger.debug("Creating PyEngine with default config")
             _engine = _core.PyEngine()
         logger.info("PyEngine connected to Bloomberg")
