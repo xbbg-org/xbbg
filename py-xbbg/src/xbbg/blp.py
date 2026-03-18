@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-import contextvars
 from collections.abc import Awaitable, Callable, Sequence
+import contextvars
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import functools
@@ -84,7 +84,7 @@ _config = None  # PyEngineConfig instance or None
 _engine = None
 
 # Scoped engine for multi-engine routing (async-safe via contextvars)
-_active_engine: contextvars.ContextVar["Engine | None"] = contextvars.ContextVar("_active_engine", default=None)
+_active_engine: contextvars.ContextVar[Engine | None] = contextvars.ContextVar("_active_engine", default=None)
 
 
 class Engine:
@@ -111,7 +111,7 @@ class Engine:
         self._py_engine = _core.PyEngine.with_config(config)
         self._token: contextvars.Token | None = None
 
-    def __enter__(self) -> "Engine":
+    def __enter__(self) -> Engine:
         self._token = _active_engine.set(self)
         return self
 
@@ -120,7 +120,7 @@ class Engine:
             _active_engine.reset(self._token)
             self._token = None
 
-    async def __aenter__(self) -> "Engine":
+    async def __aenter__(self) -> Engine:
         self._token = _active_engine.set(self)
         return self
 
@@ -493,7 +493,7 @@ def _resolve_backend(backend: Backend | str | None) -> Backend | None:
     return Backend(backend) if isinstance(backend, str) else backend
 
 
-def _get_engine(*, engine: "Engine | None" = None):
+def _get_engine(*, engine: Engine | None = None):
     """Get the active engine: explicit arg > contextvar scope > global singleton."""
     if engine is not None:
         return engine._py_engine
