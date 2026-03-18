@@ -121,16 +121,19 @@ fn start_configured_session(
 }
 
 fn build_tls_options(config: &EngineConfig) -> Result<xbbg_core::tls::TlsOptions, BlpError> {
-    let creds = config.tls_client_credentials.as_deref().ok_or_else(|| {
-        BlpError::InvalidArgument {
-            detail: "ZFP requires tls_client_credentials".into(),
-        }
-    })?;
-    let trust = config.tls_trust_material.as_deref().ok_or_else(|| {
-        BlpError::InvalidArgument {
+    let creds =
+        config
+            .tls_client_credentials
+            .as_deref()
+            .ok_or_else(|| BlpError::InvalidArgument {
+                detail: "ZFP requires tls_client_credentials".into(),
+            })?;
+    let trust = config
+        .tls_trust_material
+        .as_deref()
+        .ok_or_else(|| BlpError::InvalidArgument {
             detail: "ZFP requires tls_trust_material".into(),
-        }
-    })?;
+        })?;
     let password = config
         .tls_client_credentials_password
         .as_deref()
