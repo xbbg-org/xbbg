@@ -205,7 +205,7 @@ jobs:
         cat /tmp/release_notes.md
         echo "============================================================"
 
-    - name: Update CHANGELOG.md
+    - name: Update CHANGELOG.md and README.md
       if: inputs.create_release == true
       run: |
         VERSION="${{ steps.new_version.outputs.new_version }}"
@@ -216,10 +216,6 @@ jobs:
         NEW_HEADER="## [${VERSION}] - ${DATE}"
         
         # Replace [Unreleased] section header with new version, and add new [Unreleased]
-        # Uses awk to:
-        # 1. When we see "## [Unreleased]", print new [Unreleased] section + new version header
-        # 2. Skip the old [Unreleased] line
-        # 3. Print everything else as-is
         awk -v new_header="$NEW_HEADER" '
           /^## \[Unreleased\]/ {
             print "## [Unreleased]"
@@ -233,7 +229,6 @@ jobs:
         mv /tmp/CHANGELOG.md.new CHANGELOG.md
         
         # Extract previous tag from the current [Unreleased] compare link
-        # e.g., [Unreleased]: .../compare/v0.12.0b3...HEAD → v0.12.0b3
         PREV_TAG_LINK=$(grep '^\[Unreleased\]:' CHANGELOG.md | sed 's|.*compare/||;s|\.\.\.HEAD||')
         
         # Add version link using compare format (Keep a Changelog 1.1.0)
@@ -247,7 +242,34 @@ jobs:
         echo "CHANGELOG.md updated:"
         head -50 CHANGELOG.md
 
-    - name: Commit CHANGELOG.md changes
+        # Update README.md latest-release marker (inline, same branch only)
+        python3 - <<'PY'
+        from pathlib import Path
+
+        version = "${{ steps.new_version.outputs.new_version }}"
+        tag = "${{ steps.new_version.outputs.tag }}"
+
+        readme = Path("README.md")
+        text = readme.read_text(encoding="utf-8")
+
+        start = "<!-- xbbg:latest-release-start -->"
+        end = "<!-- xbbg:latest-release-end -->"
+
+        if start in text and end in text:
+            replacement = (
+                f"{start}\n"
+                f"Latest release: xbbg=={version} (release: [notes](https://github.com/${{ github.repository }}/releases/tag/{tag}))\n"
+                f"{end}"
+            )
+            before, rest = text.split(start, 1)
+            _, after = rest.split(end, 1)
+            readme.write_text(before + replacement + after, encoding="utf-8")
+            print(f"README.md updated to {version}")
+        else:
+            print("README.md latest release markers not found — skipping")
+        PY
+
+    - name: Commit release doc changes
       if: inputs.create_release == true
       run: |
         VERSION="${{ steps.new_version.outputs.new_version }}"
@@ -255,11 +277,11 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
         # Check if there are changes to commit
-        if git diff --quiet CHANGELOG.md; then
-          echo "No changes to CHANGELOG.md"
+        if git diff --quiet CHANGELOG.md README.md 2>/dev/null; then
+          echo "No release doc changes"
         else
-          git add CHANGELOG.md
-          git commit -m "docs(CHANGELOG): update for ${VERSION} release"
+          git add CHANGELOG.md README.md
+          git commit -m "docs(release): update docs for ${VERSION} release"
           BRANCH="${GITHUB_REF#refs/heads/}"
           git push origin HEAD:"${BRANCH}"
         fi
@@ -293,34 +315,9 @@ jobs:
       tag: ${{ needs.bump-version.outputs.tag }}
     secrets: inherit
 
-  # Update README changelog
-  update-readme:
-    needs: bump-version
-    if: inputs.create_release == true
-    uses: ./.github/workflows/update_readme_on_release.yml
-    with:
-      tag: ${{ needs.bump-version.outputs.tag }}
-    secrets: inherit
-
-  # Update docs/index.rst changelog (runs after README to avoid conflicts)
-  update-index:
-    needs: [bump-version, update-readme]
-    if: inputs.create_release == true
-    uses: ./.github/workflows/update_index_on_release.yml
-    with:
-      tag: ${{ needs.bump-version.outputs.tag }}
-    secrets: inherit
-
-  # Trigger Read the Docs build
-  publish-docs:
-    needs: [bump-version, update-index]
-    if: inputs.create_release == true
-    uses: ./.github/workflows/publish_docs.yml
-    secrets: inherit
-
   # Summary job
   summary:
-    needs: [bump-version, release-assets, update-readme, update-index, publish-docs]
+    needs: [bump-version, release-assets]
     if: always() && inputs.create_release == true
     runs-on: ubuntu-latest
 
@@ -338,9 +335,6 @@ jobs:
         echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Release Assets | ${{ needs.release-assets.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Update README | ${{ needs.update-readme.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Update index.rst | ${{ needs.update-index.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Publish Docs | ${{ needs.publish-docs.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Manual Step Required" >> $GITHUB_STEP_SUMMARY
         echo "Run **pypi_upload.yml** manually to publish to PyPI (required for trusted publisher attestation)." >> $GITHUB_STEP_SUMMARY
