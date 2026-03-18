@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   - **Lifecycle events**: `ConnectionLost`, `Reconnected`, and `RecoveryFailed` events emitted to subscription status for observability.
   - **New error variants**: `BlpAsyncError::SessionLost` and `AllWorkersDown` mapped to Python `BlpSessionError`.
   - **Python surface**: all new config fields exposed in `EngineConfig`, `configure()`, and `Engine()`; `engine.worker_health()` returns per-worker health status.
+- **Multi-server failover** via `servers` kwarg (#250). Pass a list of `(host, port)` tuples for automatic Bloomberg SDK failover using `setServerAddress(host, port, index)`. Existing `host`/`port` kwargs unchanged for single-server use.
 
 ### Changed
 

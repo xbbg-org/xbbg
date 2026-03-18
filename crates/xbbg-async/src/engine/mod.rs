@@ -57,8 +57,11 @@ fn configure_session_options(
     config: &EngineConfig,
     record_subscription_receive_times: bool,
 ) -> Result<(), BlpError> {
-    options.set_server_host(&config.server_host)?;
-    options.set_server_port(config.server_port);
+    let fallback = vec![(config.server_host.clone(), config.server_port)];
+    let servers = if config.servers.is_empty() { &fallback } else { &config.servers };
+    for (index, (host, port)) in servers.iter().enumerate() {
+        options.set_server_address(host, *port, index)?;
+    }
     options.set_num_start_attempts(config.num_start_attempts)?;
     options.set_auto_restart_on_disconnection(config.auto_restart_on_disconnection);
     options.set_max_event_queue_size(config.max_event_queue_size);
@@ -1162,10 +1165,13 @@ impl std::fmt::Display for ValidationMode {
 /// Configuration for the Engine.
 #[derive(Clone)]
 pub struct EngineConfig {
-    /// Server host (e.g., "localhost")
+    /// Server host for single-server mode (e.g., "localhost").
     pub server_host: String,
-    /// Server port (e.g., 8194)
+    /// Server port for single-server mode (e.g., 8194).
     pub server_port: u16,
+    /// Multiple servers for failover. When non-empty, overrides server_host/server_port.
+    /// SDK tries servers in order — index 0 first, then index 1, etc.
+    pub servers: Vec<(String, u16)>,
     /// Max event queue size (Bloomberg SDK setting)
     pub max_event_queue_size: usize,
     /// Command channel capacity (backpressure)
@@ -1216,6 +1222,7 @@ impl Default for EngineConfig {
         Self {
             server_host: "localhost".to_string(),
             server_port: 8194,
+            servers: Vec::new(),
             max_event_queue_size: 10_000,
             command_queue_size: 256,
             subscription_flush_threshold: 1,

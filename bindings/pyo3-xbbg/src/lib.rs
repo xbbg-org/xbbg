@@ -327,6 +327,9 @@ pub struct PyEngineConfig {
     /// Bloomberg server port (default: 8194)
     #[pyo3(get, set)]
     pub port: u16,
+    /// Multiple servers for failover: list of (host, port) tuples. Overrides host/port when set.
+    #[pyo3(get, set)]
+    pub servers: Vec<(String, u16)>,
     /// Number of pre-warmed request workers (default: 2)
     #[pyo3(get, set)]
     pub request_pool_size: usize,
@@ -419,6 +422,7 @@ impl PyEngineConfig {
         let mut config = Self {
             host: defaults.server_host,
             port: defaults.server_port,
+            servers: Vec::new(),
             request_pool_size: defaults.request_pool_size,
             subscription_pool_size: defaults.subscription_pool_size,
             validation_mode: defaults.validation_mode.to_string(),
@@ -457,6 +461,9 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("port")? {
                 config.port = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("servers")? {
+                config.servers = v.extract()?;
             }
             if let Some(v) = kw.get_item("request_pool_size")? {
                 config.request_pool_size = v.extract()?;
@@ -648,6 +655,7 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
         Ok(EngineConfig {
             server_host: py_config.host.clone(),
             server_port: py_config.port,
+            servers: py_config.servers.clone(),
             request_pool_size: py_config.request_pool_size,
             subscription_pool_size: py_config.subscription_pool_size,
             validation_mode,

@@ -40,6 +40,23 @@ impl SessionOptions {
         self
     }
 
+    pub fn set_server_address(&mut self, host: &str, port: u16, index: usize) -> Result<&mut Self> {
+        let cs = CString::new(host).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid host: {e}"),
+        })?;
+        let rc = unsafe {
+            ffi::blpapi_SessionOptions_setServerAddress(self.ptr, cs.as_ptr(), port, index)
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!(
+                    "setServerAddress failed: host={host} port={port} index={index} rc={rc}"
+                ),
+            });
+        }
+        Ok(self)
+    }
+
     pub fn set_session_identity_options(
         &mut self,
         auth_options: &AuthOptions,
