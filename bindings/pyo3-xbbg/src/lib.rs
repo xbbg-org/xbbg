@@ -45,6 +45,7 @@ use chrono::NaiveDate;
 use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::{define_stub_info_gatherer, derive::*};
 use pyo3_async_runtimes::tokio::future_into_py;
 use tokio::sync::{watch, Mutex};
 use xbbg_log::{debug, info, warn};
@@ -305,6 +306,7 @@ fn format_error_msg(
 ///
 /// The defaults are derived from `EngineConfig::default()` in xbbg-async, so they
 /// stay in sync automatically.
+#[gen_stub_pyclass]
 #[pyclass]
 #[derive(Clone)]
 pub struct PyEngineConfig {
@@ -371,6 +373,7 @@ pub struct PyEngineConfig {
     pub auto_restart_on_disconnection: bool,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyEngineConfig {
     /// Create a new configuration with defaults.
@@ -585,11 +588,13 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
 }
 
 /// Python wrapper for the xbbg Engine.
+#[gen_stub_pyclass]
 #[pyclass]
 struct PyEngine {
     engine: Arc<Engine>,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyEngine {
     /// Create a new Engine with optional host/port configuration.
@@ -1284,6 +1289,7 @@ impl PyEngine {
 /// Design: Uses separate locks for rx (data receiving) vs stream (metadata snapshots),
 /// plus a dedicated operation lock to serialize add/remove/unsubscribe without holding
 /// the stream metadata lock across Bloomberg awaits.
+#[gen_stub_pyclass]
 #[pyclass]
 pub struct PySubscription {
     /// Receiver for incoming data - separate lock so iteration doesn't block add/remove
@@ -1497,6 +1503,7 @@ impl PySubscription {
     }
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PySubscription {
     /// Async iterator protocol.
@@ -2078,6 +2085,7 @@ pub(crate) fn record_batch_to_pyarrow(
         .map_err(|e| PyRuntimeError::new_err(format!("Arrow FFI conversion failed: {e}")))
 }
 
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn version() -> String {
     xbbg_core::version().to_string()
@@ -2149,6 +2157,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///
 /// This sets an atomic integer — no GIL is held on the logging hot path.
 /// For per-crate control, use the RUST_LOG environment variable instead.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn set_log_level(level: &str) -> PyResult<()> {
     let lvl = xbbg_log::parse_level(level).ok_or_else(|| {
@@ -2162,6 +2171,7 @@ fn set_log_level(level: &str) -> PyResult<()> {
 }
 
 /// Get the current Rust log level as a string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_log_level() -> &'static str {
     match xbbg_log::current_level() {
@@ -2172,6 +2182,8 @@ fn get_log_level() -> &'static str {
         xbbg_log::Level::ERROR => "error",
     }
 }
+
+define_stub_info_gatherer!(stub_info);
 
 #[cfg(test)]
 mod tests {

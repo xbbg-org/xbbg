@@ -276,6 +276,44 @@ jobs:
         echo "README.md release block updated:"
         sed -n '20,30p' README.md
 
+    - name: Detect latest SDK version
+      id: sdk
+      run: |
+        VERSION=$(curl -s https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/ \
+          | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Bloomberg SDK
+      id: cache-sdk
+      uses: actions/cache@v4
+      with:
+        path: ~/blpapi
+        key: blpapi-Linux-${{ steps.sdk.outputs.version }}
+
+    - name: Download Bloomberg SDK
+      if: steps.cache-sdk.outputs.cache-hit != 'true'
+      run: |
+        mkdir -p "$HOME/blpapi"
+        curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ steps.sdk.outputs.version }}-linux.tar.gz" \
+          | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+    - name: Setup Bloomberg SDK
+      run: |
+        ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+        ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+        echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+        echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        rustflags: ""
+
+    - name: Regenerate type stubs
+      run: |
+        cargo build -p pyo3-xbbg --bin stub_gen --no-default-features --features live
+        ./target/debug/stub_gen
+
     - name: Commit release doc changes
       if: inputs.create_release == true
       run: |
@@ -283,12 +321,11 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
-        # Check if there are changes to commit
-        if git diff --quiet CHANGELOG.md README.md; then
+        git add CHANGELOG.md README.md py-xbbg/src/xbbg/_core/__init__.pyi py-xbbg/src/xbbg/__init__.pyi py-xbbg/src/xbbg/py.typed
+        if git diff --cached --quiet; then
           echo "No release doc changes"
         else
-          git add CHANGELOG.md README.md
-          git commit -m "docs(release): update docs for ${VERSION} release"
+          git commit -m "docs(release): update docs and type stubs for ${VERSION} release"
           BRANCH="${GITHUB_REF#refs/heads/}"
           git push origin HEAD:"${BRANCH}"
         fi

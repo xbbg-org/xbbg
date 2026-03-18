@@ -40,6 +40,11 @@ Documentation = "https://xbbg.readthedocs.io/"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
 
+# ── pyo3-stub-gen configuration (reuses maturin keys for compatibility) ───────
+[tool.maturin]
+module-name = "xbbg._core"
+python-source = "py-xbbg/src"
+
 # ── Version from git tags (equivalent to release/0.x setuptools_scm config) ──
 [tool.setuptools_scm]
 tag_regex = '^(?:v|xbbg==)?(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc|alpha|beta)\d+)?)$'

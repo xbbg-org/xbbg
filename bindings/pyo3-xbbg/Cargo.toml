@@ -8,11 +8,17 @@ description = "PyO3 bindings for xbbg Bloomberg engine"
 
 [lib]
 name = "_core"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "stub_gen"
+path = "src/bin/stub_gen.rs"
 
 [dependencies]
-pyo3 = { version = "0.26", features = ["extension-module"] }
+pyo3 = { version = "0.26" }
 pyo3-async-runtimes = { version = "0.26", features = ["tokio-runtime"] }
+pyo3-stub-gen = { version = "0.19", default-features = false, features = ["infer_signature"] }
+pyo3-stub-gen-derive = "0.19"
 tokio = { version = "1.48", features = ["sync"] }
 xbbg-log = { path = "../../crates/xbbg-log" }
 arrow = { version = "57.1.0", features = ["pyarrow"] }
@@ -25,7 +31,8 @@ xbbg-ext = { path = "../../crates/xbbg-ext" }
 xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 
 [features]
-default = ["live"]
+default = ["live", "extension-module"]
+extension-module = ["pyo3/extension-module"]
 mock = ["xbbg-async/mock", "xbbg-recipes/mock"]
 live = ["xbbg-async/live", "xbbg-recipes/live"]
 

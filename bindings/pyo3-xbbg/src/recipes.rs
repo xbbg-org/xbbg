@@ -4,6 +4,7 @@
 
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
+use pyo3_stub_gen::derive::*;
 
 use xbbg_ext::transforms::fixed_income::YieldType;
 
@@ -66,7 +67,8 @@ recipe_wrapper!(
     ///     yield_val: Yield value override
     ///     price: Price override
     ///     benchmark: Benchmark security for spread calculation
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, tickers, fields, settle_dt=None, yield_type=None, spread=None, yield_val=None, price=None, benchmark=None))]
     #[allow(clippy::too_many_arguments)]
     |eng|
@@ -103,7 +105,8 @@ recipe_wrapper!(
     ///     engine: Bloomberg engine instance
     ///     ticker: Company equity ticker (e.g., "BAC US Equity")
     ///     fields: Additional fields to retrieve (default: id, name)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, ticker, fields=None))]
     |eng|
     fn recipe_preferreds(
@@ -121,7 +124,8 @@ recipe_wrapper!(
     ///     ccy: Currency filter (e.g., "USD"). None for all currencies.
     ///     fields: Additional fields to retrieve (default: id)
     ///     active_only: If true, only return active bonds (default: true)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, ticker, ccy=None, fields=None, active_only=true))]
     |eng|
     fn recipe_corporate_bonds(
@@ -148,7 +152,8 @@ recipe_wrapper!(
     ///     end_datetime: End datetime (ISO format)
     ///     event_types: Event types to retrieve (default: ["BID", "ASK"])
     ///     include_broker_codes: Include broker/dealer codes (default: true)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, ticker, start_datetime, end_datetime, event_types=None, include_broker_codes=true))]
     |eng|
     fn recipe_bqr(
@@ -179,7 +184,8 @@ recipe_wrapper!(
     ///     gen_ticker: Generic futures ticker (e.g., "ES1 Index", "CL2 Comdty")
     ///     dt: Reference date (YYYYMMDD format)
     ///     freq: Roll frequency ("M" monthly, "Q"/"QE" quarterly)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt, freq=None))]
     |eng|
     fn recipe_fut_ticker(
@@ -197,7 +203,8 @@ recipe_wrapper!(
     ///     gen_ticker: Generic futures ticker (e.g., "ES1 Index")
     ///     dt: Reference date (YYYYMMDD format)
     ///     freq: Roll frequency ("M" monthly, "Q"/"QE" quarterly)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt, freq=None))]
     |eng|
     fn recipe_active_futures(
@@ -214,7 +221,8 @@ recipe_wrapper!(
     ///     engine: Bloomberg engine instance
     ///     gen_ticker: Generic CDX ticker (e.g., "CDX IG CDSI GEN 5Y Corp")
     ///     dt: Reference date (YYYYMMDD format)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt))]
     |eng|
     fn recipe_cdx_ticker(
@@ -231,7 +239,8 @@ recipe_wrapper!(
     ///     gen_ticker: Generic CDX ticker (e.g., "CDX IG CDSI GEN 5Y Corp")
     ///     dt: Reference date (YYYYMMDD format)
     ///     lookback_days: Lookback window for activity comparison (default: 10)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt, lookback_days=None))]
     |eng|
     fn recipe_active_cdx(
@@ -254,7 +263,8 @@ recipe_wrapper!(
     ///     start_date: Start date (YYYYMMDD format)
     ///     end_date: End date (YYYYMMDD format)
     ///     dvd_type: Dividend type filter (e.g., "all", "regular")
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, tickers, start_date, end_date, dvd_type=None))]
     |eng|
     fn recipe_dividend(
@@ -275,7 +285,8 @@ recipe_wrapper!(
     ///     end_date: End date (YYYYMMDD format)
     ///     ccy: Currency for conversion. None for local currency.
     ///     factor: Division factor (e.g., 1_000_000.0 for millions)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, tickers, start_date, end_date, ccy=None, factor=None))]
     |eng|
     fn recipe_turnover(
@@ -301,7 +312,8 @@ recipe_wrapper!(
     ///     engine: Bloomberg engine instance
     ///     etf_ticker: ETF ticker (e.g., "SPY US Equity")
     ///     fields: Additional fields beyond defaults (id_isin, weights, id().position)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, etf_ticker, fields=None))]
     |eng|
     fn recipe_etf_holdings(
@@ -323,7 +335,8 @@ recipe_wrapper!(
     ///     target_ccy: Target currency (e.g., "USD", "EUR")
     ///     start_date: Start date (YYYYMMDD format)
     ///     end_date: End date (YYYYMMDD format)
-    #[pyfunction]
+    #[gen_stub_pyfunction]
+#[pyfunction]
     #[pyo3(signature = (engine, ticker, target_ccy, start_date, end_date))]
     |eng|
     fn recipe_currency_conversion(

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::{derive::*, impl_stub_type};
 use xbbg_ext::markets::{self, sessions};
 use xbbg_ext::{ExchangeInfo, OverridePatch, SessionWindows};
 
@@ -33,11 +34,15 @@ struct ExchangeInfoDict {
     pm: Option<(String, String)>,
 }
 
+impl_stub_type!(MarketRuleDict = pyo3::types::PyAny);
+impl_stub_type!(ExchangeInfoDict = pyo3::types::PyAny);
+
 /// Derive session windows from regular trading hours.
 ///
 /// Returns dict with keys: day, allday, pre, post, am, pm.
 /// Each value is a ``(start, end)`` tuple of ``"HH:MM"`` strings.
 /// Keys are omitted when the session does not apply.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_derive_sessions(
     day_start: &str,
@@ -71,6 +76,7 @@ fn ext_derive_sessions(
 /// Look up market rule by MIC code or Bloomberg exchange code.
 ///
 /// Returns dict with rule fields, or ``None`` if no rule matches.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_get_market_rule(mic: Option<&str>, exch_code: Option<&str>) -> Option<MarketRuleDict> {
     let rule = sessions::get_market_rule(mic, exch_code)?;
@@ -84,12 +90,14 @@ fn ext_get_market_rule(mic: Option<&str>, exch_code: Option<&str>) -> Option<Mar
 }
 
 /// Infer timezone from country ISO code.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_infer_timezone(country_iso: &str) -> Option<String> {
     sessions::infer_timezone_from_country(country_iso).map(String::from)
 }
 
 /// Set a runtime exchange override patch for a ticker.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (
     ticker,
@@ -146,6 +154,7 @@ fn ext_set_exchange_override(
 }
 
 /// Get runtime override for a ticker.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_get_exchange_override(ticker: &str) -> PyResult<Option<ExchangeInfoDict>> {
     markets::get_exchange_override(ticker)
@@ -154,6 +163,7 @@ fn ext_get_exchange_override(ticker: &str) -> PyResult<Option<ExchangeInfoDict>>
 }
 
 /// Clear one override (or all when ticker is None).
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (ticker=None))]
 fn ext_clear_exchange_override(ticker: Option<&str>) -> PyResult<()> {
@@ -161,6 +171,7 @@ fn ext_clear_exchange_override(ticker: Option<&str>) -> PyResult<()> {
 }
 
 /// List all runtime overrides.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_list_exchange_overrides() -> PyResult<HashMap<String, ExchangeInfoDict>> {
     markets::list_exchange_overrides()
@@ -174,6 +185,7 @@ fn ext_list_exchange_overrides() -> PyResult<HashMap<String, ExchangeInfoDict>> 
 }
 
 /// Convert local exchange session times to UTC ISO timestamps.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_session_times_to_utc(
     start_time: &str,

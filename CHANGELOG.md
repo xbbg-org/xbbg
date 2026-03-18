@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Python type stubs** for `xbbg._core` via `pyo3-stub-gen`: auto-generated `.pyi` files provide full IDE autocompletion and type-checker support for `EngineConfig`, `Engine`, `Subscription`, and all Rust-backed functions. Includes `py.typed` PEP 561 marker.
+
+### Changed
+
+- **Engine Architecture & EngineConfig documentation**: README now includes a full reference for all 20+ `EngineConfig` fields (worker pools, subscription tuning, buffers, validation, auth), an ASCII architecture diagram, and auth mode examples.
+- **API surface updated to v1**: README function tables, examples, and Connection Options section now reflect v1 names (`blkp`, `bport`, `earnings`, `convert_ccy`, `configure()`, `subscribe`/`stream`, etc.) and remove stale v0.x references (`lookupSecurity`, `exchange_tz`, `set_format`, `Format` enum).
+- **Dev setup and contributing guides** updated for v1 project structure (`py-xbbg/src` paths, Astro docs, `uv sync` dependency-groups).
+
 ## [1.0.0b6] - 2026-03-16
 
 ### Changed
