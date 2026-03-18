@@ -16,7 +16,17 @@ targets = [
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 version = 2
-ignore = []
+ignore = [
+    # unic-* crates are unmaintained (not vulnerable). Transitive deps of
+    # rustpython-parser via pyo3-stub-gen — used only for stub generation,
+    # never in production code. No safe upgrade available upstream.
+    "RUSTSEC-2025-0075",  # unic-char-range
+    "RUSTSEC-2025-0080",  # unic-common
+    "RUSTSEC-2025-0081",  # unic-char-property
+    "RUSTSEC-2025-0090",  # unic-emoji-char
+    "RUSTSEC-2025-0098",  # unic-ucd-version
+    "RUSTSEC-2025-0100",  # unic-ucd-ident
+]
 
 # ════════════════════════════════════════════════════════════════════════════
 # Licenses - ensure dependencies use acceptable licenses
