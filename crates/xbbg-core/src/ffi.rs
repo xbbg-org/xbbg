@@ -163,6 +163,7 @@ pub use xbbg_sys::{
 
 // --- Logging functions ---
 pub use xbbg_sys::{
+    blpapi_Datetime_tag as blpapi_Logging_Datetime_t, blpapi_Logging_Func_t,
     blpapi_Logging_Severity_t, blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_DEBUG,
     blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR,
     blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_FATAL,

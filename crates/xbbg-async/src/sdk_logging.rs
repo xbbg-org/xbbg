@@ -18,7 +18,7 @@ fn severity_name(severity: i32) -> &'static str {
 unsafe extern "C" fn sdk_callback(
     _thread_id: u64,
     severity: i32,
-    _timestamp: blpapi_sys::blpapi_Datetime_t,
+    _timestamp: xbbg_core::ffi::blpapi_Logging_Datetime_t,
     category: *const std::ffi::c_char,
     message: *const std::ffi::c_char,
 ) {

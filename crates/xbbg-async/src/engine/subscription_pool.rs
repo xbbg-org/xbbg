@@ -100,8 +100,7 @@ impl SubscriptionWorker {
         session.open_service(crate::services::Service::MktData.as_str())?;
         let mut open_services = std::collections::HashSet::new();
         open_services.insert(crate::services::Service::MktData.to_string());
-        let mut opened_services = Vec::new();
-        opened_services.push(crate::services::Service::MktData.to_string());
+        let opened_services = vec![crate::services::Service::MktData.to_string()];
 
         xbbg_log::info!(worker_id = id, "subscription worker pre-warmed");
 
