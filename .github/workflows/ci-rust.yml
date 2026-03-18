@@ -820,7 +820,7 @@ jobs:
         run: cargo build -p pyo3-xbbg --bin stub_gen --no-default-features --features live
 
       - name: Regenerate stubs
-        run: ./target/debug/stub_gen
+        run: CARGO_MANIFEST_DIR=${{ github.workspace }}/bindings/pyo3-xbbg ./target/debug/stub_gen
 
       - name: Commit stubs if changed
         run: |

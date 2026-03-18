@@ -312,7 +312,7 @@ jobs:
     - name: Regenerate type stubs
       run: |
         cargo build -p pyo3-xbbg --bin stub_gen --no-default-features --features live
-        ./target/debug/stub_gen
+        CARGO_MANIFEST_DIR=${{ github.workspace }}/bindings/pyo3-xbbg ./target/debug/stub_gen
 
     - name: Commit release doc changes
       if: inputs.create_release == true
