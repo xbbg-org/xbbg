@@ -12,7 +12,7 @@
 //! used services pre-opened for low-latency request handling.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
@@ -68,6 +68,7 @@ pub enum WorkerCommand {
     Request {
         params: RequestParams,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
+        cancelled: Arc<AtomicBool>,
     },
     /// Execute a streaming request and send batches via mpsc channel.
     RequestStream {
@@ -208,6 +209,8 @@ struct RequestWorker {
     warned_requests: std::collections::HashSet<SlabKey>,
     /// Counter for slow request check interval.
     poll_counter: u32,
+    /// Per-request cancellation flags flipped when Python drops the awaitable.
+    cancellations: HashMap<SlabKey, Arc<AtomicBool>>,
     health: Arc<AtomicU8>,
 }
 
@@ -231,6 +234,7 @@ impl RequestWorker {
             send_times: HashMap::new(),
             warned_requests: std::collections::HashSet::new(),
             poll_counter: 0,
+            cancellations: HashMap::new(),
             health,
         };
 
@@ -274,8 +278,12 @@ impl RequestWorker {
                         xbbg_log::info!(worker_id = self.id, "RequestWorker shutting down");
                         return Ok(());
                     }
-                    Ok(WorkerCommand::Request { params, reply }) => {
-                        if let Err(e) = self.send_request(params, reply) {
+                    Ok(WorkerCommand::Request {
+                        params,
+                        reply,
+                        cancelled,
+                    }) => {
+                        if let Err(e) = self.send_request(params, reply, cancelled) {
                             xbbg_log::error!(worker_id = self.id, error = %e, "request error");
                         }
                     }
@@ -296,10 +304,14 @@ impl RequestWorker {
                 }
             }
 
+            self.process_cancellations();
+
             // 2. Poll Bloomberg (short timeout for responsiveness)
             if let Ok(ev) = self.session.next_event(Some(10)) {
                 self.dispatch_event(ev);
             }
+
+            self.process_cancellations();
 
             // 3. Periodically check for slow requests and warn
             self.poll_counter += 1;
@@ -324,6 +336,49 @@ impl RequestWorker {
                 );
                 self.warned_requests.insert(key);
             }
+        }
+    }
+
+    fn process_cancellations(&mut self) {
+        let cancelled_keys: Vec<SlabKey> = self
+            .cancellations
+            .iter()
+            .filter_map(|(&key, flag)| flag.load(Ordering::Acquire).then_some(key))
+            .collect();
+
+        for key in cancelled_keys {
+            self.cancel_request(key);
+        }
+    }
+
+    fn cancel_request(&mut self, key: SlabKey) {
+        let cid = DispatchKey::from_slab_key(key).to_correlation_id();
+
+        if let Err(error) = self.session.cancel(&cid) {
+            xbbg_log::warn!(
+                worker_id = self.id,
+                key = key,
+                error = %error,
+                "failed to cancel Bloomberg request"
+            );
+            self.health.store(2, Ordering::Release);
+            self.drain_in_flight_requests("Bloomberg request cancellation failed");
+            return;
+        }
+
+        xbbg_log::info!(
+            worker_id = self.id,
+            key = key,
+            "cancelled Bloomberg request"
+        );
+
+        self.send_times.remove(&key);
+        self.warned_requests.remove(&key);
+        self.cancellations.remove(&key);
+
+        if self.requests.contains(key) {
+            let state = self.requests.remove(key);
+            drop(state);
         }
     }
 
@@ -369,6 +424,7 @@ impl RequestWorker {
         &mut self,
         params: RequestParams,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
+        cancelled: Arc<AtomicBool>,
     ) -> Result<(), BlpError> {
         let t0 = std::time::Instant::now();
         self.ensure_service(&params.service)?;
@@ -435,6 +491,7 @@ impl RequestWorker {
                 });
             }
             self.send_times.insert(actual_key, t_send);
+            self.cancellations.insert(actual_key, cancelled);
 
             xbbg_log::debug!(
                 worker_id = self.id,
@@ -451,6 +508,7 @@ impl RequestWorker {
                 self.requests.remove(key).fail(err);
             }
             self.send_times.remove(&key);
+            self.cancellations.remove(&key);
             return Ok(());
         }
         Ok(())
@@ -813,6 +871,7 @@ impl RequestWorker {
                         );
                     }
                     self.warned_requests.remove(&key);
+                    self.cancellations.remove(&key);
                     let state = self.requests.remove(key);
                     state.finish_and_reply(msg);
                     xbbg_log::debug!(worker_id = self.id, key = key, "response completed");
@@ -838,6 +897,7 @@ impl RequestWorker {
                         // Clean up tracking
                         self.send_times.remove(&key);
                         self.warned_requests.remove(&key);
+                        self.cancellations.remove(&key);
                         let state = self.requests.remove(key);
                         state.fail(BlpError::Internal {
                             detail: "RequestFailure".into(),
@@ -858,6 +918,7 @@ impl RequestWorker {
         for key in keys {
             self.send_times.remove(&key);
             self.warned_requests.remove(&key);
+            self.cancellations.remove(&key);
             let state = self.requests.remove(key);
             state.fail(BlpError::Internal {
                 detail: format!("{} (worker={})", reason, self.id),

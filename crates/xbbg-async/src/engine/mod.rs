@@ -58,7 +58,11 @@ fn configure_session_options(
     record_subscription_receive_times: bool,
 ) -> Result<(), BlpError> {
     let fallback = vec![(config.server_host.clone(), config.server_port)];
-    let servers = if config.servers.is_empty() { &fallback } else { &config.servers };
+    let servers = if config.servers.is_empty() {
+        &fallback
+    } else {
+        &config.servers
+    };
     for (index, (host, port)) in servers.iter().enumerate() {
         options.set_server_address(host, *port, index)?;
     }

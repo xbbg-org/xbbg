@@ -454,6 +454,21 @@ impl Session {
         Ok(())
     }
 
+    pub fn cancel(&self, cid: &CorrelationId) -> Result<()> {
+        let cid_ffi = cid.to_ffi();
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_cancel(self.ptr, &cid_ffi, 1, std::ptr::null(), 0)
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_cancel failed with rc={rc}"),
+            });
+        }
+
+        Ok(())
+    }
+
     pub fn create_identity(&self) -> Result<Identity> {
         let identity_ptr = unsafe { crate::ffi::blpapi_Session_createIdentity(self.ptr) };
         Identity::from_raw(identity_ptr)

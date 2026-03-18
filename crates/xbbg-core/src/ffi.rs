@@ -64,9 +64,9 @@ pub use xbbg_sys::{
 
 // --- Session functions ---
 pub use xbbg_sys::{
-    blpapi_Session_create, blpapi_Session_createIdentity, blpapi_Session_destroy,
-    blpapi_Session_generateToken, blpapi_Session_getService, blpapi_Session_nextEvent,
-    blpapi_Session_openService, blpapi_Session_sendAuthorizationRequest,
+    blpapi_Session_cancel, blpapi_Session_create, blpapi_Session_createIdentity,
+    blpapi_Session_destroy, blpapi_Session_generateToken, blpapi_Session_getService,
+    blpapi_Session_nextEvent, blpapi_Session_openService, blpapi_Session_sendAuthorizationRequest,
     blpapi_Session_sendRequest, blpapi_Session_start, blpapi_Session_stop,
     blpapi_Session_subscribe, blpapi_Session_tryNextEvent, blpapi_Session_unsubscribe,
 };

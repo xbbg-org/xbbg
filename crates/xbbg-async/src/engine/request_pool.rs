@@ -3,7 +3,7 @@
 //! The pool manages a collection of pre-warmed workers and distributes
 //! incoming requests across them using round-robin scheduling.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use arrow::record_batch::RecordBatch;
@@ -13,6 +13,32 @@ use xbbg_core::BlpError;
 
 use super::worker::{WorkerCommand, WorkerHandle};
 use super::{BlpAsyncError, EngineConfig, RequestParams, WorkerHealth};
+
+struct RequestCancelGuard {
+    cancelled: Arc<AtomicBool>,
+    armed: bool,
+}
+
+impl RequestCancelGuard {
+    fn new(cancelled: Arc<AtomicBool>) -> Self {
+        Self {
+            cancelled,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for RequestCancelGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            self.cancelled.store(true, Ordering::Release);
+        }
+    }
+}
 
 /// Pool of request workers with round-robin dispatch.
 pub struct RequestWorkerPool {
@@ -123,6 +149,7 @@ impl RequestWorkerPool {
             };
 
             let (reply_tx, reply_rx) = oneshot::channel();
+            let cancelled = Arc::new(AtomicBool::new(false));
 
             xbbg_log::debug!(
                 worker_id = worker.id,
@@ -137,6 +164,7 @@ impl RequestWorkerPool {
                 .send(WorkerCommand::Request {
                     params: params.clone(),
                     reply: reply_tx,
+                    cancelled: cancelled.clone(),
                 })
                 .await
                 .is_err()
@@ -148,7 +176,11 @@ impl RequestWorkerPool {
                 return Err(BlpAsyncError::ChannelClosed);
             }
 
-            match reply_rx.await {
+            let mut cancel_guard = RequestCancelGuard::new(cancelled);
+            let reply_result = reply_rx.await;
+            cancel_guard.disarm();
+
+            match reply_result {
                 Ok(Ok(batch)) => return Ok(batch),
                 Ok(Err(error)) if self.is_retryable(&error) && attempt + 1 < max_attempts => {
                     last_error = Some(BlpAsyncError::BlpError(error));
