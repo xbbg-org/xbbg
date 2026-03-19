@@ -506,7 +506,7 @@ class TestBackendConversion:
 
     def test_backend_pandas(self, single_ticker, single_field):
         """Should convert to pandas DataFrame."""
-        import pandas as pd
+        pd = pytest.importorskip("pandas")
 
         from xbbg import bdp
 
@@ -551,7 +551,7 @@ class TestBackendConversion:
 
     def test_set_global_backend(self, single_ticker, single_field):
         """Global backend setting should affect all calls."""
-        import pandas as pd
+        pd = pytest.importorskip("pandas")
 
         from xbbg import bdp, get_backend, set_backend
 
@@ -702,6 +702,7 @@ class TestDataFlow:
 
     def test_bdp_returns_numeric_for_price(self, single_ticker):
         """PX_LAST should return a numeric value."""
+        pytest.importorskip("pandas")
         from xbbg import bdp
 
         df = bdp(single_ticker, "PX_LAST", backend="pandas")
@@ -716,6 +717,7 @@ class TestDataFlow:
 
     def test_bdp_returns_string_for_name(self, single_ticker):
         """NAME field should return a string."""
+        pytest.importorskip("pandas")
         from xbbg import bdp
 
         df = bdp(single_ticker, "NAME", backend="pandas")
@@ -728,6 +730,7 @@ class TestDataFlow:
 
     def test_bdh_dates_are_ordered(self, single_ticker, single_field, recent_dates):
         """Historical data should have dates in chronological order."""
+        pytest.importorskip("pandas")
         from xbbg import bdh
 
         df = bdh(
@@ -745,6 +748,7 @@ class TestDataFlow:
 
     def test_ticker_in_response_matches_request(self, single_ticker, single_field):
         """Ticker in response should match the requested ticker."""
+        pytest.importorskip("pandas")
         from xbbg import bdp
 
         df = bdp(single_ticker, "PX_LAST", backend="pandas")
@@ -770,17 +774,19 @@ class TestLogging:
     """
 
     def test_python_logging_captures_request(self, single_ticker, single_field, caplog):
-        """Python logging should capture request debug messages."""
+        """Python logging should capture request info messages."""
         import logging
 
         from xbbg import bdp
 
-        with caplog.at_level(logging.DEBUG, logger="xbbg.blp"):
+        with caplog.at_level(logging.INFO, logger="xbbg.blp"):
             bdp(single_ticker, single_field)
 
-        # Check that we captured the expected log messages
+        # arequest logs a centralized INFO line per Bloomberg request
         log_messages = [r.message for r in caplog.records]
-        assert any("abdp:" in msg for msg in log_messages), f"Expected abdp log, got: {log_messages}"
+        assert any("bloomberg" in msg and "ReferenceDataRequest" in msg for msg in log_messages), (
+            f"Expected bloomberg request log, got: {log_messages}"
+        )
 
     def test_rust_logging_bridges_to_python(self, single_ticker, single_field, caplog):
         """Rust tracing events should appear in Python logging."""
@@ -798,26 +804,16 @@ class TestLogging:
         assert len(log_messages) > 0, "Expected some log messages"
 
     def test_logging_with_different_levels(self, single_ticker, single_field, caplog):
-        """Different log levels should be captured appropriately."""
+        """INFO level should capture request logs."""
         import logging
 
         from xbbg import bdp
 
-        # Test INFO level
         with caplog.at_level(logging.INFO, logger="xbbg.blp"):
             bdp(single_ticker, single_field)
 
-        info_count = len([r for r in caplog.records if r.levelno == logging.INFO])
-
-        # Test DEBUG level (should have more messages)
-        caplog.clear()
-        with caplog.at_level(logging.DEBUG, logger="xbbg.blp"):
-            bdp(single_ticker, single_field)
-
-        debug_count = len([r for r in caplog.records if r.levelno == logging.DEBUG])
-
-        # DEBUG level should capture more (or equal) messages than INFO
-        assert debug_count >= info_count
+        info_count = len([r for r in caplog.records if r.levelno >= logging.INFO])
+        assert info_count >= 1, f"Expected at least 1 INFO+ log, got {info_count}"
 
     def test_error_logging(self, single_field, caplog):
         """Errors should be logged appropriately."""

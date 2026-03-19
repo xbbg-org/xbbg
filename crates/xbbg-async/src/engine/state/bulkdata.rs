@@ -135,15 +135,17 @@ impl BulkDataState {
                 }
 
                 // Extract sub-field values
-                for subfield_name in &self.subfield_names.clone() {
+                let subfield_names = &self.subfield_names;
+                let columns = &mut self.columns;
+                for subfield_name in subfield_names {
                     if let Some(subfield_elem) = row.get_by_str(subfield_name) {
                         if let Some(value) = subfield_elem.get_value(0) {
-                            self.columns.append(subfield_name, value);
+                            columns.append(subfield_name, value);
                         } else {
-                            self.columns.append_null(subfield_name);
+                            columns.append_null(subfield_name);
                         }
                     } else {
-                        self.columns.append_null(subfield_name);
+                        columns.append_null(subfield_name);
                     }
                 }
 

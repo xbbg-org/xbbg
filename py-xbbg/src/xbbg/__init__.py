@@ -6,9 +6,23 @@ powered by a high-performance Rust backend.
 
 from __future__ import annotations
 
+import importlib
 from importlib.metadata import PackageNotFoundError, version
 import sys
 from typing import TYPE_CHECKING
+
+from ._exports import (
+    BACKEND_EXPORTS,
+    CORE_EXPORTS,
+    EXCEPTION_EXPORTS,
+    FIELD_CACHE_EXPORTS,
+    MODULE_EXPORTS,
+    PACKAGE_BLP_EXPORTS,
+    PACKAGE_EXPORTS,
+    SCHEMA_LOOKUP_EXPORTS,
+    SDK_EXPORTS,
+    SERVICE_EXPORTS,
+)
 
 # Version from git tags via setuptools_scm (same mechanism as release/0.x)
 try:
@@ -20,12 +34,10 @@ except PackageNotFoundError:
 if TYPE_CHECKING:
     from . import _core
 
-# ── DLL search path setup (Windows) ──────────────────────────────────────
+# DLL search path setup (Windows)
 # MUST run at module level, not inside __getattr__. When Python resolves
 # `from xbbg._core import X`, it imports `xbbg` first (here) then loads
-# the native extension as a submodule — bypassing __getattr__ entirely.
-# Without this, `from xbbg._core import X` fails with DLL load errors
-# while `xbbg._core` (attribute access via __getattr__) would work.
+# the native extension as a submodule - bypassing __getattr__ entirely.
 if sys.platform == "win32":
     try:
         from . import _sdk
@@ -34,325 +46,85 @@ if sys.platform == "win32":
     except Exception:
         pass  # SDK detection failures shouldn't block package import
 
-# Guard flag to prevent recursion in __getattr__
 _importing_core = False
 _core_module = None
 
+__all__ = list(PACKAGE_EXPORTS)
 
-__all__ = [
-    "__version__",
-    "_core",
-    "Backend",
-    "EngineConfig",
-    # Generic API (power users)
-    "arequest",
-    "request",
-    # Sync API
-    "bdp",
-    "bds",
-    "bdh",
-    "bdib",
-    "bdtick",
-    "bql",
-    "bsrch",
-    "bflds",
-    "beqs",
-    "blkp",
-    "bport",
-    "bcurves",
-    "bgovts",
-    # Async API
-    "abdp",
-    "abds",
-    "abdh",
-    "abdib",
-    "abdtick",
-    "abql",
-    "absrch",
-    "abflds",
-    "abeqs",
-    "ablkp",
-    "abport",
-    "abcurves",
-    "abgovts",
-    # Streaming API
-    "Tick",
-    "Subscription",
-    "asubscribe",
-    "subscribe",
-    "astream",
-    "stream",
-    # VWAP Streaming
-    "avwap",
-    "vwap",
-    # Streaming Bars
-    "amktbar",
-    "mktbar",
-    # Market Depth (B-PIPE)
-    "adepth",
-    "depth",
-    # Option/Futures Chains (B-PIPE)
-    "achains",
-    "chains",
-    # Technical Analysis
-    "abta",
-    "bta",
-    "ta_studies",
-    "ta_study_params",
-    "generate_ta_stubs",
-    # Config
-    "configure",
-    "set_backend",
-    "get_backend",
-    # Lifecycle
-    "shutdown",
-    "reset",
-    "is_connected",
-    # Logging control
-    "set_log_level",
-    "get_log_level",
-    # Schema introspection (user-facing)
-    "bops",
-    "abops",
-    "bschema",
-    "abschema",
-    "get_sdk_info",
-    "set_sdk_path",
-    "clear_sdk_path",
-    # Field type cache
-    "FieldTypeCache",
-    "FieldInfo",
-    "resolve_field_types",
-    "aresolve_field_types",
-    "cache_field_types",
-    "get_field_info",
-    "clear_field_cache",
-    # Service definitions
-    "Service",
-    "Operation",
-    "OutputMode",
-    "RequestParams",
-    "ExtractorHint",
-    # Schema introspection
-    "get_schema",
-    "aget_schema",
-    "get_operation",
-    "aget_operation",
-    "list_operations",
-    "alist_operations",
-    "get_enum_values",
-    "aget_enum_values",
-    "list_valid_elements",
-    "alist_valid_elements",
-    "generate_stubs",
-    "configure_ide_stubs",
-    "ServiceSchema",
-    "OperationSchema",
-    # Exceptions
-    "BlpError",
-    "BlpSessionError",
-    "BlpRequestError",
-    "BlpSecurityError",
-    "BlpFieldError",
-    "BlpValidationError",
-    "BlpTimeoutError",
-    "BlpInternalError",
-    "BlpBPipeError",
-    # Extensions module
-    "ext",
-    # Markets module
-    "markets",
-]
+
+def _import_core():
+    """Import and cache the native extension with a friendlier DLL error."""
+    global _importing_core, _core_module
+    if _core_module is not None:
+        return _core_module
+    if _importing_core:
+        raise ImportError("Recursive import of _core detected")
+
+    _importing_core = True
+    try:
+        mod = importlib.import_module("xbbg._core")
+        _core_module = mod
+        return mod
+    except ImportError as e:
+        if "DLL load failed" in str(e) or "cannot open shared object" in str(e):
+            raise ImportError(
+                f"{e}\n\n"
+                "The xbbg native extension requires the Bloomberg C++ SDK shared library.\n"
+                "Supported platforms: Linux x64, Windows x64/x86\n\n"
+                "You can provide the SDK from any of these sources:\n"
+                "  1. blpapi Python package: pip install blpapi --index-url "
+                "https://blpapi.bloomberg.com/repository/releases/python/simple/\n"
+                "  2. Bloomberg Terminal (DAPI) - automatically detected if installed\n"
+                "  3. Bloomberg C++ SDK: set BLPAPI_ROOT environment variable\n"
+                "  4. xbbg.set_sdk_path('/path/to/sdk') - manually set SDK path (Windows only)"
+            ) from e
+        raise
+    finally:
+        _importing_core = False
+
+
+def _build_lazy_attr_exports() -> dict[str, tuple[str, str]]:
+    exports = {
+        "EngineConfig": ("_core", "PyEngineConfig"),
+        "Engine": ("blp", "Engine"),
+    }
+    module_groups = (
+        ("_sdk", SDK_EXPORTS),
+        ("_core", CORE_EXPORTS),
+        ("blp", PACKAGE_BLP_EXPORTS),
+        ("backend", BACKEND_EXPORTS),
+        ("field_cache", FIELD_CACHE_EXPORTS),
+        ("services", SERVICE_EXPORTS),
+        ("schema", SCHEMA_LOOKUP_EXPORTS),
+        ("exceptions", EXCEPTION_EXPORTS),
+    )
+
+    for module_name, names in module_groups:
+        for name in names:
+            exports[name] = (module_name, name)
+
+    return exports
+
+
+_LAZY_ATTR_EXPORTS = _build_lazy_attr_exports()
 
 
 def __getattr__(name: str):
     """Lazy attribute access for deferred imports."""
-    global _importing_core, _core_module
-    if name in ("get_sdk_info", "set_sdk_path", "clear_sdk_path"):
-        from . import _sdk
-
-        return getattr(_sdk, name)
     if name == "_core":
-        # Return cached module if already imported
-        if _core_module is not None:
-            return _core_module
-        # Guard against recursive import
-        if _importing_core:
-            raise ImportError("Recursive import of _core detected")
-        _importing_core = True
-        try:
-            import importlib
+        return _import_core()
+    if name in MODULE_EXPORTS:
+        return importlib.import_module(f"xbbg.{name}")
 
-            # DLL search path is already set up at module level (top of __init__.py)
-            mod = importlib.import_module("xbbg._core")
-            _core_module = mod
-            return mod
-        except ImportError as e:
-            if "DLL load failed" in str(e) or "cannot open shared object" in str(e):
-                raise ImportError(
-                    f"{e}\n\n"
-                    "The xbbg native extension requires the Bloomberg C++ SDK shared library.\n"
-                    "Supported platforms: Linux x64, Windows x64/x86\n\n"
-                    "You can provide the SDK from any of these sources:\n"
-                    "  1. blpapi Python package: pip install blpapi --index-url "
-                    "https://blpapi.bloomberg.com/repository/releases/python/simple/\n"
-                    "  2. Bloomberg Terminal (DAPI) - automatically detected if installed\n"
-                    "  3. Bloomberg C++ SDK: set BLPAPI_ROOT environment variable\n"
-                    "  4. xbbg.set_sdk_path('/path/to/sdk') - manually set SDK path (Windows only)"
-                ) from e
-            raise
-        finally:
-            _importing_core = False
-    # Logging control (direct from _core, no blp dependency)
-    if name in ("set_log_level", "get_log_level"):
-        from . import _core
+    target = _LAZY_ATTR_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-        return getattr(_core, name)
-    # EngineConfig comes directly from Rust — single source of truth
-    if name == "EngineConfig":
-        from . import _core
-
-        return _core.PyEngineConfig
-    # blp module exports
-    if name in (
-        "Backend",
-        "arequest",
-        "request",
-        "bdp",
-        "bds",
-        "bdh",
-        "bdib",
-        "bdtick",
-        "bql",
-        "bsrch",
-        "bflds",
-        "beqs",
-        "blkp",
-        "bport",
-        "bcurves",
-        "bgovts",
-        "abdp",
-        "abds",
-        "abdh",
-        "abdib",
-        "abdtick",
-        "abql",
-        "absrch",
-        "abflds",
-        "abeqs",
-        "ablkp",
-        "abport",
-        "abcurves",
-        "abgovts",
-        # Streaming API
-        "Tick",
-        "Subscription",
-        "asubscribe",
-        "subscribe",
-        "astream",
-        "stream",
-        # VWAP Streaming
-        "avwap",
-        "vwap",
-        # Market Bar Streaming
-        "amktbar",
-        "mktbar",
-        # Market Depth Streaming
-        "adepth",
-        "depth",
-        # Chain Streaming
-        "achains",
-        "chains",
-        # Technical Analysis
-        "abta",
-        "bta",
-        "ta_studies",
-        "ta_study_params",
-        "generate_ta_stubs",
-        # Config
-        "configure",
-        "set_backend",
-        "get_backend",
-        # Lifecycle
-        "shutdown",
-        "reset",
-        "is_connected",
-        "Service",
-        "Operation",
-        "OutputMode",
-        "RequestParams",
-        "ExtractorHint",
-        # Schema introspection
-        "bops",
-        "abops",
-        "bschema",
-        "abschema",
-    ):
-        from . import blp
-
-        return getattr(blp, name)
-    # Exception exports
-    if name in (
-        "BlpError",
-        "BlpSessionError",
-        "BlpRequestError",
-        "BlpSecurityError",
-        "BlpFieldError",
-        "BlpValidationError",
-        "BlpTimeoutError",
-        "BlpInternalError",
-        "BlpBPipeError",
-    ):
-        from . import exceptions
-
-        return getattr(exceptions, name)
-    # Field cache exports
-    if name in (
-        "FieldTypeCache",
-        "FieldInfo",
-        "resolve_field_types",
-        "aresolve_field_types",
-        "cache_field_types",
-        "get_field_info",
-        "clear_field_cache",
-    ):
-        from . import field_cache
-
-        return getattr(field_cache, name)
-    # Schema exports
-    if name in (
-        "get_schema",
-        "aget_schema",
-        "get_operation",
-        "aget_operation",
-        "list_operations",
-        "alist_operations",
-        "get_enum_values",
-        "aget_enum_values",
-        "list_valid_elements",
-        "alist_valid_elements",
-        "generate_stubs",
-        "configure_ide_stubs",
-        "ServiceSchema",
-        "OperationSchema",
-        "ElementInfo",
-    ):
-        from . import schema
-
-        return getattr(schema, name)
-    # Extensions module
-    if name == "ext":
-        import importlib
-
-        return importlib.import_module("xbbg.ext")
-    # Markets module
-    if name == "markets":
-        import importlib
-
-        return importlib.import_module("xbbg.markets")
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = target
+    module = _import_core() if module_name == "_core" else importlib.import_module(f"xbbg.{module_name}")
+    return getattr(module, attr_name)
 
 
 def __dir__() -> list[str]:
     """Expose public attributes for tab completion."""
-    return __all__
+    return list(__all__)

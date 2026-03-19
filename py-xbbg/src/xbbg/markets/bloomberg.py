@@ -224,7 +224,7 @@ async def afetch_exchange_info(ticker: str, **kwargs) -> ExchangeInfo:
         data = await abdp_fn(tickers=ticker, flds=EXCHANGE_FIELDS, **kwargs)
         return _build_exchange_info_from_response(ticker, _to_pandas_wide(data))
     except Exception as e:
-        logger.error("Failed to fetch exchange info from Bloomberg for %s: %s", ticker, e)
+        logger.warning("Failed to fetch exchange info from Bloomberg for %s: %s", ticker, e)
         return ExchangeInfo(ticker=ticker, source="fallback")
 
 

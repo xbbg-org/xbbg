@@ -12,6 +12,7 @@
 //! used services pre-opened for low-latency request handling.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
@@ -20,14 +21,46 @@ use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, CorrelationId, EventType, Service, SessionOptions};
+use xbbg_core::{BlpError, EventType, Service};
 
+use super::dispatch::DispatchKey;
 use super::state::{
     BqlState, BsrchState, BulkDataState, FieldInfoState, GenericState, HistDataState,
     HistDataStreamState, IntradayBarState, IntradayBarStreamState, IntradayTickState,
     IntradayTickStreamState, LongMode, OutputFormat, RefDataState,
 };
-use super::{EngineConfig, ExtractorType, RequestParams};
+use super::{
+    start_configured_session, EngineConfig, ExtractorType, RequestParams, SlabKey, WorkerHealth,
+};
+
+fn iter_named_request_parameters(
+    params: &RequestParams,
+) -> impl Iterator<Item = (&str, &str)> + '_ {
+    params
+        .elements
+        .iter()
+        .flat_map(|pairs| pairs.iter())
+        .chain(params.options.iter().flat_map(|pairs| pairs.iter()))
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+}
+
+fn apply_named_request_parameter(
+    request: &mut xbbg_core::Request,
+    name: &str,
+    value: &str,
+) -> Result<(), BlpError> {
+    if name.contains('.') {
+        if let Ok(int_val) = value.parse::<i32>() {
+            request.set_nested_int(name, int_val)?;
+        } else {
+            request.set_nested_str(name, value)?;
+        }
+    } else if request.set_str(name, value).is_err() {
+        request.append_str(name, value)?;
+    }
+
+    Ok(())
+}
 
 /// Commands sent to a request worker.
 pub enum WorkerCommand {
@@ -35,6 +68,7 @@ pub enum WorkerCommand {
     Request {
         params: RequestParams,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
+        cancelled: Arc<AtomicBool>,
     },
     /// Execute a streaming request and send batches via mpsc channel.
     RequestStream {
@@ -170,11 +204,14 @@ struct RequestWorker {
     /// Configuration.
     config: Arc<EngineConfig>,
     /// Send times for round-trip measurement.
-    send_times: HashMap<usize, std::time::Instant>,
+    send_times: HashMap<SlabKey, std::time::Instant>,
     /// Track which requests we've already warned about (to avoid log spam).
-    warned_requests: std::collections::HashSet<usize>,
+    warned_requests: std::collections::HashSet<SlabKey>,
     /// Counter for slow request check interval.
     poll_counter: u32,
+    /// Per-request cancellation flags flipped when Python drops the awaitable.
+    cancellations: HashMap<SlabKey, Arc<AtomicBool>>,
+    health: Arc<AtomicU8>,
 }
 
 impl RequestWorker {
@@ -183,15 +220,9 @@ impl RequestWorker {
         id: usize,
         config: Arc<EngineConfig>,
         cmd_rx: mpsc::Receiver<WorkerCommand>,
+        health: Arc<AtomicU8>,
     ) -> Result<Self, BlpError> {
-        let mut opts = SessionOptions::new()?;
-        opts.set_server_host(&config.server_host)?;
-        opts.set_server_port(config.server_port);
-        opts.set_max_event_queue_size(config.max_event_queue_size);
-        let _ = opts.set_bandwidth_save_mode_disabled(true);
-
-        let session = Session::new(&opts)?;
-        session.start()?;
+        let session = start_configured_session(&config, false)?;
 
         let mut worker = Self {
             id,
@@ -203,6 +234,8 @@ impl RequestWorker {
             send_times: HashMap::new(),
             warned_requests: std::collections::HashSet::new(),
             poll_counter: 0,
+            cancellations: HashMap::new(),
+            health,
         };
 
         // Pre-warm commonly used services
@@ -245,8 +278,12 @@ impl RequestWorker {
                         xbbg_log::info!(worker_id = self.id, "RequestWorker shutting down");
                         return Ok(());
                     }
-                    Ok(WorkerCommand::Request { params, reply }) => {
-                        if let Err(e) = self.send_request(params, reply) {
+                    Ok(WorkerCommand::Request {
+                        params,
+                        reply,
+                        cancelled,
+                    }) => {
+                        if let Err(e) = self.send_request(params, reply, cancelled) {
                             xbbg_log::error!(worker_id = self.id, error = %e, "request error");
                         }
                     }
@@ -267,10 +304,14 @@ impl RequestWorker {
                 }
             }
 
+            self.process_cancellations();
+
             // 2. Poll Bloomberg (short timeout for responsiveness)
             if let Ok(ev) = self.session.next_event(Some(10)) {
                 self.dispatch_event(ev);
             }
+
+            self.process_cancellations();
 
             // 3. Periodically check for slow requests and warn
             self.poll_counter += 1;
@@ -295,6 +336,49 @@ impl RequestWorker {
                 );
                 self.warned_requests.insert(key);
             }
+        }
+    }
+
+    fn process_cancellations(&mut self) {
+        let cancelled_keys: Vec<SlabKey> = self
+            .cancellations
+            .iter()
+            .filter_map(|(&key, flag)| flag.load(Ordering::Acquire).then_some(key))
+            .collect();
+
+        for key in cancelled_keys {
+            self.cancel_request(key);
+        }
+    }
+
+    fn cancel_request(&mut self, key: SlabKey) {
+        let cid = DispatchKey::from_slab_key(key).to_correlation_id();
+
+        if let Err(error) = self.session.cancel(&cid) {
+            xbbg_log::warn!(
+                worker_id = self.id,
+                key = key,
+                error = %error,
+                "failed to cancel Bloomberg request"
+            );
+            self.health.store(2, Ordering::Release);
+            self.drain_in_flight_requests("Bloomberg request cancellation failed");
+            return;
+        }
+
+        xbbg_log::info!(
+            worker_id = self.id,
+            key = key,
+            "cancelled Bloomberg request"
+        );
+
+        self.send_times.remove(&key);
+        self.warned_requests.remove(&key);
+        self.cancellations.remove(&key);
+
+        if self.requests.contains(key) {
+            let state = self.requests.remove(key);
+            drop(state);
         }
     }
 
@@ -340,6 +424,7 @@ impl RequestWorker {
         &mut self,
         params: RequestParams,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
+        cancelled: Arc<AtomicBool>,
     ) -> Result<(), BlpError> {
         let t0 = std::time::Instant::now();
         self.ensure_service(&params.service)?;
@@ -360,32 +445,72 @@ impl RequestWorker {
         xbbg_log::debug!(worker_id = self.id, "request state created");
 
         let key = self.requests.insert(state);
-        let cid = CorrelationId::Int(key as i64);
+        let dispatch_key = DispatchKey::from_slab_key(key);
+        let cid = dispatch_key.to_correlation_id();
 
-        // Build request from params
-        let service = self.services.get(&params.service).unwrap();
-        xbbg_log::debug!(
-            worker_id = self.id,
-            operation = %params.operation,
-            securities = ?params.securities,
-            start_date = ?params.start_date,
-            end_date = ?params.end_date,
-            "building request"
-        );
-        let request = self.build_request_from_params(service, &params)?;
-        xbbg_log::debug!(worker_id = self.id, "request built");
+        let result = (|| -> Result<(), BlpError> {
+            // Build request from params
+            let service = self
+                .services
+                .get(&params.service)
+                .ok_or_else(|| BlpError::Internal {
+                    detail: format!(
+                        "service '{}' missing from worker cache after ensure_service",
+                        params.service
+                    ),
+                })?;
+            xbbg_log::debug!(
+                worker_id = self.id,
+                operation = %params.effective_operation(),
+                securities = ?params.securities,
+                start_date = ?params.start_date,
+                end_date = ?params.end_date,
+                "building request"
+            );
+            let request = self.build_request_from_params(service, &params)?;
+            xbbg_log::debug!(worker_id = self.id, "request built");
 
-        let t_send = std::time::Instant::now();
-        self.session.send_request(&request, None, Some(&cid))?;
-        self.send_times.insert(key, t_send);
+            let t_send = std::time::Instant::now();
+            let actual_cid = self.session.send_request(&request, None, Some(&cid))?;
+            let actual_dispatch_key =
+                DispatchKey::from_correlation_id(&actual_cid).ok_or_else(|| {
+                    BlpError::Internal {
+                        detail: format!(
+                            "Bloomberg returned non-dispatch correlation ID for request: {:?}",
+                            actual_cid
+                        ),
+                    }
+                })?;
+            let actual_key = actual_dispatch_key.to_slab_key();
+            if actual_key != key {
+                return Err(BlpError::Internal {
+                    detail: format!(
+                        "Bloomberg returned unexpected dispatch correlation ID {:?} for slab key {}",
+                        actual_cid, key
+                    ),
+                });
+            }
+            self.send_times.insert(actual_key, t_send);
+            self.cancellations.insert(actual_key, cancelled);
 
-        xbbg_log::debug!(
-            worker_id = self.id,
-            key = key,
-            service = %params.service,
-            operation = %params.operation,
-            "request sent"
-        );
+            xbbg_log::debug!(
+                worker_id = self.id,
+                key = key,
+                service = %params.service,
+                operation = %params.effective_operation(),
+                "request sent"
+            );
+            Ok(())
+        })();
+
+        if let Err(err) = result {
+            if self.requests.contains(key) {
+                self.requests.remove(key).fail(err);
+            }
+            self.send_times.remove(&key);
+            self.cancellations.remove(&key);
+            return Ok(());
+        }
         Ok(())
     }
 
@@ -511,19 +636,58 @@ impl RequestWorker {
         };
 
         let key = self.requests.insert(state);
-        let cid = CorrelationId::Int(key as i64);
+        let dispatch_key = DispatchKey::from_slab_key(key);
+        let cid = dispatch_key.to_correlation_id();
 
-        let service = self.services.get(&params.service).unwrap();
-        let request = self.build_request_from_params(service, &params)?;
+        let result = (|| -> Result<(), BlpError> {
+            let service = self
+                .services
+                .get(&params.service)
+                .ok_or_else(|| BlpError::Internal {
+                    detail: format!(
+                        "service '{}' missing from worker cache after ensure_service",
+                        params.service
+                    ),
+                })?;
+            let request = self.build_request_from_params(service, &params)?;
 
-        self.session.send_request(&request, None, Some(&cid))?;
-        xbbg_log::debug!(
-            worker_id = self.id,
-            key = key,
-            service = %params.service,
-            operation = %params.operation,
-            "stream request sent"
-        );
+            let actual_cid = self.session.send_request(&request, None, Some(&cid))?;
+            let actual_dispatch_key =
+                DispatchKey::from_correlation_id(&actual_cid).ok_or_else(|| {
+                    BlpError::Internal {
+                        detail: format!(
+                        "Bloomberg returned non-dispatch correlation ID for stream request: {:?}",
+                        actual_cid
+                    ),
+                    }
+                })?;
+            let actual_key = actual_dispatch_key.to_slab_key();
+            if actual_key != key {
+                return Err(BlpError::Internal {
+                    detail: format!(
+                        "Bloomberg returned unexpected stream dispatch correlation ID {:?} for slab key {}",
+                        actual_cid, key
+                    ),
+                });
+            }
+            xbbg_log::debug!(
+                worker_id = self.id,
+                key = key,
+                service = %params.service,
+                operation = %params.effective_operation(),
+                "stream request sent"
+            );
+            Ok(())
+        })();
+
+        if let Err(err) = result {
+            if self.requests.contains(key) {
+                self.requests.remove(key).fail(err);
+            }
+            self.send_times.remove(&key);
+            return Ok(());
+        }
+
         Ok(())
     }
 
@@ -533,8 +697,9 @@ impl RequestWorker {
         service: &Service,
         params: &RequestParams,
     ) -> Result<xbbg_core::Request, BlpError> {
-        xbbg_log::trace!(operation = %params.operation, "creating request");
-        let mut request = service.create_request(&params.operation)?;
+        let operation = params.effective_operation();
+        xbbg_log::trace!(operation = %operation, "creating request");
+        let mut request = service.create_request(operation)?;
         xbbg_log::trace!("request created");
 
         // Set securities (multi or single)
@@ -603,26 +768,11 @@ impl RequestWorker {
             request.set_int("interval", interval as i32)?;
         }
 
-        // Set generic elements (for BQL, bsrch, options, etc.)
-        // - Dotted paths (e.g., "priceSource.securityName") use set_nested_str for nested elements
-        // - Non-dotted names try set_str first (for scalars), fall back to append_str (for arrays)
-        if let Some(ref elements) = params.elements {
-            for (name, value) in elements {
-                if name.contains('.') {
-                    // Nested element path - use set_nested_str
-                    // Try as string first, then try as integer if it looks like a number
-                    if let Ok(int_val) = value.parse::<i32>() {
-                        request.set_nested_int(name, int_val)?;
-                    } else {
-                        request.set_nested_str(name, value)?;
-                    }
-                } else {
-                    // Non-nested: try scalar set first, fall back to append for arrays
-                    if request.set_str(name, value).is_err() {
-                        request.append_str(name, value)?;
-                    }
-                }
-            }
+        // Apply generic request parameters from both `elements` and request-level `options`.
+        // - Dotted paths (e.g., "priceSource.securityName") use nested setters
+        // - Non-dotted names try scalar set first, fall back to append for arrays
+        for (name, value) in iter_named_request_parameters(params) {
+            apply_named_request_parameter(&mut request, name, value)?;
         }
 
         // Set apiflds field IDs
@@ -688,8 +838,12 @@ impl RequestWorker {
     fn handle_partial_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
-                if let Some(state) = self.requests.get_mut(key as usize) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
+                if let Some(state) = self.requests.get_mut(key) {
                     state.on_partial(msg);
                     xbbg_log::trace!(worker_id = self.id, key = key, "partial response");
                 }
@@ -700,20 +854,25 @@ impl RequestWorker {
     fn handle_response(&mut self, msg: &xbbg_core::Message<'_>) {
         let n = msg.num_correlation_ids();
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
-                if self.requests.contains(key as usize) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
+                if self.requests.contains(key) {
                     // Log round-trip time and clean up tracking
-                    if let Some(t_send) = self.send_times.remove(&(key as usize)) {
+                    if let Some(t_send) = self.send_times.remove(&key) {
                         let rtt_ms = t_send.elapsed().as_micros() as f64 / 1000.0;
-                        xbbg_log::info!(
+                        xbbg_log::debug!(
                             worker_id = self.id,
                             rtt_ms = rtt_ms,
                             key = key,
                             "bloomberg_roundtrip"
                         );
                     }
-                    self.warned_requests.remove(&(key as usize));
-                    let state = self.requests.remove(key as usize);
+                    self.warned_requests.remove(&key);
+                    self.cancellations.remove(&key);
+                    let state = self.requests.remove(key);
                     state.finish_and_reply(msg);
                     xbbg_log::debug!(worker_id = self.id, key = key, "response completed");
                 }
@@ -727,14 +886,19 @@ impl RequestWorker {
         let n = msg.num_correlation_ids();
 
         for i in 0..n {
-            if let Some(CorrelationId::Int(key)) = msg.correlation_id(i) {
+            if let Some(correlation_id) = msg.correlation_id(i) {
+                let Some(dispatch_key) = DispatchKey::from_correlation_id(&correlation_id) else {
+                    continue;
+                };
+                let key = dispatch_key.to_slab_key();
                 if msg_type == "RequestFailure" {
                     xbbg_log::error!(worker_id = self.id, key = key, "request failed");
-                    if self.requests.contains(key as usize) {
+                    if self.requests.contains(key) {
                         // Clean up tracking
-                        self.send_times.remove(&(key as usize));
-                        self.warned_requests.remove(&(key as usize));
-                        let state = self.requests.remove(key as usize);
+                        self.send_times.remove(&key);
+                        self.warned_requests.remove(&key);
+                        self.cancellations.remove(&key);
+                        let state = self.requests.remove(key);
                         state.fail(BlpError::Internal {
                             detail: "RequestFailure".into(),
                         });
@@ -744,6 +908,31 @@ impl RequestWorker {
         }
     }
 
+    fn drain_in_flight_requests(&mut self, reason: &str) {
+        let in_flight = self.requests.len();
+        if in_flight == 0 {
+            return;
+        }
+
+        let keys: Vec<SlabKey> = self.requests.iter().map(|(k, _)| k).collect();
+        for key in keys {
+            self.send_times.remove(&key);
+            self.warned_requests.remove(&key);
+            self.cancellations.remove(&key);
+            let state = self.requests.remove(key);
+            state.fail(BlpError::Internal {
+                detail: format!("{} (worker={})", reason, self.id),
+            });
+        }
+
+        xbbg_log::error!(
+            worker_id = self.id,
+            drained = in_flight,
+            reason = reason,
+            "drained in-flight requests"
+        );
+    }
+
     fn handle_session_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
@@ -751,20 +940,17 @@ impl RequestWorker {
             "SessionStarted" => {
                 xbbg_log::info!(worker_id = self.id, "session started");
             }
-            "SessionTerminated" | "SessionConnectionDown" => {
-                let in_flight = self.requests.len();
-                xbbg_log::error!(
-                    worker_id = self.id,
-                    in_flight_requests = in_flight,
-                    "session terminated/down"
-                );
-                if in_flight > 0 {
-                    xbbg_log::warn!(
-                        worker_id = self.id,
-                        count = in_flight,
-                        "in-flight requests will not receive Bloomberg responses"
-                    );
-                }
+            "SessionTerminated" => {
+                self.drain_in_flight_requests("Bloomberg session terminated");
+                self.health.store(2, Ordering::Release);
+            }
+            "SessionConnectionDown" => {
+                self.drain_in_flight_requests("Bloomberg session connection lost");
+                self.health.store(2, Ordering::Release);
+            }
+            "SessionConnectionUp" => {
+                self.health.store(0, Ordering::Release);
+                xbbg_log::info!(worker_id = self.id, "session connection restored");
             }
             _ => {
                 xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
@@ -787,35 +973,64 @@ pub struct WorkerHandle {
     pub cmd_tx: mpsc::Sender<WorkerCommand>,
     /// Thread handle (for shutdown).
     thread: Option<JoinHandle<()>>,
+    health: Arc<AtomicU8>,
 }
 
 impl WorkerHandle {
     /// Spawn a new worker on a dedicated thread.
     pub fn spawn(id: usize, config: Arc<EngineConfig>) -> Result<Self, BlpError> {
         let (cmd_tx, cmd_rx) = mpsc::channel(config.command_queue_size);
+        let (startup_tx, startup_rx) = std::sync::mpsc::channel();
+        let health = Arc::new(AtomicU8::new(0));
 
         let config_clone = config.clone();
+        let worker_health = health.clone();
         let thread = thread::Builder::new()
             .name(format!("xbbg-worker-{}", id))
-            .spawn(move || match RequestWorker::new(id, config_clone, cmd_rx) {
-                Ok(mut worker) => {
-                    if let Err(e) = worker.run() {
-                        xbbg_log::error!(worker_id = id, error = %e, "worker error");
+            .spawn(
+                move || match RequestWorker::new(id, config_clone, cmd_rx, worker_health) {
+                    Ok(mut worker) => {
+                        let _ = startup_tx.send(Ok(()));
+                        if let Err(e) = worker.run() {
+                            xbbg_log::error!(worker_id = id, error = %e, "worker error");
+                        }
                     }
-                }
-                Err(e) => {
-                    xbbg_log::error!(worker_id = id, error = %e, "worker creation failed");
-                }
-            })
+                    Err(e) => {
+                        let detail = e.to_string();
+                        let _ = startup_tx.send(Err(e));
+                        xbbg_log::error!(worker_id = id, error = %detail, "worker creation failed");
+                    }
+                },
+            )
             .map_err(|e| BlpError::Internal {
                 detail: format!("failed to spawn worker thread: {}", e),
             })?;
+
+        match startup_rx.recv() {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => return Err(err),
+            Err(err) => {
+                return Err(BlpError::Internal {
+                    detail: format!("worker startup channel closed unexpectedly: {err}"),
+                });
+            }
+        }
 
         Ok(Self {
             id,
             cmd_tx,
             thread: Some(thread),
+            health,
         })
+    }
+
+    pub fn health(&self) -> WorkerHealth {
+        match self.health.load(Ordering::Acquire) {
+            0 => WorkerHealth::Healthy,
+            1 => WorkerHealth::Degraded,
+            2 => WorkerHealth::Dead,
+            _ => WorkerHealth::Dead,
+        }
     }
 
     /// Signal shutdown without waiting (non-blocking).
@@ -842,5 +1057,37 @@ impl Drop for WorkerHandle {
         // Non-blocking: just signal, don't wait
         // Thread will terminate when it sees Shutdown or when process exits
         self.signal_shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::RequestParams;
+
+    #[test]
+    fn iter_named_request_parameters_includes_options_after_elements() {
+        let params = RequestParams {
+            elements: Some(vec![(
+                "periodicitySelection".to_string(),
+                "DAILY".to_string(),
+            )]),
+            options: Some(vec![
+                ("adjustmentSplit".to_string(), "true".to_string()),
+                ("adjustmentNormal".to_string(), "true".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        let collected: Vec<(&str, &str)> = iter_named_request_parameters(&params).collect();
+
+        assert_eq!(
+            collected,
+            vec![
+                ("periodicitySelection", "DAILY"),
+                ("adjustmentSplit", "true"),
+                ("adjustmentNormal", "true"),
+            ]
+        );
     }
 }

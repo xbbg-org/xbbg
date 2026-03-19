@@ -10,6 +10,7 @@ use tokio::sync::oneshot;
 use xbbg_log::trace;
 
 use super::typed_builder::{ArrowType, ColumnSet};
+use super::value_utils::{append_long_value_row, append_wide_row};
 use xbbg_core::{BlpError, Element, Message, Value};
 
 /// Output format for reference data.
@@ -281,245 +282,64 @@ impl RefDataState {
     ) {
         let detail =
             format!("code={code} category={category} subcategory={subcategory} message={message}");
-
-        match self.long_mode {
-            LongMode::String => {
-                self.columns.append_str("ticker", ticker);
-                self.columns.append_str("field", "__SECURITY_ERROR__");
-                self.columns.append_str("value", &detail);
-            }
-            LongMode::WithMetadata => {
-                self.columns.append_str("ticker", ticker);
-                self.columns.append_str("field", "__SECURITY_ERROR__");
-                self.columns.append_str("value", &detail);
-                self.columns.append_str("dtype", "string");
-            }
-            LongMode::Typed => {
-                self.columns.append_str("ticker", ticker);
-                self.columns.append_str("field", "__SECURITY_ERROR__");
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_str("value_str", &detail);
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-        }
-
-        self.columns.end_row();
+        let value = Some(Value::String(detail.as_str()));
+        append_long_value_row(
+            &mut self.columns,
+            self.long_mode,
+            "__SECURITY_ERROR__",
+            &value,
+            Some("string"),
+            |columns| columns.append_str("ticker", ticker),
+        );
     }
 
     /// Process security in long format (one row per field).
     fn process_long_format(&mut self, ticker: &str, field_data: &Element) {
-        for field_name in &self.field_names.clone() {
+        let long_mode = self.long_mode;
+        let field_names = &self.field_names;
+        let field_types = &self.field_types;
+        let columns = &mut self.columns;
+
+        for field_name in field_names {
             // Get the field element
             let value = field_data
                 .get_by_str(field_name)
                 .and_then(|e| e.get_value(0));
+            let dtype = value
+                .as_ref()
+                .map(|v| dtype_from_hints(field_types, field_name, v));
 
-            match self.long_mode {
-                LongMode::String => {
-                    self.columns.append_str("ticker", ticker);
-                    self.columns.append_str("field", field_name);
-                    if let Some(v) = &value {
-                        self.columns.append_str("value", &value_to_string(v));
-                    } else {
-                        self.columns.append_null("value");
-                    }
-                }
-                LongMode::WithMetadata => {
-                    self.columns.append_str("ticker", ticker);
-                    self.columns.append_str("field", field_name);
-                    if let Some(v) = &value {
-                        self.columns.append_str("value", &value_to_string(v));
-                        let dtype = self.get_dtype(field_name, v);
-                        self.columns.append_str("dtype", dtype);
-                    } else {
-                        self.columns.append_null("value");
-                        self.columns.append_str("dtype", "null");
-                    }
-                }
-                LongMode::Typed => {
-                    self.columns.append_str("ticker", ticker);
-                    self.columns.append_str("field", field_name);
-                    self.append_typed_value(&value);
-                }
-            }
-            self.columns.end_row();
+            append_long_value_row(columns, long_mode, field_name, &value, dtype, |columns| {
+                columns.append_str("ticker", ticker)
+            });
         }
     }
 
     /// Process security in wide format (one row per ticker).
     fn process_wide_format(&mut self, ticker: &str, field_data: &Element) {
-        self.columns.append_str("ticker", ticker);
-
-        for field_name in &self.field_names.clone() {
-            let value = field_data
-                .get_by_str(field_name)
-                .and_then(|e| e.get_value(0));
-
-            if let Some(v) = value {
-                self.columns.append(field_name, v);
-            } else {
-                self.columns.append_null(field_name);
-            }
-        }
-        self.columns.end_row();
-    }
-
-    /// Get dtype string for a value.
-    fn get_dtype(&self, field_name: &str, value: &Value) -> &'static str {
-        // Use type hint if available
-        if let Some(hint) = self.field_types.get(field_name) {
-            return hint.type_name();
-        }
-        // Otherwise infer from value
-        ArrowType::from_value(value).type_name()
-    }
-
-    /// Append typed value to multi-value columns (for Typed mode).
-    fn append_typed_value(&mut self, value: &Option<Value>) {
-        match value {
-            Some(Value::Float64(v)) => {
-                self.columns.append("value_f64", Value::Float64(*v));
-                self.columns.append_null("value_i64");
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-            Some(Value::Int64(v)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append("value_i64", Value::Int64(*v));
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-            Some(Value::Int32(v)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append("value_i64", Value::Int64(*v as i64));
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-            Some(Value::String(s)) | Some(Value::Enum(s)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_str("value_str", s);
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-            Some(Value::Bool(b)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_null("value_str");
-                self.columns.append("value_bool", Value::Bool(*b));
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-            Some(Value::Date32(d)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append("value_date", Value::Date32(*d));
-                self.columns.append_null("value_ts");
-            }
-            Some(Value::TimestampMicros(ts)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append("value_ts", Value::TimestampMicros(*ts));
-            }
-            Some(Value::Datetime(dt)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns
-                    .append("value_ts", Value::TimestampMicros(dt.to_micros()));
-            }
-            Some(Value::Time64Micros(t)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append("value_ts", Value::TimestampMicros(*t));
-            }
-            Some(Value::Byte(b)) => {
-                self.columns.append_null("value_f64");
-                self.columns.append("value_i64", Value::Int64(*b as i64));
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-            Some(Value::Null) | None => {
-                self.columns.append_null("value_f64");
-                self.columns.append_null("value_i64");
-                self.columns.append_null("value_str");
-                self.columns.append_null("value_bool");
-                self.columns.append_null("value_date");
-                self.columns.append_null("value_ts");
-            }
-        }
+        let field_names = &self.field_names;
+        append_wide_row(
+            &mut self.columns,
+            field_names,
+            |columns| columns.append_str("ticker", ticker),
+            |field_name| {
+                field_data
+                    .get_by_str(field_name)
+                    .and_then(|e| e.get_value(0))
+            },
+        );
     }
 }
 
-/// Convert a Value to its string representation.
-fn value_to_string(value: &Value) -> String {
-    match value {
-        Value::Null => String::new(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int32(i) => i.to_string(),
-        Value::Int64(i) => i.to_string(),
-        Value::Float64(f) => f.to_string(),
-        Value::String(s) | Value::Enum(s) => s.to_string(),
-        Value::Date32(days) => {
-            use chrono::{Duration, NaiveDate};
-            let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-            let date = epoch + Duration::days(*days as i64);
-            date.format("%Y-%m-%d").to_string()
-        }
-        Value::TimestampMicros(micros) => {
-            use chrono::DateTime;
-            let secs = micros / 1_000_000;
-            let nanos = ((micros % 1_000_000) * 1000) as u32;
-            if let Some(dt) = DateTime::from_timestamp(secs, nanos) {
-                dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-            } else {
-                format!("{}us", micros)
-            }
-        }
-        Value::Datetime(dt) => {
-            use chrono::DateTime;
-            let micros = dt.to_micros();
-            let secs = micros / 1_000_000;
-            let nanos = ((micros % 1_000_000) * 1000) as u32;
-            if let Some(dt) = DateTime::from_timestamp(secs, nanos) {
-                dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-            } else {
-                format!("{}us", micros)
-            }
-        }
-        Value::Time64Micros(micros) => {
-            let t = micros / 1_000_000;
-            let frac = (micros % 1_000_000).unsigned_abs();
-            format!(
-                "{:02}:{:02}:{:02}.{:06}",
-                t / 3600,
-                (t % 3600) / 60,
-                t % 60,
-                frac
-            )
-        }
-        Value::Byte(b) => b.to_string(),
+fn dtype_from_hints(
+    field_types: &HashMap<String, ArrowType>,
+    field_name: &str,
+    value: &Value<'_>,
+) -> &'static str {
+    // Use type hint if available
+    if let Some(hint) = field_types.get(field_name) {
+        return hint.type_name();
     }
+    // Otherwise infer from value
+    ArrowType::from_value(value).type_name()
 }

@@ -14,6 +14,7 @@ mod intradaytick_stream;
 mod refdata;
 mod subscription;
 pub mod typed_builder;
+mod value_utils;
 
 pub use bql::BqlState;
 pub use bsrch::BsrchState;

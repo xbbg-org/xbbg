@@ -44,7 +44,11 @@ pub struct FxConversionInfo {
 /// ```
 pub fn build_fx_pair(from_ccy: &str, to_ccy: &str) -> FxConversionInfo {
     // Check for pence/cents (lowercase last char)
-    let factor = if !from_ccy.is_empty() && from_ccy.chars().last().unwrap().is_lowercase() {
+    let factor = if from_ccy
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_lowercase())
+    {
         100.0
     } else {
         1.0

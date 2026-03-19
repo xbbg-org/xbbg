@@ -1,0 +1,6 @@
+[project]
+name = "xbbg"
+
+[tool.maturin]
+module-name = "xbbg._core"
+python-source = "../../py-xbbg/src"

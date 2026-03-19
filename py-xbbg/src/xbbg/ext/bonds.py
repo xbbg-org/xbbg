@@ -23,11 +23,10 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from xbbg.ext._utils import _fmt_date
+from xbbg.ext._utils import _abdp_fields, _abds_field, _fmt_date, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -182,9 +181,7 @@ async def abond_info(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_BOND_INFO_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_INFO_FIELDS, **kwargs)
 
 
 async def abond_risk(
@@ -229,13 +226,13 @@ async def abond_risk(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abdp(tickers=ticker, flds=_BOND_RISK_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_RISK_FIELDS, overrides=overrides, **kwargs)
 
 
 async def abond_spreads(
@@ -282,15 +279,15 @@ async def abond_spreads(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
     if benchmark is not None:
         overrides["YAS_BNCHMRK_BOND"] = benchmark
 
-    return await abdp(tickers=ticker, flds=_BOND_SPREAD_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_SPREAD_FIELDS, overrides=overrides, **kwargs)
 
 
 async def abond_cashflows(
@@ -327,13 +324,13 @@ async def abond_cashflows(
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abds(tickers=ticker, flds=_FLD_DES_CASH_FLOW, overrides=overrides, **kwargs)
+    return await _abds_field(tickers=ticker, field=_FLD_DES_CASH_FLOW, overrides=overrides, **kwargs)
 
 
 async def abond_key_rates(
@@ -389,13 +386,13 @@ async def abond_key_rates(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abdp(tickers=ticker, flds=_BOND_KEY_RATE_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_BOND_KEY_RATE_FIELDS, overrides=overrides, **kwargs)
 
 
 async def abond_curve(
@@ -446,136 +443,23 @@ async def abond_curve(
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if settle_dt is not None:
-        overrides["SETTLE_DT"] = _fmt_date(settle_dt)
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
-    return await abdp(
+    return await _abdp_fields(
         tickers=tickers,
-        flds=flds or _BOND_CURVE_DEFAULT_FIELDS,
+        fields=flds or _BOND_CURVE_DEFAULT_FIELDS,
         overrides=overrides,
         **kwargs,
     )
 
 
-# =============================================================================
-# Sync wrappers
-# =============================================================================
-
-
-def bond_info(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get bond reference metadata.
-
-    Sync wrapper for abond_info(). See abond_info() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        df = ext.bond_info("T 4.5 05/15/38 Govt")
-    """
-    return asyncio.run(abond_info(ticker=ticker, **kwargs))
-
-
-def bond_risk(
-    ticker: str,
-    *,
-    settle_dt: str | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get bond duration and risk metrics.
-
-    Sync wrapper for abond_risk(). See abond_risk() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        df = ext.bond_risk("T 4.5 05/15/38 Govt")
-    """
-    return asyncio.run(abond_risk(ticker=ticker, settle_dt=settle_dt, **kwargs))
-
-
-def bond_spreads(
-    ticker: str,
-    *,
-    settle_dt: str | None = None,
-    benchmark: str | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get bond spread analytics.
-
-    Sync wrapper for abond_spreads(). See abond_spreads() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        df = ext.bond_spreads("T 4.5 05/15/38 Govt")
-    """
-    return asyncio.run(abond_spreads(ticker=ticker, settle_dt=settle_dt, benchmark=benchmark, **kwargs))
-
-
-def bond_cashflows(
-    ticker: str,
-    *,
-    settle_dt: str | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get bond cash flow schedule.
-
-    Sync wrapper for abond_cashflows(). See abond_cashflows() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        df = ext.bond_cashflows("T 4.5 05/15/38 Govt")
-    """
-    return asyncio.run(abond_cashflows(ticker=ticker, settle_dt=settle_dt, **kwargs))
-
-
-def bond_key_rates(
-    ticker: str,
-    *,
-    settle_dt: str | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get bond key rate durations.
-
-    Sync wrapper for abond_key_rates(). See abond_key_rates() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        df = ext.bond_key_rates("T 4.5 05/15/38 Govt")
-    """
-    return asyncio.run(abond_key_rates(ticker=ticker, settle_dt=settle_dt, **kwargs))
-
-
-def bond_curve(
-    tickers: list[str],
-    flds: list[str] | None = None,
-    *,
-    settle_dt: str | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get bond curve and relative value comparison.
-
-    Sync wrapper for abond_curve(). See abond_curve() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        df = ext.bond_curve(
-            [
-                "T 2.5 05/15/25 Govt",
-                "T 4.5 05/15/38 Govt",
-            ]
-        )
-    """
-    return asyncio.run(abond_curve(tickers=tickers, flds=flds, settle_dt=settle_dt, **kwargs))
+bond_info = _syncify(abond_info)
+bond_risk = _syncify(abond_risk)
+bond_spreads = _syncify(abond_spreads)
+bond_cashflows = _syncify(abond_cashflows)
+bond_key_rates = _syncify(abond_key_rates)
+bond_curve = _syncify(abond_curve)

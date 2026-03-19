@@ -19,7 +19,6 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -35,7 +34,7 @@ from xbbg._core import (
     ext_get_dvd_type,
     ext_rename_dividend_columns,
 )
-from xbbg.ext._utils import _fmt_date
+from xbbg.ext._utils import _fmt_date, _syncify
 
 logger = logging.getLogger(__name__)
 
@@ -644,112 +643,7 @@ async def aetf_holdings(
     return df
 
 
-# =============================================================================
-# Sync wrappers
-# =============================================================================
-
-
-def dividend(
-    tickers: str | list[str],
-    typ: str = "all",
-    *,
-    start_date: str | date | None = None,
-    end_date: str | date | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get dividend and split history for securities.
-
-    Sync wrapper for adividend(). See adividend() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get all dividend history
-        df = ext.dividend("AAPL US Equity")
-
-        # Get only splits
-        df = ext.dividend("TSLA US Equity", typ="split")
-    """
-    return asyncio.run(adividend(tickers=tickers, typ=typ, start_date=start_date, end_date=end_date, **kwargs))
-
-
-def earnings(
-    ticker: str,
-    by: str = "Geo",
-    typ: str = "Revenue",
-    *,
-    ccy: str | None = None,
-    level: int | None = None,
-    year: int | None = None,
-    periods: int | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get earnings breakdown for a security.
-
-    Sync wrapper for aearnings(). See aearnings() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get geographic revenue breakdown
-        df = ext.earnings("AMD US Equity", by="Geo")
-
-        # Get product revenue breakdown for specific year
-        df = ext.earnings("AAPL US Equity", by="Product", year=2023)
-    """
-    return asyncio.run(
-        aearnings(ticker=ticker, by=by, typ=typ, ccy=ccy, level=level, year=year, periods=periods, **kwargs)
-    )
-
-
-def turnover(
-    tickers: str | list[str],
-    *,
-    start_date: str | date | None = None,
-    end_date: str | date | None = None,
-    ccy: str = "USD",
-    factor: float = 1e6,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get trading volume and turnover for securities.
-
-    Sync wrapper for aturnover(). See aturnover() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get turnover in millions USD
-        df = ext.turnover(["AAPL US Equity", "MSFT US Equity"], start_date="2024-01-01")
-
-        # Get turnover in local currency
-        df = ext.turnover("7203 JP Equity", ccy="local")
-    """
-    return asyncio.run(
-        aturnover(tickers=tickers, start_date=start_date, end_date=end_date, ccy=ccy, factor=factor, **kwargs)
-    )
-
-
-def etf_holdings(
-    etf_ticker: str,
-    *,
-    fields: list[str] | None = None,
-    **kwargs,
-) -> IntoDataFrame:
-    """Get ETF holdings using Bloomberg Query Language (BQL).
-
-    Sync wrapper for aetf_holdings(). See aetf_holdings() for full documentation.
-
-    Example::
-
-        from xbbg import ext
-
-        # Get holdings for an ETF
-        df = ext.etf_holdings("SPY US Equity")
-
-        # Get holdings with additional fields
-        df = ext.etf_holdings("SPY US Equity", fields=["name", "px_last"])
-    """
-    return asyncio.run(aetf_holdings(etf_ticker=etf_ticker, fields=fields, **kwargs))
+dividend = _syncify(adividend)
+earnings = _syncify(aearnings)
+turnover = _syncify(aturnover)
+etf_holdings = _syncify(aetf_holdings)

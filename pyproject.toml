@@ -25,7 +25,6 @@ dynamic = ["version"]
 dependencies = [
   "narwhals>=1.30",
   "pyarrow>=22.0.0",
-  "lief>=0.17",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +39,11 @@ Homepage = "https://github.com/alpha-xone/xbbg"
 Documentation = "https://xbbg.readthedocs.io/"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
+
+# ── pyo3-stub-gen configuration (reuses maturin keys for compatibility) ───────
+[tool.maturin]
+module-name = "xbbg._core"
+python-source = "py-xbbg/src"
 
 # ── Version from git tags (equivalent to release/0.x setuptools_scm config) ──
 [tool.setuptools_scm]
@@ -72,6 +76,7 @@ exclude = [
   "dist",
   "venv",
   ".venv",
+  "**/*.pyi",
 ]
 
 [tool.ruff.format]

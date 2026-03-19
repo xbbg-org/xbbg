@@ -27,9 +27,10 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
+
+from xbbg.ext._utils import _abdp_fields, _abds_field, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -148,9 +149,7 @@ async def acdx_info(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_CDX_INFO_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_INFO_FIELDS, **kwargs)
 
 
 async def acdx_defaults(ticker: str, **kwargs) -> IntoDataFrame:
@@ -178,9 +177,7 @@ async def acdx_defaults(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
-    return await abds(tickers=ticker, flds="CDS_INDEX_DEFAULT_INFORMATION", **kwargs)
+    return await _abds_field(tickers=ticker, field="CDS_INDEX_DEFAULT_INFORMATION", **kwargs)
 
 
 async def acdx_pricing(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
@@ -224,13 +221,11 @@ async def acdx_pricing(ticker: str, *, recovery_rate: float | None = None, **kwa
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if recovery_rate is not None:
         overrides["CDS_RR"] = str(recovery_rate)
 
-    return await abdp(tickers=ticker, flds=_CDX_PRICING_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_PRICING_FIELDS, overrides=overrides, **kwargs)
 
 
 async def acdx_risk(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
@@ -270,13 +265,11 @@ async def acdx_risk(ticker: str, *, recovery_rate: float | None = None, **kwargs
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     overrides: dict[str, str] = {}
     if recovery_rate is not None:
         overrides["CDS_RR"] = str(recovery_rate)
 
-    return await abdp(tickers=ticker, flds=_CDX_RISK_FIELDS, overrides=overrides, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_RISK_FIELDS, overrides=overrides, **kwargs)
 
 
 async def acdx_basis(ticker: str, **kwargs) -> IntoDataFrame:
@@ -309,9 +302,7 @@ async def acdx_basis(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
-    return await abdp(tickers=ticker, flds=_CDX_BASIS_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=ticker, fields=_CDX_BASIS_FIELDS, **kwargs)
 
 
 async def acdx_default_prob(ticker: str, **kwargs) -> IntoDataFrame:
@@ -339,9 +330,7 @@ async def acdx_default_prob(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
-    return await abds(tickers=ticker, flds="CDS_DEFAULT_PROB", **kwargs)
+    return await _abds_field(tickers=ticker, field="CDS_DEFAULT_PROB", **kwargs)
 
 
 async def acdx_cashflows(ticker: str, **kwargs) -> IntoDataFrame:
@@ -370,9 +359,7 @@ async def acdx_cashflows(ticker: str, **kwargs) -> IntoDataFrame:
 
         asyncio.run(main())
     """
-    from xbbg import abds
-
-    return await abds(tickers=ticker, flds="CASHFLOW_SCHEDULE", **kwargs)
+    return await _abds_field(tickers=ticker, field="CASHFLOW_SCHEDULE", **kwargs)
 
 
 async def acdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs) -> IntoDataFrame:
@@ -414,8 +401,6 @@ async def acdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs)
 
         asyncio.run(main())
     """
-    from xbbg import abdp
-
     requested_tenors = tenors or _CDX_CURVE_DEFAULT_TENORS
     tokens = gen_ticker.split()
 
@@ -433,138 +418,14 @@ async def acdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs)
             tenor_tokens[tenor_idx] = tenor
             curve_tickers.append(" ".join(tenor_tokens))
 
-    return await abdp(tickers=curve_tickers, flds=_CDX_CURVE_FIELDS, **kwargs)
+    return await _abdp_fields(tickers=curve_tickers, fields=_CDX_CURVE_FIELDS, **kwargs)
 
 
-# =============================================================================
-# Sync wrappers
-# =============================================================================
-
-
-def cdx_info(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get CDX reference metadata.
-
-    Sync wrapper for acdx_info(). See acdx_info() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_info
-
-        # Get CDX reference data
-        df = cdx_info("CDX IG CDSI GEN 5Y Corp")
-    """
-    return asyncio.run(acdx_info(ticker=ticker, **kwargs))
-
-
-def cdx_defaults(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get CDX default history.
-
-    Sync wrapper for acdx_defaults(). See acdx_defaults() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_defaults
-
-        # Get CDX default history
-        df = cdx_defaults("CDX IG CDSI GEN 5Y Corp")
-    """
-    return asyncio.run(acdx_defaults(ticker=ticker, **kwargs))
-
-
-def cdx_pricing(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
-    """Get CDX market pricing.
-
-    Sync wrapper for acdx_pricing(). See acdx_pricing() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_pricing
-
-        # Get CDX pricing
-        df = cdx_pricing("CDX IG CDSI GEN 5Y Corp")
-
-        # Get pricing with custom recovery rate
-        df = cdx_pricing("CDX IG CDSI GEN 5Y Corp", recovery_rate=40)
-    """
-    return asyncio.run(acdx_pricing(ticker=ticker, recovery_rate=recovery_rate, **kwargs))
-
-
-def cdx_risk(ticker: str, *, recovery_rate: float | None = None, **kwargs) -> IntoDataFrame:
-    """Get CDX risk metrics.
-
-    Sync wrapper for acdx_risk(). See acdx_risk() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_risk
-
-        # Get CDX risk metrics
-        df = cdx_risk("CDX IG CDSI GEN 5Y Corp")
-
-        # Get risk metrics with custom recovery rate
-        df = cdx_risk("CDX IG CDSI GEN 5Y Corp", recovery_rate=40)
-    """
-    return asyncio.run(acdx_risk(ticker=ticker, recovery_rate=recovery_rate, **kwargs))
-
-
-def cdx_basis(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get CDX basis analytics.
-
-    Sync wrapper for acdx_basis(). See acdx_basis() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_basis
-
-        # Get CDX basis data
-        df = cdx_basis("CDX IG CDSI GEN 5Y Corp")
-    """
-    return asyncio.run(acdx_basis(ticker=ticker, **kwargs))
-
-
-def cdx_default_prob(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get CDX default probability.
-
-    Sync wrapper for acdx_default_prob(). See acdx_default_prob() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_default_prob
-
-        # Get CDX default probability
-        df = cdx_default_prob("CDX IG CDSI GEN 5Y Corp")
-    """
-    return asyncio.run(acdx_default_prob(ticker=ticker, **kwargs))
-
-
-def cdx_cashflows(ticker: str, **kwargs) -> IntoDataFrame:
-    """Get CDX cash flow schedule.
-
-    Sync wrapper for acdx_cashflows(). See acdx_cashflows() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_cashflows
-
-        # Get CDX cash flow schedule
-        df = cdx_cashflows("CDX IG CDSI GEN 5Y Corp")
-    """
-    return asyncio.run(acdx_cashflows(ticker=ticker, **kwargs))
-
-
-def cdx_curve(gen_ticker: str, tenors: list[str] | None = None, **kwargs) -> IntoDataFrame:
-    """Get CDX term structure curve.
-
-    Sync wrapper for acdx_curve(). See acdx_curve() for full documentation.
-
-    Example::
-
-        from xbbg.ext.cdx import cdx_curve
-
-        # Get default tenors (3Y, 5Y, 7Y, 10Y)
-        df = cdx_curve("CDX IG CDSI GEN 5Y Corp")
-
-        # Get custom tenors
-        df = cdx_curve("CDX IG CDSI GEN 5Y Corp", tenors=["2Y", "5Y", "10Y"])
-    """
-    return asyncio.run(acdx_curve(gen_ticker=gen_ticker, tenors=tenors, **kwargs))
+cdx_info = _syncify(acdx_info)
+cdx_defaults = _syncify(acdx_defaults)
+cdx_pricing = _syncify(acdx_pricing)
+cdx_risk = _syncify(acdx_risk)
+cdx_basis = _syncify(acdx_basis)
+cdx_default_prob = _syncify(acdx_default_prob)
+cdx_cashflows = _syncify(acdx_cashflows)
+cdx_curve = _syncify(acdx_curve)

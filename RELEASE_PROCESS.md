@@ -85,10 +85,11 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 
 1. **Version Calculation**: Computes new version from current tags
 2. **Changelog Update**: Renames `[Unreleased]` to `[version] - date`
-3. **Git Tag**: Creates `vX.Y.Z` tag and pushes it
-4. **GitHub Release**: Creates release with notes from CHANGELOG
-5. **PyPI Publish**: Tag push triggers `pypi_upload.yml` — builds wheels and publishes via OIDC trusted publishing
-6. **Release Assets**: Wheels and sdist are attached to the GitHub release
+3. **README Release Sync**: Updates the `README.md` latest-release marker block to the new version/tag
+4. **Git Tag**: Creates `vX.Y.Z` tag and pushes it
+5. **GitHub Release**: Creates release with notes from CHANGELOG
+6. **PyPI Publish**: Tag push triggers `pypi_upload.yml` — builds wheels and publishes via OIDC trusted publishing
+7. **Release Assets**: Wheels and sdist are attached to the GitHub release
 
 ## CI/CD Workflows
 
@@ -109,7 +110,7 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 
 | Workflow | File | Purpose |
 |----------|------|---------|
-| Bump Version | `semantic_version.yml` | Calculate version, update CHANGELOG, create tag + GitHub release |
+| Bump Version | `semantic_version.yml` | Calculate version, update CHANGELOG and README release marker, create tag + GitHub release |
 
 ## Local Development
 
@@ -152,10 +153,13 @@ pip index versions xbbg
 
 | Branch | Purpose |
 |--------|---------|
-| `main` | Production-ready code, all releases tagged here |
+| `main` | v1.x development (Rust-backed beta line) |
+| `release/0.x` | v0.x maintenance releases (pure-Python stable line) |
 | `feat/*` | New features (PRs to main) |
-| `fix/*` | Bug fixes (PRs to main) |
+| `fix/*` | Bug fixes (PRs to main or release/0.x) |
 | `chore/*` | Maintenance tasks |
+
+> **Note:** When releasing from `release/0.x`, the downstream `update-readme` and `update-index` workflows will target `main` by default. Review and revert any unintended changes to `main` after a `release/0.x` release.
 
 ### After Merging PRs
 

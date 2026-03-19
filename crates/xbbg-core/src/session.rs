@@ -3,11 +3,13 @@
 use std::cell::Cell;
 use std::ffi::CString;
 use std::marker::PhantomData;
+use std::time::{Duration, Instant};
 
 use crate::correlation::CorrelationId;
 use crate::errors::{BlpError, Result};
 use crate::event::Event;
 use crate::identity::Identity;
+use crate::message::Message;
 use crate::request::Request;
 use crate::service::Service;
 use crate::subscription::SubscriptionList;
@@ -92,6 +94,8 @@ unsafe impl Send for Session {}
 // Bloomberg API requires serialized access to session methods
 
 impl Session {
+    const STARTUP_POLL_TIMEOUT_MS: u32 = 250;
+
     /// Create a new session with the given options.
     ///
     /// Creates a session but does not start it. Call `start()` to initiate the connection.
@@ -146,6 +150,67 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    pub fn wait_until_started(&self, timeout_ms: u32) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_ms));
+
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(BlpError::Timeout);
+            }
+
+            let remaining = deadline.saturating_duration_since(now);
+            let poll_timeout = remaining
+                .min(Duration::from_millis(u64::from(
+                    Self::STARTUP_POLL_TIMEOUT_MS,
+                )))
+                .as_millis() as u32;
+
+            let poll_timeout = poll_timeout.max(1);
+            let event = match self.next_event(Some(poll_timeout)) {
+                Ok(event) => event,
+                Err(BlpError::Timeout) => continue,
+                Err(err) => return Err(err),
+            };
+            let mut saw_session_started = false;
+            for msg in event.messages() {
+                match msg.message_type().as_str() {
+                    "SessionStarted" => saw_session_started = true,
+                    "SessionStartupFailure" => {
+                        return Err(startup_error_from_message("session startup failure", &msg));
+                    }
+                    "SessionTerminated" => {
+                        return Err(startup_error_from_message(
+                            "session terminated during startup",
+                            &msg,
+                        ));
+                    }
+                    "AuthorizationFailure" => {
+                        return Err(startup_error_from_message(
+                            "session identity authorization failed",
+                            &msg,
+                        ));
+                    }
+                    "AuthorizationRevoked" => {
+                        return Err(startup_error_from_message(
+                            "session identity authorization revoked",
+                            &msg,
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            if saw_session_started {
+                return Ok(());
+            }
+        }
+    }
+
+    pub fn start_and_wait(&self, timeout_ms: u32) -> Result<()> {
+        self.start()?;
+        self.wait_until_started(timeout_ms)
     }
 
     /// Stop the session.
@@ -281,13 +346,13 @@ impl Session {
     /// * `cid` - Optional correlation ID for tracking the response
     ///
     /// # Returns
-    /// Ok(()) on success, Err on failure
+    /// The actual correlation ID used on success, Err on failure
     pub fn send_request(
         &self,
         req: &Request,
         identity: Option<&Identity>,
         cid: Option<&CorrelationId>,
-    ) -> Result<()> {
+    ) -> Result<CorrelationId> {
         // Prepare correlation ID
         let mut cid_ffi = match cid {
             Some(c) => c.to_ffi(),
@@ -319,7 +384,7 @@ impl Session {
             });
         }
 
-        Ok(())
+        Ok(CorrelationId::from_ffi(&cid_ffi))
     }
 
     /// Subscribe to market data
@@ -389,16 +454,147 @@ impl Session {
         Ok(())
     }
 
-    /// Create an identity for authorization
-    ///
-    /// # Returns
-    /// A new Identity on success, or an error if creation fails
-    pub fn create_identity(&self) -> Result<Identity> {
-        // SAFETY: We're calling the Bloomberg API with a valid pointer
-        let identity_ptr = unsafe { crate::ffi::blpapi_Session_createIdentity(self.ptr) };
+    pub fn cancel(&self, cid: &CorrelationId) -> Result<()> {
+        let cid_ffi = cid.to_ffi();
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_cancel(self.ptr, &cid_ffi, 1, std::ptr::null(), 0)
+        };
 
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_cancel failed with rc={rc}"),
+            });
+        }
+
+        Ok(())
+    }
+
+    pub fn create_identity(&self) -> Result<Identity> {
+        let identity_ptr = unsafe { crate::ffi::blpapi_Session_createIdentity(self.ptr) };
         Identity::from_raw(identity_ptr)
     }
+
+    pub fn generate_token(&self, cid: Option<&CorrelationId>) -> Result<CorrelationId> {
+        let mut cid_ffi = match cid {
+            Some(c) => c.to_ffi(),
+            None => CorrelationId::default().to_ffi(),
+        };
+
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_generateToken(
+                self.ptr,
+                &mut cid_ffi,
+                std::ptr::null_mut(), // eventQueue (null = use session's queue)
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_generateToken failed with rc={rc}"),
+            });
+        }
+
+        Ok(CorrelationId::from_ffi(&cid_ffi))
+    }
+
+    pub fn send_authorization_request(
+        &self,
+        request: &Request,
+        identity: &mut Identity,
+        cid: Option<&CorrelationId>,
+    ) -> Result<CorrelationId> {
+        let mut cid_ffi = match cid {
+            Some(c) => c.to_ffi(),
+            None => CorrelationId::default().to_ffi(),
+        };
+
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_sendAuthorizationRequest(
+                self.ptr,
+                request.as_ptr(),
+                identity.as_ptr(),
+                &mut cid_ffi,
+                std::ptr::null_mut(), // eventQueue
+                std::ptr::null(),     // requestLabel
+                0,                    // requestLabelLen
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_sendAuthorizationRequest failed with rc={rc}"),
+            });
+        }
+
+        Ok(CorrelationId::from_ffi(&cid_ffi))
+    }
+
+    pub fn subscribe_with_identity(
+        &self,
+        subs: &SubscriptionList,
+        identity: &Identity,
+        label: Option<&str>,
+    ) -> Result<()> {
+        let (label_ptr, label_len, _label_cstring) = match label {
+            Some(l) => {
+                let cs = CString::new(l).map_err(|e| BlpError::InvalidArgument {
+                    detail: format!("invalid label: {e}"),
+                })?;
+                let len = l.len() as i32;
+                (cs.as_ptr(), len, Some(cs))
+            }
+            None => (std::ptr::null(), 0, None),
+        };
+
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_subscribe(
+                self.ptr,
+                subs.as_ptr(),
+                identity.as_ptr(),
+                label_ptr,
+                label_len,
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_subscribe (with identity) failed with rc={rc}"),
+            });
+        }
+
+        Ok(())
+    }
+}
+
+fn startup_error_from_message(default_label: &str, msg: &Message<'_>) -> BlpError {
+    let label = extract_reason_description(msg).unwrap_or_else(|| default_label.to_string());
+    BlpError::SessionStart {
+        source: None,
+        label: Some(label),
+    }
+}
+
+fn extract_reason_description(msg: &Message<'_>) -> Option<String> {
+    let reason = msg.elements().get_by_str("reason")?;
+    if let Some(description) = reason
+        .get_by_str("description")
+        .and_then(|value| value.get_str(0))
+    {
+        return Some(description.to_string());
+    }
+    if let Some(category) = reason
+        .get_by_str("category")
+        .and_then(|value| value.get_str(0))
+    {
+        return Some(category.to_string());
+    }
+    if let Some(message) = reason
+        .get_by_str("message")
+        .and_then(|value| value.get_str(0))
+    {
+        return Some(message.to_string());
+    }
+    None
 }
 
 impl Drop for Session {

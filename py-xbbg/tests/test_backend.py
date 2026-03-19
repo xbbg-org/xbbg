@@ -1,17 +1,15 @@
 """Tests for Backend enum.
 
-Ported from main branch xbbg/tests/test_backend_availability.py (TestBackendEnum class).
-Adapted for the current branch which has 7 backends (not 13).
-
-The current branch Backend enum in xbbg.blp supports:
-    NARWHALS, NARWHALS_LAZY, PANDAS, POLARS, POLARS_LAZY, PYARROW, DUCKDB
+Tests the canonical Backend enum from xbbg.backend which supports all 13 backends:
+    Eager:  NARWHALS, PANDAS, POLARS, PYARROW, CUDF, MODIN
+    Lazy:   NARWHALS_LAZY, POLARS_LAZY, DUCKDB, DASK, IBIS, PYSPARK, SQLFRAME
 """
 
 from __future__ import annotations
 
 import pytest
 
-from xbbg.blp import Backend
+from xbbg.backend import Backend
 
 
 class TestBackendEnum:
@@ -57,12 +55,26 @@ class TestBackendEnum:
         assert Backend.DUCKDB.value == "duckdb"
 
     def test_total_backend_count(self):
-        """Backend should have exactly 7 members."""
-        assert len(Backend) == 7
+        """Backend should have exactly 13 members."""
+        assert len(Backend) == 13
 
     def test_all_expected_backends_exist(self):
         """All expected backend names should be present."""
-        expected = {"NARWHALS", "NARWHALS_LAZY", "PANDAS", "POLARS", "POLARS_LAZY", "PYARROW", "DUCKDB"}
+        expected = {
+            "NARWHALS",
+            "NARWHALS_LAZY",
+            "PANDAS",
+            "POLARS",
+            "POLARS_LAZY",
+            "PYARROW",
+            "DUCKDB",
+            "CUDF",
+            "MODIN",
+            "DASK",
+            "IBIS",
+            "PYSPARK",
+            "SQLFRAME",
+        }
         actual = {b.name for b in Backend}
         assert actual == expected
 
@@ -91,8 +103,13 @@ class TestBackendEnum:
 
     def test_backend_eager_variants(self):
         """Eager backends should not have '_lazy' suffix."""
-        eager_backends = [Backend.NARWHALS, Backend.PANDAS, Backend.POLARS, Backend.PYARROW, Backend.DUCKDB]
+        eager_backends = [
+            Backend.NARWHALS,
+            Backend.PANDAS,
+            Backend.POLARS,
+            Backend.PYARROW,
+            Backend.CUDF,
+            Backend.MODIN,
+        ]
         for backend in eager_backends:
-            # DuckDB is technically lazy but doesn't have _lazy suffix
-            if backend != Backend.DUCKDB:
-                assert "_lazy" not in backend.value
+            assert "_lazy" not in backend.value

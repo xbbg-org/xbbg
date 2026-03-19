@@ -24,6 +24,7 @@ export interface EngineConfig {
 export interface RequestInput {
   service: string;
   operation: string;
+  requestOperation?: string;
   extractor?: string;
   securities?: string[];
   security?: string;
@@ -42,6 +43,7 @@ export interface RequestInput {
   options?: StringPair[];
   fieldTypes?: StringPair[];
   includeSecurityErrors?: boolean;
+  validateFields?: boolean;
   searchSpec?: string;
   fieldIds?: string[];
   format?: string;

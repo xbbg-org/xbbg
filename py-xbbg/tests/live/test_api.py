@@ -593,6 +593,64 @@ class TestStreaming:
         )
         logger.info(f"  Received {ticks_received} ticks before unsubscribe")
 
+    @pytest.mark.asyncio
+    async def test_unsubscribe_wakes_pending_iteration(self):
+        """Stream: unsubscribe completes even when __anext__ is pending."""
+        from xbbg import asubscribe
+
+        sub = await asubscribe(CONFIG.streaming_ticker, ["LAST_PRICE"])
+        first_batch = await asyncio.wait_for(sub.__anext__(), timeout=20)
+        assert len(first_batch) >= 1
+
+        await sub.remove([CONFIG.streaming_ticker])
+
+        pending = None
+        for _ in range(3):
+            candidate = asyncio.create_task(sub.__anext__())
+            await asyncio.sleep(0.2)
+            if not candidate.done():
+                pending = candidate
+                break
+
+            try:
+                await candidate
+            except StopAsyncIteration:
+                pending = None
+                break
+            except Exception:
+                pending = None
+                break
+
+        if pending is None:
+            pytest.skip("Could not keep __anext__ pending long enough to exercise unsubscribe wakeup")
+
+        await asyncio.wait_for(sub.unsubscribe(), timeout=5)
+
+        with pytest.raises(StopAsyncIteration):
+            await asyncio.wait_for(pending, timeout=5)
+
+    @pytest.mark.asyncio
+    async def test_subscription_stats_reset_after_remove(self):
+        """Stream: stats only reflect active topics after remove."""
+        from xbbg import asubscribe
+
+        sub = await asubscribe(CONFIG.streaming_ticker, ["LAST_PRICE"])
+
+        try:
+            await asyncio.wait_for(sub.__anext__(), timeout=20)
+            stats_before = sub.stats
+            assert stats_before["messages_received"] >= 1
+
+            await sub.remove([CONFIG.streaming_ticker])
+
+            stats_after = sub.stats
+            assert stats_after["messages_received"] == 0
+            assert stats_after["dropped_batches"] == 0
+            assert stats_after["batches_sent"] == 0
+            assert stats_after["slow_consumer"] is False
+        finally:
+            await sub.unsubscribe()
+
 
 # =============================================================================
 # Extension Module Tests
@@ -1196,6 +1254,21 @@ class TestRequest:
         assert len(df) >= 1
         logger.info(f"  Got {len(df)} request rows")
 
+    def test_request_raw_request_marker(self):
+        """Request: raw marker uses explicit request_operation."""
+        from xbbg import ExtractorHint, Operation, Service, request
+
+        df = request(
+            service=Service.REFDATA,
+            operation=Operation.RAW_REQUEST,
+            request_operation=Operation.REFERENCE_DATA,
+            extractor=ExtractorHint.REFDATA,
+            securities=[CONFIG.equity_single],
+            fields=[CONFIG.price_field],
+        )
+        assert len(df) >= 1
+        logger.info(f"  Raw request rows: {len(df)}")
+
 
 class TestArequest:
     """Tests for arequest() - async generic API."""
@@ -1213,6 +1286,22 @@ class TestArequest:
         )
         assert len(df) >= 1
         logger.info(f"  Async request: {len(df)} rows")
+
+    @pytest.mark.asyncio
+    async def test_arequest_raw_request_marker(self):
+        """ARequest: raw marker uses explicit request_operation."""
+        from xbbg import ExtractorHint, Operation, Service, arequest
+
+        df = await arequest(
+            service=Service.REFDATA,
+            operation=Operation.RAW_REQUEST,
+            request_operation=Operation.REFERENCE_DATA,
+            extractor=ExtractorHint.REFDATA,
+            securities=[CONFIG.equity_single],
+            fields=[CONFIG.price_field],
+        )
+        assert len(df) >= 1
+        logger.info(f"  Async raw request: {len(df)} rows")
 
 
 class TestVwap:
@@ -1573,12 +1662,13 @@ class TestFieldCache:
         assert result is not None
         logger.info(f"  Resolved {len(result)} field types")
 
-    def test_get_field_info(self):
+    @pytest.mark.asyncio
+    async def test_get_field_info(self):
         """FieldCache: get field info."""
         from xbbg import get_field_info
 
         try:
-            info = get_field_info(["PX_LAST"])
+            info = await get_field_info(["PX_LAST"])
             logger.info(f"  Field info: {info}")
         except Exception as e:
             pytest.skip(f"Field cache not populated: {e}")

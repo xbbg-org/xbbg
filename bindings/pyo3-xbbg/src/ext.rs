@@ -8,6 +8,7 @@ use chrono::Datelike;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::*;
 
 use xbbg_ext::constants::{DVD_TYPES, FUTURES_MONTHS, MONTH_CODES};
 use xbbg_ext::resolvers::cdx::{cdx_series_from_ticker, gen_to_specific, previous_series_ticker};
@@ -31,6 +32,22 @@ use xbbg_ext::utils::ticker::{
     parse_ticker_parts,
 };
 
+fn string_refs(values: &[String]) -> Vec<&str> {
+    values.iter().map(String::as_str).collect()
+}
+
+fn date_from_parts(year: i32, month: u32, day: u32) -> PyResult<chrono::NaiveDate> {
+    chrono::NaiveDate::from_ymd_opt(year, month, day)
+        .ok_or_else(|| PyValueError::new_err(format!("invalid date: {year}-{month}-{day}")))
+}
+
+macro_rules! register_pyfunctions {
+    ($module:expr; $($func:ident),+ $(,)?) => {{
+        $( $module.add_function(wrap_pyfunction!($func, $module)?)?; )+
+        Ok(())
+    }};
+}
+
 // =============================================================================
 // Date Utilities
 // =============================================================================
@@ -38,6 +55,7 @@ use xbbg_ext::utils::ticker::{
 /// Parse a date string into components (year, month, day).
 ///
 /// Supports: YYYY-MM-DD, YYYYMMDD, YYYY/MM/DD, DD-MM-YYYY, DD/MM/YYYY
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (date_str))]
 fn ext_parse_date(date_str: &str) -> PyResult<(i32, u32, u32)> {
@@ -46,13 +64,11 @@ fn ext_parse_date(date_str: &str) -> PyResult<(i32, u32, u32)> {
 }
 
 /// Format a date to string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (year, month, day, fmt=None))]
 fn ext_fmt_date(year: i32, month: u32, day: u32, fmt: Option<&str>) -> PyResult<String> {
-    use chrono::NaiveDate;
-    let d = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
-        PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
-    })?;
+    let d = date_from_parts(year, month, day)?;
     Ok(fmt_date(d, fmt))
 }
 
@@ -64,14 +80,17 @@ fn ext_fmt_date(year: i32, month: u32, day: u32, fmt: Option<&str>) -> PyResult<
 ///
 /// Input: RecordBatch with columns (ticker, field, value)
 /// Output: RecordBatch with columns (ticker, field1, field2, ...)
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_pivot_to_wide(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     // Convert PyArrow to Rust RecordBatch
     let rust_batch = RecordBatch::from_pyarrow_bound(batch)
         .map_err(|e| PyValueError::new_err(format!("invalid RecordBatch: {e}")))?;
 
-    // Pivot
-    let result = pivot_to_wide(&rust_batch).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    // Release the GIL while running the Arrow transform on owned Rust data.
+    let result = py
+        .detach(move || pivot_to_wide(&rust_batch))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
     // Convert back to PyArrow
     result
@@ -81,11 +100,12 @@ fn ext_pivot_to_wide(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<Py<Py
 }
 
 /// Check if a RecordBatch is in long format (ticker, field, value).
+#[gen_stub_pyfunction]
 #[pyfunction]
-fn ext_is_long_format(batch: &Bound<'_, PyAny>) -> PyResult<bool> {
+fn ext_is_long_format(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<bool> {
     let rust_batch = RecordBatch::from_pyarrow_bound(batch)
         .map_err(|e| PyValueError::new_err(format!("invalid RecordBatch: {e}")))?;
-    Ok(is_long_format(&rust_batch))
+    Ok(py.detach(move || is_long_format(&rust_batch)))
 }
 
 // =============================================================================
@@ -95,6 +115,7 @@ fn ext_is_long_format(batch: &Bound<'_, PyAny>) -> PyResult<bool> {
 /// Parse a Bloomberg ticker into components.
 ///
 /// Returns: (prefix, index, asset, exchange)
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_parse_ticker(ticker: &str) -> PyResult<(String, u32, String, Option<String>)> {
     let parts = parse_ticker_parts(ticker).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -102,28 +123,32 @@ fn ext_parse_ticker(ticker: &str) -> PyResult<(String, u32, String, Option<Strin
 }
 
 /// Check if a ticker is a specific contract (not generic).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_is_specific_contract(ticker: &str) -> bool {
     is_specific_contract(ticker)
 }
 
 /// Build a futures ticker from components.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_build_futures_ticker(prefix: &str, month_code: &str, year: &str, asset: &str) -> String {
     build_futures_ticker(prefix, month_code, year, asset)
 }
 
 /// Normalize tickers to a list.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_normalize_tickers(tickers: Vec<String>) -> Vec<String> {
-    let refs: Vec<&str> = tickers.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&tickers);
     normalize_tickers(&refs)
 }
 
 /// Filter to equity tickers only.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_filter_equity_tickers(tickers: Vec<String>) -> Vec<String> {
-    let refs: Vec<&str> = tickers.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&tickers);
     filter_equity_tickers(&refs)
 }
 
@@ -134,6 +159,7 @@ fn ext_filter_equity_tickers(tickers: Vec<String>) -> Vec<String> {
 /// Generate futures contract candidates.
 ///
 /// Returns list of (ticker, year, month) tuples.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (gen_ticker, year, month, day, freq="M", count=4))]
 fn ext_generate_futures_candidates(
@@ -144,11 +170,7 @@ fn ext_generate_futures_candidates(
     freq: &str,
     count: usize,
 ) -> PyResult<Vec<(String, i32, u32)>> {
-    use chrono::NaiveDate;
-
-    let dt = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
-        PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
-    })?;
+    let dt = date_from_parts(year, month, day)?;
 
     use std::str::FromStr;
     let roll_freq = RollFrequency::from_str(freq).unwrap_or(RollFrequency::Monthly);
@@ -163,12 +185,14 @@ fn ext_generate_futures_candidates(
 }
 
 /// Validate that a ticker is generic (not specific).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_validate_generic_ticker(ticker: &str) -> PyResult<()> {
     validate_generic_ticker(ticker).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// Get the contract index from a generic ticker (0-based).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_contract_index(gen_ticker: &str) -> PyResult<usize> {
     contract_index(gen_ticker).map_err(|e| PyValueError::new_err(e.to_string()))
@@ -181,6 +205,7 @@ fn ext_contract_index(gen_ticker: &str) -> PyResult<usize> {
 /// Parse a CDX ticker.
 ///
 /// Returns: (index, series, tenor, asset, is_generic, series_num)
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_parse_cdx_ticker(
     ticker: &str,
@@ -197,12 +222,14 @@ fn ext_parse_cdx_ticker(
 }
 
 /// Get the previous series ticker for a CDX index.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_previous_cdx_series(ticker: &str) -> PyResult<Option<String>> {
     previous_series_ticker(ticker).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// Convert a generic CDX ticker to specific series.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_cdx_gen_to_specific(gen_ticker: &str, series: u32) -> PyResult<String> {
     gen_to_specific(gen_ticker, series).map_err(|e| PyValueError::new_err(e.to_string()))
@@ -215,6 +242,7 @@ fn ext_cdx_gen_to_specific(gen_ticker: &str, series: u32) -> PyResult<String> {
 /// Build an FX pair ticker for currency conversion.
 ///
 /// Returns: (fx_pair, factor, from_ccy, to_ccy)
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_build_fx_pair(from_ccy: &str, to_ccy: &str) -> (String, f64, String, String) {
     let info = build_fx_pair(from_ccy, to_ccy);
@@ -222,15 +250,17 @@ fn ext_build_fx_pair(from_ccy: &str, to_ccy: &str) -> (String, f64, String, Stri
 }
 
 /// Check if two currencies are effectively the same.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_same_currency(ccy1: &str, ccy2: &str) -> bool {
     same_currency(ccy1, ccy2)
 }
 
 /// Get currencies that need FX conversion.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_currencies_needing_conversion(currencies: Vec<String>, target: &str) -> Vec<String> {
-    let refs: Vec<&str> = currencies.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&currencies);
     currencies_needing_conversion(&refs, target)
 }
 
@@ -239,16 +269,18 @@ fn ext_currencies_needing_conversion(currencies: Vec<String>, target: &str) -> V
 // =============================================================================
 
 /// Get dividend column rename mapping.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_rename_dividend_columns(columns: Vec<String>) -> Vec<(String, String)> {
-    let refs: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&columns);
     rename_dividend_columns(&refs)
 }
 
 /// Get ETF holdings column rename mapping.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_rename_etf_columns(columns: Vec<String>) -> Vec<(String, String)> {
-    let refs: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&columns);
     rename_etf_columns(&refs)
 }
 
@@ -257,18 +289,21 @@ fn ext_rename_etf_columns(columns: Vec<String>) -> Vec<(String, String)> {
 // =============================================================================
 
 /// Get futures month code for a month name.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_get_month_code(month: &str) -> Option<String> {
     FUTURES_MONTHS.get(month).map(|s| s.to_string())
 }
 
 /// Get month name for a futures month code.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_get_month_name(code: &str) -> Option<String> {
     MONTH_CODES.get(code).map(|s| s.to_string())
 }
 
 /// Get all futures month mappings.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_get_futures_months(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     let dict = PyDict::new(py);
@@ -279,12 +314,14 @@ fn ext_get_futures_months(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 }
 
 /// Get dividend type field name.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_get_dvd_type(typ: &str) -> Option<String> {
     DVD_TYPES.get(typ).map(|s| s.to_string())
 }
 
 /// Get all dividend type mappings.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_get_dvd_types(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     let dict = PyDict::new(py);
@@ -305,6 +342,7 @@ fn ext_get_dvd_types(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 ///     cycle: Month-code string from Bloomberg (e.g., "HMUZ").
 ///
 /// Returns: Filtered list preserving original order.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_filter_candidates_by_cycle(
     candidates: Vec<(String, i32, u32)>,
@@ -321,6 +359,7 @@ fn ext_filter_candidates_by_cycle(
 ///
 /// Returns: List of ticker strings for contracts maturing after the reference date,
 ///     sorted by maturity date ascending.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_filter_valid_contracts(
     contracts: Vec<(String, String)>,
@@ -328,11 +367,7 @@ fn ext_filter_valid_contracts(
     month: u32,
     day: u32,
 ) -> PyResult<Vec<String>> {
-    use chrono::NaiveDate;
-
-    let ref_date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
-        PyValueError::new_err(format!("invalid date: {}-{}-{}", year, month, day))
-    })?;
+    let ref_date = date_from_parts(year, month, day)?;
 
     Ok(filter_valid_contracts(&contracts, ref_date))
 }
@@ -352,6 +387,7 @@ fn ext_filter_valid_contracts(
 ///     benchmark: Benchmark security (optional).
 ///
 /// Returns: List of (key, value) string pairs for Bloomberg overrides.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (settle_dt=None, yield_type=None, spread=None, yield_val=None, price=None, benchmark=None))]
 fn ext_build_yas_overrides(
@@ -383,12 +419,13 @@ fn ext_build_yas_overrides(
 ///     data_columns: Column names from the data DataFrame.
 ///
 /// Returns: List of (old_name, new_name) pairs for columns that need renaming.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_build_earning_header_rename(
     header_row: Vec<(String, String)>,
     data_columns: Vec<String>,
 ) -> Vec<(String, String)> {
-    let refs: Vec<&str> = data_columns.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&data_columns);
     build_earning_header_rename(&header_row, &refs)
 }
 
@@ -399,6 +436,7 @@ fn ext_build_earning_header_rename(
 ///     levels: List of optional integer levels (1 = top level, 2 = sub-level).
 ///
 /// Returns: List of optional percentage values (0-100).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn ext_calculate_level_percentages(
     values: Vec<Option<f64>>,
@@ -418,10 +456,11 @@ fn ext_calculate_level_percentages(
 ///     extra_fields: Additional fields beyond defaults (id, name).
 ///
 /// Returns: Complete BQL query string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (equity_ticker, extra_fields=vec![]))]
 fn ext_build_preferreds_query(equity_ticker: &str, extra_fields: Vec<String>) -> String {
-    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&extra_fields);
     build_preferreds_query(equity_ticker, &refs)
 }
 
@@ -434,6 +473,7 @@ fn ext_build_preferreds_query(equity_ticker: &str, extra_fields: Vec<String>) ->
 ///     active_only: If true, only return active bonds.
 ///
 /// Returns: Complete BQL query string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (ticker, ccy=None, extra_fields=vec![], active_only=true))]
 fn ext_build_corporate_bonds_query(
@@ -442,7 +482,7 @@ fn ext_build_corporate_bonds_query(
     extra_fields: Vec<String>,
     active_only: bool,
 ) -> String {
-    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&extra_fields);
     build_corporate_bonds_query(ticker, ccy, &refs, active_only)
 }
 
@@ -453,10 +493,11 @@ fn ext_build_corporate_bonds_query(
 ///     extra_fields: Additional fields beyond defaults (id_isin, weights, id().position).
 ///
 /// Returns: Complete BQL query string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (etf_ticker, extra_fields=vec![]))]
 fn ext_build_etf_holdings_query(etf_ticker: &str, extra_fields: Vec<String>) -> String {
-    let refs: Vec<&str> = extra_fields.iter().map(|s| s.as_str()).collect();
+    let refs = string_refs(&extra_fields);
     build_etf_holdings_query(etf_ticker, &refs)
 }
 
@@ -471,6 +512,7 @@ fn ext_build_etf_holdings_query(etf_ticker: &str, extra_fields: Vec<String>) -> 
 ///     end_date: End date string (optional, default: yesterday).
 ///
 /// Returns: Tuple of (start_date, end_date) as ISO-8601 date strings.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (start_date=None, end_date=None))]
 fn ext_default_turnover_dates(
@@ -487,6 +529,7 @@ fn ext_default_turnover_dates(
 ///     end_datetime: End datetime string (optional, default: now).
 ///
 /// Returns: Tuple of (start_datetime, end_datetime) as ISO-8601 datetime strings.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (start_datetime=None, end_datetime=None))]
 fn ext_default_bqr_datetimes(
@@ -502,66 +545,42 @@ fn ext_default_bqr_datetimes(
 
 /// Register ext functions with the module.
 pub fn register_ext_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Date utilities
-    m.add_function(wrap_pyfunction!(ext_parse_date, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_fmt_date, m)?)?;
-
-    // Pivot utilities
-    m.add_function(wrap_pyfunction!(ext_pivot_to_wide, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_is_long_format, m)?)?;
-
-    // Ticker utilities
-    m.add_function(wrap_pyfunction!(ext_parse_ticker, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_is_specific_contract, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_build_futures_ticker, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_normalize_tickers, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_filter_equity_tickers, m)?)?;
-
-    // Futures resolution
-    m.add_function(wrap_pyfunction!(ext_generate_futures_candidates, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_validate_generic_ticker, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_contract_index, m)?)?;
-
-    // CDX resolution
-    m.add_function(wrap_pyfunction!(ext_parse_cdx_ticker, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_previous_cdx_series, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_cdx_gen_to_specific, m)?)?;
-
-    // Currency utilities
-    m.add_function(wrap_pyfunction!(ext_build_fx_pair, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_same_currency, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_currencies_needing_conversion, m)?)?;
-
-    // Column renaming
-    m.add_function(wrap_pyfunction!(ext_rename_dividend_columns, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_rename_etf_columns, m)?)?;
-
-    // Constants
-    m.add_function(wrap_pyfunction!(ext_get_month_code, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_get_month_name, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_get_futures_months, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_get_dvd_type, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_get_dvd_types, m)?)?;
-
-    // Futures filtering
-    m.add_function(wrap_pyfunction!(ext_filter_candidates_by_cycle, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_filter_valid_contracts, m)?)?;
-
-    // YAS overrides
-    m.add_function(wrap_pyfunction!(ext_build_yas_overrides, m)?)?;
-
-    // Earnings utilities
-    m.add_function(wrap_pyfunction!(ext_build_earning_header_rename, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_calculate_level_percentages, m)?)?;
-
-    // BQL query builders
-    m.add_function(wrap_pyfunction!(ext_build_preferreds_query, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_build_corporate_bonds_query, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_build_etf_holdings_query, m)?)?;
-
-    // DateTime default ranges
-    m.add_function(wrap_pyfunction!(ext_default_turnover_dates, m)?)?;
-    m.add_function(wrap_pyfunction!(ext_default_bqr_datetimes, m)?)?;
-
-    Ok(())
+    register_pyfunctions!(
+        m;
+        ext_parse_date,
+        ext_fmt_date,
+        ext_pivot_to_wide,
+        ext_is_long_format,
+        ext_parse_ticker,
+        ext_is_specific_contract,
+        ext_build_futures_ticker,
+        ext_normalize_tickers,
+        ext_filter_equity_tickers,
+        ext_generate_futures_candidates,
+        ext_validate_generic_ticker,
+        ext_contract_index,
+        ext_parse_cdx_ticker,
+        ext_previous_cdx_series,
+        ext_cdx_gen_to_specific,
+        ext_build_fx_pair,
+        ext_same_currency,
+        ext_currencies_needing_conversion,
+        ext_rename_dividend_columns,
+        ext_rename_etf_columns,
+        ext_get_month_code,
+        ext_get_month_name,
+        ext_get_futures_months,
+        ext_get_dvd_type,
+        ext_get_dvd_types,
+        ext_filter_candidates_by_cycle,
+        ext_filter_valid_contracts,
+        ext_build_yas_overrides,
+        ext_build_earning_header_rename,
+        ext_calculate_level_percentages,
+        ext_build_preferreds_query,
+        ext_build_corporate_bonds_query,
+        ext_build_etf_holdings_query,
+        ext_default_turnover_dates,
+        ext_default_bqr_datetimes,
+    )
 }

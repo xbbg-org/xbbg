@@ -4,9 +4,21 @@
 
 // --- Opaque types ---
 pub use xbbg_sys::{
+    blpapi_AuthApplication_t, blpapi_AuthOptions_t, blpapi_AuthToken_t, blpapi_AuthUser_t,
     blpapi_CorrelationId_t, blpapi_Element_t, blpapi_Event_t, blpapi_Identity_t,
     blpapi_MessageIterator_t, blpapi_Message_t, blpapi_Name_t, blpapi_Request_t, blpapi_Service_t,
-    blpapi_SessionOptions_t, blpapi_Session_t, blpapi_SubscriptionList_t,
+    blpapi_SessionOptions_t, blpapi_Session_t, blpapi_SubscriptionList_t, blpapi_TlsOptions_t,
+};
+
+// --- Auth functions ---
+pub use xbbg_sys::{
+    blpapi_AuthApplication_create, blpapi_AuthApplication_destroy,
+    blpapi_AuthOptions_create_default, blpapi_AuthOptions_create_forAppMode,
+    blpapi_AuthOptions_create_forToken, blpapi_AuthOptions_create_forUserAndAppMode,
+    blpapi_AuthOptions_create_forUserMode, blpapi_AuthOptions_destroy, blpapi_AuthToken_create,
+    blpapi_AuthToken_destroy, blpapi_AuthUser_createWithActiveDirectoryProperty,
+    blpapi_AuthUser_createWithLogonName, blpapi_AuthUser_createWithManualOptions,
+    blpapi_AuthUser_destroy,
 };
 
 // --- Schema opaque types ---
@@ -52,8 +64,9 @@ pub use xbbg_sys::{
 
 // --- Session functions ---
 pub use xbbg_sys::{
-    blpapi_Session_create, blpapi_Session_createIdentity, blpapi_Session_destroy,
-    blpapi_Session_getService, blpapi_Session_nextEvent, blpapi_Session_openService,
+    blpapi_Session_cancel, blpapi_Session_create, blpapi_Session_createIdentity,
+    blpapi_Session_destroy, blpapi_Session_generateToken, blpapi_Session_getService,
+    blpapi_Session_nextEvent, blpapi_Session_openService, blpapi_Session_sendAuthorizationRequest,
     blpapi_Session_sendRequest, blpapi_Session_start, blpapi_Session_stop,
     blpapi_Session_subscribe, blpapi_Session_tryNextEvent, blpapi_Session_unsubscribe,
 };
@@ -110,13 +123,15 @@ pub use xbbg_sys::{
 
 // --- CorrelationId constants ---
 pub use xbbg_sys::{
-    BLPAPI_CORRELATION_TYPE_INT, BLPAPI_CORRELATION_TYPE_POINTER, BLPAPI_CORRELATION_TYPE_UNSET,
+    BLPAPI_CORRELATION_TYPE_AUTOGEN, BLPAPI_CORRELATION_TYPE_INT, BLPAPI_CORRELATION_TYPE_POINTER,
+    BLPAPI_CORRELATION_TYPE_UNSET,
 };
 
 // --- SessionOptions functions ---
 pub use xbbg_sys::{
     blpapi_SessionOptions_create, blpapi_SessionOptions_destroy,
-    blpapi_SessionOptions_maxEventQueueSize, blpapi_SessionOptions_setAutoRestartOnDisconnection,
+    blpapi_SessionOptions_maxEventQueueSize, blpapi_SessionOptions_setAuthenticationOptions,
+    blpapi_SessionOptions_setAutoRestartOnDisconnection,
     blpapi_SessionOptions_setBandwidthSaveModeDisabled, blpapi_SessionOptions_setConnectTimeout,
     blpapi_SessionOptions_setDefaultKeepAliveInactivityTime,
     blpapi_SessionOptions_setDefaultKeepAliveResponseTimeout,
@@ -124,12 +139,43 @@ pub use xbbg_sys::{
     blpapi_SessionOptions_setDefaultTopicPrefix,
     blpapi_SessionOptions_setFlushPublishedEventsTimeout,
     blpapi_SessionOptions_setKeepAliveEnabled, blpapi_SessionOptions_setMaxEventQueueSize,
+    blpapi_SessionOptions_setNumStartAttempts,
     blpapi_SessionOptions_setRecordSubscriptionDataReceiveTimes,
-    blpapi_SessionOptions_setServerHost, blpapi_SessionOptions_setServerPort,
-    blpapi_SessionOptions_setServiceCheckTimeout, blpapi_SessionOptions_setServiceDownloadTimeout,
+    blpapi_SessionOptions_setServerAddress, blpapi_SessionOptions_setServerHost,
+    blpapi_SessionOptions_setServerPort, blpapi_SessionOptions_setServiceCheckTimeout,
+    blpapi_SessionOptions_setServiceDownloadTimeout,
+    blpapi_SessionOptions_setSessionIdentityOptions,
     blpapi_SessionOptions_setSlowConsumerWarningHiWaterMark,
-    blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark,
+    blpapi_SessionOptions_setSlowConsumerWarningLoWaterMark, blpapi_SessionOptions_setTlsOptions,
 };
+
+// --- TlsOptions functions ---
+pub use xbbg_sys::{
+    blpapi_TlsOptions_createFromBlobs, blpapi_TlsOptions_createFromFiles,
+    blpapi_TlsOptions_destroy, blpapi_TlsOptions_setCrlFetchTimeoutMs,
+    blpapi_TlsOptions_setTlsHandshakeTimeoutMs,
+};
+
+// --- Identity functions ---
+pub use xbbg_sys::{
+    blpapi_Identity_getSeatType, blpapi_Identity_hasEntitlements, blpapi_Identity_isAuthorized,
+};
+
+// --- Logging functions ---
+pub use xbbg_sys::{
+    blpapi_Datetime_tag as blpapi_Logging_Datetime_t, blpapi_Logging_Func_t,
+    blpapi_Logging_Severity_t, blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_DEBUG,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_ERROR,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_FATAL,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_INFO,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_OFF,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_TRACE,
+    blpapi_Logging_Severity_t_blpapi_Logging_SEVERITY_WARN, blpapi_Logging_logTestMessage,
+    blpapi_Logging_registerCallback,
+};
+
+// --- ZfpUtil functions ---
+pub use xbbg_sys::blpapi_ZfpUtil_getOptionsForLeasedLines;
 
 // --- HighPrecisionDatetime (defined locally for layout control) ---
 
@@ -252,4 +298,11 @@ extern "C" {
         timePoint: *const blpapi_TimePoint_t,
         offset: i16,
     ) -> i32;
+
+    pub fn blpapi_getVersionInfo(
+        majorVersion: *mut i32,
+        minorVersion: *mut i32,
+        patchVersion: *mut i32,
+        buildVersion: *mut i32,
+    );
 }

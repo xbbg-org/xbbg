@@ -7,11 +7,43 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use xbbg_log::{debug, info, warn};
 
 use super::types::ServiceSchema;
+
+fn recover_read_lock<'a, T>(
+    lock: &'a RwLock<T>,
+    lock_name: &'static str,
+) -> RwLockReadGuard<'a, T> {
+    match lock.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                lock = lock_name,
+                "schema cache lock poisoned; recovering read access"
+            );
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn recover_write_lock<'a, T>(
+    lock: &'a RwLock<T>,
+    lock_name: &'static str,
+) -> RwLockWriteGuard<'a, T> {
+    match lock.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                lock = lock_name,
+                "schema cache lock poisoned; recovering write access"
+            );
+            poisoned.into_inner()
+        }
+    }
+}
 
 /// Schema cache with in-memory and disk persistence.
 ///
@@ -117,7 +149,7 @@ impl SchemaCache {
     pub fn get(&self, service: &str) -> Option<Arc<ServiceSchema>> {
         // Check in-memory cache first
         {
-            let cache = self.cache.read().unwrap();
+            let cache = recover_read_lock(&self.cache, "schema_cache");
             if let Some(schema) = cache.get(service) {
                 return Some(Arc::clone(schema));
             }
@@ -127,7 +159,7 @@ impl SchemaCache {
         if let Some(schema) = self.load_from_disk(service) {
             let schema = Arc::new(schema);
             // Add to in-memory cache
-            let mut cache = self.cache.write().unwrap();
+            let mut cache = recover_write_lock(&self.cache, "schema_cache");
             cache.insert(service.to_string(), Arc::clone(&schema));
             return Some(schema);
         }
@@ -146,7 +178,7 @@ impl SchemaCache {
 
         // Store in memory
         let schema = Arc::new(schema);
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = recover_write_lock(&self.cache, "schema_cache");
         cache.insert(service.to_string(), Arc::clone(&schema));
         schema
     }
@@ -155,7 +187,7 @@ impl SchemaCache {
     pub fn invalidate(&self, service: &str) {
         // Remove from memory
         {
-            let mut cache = self.cache.write().unwrap();
+            let mut cache = recover_write_lock(&self.cache, "schema_cache");
             cache.remove(service);
         }
 
@@ -174,7 +206,7 @@ impl SchemaCache {
     pub fn clear(&self) {
         // Clear memory
         {
-            let mut cache = self.cache.write().unwrap();
+            let mut cache = recover_write_lock(&self.cache, "schema_cache");
             cache.clear();
         }
 
@@ -198,7 +230,7 @@ impl SchemaCache {
     /// Returns URIs from both memory and disk.
     pub fn list(&self) -> Vec<String> {
         let mut services: Vec<String> = {
-            let cache = self.cache.read().unwrap();
+            let cache = recover_read_lock(&self.cache, "schema_cache");
             cache.keys().cloned().collect()
         };
 
@@ -228,7 +260,7 @@ impl SchemaCache {
     pub fn contains(&self, service: &str) -> bool {
         // Check memory first
         {
-            let cache = self.cache.read().unwrap();
+            let cache = recover_read_lock(&self.cache, "schema_cache");
             if cache.contains_key(service) {
                 return true;
             }
@@ -240,7 +272,7 @@ impl SchemaCache {
 
     /// Get cache statistics.
     pub fn stats(&self) -> CacheStats {
-        let memory_count = self.cache.read().unwrap().len();
+        let memory_count = recover_read_lock(&self.cache, "schema_cache").len();
         let disk_count = if self.cache_dir.exists() {
             fs::read_dir(&self.cache_dir)
                 .map(|entries| {

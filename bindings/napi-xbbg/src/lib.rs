@@ -9,8 +9,9 @@ use arrow::record_batch::RecordBatch;
 use napi::bindgen_prelude::{Buffer, Error, Status};
 use napi_derive::napi;
 use tokio::sync::Mutex;
-use xbbg_async::engine::state::SubscriptionMetrics;
-use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams};
+use xbbg_async::engine::{
+    Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, SharedSubscriptionStatus,
+};
 use xbbg_async::{BlpAsyncError, ValidationMode};
 use xbbg_core::BlpError;
 
@@ -21,16 +22,12 @@ type SharedStreamReceiver = Arc<Mutex<Option<StreamReceiver>>>;
 struct SubscriptionStreamHandle {
     tx: tokio::sync::mpsc::Sender<StreamBatchResult>,
     claim: Option<xbbg_async::engine::SessionClaim>,
-    keys: Vec<usize>,
-    topics: Vec<String>,
     fields: Vec<String>,
-    topic_to_key: HashMap<String, usize>,
     service: String,
     options: Vec<String>,
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
-    _stream_capacity: Option<usize>,
-    metrics: Vec<Arc<SubscriptionMetrics>>,
+    status: SharedSubscriptionStatus,
 }
 
 #[napi(object)]
@@ -58,6 +55,7 @@ pub struct EngineConfigInput {
 pub struct RequestInput {
     pub service: String,
     pub operation: String,
+    pub request_operation: Option<String>,
     pub extractor: Option<String>,
     pub securities: Option<Vec<String>>,
     pub security: Option<String>,
@@ -76,6 +74,7 @@ pub struct RequestInput {
     pub options: Option<Vec<StringPair>>,
     pub field_types: Option<Vec<StringPair>>,
     pub include_security_errors: Option<bool>,
+    pub validate_fields: Option<bool>,
     pub search_spec: Option<String>,
     pub field_ids: Option<Vec<String>>,
     pub format: Option<String>,
@@ -109,51 +108,52 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
     type Error = Error;
 
     fn try_from(input: EngineConfigInput) -> Result<Self, Self::Error> {
-        let defaults = EngineConfig::default();
+        let mut config = EngineConfig::default();
 
         let validation_mode = match input.validation_mode {
             Some(mode) => ValidationMode::from_str(&mode)
                 .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?,
-            None => defaults.validation_mode,
+            None => config.validation_mode,
         };
 
         let overflow_policy = match input.overflow_policy {
             Some(policy) => OverflowPolicy::from_str(&policy)
                 .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?,
-            None => defaults.overflow_policy,
+            None => config.overflow_policy,
         };
 
-        Ok(EngineConfig {
-            server_host: input.host.unwrap_or(defaults.server_host),
-            server_port: input.port.unwrap_or(defaults.server_port),
-            request_pool_size: input
-                .request_pool_size
-                .map(|v| v as usize)
-                .unwrap_or(defaults.request_pool_size),
-            subscription_pool_size: input
-                .subscription_pool_size
-                .map(|v| v as usize)
-                .unwrap_or(defaults.subscription_pool_size),
-            validation_mode,
-            subscription_flush_threshold: input
-                .subscription_flush_threshold
-                .map(|v| v as usize)
-                .unwrap_or(defaults.subscription_flush_threshold),
-            max_event_queue_size: input
-                .max_event_queue_size
-                .map(|v| v as usize)
-                .unwrap_or(defaults.max_event_queue_size),
-            command_queue_size: input
-                .command_queue_size
-                .map(|v| v as usize)
-                .unwrap_or(defaults.command_queue_size),
-            subscription_stream_capacity: input
-                .subscription_stream_capacity
-                .map(|v| v as usize)
-                .unwrap_or(defaults.subscription_stream_capacity),
-            overflow_policy,
-            warmup_services: input.warmup_services.unwrap_or(defaults.warmup_services),
-        })
+        if let Some(host) = input.host {
+            config.server_host = host;
+        }
+        if let Some(port) = input.port {
+            config.server_port = port;
+        }
+        if let Some(size) = input.request_pool_size {
+            config.request_pool_size = size as usize;
+        }
+        if let Some(size) = input.subscription_pool_size {
+            config.subscription_pool_size = size as usize;
+        }
+        if let Some(size) = input.subscription_flush_threshold {
+            config.subscription_flush_threshold = size as usize;
+        }
+        if let Some(size) = input.max_event_queue_size {
+            config.max_event_queue_size = size as usize;
+        }
+        if let Some(size) = input.command_queue_size {
+            config.command_queue_size = size as usize;
+        }
+        if let Some(size) = input.subscription_stream_capacity {
+            config.subscription_stream_capacity = size as usize;
+        }
+        if let Some(services) = input.warmup_services {
+            config.warmup_services = services;
+        }
+
+        config.validation_mode = validation_mode;
+        config.overflow_policy = overflow_policy;
+
+        Ok(config)
     }
 }
 
@@ -173,18 +173,30 @@ impl TryFrom<RequestInput> for RequestParams {
             extractor_set = true;
         }
 
+        let mut elements = pairs_to_tuples(input.elements);
+        if let Some(raw_json) = input.json_elements {
+            let value: serde_json::Value = serde_json::from_str(&raw_json).map_err(|e| {
+                Error::new(
+                    Status::InvalidArg,
+                    format!("invalid jsonElements payload: {e}"),
+                )
+            })?;
+            let flattened = elements.get_or_insert_with(Vec::new);
+            flatten_json_elements(None, &value, flattened)?;
+        }
+
         Ok(RequestParams {
             service: input.service,
             operation: input.operation,
+            request_operation: input.request_operation,
             extractor,
             extractor_set,
             securities: input.securities,
             security: input.security,
             fields: input.fields,
             overrides: pairs_to_tuples(input.overrides),
-            elements: pairs_to_tuples(input.elements),
+            elements,
             kwargs: pairs_to_map(input.kwargs),
-            json_elements: input.json_elements,
             start_date: input.start_date,
             end_date: input.end_date,
             start_datetime: input.start_datetime,
@@ -195,10 +207,85 @@ impl TryFrom<RequestInput> for RequestParams {
             options: pairs_to_tuples(input.options),
             field_types: pairs_to_map(input.field_types),
             include_security_errors: input.include_security_errors.unwrap_or(false),
+            validate_fields: input.validate_fields,
             search_spec: input.search_spec,
             field_ids: input.field_ids,
             format: input.format,
         })
+    }
+}
+
+fn flatten_json_elements(
+    path: Option<&str>,
+    value: &serde_json::Value,
+    out: &mut Vec<(String, String)>,
+) -> Result<(), Error> {
+    match value {
+        serde_json::Value::Object(map) => {
+            if map.is_empty() {
+                return Ok(());
+            }
+            for (key, child) in map {
+                let next_path = match path {
+                    Some(prefix) if !prefix.is_empty() => format!("{prefix}.{key}"),
+                    _ => key.clone(),
+                };
+                flatten_json_elements(Some(&next_path), child, out)?;
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(items) => {
+            let path = path.ok_or_else(|| {
+                Error::new(
+                    Status::InvalidArg,
+                    "jsonElements must be a JSON object at the top level",
+                )
+            })?;
+
+            if path.contains('.') {
+                out.push((
+                    path.to_string(),
+                    serde_json::to_string(items).map_err(|e| {
+                        Error::new(
+                            Status::GenericFailure,
+                            format!("failed to serialize nested jsonElements array: {e}"),
+                        )
+                    })?,
+                ));
+            } else {
+                for item in items {
+                    out.push((path.to_string(), json_value_to_string(item)?));
+                }
+            }
+
+            Ok(())
+        }
+        _ => {
+            let path = path.ok_or_else(|| {
+                Error::new(
+                    Status::InvalidArg,
+                    "jsonElements must be a JSON object at the top level",
+                )
+            })?;
+            out.push((path.to_string(), json_value_to_string(value)?));
+            Ok(())
+        }
+    }
+}
+
+fn json_value_to_string(value: &serde_json::Value) -> Result<String, Error> {
+    match value {
+        serde_json::Value::Null => Ok("null".to_string()),
+        serde_json::Value::Bool(flag) => Ok(flag.to_string()),
+        serde_json::Value::Number(number) => Ok(number.to_string()),
+        serde_json::Value::String(text) => Ok(text.clone()),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => serde_json::to_string(value)
+            .map_err(|e| {
+                Error::new(
+                    Status::GenericFailure,
+                    format!("failed to serialize jsonElements value: {e}"),
+                )
+            }),
     }
 }
 
@@ -374,6 +461,19 @@ fn blp_async_error_to_napi(e: BlpAsyncError) -> Error {
         ),
         BlpAsyncError::Cancelled => Error::new(Status::GenericFailure, "Request was cancelled"),
         BlpAsyncError::Timeout => Error::new(Status::GenericFailure, "Request timed out"),
+        BlpAsyncError::SessionLost {
+            worker_id,
+            in_flight_count,
+        } => Error::new(
+            Status::GenericFailure,
+            format!(
+                "Session lost on worker {worker_id}; {in_flight_count} in-flight requests failed"
+            ),
+        ),
+        BlpAsyncError::AllWorkersDown { pool_size } => Error::new(
+            Status::GenericFailure,
+            format!("All {pool_size} request workers are down"),
+        ),
         BlpAsyncError::Internal(msg) => Error::new(Status::GenericFailure, msg),
     }
 }
@@ -468,7 +568,6 @@ impl JsEngine {
             .map_err(blp_async_error_to_napi)?;
         to_ipc_buffer(batch)
     }
-
 
     #[napi]
     pub async fn resolve_field_types(
@@ -623,11 +722,12 @@ impl JsEngine {
                 None,
                 None,
                 None,
+                None,
             )
             .await
             .map_err(blp_async_error_to_napi)?;
 
-        Ok(JsSubscription::from_stream(stream, tickers, fields, None))
+        JsSubscription::from_stream(stream, tickers, fields, None)
     }
 
     #[napi]
@@ -660,16 +760,12 @@ impl JsEngine {
                 stream_capacity.map(|v| v as usize),
                 flush_threshold.map(|v| v as usize),
                 overflow,
+                None,
             )
             .await
             .map_err(blp_async_error_to_napi)?;
 
-        Ok(JsSubscription::from_stream(
-            stream,
-            tickers,
-            fields,
-            stream_capacity.map(|v| v as usize),
-        ))
+        JsSubscription::from_stream(stream, tickers, fields, stream_capacity.map(|v| v as usize))
     }
 
     #[napi]
@@ -681,7 +777,6 @@ impl JsEngine {
     pub fn is_available(&self) -> bool {
         true
     }
-
 
     #[napi]
     pub async fn recipe_bqr(
@@ -724,30 +819,26 @@ pub struct JsSubscription {
 impl JsSubscription {
     fn from_stream(
         stream: xbbg_async::engine::SubscriptionStream,
-        tickers: Vec<String>,
+        _tickers: Vec<String>,
         fields: Vec<String>,
-        stream_capacity: Option<usize>,
-    ) -> Self {
-        let (rx, tx, claim, keys, topic_to_key, metrics, ft, op_policy, service, options) =
-            stream.into_parts();
+        _stream_capacity: Option<usize>,
+    ) -> napi::Result<Self> {
+        let (rx, tx, claim, status, ft, op_policy, service, options) =
+            stream.into_parts().map_err(blp_error_to_napi)?;
         let handle = SubscriptionStreamHandle {
             tx,
             claim: Some(claim),
-            keys,
-            topics: tickers,
             fields,
-            topic_to_key,
             service,
             options,
             flush_threshold: ft,
             overflow_policy: op_policy,
-            _stream_capacity: stream_capacity,
-            metrics,
+            status,
         };
-        Self {
+        Ok(Self {
             rx: Arc::new(Mutex::new(Some(rx))),
             stream: Arc::new(Mutex::new(Some(handle))),
-        }
+        })
     }
 
     #[napi]
@@ -774,10 +865,13 @@ impl JsSubscription {
             .as_mut()
             .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
 
-        let new_topics: Vec<String> = tickers
-            .into_iter()
-            .filter(|ticker| !handle.topic_to_key.contains_key(ticker))
-            .collect();
+        let new_topics: Vec<String> = {
+            let status = handle.status.lock();
+            tickers
+                .into_iter()
+                .filter(|ticker| !status.topic_to_key().contains_key(ticker))
+                .collect()
+        };
         if new_topics.is_empty() {
             return Ok(());
         }
@@ -796,16 +890,15 @@ impl JsSubscription {
                 handle.flush_threshold,
                 handle.overflow_policy,
                 handle.tx.clone(),
+                handle.status.clone(),
             )
             .await
             .map_err(blp_async_error_to_napi)?;
 
-        for (topic, key) in new_topics.iter().zip(new_keys.iter()) {
-            handle.topic_to_key.insert(topic.clone(), *key);
-            handle.topics.push(topic.clone());
-            handle.keys.push(*key);
-        }
-        handle.metrics.extend(new_metrics);
+        handle
+            .status
+            .lock()
+            .add_active(&new_topics, &new_keys, new_metrics);
         Ok(())
     }
 
@@ -816,14 +909,18 @@ impl JsSubscription {
             .as_mut()
             .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
 
-        let mut keys_to_remove = Vec::new();
-        for ticker in &tickers {
-            if let Some(key) = handle.topic_to_key.remove(ticker) {
-                keys_to_remove.push(key);
-                handle.topics.retain(|topic| topic != ticker);
-                handle.keys.retain(|k| *k != key);
+        let (keys_to_remove, topics_to_remove) = {
+            let status = handle.status.lock();
+            let mut keys_to_remove = Vec::new();
+            let mut topics_to_remove = Vec::new();
+            for ticker in &tickers {
+                if let Some(&key) = status.topic_to_key().get(ticker) {
+                    keys_to_remove.push(key);
+                    topics_to_remove.push(ticker.clone());
+                }
             }
-        }
+            (keys_to_remove, topics_to_remove)
+        };
         if keys_to_remove.is_empty() {
             return Ok(());
         }
@@ -835,14 +932,21 @@ impl JsSubscription {
         claim
             .unsubscribe(keys_to_remove)
             .await
-            .map_err(blp_async_error_to_napi)
+            .map_err(blp_async_error_to_napi)?;
+
+        let mut status = handle.status.lock();
+        for ticker in topics_to_remove {
+            status.remove_topic(&ticker);
+        }
+
+        Ok(())
     }
 
     #[napi(getter)]
     pub fn tickers(&self) -> Vec<String> {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
-            Some(handle) => handle.topics.clone(),
+            Some(handle) => handle.status.lock().topics().to_vec(),
             None => Vec::new(),
         }
     }
@@ -860,7 +964,7 @@ impl JsSubscription {
     pub fn is_active(&self) -> bool {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
-            Some(handle) => !handle.keys.is_empty() && handle.claim.is_some(),
+            Some(handle) => handle.claim.is_some() && handle.status.lock().has_active_topics(),
             None => false,
         }
     }
@@ -869,33 +973,33 @@ impl JsSubscription {
     pub fn stats(&self) -> SubscriptionStats {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
-            Some(handle) => SubscriptionStats {
-                messages_received: to_i64_saturating(
-                    handle
-                        .metrics
+            Some(handle) => {
+                let status = handle.status.lock();
+                let metrics: Vec<_> = status.fields_metrics().values().cloned().collect();
+                SubscriptionStats {
+                    messages_received: to_i64_saturating(
+                        metrics
+                            .iter()
+                            .map(|metric| metric.messages_received.load(Ordering::Relaxed))
+                            .sum(),
+                    ),
+                    dropped_batches: to_i64_saturating(
+                        metrics
+                            .iter()
+                            .map(|metric| metric.dropped_batches.load(Ordering::Relaxed))
+                            .sum(),
+                    ),
+                    batches_sent: to_i64_saturating(
+                        metrics
+                            .iter()
+                            .map(|metric| metric.batches_sent.load(Ordering::Relaxed))
+                            .sum(),
+                    ),
+                    slow_consumer: metrics
                         .iter()
-                        .map(|metric| metric.messages_received.load(Ordering::Relaxed))
-                        .sum(),
-                ),
-                dropped_batches: to_i64_saturating(
-                    handle
-                        .metrics
-                        .iter()
-                        .map(|metric| metric.dropped_batches.load(Ordering::Relaxed))
-                        .sum(),
-                ),
-                batches_sent: to_i64_saturating(
-                    handle
-                        .metrics
-                        .iter()
-                        .map(|metric| metric.batches_sent.load(Ordering::Relaxed))
-                        .sum(),
-                ),
-                slow_consumer: handle
-                    .metrics
-                    .iter()
-                    .any(|metric| metric.slow_consumer.load(Ordering::Relaxed)),
-            },
+                        .any(|metric| metric.slow_consumer.load(Ordering::Relaxed)),
+                }
+            }
             None => SubscriptionStats {
                 messages_received: 0,
                 dropped_batches: 0,
@@ -930,10 +1034,12 @@ impl JsSubscription {
 
         if let Some(mut handle) = handle {
             if let Some(claim) = handle.claim.take() {
-                if !handle.keys.is_empty() {
-                    let _ = claim.unsubscribe(handle.keys.clone()).await;
+                let keys = handle.status.lock().keys().to_vec();
+                if !keys.is_empty() {
+                    let _ = claim.unsubscribe(keys).await;
                 }
             }
+            handle.status.lock().clear_active();
         }
 
         if remaining.is_empty() {

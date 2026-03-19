@@ -11,7 +11,8 @@ description = "Extension utilities for xbbg - futures resolution, currency adjus
 arrow = { version = "57", default-features = false, features = ["chrono-tz"] }
 
 # Date/time handling
-chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+chrono-tz = "0.10"
 
 # Compile-time perfect hash maps for constants
 phf = { version = "0.11", features = ["macros"] }

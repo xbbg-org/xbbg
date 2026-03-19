@@ -17,6 +17,8 @@ use arrow::record_batch::RecordBatch;
 use indexmap::IndexMap;
 use xbbg_core::{BlpError, Value};
 
+use super::value_utils::{format_date32, format_time64_micros, format_timestamp_micros};
+
 /// Arrow type identifier (subset of Arrow types we support).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ArrowType {
@@ -156,25 +158,46 @@ impl TypedBuilder {
                     b.append_null();
                 }
             }
-            TypedBuilder::String(b) => {
-                if let Some(s) = value.and_then(|v| match v {
-                    Value::String(s) | Value::Enum(s) => Some(s.to_string()),
-                    Value::Float64(f) => Some(f.to_string()),
-                    Value::Int64(i) => Some(i.to_string()),
-                    Value::Int32(i) => Some(i.to_string()),
-                    Value::Bool(b) => Some(b.to_string()),
-                    Value::Date32(d) => Some(format_date32(d)),
-                    Value::TimestampMicros(ts) => Some(format_timestamp_micros(ts)),
-                    Value::Datetime(dt) => Some(format_timestamp_micros(dt.to_micros())),
-                    Value::Time64Micros(t) => Some(format_time64_micros(t)),
-                    Value::Byte(b) => Some(b.to_string()),
-                    Value::Null => None,
-                }) {
+            TypedBuilder::String(b) => match value {
+                Some(Value::String(s)) | Some(Value::Enum(s)) => b.append_value(s),
+                Some(Value::Float64(f)) => {
+                    let s = f.to_string();
                     b.append_value(&s);
-                } else {
-                    b.append_null();
                 }
-            }
+                Some(Value::Int64(i)) => {
+                    let s = i.to_string();
+                    b.append_value(&s);
+                }
+                Some(Value::Int32(i)) => {
+                    let s = i.to_string();
+                    b.append_value(&s);
+                }
+                Some(Value::Bool(v)) => {
+                    let s = v.to_string();
+                    b.append_value(&s);
+                }
+                Some(Value::Date32(d)) => {
+                    let s = format_date32(d);
+                    b.append_value(&s);
+                }
+                Some(Value::TimestampMicros(ts)) => {
+                    let s = format_timestamp_micros(ts);
+                    b.append_value(&s);
+                }
+                Some(Value::Datetime(dt)) => {
+                    let s = format_timestamp_micros(dt.to_micros());
+                    b.append_value(&s);
+                }
+                Some(Value::Time64Micros(t)) => {
+                    let s = format_time64_micros(t);
+                    b.append_value(&s);
+                }
+                Some(Value::Byte(v)) => {
+                    let s = v.to_string();
+                    b.append_value(&s);
+                }
+                Some(Value::Null) | None => b.append_null(),
+            },
             TypedBuilder::Bool(b) => {
                 if let Some(v) = value.and_then(|v| v.as_bool()) {
                     b.append_value(v);
@@ -524,36 +547,6 @@ impl ColumnSet {
 impl Default for ColumnSet {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Format days since epoch as YYYY-MM-DD string.
-fn format_date32(days: i32) -> String {
-    use chrono::{Duration, NaiveDate};
-    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-    let date = epoch + Duration::days(days as i64);
-    date.format("%Y-%m-%d").to_string()
-}
-
-/// Format microseconds from midnight as HH:MM:SS.ffffff string.
-fn format_time64_micros(micros: i64) -> String {
-    let total_secs = micros / 1_000_000;
-    let frac_us = (micros % 1_000_000).unsigned_abs();
-    let h = total_secs / 3600;
-    let m = (total_secs % 3600) / 60;
-    let s = total_secs % 60;
-    format!("{:02}:{:02}:{:02}.{:06}", h, m, s, frac_us)
-}
-
-/// Format microseconds since epoch as ISO datetime string.
-fn format_timestamp_micros(micros: i64) -> String {
-    use chrono::DateTime;
-    let secs = micros / 1_000_000;
-    let nanos = ((micros % 1_000_000) * 1000) as u32;
-    if let Some(dt) = DateTime::from_timestamp(secs, nanos) {
-        dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-    } else {
-        format!("{}us", micros)
     }
 }
 

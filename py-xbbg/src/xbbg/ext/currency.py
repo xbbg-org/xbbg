@@ -12,7 +12,6 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -23,7 +22,7 @@ from xbbg._core import (
     ext_build_fx_pair,
     ext_same_currency,
 )
-from xbbg.ext._utils import _pivot_bdp_to_wide
+from xbbg.ext._utils import _pivot_bdp_to_wide, _syncify
 
 logger = logging.getLogger(__name__)
 
@@ -217,31 +216,4 @@ async def aconvert_ccy(
     return result.to_native()
 
 
-# =============================================================================
-# Sync wrappers
-# =============================================================================
-
-
-def convert_ccy(
-    data: IntoDataFrame,
-    ccy: str = "USD",
-    **kwargs,
-) -> IntoDataFrame:
-    """Convert DataFrame values to a target currency.
-
-    Sync wrapper for aconvert_ccy(). See aconvert_ccy() for full documentation.
-
-    Example::
-
-        from xbbg import bdh, ext
-
-        # Get historical data in local currency
-        df = bdh("VOD LN Equity", "PX_LAST", "2024-01-01", "2024-01-10")
-
-        # Convert to USD
-        df_usd = ext.convert_ccy(df, ccy="USD")
-
-        # Convert to EUR
-        df_eur = ext.convert_ccy(df, ccy="EUR")
-    """
-    return asyncio.run(aconvert_ccy(data=data, ccy=ccy, **kwargs))
+convert_ccy = _syncify(aconvert_ccy)

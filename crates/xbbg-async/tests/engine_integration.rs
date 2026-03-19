@@ -332,6 +332,45 @@ async fn test_bdh_multiple_tickers() {
     std::mem::forget(engine);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bdh_request_options_apply_periodicity() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "HistoricalDataRequest".to_string(),
+        extractor: ExtractorType::HistData,
+        securities: Some(vec!["SPY US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        start_date: Some("20250101".to_string()),
+        end_date: Some("20250630".to_string()),
+        options: Some(vec![(
+            "periodicitySelection".to_string(),
+            "MONTHLY".to_string(),
+        )]),
+        ..Default::default()
+    };
+
+    let batch = engine
+        .request(params)
+        .await
+        .expect("bdh request with options");
+
+    print_batch_summary("BDH (monthly via request options)", &batch);
+    assert!(
+        batch.num_rows() > 0,
+        "Monthly historical request should return at least one row"
+    );
+    assert!(
+        batch.num_rows() <= 8,
+        "periodicitySelection=MONTHLY should materially reduce row count, got {}",
+        batch.num_rows()
+    );
+
+    std::mem::forget(engine);
+}
+
 // =============================================================================
 // BDS (Bulk Data) Tests
 // =============================================================================
@@ -520,6 +559,34 @@ async fn test_generic_with_overrides() {
 
     print_batch_summary("Generic with overrides", &batch);
     assert!(batch.num_rows() >= 1, "Should have data");
+
+    std::mem::forget(engine);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_raw_request_marker_uses_explicit_operation() {
+    init_tracing();
+    let engine = create_engine();
+
+    let params = RequestParams {
+        service: "//blp/refdata".to_string(),
+        operation: "".to_string(),
+        request_operation: Some("ReferenceDataRequest".to_string()),
+        extractor: ExtractorType::RefData,
+        extractor_set: true,
+        securities: Some(vec!["IBM US Equity".to_string()]),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await.expect("raw request");
+
+    print_batch_summary("Raw request marker", &batch);
+    assert!(batch.num_rows() >= 1, "Should have at least one row");
+    assert!(
+        batch.schema().column_with_name("ticker").is_some(),
+        "Should have ticker column"
+    );
 
     std::mem::forget(engine);
 }

@@ -325,25 +325,85 @@ jobs:
         shell: bash
         run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
 
+  check-macos:
+    name: Check (macOS)
+    needs: [sdk-version, generate-bindings]
+    runs-on: macos-latest
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: aarch64-apple-darwin
+          components: clippy
+          rustflags: ""
+
+      - name: Download pre-generated bindings
+        uses: actions/download-artifact@v4
+        with:
+          name: blpapi-bindings
+          path: ci-bindings
+
+      - name: Configure pre-generated bindings path (macOS)
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Cache Bloomberg SDK (macOS)
+        id: cache-sdk-macos
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (macOS)
+        if: steps.cache-sdk-macos.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-macos-arm64.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (macOS)
+        run: |
+          ln -sf "$HOME/blpapi/Darwin" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.dylib"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Cargo clippy
+        run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
+
   # ════════════════════════════════════════════════════════════════════════════
   # Build wheels via setuptools-rust + uv (matrix: OS × Python version)
   # ════════════════════════════════════════════════════════════════════════════
   build:
     name: Build (Python ${{ matrix.python }}, ${{ matrix.target }})
-    needs: [sdk-version, generate-bindings, check-linux, check-windows]
+    needs: [sdk-version, generate-bindings, check-linux, check-windows, check-macos]
     strategy:
       fail-fast: false
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        os: [ubuntu-latest, windows-latest]
-        target: [x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        target: [x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, aarch64-apple-darwin]
         exclude:
           # Linux target only on ubuntu
           - os: ubuntu-latest
             target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            target: aarch64-apple-darwin
           # Windows target only on windows
           - os: windows-latest
             target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.os }}
     env:
@@ -379,6 +439,13 @@ jobs:
             throw "Bindings artifact not found at $bindingsPath"
           }
           "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
+
+      - name: Configure pre-generated bindings path (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
 
       - name: Cache Bloomberg SDK (Linux)
         if: runner.os == 'Linux'
@@ -427,6 +494,29 @@ jobs:
           $sdkPath = (Get-ChildItem $HOME/blpapi -Directory)[0].FullName
           "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
 
+      - name: Cache Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        id: cache-sdk-macos
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (macOS)
+        if: runner.os == 'macOS' && steps.cache-sdk-macos.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-macos-arm64.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ln -sf "$HOME/blpapi/Darwin" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.dylib"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
       - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v5
         with:
@@ -442,7 +532,7 @@ jobs:
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.target }}-py${{ matrix.python }}
+          name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist/*.whl
 
   # ════════════════════════════════════════════════════════════════════════════
@@ -454,7 +544,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     env:
@@ -476,7 +566,7 @@ jobs:
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          name: wheel-${{ matrix.os == 'ubuntu-latest' && 'x86_64-unknown-linux-gnu' || 'x86_64-pc-windows-msvc' }}-py${{ matrix.python }}
+          name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist
 
       - name: Cache Bloomberg SDK (Linux)
@@ -502,6 +592,29 @@ jobs:
           echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=$HOME/blpapi/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Cache Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        id: cache-sdk-macos
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (macOS)
+        if: runner.os == 'macOS' && steps.cache-sdk-macos.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-macos-arm64.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ln -sf "$HOME/blpapi/Darwin" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.dylib"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Install blpapi from Bloomberg
         run: uv pip install --system --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
@@ -741,7 +854,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [codegen, lint-rust, lint-python, docs, audit, deny, check-linux, check-windows, build, test]
+    needs: [codegen, lint-rust, lint-python, docs, audit, deny, check-linux, check-windows, check-macos, build, test]
     if: always()
     steps:
       - name: Check required jobs
@@ -754,6 +867,7 @@ jobs:
              [[ "${{ needs.deny.result }}" != "success" ]] || \
              [[ "${{ needs.check-linux.result }}" != "success" ]] || \
              [[ "${{ needs.check-windows.result }}" != "success" ]] || \
+             [[ "${{ needs.check-macos.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]]; then
             echo "❌ One or more required jobs failed"
@@ -765,8 +879,77 @@ jobs:
             echo "  deny: ${{ needs.deny.result }}"
             echo "  check-linux: ${{ needs.check-linux.result }}"
             echo "  check-windows: ${{ needs.check-windows.result }}"
+            echo "  check-macos: ${{ needs.check-macos.result }}"
             echo "  build: ${{ needs.build.result }}"
             echo "  test: ${{ needs.test.result }}"
             exit 1
           fi
           echo "✅ All CI checks passed!"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Auto-generate type stubs (runs LAST, only after all CI passes)
+  # ════════════════════════════════════════════════════════════════════════════
+  update-stubs:
+    name: Update Type Stubs
+    needs: [sdk-version, ci-status]
+    if: needs.ci-status.result == 'success' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
+    continue-on-error: true
+    permissions:
+      contents: write
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git for container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Cache Bloomberg SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Build stub generator
+        run: cargo build -p pyo3-xbbg --bin stub_gen --no-default-features --features live
+
+      - name: Regenerate stubs
+        run: CARGO_MANIFEST_DIR=${{ github.workspace }}/bindings/pyo3-xbbg ./target/debug/stub_gen
+
+      - name: Commit stubs if changed
+        run: |
+          git add py-xbbg/src/xbbg/_core/__init__.pyi py-xbbg/src/xbbg/__init__.pyi py-xbbg/src/xbbg/py.typed
+          if git diff --cached --quiet; then
+            echo "Type stubs are already up to date"
+          else
+            git commit -m "chore: regenerate type stubs [skip ci]"
+            git push
+          fi

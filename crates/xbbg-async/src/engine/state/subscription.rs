@@ -22,6 +22,9 @@ pub struct SubscriptionMetrics {
     pub dropped_batches: Arc<AtomicU64>,
     pub batches_sent: Arc<AtomicU64>,
     pub slow_consumer: Arc<AtomicBool>,
+    pub data_loss_events: Arc<AtomicU64>,
+    pub last_message_us: Arc<AtomicU64>,
+    pub last_data_loss_us: Arc<AtomicU64>,
 }
 
 /// State for a single subscription, owned by PumpA.
@@ -53,6 +56,10 @@ pub struct SubscriptionState {
     pub metrics: Arc<SubscriptionMetrics>,
     /// Cached schema — invalidated when a field type is first inferred.
     cached_schema: Option<Arc<Schema>>,
+    /// Whether at least one data message has been observed.
+    has_received_data: bool,
+    /// Suppress stream-closed warnings during expected shutdown paths.
+    suppress_closed_warning: bool,
 }
 
 impl SubscriptionState {
@@ -86,6 +93,9 @@ impl SubscriptionState {
             dropped_batches: Arc::new(AtomicU64::new(0)),
             batches_sent: Arc::new(AtomicU64::new(0)),
             slow_consumer: Arc::new(AtomicBool::new(false)),
+            data_loss_events: Arc::new(AtomicU64::new(0)),
+            last_message_us: Arc::new(AtomicU64::new(0)),
+            last_data_loss_us: Arc::new(AtomicU64::new(0)),
         });
 
         Self {
@@ -102,6 +112,8 @@ impl SubscriptionState {
             dropped_batches: 0,
             metrics,
             cached_schema: None,
+            has_received_data: false,
+            suppress_closed_warning: false,
         }
     }
 
@@ -115,7 +127,7 @@ impl SubscriptionState {
     /// Timestamps use Bloomberg SDK receive time when available (requires
     /// `setRecordSubscriptionDataReceiveTimes(true)`), falling back to
     /// `SystemTime::now()` if not enabled.
-    pub fn on_message(&mut self, msg: &Message) {
+    pub fn on_message(&mut self, msg: &Message) -> bool {
         // Use Bloomberg SDK receive time if available, fallback to system time
         let timestamp = msg.time_received_us().unwrap_or_else(|| {
             std::time::SystemTime::now()
@@ -163,18 +175,42 @@ impl SubscriptionState {
         self.metrics
             .messages_received
             .fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .last_message_us
+            .store(timestamp as u64, Ordering::Relaxed);
+
+        let first_message = !self.has_received_data;
+        self.has_received_data = true;
 
         // Auto-flush if threshold reached
         if self.pending_count >= self.flush_threshold {
             self.flush();
         }
+
+        first_message
     }
 
     /// Handle DATALOSS indicator.
-    pub fn on_dataloss(&mut self) {
+    pub fn on_dataloss(&mut self, timestamp_us: Option<i64>) {
         self.slow_consumer = true;
         self.metrics.slow_consumer.store(true, Ordering::Relaxed);
+        self.metrics
+            .data_loss_events
+            .fetch_add(1, Ordering::Relaxed);
+        self.metrics.last_data_loss_us.store(
+            timestamp_us.unwrap_or_default().max(0) as u64,
+            Ordering::Relaxed,
+        );
         xbbg_log::warn!(topic = %self.topic, "DATALOSS detected - slow consumer");
+    }
+
+    pub fn clear_slow_consumer(&mut self) {
+        self.slow_consumer = false;
+        self.metrics.slow_consumer.store(false, Ordering::Relaxed);
+    }
+
+    pub fn mark_closing(&mut self) {
+        self.suppress_closed_warning = true;
     }
 
     /// Flush pending rows as a RecordBatch.
@@ -275,7 +311,9 @@ impl SubscriptionState {
                 // blocking_send is designed for sync contexts (subscription worker thread).
                 // Blocks until space is available or the receiver is dropped.
                 if self.stream.blocking_send(Ok(batch)).is_err() {
-                    xbbg_log::warn!(topic = %self.topic, "stream closed");
+                    if !self.suppress_closed_warning {
+                        xbbg_log::warn!(topic = %self.topic, "stream closed");
+                    }
                 } else {
                     self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
                 }
@@ -293,7 +331,7 @@ impl SubscriptionState {
                         let policy_label = match self.overflow_policy {
                             OverflowPolicy::DropNewest => "DropNewest",
                             OverflowPolicy::DropOldest => "DropOldest (degraded to DropNewest)",
-                            _ => unreachable!(),
+                            OverflowPolicy::Block => "Block",
                         };
                         xbbg_log::warn!(
                             topic = %self.topic,
@@ -303,7 +341,9 @@ impl SubscriptionState {
                         );
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
-                        xbbg_log::warn!(topic = %self.topic, "stream closed");
+                        if !self.suppress_closed_warning {
+                            xbbg_log::warn!(topic = %self.topic, "stream closed");
+                        }
                     }
                 }
             }

@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD013 MD031 MD032 MD033 MD036 MD041 MD051 MD060 -->
 <div align="center">
 
-<a href="https://github.com/alpha-xone/xbbg"><img src="docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
+<a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
 
 <!-- markdownlint-disable MD036 -->
 **xbbg: An intuitive Bloomberg API for Python**
@@ -22,10 +22,10 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==1.0.0a1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0a1))
+Latest release: xbbg==1.0.0b7 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0b7))
 <!-- xbbg:latest-release-end -->
 
-> This `main` branch now tracks the Rust-based v1 alpha line, a significant upgrade over 0.x in performance and architecture.
+> This `main` branch now tracks the Rust-based v1 beta line, a significant upgrade over 0.x in performance and architecture.
 > Need the legacy pure-Python behavior? Use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
 
 ## Table of Contents
@@ -59,7 +59,7 @@ Latest release: xbbg==1.0.0a1 (release: [notes](https://github.com/alpha-xone/xb
 ## Overview
 
 xbbg is a comprehensive Bloomberg API wrapper for Python, providing a clean, Pythonic interface to Bloomberg data services.
-This `main` branch is the v1 alpha generation: core request execution is now Rust-powered while preserving the familiar xbbg API for day-to-day workflows.
+This `main` branch is the v1 beta generation: core request execution is now Rust-powered while preserving the familiar xbbg API for day-to-day workflows.
 
 ### Key Features
 
@@ -212,10 +212,10 @@ xbbg is the **only Python library** that provides:
 | **`abdp()`** | Async reference data | Non-blocking operations<br>Concurrent requests<br>Web application friendly |
 | **`abds()`** | Async bulk data | Parallel bulk queries<br>Same API as `bds()` |
 | **`bflds()`** | Unified field metadata | Get field info or search by keyword<br>Single function for both use cases |
-| **`fieldInfo()`** | Field metadata lookup | Data types & descriptions<br>Discover available fields |
-| **`fieldSearch()`** | Search Bloomberg fields | Find fields by keyword<br>Explore data catalog |
-| **`lookupSecurity()`** | Find tickers by name | Company name search<br>Asset class filtering |
-| **`getPortfolio()`** | Portfolio data queries | Dedicated portfolio API<br>Holdings & weights |
+| **`fieldInfo()`** | Field metadata lookup (alias for `bflds`) | Data types & descriptions<br>Discover available fields |
+| **`fieldSearch()`** | Search Bloomberg fields (alias for `bflds`) | Find fields by keyword<br>Explore data catalog |
+| **`blkp()`** | Find tickers by name | Company name search<br>Asset class filtering |
+| **`bport()`** | Portfolio data queries | Dedicated portfolio API<br>Holdings & weights |
 
 ### Fixed Income Analytics
 
@@ -265,7 +265,7 @@ xbbg is the **only Python library** that provides:
 | **`bdh()`** | End-of-day historical data | Flexible date ranges<br>Multiple frequencies<br>Dividend/split adjustments |
 | **`abdh()`** | Async historical data | Non-blocking time series<br>Batch historical queries |
 | **`dividend()`** | Dividend & split history | All dividend types<br>Projected dividends<br>Date range filtering |
-| **`earning()`** | Corporate earnings | Geographic breakdowns<br>Product segments<br>Fiscal period analysis |
+| **`earnings()`** | Corporate earnings | Geographic breakdowns<br>Product segments<br>Fiscal period analysis |
 | **`turnover()`** | Trading volume & turnover | Multi-currency support<br>Automatic FX conversion |
 
 ### Intraday Data - High-Frequency Analysis
@@ -274,7 +274,6 @@ xbbg is the **only Python library** that provides:
 |----------|-------------|--------------|
 | **`bdib()`** | Intraday bar data | Sub-minute bars (10s intervals)<br>Session filtering (open/close)<br>Exchange-aware timing<br>Timezone control (`tz` parameter) |
 | **`bdtick()`** | Tick-by-tick data | Trade & quote events<br>Condition codes<br>Exchange/broker details |
-| **`exchange_tz()`** | Exchange timezone lookup | Returns IANA timezone string for any ticker |
 
 ### Screening & Advanced Queries
 
@@ -291,19 +290,49 @@ xbbg is the **only Python library** that provides:
 
 | Function | Description | Key Features |
 |----------|-------------|--------------|
-| **`live()`** | Real-time streaming | Async context manager<br>Auto-reconnection<br>Field-level updates |
-| **`subscribe()`** | Real-time subscriptions | Event callbacks<br>Custom intervals<br>Multiple tickers |
-| **`stream()`** | Async streaming | Modern async/await<br>Non-blocking updates |
+| **`subscribe()`** | Real-time subscriptions | Async iteration<br>Topic failure isolation<br>Health/status metadata |
+| **`stream()`** | Simplified streaming | Context manager<br>Non-blocking updates |
+| **`vwap()`** | Real-time VWAP | Streaming volume-weighted average price |
+| **`mktbar()`** | Real-time market bars | Streaming OHLCV bars |
+| **`depth()`** | Market depth | Streaming order book levels |
+| **`chains()`** | Option chains | Real-time chain data |
 
 ### Utilities
 
 | Function | Description | Key Features |
 |----------|-------------|--------------|
-| **`adjust_ccy()`** | Currency conversion | Multi-currency DataFrames<br>Historical FX rates<br>Automatic alignment |
+| **`convert_ccy()`** | Currency conversion | Multi-currency DataFrames<br>Historical FX rates<br>Automatic alignment |
 | **`fut_ticker()`** | Futures contract resolution | Generic to specific mapping<br>Date-aware selection |
 | **`active_futures()`** | Active futures selection | Volume-based logic<br>Roll date handling |
 | **`cdx_ticker()`** | CDX index resolution | Series mapping<br>Index family support |
 | **`active_cdx()`** | Active CDX selection | On-the-run detection<br>Lookback windows |
+
+### Schema Introspection
+
+| Function | Description | Key Features |
+|----------|-------------|--------------|
+| **`bops()`** | List service operations | Discover available request types |
+| **`bschema()`** | Get operation schema | Field definitions, types, enums |
+| **`list_valid_elements()`** | Valid request elements | Check parameter names before sending |
+| **`get_enum_values()`** | Enum values for a field | Discover valid override values |
+| **`generate_stubs()`** | IDE stub generation | Auto-complete for request parameters |
+
+### Engine Lifecycle
+
+| Function | Description | Key Features |
+|----------|-------------|--------------|
+| **`configure()`** | Engine and session setup | Server host/port, auth, options<br>Replaces `connect()` / `disconnect()` |
+| **`shutdown()`** | Stop engine and sessions | Graceful cleanup |
+| **`reset()`** | Reset engine state | Clear sessions and caches |
+| **`is_connected()`** | Check connection status | Boolean connectivity check |
+
+### Request Middleware
+
+| Function | Description | Key Features |
+|----------|-------------|--------------|
+| **`add_middleware()`** | Register request middleware | Logging, caching, instrumentation |
+| **`remove_middleware()`** | Unregister middleware | Clean removal |
+| **`RequestContext`** | Request metadata | Ticker, fields, service, timing |
 
 ### Additional Features
 
@@ -325,7 +354,7 @@ xbbg is the **only Python library** that provides:
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
-- **Python dependencies (core)**: `narwhals>=1.30`, `pyarrow>=22.0.0`, `lief>=0.17`
+- **Python dependencies (core)**: `narwhals>=1.30`, `pyarrow>=22.0.0`
 
 - **Optional backends** (install separately if needed):
   - `pandas` - For pandas DataFrame output (`pip install pandas`)
@@ -407,9 +436,6 @@ opening = blp.bdib('SPY US Equity', dt='2024-01-15', session='day_open_30')
 
 # Get data in UTC instead of exchange local time
 bars_utc = blp.bdib('SPY US Equity', dt='2024-01-15', tz='UTC')
-
-# Look up exchange timezone for a ticker
-tz = blp.exchange_tz('AAPL US Equity')  # → 'America/New_York'
 ```
 
 </details>
@@ -448,7 +474,7 @@ active = blp.active_futures('ESA Index', '2024-01-15')
 
 # Currency conversion
 hist_usd = blp.bdh('BMW GR Equity', 'PX_LAST', '2024-01-01', '2024-01-31')
-hist_eur = blp.adjust_ccy(hist_usd, ccy='EUR')
+hist_eur = blp.convert_ccy(hist_usd, ccy='EUR')
 
 # Dividend history
 divs = blp.dividend('AAPL US Equity', start_date='2024-01-01', end_date='2024-12-31')
@@ -507,21 +533,135 @@ chain = option_chain_bql('AAPL US Equity', expiry='2025-01-17')
 
 ### Connection Options
 
-By default, xbbg connects to `localhost` on port `8194`. To connect to a remote Bloomberg server, use the `server` and `port` parameters:
+By default, xbbg connects to `localhost` on port `8194`. To connect to a remote Bloomberg server or configure authentication, use `configure()`:
 
 ```python
 from xbbg import blp
 
 # Connect to a remote Bloomberg server
-kwargs = {'server': '192.168.1.100', 'port': 18194}
-blp.bdp(tickers='NVDA US Equity', flds=['Security_Name'], **kwargs)
+blp.configure(server_host='192.168.1.100', server_port=18194)
+
+# With SAPI authentication
+blp.configure(
+    server_host='192.168.1.100',
+    server_port=18194,
+    auth_method='app',
+    app_name='myapp:SAPI',
+)
+
+# All subsequent calls use the configured connection
+blp.bdp(tickers='NVDA US Equity', flds=['Security_Name'])
 ```
 
-The `server` parameter (or `server_host`) can be passed through any function that accepts kwargs, just like the `port` parameter.
+You can also pass `server` and `port` as kwargs to individual function calls for ad-hoc connections.
+
+### Engine Architecture
+
+xbbg v1 is powered by a Rust async engine with **pre-warmed worker pools**:
+
+```
+┌─────────────────────────────────────────────────┐
+│                   xbbg Engine                   │
+│                                                 │
+│  ┌──────────────────────┐  ┌─────────────────┐  │
+│  │  Request Worker Pool │  │ Subscription    │  │
+│  │  (request_pool_size) │  │ Session Pool    │  │
+│  │                      │  │ (sub_pool_size) │  │
+│  │  Worker 1 ──session  │  │                 │  │
+│  │  Worker 2 ──session  │  │  Session 1      │  │
+│  │  ...                 │  │  ...            │  │
+│  └──────────────────────┘  └─────────────────┘  │
+│           │ round-robin          │ isolated      │
+│           ▼                      ▼               │
+│    bdp/bdh/bds/bdib       subscribe/stream       │
+│    bql/bsrch/beqs         vwap/mktbar/depth      │
+└─────────────────────────────────────────────────┘
+```
+
+- **Request workers** each hold an independent Bloomberg session. Concurrent `bdp`/`bdh`/`bds` calls are dispatched round-robin across workers, so `request_pool_size=4` allows 4 parallel Bloomberg requests.
+- **Subscription sessions** are isolated per session to avoid cross-contamination between topic streams. Each `subscribe()` call gets its own Bloomberg session from the pool.
+- Workers are **pre-warmed** at first use — sessions are started and services opened before your first request, eliminating cold-start latency.
+
+### EngineConfig Reference
+
+Call `configure()` before any Bloomberg request to tune the engine. All fields have sensible defaults:
+
+```python
+from xbbg import configure, EngineConfig
+
+# Keyword arguments (most common)
+configure(request_pool_size=4, subscription_pool_size=2)
+
+# Or use an EngineConfig object
+configure(EngineConfig(request_pool_size=4, subscription_pool_size=2))
+```
+
+#### Connection & Session
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `host` | `'localhost'` | Bloomberg server host. Aliases: `server_host`, `server` |
+| `port` | `8194` | Bloomberg server port. Alias: `server_port` |
+| `num_start_attempts` | `3` | Retries before giving up on session start. Alias: `max_attempt` |
+| `auto_restart_on_disconnection` | `True` | Auto-reconnect on session disconnect. Alias: `auto_restart` |
+
+#### Worker Pools
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `request_pool_size` | `2` | Number of pre-warmed request workers (parallel Bloomberg sessions for bdp/bdh/bds/etc.) |
+| `subscription_pool_size` | `1` | Number of pre-warmed subscription sessions (isolated sessions for subscribe/stream) |
+| `warmup_services` | `['//blp/refdata', '//blp/apiflds']` | Services to pre-open on startup |
+
+#### Subscription Tuning
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `subscription_flush_threshold` | `1` | Ticks buffered before flushing to Python (increase for throughput, decrease for latency) |
+| `subscription_stream_capacity` | `256` | Backpressure buffer size per subscription stream |
+| `overflow_policy` | `'drop_newest'` | Slow consumer policy: `'drop_newest'`, `'drop_oldest'`, or `'block'` |
+
+#### Internal Buffers
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_event_queue_size` | `10000` | Bloomberg SDK event queue depth |
+| `command_queue_size` | `256` | Internal command channel capacity |
+
+#### Validation
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `validation_mode` | `'disabled'` | Field validation: `'disabled'`, `'strict'` (reject unknown fields), or `'lenient'` (warn) |
+| `field_cache_path` | `~/.xbbg/field_cache.json` | Path for persistent field type cache. Set to customize location |
+
+#### Authentication (SAPI / B-PIPE)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `auth_method` | `None` | Auth mode: `'user'`, `'app'`, `'userapp'`, `'dir'`, `'manual'`, or `'token'` |
+| `app_name` | `None` | Application name (required for `app`, `userapp`, `manual`) |
+| `user_id` | `None` | Bloomberg user ID (required for `manual`) |
+| `ip_address` | `None` | Bloomberg IP address (required for `manual`) |
+| `dir_property` | `None` | Active Directory property (required for `dir`) |
+| `token` | `None` | Auth token (required for `token`) |
+
+**Auth mode examples:**
+
+```python
+# B-PIPE application auth
+configure(auth_method='app', app_name='myapp:8888', host='bpipe-host')
+
+# Manual auth (SAPI)
+configure(auth_method='manual', app_name='myapp', user_id='12345', ip_address='10.0.0.1')
+
+# Active Directory auth
+configure(auth_method='dir', dir_property='mail')
+```
 
 ### Async Functions
 
-Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. In the v1 alpha architecture, async implementations are the canonical source of truth and sync functions delegate via `_run_sync()`.
+Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. In the v1 architecture, async implementations are the canonical source of truth and sync functions delegate via `_run_sync()`.
 
 #### In scripts (no existing event loop)
 
@@ -617,7 +757,7 @@ print_backend_status()
 #### Usage
 
 ```python
-from xbbg import blp, Backend, Format
+from xbbg import blp, Backend
 
 # Get data as Polars DataFrame
 df_polars = blp.bdp('AAPL US Equity', 'PX_LAST', backend=Backend.POLARS)
@@ -642,13 +782,13 @@ Control the shape of your data with the `format` parameter:
 | `wide` | Tickers as columns (pandas only) | Time series alignment, Excel-like |
 
 ```python
-from xbbg import blp, Format
+from xbbg import blp
 
-# Long format (tidy data)
-df_long = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'], format=Format.LONG)
+# Long format (tidy data, default)
+df_long = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'], format='long')
 
-# Wide format (Excel-like)
-df_wide = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format=Format.WIDE)
+# Semi-long format (one row per ticker, fields as columns)
+df_semi = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format='semi_long')
 ```
 
 #### Global Configuration
@@ -656,19 +796,13 @@ df_wide = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format=For
 Set defaults for your entire session:
 
 ```python
-from xbbg import set_backend, set_format, Backend, Format
+from xbbg import set_backend, Backend
 
 # Set Polars as default backend
 set_backend(Backend.POLARS)
 
-# Set long format as default
-set_format(Format.LONG)
-
-# Use new typed output format
-set_format(Format.LONG_TYPED)
-
-# All subsequent calls use these defaults
-df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame in long format
+# All subsequent calls use this default
+df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame
 ```
 
 #### Why Multi-Backend?
@@ -857,19 +991,19 @@ blp.fieldSearch('vwap')                  # Same as bflds(search_spec=...)
 
 ```python
 # Look up securities by company name
-blp.lookupSecurity('IBM', max_results=10)
+blp.blkp('IBM', max_results=10)
 ```
 
 ```python
 # Lookup with asset class filter
-blp.lookupSecurity('Apple', yellowkey='eqty', max_results=20)
+blp.blkp('Apple', yellowkey='eqty', max_results=20)
 ```
 
 #### Portfolio Data
 
 ```python
 # Get portfolio data (dedicated function)
-blp.getPortfolio('PORTFOLIO_NAME', 'PORTFOLIO_MWEIGHT')
+blp.bport('PORTFOLIO_NAME', 'PORTFOLIO_MWEIGHT')
 ```
 
 ### 📈 Historical Data
@@ -963,7 +1097,7 @@ MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.25  Quarter  
 
 ```python
 # Earnings breakdowns
-blp.earning('AMD US Equity', by='Geo', Eqy_Fund_Year=2017, Number_Of_Periods=1)
+blp.earnings('AMD US Equity', by='Geo', Eqy_Fund_Year=2017, Number_Of_Periods=1)
 ```
 
 ```pydocstring
@@ -1170,14 +1304,6 @@ bars_london = blp.bdib('SPY US Equity', dt='2024-01-15', tz='Europe/London')
 # Index: 2024-01-15 14:31:00+00:00, 2024-01-15 14:32:00+00:00, ...
 ```
 
-To look up the exchange timezone for any ticker, use `exchange_tz()`:
-
-```python
-blp.exchange_tz('AAPL US Equity')   # → 'America/New_York'
-blp.exchange_tz('7974 JT Equity')   # → 'Asia/Tokyo'
-blp.exchange_tz('BHP AU Equity')    # → 'Australia/Sydney'
-```
-
 ```python
 # Trading volume & turnover (currency-adjusted, in millions)
 blp.turnover(['ABC US Equity', 'DEF US Equity'], start_date='2024-01-01', end_date='2024-01-10', ccy='USD')
@@ -1196,7 +1322,7 @@ Out[13]:
 ```python
 # Currency conversion for historical data
 hist = blp.bdh(['GHI US Equity'], ['px_last'], '2024-01-01', '2024-01-10')
-blp.adjust_ccy(hist, ccy='EUR')
+blp.convert_ccy(hist, ccy='EUR')
 ```
 
 ```pydocstring
@@ -1321,16 +1447,18 @@ Out[18]:
 ### 📡 Real-time
 
 ```python
-# Real-time market data streaming
-# with blp.live(['AAPL US Equity'], ['LAST_PRICE']) as stream:  # doctest: +SKIP
-#     for update in stream:  # doctest: +SKIP
-#         print(update)  # doctest: +SKIP
+# Real-time market data streaming (async)
+# async for tick in blp.astream(['AAPL US Equity'], ['LAST_PRICE']):  # doctest: +SKIP
+#     print(tick)  # doctest: +SKIP
 
-# Real-time subscriptions
-# blp.subscribe(['AAPL US Equity'], ['LAST_PRICE'], callback=my_handler)  # doctest: +SKIP
+# Subscriptions with failure isolation and health metadata
+# sub = await blp.asubscribe(['AAPL US Equity'], ['LAST_PRICE'])  # doctest: +SKIP
+# async for update in sub:  # doctest: +SKIP
+#     print(update)  # doctest: +SKIP
 
-# Subscribe with 10-second update interval
-# blp.subscribe(['AAPL US Equity'], interval=10)  # doctest: +SKIP
+# Real-time VWAP streaming
+# async for bar in blp.avwap(['AAPL US Equity']):  # doctest: +SKIP
+#     print(bar)  # doctest: +SKIP
 ```
 
 ### 🔧 Utilities
@@ -1448,7 +1576,7 @@ Local data usage must be compliant with the Bloomberg Datafeed Addendum (see `DA
 **Quick fix:**
 ```python
 # Verify ticker exists
-blp.lookupSecurity('Apple', yellowkey='eqty')
+blp.blkp('Apple', yellowkey='eqty')
 
 # Check field availability
 blp.fieldSearch('price')
@@ -1529,38 +1657,45 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 
 Create venv and install dependencies:
 
-```cmd
-uv venv .venv
-.\.venv\Scripts\Activate.ps1
-uv sync --locked --extra dev --extra test
+```bash
+# Set Bloomberg SDK path (required for building the Rust extension)
+export BLPAPI_ROOT=/path/to/blpapi_cpp_x.x.x.x  # Linux/macOS
+# $env:BLPAPI_ROOT = "C:\path\to\blpapi_cpp_x.x.x.x"  # Windows PowerShell
+
+# Install all dev dependencies (uses uv dependency-groups)
+uv sync
 ```
 
 ### Adding Dependencies
 
-```cmd
+```bash
 uv add <package>
 ```
 
 ### Running Tests and Linting
 
-```cmd
-uv run ruff check xbbg
-uv run pytest --doctest-modules --cov -v xbbg
+```bash
+uv run ruff check py-xbbg/src/xbbg
+uv run pytest py-xbbg/tests -q
 ```
 
 ### Building
 
-```cmd
-uv run python -m build
+```bash
+uv build
 ```
 
 Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
 
 ### Documentation
 
-```cmd
-uv sync --locked --extra docs
-uv run sphinx-build -b html docs docs/_build/html
+The docs site uses [Astro](https://astro.build/):
+
+```bash
+cd docs
+npm install
+npm run dev    # Local dev server
+npm run build  # Production build
 ```
 
 ## Contributing
@@ -1575,19 +1710,17 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for deta
 
 Quick start for contributors:
 
-```cmd
+```bash
 # Fork and clone the repository
 git clone https://github.com/YOUR-USERNAME/xbbg.git
 cd xbbg
 
 # Set up development environment
-uv venv .venv
-.\.venv\Scripts\Activate.ps1
-uv sync --locked --extra dev --extra test
+uv sync
 
 # Run tests and linting
-uv run ruff check xbbg
-uv run pytest --doctest-modules -q
+uv run ruff check py-xbbg/src/xbbg
+uv run pytest py-xbbg/tests -q
 ```
 
 ## Getting Help

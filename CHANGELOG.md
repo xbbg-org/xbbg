@@ -7,6 +7,167 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0b7] - 2026-03-18
+
+### Added
+
+- **Python type stubs** for `xbbg._core` via `pyo3-stub-gen`: auto-generated `.pyi` files provide full IDE autocompletion and type-checker support for `EngineConfig`, `Engine`, `Subscription`, and all Rust-backed functions. Includes `py.typed` PEP 561 marker.
+- **macOS ARM64 wheel builds** in CI and release workflows. Wheels are now built and tested for Linux x86_64, Windows x86_64, and macOS ARM64 across Python 3.10–3.14.
+- **CI auto-regeneration of type stubs**: stubs are regenerated and auto-committed after all CI checks pass, ensuring `.pyi` files stay in sync with Rust annotations.
+- **`Engine` class** for non-global multi-engine routing. Create independent engine instances and scope them via `with engine:` (sync) or `async with engine:` (async). The global `configure()` + `blp.bdp()` API is unchanged — `Engine` is fully opt-in.
+- **TLS support** for encrypted B-PIPE connections: `tls_client_credentials`, `tls_trust_material`, `tls_handshake_timeout_ms` on `EngineConfig` and `configure()`.
+- **Identity lifecycle FFI**: `Session.generate_token()`, `Session.send_authorization_request()`, `Session.subscribe_with_identity()` for multi-user entitlement flows.
+- **Runtime SDK version**: `get_sdk_info()` now includes `runtime_version` field reporting the linked Bloomberg C SDK version via `blpapi_getVersionInfo()` (e.g., `"3.26.2.1"`). Also available as `xbbg._core.sdk_version()` → `(major, minor, patch, build)` tuple.
+- **Async request cancellation**: cancelling the Python task for any async Bloomberg request now propagates to the Bloomberg SDK via `Session::cancel(correlationId)`. The worker drops local request state immediately after a successful cancel and remains usable for subsequent requests.
+- **Reconnect resilience (Phases 1–3)** for the Rust engine (#245):
+  - **Fail-fast on session death**: request workers now immediately drain all in-flight requests with an error on `SessionTerminated`/`SessionConnectionDown` instead of letting callers hang indefinitely. Workers are marked `Dead` and restored to `Healthy` on `SessionConnectionUp`.
+  - **Service re-open before re-subscribe**: `recover_active_subscriptions()` now re-opens all previously opened services before re-issuing subscriptions after reconnect, fixing a critical gap where recovery could silently fail.
+  - **Health-aware dispatch**: request pool round-robin skips `Dead` workers; returns `AllWorkersDown` immediately if the entire pool is dead.
+  - **Retry with exponential backoff**: `RetryPolicy` on `EngineConfig` (`retry_max_retries`, `retry_initial_delay_ms`, `retry_backoff_factor`, `retry_max_delay_ms`) enables automatic retry of transient request failures.
+  - **Recovery limits**: `max_recovery_attempts` and `recovery_timeout_ms` cap subscription recovery to prevent infinite loops.
+  - **Lifecycle events**: `ConnectionLost`, `Reconnected`, and `RecoveryFailed` events emitted to subscription status for observability.
+  - **New error variants**: `BlpAsyncError::SessionLost` and `AllWorkersDown` mapped to Python `BlpSessionError`.
+  - **Python surface**: all new config fields exposed in `EngineConfig`, `configure()`, and `Engine()`; `engine.worker_health()` returns per-worker health status.
+- **Multi-server failover** via `servers` kwarg (#250). Pass a list of `(host, port)` tuples for automatic Bloomberg SDK failover using `setServerAddress(host, port, index)`. Existing `host`/`port` kwargs unchanged for single-server use.
+- **ZFP over leased lines** via `zfp_remote` kwarg (#255). Set to `"8194"` or `"8196"` with TLS credentials to connect via Bloomberg Zero Footprint without a local Terminal. Uses `ZfpUtil::getOptionsForLeasedLines` from the SDK.
+- **Identity entitlement checking** (#252): `Identity.is_authorized(service)`, `Identity.has_entitlements(service, eids)`, and `Identity.seat_type()` for B-PIPE multi-user entitlement verification.
+- **Bloomberg SDK logging bridge** (#253): `enable_sdk_logging(level)` and `EngineConfig.sdk_log_level` route native BLPAPI internal logs into `xbbg-log` tracing target `xbbg.sdk`. Default is **off**; registration happens before session start when enabled.
+
+### Changed
+
+- **Engine Architecture & EngineConfig documentation**: README now includes a full reference for all 20+ `EngineConfig` fields (worker pools, subscription tuning, buffers, validation, auth), an ASCII architecture diagram, and auth mode examples.
+- **API surface updated to v1**: README function tables, examples, and Connection Options section now reflect v1 names (`blkp`, `bport`, `earnings`, `convert_ccy`, `configure()`, `subscribe`/`stream`, etc.) and remove stale v0.x references (`lookupSecurity`, `exchange_tz`, `set_format`, `Format` enum).
+- **Dev setup and contributing guides** updated for v1 project structure (`py-xbbg/src` paths, Astro docs, `uv sync` dependency-groups).
+
+### Fixed
+
+- **cargo-deny advisory ignores** for unmaintained `unic-*` crates (transitive deps of `rustpython-parser` via `pyo3-stub-gen`, build-time only).
+
+## [1.0.0b6] - 2026-03-16
+
+### Changed
+
+- **Internal correlation ID dispatch overhaul**: The async engine no longer uses raw Bloomberg integer correlation IDs as direct slab indexes. All request and session dispatch now routes through an explicit dispatch-key layer at the session boundary, preventing ID collisions between auth subscriptions and user requests and aligning lifecycle tracking with Bloomberg SDK semantics.
+- **Logging levels better match the quiet-by-default workflow**: Request roundtrip telemetry and Python subscription lifecycle messages now emit at `DEBUG` instead of `INFO`, while exchange metadata fetch failures that cleanly fall back now emit at `WARNING` instead of `ERROR`, keeping normal control-flow noise out of default logs without hiding real request telemetry.
+
+### Fixed
+
+- **SAPI authentication fails with `BLPAPI_ERROR_DUPLICATE_CORRELATIONID`** ([#248](https://github.com/alpha-xone/xbbg/issues/248)): `CorrelationId::default()` returned `Int(0)`, which is a valid explicit correlation ID. When `setSessionIdentityOptions` registered `Int(0)` for the auth flow, subsequent `sendRequest` calls with the same default ID were rejected as duplicates (rc=131077). The default is now `CorrelationId::Unset` (maps to `BLPAPI_CORRELATION_TYPE_UNSET` in the FFI struct), matching the official Python `blpapi` behavior where the SDK auto-generates unique IDs. Affects all SAPI authentication modes (`app`, `user`, `userapp`, `dir`, `token`).
+
+## [1.0.0b5] - 2026-03-12
+
+### Added
+
+- **Rust-backed Bloomberg session authentication for v1**: Added structured auth support across the Rust core, async engine, and PyO3 bindings for `user`, `app`, `userapp`, `dir`, `manual`, and `token` auth modes, enabling SAPI/B-PIPE session configuration from the v1 Python API.
+- **Request middleware chain for telemetry and wrappers**: Added `RequestContext` plus middleware registration helpers around `arequest()` so callers can layer centralized request instrumentation, logging, caching, and wrapper behavior without patching individual endpoint functions.
+
+### Changed
+
+- **`configure()` is now the canonical engine/session setup surface**: Connection/auth setup now flows through `configure()` with support for legacy aliases such as `server_host`, `server_port`, `max_attempt`, and `auto_restart`, while the temporary `connect()` / `disconnect()` wrappers were removed before release.
+
+### Fixed
+
+- **Auth/session startup failures now propagate with context**: Request and subscription workers now wait for Bloomberg startup/auth events before proceeding, so failed authentication and session-start problems surface as actionable errors instead of being swallowed or masked by later service-open failures.
+- **Rust/Python CI regressions in the new auth path**: Cleaned release-blocking lint and formatting issues in the new auth/middleware code paths so the full Linux/Windows CI matrix passes with the beta 5 changes.
+
+## [1.0.0b4] - 2026-03-10
+
+### Changed
+
+- **Subscription failure isolation for mixed-topic streams**: Real-time subscriptions now treat Bloomberg `SubscriptionFailure` and unexpected `SubscriptionTerminated` events as per-ticker status instead of fatal stream errors when other topics remain healthy. Mixed subscriptions keep delivering data for valid tickers while exposing failed topics through subscription metadata.
+- **Subscription lifecycle observability**: Real-time subscriptions now retain bounded status/event history for topic lifecycle transitions, session connectivity, service readiness, slow-consumer/data-loss signals, and reconnect recovery attempts so callers can inspect operational state without scraping logs.
+- **Non-fatal disconnect handling with opt-in recovery**: `SessionConnectionDown` no longer tears down healthy subscriptions by default. Callers can opt into `recovery_policy="resubscribe"` to issue reconnect-time recovery subscribes while tracking attempts, successes, and last recovery errors through subscription status metadata.
+
+### Added
+
+- **Subscription failure metadata**: Python subscriptions now expose `failed_tickers` and `failures` so callers can inspect which topics Bloomberg rejected or terminated, along with the reported reason and failure kind.
+- **Subscription health/status surfaces**: Python subscriptions now expose `status`, `events`, `topic_states`, `session_status`, `admin_status`, `service_status`, `all_failed`, and expanded `stats` fields including data-loss counters, last-message timestamps, and effective overflow policy.
+
+## [1.0.0b3] - 2026-03-06
+
+### Added
+
+- **Backend enum and availability checks** ([#234](https://github.com/alpha-xone/xbbg/issues/234)): Ported `Backend` enum and backend availability infrastructure from `release/0.x` into `py-xbbg/src/xbbg/backend.py`. The canonical `Backend` enum now has all 13 backends (added `CUDF`, `MODIN`, `DASK`, `IBIS`, `PYSPARK`, `SQLFRAME`). New public helpers: `is_backend_available()`, `check_backend()`, `get_available_backends()`, `print_backend_status()`, `validate_backend_format()`, `is_format_supported()`, `get_supported_formats()`, `check_format_compatibility()`. Includes `MIN_VERSIONS`, `PACKAGE_NAMES`, `MODULE_NAMES`, and `SUPPORTED_FORMATS` dicts for version validation and actionable install instructions.
+
+### Changed
+
+- **Subscription mutation synchronization**: Refactored subscription worker ownership to split the single-owner pool lease from a cloneable command handle, allowing subscription `add()`/`remove()` paths in both `xbbg-async` and PyO3 to drop metadata locks before awaiting Bloomberg command dispatch while still serializing mutations safely.
+
+### Fixed
+
+- **Additional GIL release coverage in PyO3 bindings**: Released the GIL around synchronous cache-save calls, Arrow pivot/format inspection helpers, and subscription metadata snapshots so Python threads are not blocked during disk I/O, pure Rust Arrow work, or waits on subscription state locks.
+- **Reduced avoidable Arrow-path copies**: Removed intermediate string allocations for borrowed Bloomberg string/enum values and stopped cloning field-name/subfield-name vectors in `refdata`, `histdata`, and `bulkdata` extraction paths before the existing zero-copy PyArrow export boundary.
+- **Removed unused `lief` dependency**: Dropped `lief>=0.17` from core `[project.dependencies]`; the package was never imported anywhere in the codebase.
+
+## [1.0.0b2] - 2026-03-05
+
+### Added
+
+- **Field-validation toggle for refdata/histdata requests**: Added optional `validate_fields` request parameter in `request()`/`arequest()` and typed wrappers (`abdp`/`bdp`, `abdh`/`bdh`, `abds`/`bds`). This supports per-request strict validation override while still honoring engine-level `validation_mode` defaults.
+- **Engine-side field-validation enforcement**: `xbbg-async` now validates requested fields for `ReferenceDataRequest` and `HistoricalDataRequest` before dispatch when validation is enabled, returning configuration errors for unknown Bloomberg fields in strict mode.
+- **Live validation toggle smoke script**: Added `py-xbbg/tests/live/field_validation_toggle_smoke.py` to verify on/off behavior against a connected Bloomberg session.
+- **Request-plumbing coverage for `validate_fields`**: Added `py-xbbg/tests/test_validate_fields_toggle.py` to verify Python parameter serialization and forwarding through async/sync wrappers.
+
+### Changed
+
+- **Canonical exception exports**: `xbbg.exceptions` now re-exports Rust `_core` exception classes (`BlpError`, `BlpRequestError`, etc.) as the single source of truth, with Python-only exceptions remaining additive.
+- **Validation helper compatibility**: Preserved `BlpValidationError.from_rust_error(...)` by attaching the compatibility classmethod to the canonical Rust-backed validation exception.
+- **Generated sync wrapper metadata**: `blp.py` generated sync wrappers now derive `__doc__` and `__annotations__` from async templates directly; remaining manual generated sync wrapper boilerplate was removed.
+- **Integration logging expectations**: Updated logging integration assertions to match centralized `arequest` request logging (`bloomberg ... ReferenceDataRequest`) instead of deprecated endpoint-specific debug strings.
+- **Optional pandas integration paths**: Updated pandas-dependent integration tests to use `pytest.importorskip("pandas")`, avoiding hard failures when pandas is not installed.
+
+### Fixed
+
+- **`except BlpError` catchability gap**: Runtime exceptions raised by Rust (for example `BlpRequestError`) are now catchable via `xbbg.exceptions.BlpError` import paths because both now point to the same canonical Rust exception hierarchy.
+
+## [1.0.0b1] - 2026-03-03
+
+### Added
+
+- **Endpoint-factory regression tests**: Added focused coverage for generated `abflds`/`bflds` and `abqr`/`bqr` routing, validation, and reshape behavior in `py-xbbg/tests/test_endpoint_factory_bflds.py` and `py-xbbg/tests/test_endpoint_factory_bqr.py`
+
+### Changed
+
+- **Template endpoint generation in `blp.py`**: Migrated clean-fit wrappers to generated async/sync endpoints backed by `_GeneratedEndpointSpec` and `_EndpointPlan`, including `abdp`/`bdp`, `abdh`/`bdh`, `abds`/`bds`, `abdib`/`bdib`, `abdtick`/`bdtick`, `abql`/`bql`, `abqr`/`bqr`, `absrch`/`bsrch`, `abeqs`/`beqs`, `ablkp`/`blkp`, `abport`/`bport`, `abcurves`/`bcurves`, `abgovts`/`bgovts`, and `abflds`/`bflds`
+
+### Fixed
+
+- **`bqr` pandas dependency regression**: Removed unconditional `to_pandas()` conversion in BQR postprocessing; quote requests now use Arrow-native checks/reshape and run without requiring pandas for standard flows
+
+## [1.0.0a3] - 2026-02-27
+
+### Added
+
+- **`bqr()`/`abqr()` Bloomberg Quote Request**: Tick-level dealer quotes with `date_offset` (`-2d`, `-1w`, `-3h`), `start_date`/`end_date` date ranges, and optional `include_broker_codes`, `include_spread_price`, `include_yield`, `include_condition_codes`, `include_exchange_codes` parameters. Generic extractor fallback reshaped via `_reshape_bqr_generic()`
+- **`bflds()`/`abflds()` unified field metadata lookup**: Single function for both field info (`fields=[...]`) and keyword search (`search_spec='...'`). `bfld`/`abfld` provided as backward-compatible aliases. Convenience wrappers `fieldInfo()`/`fieldSearch()` preserved
+- **`include_security_errors` option for `bdp()`/`arequest()`**: Optionally surface per-security failures as rows in the result DataFrame instead of silently dropping them
+- **Extension modules (`xbbg.ext`)**: `bonds` (6 functions), `options` (6 functions + 5 enums), `cdx` (8 functions) for fixed income, equity options, and credit default swap index analytics
+- **Streaming performance enhancements**: Per-subscription config (`flush_threshold`, `overflow_policy`, `stream_capacity`), observability metrics via shared atomics, `tick_mode` support
+- **Live integration tests**: 69 tests across `test_ext_bonds.py` (21), `test_ext_options.py` (20), `test_ext_cdx.py` (22) covering all ext module functions
+- **Streaming tests**: Tests for `tick_mode`, per-subscription config, and observability metrics
+- **Rust exchange/session APIs**: Added low-level exchange resolution support with `ExchangeInfo` metadata, runtime exchange overrides, session timezone conversion utilities, and `market_timing` helpers in the Rust layer (`xbbg-ext`, `xbbg-async`, `pyo3-xbbg`)
+- **Live exchange smoke test**: Added `py-xbbg/tests/live/test_exchange_resolution.py` covering override precedence, UTC session conversion, live `resolve_exchange`, `fetch_market_info`, and `market_timing`
+
+### Changed
+
+- **README**: Updated API reference tables with `bflds()`, expanded BQR section with spread/yield/broker parameters and examples
+- **Futures resolver**: Aligned with `release/0.x` chain methodology (`FUT_CHAIN_LAST_TRADE_DATES`)
+- **CDX resolver**: Aligned methodology with `release/0.x`
+
+### Removed
+
+- **Legacy `xbbg/` Python package directory**: Fully removed; all code now lives in `py-xbbg/src/xbbg/`
+
+### Fixed
+
+- **Empty `RecordBatch` construction**: Handle empty ordered RecordBatch in `xbbg-async` without panic
+- **Security failure surfacing**: `refdata` extractor now properly surfaces per-security errors instead of silently dropping them
+- **`FIELD_SEARCH` extractor**: Corrected to use `ExtractorHint.FIELD_INFO` instead of generic extractor
+- **Unused `logging` import in `ext/options.py`**: Removed to pass ruff lint
+- **Test imports**: `BlpInternalError` imported from `_core` (Rust) instead of `exceptions` (Python)
+- **CI fixes**: Resolved 4 Python test failures, clippy warnings (`too_many_arguments`, `SubscriptionMetrics` re-export), ruff check/format violations, cargo fmt formatting, module path for `test_markets.py`, Linux test runtime setup
+- **Exchange refdata parsing shape support**: `resolve_exchange` now handles both WIDE and LONG refdata responses by mapping `(field, value)` rows when Bloomberg returns long-shape metadata
+
 ## [1.0.0a2] - 2026-02-19
 
 ### Changed
@@ -884,7 +1045,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...HEAD
+[1.0.0b7]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...v1.0.0b7
+[1.0.0b6]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...v1.0.0b6
+[1.0.0b5]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...v1.0.0b5
+[1.0.0b4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b3...v1.0.0b4
+[1.0.0b3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b2...v1.0.0b3
+[1.0.0b2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b1...v1.0.0b2
+[1.0.0b1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a3...v1.0.0b1
+[1.0.0a3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a2...v1.0.0a3
 [1.0.0a2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0a1...v1.0.0a2
 [1.0.0a1]: https://github.com/alpha-xone/xbbg/compare/v0.12.1...v1.0.0a1
 [0.12.0]: https://github.com/alpha-xone/xbbg/compare/v0.12.0b3...v0.12.0

@@ -13,6 +13,7 @@ pub fn version() -> &'static str {
 }
 
 // Core types
+pub mod auth;
 pub mod datatype;
 pub mod datetime;
 pub mod element;
@@ -33,15 +34,20 @@ pub mod schema;
 pub mod service;
 pub mod session;
 pub mod subscription;
+pub mod tls;
+pub mod zfp;
 
 // Re-exports for convenience
+pub use auth::{
+    apply_session_identity_options, AuthApplication, AuthConfig, AuthOptions, AuthToken, AuthUser,
+};
 pub use correlation::CorrelationId;
 pub use datatype::DataType;
 pub use datetime::HighPrecisionDatetime;
 pub use element::{ChildrenIter, Element, ValuesIter};
 pub use errors::{BlpError, Result};
 pub use event::{Event, EventType};
-pub use identity::Identity;
+pub use identity::{Identity, SeatType};
 pub use message::Message;
 pub use name::{clear_name_cache, name_cache_size, Name};
 pub use request::Request;
@@ -54,3 +60,9 @@ pub use value::{OwnedValue, Value};
 pub use schema::{
     Constant, ConstantList, Operation, SchemaElementDefinition, SchemaStatus, SchemaTypeDefinition,
 };
+
+pub fn sdk_version() -> (i32, i32, i32, i32) {
+    let (mut major, mut minor, mut patch, mut build) = (0, 0, 0, 0);
+    unsafe { ffi::blpapi_getVersionInfo(&mut major, &mut minor, &mut patch, &mut build) };
+    (major, minor, patch, build)
+}

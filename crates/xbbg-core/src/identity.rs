@@ -43,9 +43,70 @@ impl Identity {
         Ok(Self { ptr })
     }
 
-    /// Get the raw pointer (internal use only)
     pub(crate) fn as_ptr(&self) -> *mut crate::ffi::blpapi_Identity_t {
         self.ptr
+    }
+
+    pub fn is_authorized(&self, service: &crate::Service) -> bool {
+        let rc = unsafe { crate::ffi::blpapi_Identity_isAuthorized(self.ptr, service.as_ptr()) };
+        rc != 0
+    }
+
+    pub fn has_entitlements(&self, service: &crate::Service, eids: &[i32]) -> Result<bool> {
+        let mut failed_count: i32 = 0;
+        let rc = unsafe {
+            crate::ffi::blpapi_Identity_hasEntitlements(
+                self.ptr,
+                service.as_ptr(),
+                std::ptr::null(),
+                eids.as_ptr(),
+                eids.len(),
+                std::ptr::null_mut(),
+                &mut failed_count,
+            )
+        };
+        if rc < 0 {
+            return Err(BlpError::Internal {
+                detail: format!("hasEntitlements failed: rc={rc}"),
+            });
+        }
+        Ok(failed_count == 0)
+    }
+
+    pub fn seat_type(&self) -> Result<SeatType> {
+        let mut raw: i32 = -1;
+        let rc = unsafe { crate::ffi::blpapi_Identity_getSeatType(self.ptr, &mut raw) };
+        if rc != 0 {
+            return Err(BlpError::Internal {
+                detail: format!("getSeatType failed: rc={rc}"),
+            });
+        }
+        Ok(SeatType::from_raw(raw))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SeatType {
+    Bps,
+    NonBps,
+    Invalid,
+}
+
+impl SeatType {
+    fn from_raw(raw: i32) -> Self {
+        match raw {
+            0 => Self::Bps,
+            1 => Self::NonBps,
+            _ => Self::Invalid,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Bps => "BPS",
+            Self::NonBps => "NONBPS",
+            Self::Invalid => "INVALID",
+        }
     }
 }
 

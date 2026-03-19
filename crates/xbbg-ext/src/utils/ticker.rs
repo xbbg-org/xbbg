@@ -44,7 +44,10 @@ pub fn parse_ticker_parts(ticker: &str) -> Result<TickerParts> {
         return Err(ExtError::InvalidTicker(ticker.to_string()));
     }
 
-    let asset = *parts.last().unwrap();
+    let asset = parts
+        .last()
+        .copied()
+        .ok_or_else(|| ExtError::InvalidTicker(ticker.to_string()))?;
 
     match asset {
         "Index" | "Curncy" | "Comdty" | "Corp" => {
