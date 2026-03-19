@@ -29,8 +29,14 @@ const CONFIG = Object.freeze({
   volume_field: 'VOLUME',
 });
 
-const enginePromise = connect();
+const SESSION_CONFIG = Object.freeze({
+  host: process.env.XBBG_HOST || 'localhost',
+  port: Number(process.env.XBBG_PORT || 8194),
+});
+
+let enginePromise;
 let engine;
+let sessionUnavailableReason = null;
 
 function getRecentTradingDay() {
   const now = new Date();
@@ -145,7 +151,20 @@ function maybeSkipEntitlement(t, err) {
   return false;
 }
 
+function isSessionUnavailable(err) {
+  const message = String(err && err.message ? err.message : err).toLowerCase();
+  return (
+    message.includes('session start failed')
+    || message.includes('failed to spawn worker')
+    || message.includes('connect event failed')
+  );
+}
+
 async function runCase(t, name, fn) {
+  if (sessionUnavailableReason) {
+    t.skip(sessionUnavailableReason);
+    return;
+  }
   const started = performance.now();
   try {
     await fn();
@@ -164,7 +183,16 @@ async function runCase(t, name, fn) {
 
 describe('js-xbbg live Bloomberg API', () => {
   before(async () => {
-    engine = await enginePromise;
+    try {
+      enginePromise ??= connect(SESSION_CONFIG);
+      engine = await enginePromise;
+    } catch (err) {
+      if (isSessionUnavailable(err)) {
+        sessionUnavailableReason = `Bloomberg session is not available in this environment: ${err.message || err}`;
+        return;
+      }
+      throw err;
+    }
     assert.ok(engine, 'Engine should be created via connect()');
   });
 

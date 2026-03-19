@@ -6,8 +6,9 @@
   "types": "index.d.ts",
   "private": true,
   "scripts": {
-    "build": "cargo build -p napi-xbbg",
-    "test": "node ./test.js"
+    "build": "node ./scripts/build-native.js",
+    "test": "node ./test.js",
+    "test:live": "node --test --test-timeout=120000 ./test-live.js"
   },
   "keywords": ["bloomberg", "finance", "market-data", "arrow"],
   "license": "Apache-2.0",
