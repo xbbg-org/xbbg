@@ -130,6 +130,9 @@ export interface BqlOptions {
 }
 export interface BeqsOptions {
   asof?: string;
+  screenType?: string;
+  group?: string;
+  overrides?: Record<string, string | number | boolean>;
   kwargs?: Record<string, string | number | boolean>;
   format?: string;
   backend?: string;
@@ -143,6 +146,10 @@ export interface BsrchOptions {
 export interface BtaOptions {
   studyParams?: Record<string, string | number | boolean>;
   kwargs?: Record<string, string | number | boolean>;
+  startDate?: string;
+  endDate?: string;
+  periodicity?: string;
+  interval?: number;
   format?: string;
   backend?: string;
 }

@@ -56,6 +56,168 @@ function mapObjectToPairs(obj) {
   }));
 }
 
+const TA_STUDIES = Object.freeze({
+  smavg: 'smavgStudyAttributes',
+  sma: 'smavgStudyAttributes',
+  emavg: 'emavgStudyAttributes',
+  ema: 'emavgStudyAttributes',
+  wmavg: 'wmavgStudyAttributes',
+  wma: 'wmavgStudyAttributes',
+  vmavg: 'vmavgStudyAttributes',
+  vma: 'vmavgStudyAttributes',
+  tmavg: 'tmavgStudyAttributes',
+  tma: 'tmavgStudyAttributes',
+  ipmavg: 'ipmavgStudyAttributes',
+  rsi: 'rsiStudyAttributes',
+  macd: 'macdStudyAttributes',
+  mao: 'maoStudyAttributes',
+  momentum: 'momentumStudyAttributes',
+  mom: 'momentumStudyAttributes',
+  roc: 'rocStudyAttributes',
+  boll: 'bollStudyAttributes',
+  bb: 'bollStudyAttributes',
+  kltn: 'kltnStudyAttributes',
+  keltner: 'kltnStudyAttributes',
+  mae: 'maeStudyAttributes',
+  te: 'teStudyAttributes',
+  al: 'alStudyAttributes',
+  dmi: 'dmiStudyAttributes',
+  adx: 'dmiStudyAttributes',
+  tas: 'tasStudyAttributes',
+  stoch: 'tasStudyAttributes',
+  trender: 'trenderStudyAttributes',
+  ptps: 'ptpsStudyAttributes',
+  parabolic: 'ptpsStudyAttributes',
+  sar: 'ptpsStudyAttributes',
+  chko: 'chkoStudyAttributes',
+  ado: 'adoStudyAttributes',
+  vat: 'vatStudyAttributes',
+  tvat: 'tvatStudyAttributes',
+  atr: 'atrStudyAttributes',
+  hurst: 'hurstStudyAttributes',
+  fg: 'fgStudyAttributes',
+  fear_greed: 'fgStudyAttributes',
+  goc: 'gocStudyAttributes',
+  ichimoku: 'gocStudyAttributes',
+  cmci: 'cmciStudyAttributes',
+  wlpr: 'wlprStudyAttributes',
+  williams: 'wlprStudyAttributes',
+  maxmin: 'maxminStudyAttributes',
+  rex: 'rexStudyAttributes',
+  etd: 'etdStudyAttributes',
+  pd: 'pdStudyAttributes',
+  rv: 'rvStudyAttributes',
+  pivot: 'pivotStudyAttributes',
+  or: 'orStudyAttributes',
+  pcr: 'pcrStudyAttributes',
+  bs: 'bsStudyAttributes',
+});
+
+const TA_DEFAULTS = Object.freeze({
+  smavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
+  emavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
+  wmavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
+  vmavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
+  tmavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
+  rsiStudyAttributes: Object.freeze({ period: 14, priceSourceClose: 'PX_LAST' }),
+  macdStudyAttributes: Object.freeze({ maPeriod1: 12, maPeriod2: 26, sigPeriod: 9, priceSourceClose: 'PX_LAST' }),
+  bollStudyAttributes: Object.freeze({ period: 20, upperBand: 2.0, lowerBand: 2.0, priceSourceClose: 'PX_LAST' }),
+  dmiStudyAttributes: Object.freeze({ period: 14, priceSourceHigh: 'PX_HIGH', priceSourceLow: 'PX_LOW', priceSourceClose: 'PX_LAST' }),
+  atrStudyAttributes: Object.freeze({ maType: 'Simple', period: 14, priceSourceHigh: 'PX_HIGH', priceSourceLow: 'PX_LOW', priceSourceClose: 'PX_LAST' }),
+  tasStudyAttributes: Object.freeze({ periodK: 14, periodD: 3, periodDS: 3, periodDSS: 3, priceSourceHigh: 'PX_HIGH', priceSourceLow: 'PX_LOW', priceSourceClose: 'PX_LAST' }),
+});
+
+function normalizeDate(value) {
+  return value == null ? undefined : String(value).replace(/[-/]/g, '');
+}
+
+function getStudyAttrName(study) {
+  const normalized = String(study).toLowerCase().replace(/-/g, '_').replace(/ /g, '_');
+  if (TA_STUDIES[normalized]) {
+    return TA_STUDIES[normalized];
+  }
+  if (normalized.endsWith('studyattributes')) {
+    return normalized;
+  }
+  return `${normalized}StudyAttributes`;
+}
+
+function buildTaRequest(ticker, study, options = {}) {
+  const rawStudy = typeof study === 'string' ? { studyType: study } : { ...study };
+  const studyType = rawStudy.studyType || rawStudy.study || study;
+  const attrName = getStudyAttrName(studyType);
+
+  const kwargs = { ...(options.kwargs || {}) };
+  const startDate = normalizeDate(kwargs.startDate || kwargs.start_date || options.startDate || options.start_date);
+  const endDate = normalizeDate(kwargs.endDate || kwargs.end_date || options.endDate || options.end_date);
+  const periodicity = String(
+    kwargs.periodicitySelection
+    || kwargs.periodicity
+    || rawStudy.calcInterval
+    || options.periodicity
+    || 'DAILY'
+  ).toUpperCase();
+  const interval = kwargs.interval || rawStudy.interval || options.interval;
+
+  delete kwargs.startDate;
+  delete kwargs.start_date;
+  delete kwargs.endDate;
+  delete kwargs.end_date;
+  delete kwargs.periodicitySelection;
+  delete kwargs.periodicity;
+  delete rawStudy.studyType;
+  delete rawStudy.study;
+  delete rawStudy.calcInterval;
+
+  if (rawStudy.length != null && rawStudy.period == null) {
+    rawStudy.period = rawStudy.length;
+  }
+  delete rawStudy.length;
+
+  const params = {
+    ...(TA_DEFAULTS[attrName] || {}),
+    ...(options.studyParams || {}),
+    ...rawStudy,
+  };
+
+  if (params.length != null && params.period == null) {
+    params.period = params.length;
+  }
+  delete params.length;
+  delete params.calcInterval;
+
+  const elements = [
+    { key: 'priceSource.securityName', value: String(ticker) },
+  ];
+
+  if (periodicity === 'INTRADAY') {
+    const prefix = 'priceSource.dataRange.intraday';
+    if (startDate) elements.push({ key: `${prefix}.startDate`, value: startDate });
+    if (endDate) elements.push({ key: `${prefix}.endDate`, value: endDate });
+    elements.push({ key: `${prefix}.eventType`, value: 'TRADE' });
+    if (interval != null) {
+      elements.push({ key: `${prefix}.interval`, value: String(interval) });
+    }
+  } else {
+    const prefix = 'priceSource.dataRange.historical';
+    if (startDate) elements.push({ key: `${prefix}.startDate`, value: startDate });
+    if (endDate) elements.push({ key: `${prefix}.endDate`, value: endDate });
+    elements.push({ key: `${prefix}.periodicitySelection`, value: periodicity });
+  }
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value == null) continue;
+    elements.push({ key: `studyAttributes.${attrName}.${key}`, value: String(value) });
+  }
+
+  for (const [key, value] of Object.entries(kwargs)) {
+    if (value == null) continue;
+    elements.push({ key: String(key), value: String(value) });
+  }
+
+  return elements;
+}
+
 class Subscription {
   constructor(inner) {
     this._inner = inner;
@@ -227,41 +389,51 @@ class Engine {
   }
 
   async beqs(screen, options = {}) {
-    const elements = [{ key: 'screenName', value: String(screen) }];
+    const elements = [
+      { key: 'screenName', value: String(screen) },
+      { key: 'screenType', value: String(options.screenType || 'PRIVATE') },
+      { key: 'Group', value: String(options.group || 'General') },
+    ];
     if (options.asof) elements.push({ key: 'asOfDate', value: String(options.asof) });
+    const overrides = {
+      ...(options.overrides || {}),
+    };
     return this.request({
       service: '//blp/refdata',
       operation: 'BeqsRequest',
       elements,
       backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
+      overrides: mapObjectToPairs(overrides),
       format: options.format,
+      extractor: 'generic',
     });
   }
 
   async bsrch(searchSpec, options = {}) {
+    const elements = {
+      Domain: String(searchSpec),
+      ...(options.overrides || {}),
+      ...(options.kwargs || {}),
+    };
     return this.request({
       service: '//blp/exrsvc',
       operation: 'ExcelGetGridRequest',
-      searchSpec: String(searchSpec),
       backend: options.backend,
-      overrides: mapObjectToPairs(options.overrides),
-      kwargs: mapObjectToPairs(options.kwargs),
+      elements: mapObjectToPairs(elements),
       format: options.format,
       extractor: 'bsrch',
     });
   }
 
   async bta(ticker, study, options = {}) {
-    const studyObj = typeof study === 'string' ? { studyType: study, ...options.studyParams } : study;
     return this.request({
       service: '//blp/tasvc',
       operation: 'studyRequest',
-      security: String(ticker),
+      elements: buildTaRequest(ticker, study, options),
       backend: options.backend,
-      jsonElements: JSON.stringify(studyObj),
-      kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
+      extractor: 'generic',
     });
   }
 
