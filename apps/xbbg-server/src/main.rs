@@ -704,6 +704,7 @@ async fn send_subscription_message(
     socket.send(Message::Text(payload.into())).await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn update_request_state(
     store: &Arc<RwLock<HashMap<String, RequestRecord>>>,
     request_id: &str,
