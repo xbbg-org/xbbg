@@ -378,6 +378,160 @@ jobs:
         run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Bridge/browser packaging validation
+  # ════════════════════════════════════════════════════════════════════════════
+  bridge-packages:
+    name: Bridge Packages (${{ matrix.label }})
+    needs: [sdk-version, generate-bindings]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            package_dir: packages/xbbg-bridge-linux-x64
+          - os: windows-latest
+            label: win32-x64
+            package_dir: packages/xbbg-bridge-win32-x64
+          - os: macos-latest
+            label: darwin-arm64
+            package_dir: packages/xbbg-bridge-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download pre-generated bindings
+        uses: actions/download-artifact@v4
+        with:
+          name: blpapi-bindings
+          path: ci-bindings
+
+      - name: Configure pre-generated bindings path (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure pre-generated bindings path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bindingsPath = Join-Path $env:GITHUB_WORKSPACE "ci-bindings\bindings.rs"
+          if (-not (Test-Path $bindingsPath)) {
+            throw "Bindings artifact not found at $bindingsPath"
+          }
+          "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
+
+      - name: Configure pre-generated bindings path (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Cache Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: cache-sdk-linux-bridge
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (Linux)
+        if: runner.os == 'Linux' && steps.cache-sdk-linux-bridge.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Cache Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        id: cache-sdk-windows-bridge
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-Windows-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (Windows)
+        if: runner.os == 'Windows' && steps.cache-sdk-windows-bridge.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $sdkUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-windows.zip"
+          Invoke-WebRequest -Uri $sdkUrl -OutFile blpapi.zip
+          Expand-Archive -Path blpapi.zip -DestinationPath $HOME/blpapi
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = (Get-ChildItem $HOME/blpapi -Directory)[0].FullName
+          "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+
+      - name: Cache Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        id: cache-sdk-macos-bridge
+        uses: actions/cache@v4
+        with:
+          path: ~/blpapi
+          key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
+
+      - name: Download Bloomberg SDK (macOS)
+        if: runner.os == 'macOS' && steps.cache-sdk-macos-bridge.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/blpapi"
+          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-macos-arm64.tar.gz" \
+            | tar -xz -C "$HOME/blpapi" --strip-components=1
+
+      - name: Setup Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ln -sf "$HOME/blpapi/Darwin" "$HOME/blpapi/lib"
+          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.dylib"
+          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Stage packaged bridge binary
+        run: npm --prefix packages/xbbg-bridge run build:binary
+
+      - name: Validate bridge binary resolution
+        run: |
+          node -e "const { resolveBinary } = require('./packages/xbbg-bridge/lib/resolve-binary'); const resolved = resolveBinary(process.cwd()); console.log(resolved);"
+
+      - name: Validate browser client import
+        run: |
+          node --input-type=module -e "import { createClient } from './packages/xbbg-browser/index.js'; const client = createClient(); console.log(typeof client.request, typeof client.openSubscriptionSocket);"
+
+      - name: Upload staged bridge package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-package-${{ matrix.label }}
+          path: ${{ matrix.package_dir }}
+          retention-days: 7
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Build wheels via setuptools-rust + uv (matrix: OS × Python version)
   # ════════════════════════════════════════════════════════════════════════════
   build:
