@@ -1,8 +1,24 @@
 {
   "name": "@xbbg/bridge",
   "version": "0.0.0",
-  "private": true,
   "bin": {
     "xbbg-bridge": "./bin/xbbg-bridge.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "scripts",
+    "README.md",
+    "package.json"
+  ],
+  "optionalDependencies": {
+    "@xbbg/bridge-darwin-arm64": "0.0.0",
+    "@xbbg/bridge-darwin-x64": "0.0.0",
+    "@xbbg/bridge-linux-x64": "0.0.0",
+    "@xbbg/bridge-linux-arm64": "0.0.0",
+    "@xbbg/bridge-win32-x64": "0.0.0"
+  },
+  "scripts": {
+    "build:binary": "node ./scripts/stage-binary.js"
   }
 }

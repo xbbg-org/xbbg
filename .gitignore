@@ -30,6 +30,7 @@ Logs/
 # JavaScript dependencies
 **/node_modules/
 js-xbbg/*.node
+packages/xbbg-bridge-*/bin/xbbg-server*
 
 # Ignore local PMC mapping and cache files
 xbbg/markets/pmc_map.json

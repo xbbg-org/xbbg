@@ -1,0 +1,17 @@
+{
+  "name": "@xbbg/bridge-darwin-arm64",
+  "version": "0.0.0",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "package.json",
+    "bin"
+  ]
+}
