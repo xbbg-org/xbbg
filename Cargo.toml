@@ -17,7 +17,7 @@ members = [
     # "bindings/dotnet-xbbg",
     # Applications
     # "apps/xbbg-cli",
-    # "apps/xbbg-server",
+    "apps/xbbg-server",
 ]
 resolver = "2"
 

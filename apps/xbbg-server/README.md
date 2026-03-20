@@ -1,32 +1,41 @@
 # xbbg-server
 
-HTTP/WebSocket/gRPC gateway for Bloomberg data. Run one instance, connect from any language.
+Async localhost bridge for Bloomberg data backed by `xbbg-async`.
 
-## Status
+## Transport split
 
-🚧 **Placeholder** — pending completion of core Python implementation.
+- **HTTP** for async request submission and polling
+- **WebSocket** for subscription streams
+- **WebSocket** for request lifecycle events
 
-## Planned Features
+## Endpoints
 
-- **REST API** — `POST /api/bdp`, `/api/bdh`, `/api/bds`, `/api/bdib`, `/api/bql`, `/api/bsrch`
-- **WebSocket** — `WS /ws/subscribe` for streaming market data
-- **gRPC** — typed service definitions (future)
-- **Response formats** — JSON (default), Arrow IPC, CSV
-- **Auth** — API key or mTLS
-- **Multi-client** — single Bloomberg connection shared across consumers
+- `GET /health`
+- `POST /requests`
+- `GET /requests/:id`
+- `GET /requests/:id/result`
+- `GET /ws/requests`
+- `GET /ws/subscriptions`
 
-## Architecture
+## Config
 
+Environment variables:
+
+- `XBBG_BRIDGE_LISTEN` — bridge bind address, default `127.0.0.1:7878`
+- `XBBG_HOST` — Bloomberg host, default `127.0.0.1`
+- `XBBG_PORT` — Bloomberg port, default `8194`
+
+## Run
+
+```bash
+BLPAPI_ROOT=/path/to/blpapi-sdk \
+XBBG_HOST=BBG_HOST \
+XBBG_PORT=8194 \
+cargo run -p xbbg-server
 ```
-xbbg-core + xbbg-async  (pure Rust engine)
-         ↓
-   xbbg-server           (this binary — axum web framework)
-         ↓
-  Any HTTP/WS client     (browser, curl, Python, Go, Java, ...)
-```
 
-## Why
+## Notes
 
-Not every consumer needs native bindings. A running `xbbg-server` instance lets
-any language or tool access Bloomberg data via api — dashboards, notebooks,
-microservices, Excel via Power Query, etc.
+- request execution is **always async**
+- each subscription websocket currently supports **one active subscription session**
+- open multiple websockets if you want multiple independent subscription lanes
