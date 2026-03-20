@@ -381,7 +381,7 @@ jobs:
   # Bridge/browser packaging validation
   # ════════════════════════════════════════════════════════════════════════════
   bridge-packages:
-    name: Bridge Packages (${{ matrix.label }})
+    name: Bridge / NAPI Packages (${{ matrix.label }})
     needs: [sdk-version, generate-bindings]
     strategy:
       fail-fast: false
@@ -413,6 +413,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: js-xbbg/package-lock.json
 
       - name: Download pre-generated bindings
         uses: actions/download-artifact@v4
@@ -524,11 +526,24 @@ jobs:
         run: |
           node --input-type=module -e "import { createClient } from './packages/xbbg-browser/index.js'; const client = createClient(); console.log(typeof client.request, typeof client.openSubscriptionSocket);"
 
+      - name: Install js-xbbg dependencies
+        run: npm --prefix js-xbbg ci
+
+      - name: Build js-xbbg native package
+        run: npm --prefix js-xbbg run build
+
       - name: Upload staged bridge package artifact
         uses: actions/upload-artifact@v4
         with:
           name: bridge-package-${{ matrix.label }}
           path: ${{ matrix.package_dir }}
+          retention-days: 7
+
+      - name: Upload js-xbbg native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: napi-xbbg-${{ matrix.label }}
+          path: js-xbbg/napi_xbbg.node
           retention-days: 7
 
   # ════════════════════════════════════════════════════════════════════════════
