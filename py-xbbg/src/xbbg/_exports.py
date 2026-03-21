@@ -65,6 +65,7 @@ EXCEPTION_EXPORTS = (
 MODULE_EXPORTS = (
     "ext",
     "markets",
+    "testing",
 )
 
 BACKEND_EXPORTS = (
