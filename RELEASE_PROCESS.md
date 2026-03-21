@@ -117,11 +117,9 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 ### Build Locally
 
 ```bash
-# Set Bloomberg SDK path (required for wheel builds)
-# Windows PowerShell:
-$env:BLPAPI_ROOT = "$PWD\vendor\blpapi-sdk\3.25.12.1"
-# Linux/macOS:
-export BLPAPI_ROOT=$PWD/vendor/blpapi-sdk/3.25.12.1
+# Install the SDK into vendor/blpapi-sdk/ and let the build discover it
+bash ./scripts/sdktool.sh
+# Windows PowerShell: .\scripts\sdktool.ps1
 
 # Build wheel (includes Rust extension)
 uv build

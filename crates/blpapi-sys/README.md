@@ -52,13 +52,20 @@ By default, bindings are generated with bindgen at build time.
 
 **Dev (quickest)**: run the SDK tool from the repo root, then build:
 
+```bash
+bash ./scripts/sdktool.sh
+```
+
 ```powershell
 .\scripts\sdktool.ps1            # downloads, extracts, sets .env
 ```
 
 This writes `XBBG_DEV_SDK_ROOT=vendor/blpapi-sdk/<version>` to `.env`.
 
-**Dev (manual)**: set `XBBG_DEV_SDK_ROOT` to the SDK root, then build the workspace.
+`blpapi-sys` can also resolve a versioned SDK beneath `vendor/blpapi-sdk/` directly,
+so CI and local builds do not need to pin a specific SDK path in `.cargo/config.toml`.
+
+**Dev (manual)**: set `XBBG_DEV_SDK_ROOT` or `BLPAPI_ROOT` to the SDK root, then build the workspace.
 
 **CI build**: set `BLPAPI_ROOT` or `BLPAPI_INCLUDE_DIR`/`BLPAPI_LIB_DIR`.
 

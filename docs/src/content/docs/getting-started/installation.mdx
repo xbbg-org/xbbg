@@ -37,7 +37,12 @@ xbbg requires the Bloomberg C++ SDK shared library. You have several options:
     - Linux: `~/blp/DAPI` or `/opt/bloomberg/DAPI`
   </TabItem>
   <TabItem label="Manual SDK">
-    Set the `BLPAPI_ROOT` environment variable:
+    For local development from this repo, use the bundled helper:
+    ```bash
+    bash ./scripts/sdktool.sh
+    ```
+
+    Or set the `BLPAPI_ROOT` environment variable manually:
     ```bash
     export BLPAPI_ROOT=/path/to/blpapi_cpp_3.x.x.x
     ```

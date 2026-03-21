@@ -1658,13 +1658,15 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 Create venv and install dependencies:
 
 ```bash
-# Set Bloomberg SDK path (required for building the Rust extension)
-export BLPAPI_ROOT=/path/to/blpapi_cpp_x.x.x.x  # Linux/macOS
-# $env:BLPAPI_ROOT = "C:\path\to\blpapi_cpp_x.x.x.x"  # Windows PowerShell
+# Install the Bloomberg SDK into vendor/blpapi-sdk/ and let xbbg discover it
+bash ./scripts/sdktool.sh               # macOS/Linux
+# .\scripts\sdktool.ps1                # Windows PowerShell
 
 # Install all dev dependencies (uses uv dependency-groups)
 uv sync
 ```
+
+If you already manage the SDK yourself, you can still set `BLPAPI_ROOT` manually.
 
 ### Adding Dependencies
 
