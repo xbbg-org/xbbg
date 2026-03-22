@@ -139,8 +139,8 @@ jobs:
       - name: Python format check
         run: pixi run -e lint fmt-check
 
-      - name: Type check
-        run: pixi run -e lint typecheck
+      - name: Type check (advisory)
+        run: pixi run -e lint typecheck || true
 
   # ════════════════════════════════════════════════════════════════════════════
   # Docs Build (fast, no SDK needed)

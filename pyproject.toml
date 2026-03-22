@@ -148,9 +148,9 @@ convention = "google"
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 
-[tool.ty]
-src = ["py-xbbg/src"]
+[tool.ty.environment]
 python-version = "3.10"
+root = ["py-xbbg/src"]
 
 [tool.ty.rules]
 unresolved-import = "ignore"
