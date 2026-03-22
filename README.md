@@ -341,12 +341,14 @@ xbbg is the **only Python library** that provides:
 - **Configurable Logging**: Debug mode for troubleshooting
 - **Batch Processing**: Efficient multi-ticker queries
 - **Standardized Output**: Consistent DataFrame column naming
+- **Non-live test helpers**: `xbbg.testing` exposes `mock_engine()` and TestUtil-backed helpers for unit testing Bloomberg flows without a live terminal
 
 ## Requirements
 
 - **Bloomberg C++ SDK** version 3.12.1 or higher:
   - Visit [Bloomberg API Library](https://www.bloomberg.com/professional/support/api-library/) and download C++ Supported Release
-  - In the `bin` folder of downloaded zip file, copy `blpapi3_32.dll` and `blpapi3_64.dll` to Bloomberg `BLPAPI_ROOT` folder (usually `blp/DAPI`)
+  - For local source builds in this repo, install it with `bash ./scripts/sdktool.sh` on macOS/Linux or `.\scripts\sdktool.ps1` on Windows PowerShell
+  - If you manage the SDK yourself, set `BLPAPI_ROOT` to the extracted SDK root
 
 - **Bloomberg official Python API**:
 
@@ -1679,6 +1681,22 @@ uv add <package>
 ```bash
 uv run ruff check py-xbbg/src/xbbg
 uv run pytest py-xbbg/tests -q
+```
+
+For non-live application tests, `xbbg.testing` can mock Bloomberg-style responses:
+
+```python
+from xbbg import blp
+from xbbg.testing import create_mock_response, mock_engine
+
+response = create_mock_response(
+    service="//blp/refdata",
+    operation="ReferenceDataRequest",
+    data={"AAPL US Equity": {"PX_LAST": 254.23}},
+)
+
+with mock_engine([response]):
+    df = blp.bdp("AAPL US Equity", "PX_LAST")
 ```
 
 ### Building
