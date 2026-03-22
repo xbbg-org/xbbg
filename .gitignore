@@ -6,6 +6,9 @@ env.local
 # Claude Code
 .claude/
 
+# Pixi
+.pixi/
+
 # Sisyphus
 .sisyphus/
 
@@ -16,7 +19,6 @@ env.local
 .benchmark_deps/
 
 # Cargo / Rust
-.cargo/config.toml
 build_rust.bat
 
 # PyO3 extension build outputs
@@ -30,9 +32,6 @@ Logs/
 # Rust build artifacts (Cargo)
 /target/
 
-# Ignore local PMC mapping and cache files
-xbbg/markets/pmc_map.json
-xbbg/markets/cached/pmc_cache.pkl
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -86,17 +85,6 @@ coverage.xml
 *.mo
 *.pot
 
-# Django stuff:
-local_settings.py
-db.sqlite3
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
 # Sphinx documentation
 docs/_build/
 
@@ -107,12 +95,6 @@ docs/_build/
 
 # pyenv
 .python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
 
 # Environments
 .env
@@ -125,20 +107,6 @@ ENV/
 env.bak/
 venv.bak/
 .idea/
-
-# Ignore generated test artifacts (doctests may create date-stamped files)
-xbbg/tests/data/**/asof=*.pkl
-xbbg/tests/data/**/TRADE/*.parq
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
 
 # mypy
 .mypy_cache/

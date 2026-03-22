@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 import narwhals.stable.v1 as nw
 
 # Import Rust date parser (shared with other ext modules)
-from xbbg._core import ext_parse_date
+from xbbg._core import ext_get_futures_months, ext_parse_date
 from xbbg.ext._utils import _syncify
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ _FLD_OTR_INDICATOR = "ON_THE_RUN_CURRENT_BD_INDICATOR"
 _FLD_ACCRUAL_START = "CDS_FIRST_ACCRUAL_START_DATE"
 _FLD_VERSION = "VERSION"
 
-_FUTURES_MONTH_CODES = "FGHJKMNQUVXZ"
+_FUTURES_MONTH_CODES = "".join(ext_get_futures_months().values())
 
 _CDX_FIELDS = [_FLD_ROLLING_SERIES, _FLD_OTR_INDICATOR, _FLD_ACCRUAL_START, _FLD_VERSION]
 

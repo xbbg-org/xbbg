@@ -37,6 +37,10 @@
 //! RUST_LOG=xbbg_core=trace,xbbg_async=debug python my_script.py
 //! ```
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -2052,7 +2056,10 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
-    let request_id: Option<String> = dict.get_item("request_id")?.map(|v| v.extract()).transpose()?;
+    let request_id: Option<String> = dict
+        .get_item("request_id")?
+        .map(|v| v.extract())
+        .transpose()?;
 
     // Optional fields
     let securities: Option<Vec<String>> = dict

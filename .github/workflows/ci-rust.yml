@@ -127,14 +127,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v4
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          environments: lint
+          cache: true
 
       - name: Python lint
-        run: uvx ruff check .
+        run: pixi run -e lint lint
 
       - name: Python format check
-        run: uvx ruff format --check .
+        run: pixi run -e lint fmt-check
+
+      - name: Type check (advisory)
+        run: pixi run -e lint typecheck || true
 
   # ════════════════════════════════════════════════════════════════════════════
   # Docs Build (fast, no SDK needed)

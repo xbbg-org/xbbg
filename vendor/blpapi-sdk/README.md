@@ -49,9 +49,10 @@ vendor/
     └── <another-version>/   # Another version (optional)
 ```
 
-The script writes `XBBG_DEV_SDK_ROOT=vendor/blpapi-sdk/<version>` to `.env` at the repo root.
-The build system (`crates/blpapi-sys/build.rs`) can use the active `.env` version or scan
-installed SDK versions under `vendor/blpapi-sdk/`.
+The build system (`crates/blpapi-sys/build.rs`) scans versioned subdirs under `BLPAPI_ROOT`
+and picks the latest installed version automatically.
+
+**Pixi users**: `pixi.toml` sets `BLPAPI_ROOT` via activation — no manual env setup needed.
 
 ## Notes
 

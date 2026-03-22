@@ -7,8 +7,6 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BLPAPI_INCLUDE_DIR");
     println!("cargo:rerun-if-env-changed=BLPAPI_LIB_DIR");
     println!("cargo:rerun-if-env-changed=BLPAPI_ROOT");
-    println!("cargo:rerun-if-env-changed=XBBG_DEV_SDK_ROOT");
-    println!("cargo:rerun-if-env-changed=BLPAPI_LINK_LIB_NAME");
     println!("cargo:rerun-if-env-changed=BLPAPI_PREGENERATED_BINDINGS");
     println!("cargo:rerun-if-env-changed=BLPAPI_BINDINGS_EXPORT_PATH");
 
@@ -27,9 +25,7 @@ fn main() {
     }
 
     // Determine library base name based on target platform and architecture
-    let lib_name = env::var("BLPAPI_LINK_LIB_NAME")
-        .ok()
-        .unwrap_or_else(|| detect_link_lib_name(&lib_dir));
+    let lib_name = detect_link_lib_name(&lib_dir);
 
     // Emit link type
     if want_static {
@@ -135,27 +131,7 @@ fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {
         return Ok((inc, lib));
     }
 
-    // 3) Dev-only SDK root (may be relative to workspace root)
-    if let Some(root) = env::var_os("XBBG_DEV_SDK_ROOT") {
-        let mut root = PathBuf::from(root);
-        // Resolve relative paths against the workspace root (CARGO_MANIFEST_DIR's grandparent)
-        if root.is_relative() {
-            if let Some(manifest_dir) = env::var_os("CARGO_MANIFEST_DIR") {
-                // crates/blpapi-sys -> repo root (two levels up)
-                let workspace_root = PathBuf::from(manifest_dir)
-                    .parent()
-                    .and_then(|p| p.parent())
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_default();
-                root = workspace_root.join(&root);
-            }
-        }
-        let (inc, lib) = resolve_sdk_layout(&root)?;
-        validate_header_exists(&inc)?;
-        return Ok((inc, lib));
-    }
-
-    Err("Cannot locate Bloomberg SDK. Set BLPAPI_INCLUDE_DIR/BLPAPI_LIB_DIR, or BLPAPI_ROOT, or XBBG_DEV_SDK_ROOT".into())
+    Err("Cannot locate Bloomberg SDK. Set BLPAPI_INCLUDE_DIR/BLPAPI_LIB_DIR or BLPAPI_ROOT.".into())
 }
 
 fn resolve_sdk_layout(root: &Path) -> Result<(PathBuf, PathBuf), String> {
@@ -185,12 +161,6 @@ fn candidate_sdk_roots(root: &Path) -> Result<Vec<PathBuf>, String> {
 
     let mut roots = vec![root.to_path_buf()];
 
-    if let Some(active_root) = active_sdk_root(root) {
-        if !roots.iter().any(|existing| existing == &active_root) {
-            roots.push(active_root);
-        }
-    }
-
     let children = sorted_child_dirs(root)?;
 
     for child in &children {
@@ -208,34 +178,6 @@ fn candidate_sdk_roots(root: &Path) -> Result<Vec<PathBuf>, String> {
     }
 
     Ok(roots)
-}
-
-fn active_sdk_root(root: &Path) -> Option<PathBuf> {
-    let workspace_root = workspace_root()?;
-    let env_file = workspace_root.join(".env");
-    let contents = fs::read_to_string(env_file).ok()?;
-
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        if let Some(value) = trimmed.strip_prefix("XBBG_DEV_SDK_ROOT=") {
-            let candidate = if Path::new(value).is_absolute() {
-                PathBuf::from(value)
-            } else {
-                workspace_root.join(value)
-            };
-
-            if candidate.starts_with(root) && candidate.is_dir() {
-                return Some(candidate);
-            }
-        }
-    }
-
-    None
-}
-
-fn workspace_root() -> Option<PathBuf> {
-    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR")?);
-    Some(manifest_dir.parent()?.parent()?.to_path_buf())
 }
 
 fn sorted_child_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {

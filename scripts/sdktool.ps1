@@ -5,7 +5,7 @@
 .DESCRIPTION
     Downloads the Bloomberg C++ SDK zip from Bloomberg's release URL, extracts it
     into vendor/blpapi-sdk/<version>/, and optionally updates the .env file with
-    XBBG_DEV_SDK_ROOT so the build system (blpapi-sys/build.rs) can locate the SDK.
+    BLPAPI_ROOT so the build system (blpapi-sys/build.rs) can locate the SDK.
 
     Supports multiple SDK versions side-by-side. Downloaded zips are cached in
     vendor/blpapi-sdk/.cache/ to avoid redundant downloads.
@@ -20,7 +20,7 @@
 
 .PARAMETER SetActive
     When true (default), updates the .env file at the repo root with
-    XBBG_DEV_SDK_ROOT pointing to the added version.
+    BLPAPI_ROOT pointing to the added version.
 
 .PARAMETER Force
     Re-download and re-extract even if the version directory already exists.
@@ -190,7 +190,7 @@ function Get-ActiveSdkVersion {
     if (-not (Test-Path $EnvFile)) { return $null }
 
     $line = Get-Content $EnvFile -ErrorAction SilentlyContinue |
-            Where-Object { $_ -match '^\s*XBBG_DEV_SDK_ROOT\s*=' }
+            Where-Object { $_ -match '^\s*BLPAPI_ROOT\s*=' }
 
     if ($line) {
         # Extract version from path like vendor/blpapi-sdk/3.25.12.1
@@ -202,19 +202,19 @@ function Get-ActiveSdkVersion {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: write/update XBBG_DEV_SDK_ROOT in .env
+# Helper: write/update BLPAPI_ROOT in .env
 # ---------------------------------------------------------------------------
 function Set-ActiveSdkVersion {
     $relativePath = "vendor/blpapi-sdk/$Version"
-    $envLine      = "XBBG_DEV_SDK_ROOT=$relativePath"
+    $envLine      = "BLPAPI_ROOT=$relativePath"
 
     if (Test-Path $EnvFile) {
         $content = Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue
         if ($null -eq $content) { $content = '' }
 
-        if ($content -match '(?m)^\s*XBBG_DEV_SDK_ROOT\s*=.*$') {
+        if ($content -match '(?m)^\s*BLPAPI_ROOT\s*=.*$') {
             # Replace existing line
-            $newContent = $content -replace '(?m)^\s*XBBG_DEV_SDK_ROOT\s*=.*$', $envLine
+            $newContent = $content -replace '(?m)^\s*BLPAPI_ROOT\s*=.*$', $envLine
         }
         else {
             # Append — ensure trailing newline before appending
@@ -300,7 +300,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Remove') {
         if (Test-Path $EnvFile) {
             $content = Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue
             if ($content) {
-                $newContent = $content -replace '(?m)^\s*XBBG_DEV_SDK_ROOT\s*=.*\r?\n?', ''
+                $newContent = $content -replace '(?m)^\s*BLPAPI_ROOT\s*=.*\r?\n?', ''
                 $newContent = $newContent.TrimEnd("`r", "`n")
                 if ($newContent) {
                     Set-Content -Path $EnvFile -Value $newContent -NoNewline
@@ -311,7 +311,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Remove') {
                 }
             }
         }
-        Write-Host '  Cleared XBBG_DEV_SDK_ROOT from .env (was active)' -ForegroundColor DarkGray
+        Write-Host '  Cleared BLPAPI_ROOT from .env (was active)' -ForegroundColor DarkGray
     }
 
     Write-Host ('[OK] Version {0} removed.' -f $Version) -ForegroundColor Green
