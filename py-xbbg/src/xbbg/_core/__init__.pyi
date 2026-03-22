@@ -548,6 +548,26 @@ class PyEngineConfig:
     def sdk_log_level(self) -> builtins.str: ...
     @sdk_log_level.setter
     def sdk_log_level(self, value: builtins.str) -> None: ...
+    @property
+    def socks5_host(self) -> typing.Optional[builtins.str]:
+        r"""
+        SOCKS5 proxy hostname for Bloomberg connections.
+        """
+    @socks5_host.setter
+    def socks5_host(self, value: typing.Optional[builtins.str]) -> None:
+        r"""
+        SOCKS5 proxy hostname for Bloomberg connections.
+        """
+    @property
+    def socks5_port(self) -> typing.Optional[builtins.int]:
+        r"""
+        SOCKS5 proxy port (required when socks5_host is set).
+        """
+    @socks5_port.setter
+    def socks5_port(self, value: typing.Optional[builtins.int]) -> None:
+        r"""
+        SOCKS5 proxy port (required when socks5_host is set).
+        """
     def __new__(cls, **kwargs: typing.Any) -> PyEngineConfig:
         r"""
         Create a new configuration with defaults.
