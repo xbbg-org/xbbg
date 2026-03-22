@@ -111,6 +111,33 @@ def test_mock_engine_raises_for_unmatched_request(monkeypatch):
             blp.bdp("AAPL US Equity", "PX_LAST")
 
 
+def test_mock_engine_intercepts_generic_request(monkeypatch):
+    class UnexpectedEngine:
+        async def request(self, _params_dict):
+            raise AssertionError("live engine should not be called")
+
+    monkeypatch.setattr(blp, "_get_engine", lambda *args, **kwargs: UnexpectedEngine())
+
+    response = create_mock_response(
+        service="//blp/refdata",
+        operation="ReferenceDataRequest",
+        data={"IBM US Equity": {"PX_LAST": 123.45}},
+    )
+
+    with mock_engine([response]):
+        result = blp.request(
+            service="//blp/refdata",
+            operation="ReferenceDataRequest",
+            securities=["IBM US Equity"],
+            fields=["PX_LAST"],
+        )
+
+    native = result.to_native()
+    assert native.to_pylist() == [
+        {"ticker": "IBM US Equity", "field": "PX_LAST", "value": "123.45"},
+    ]
+
+
 def test_testutil_wrappers_use_blpapi_when_available(monkeypatch):
     calls: list[tuple[Any, ...]] = []
 
