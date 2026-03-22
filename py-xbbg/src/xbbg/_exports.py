@@ -148,6 +148,7 @@ PACKAGE_CONFIG_EXPORTS = (
 )
 
 PACKAGE_MIDDLEWARE_EXPORTS = (
+    "RequestEnvironment",
     "RequestContext",
     "add_middleware",
     "remove_middleware",

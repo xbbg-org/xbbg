@@ -108,6 +108,7 @@ class Engine:
 
         normalized = _normalize_config_kwargs(kwargs)
         config = _core.PyEngineConfig(**normalized)
+        self._config_snapshot = config
         self._py_engine = _core.PyEngine.with_config(config)
         self._token: contextvars.Token | None = None
 
@@ -140,6 +141,21 @@ RequestMiddleware: TypeAlias = Callable[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class RequestEnvironment:
+    """Read-only engine and auth snapshot available to request middleware."""
+
+    source: str
+    host: str | None = None
+    port: int | None = None
+    servers: tuple[tuple[str, int], ...] = ()
+    zfp_remote: int | None = None
+    auth_method: str | None = None
+    app_name: str | None = None
+    user_id: str | None = None
+    validation_mode: str | None = None
+
+
 @dataclass(slots=True)
 class RequestContext:
     """Mutable context object passed through the request middleware chain."""
@@ -150,6 +166,7 @@ class RequestContext:
     backend: Backend | str | None
     securities: list[str]
     fields: list[str]
+    environment: RequestEnvironment
     metadata: dict[str, Any] = field(default_factory=dict)
     started_at: float = field(default_factory=time.perf_counter)
     elapsed_ms: float | None = None
@@ -528,6 +545,59 @@ def _get_engine(*, engine: Engine | None = None):
     return _engine
 
 
+def _coerce_server_snapshot(value: Any) -> tuple[tuple[str, int], ...]:
+    if not value:
+        return ()
+
+    servers: list[tuple[str, int]] = []
+    for item in value:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+        host, port = item
+        try:
+            servers.append((str(host), int(port)))
+        except (TypeError, ValueError):
+            continue
+    return tuple(servers)
+
+
+def _snapshot_request_environment() -> RequestEnvironment:
+    scoped = _active_engine.get()
+    if scoped is not None:
+        config = getattr(scoped, "_config_snapshot", None)
+        source = "scoped_engine"
+    elif _config is not None:
+        config = _config
+        source = "global_config"
+    else:
+        config = None
+        source = "default_engine"
+
+    if config is None:
+        return RequestEnvironment(source=source, host="localhost", port=8194)
+
+    host = getattr(config, "host", None)
+    port = getattr(config, "port", None)
+    servers = _coerce_server_snapshot(getattr(config, "servers", None))
+    if not servers and host is not None and port is not None:
+        try:
+            servers = ((str(host), int(port)),)
+        except (TypeError, ValueError):
+            servers = ()
+
+    return RequestEnvironment(
+        source=source,
+        host=str(host) if host is not None else None,
+        port=int(port) if port is not None else None,
+        servers=servers,
+        zfp_remote=getattr(config, "zfp_remote", None),
+        auth_method=getattr(config, "auth_method", None),
+        app_name=getattr(config, "app_name", None),
+        user_id=getattr(config, "user_id", None),
+        validation_mode=getattr(config, "validation_mode", None),
+    )
+
+
 def _normalize_tickers(tickers: str | Sequence[str]) -> list[str]:
     """Normalize ticker input to a list of strings."""
     if isinstance(tickers, str):
@@ -837,9 +907,10 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
     context.elapsed_ms = (time.perf_counter() - started) * 1000
 
     logger.info(
-        "bloomberg %s.%s: %d rows in %.1fms | securities=%s fields=%s",
+        "bloomberg %s.%s [request_id=%s]: %d rows in %.1fms | securities=%s fields=%s",
         context.params.service,
         context.params.operation,
+        context.request_id,
         batch.num_rows,
         context.elapsed_ms,
         context.securities or None,
@@ -1030,13 +1101,16 @@ async def arequest(
     params.validate()
 
     params_dict = params.to_dict()
+    request_id = f"req-{time.time_ns()}"
+    params_dict["request_id"] = request_id
     context = RequestContext(
-        request_id=f"req-{time.time_ns()}",
+        request_id=request_id,
         params=params,
         params_dict=params_dict,
         backend=backend,
         securities=list(securities_list or []),
         fields=list(fields_list or []),
+        environment=_snapshot_request_environment(),
     )
 
     try:
