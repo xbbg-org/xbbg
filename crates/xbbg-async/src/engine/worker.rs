@@ -471,7 +471,12 @@ impl RequestWorker {
             xbbg_log::debug!(worker_id = self.id, "request built");
 
             let t_send = std::time::Instant::now();
-            let actual_cid = self.session.send_request(&request, None, Some(&cid))?;
+            let actual_cid = self.session.send_request_with_label(
+                &request,
+                None,
+                Some(&cid),
+                params.request_id.as_deref(),
+            )?;
             let actual_dispatch_key =
                 DispatchKey::from_correlation_id(&actual_cid).ok_or_else(|| {
                     BlpError::Internal {

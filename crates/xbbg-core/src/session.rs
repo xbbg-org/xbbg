@@ -353,6 +353,16 @@ impl Session {
         identity: Option<&Identity>,
         cid: Option<&CorrelationId>,
     ) -> Result<CorrelationId> {
+        self.send_request_with_label(req, identity, cid, None)
+    }
+
+    pub fn send_request_with_label(
+        &self,
+        req: &Request,
+        identity: Option<&Identity>,
+        cid: Option<&CorrelationId>,
+        label: Option<&str>,
+    ) -> Result<CorrelationId> {
         // Prepare correlation ID
         let mut cid_ffi = match cid {
             Some(c) => c.to_ffi(),
@@ -365,6 +375,16 @@ impl Session {
             None => std::ptr::null_mut(),
         };
 
+        let (label_ptr, label_len, _label_cstring) = match label {
+            Some(value) => {
+                let cstring = CString::new(value).map_err(|e| BlpError::InvalidArgument {
+                    detail: format!("invalid request label: {e}"),
+                })?;
+                (cstring.as_ptr(), value.len() as i32, Some(cstring))
+            }
+            None => (std::ptr::null(), 0, None),
+        };
+
         // SAFETY: We're calling the Bloomberg API with valid pointers
         let rc = unsafe {
             crate::ffi::blpapi_Session_sendRequest(
@@ -373,8 +393,8 @@ impl Session {
                 &mut cid_ffi,
                 identity_ptr,
                 std::ptr::null_mut(), // eventQueue (null = use session's queue)
-                std::ptr::null(),     // requestLabel
-                0,                    // requestLabelLen
+                label_ptr,
+                label_len,
             )
         };
 

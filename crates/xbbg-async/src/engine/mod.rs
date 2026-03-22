@@ -849,6 +849,7 @@ pub struct RequestParams {
     pub operation: String,
     /// Actual Bloomberg operation name when using the RawRequest marker.
     pub request_operation: Option<String>,
+    pub request_id: Option<String>,
     /// Extractor type hint for Arrow conversion
     pub extractor: ExtractorType,
     /// Whether extractor was explicitly provided by the caller.

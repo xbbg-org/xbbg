@@ -2052,6 +2052,8 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
+    let request_id: Option<String> = dict.get_item("request_id")?.map(|v| v.extract()).transpose()?;
+
     // Optional fields
     let securities: Option<Vec<String>> = dict
         .get_item("securities")?
@@ -2148,6 +2150,7 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         service,
         operation,
         request_operation,
+        request_id,
         extractor,
         extractor_set,
         securities,
@@ -2465,5 +2468,20 @@ mod tests {
                 token: "tok-123".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn dict_to_request_params_extracts_request_id() {
+        Python::initialize();
+        Python::attach(|py| {
+            let dict = PyDict::new(py);
+            dict.set_item("service", "//blp/refdata").expect("service");
+            dict.set_item("operation", "ReferenceDataRequest")
+                .expect("operation");
+            dict.set_item("request_id", "req-123").expect("request_id");
+
+            let params = dict_to_request_params(&dict).expect("request params");
+            assert_eq!(params.request_id.as_deref(), Some("req-123"));
+        });
     }
 }
