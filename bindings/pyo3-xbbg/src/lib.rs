@@ -415,6 +415,12 @@ pub struct PyEngineConfig {
     pub health_check_interval_ms: u64,
     #[pyo3(get, set)]
     pub sdk_log_level: String,
+    /// SOCKS5 proxy hostname for Bloomberg connections.
+    #[pyo3(get, set)]
+    pub socks5_host: Option<String>,
+    /// SOCKS5 proxy port (required when socks5_host is set).
+    #[pyo3(get, set)]
+    pub socks5_port: Option<u16>,
 }
 
 #[gen_stub_pymethods]
@@ -463,6 +469,8 @@ impl PyEngineConfig {
             retry_max_delay_ms: 30_000,
             health_check_interval_ms: 30_000,
             sdk_log_level: "off".to_string(),
+            socks5_host: None,
+            socks5_port: None,
         };
 
         if let Some(kw) = kwargs {
@@ -570,6 +578,12 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("sdk_log_level")? {
                 config.sdk_log_level = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("socks5_host")? {
+                config.socks5_host = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("socks5_port")? {
+                config.socks5_port = v.extract()?;
             }
         }
 
@@ -712,6 +726,8 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
                 .sdk_log_level
                 .parse()
                 .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?,
+            socks5_host: py_config.socks5_host.clone(),
+            socks5_port: py_config.socks5_port,
         })
     }
 }
