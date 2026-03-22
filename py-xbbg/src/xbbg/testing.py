@@ -1,8 +1,10 @@
+"""Testing helpers for non-live xbbg request and response flows."""
+
 from __future__ import annotations
 
-import importlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import importlib
 from typing import Any
 
 from . import blp
@@ -53,7 +55,6 @@ def _coerce_blpapi_service(service: str | Any, service_xml: str | None):
     if service_xml is not None:
         return deserialize_service(service_xml)
 
-    blpapi = _require_blpapi()
     if hasattr(service, "getOperation"):
         return service
     if not isinstance(service, str):
@@ -170,6 +171,8 @@ def _table_from_rows(rows: Sequence[Mapping[str, Any]]) -> Any:
 
 @dataclass(slots=True)
 class MockResponse:
+    """Container for a canned xbbg response and optional Bloomberg event."""
+
     service: str
     operation: str
     table: Any
@@ -243,6 +246,8 @@ def _coerce_mock_table(value: MockResponse | Any | Sequence[Mapping[str, Any]]) 
 
 
 class mock_engine:
+    """Middleware context manager that serves canned responses."""
+
     def __init__(
         self,
         responses: Sequence[MockResponse | Any | Sequence[Mapping[str, Any]]],

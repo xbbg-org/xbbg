@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import sys
 import types
 from typing import Any
@@ -106,9 +105,8 @@ def test_mock_engine_raises_for_unmatched_request(monkeypatch):
         data={"AAPL US Equity": {"2024-01-01": {"PX_LAST": 254.23}}},
     )
 
-    with mock_engine([response]):
-        with pytest.raises(LookupError, match="No mock response matched"):
-            blp.bdp("AAPL US Equity", "PX_LAST")
+    with mock_engine([response]), pytest.raises(LookupError, match="No mock response matched"):
+        blp.bdp("AAPL US Equity", "PX_LAST")
 
 
 def test_mock_engine_intercepts_generic_request(monkeypatch):
