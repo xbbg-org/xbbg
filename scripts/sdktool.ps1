@@ -96,6 +96,45 @@ $VendorBase = Join-Path (Join-Path $RepoRoot 'vendor') 'blpapi-sdk'
 $CacheDir   = Join-Path $VendorBase '.cache'
 $EnvFile    = Join-Path $RepoRoot '.env'
 
+function Get-PlatformInfo {
+    param([string]$Version)
+
+    $windows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)
+    $linux   = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)
+    $macos   = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)
+    $arch    = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+
+    if ($windows) {
+        return @{
+            Label           = 'Windows'
+            ArchiveFileName = "blpapi_cpp_${Version}-windows.zip"
+            Extractor       = 'zip'
+        }
+    }
+
+    if ($linux) {
+        return @{
+            Label           = 'Linux'
+            ArchiveFileName = "blpapi_cpp_${Version}-linux.tar.gz"
+            Extractor       = 'tar.gz'
+        }
+    }
+
+    if ($macos) {
+        if ($arch -eq 'arm64') {
+            return @{
+                Label           = 'macOS arm64'
+                ArchiveFileName = "blpapi_cpp_${Version}-macos-arm64.tar.gz"
+                Extractor       = 'tar.gz'
+            }
+        }
+
+        throw "Unsupported macOS architecture '$arch'. Add a Bloomberg archive mapping for this architecture before using sdktool.ps1."
+    }
+
+    throw 'Unsupported operating system for sdktool.ps1.'
+}
+
 # ---------------------------------------------------------------------------
 # Helper: resolve the latest SDK version from Bloomberg's Python Simple Index
 # ---------------------------------------------------------------------------
@@ -155,7 +194,7 @@ function Get-ActiveSdkVersion {
 
     if ($line) {
         # Extract version from path like vendor/blpapi-sdk/3.25.12.1
-        if ($line -match 'vendor/blpapi-sdk/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)') {
+        if ($line -match 'vendor/blpapi-sdk/([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)') {
             return $Matches[1]
         }
     }
@@ -248,12 +287,11 @@ if ($PSCmdlet.ParameterSetName -eq 'Remove') {
     Remove-Item -Path $VersionDir -Recurse -Force
     Write-Host ('  Removed: {0}' -f $VersionDir) -ForegroundColor DarkGray
 
-    # Remove cached zip if present
-    $ZipFileName = "blpapi_cpp_${Version}-windows.zip"
-    $ZipPath = Join-Path $CacheDir $ZipFileName
-    if (Test-Path $ZipPath) {
-        Remove-Item -Path $ZipPath -Force
-        Write-Host ('  Removed: {0}' -f $ZipFileName) -ForegroundColor DarkGray
+    $CachedArchives = @(Get-ChildItem -Path $CacheDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "blpapi_cpp_${Version}-*" })
+    foreach ($archive in $CachedArchives) {
+        Remove-Item -Path $archive.FullName -Force
+        Write-Host ('  Removed: {0}' -f $archive.Name) -ForegroundColor DarkGray
     }
 
     # Clear .env if this was the active version
@@ -293,8 +331,8 @@ if ($PSCmdlet.ParameterSetName -eq 'List') {
 
     $activeVersion = Get-ActiveSdkVersion
     $installed = Get-ChildItem -Path $VendorBase -Directory -ErrorAction SilentlyContinue |
-                 Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
-                 Sort-Object Name
+                 Where-Object { $_.Name -match '^\d+\.\d+\.\d+(\.\d+)?$' } |
+                  Sort-Object Name
 
     if (-not $installed) {
         Write-Host 'No SDK versions installed.' -ForegroundColor Yellow
@@ -332,14 +370,16 @@ elseif ($Version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
     throw "Invalid version format: '$Version'. Expected format: X.Y.Z or X.Y.Z.W (e.g., 3.25.12.1)"
 }
 
-$VersionDir  = Join-Path $VendorBase $Version
-$ZipFileName = "blpapi_cpp_${Version}-windows.zip"
-$ZipPath     = Join-Path $CacheDir $ZipFileName
-$DownloadUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/$ZipFileName"
+$VersionDir      = Join-Path $VendorBase $Version
+$Platform        = Get-PlatformInfo -Version $Version
+$ArchiveFileName = $Platform.ArchiveFileName
+$ArchivePath     = Join-Path $CacheDir $ArchiveFileName
+$DownloadUrl     = "https://blpapi.bloomberg.com/download/releases/raw/files/$ArchiveFileName"
 
 Write-Host ''
 Write-Host "Bloomberg C++ SDK" -ForegroundColor Cyan
 Write-Host "  Version : $Version"
+Write-Host "  Platform: $($Platform.Label)"
 Write-Host "  Target  : $VersionDir"
 Write-Host ''
 
@@ -369,25 +409,25 @@ foreach ($dir in @($VendorBase, $CacheDir)) {
 }
 
 # --- Download (skip if cached) ---------------------------------------------
-if ((Test-Path $ZipPath) -and -not $Force) {
-    Write-Host ('[OK] Using cached download: {0}' -f $ZipFileName) -ForegroundColor Green
+if ((Test-Path $ArchivePath) -and -not $Force) {
+    Write-Host ('[OK] Using cached download: {0}' -f $ArchiveFileName) -ForegroundColor Green
 } else {
-    Write-Host ('[..] Downloading {0} ...' -f $ZipFileName) -ForegroundColor Yellow
+    Write-Host ('[..] Downloading {0} ...' -f $ArchiveFileName) -ForegroundColor Yellow
     Write-Host "     URL: $DownloadUrl" -ForegroundColor DarkGray
 
     try {
         $ProgressPreference = 'SilentlyContinue'   # drastically speeds up Invoke-WebRequest
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchivePath -UseBasicParsing
         $ProgressPreference = 'Continue'
     }
     catch {
         # Clean up partial download
-        if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
+        if (Test-Path $ArchivePath) { Remove-Item $ArchivePath -Force }
         Write-Host ('[FAIL] Download failed: {0}' -f $_) -ForegroundColor Red
         throw "Failed to download Bloomberg C++ SDK v${Version}. Verify the version number and your network connection."
     }
 
-    $sizeKB = [math]::Round((Get-Item $ZipPath).Length / 1KB)
+    $sizeKB = [math]::Round((Get-Item $ArchivePath).Length / 1KB)
     Write-Host ('[OK] Downloaded ({0} KB)' -f $sizeKB) -ForegroundColor Green
 }
 
@@ -399,24 +439,31 @@ $TempExtract = Join-Path $VendorBase ".tmp-extract-$Version"
 try {
     # Clean up any leftover temp directory from a prior failed run
     if (Test-Path $TempExtract) { Remove-Item $TempExtract -Recurse -Force }
+    New-Item -ItemType Directory -Path $TempExtract -Force | Out-Null
 
-    Expand-Archive -Path $ZipPath -DestinationPath $TempExtract -Force
-
-    # The zip contains a top-level folder like blpapi_cpp_3.25.12.1-windows/
-    # We need to move its contents into vendor/blpapi-sdk/<version>/
-    $innerDirs = @(Get-ChildItem -Path $TempExtract -Directory)
-
-    if ($innerDirs.Count -eq 1) {
-        # Single top-level directory inside the zip — move it to the version dir
-        Move-Item -Path $innerDirs[0].FullName -Destination $VersionDir -Force
+    if ($Platform.Extractor -eq 'zip') {
+        Expand-Archive -Path $ArchivePath -DestinationPath $TempExtract -Force
     }
-    elseif ($innerDirs.Count -eq 0) {
-        # Contents are at the root of the zip (no wrapper directory)
+    else {
+        & tar -xzf $ArchivePath -C $TempExtract
+        if ($LASTEXITCODE -ne 0) {
+            throw 'tar extraction failed.'
+        }
+    }
+
+    $innerEntries = @(Get-ChildItem -Path $TempExtract -Force)
+
+    if ($innerEntries.Count -eq 1 -and $innerEntries[0].PSIsContainer) {
+        Move-Item -Path $innerEntries[0].FullName -Destination $VersionDir -Force
+    }
+    elseif ($innerEntries.Count -eq 0) {
         Move-Item -Path $TempExtract -Destination $VersionDir -Force
     }
     else {
-        # Multiple top-level entries — wrap them as-is
-        Move-Item -Path $TempExtract -Destination $VersionDir -Force
+        New-Item -ItemType Directory -Path $VersionDir -Force | Out-Null
+        foreach ($entry in $innerEntries) {
+            Move-Item -Path $entry.FullName -Destination $VersionDir -Force
+        }
     }
 }
 catch {
@@ -447,6 +494,12 @@ Write-Host "Bloomberg C++ SDK v$Version added and ready." -ForegroundColor Cyan
 
 $includeDir = Join-Path $VersionDir 'include'
 $libDir     = Join-Path $VersionDir 'lib'
+$linuxDir   = Join-Path $VersionDir 'Linux'
+$darwinDir  = Join-Path $VersionDir 'Darwin'
+$binDir     = Join-Path $VersionDir 'bin'
 if (Test-Path $includeDir) { Write-Host "  include/ : $includeDir" -ForegroundColor DarkGray }
 if (Test-Path $libDir)     { Write-Host "  lib/     : $libDir" -ForegroundColor DarkGray }
+if (Test-Path $linuxDir)   { Write-Host "  Linux/   : $linuxDir" -ForegroundColor DarkGray }
+if (Test-Path $darwinDir)  { Write-Host "  Darwin/  : $darwinDir" -ForegroundColor DarkGray }
+if (Test-Path $binDir)     { Write-Host "  bin/     : $binDir" -ForegroundColor DarkGray }
 Write-Host ''

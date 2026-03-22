@@ -21,8 +21,11 @@ Thank you for your interest in contributing to xbbg!
 
 2. Set up the Bloomberg SDK:
    ```bash
-   # Set BLPAPI_ROOT to your SDK location
-   export BLPAPI_ROOT=/path/to/blpapi_cpp_x.x.x.x
+   # macOS/Linux
+   bash ./scripts/sdktool.sh
+
+   # Windows PowerShell
+   # .\scripts\sdktool.ps1
    ```
 
 3. Install dependencies and build:

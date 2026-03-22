@@ -9,6 +9,9 @@ env.local
 # Sisyphus
 .sisyphus/
 
+# Local orchestration scratch space
+.omx/
+
 # Benchmark dependencies (isolated Python env for benchmarks)
 .benchmark_deps/
 
