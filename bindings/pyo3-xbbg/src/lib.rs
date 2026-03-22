@@ -2056,7 +2056,10 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         .map(|v| v.extract())
         .transpose()?;
 
-    let request_id: Option<String> = dict.get_item("request_id")?.map(|v| v.extract()).transpose()?;
+    let request_id: Option<String> = dict
+        .get_item("request_id")?
+        .map(|v| v.extract())
+        .transpose()?;
 
     // Optional fields
     let securities: Option<Vec<String>> = dict

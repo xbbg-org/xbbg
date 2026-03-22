@@ -148,6 +148,13 @@ convention = "google"
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 
+[tool.ty]
+src = ["py-xbbg/src"]
+python-version = "3.10"
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+
 [tool.coverage.run]
 omit = [
   "py-xbbg/tests/*",
