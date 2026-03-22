@@ -332,7 +332,8 @@ xbbg is the **only Python library** that provides:
 |----------|-------------|--------------|
 | **`add_middleware()`** | Register request middleware | Logging, caching, instrumentation |
 | **`remove_middleware()`** | Unregister middleware | Clean removal |
-| **`RequestContext`** | Request metadata | Ticker, fields, service, timing |
+| **`RequestContext`** | Request metadata | Request ID, request payload, timing, results |
+| **`RequestEnvironment`** | Engine/auth snapshot | Host, auth method, validation mode, server list |
 
 ### Additional Features
 

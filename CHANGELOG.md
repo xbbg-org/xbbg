@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Enterprise-friendly request middleware context**: `RequestContext` now carries a read-only `RequestEnvironment` snapshot so middleware can inspect engine source, host/port, server list, auth method, app/user context, and validation mode without reaching into private globals.
+
+### Changed
+
+- **Request tracing is more consistent**: Python request middleware now sees the generated `request_id` in both `RequestContext.request_id` and `RequestContext.params_dict`, centralized request logs include the request ID, and the Rust request path forwards it as the Bloomberg request label for better audit/debug correlation.
+
 ## [1.0.0b7] - 2026-03-18
 
 ### Added
