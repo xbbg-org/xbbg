@@ -63,8 +63,23 @@ fn configure_session_options(
     } else {
         &config.servers
     };
+    // Build optional SOCKS5 proxy config
+    let socks5 = match (config.socks5_host.as_deref(), config.socks5_port) {
+        (Some(host), Some(port)) => Some(xbbg_core::socks5::Socks5Config::new(host, port)?),
+        (Some(_), None) => {
+            return Err(BlpError::InvalidArgument {
+                detail: "socks5_host set without socks5_port".into(),
+            });
+        }
+        _ => None,
+    };
+
     for (index, (host, port)) in servers.iter().enumerate() {
-        options.set_server_address(host, *port, index)?;
+        if let Some(ref proxy) = socks5 {
+            options.set_server_address_with_proxy(host, *port, proxy, index)?;
+        } else {
+            options.set_server_address(host, *port, index)?;
+        }
     }
     options.set_num_start_attempts(config.num_start_attempts)?;
     options.set_auto_restart_on_disconnection(config.auto_restart_on_disconnection);
@@ -1260,6 +1275,10 @@ pub struct EngineConfig {
     /// Bloomberg SDK internal log level. Bridges SDK logs into xbbg tracing.
     /// Must be set before first session starts. Default: Off.
     pub sdk_log_level: crate::sdk_logging::SdkLogLevel,
+    /// SOCKS5 proxy hostname. When set, all server connections route through this proxy.
+    pub socks5_host: Option<String>,
+    /// SOCKS5 proxy port (required when socks5_host is set).
+    pub socks5_port: Option<u16>,
 }
 impl Default for EngineConfig {
     fn default() -> Self {
@@ -1294,6 +1313,8 @@ impl Default for EngineConfig {
             retry_policy: RetryPolicy::default(),
             health_check_interval_ms: 30_000,
             sdk_log_level: crate::sdk_logging::SdkLogLevel::Off,
+            socks5_host: None,
+            socks5_port: None,
         }
     }
 }
