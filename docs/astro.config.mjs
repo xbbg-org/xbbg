@@ -52,7 +52,7 @@ export default defineConfig({
 				},
 			],
 			editLink: {
-				baseUrl: 'https://github.com/alpha-xone/xbbg/edit/feat/rust-backend/docs/',
+				baseUrl: 'https://github.com/alpha-xone/xbbg/edit/main/docs/',
 			},
 		}),
 	],

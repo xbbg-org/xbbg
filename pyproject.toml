@@ -33,7 +33,7 @@ test = ["pytest", "pytest-cov", "pytest-asyncio"]
 
 [project.urls]
 Homepage = "https://github.com/alpha-xone/xbbg"
-Documentation = "https://xbbg.readthedocs.io/"
+Documentation = "https://alpha-xone.github.io/xbbg"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
 
@@ -132,9 +132,6 @@ ignore = [
 "py-xbbg/tests/live/**" = ["D", "B007", "B905", "F841", "B023", "RUF001"]
 "py-xbbg/tests/**" = ["D", "PT"]
 "scripts/**" = ["D103"]
-"xbbg/api/**/__init__.py" = ["F401", "F403"]
-"xbbg/api/__init__.py" = ["F401", "F403"]
-"xbbg/core/strategies/__init__.py" = ["F403"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]

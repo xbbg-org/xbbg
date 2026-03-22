@@ -8,7 +8,7 @@ Thank you for your interest in contributing to xbbg!
 
 - Python 3.10+
 - Rust 1.70+
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+- [pixi](https://pixi.sh/) (recommended) or pip
 - Bloomberg C++ SDK (for building the Rust backend)
 
 ### Getting Started
@@ -30,19 +30,19 @@ Thank you for your interest in contributing to xbbg!
 
 3. Install dependencies and build:
    ```bash
-   uv sync
+   pixi install && pixi run install
    ```
 
 4. Run tests:
    ```bash
-   uv run pytest py-xbbg/tests -q
+   pixi run test
    ```
 
 ## Code Style
 
 ### Python
 - We use [ruff](https://github.com/astral-sh/ruff) for linting and formatting
-- Run `uvx ruff check .` and `uvx ruff format .` before committing
+- Run `pixi run lint` before committing
 
 ### Rust
 - Run `cargo fmt` for formatting

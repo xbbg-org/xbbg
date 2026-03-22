@@ -66,7 +66,6 @@ prune apps
 
 # Dev/CI files
 prune .github
-prune .sisyphus
 prune docker
 prune docs
 prune benchmarks
@@ -74,7 +73,6 @@ prune examples
 prune scripts
 prune vendor
 prune js-xbbg
-prune xbbg
 prune py-xbbg/tests
 
 # Build artifacts
@@ -91,8 +89,7 @@ exclude .gitattributes
 exclude .gitignore
 exclude .markdownlint.json
 exclude .pre-commit-config.yaml
-exclude edge-cases.md
-exclude nul
+exclude .github/edge-cases.md
 exclude pixi.toml
 exclude pixi.lock
 exclude CONTRIBUTING.md
