@@ -37,6 +37,10 @@
 //! RUST_LOG=xbbg_core=trace,xbbg_async=debug python my_script.py
 //! ```
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;

@@ -81,20 +81,20 @@ prune py-xbbg/tests
 prune target
 prune dist
 prune .venv
+prune .pixi
 prune .uv-cache
 prune .ruff_cache
 prune .pytest_cache
 
 # Misc dev files
-exclude .coveragerc
-exclude .env
 exclude .gitattributes
 exclude .gitignore
 exclude .markdownlint.json
 exclude .pre-commit-config.yaml
 exclude edge-cases.md
-exclude uv.lock
 exclude nul
+exclude pixi.toml
+exclude pixi.lock
 exclude CONTRIBUTING.md
 exclude CODE_OF_CONDUCT.md
 exclude RELEASE_PROCESS.md

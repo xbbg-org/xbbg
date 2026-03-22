@@ -8,8 +8,9 @@ import logging
 from typing import Any, cast
 import warnings
 
-import narwhals.stable.v1 as nw
 import pandas as pd
+
+from xbbg.markets.bloomberg import _to_pandas_wide
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +33,6 @@ class CurrencyPair:
     ticker: str
     factor: float
     power: float
-
-
-def _to_pandas_wide(data: Any) -> pd.DataFrame:
-    utils = importlib.import_module("xbbg.ext._utils")
-    pivot_fn = cast("Any", utils._pivot_bdp_to_wide)
-    nw_df = nw.from_native(data)
-    nw_df = pivot_fn(nw_df)
-    return nw_df.to_pandas()
 
 
 def exch_info_bloomberg(ticker: str, **kwargs) -> pd.Series:

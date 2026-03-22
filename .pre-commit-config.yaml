@@ -11,12 +11,12 @@ repos:
         args: [--fix=lf]
         files: ^(py-xbbg/src/|py-xbbg/tests/|src/|\\.github/|pyproject\\.toml|Cargo\\.toml|README\\.md|\\.pre-commit-config\\.yaml)
 
-  # Use local hooks to run tools via uv/cargo from the project env
+  # Local hooks — tools provided by the pixi environment
   - repo: local
     hooks:
       - id: ruff
         name: ruff
-        entry: uvx ruff check py-xbbg/src py-xbbg/tests
+        entry: ruff check py-xbbg/src py-xbbg/tests
         language: system
         types_or: [python]
         files: ^(py-xbbg/src/|py-xbbg/tests/)
@@ -24,7 +24,7 @@ repos:
 
       - id: ruff-format
         name: ruff-format
-        entry: uvx ruff format --check py-xbbg/src py-xbbg/tests
+        entry: ruff format --check py-xbbg/src py-xbbg/tests
         language: system
         types_or: [python]
         files: ^(py-xbbg/src/|py-xbbg/tests/)
@@ -45,5 +45,3 @@ repos:
         types_or: [rust]
         files: ^(crates/|src|tests|benches|examples)/
         pass_filenames: false
-
-

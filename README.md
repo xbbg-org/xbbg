@@ -1658,30 +1658,26 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 
 ### Setup
 
-Create venv and install dependencies:
+Set up the development environment with [pixi](https://pixi.sh/):
 
 ```bash
 # Install the Bloomberg SDK into vendor/blpapi-sdk/ and let xbbg discover it
 bash ./scripts/sdktool.sh               # macOS/Linux
 # .\scripts\sdktool.ps1                # Windows PowerShell
 
-# Install all dev dependencies (uses uv dependency-groups)
-uv sync
+# Install environment and compile the Rust extension
+pixi install
+pixi run install
 ```
 
 If you already manage the SDK yourself, you can still set `BLPAPI_ROOT` manually.
 
-### Adding Dependencies
-
-```bash
-uv add <package>
-```
-
 ### Running Tests and Linting
 
 ```bash
-uv run ruff check py-xbbg/src/xbbg
-uv run pytest py-xbbg/tests -q
+pixi run test                  # run tests
+pixi run lint                  # lint Python + Rust
+pixi run ci                    # full sweep: fmt-check + lint + typecheck + test
 ```
 
 For non-live application tests, `xbbg.testing` can mock Bloomberg-style responses:
@@ -1703,7 +1699,7 @@ with mock_engine([response]):
 ### Building
 
 ```bash
-uv build
+pixi run build
 ```
 
 Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
@@ -1713,10 +1709,9 @@ Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
 The docs site uses [Astro](https://astro.build/):
 
 ```bash
-cd docs
-npm install
-npm run dev    # Local dev server
-npm run build  # Production build
+pixi run -e docs docs-install  # install npm deps
+pixi run -e docs docs-dev      # local dev server
+pixi run -e docs docs-build    # production build
 ```
 
 ## Contributing
@@ -1737,11 +1732,10 @@ git clone https://github.com/YOUR-USERNAME/xbbg.git
 cd xbbg
 
 # Set up development environment
-uv sync
+pixi install && pixi run install
 
 # Run tests and linting
-uv run ruff check py-xbbg/src/xbbg
-uv run pytest py-xbbg/tests -q
+pixi run ci
 ```
 
 ## Getting Help

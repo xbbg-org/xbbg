@@ -137,17 +137,17 @@ resolve_latest_version() {
 
 get_active_sdk_version() {
     [ -f "$ENV_FILE" ] || return 0
-    "$PYTHON_BIN" -c "from pathlib import Path; import re,sys; path=Path(sys.argv[1]); match=re.search(r'^\\s*XBBG_DEV_SDK_ROOT\\s*=\\s*.*?/([0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)\\s*$', path.read_text(), re.MULTILINE); print(match.group(1) if match else '')" "$ENV_FILE"
+    "$PYTHON_BIN" -c "from pathlib import Path; import re,sys; path=Path(sys.argv[1]); match=re.search(r'^\\s*BLPAPI_ROOT\\s*=\\s*.*?/([0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)\\s*$', path.read_text(), re.MULTILINE); print(match.group(1) if match else '')" "$ENV_FILE"
 }
 
 set_active_sdk_version() {
-    "$PYTHON_BIN" -c "from pathlib import Path; import sys; env_file=Path(sys.argv[1]); version=sys.argv[2]; env_line=f'XBBG_DEV_SDK_ROOT=vendor/blpapi-sdk/{version}'; content=env_file.read_text() if env_file.exists() else ''; lines=[line for line in content.splitlines() if not line.lstrip().startswith('XBBG_DEV_SDK_ROOT=')]; lines.append(env_line); env_file.write_text('\\n'.join(lines) + '\\n')" "$ENV_FILE" "$VERSION"
-    note "[OK] .env updated: XBBG_DEV_SDK_ROOT=vendor/blpapi-sdk/$VERSION"
+    "$PYTHON_BIN" -c "from pathlib import Path; import sys; env_file=Path(sys.argv[1]); version=sys.argv[2]; env_line=f'BLPAPI_ROOT=vendor/blpapi-sdk/{version}'; content=env_file.read_text() if env_file.exists() else ''; lines=[line for line in content.splitlines() if not line.lstrip().startswith('BLPAPI_ROOT=')]; lines.append(env_line); env_file.write_text('\\n'.join(lines) + '\\n')" "$ENV_FILE" "$VERSION"
+    note "[OK] .env updated: BLPAPI_ROOT=vendor/blpapi-sdk/$VERSION"
 }
 
 clear_active_sdk_version() {
     [ -f "$ENV_FILE" ] || return 0
-    "$PYTHON_BIN" -c "from pathlib import Path; import sys; env_file=Path(sys.argv[1]); version=sys.argv[2]; target=f'vendor/blpapi-sdk/{version}'; lines=env_file.read_text().splitlines(); kept=[line for line in lines if not (line.lstrip().startswith('XBBG_DEV_SDK_ROOT=') and target in line)]; env_file.write_text('\\n'.join(kept) + '\\n') if kept else env_file.unlink(missing_ok=True)" "$ENV_FILE" "$VERSION"
+    "$PYTHON_BIN" -c "from pathlib import Path; import sys; env_file=Path(sys.argv[1]); version=sys.argv[2]; target=f'vendor/blpapi-sdk/{version}'; lines=env_file.read_text().splitlines(); kept=[line for line in lines if not (line.lstrip().startswith('BLPAPI_ROOT=') and target in line)]; env_file.write_text('\\n'.join(kept) + '\\n') if kept else env_file.unlink(missing_ok=True)" "$ENV_FILE" "$VERSION"
 }
 
 platform_info() {
@@ -260,7 +260,7 @@ case "$MODE" in
         set -e
         if [ "$(get_active_sdk_version || true)" = "$VERSION" ]; then
             clear_active_sdk_version
-            note "Cleared XBBG_DEV_SDK_ROOT from .env"
+            note "Cleared BLPAPI_ROOT from .env"
         fi
         exit 0
         ;;

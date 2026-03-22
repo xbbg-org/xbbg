@@ -6,6 +6,9 @@ env.local
 # Claude Code
 .claude/
 
+# Pixi
+.pixi/
+
 # Sisyphus
 .sisyphus/
 
@@ -16,7 +19,6 @@ env.local
 .benchmark_deps/
 
 # Cargo / Rust
-.cargo/config.toml
 build_rust.bat
 
 # PyO3 extension build outputs

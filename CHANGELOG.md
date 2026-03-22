@@ -9,11 +9,32 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- **Pixi environment management**: Added `pixi.toml` with 11 environments (default, test, lint, benchmark, docs, py310–py314), 21 tasks, and conda-forge deps for Rust, libclang, and pyarrow. Single `pixi install && pixi run install` replaces manual toolchain setup.
+- **mimalloc allocator**: PyO3 extension now uses mimalloc by default (feature-gated) for improved Rust-side allocation performance.
+- **`ty` type checking**: Lint environment includes Astral's `ty` type checker alongside ruff; CI lint job now runs type checking automatically.
 - **Enterprise-friendly request middleware context**: `RequestContext` now carries a read-only `RequestEnvironment` snapshot so middleware can inspect engine source, host/port, server list, auth method, app/user context, and validation mode without reaching into private globals.
 
 ### Changed
 
+- **Standardised on `BLPAPI_ROOT`**: Removed `XBBG_DEV_SDK_ROOT` env var across the codebase (build.rs, scripts, docs). SDK discovery now uses `BLPAPI_ROOT` only (set by pixi activation or `.cargo/config.toml`). No hardcoded SDK version — build.rs scans versioned subdirs automatically.
+- **Removed `BLPAPI_LINK_LIB_NAME`**: Library name is now always auto-detected by `detect_link_lib_name()` based on target platform.
+- **Build profiles cleaned up**: Removed redundant `[profile.release.package.xbbg_core]`; added `[profile.dev.package."*"] opt-level = 2` so all deps are optimised in dev builds; `pixi run install` uses `target-cpu=native` for local builds.
+- **Migrated from uv to pixi for dev tooling**: Removed `[dependency-groups]`, `[tool.uv.*]` from pyproject.toml; deleted `uv.lock`; pre-commit hooks use bare `ruff` instead of `uvx ruff`; README dev instructions updated to pixi commands.
+- **Consolidated config files**: Merged `.coveragerc` into `pyproject.toml` `[tool.coverage.*]`; deleted `.env` (pixi activation replaces it); un-gitignored `.cargo/config.toml` (now contains only project-standard `BLPAPI_ROOT`).
+- **CI lint job uses pixi**: `lint-python` job now uses `prefix-dev/setup-pixi` with the lightweight `lint` environment, replacing `uvx ruff`.
 - **Request tracing is more consistent**: Python request middleware now sees the generated `request_id` in both `RequestContext.request_id` and `RequestContext.params_dict`, centralized request logs include the request ID, and the Rust request path forwards it as the Bloomberg request label for better audit/debug correlation.
+
+### Removed
+
+- **`XBBG_DEV_SDK_ROOT` env var**: Use `BLPAPI_ROOT` instead. The `.env` file fallback in `blpapi-sys/build.rs` has been removed.
+- **`BLPAPI_LINK_LIB_NAME` env var**: Auto-detection covers all platforms.
+- **`uv.lock`**: Replaced by `pixi.lock`.
+- **`.coveragerc`**: Configuration moved to `pyproject.toml`.
+
+### Fixed
+
+- **De-duplicated Rust recipe helpers**: Extracted `array_value_as_string`, `date32_to_naive`, `as_string_col` into shared `xbbg-recipes/src/utils.rs`.
+- **De-duplicated Python code**: Consolidated `_to_pandas_wide` (was in both `info.py` and `bloomberg.py`); unified `_FUTURES_MONTH_CODES` to use Rust-sourced `ext_get_futures_months()`; extracted `_apply_settle_override` helper replacing 5 repeated blocks in `bonds.py`.
 
 ## [1.0.0b7] - 2026-03-18
 

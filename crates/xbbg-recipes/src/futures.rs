@@ -24,6 +24,7 @@ use xbbg_ext::resolvers::futures::{
 use xbbg_ext::{fmt_date, parse_date, parse_ticker_parts};
 
 use crate::error::{RecipeError, Result};
+use crate::utils::{as_string_col, date32_to_naive};
 
 /// Resolve a generic futures ticker to a specific contract ticker for a date.
 ///
@@ -526,20 +527,6 @@ fn parse_any_date(value: &str) -> Option<NaiveDate> {
     parse_date(value)
         .ok()
         .or_else(|| value.get(..10).and_then(|prefix| parse_date(prefix).ok()))
-}
-
-fn date32_to_naive(days_since_epoch: i32) -> Option<NaiveDate> {
-    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)?;
-    epoch.checked_add_signed(Duration::days(days_since_epoch as i64))
-}
-
-fn as_string_col<'a>(batch: &'a RecordBatch, column: &str) -> Result<&'a StringArray> {
-    batch
-        .column_by_name(column)
-        .ok_or_else(|| RecipeError::Other(format!("missing '{column}' column")))?
-        .as_any()
-        .downcast_ref::<StringArray>()
-        .ok_or_else(|| RecipeError::Other(format!("'{column}' column must be Utf8")))
 }
 
 #[cfg(test)]

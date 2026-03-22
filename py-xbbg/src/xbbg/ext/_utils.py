@@ -6,6 +6,7 @@ to eliminate duplication and improve maintainability.
 Functions:
     - _pivot_bdp_to_wide(): Pivot bdp result from long to wide format
     - _fmt_date(): Format date to string using Rust utilities
+    - _apply_settle_override(): Apply settle date override to overrides dict
 """
 
 from __future__ import annotations
@@ -108,6 +109,21 @@ def _pivot_bdp_to_wide(nw_df):
         result_df = result_df.with_columns(series)
 
     return result_df
+
+
+def _apply_settle_override(overrides: dict, settle_dt) -> None:
+    """Apply a settle date override to the overrides dict in place.
+
+    If settle_dt is not None and can be formatted, sets overrides["SETTLE_DT"].
+
+    Args:
+        overrides: Mutable dict of Bloomberg overrides to update.
+        settle_dt: Settlement date as string, date object, or None.
+    """
+    if settle_dt is not None:
+        formatted_settle = _fmt_date(settle_dt)
+        if formatted_settle is not None:
+            overrides["SETTLE_DT"] = formatted_settle
 
 
 def _fmt_date(dt: str | date | None, fmt: str = "%Y%m%d") -> str | None:
