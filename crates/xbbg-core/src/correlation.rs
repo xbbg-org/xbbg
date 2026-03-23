@@ -2,6 +2,20 @@
 
 use std::ffi::c_void;
 
+use crate::ffi::blpapi_ManagedPtr_t;
+
+/// Bindgen may name the first field of `blpapi_ManagedPtr_t_` `pointer` or opaque `_address`
+/// depending on libclang/bindgen. The Bloomberg C API always stores the user pointer at offset 0.
+#[inline]
+unsafe fn managed_ptr_as_ptr_mut(mp: &mut blpapi_ManagedPtr_t) -> *mut *mut c_void {
+    mp as *mut blpapi_ManagedPtr_t as *mut *mut c_void
+}
+
+#[inline]
+unsafe fn managed_ptr_as_ptr_ref(mp: &blpapi_ManagedPtr_t) -> *const *mut c_void {
+    mp as *const blpapi_ManagedPtr_t as *const *mut c_void
+}
+
 /// Correlation ID used to match requests/subscriptions with responses.
 ///
 /// Correlation IDs allow you to track which responses correspond to which requests.
@@ -85,7 +99,7 @@ impl CorrelationId {
                 }
                 CorrelationId::Ptr(p) => {
                     cid.set_valueType(crate::ffi::BLPAPI_CORRELATION_TYPE_POINTER);
-                    cid.value.ptrValue.pointer = *p;
+                    *managed_ptr_as_ptr_mut(&mut cid.value.ptrValue) = *p;
                 }
             }
             cid
@@ -113,7 +127,7 @@ impl CorrelationId {
             }
             x if x == crate::ffi::BLPAPI_CORRELATION_TYPE_POINTER => {
                 // SAFETY: valueType indicates this is a pointer value
-                let ptr = unsafe { cid.value.ptrValue.pointer };
+                let ptr = unsafe { *managed_ptr_as_ptr_ref(&cid.value.ptrValue) };
                 CorrelationId::Ptr(ptr)
             }
             _ => CorrelationId::Unset,
