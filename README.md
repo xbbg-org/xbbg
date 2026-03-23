@@ -22,7 +22,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==1.0.0b7 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0b7))
+Latest release: xbbg==1.0.0rc1 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0rc1))
 <!-- xbbg:latest-release-end -->
 
 > This `main` branch now tracks the Rust-based v1 beta line, a significant upgrade over 0.x in performance and architecture.

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0rc1] - 2026-03-23
+
 ### Added
 
 - **Intraday timezone controls (`request_tz` / `output_tz`)**: `abdib`/`bdib`, `abdtick`/`bdtick`, `arequest`, and Rust `RequestParams` accept optional `request_tz` (interpret naive `start_datetime`/`end_datetime` before Bloomberg) and `output_tz` (relabel Arrow `time` to an IANA zone). Supported labels include `UTC`, `local`, `exchange`, `NY`/`LN`/`TK`/`HK`, reference tickers, and explicit IANA names. Implemented in `xbbg-async` (`chrono-tz`, `iana-time-zone`) with nested RefData calls routed through `request_without_intraday_transform` to avoid recursion.
@@ -1081,7 +1083,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc1...HEAD
+[1.0.0rc1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...v1.0.0rc1
 [1.0.0b7]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...v1.0.0b7
 [1.0.0b6]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...v1.0.0b6
 [1.0.0b5]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...v1.0.0b5
