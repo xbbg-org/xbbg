@@ -29,6 +29,17 @@
 
 using namespace BEmu;
 
+// Name::string() points into the Name object; never return it across a temporary.
+static const char* copy_name_cstr(const Name& n) {
+    static thread_local std::string storage;
+    if (n.isNull()) {
+        storage.clear();
+        return nullptr;
+    }
+    storage.assign(n.string(), n.length());
+    return storage.c_str();
+}
+
 /* ============================================================================
  * Internal wrapper classes to hold C++ objects behind opaque handles
  * ============================================================================ */
@@ -549,7 +560,7 @@ size_t datamock_Message_numCorrelationIds(datamock_Message_t* message) {
 
 const char* datamock_Message_typeString(datamock_Message_t* message) {
     if (!message) return nullptr;
-    return message->message.messageType().string();
+    return copy_name_cstr(message->message.messageType());
 }
 
 const char* datamock_Message_topicName(datamock_Message_t* message) {
@@ -597,7 +608,7 @@ int datamock_Element_nameString(
 {
     if (!element || !name) return DATAMOCK_ERROR_ILLEGAL_ARG;
     try {
-        *name = element->element.name().string();
+        *name = copy_name_cstr(element->element.name());
         return DATAMOCK_OK;
     } catch (...) {
         return DATAMOCK_ERROR_UNKNOWN;

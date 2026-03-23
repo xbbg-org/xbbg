@@ -21,10 +21,10 @@ namespace BEmu
 	{
 		public:
 			~ServiceRefData() override = default;
-			virtual const char* name() const;
+			const char* name() const override;
 
 			std::shared_ptr<RequestPtr> createRequestPtr(const char* operation) const;
-			Request createRequest(const char* operation) const;
+			Request createRequest(const char* operation) const override;
 
 			class ServiceRefDataException: public std::exception
 			{

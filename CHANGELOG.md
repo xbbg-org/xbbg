@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 
+- **Workspace default build scope**: Root `Cargo.toml` sets `[workspace].default-members` to exclude `crates/datamock` and `crates/datamock-sys`, so plain `cargo build` / `cargo test` at the repo root does not compile the C++ mock stack. Use `cargo test -p datamock` or `cargo build --workspace` when working on mocks. The `mock` Cargo feature on `xbbg-sys` and downstream crates remains optional and off by default.
 - **Standardised on `BLPAPI_ROOT`**: Removed `XBBG_DEV_SDK_ROOT` env var across the codebase (build.rs, scripts, docs). SDK discovery now uses `BLPAPI_ROOT` only (set by pixi activation or `.cargo/config.toml`). No hardcoded SDK version — build.rs scans versioned subdirs automatically.
 - **Removed `BLPAPI_LINK_LIB_NAME`**: Library name is now always auto-detected by `detect_link_lib_name()` based on target platform.
 - **Build profiles cleaned up**: Removed redundant `[profile.release.package.xbbg_core]`; added `[profile.dev.package."*"] opt-level = 2` so all deps are optimised in dev builds; `pixi run install` uses `target-cpu=native` for local builds.
@@ -36,6 +37,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- **datamock C API** (`datamock_c_api.cpp`): `datamock_Message_typeString` and `datamock_Element_nameString` returned `const char*` into temporaries (`Name` destroyed at end of full-expression). Pointers are now stable via thread-local string copies before returning.
+- **datamock tests**: C API integration tests moved to `crates/datamock/tests/c_api.rs`; message/field strings decoded with lossy UTF-8 (mock data is not always valid UTF-8); tests serialized behind a mutex to avoid races on C++ global state; `build.rs` passes `-Wno-unused-parameter` for stub-heavy sources.
+- **datamock C++ warnings**: Safer null/empty check in `Name` equality vs C string; `ServiceRefData` marks `name` / `createRequest` with `override`; `SchemaTypeDefinition` destructor matches throwing body with `noexcept(false)`.
 - **De-duplicated Rust recipe helpers**: Extracted `array_value_as_string`, `date32_to_naive`, `as_string_col` into shared `xbbg-recipes/src/utils.rs`.
 - **De-duplicated Python code**: Consolidated `_to_pandas_wide` (was in both `info.py` and `bloomberg.py`); unified `_FUTURES_MONTH_CODES` to use Rust-sourced `ext_get_futures_months()`; extracted `_apply_settle_override` helper replacing 5 repeated blocks in `bonds.py`.
 

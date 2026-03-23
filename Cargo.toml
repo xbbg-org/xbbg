@@ -19,6 +19,21 @@ members = [
     # "apps/xbbg-cli",
     # "apps/xbbg-server",
 ]
+# Omit datamock / datamock-sys so plain `cargo build` / `cargo test` at the repo
+# root does not compile the mock stack; use `cargo test -p datamock` or
+# `cargo build --workspace` when working on it. The `mock` Cargo feature stays
+# optional on xbbg-sys and downstream crates.
+default-members = [
+    "crates/xbbg-core",
+    "crates/blpapi-sys",
+    "crates/xbbg-async",
+    "crates/xbbg-sys",
+    "crates/xbbg-ext",
+    "crates/xbbg-recipes",
+    "crates/xbbg-log",
+    "crates/xbbg-bench",
+    "bindings/pyo3-xbbg",
+]
 resolver = "2"
 
 [workspace.package]
