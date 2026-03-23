@@ -1707,6 +1707,7 @@ async def asubscribe(
     fields: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
     service: str | None = None,
     options: list[str] | None = None,
@@ -1725,6 +1726,7 @@ async def asubscribe(
         tickers: Securities to subscribe to
         fields: Fields to subscribe to (e.g., 'LAST_PRICE', 'BID', 'ASK')
         raw: If True, yield raw Arrow RecordBatches for max performance
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion (ignored if raw=True)
         service: Bloomberg service (e.g., '//blp/mktdata'). If provided, uses subscribe_with_options
         options: List of subscription options. If provided, uses subscribe_with_options
@@ -1815,6 +1817,7 @@ async def asubscribe(
                 "stream_capacity": stream_capacity,
                 "overflow_policy": overflow_policy,
                 "recovery_policy": recovery_policy,
+                "all_fields": all_fields,
             }.items()
             if v is not None
         }
@@ -1826,7 +1829,7 @@ async def asubscribe(
             **opt_kwargs,
         )
     else:
-        py_sub = await engine.subscribe(ticker_list, field_list)
+        py_sub = await engine.subscribe(ticker_list, field_list, all_fields=all_fields)
 
     return Subscription(py_sub, raw=raw or tick_mode, backend=effective_backend, tick_mode=tick_mode)
 
@@ -1836,6 +1839,7 @@ async def astream(
     fields: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
     callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
     tick_mode: bool = False,
@@ -1853,6 +1857,7 @@ async def astream(
         tickers: Securities to subscribe to
         fields: Fields to subscribe to
         raw: If True, yield raw Arrow RecordBatches
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion
         callback: Optional callback function to invoke on each batch
         tick_mode: If True, convert batches to dicts
@@ -1880,6 +1885,7 @@ async def astream(
         tickers,
         fields,
         raw=raw,
+        all_fields=all_fields,
         backend=backend,
         tick_mode=tick_mode,
         flush_threshold=flush_threshold,
@@ -1901,6 +1907,7 @@ def stream(
     fields: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
     callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
     tick_mode: bool = False,
@@ -1917,6 +1924,7 @@ def stream(
         tickers: Securities to subscribe to
         fields: Fields to subscribe to
         raw: If True, yield raw Arrow RecordBatches
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion
         callback: Optional callback function to invoke on each batch
         tick_mode: If True, convert batches to dicts
@@ -1943,6 +1951,7 @@ def stream(
                 tickers,
                 fields,
                 raw=raw,
+                all_fields=all_fields,
                 backend=backend,
                 callback=callback,
                 tick_mode=tick_mode,
@@ -1989,6 +1998,7 @@ async def avwap(
     start_time: str | None = None,
     end_time: str | None = None,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to real-time VWAP data (//blp/mktvwap).
@@ -2001,6 +2011,7 @@ async def avwap(
         start_time: VWAP calculation start time (e.g., "09:30")
         end_time: VWAP calculation end time (e.g., "16:00")
         raw: If True, yield raw Arrow RecordBatches for max performance
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion (ignored if raw=True)
 
     Returns:
@@ -2043,6 +2054,7 @@ async def avwap(
         ticker_list,
         field_list,
         options if options else None,
+        all_fields=all_fields,
     )
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
@@ -2060,6 +2072,7 @@ async def amktbar(
     start_time: str | None = None,
     end_time: str | None = None,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to real-time streaming OHLC bars.
@@ -2073,6 +2086,7 @@ async def amktbar(
         start_time: Optional start time in HH:MM format.
         end_time: Optional end time in HH:MM format.
         raw: If True, return raw pyarrow RecordBatch (default: False).
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -2110,6 +2124,7 @@ async def amktbar(
         ticker_list,
         ["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME", "NUM_TRADES"],
         options if options else None,
+        all_fields=all_fields,
     )
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
@@ -2124,6 +2139,7 @@ async def adepth(
     tickers: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to Level 2 market depth / order book data.
@@ -2138,6 +2154,7 @@ async def adepth(
     Args:
         tickers: Security identifier(s).
         raw: If True, return raw pyarrow RecordBatch (default: False).
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -2169,6 +2186,7 @@ async def adepth(
             ticker_list,
             [],  # Fields are implicit for market depth
             None,
+            all_fields=all_fields,
         )
     except Exception as e:
         # Check for B-PIPE related errors
@@ -2189,6 +2207,7 @@ async def achains(
     *,
     chain_type: str = "OPTIONS",
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to option or futures chain updates.
@@ -2204,6 +2223,7 @@ async def achains(
         underlying: Underlying security identifier.
         chain_type: Type of chain - "OPTIONS" or "FUTURES" (default: "OPTIONS").
         raw: If True, return raw pyarrow RecordBatch (default: False).
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -2239,6 +2259,7 @@ async def achains(
             [underlying],
             [],  # Fields depend on chain type
             options,
+            all_fields=all_fields,
         )
     except Exception as e:
         # Check for B-PIPE related errors

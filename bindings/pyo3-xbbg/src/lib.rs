@@ -1187,7 +1187,7 @@ impl PyEngine {
     /// await sub.unsubscribe()
     /// ```
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None))]
+    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None, all_fields=false))]
     fn subscribe<'py>(
         &self,
         py: Python<'py>,
@@ -1197,6 +1197,7 @@ impl PyEngine {
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
         recovery_policy: Option<String>,
+        all_fields: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
@@ -1224,6 +1225,7 @@ impl PyEngine {
                     "//blp/mktdata".to_string(),
                     tickers_clone.clone(),
                     fields_clone.clone(),
+                    all_fields,
                     vec![],
                     stream_capacity,
                     flush_threshold,
@@ -1237,7 +1239,7 @@ impl PyEngine {
 
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
-            let (rx, tx, claim, status, ft, op_policy, service, options) =
+            let (rx, tx, claim, status, ft, op_policy, service, options, all_fields) =
                 stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
@@ -1245,6 +1247,7 @@ impl PyEngine {
                 tx,
                 claim: Some(claim),
                 fields: fields_clone,
+                all_fields,
                 service,
                 options,
                 flush_threshold: ft,
@@ -1286,7 +1289,7 @@ impl PyEngine {
     /// async for batch in sub:
     ///     print(batch)
     /// ```
-    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None))]
+    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None, all_fields=false))]
     #[allow(clippy::too_many_arguments)]
     fn subscribe_with_options<'py>(
         &self,
@@ -1299,6 +1302,7 @@ impl PyEngine {
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
         recovery_policy: Option<String>,
+        all_fields: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
@@ -1330,6 +1334,7 @@ impl PyEngine {
                     service_clone.clone(),
                     tickers_clone.clone(),
                     fields_clone.clone(),
+                    all_fields,
                     options_clone.clone(),
                     stream_capacity,
                     flush_threshold,
@@ -1341,7 +1346,7 @@ impl PyEngine {
 
             debug!("PyEngine: subscription with options created");
 
-            let (rx, tx, claim, status, ft, op_policy, service, options) =
+            let (rx, tx, claim, status, ft, op_policy, service, options, all_fields) =
                 stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
@@ -1349,6 +1354,7 @@ impl PyEngine {
                 tx,
                 claim: Some(claim),
                 fields: fields_clone,
+                all_fields,
                 service,
                 options,
                 flush_threshold: ft,
@@ -1457,6 +1463,7 @@ struct SubscriptionStreamHandle {
     tx: StreamSender,
     claim: Option<xbbg_async::engine::SessionClaim>,
     fields: Vec<String>,
+    all_fields: bool,
     service: String,
     options: Vec<String>,
     flush_threshold: Option<usize>,
@@ -1470,6 +1477,7 @@ struct PendingAdd {
     new_topics: Vec<String>,
     service: String,
     fields: Vec<String>,
+    all_fields: bool,
     options: Vec<String>,
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
@@ -1507,6 +1515,7 @@ impl SubscriptionStreamHandle {
             new_topics,
             service: self.service.clone(),
             fields: self.fields.clone(),
+            all_fields: self.all_fields,
             options: self.options.clone(),
             flush_threshold: self.flush_threshold,
             overflow_policy: self.overflow_policy,
@@ -1724,6 +1733,7 @@ impl PySubscription {
                     pending.service.clone(),
                     pending.new_topics.clone(),
                     pending.fields.clone(),
+                    pending.all_fields,
                     pending.options.clone(),
                     pending.flush_threshold,
                     pending.overflow_policy,

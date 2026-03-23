@@ -35,6 +35,7 @@ pub enum SubscriptionCommand {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         /// Subscription options (e.g., ["VWAP_START_TIME=09:30"])
         options: Vec<String>,
         flush_threshold: Option<usize>,
@@ -50,6 +51,7 @@ pub enum SubscriptionCommand {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         /// Subscription options
         options: Vec<String>,
         flush_threshold: Option<usize>,
@@ -177,6 +179,7 @@ impl SubscriptionWorker {
                         service,
                         topics,
                         fields,
+                        all_fields,
                         options,
                         flush_threshold,
                         overflow_policy,
@@ -204,6 +207,7 @@ impl SubscriptionWorker {
                         let result = self.subscribe(
                             topics,
                             fields,
+                            all_fields,
                             options,
                             flush_threshold,
                             overflow_policy,
@@ -215,6 +219,7 @@ impl SubscriptionWorker {
                         service,
                         topics,
                         fields,
+                        all_fields,
                         options,
                         flush_threshold,
                         overflow_policy,
@@ -243,6 +248,7 @@ impl SubscriptionWorker {
                         let result = self.subscribe(
                             topics,
                             fields,
+                            all_fields,
                             options,
                             flush_threshold,
                             overflow_policy,
@@ -269,10 +275,12 @@ impl SubscriptionWorker {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn subscribe(
         &mut self,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
@@ -294,6 +302,7 @@ impl SubscriptionWorker {
                 stream.clone(),
                 ft,
                 op,
+                all_fields,
             );
             let metrics_arc = state.metrics.clone();
             let key = self.subs.insert(state);
@@ -1020,6 +1029,7 @@ impl SubscriptionCommandHandle {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
@@ -1033,6 +1043,7 @@ impl SubscriptionCommandHandle {
                 service,
                 topics,
                 fields,
+                all_fields,
                 options,
                 flush_threshold,
                 overflow_policy,
@@ -1056,6 +1067,7 @@ impl SubscriptionCommandHandle {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
@@ -1069,6 +1081,7 @@ impl SubscriptionCommandHandle {
                 service,
                 topics,
                 fields,
+                all_fields,
                 options,
                 flush_threshold,
                 overflow_policy,
@@ -1351,6 +1364,7 @@ impl SessionClaim {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
@@ -1362,6 +1376,7 @@ impl SessionClaim {
                 service,
                 topics,
                 fields,
+                all_fields,
                 options,
                 flush_threshold,
                 overflow_policy,
@@ -1378,6 +1393,7 @@ impl SessionClaim {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
@@ -1389,6 +1405,7 @@ impl SessionClaim {
                 service,
                 topics,
                 fields,
+                all_fields,
                 options,
                 flush_threshold,
                 overflow_policy,

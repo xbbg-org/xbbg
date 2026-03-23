@@ -49,6 +49,9 @@ class TestAsubscribeSignature:
         assert "recovery_policy" in params
         assert params["recovery_policy"].default is None
 
+        assert "all_fields" in params
+        assert params["all_fields"].default is False
+
 
 class TestAstreamSignature:
     """Verify astream() has callback and config params."""
@@ -72,6 +75,9 @@ class TestAstreamSignature:
         assert "overflow_policy" in params
         assert params["overflow_policy"].default is None
 
+        assert "all_fields" in params
+        assert params["all_fields"].default is False
+
 
 class TestStreamSignature:
     """Verify stream() also has the new params."""
@@ -94,6 +100,21 @@ class TestStreamSignature:
 
         assert "overflow_policy" in params
         assert params["overflow_policy"].default is None
+
+        assert "all_fields" in params
+        assert params["all_fields"].default is False
+
+
+class TestStreamingServiceHelpersSignature:
+    """avwap / amktbar / adepth / achains forward all_fields."""
+
+    def test_all_fields_kwarg_defaults(self):
+        from xbbg.blp import achains, adepth, amktbar, avwap
+
+        for fn in (avwap, amktbar, adepth, achains):
+            sig = inspect.signature(fn)
+            assert "all_fields" in sig.parameters
+            assert sig.parameters["all_fields"].default is False
 
 
 class TestConfigValidation:

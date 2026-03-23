@@ -223,7 +223,7 @@ class PyEngine:
         r"""
         List all valid element names for an operation.
         """
-    def subscribe(self, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None) -> typing.Any:
+    def subscribe(self, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None, all_fields: builtins.bool = False) -> typing.Any:
         r"""
         Subscribe to real-time market data.
         
@@ -239,7 +239,7 @@ class PyEngine:
         await sub.unsubscribe()
         ```
         """
-    def subscribe_with_options(self, service: builtins.str, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], options: typing.Optional[typing.Sequence[builtins.str]] = None, flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None) -> typing.Any:
+    def subscribe_with_options(self, service: builtins.str, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], options: typing.Optional[typing.Sequence[builtins.str]] = None, flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None, all_fields: builtins.bool = False) -> typing.Any:
         r"""
         Subscribe to real-time data with custom service and options.
         

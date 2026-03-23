@@ -331,6 +331,80 @@ async def test_schema_types():
         print("FAILED: Some schema types don't match\n")
 
 
+async def test_field_exposure_modes():
+    """Verify filtered vs full-field subscription exposure modes.
+
+    Default mode should stay narrow except for event metadata. Full-field mode
+    should grow the schema when Bloomberg sends additional top-level fields.
+    """
+    from xbbg._core import PyEngine, set_log_level
+
+    set_log_level("warn")
+
+    engine = PyEngine()
+    ticker = ["ESH6 Index"]
+    requested_fields = ["LAST_PRICE", "BID", "ASK"]
+    metadata_fields = {"MKTDATA_EVENT_TYPE", "MKTDATA_EVENT_SUBTYPE"}
+    base_columns = {"timestamp", "topic"}
+
+    print(f"\n{'=' * 60}")
+    print("TEST: Field exposure modes")
+    print(f"{'=' * 60}")
+
+    filtered_sub = await engine.subscribe(ticker, requested_fields)
+    filtered_schema = None
+    try:
+        async for batch in filtered_sub:
+            filtered_schema = batch.schema
+            if batch.num_rows > 0:
+                break
+    except Exception as e:
+        print(f"ERROR during filtered subscription: {type(e).__name__}: {e}")
+    finally:
+        await filtered_sub.unsubscribe()
+
+    assert filtered_schema is not None, "No filtered subscription schema received"
+    filtered_names = {field.name for field in filtered_schema}
+    print("Filtered schema columns:")
+    for field in filtered_schema:
+        print(f"  {field.name:30s} {field.type}")
+    print()
+
+    assert metadata_fields.issubset(filtered_names), (
+        f"Missing event metadata in filtered mode: {sorted(metadata_fields - filtered_names)}"
+    )
+    filtered_extras = filtered_names - set(requested_fields) - metadata_fields - base_columns
+    assert not filtered_extras, f"Filtered mode exposed unexpected extra fields: {sorted(filtered_extras)}"
+
+    full_sub = await engine.subscribe(ticker, requested_fields, all_fields=True)
+    full_schema = None
+    try:
+        async for batch in full_sub:
+            full_schema = batch.schema
+            full_names = {field.name for field in full_schema}
+            full_extras = full_names - set(requested_fields) - metadata_fields - base_columns
+            if full_extras:
+                break
+    except Exception as e:
+        print(f"ERROR during full-field subscription: {type(e).__name__}: {e}")
+    finally:
+        await full_sub.unsubscribe()
+
+    assert full_schema is not None, "No full-field subscription schema received"
+    full_names = {field.name for field in full_schema}
+    print("Full-field schema columns:")
+    for field in full_schema:
+        print(f"  {field.name:30s} {field.type}")
+    print()
+
+    assert metadata_fields.issubset(full_names), (
+        f"Missing event metadata in full-field mode: {sorted(metadata_fields - full_names)}"
+    )
+    full_extras = full_names - set(requested_fields) - metadata_fields - base_columns
+    assert full_extras, "Full-field mode did not expose any additional Bloomberg fields"
+    print(f"PASSED: Full-field mode exposed extra fields: {sorted(full_extras)[:10]}\n")
+
+
 async def main():
     """Run all subscription validation tests."""
     print("=" * 60)
@@ -342,6 +416,7 @@ async def main():
     await test_multitype_fields()
     await test_timestamp_source()
     await test_schema_types()
+    await test_field_exposure_modes()
     await test_error_propagation()
 
     print("=" * 60)

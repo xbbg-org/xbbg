@@ -1468,6 +1468,9 @@ Out[18]:
 # async for update in sub:  # doctest: +SKIP
 #     print(update)  # doctest: +SKIP
 
+# Full Bloomberg payload (e.g. INITPAINT summary fields beyond your request list):
+# sub = await blp.asubscribe(['XBTUSD Curncy'], ['LAST_PRICE', 'BID', 'ASK'], all_fields=True)  # doctest: +SKIP
+
 # Real-time VWAP streaming
 # async for bar in blp.avwap(['AAPL US Equity']):  # doctest: +SKIP
 #     print(bar)  # doctest: +SKIP

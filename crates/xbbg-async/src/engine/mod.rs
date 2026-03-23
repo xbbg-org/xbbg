@@ -1552,11 +1552,13 @@ impl Engine {
         &self,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
         self.subscribe_with_options(
             crate::services::Service::MktData.to_string(),
             topics,
             fields,
+            all_fields,
             vec![],
             None,
             None,
@@ -1582,6 +1584,7 @@ impl Engine {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         options: Vec<String>,
         stream_capacity: Option<usize>,
         flush_threshold: Option<usize>,
@@ -1601,6 +1604,7 @@ impl Engine {
                 service.clone(),
                 topics.clone(),
                 fields.clone(),
+                all_fields,
                 options.clone(),
                 flush_threshold,
                 overflow_policy,
@@ -1622,6 +1626,7 @@ impl Engine {
             tx,
             claim: Some(claim),
             fields,
+            all_fields,
             service,
             options,
             status,
@@ -1951,6 +1956,8 @@ pub struct SubscriptionStream {
     claim: Option<SessionClaim>,
     /// Subscribed fields.
     fields: Vec<String>,
+    /// Whether batches should expose all top-level Bloomberg fields.
+    all_fields: bool,
     /// Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap").
     service: String,
     /// Subscription options.
@@ -2016,6 +2023,7 @@ impl SubscriptionStream {
                 self.service.clone(),
                 new_topics.clone(),
                 self.fields.clone(),
+                self.all_fields,
                 self.options.clone(),
                 self.flush_threshold,
                 self.overflow_policy,
@@ -2138,6 +2146,7 @@ impl SubscriptionStream {
             Option<OverflowPolicy>, // overflow_policy
             String,                 // service
             Vec<String>,            // options
+            bool,                   // all_fields
         ),
         BlpError,
     > {
@@ -2158,6 +2167,7 @@ impl SubscriptionStream {
             let overflow_policy = ptr::read(&this.overflow_policy);
             let service = ptr::read(&this.service);
             let options = ptr::read(&this.options);
+            let all_fields = ptr::read(&this.all_fields);
 
             let Some(claim) = claim else {
                 return Err(BlpError::Internal {
@@ -2175,6 +2185,7 @@ impl SubscriptionStream {
                 overflow_policy,
                 service,
                 options,
+                all_fields,
             ))
         }
     }
