@@ -130,6 +130,8 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@v0.9.4
         with:
+          # Pin CLI for reproducible CI; bump when upgrading pixi.toml / pixi.lock.
+          pixi-version: "0.66.0"
           environments: lint
           cache: true
 
