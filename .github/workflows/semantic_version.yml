@@ -67,7 +67,7 @@ jobs:
       current_version: ${{ steps.current_version.outputs.current }}
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}

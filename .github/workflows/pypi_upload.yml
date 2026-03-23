@@ -1,5 +1,9 @@
 name: Release
 
+# Wheel/sdist builds use `uv` + `uv build` (not `pixi`) so CI stays fast and uses
+# standard PyPA tooling across the OS × Python matrix. Local development uses
+# `pixi` (see CONTRIBUTING.md); Python lint in ci-rust.yml uses `pixi run -e lint`.
+
 on:
   push:
     tags: ["v*"]
@@ -46,7 +50,7 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Bloomberg SDK
         id: sdk
@@ -70,7 +74,7 @@ jobs:
           test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
 
       - name: Upload bindings artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: blpapi-bindings
           path: ci-bindings/bindings.rs
@@ -93,7 +97,7 @@ jobs:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # setuptools_scm needs full git history for version
 
@@ -103,7 +107,7 @@ jobs:
           rustflags: ""
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -183,13 +187,13 @@ jobs:
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Setup Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Build wheel
         run: uv build --wheel --out-dir build-wheel/
@@ -217,7 +221,7 @@ jobs:
           cp build-wheel/*.whl dist/
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist/*.whl
@@ -229,18 +233,18 @@ jobs:
     name: Build sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # setuptools_scm needs full git history for version
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Build sdist
         run: uv build --sdist --out-dir dist/
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -259,7 +263,7 @@ jobs:
 
     steps:
       - name: Download wheels and sdist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: "{wheel-*,sdist}"
@@ -286,7 +290,7 @@ jobs:
 
     steps:
       - name: Download wheels and sdist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: "{wheel-*,sdist}"
