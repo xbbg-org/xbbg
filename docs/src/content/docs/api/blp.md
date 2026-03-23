@@ -190,7 +190,9 @@ async def arequest(
         output: OutputMode | str = OutputMode.ARROW,
         extractor: ExtractorHint | str | None = None,
         format: Format | str | None = None,
-        backend: Backend | str | None = None)
+        backend: Backend | str | None = None,
+        request_tz: str | None = None,
+        output_tz: str | None = None)
 ```
 
 Async generic Bloomberg request.
@@ -223,6 +225,8 @@ For common use cases, prefer the typed functions: abdp, abdh, abds, abdib, abdti
   bulk data fields. If None, auto-detected from operation.
 - `format` - Output format hint for result structure.
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional intraday: naive datetime interpretation (Rust engine).
+- `output_tz` - Optional intraday: `time` column relabel (Rust engine).
   
 
 **Returns**:
@@ -442,6 +446,8 @@ async def abdib(ticker: str,
                 end_datetime: str | None = None,
                 interval: int = 1,
                 backend: Backend | str | None = None,
+                request_tz: str | None = None,
+                output_tz: str | None = None,
                 **kwargs)
 ```
 
@@ -457,6 +463,8 @@ Async Bloomberg intraday bar data (BDIB).
 - `end_datetime` - Explicit end datetime for multi-day requests.
 - `interval` - Bar interval in minutes (default: 1).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. How naive datetimes are interpreted before the Bloomberg call (`UTC`, `local`, `exchange`, `NY`/`LN`/…, reference ticker, or IANA). Resolved and converted to UTC in the Rust engine.
+- `output_tz` - Optional. Relabel the `time` column to this IANA zone (same instants; Rust engine).
 - `**kwargs` - Additional options.
   
 
@@ -479,7 +487,10 @@ async def abdtick(ticker: str,
                   start_datetime: str,
                   end_datetime: str,
                   *,
+                  event_types: Sequence[str] | None = None,
                   backend: Backend | str | None = None,
+                  request_tz: str | None = None,
+                  output_tz: str | None = None,
                   **kwargs)
 ```
 
@@ -490,7 +501,10 @@ Async Bloomberg tick data (BDTICK).
 - `ticker` - Ticker name.
 - `start_datetime` - Start datetime.
 - `end_datetime` - End datetime.
+- `event_types` - Event types (default TRADE).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. Same semantics as `abdib` (Rust engine).
+- `output_tz` - Optional. Same semantics as `abdib` (Rust engine).
 - `**kwargs` - Additional options.
   
 
@@ -628,6 +642,8 @@ def bdib(ticker: str,
          end_datetime: str | None = None,
          interval: int = 1,
          backend: Backend | str | None = None,
+         request_tz: str | None = None,
+         output_tz: str | None = None,
          **kwargs)
 ```
 
@@ -645,6 +661,8 @@ Sync wrapper around abdib(). For async usage, use abdib() directly.
 - `end_datetime` - Explicit end datetime for multi-day requests.
 - `interval` - Bar interval in minutes (default: 1).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. Same as `abdib`.
+- `output_tz` - Optional. Same as `abdib`.
 - `**kwargs` - Additional options.
   
 
@@ -667,7 +685,10 @@ def bdtick(ticker: str,
            start_datetime: str,
            end_datetime: str,
            *,
+           event_types: Sequence[str] | None = None,
            backend: Backend | str | None = None,
+           request_tz: str | None = None,
+           output_tz: str | None = None,
            **kwargs)
 ```
 
@@ -680,7 +701,10 @@ Sync wrapper around abdtick(). For async usage, use abdtick() directly.
 - `ticker` - Ticker name.
 - `start_datetime` - Start datetime.
 - `end_datetime` - End datetime.
+- `event_types` - Event types (default TRADE).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. Same as `abdib`.
+- `output_tz` - Optional. Same as `abdib`.
 - `**kwargs` - Additional options.
   
 

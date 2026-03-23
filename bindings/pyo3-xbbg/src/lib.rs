@@ -2169,6 +2169,15 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
 
     let format: Option<String> = dict.get_item("format")?.map(|v| v.extract()).transpose()?;
 
+    let request_tz: Option<String> = dict
+        .get_item("request_tz")?
+        .map(|v| v.extract())
+        .transpose()?;
+    let output_tz: Option<String> = dict
+        .get_item("output_tz")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     Ok(RequestParams {
         service,
         operation,
@@ -2186,6 +2195,8 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         end_date,
         start_datetime,
         end_datetime,
+        request_tz,
+        output_tz,
         event_type,
         event_types,
         interval,

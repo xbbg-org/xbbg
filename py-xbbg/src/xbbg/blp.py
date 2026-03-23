@@ -953,6 +953,8 @@ async def arequest(
     include_security_errors: bool = False,
     validate_fields: bool | None = None,
     backend: Backend | str | None = None,
+    request_tz: str | None = None,
+    output_tz: str | None = None,
 ):
     """Async generic Bloomberg request.
 
@@ -978,6 +980,11 @@ async def arequest(
         end_date: End date for historical requests (YYYYMMDD format).
         start_datetime: Start datetime for intraday requests (ISO format).
         end_datetime: End datetime for intraday requests (ISO format).
+        request_tz: For intraday requests, how naive datetimes are interpreted before
+            sending to Bloomberg (``UTC``, ``local``, ``exchange``, aliases, or IANA).
+            Resolved and converted to UTC in the Rust engine.
+        output_tz: For intraday responses, relabel the ``time`` column to this zone
+            (same instants; handled in the Rust engine).
         event_type: Event type for intraday bars (TRADE, BID, ASK, etc.).
         interval: Bar interval in minutes for intraday bars.
         options: Additional Bloomberg options as dict or list of (key, value) tuples.
@@ -1097,6 +1104,8 @@ async def arequest(
         format=format_hint,
         include_security_errors=include_security_errors,
         validate_fields=validate_fields,
+        request_tz=request_tz,
+        output_tz=output_tz,
     )
     params.validate()
 
@@ -1267,6 +1276,8 @@ async def abdib(
     end_datetime: str | None = None,
     interval: int = 1,
     backend: Backend | str | None = None,
+    request_tz: str | None = None,
+    output_tz: str | None = None,
     **kwargs,
 ):
     """Async Bloomberg intraday bar data (BDIB).
@@ -1280,6 +1291,11 @@ async def abdib(
         end_datetime: Explicit end datetime for multi-day requests.
         interval: Bar interval in minutes (default: 1), or seconds if intervalHasSeconds=True.
         backend: DataFrame backend to return. If None, uses global default.
+        request_tz: How naive ``start_datetime`` / ``end_datetime`` (and full-day ``dt`` window)
+            are interpreted before Bloomberg: ``UTC`` (default when omitted), ``local``,
+            ``exchange`` (uses this ticker), ``NY``/``LN``/``TK``/``HK``, another ticker string,
+            or an IANA zone. Conversion to UTC is done in the Rust engine.
+        output_tz: Relabel the ``time`` column to this zone (same instants; Rust engine).
         **kwargs: Additional Bloomberg options (e.g., intervalHasSeconds, gapFillInitialBar).
 
     Returns:
@@ -1311,6 +1327,8 @@ async def abdtick(
     *,
     event_types: Sequence[str] | None = None,
     backend: Backend | str | None = None,
+    request_tz: str | None = None,
+    output_tz: str | None = None,
     **kwargs,
 ):
     """Async Bloomberg tick data (BDTICK).
@@ -1322,6 +1340,8 @@ async def abdtick(
         event_types: Event types to retrieve. Defaults to ["TRADE"].
             Options: TRADE, BID, ASK, BID_BEST, ASK_BEST, MID_PRICE, AT_TRADE, BEST_BID, BEST_ASK.
         backend: DataFrame backend to return. If None, uses global default.
+        request_tz: How naive datetimes are interpreted before Bloomberg (see ``abdib``).
+        output_tz: Relabel ``time`` column (same instants; Rust engine).
         **kwargs: Additional options.
 
     Returns:
@@ -3325,15 +3345,21 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
 
     elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
 
+    req: dict[str, Any] = {
+        "security": args["ticker"],
+        "event_type": args["typ"],
+        "interval": args["interval"],
+        "start_datetime": s_dt,
+        "end_datetime": e_dt,
+        "elements": elements if elements else None,
+    }
+    if args.get("request_tz") is not None:
+        req["request_tz"] = args["request_tz"]
+    if args.get("output_tz") is not None:
+        req["output_tz"] = args["output_tz"]
+
     return _EndpointPlan(
-        request_kwargs={
-            "security": args["ticker"],
-            "event_type": args["typ"],
-            "interval": args["interval"],
-            "start_datetime": s_dt,
-            "end_datetime": e_dt,
-            "elements": elements if elements else None,
-        },
+        request_kwargs=req,
         backend=args.get("backend"),
     )
 
@@ -3350,14 +3376,20 @@ async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
 
     elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
 
+    req: dict[str, Any] = {
+        "security": args["ticker"],
+        "start_datetime": s_dt,
+        "end_datetime": e_dt,
+        "event_types": list(event_types),
+        "elements": elements if elements else None,
+    }
+    if args.get("request_tz") is not None:
+        req["request_tz"] = args["request_tz"]
+    if args.get("output_tz") is not None:
+        req["output_tz"] = args["output_tz"]
+
     return _EndpointPlan(
-        request_kwargs={
-            "security": args["ticker"],
-            "start_datetime": s_dt,
-            "end_datetime": e_dt,
-            "event_types": list(event_types),
-            "elements": elements if elements else None,
-        },
+        request_kwargs=req,
         backend=args.get("backend"),
     )
 

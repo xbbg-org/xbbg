@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- **Intraday timezone controls (`request_tz` / `output_tz`)**: `abdib`/`bdib`, `abdtick`/`bdtick`, `arequest`, and Rust `RequestParams` accept optional `request_tz` (interpret naive `start_datetime`/`end_datetime` before Bloomberg) and `output_tz` (relabel Arrow `time` to an IANA zone). Supported labels include `UTC`, `local`, `exchange`, `NY`/`LN`/`TK`/`HK`, reference tickers, and explicit IANA names. Implemented in `xbbg-async` (`chrono-tz`, `iana-time-zone`) with nested RefData calls routed through `request_without_intraday_transform` to avoid recursion.
 - **Pixi environment management**: Added `pixi.toml` with 11 environments (default, test, lint, benchmark, docs, py310–py314), 21 tasks, and conda-forge deps for Rust, libclang, and pyarrow. Single `pixi install && pixi run install` replaces manual toolchain setup.
 - **mimalloc allocator**: PyO3 extension now uses mimalloc by default (feature-gated) for improved Rust-side allocation performance.
 - **`ty` type checking**: Lint environment includes Astral's `ty` type checker alongside ruff; CI lint job now runs type checking automatically.

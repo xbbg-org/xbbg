@@ -2693,6 +2693,8 @@ dependencies = [
  "arrow",
  "blpapi-sys",
  "chrono",
+ "chrono-tz",
+ "iana-time-zone",
  "indexmap",
  "once_cell",
  "parking_lot",

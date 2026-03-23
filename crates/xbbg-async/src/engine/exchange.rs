@@ -51,7 +51,7 @@ impl Engine {
             ..Default::default()
         };
 
-        let batch = self.request(params).await?;
+        let batch = self.request_without_intraday_transform(params).await?;
         Ok(parse_exchange_info(trimmed, &batch))
     }
 
@@ -75,7 +75,7 @@ impl Engine {
             ..Default::default()
         };
 
-        let batch = self.request(params).await?;
+        let batch = self.request_without_intraday_transform(params).await?;
 
         let exch =
             get_string(&batch, "EXCH_CODE").or_else(|| get_string(&batch, "ID_MIC_PRIM_EXCH"));

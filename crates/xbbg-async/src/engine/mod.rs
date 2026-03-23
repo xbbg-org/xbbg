@@ -10,6 +10,7 @@
 mod dispatch;
 mod exchange;
 mod exchange_cache;
+mod intraday_timezone;
 mod request_pool;
 pub mod state;
 mod subscription_pool;
@@ -889,6 +890,11 @@ pub struct RequestParams {
     pub start_datetime: Option<String>,
     /// End datetime (ISO for intraday)
     pub end_datetime: Option<String>,
+    /// How to interpret naive `start_datetime` / `end_datetime` before sending to Bloomberg:
+    /// `UTC`, `local`, `exchange`, `NY`/`LN`/… aliases, another ticker (space), or an IANA name.
+    pub request_tz: Option<String>,
+    /// Relabel Arrow `time` from UTC to this zone (same instants): same tokens as `request_tz`.
+    pub output_tz: Option<String>,
     /// Event type (TRADE, BID, ASK for intraday bars - singular)
     pub event_type: Option<String>,
     /// Event types (TRADE, BID, ASK for intraday ticks - array)
@@ -1395,10 +1401,25 @@ impl Engine {
     /// Generic Bloomberg request - dispatches to worker pool.
     ///
     /// All request types are handled by the same pool of workers.
-    pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
+    /// Dispatch a prepared request without intraday timezone transforms.
+    ///
+    /// Used for nested RefData calls (e.g. exchange metadata) so `request_tz=exchange` does not
+    /// recurse into [`Engine::request`].
+    pub(crate) async fn request_without_intraday_transform(
+        &self,
+        params: RequestParams,
+    ) -> Result<RecordBatch, BlpAsyncError> {
         let params = self.prepare_request_params(params)?;
         self.maybe_validate_request_fields(&params).await?;
         self.request_pool.request(params).await
+    }
+
+    pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
+        let mut params = self.prepare_request_params(params)?;
+        intraday_timezone::apply_intraday_request_timezone(self, &mut params).await?;
+        self.maybe_validate_request_fields(&params).await?;
+        let batch = self.request_pool.request(params.clone()).await?;
+        intraday_timezone::apply_intraday_output_timezone(self, batch, &params).await
     }
 
     /// Streaming generic request - dispatches to worker pool.
@@ -1406,9 +1427,14 @@ impl Engine {
         &self,
         params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
-        let params = self.prepare_request_params(params)?;
+        let mut params = self.prepare_request_params(params)?;
+        intraday_timezone::apply_intraday_request_timezone(self, &mut params).await?;
+        let out_iana = intraday_timezone::resolve_output_tz_iana(self, &params).await?;
         self.maybe_validate_request_fields(&params).await?;
-        self.request_pool.request_stream(params).await
+        let rx = self.request_pool.request_stream(params).await?;
+        Ok(intraday_timezone::wrap_batch_stream_with_output_tz(
+            rx, out_iana,
+        ))
     }
 
     /// Resolve defaults, validate, and schema-route kwargs before dispatch.

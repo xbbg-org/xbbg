@@ -338,7 +338,7 @@ xbbg is the **only Python library** that provides:
 ### Additional Features
 
 - **Intraday Caching**: Automatic Parquet storage for `bdib()` bar data
-- **Timezone Support**: Exchange-aware market hours for 50+ global exchanges; `bdib()` and `bdtick()` return data in exchange local time by default (configurable via `tz` parameter)
+- **Timezone Support**: Exchange-aware market hours for 50+ global exchanges; `bdib()` / `bdtick()` support `request_tz` and `output_tz` (interpretation and `time`-column relabeling in the Rust engine; Bloomberg wire format remains UTC)
 - **Configurable Logging**: Debug mode for troubleshooting
 - **Batch Processing**: Efficient multi-ticker queries
 - **Standardized Output**: Consistent DataFrame column naming
@@ -1287,24 +1287,33 @@ blp.bdtick(ticker='XYZ US Equity', dt='2024-10-15', session='day', timeout=1000)
 
 Note: `bdtick` requests can take longer to respond. Use `timeout` parameter (in milliseconds) if you encounter empty DataFrames due to timeout.
 
-#### Timezone handling
+#### Timezone handling (`bdib` / `bdtick`)
 
-By default, `bdib()` and `bdtick()` return timestamps in the **exchange's local timezone** (e.g., `America/New_York` for US equities, `Asia/Tokyo` for Japanese equities, `Australia/Sydney` for Australian equities). Bloomberg sends intraday data in UTC; xbbg converts it automatically using exchange metadata.
+Bloomberg intraday APIs use **UTC** on the wire. The Rust engine accepts two optional knobs:
 
-Use the `tz` parameter to control the output timezone:
+- **`request_tz`**: How **naive** `start_datetime` / `end_datetime` (and the implicit full-day window when using `dt=`) are interpreted before the request. Omit or use `UTC` to keep the previous behavior (naive times treated as UTC wall times, matching older examples that use e.g. `14:30` for US cash open).
+- **`output_tz`**: Relabel the Arrow/Pandas **`time`** column to an IANA zone (same instants; only the timestamp type metadata changes). Omit or `UTC` leaves UTC.
+
+Supported labels (case-insensitive where noted): `UTC`, `local` (machine IANA zone), `exchange` (resolve via the request’s security and cached/Bloomberg metadata), short aliases `NY`, `LN`, `TK`, `HK`, a **reference ticker** string containing a space (same as `exch_info`), or any **IANA** name (e.g. `Europe/Zurich`).
 
 ```python
-# Default: exchange local time (America/New_York for US equities)
-bars = blp.bdib('SPY US Equity', dt='2024-01-15')
-# Index: 2024-01-15 09:31:00-05:00, 2024-01-15 09:32:00-05:00, ...
+# Naive times in America/New_York → converted to UTC in the engine before the API call
+bars = await blp.abdib(
+    "SPY US Equity",
+    start_datetime="2024-01-15 09:30",
+    end_datetime="2024-01-15 16:00",
+    interval=5,
+    request_tz="America/New_York",
+)
 
-# Keep timestamps in UTC (skip conversion)
-bars_utc = blp.bdib('SPY US Equity', dt='2024-01-15', tz='UTC')
-# Index: 2024-01-15 14:31:00+00:00, 2024-01-15 14:32:00+00:00, ...
-
-# Convert to a specific timezone
-bars_london = blp.bdib('SPY US Equity', dt='2024-01-15', tz='Europe/London')
-# Index: 2024-01-15 14:31:00+00:00, 2024-01-15 14:32:00+00:00, ...
+# Present tick times in the listing’s exchange zone (resolved in Rust)
+ticks = await blp.abdtick(
+    "SPY US Equity",
+    "2024-01-15 09:30",
+    "2024-01-15 10:00",
+    request_tz="exchange",
+    output_tz="exchange",
+)
 ```
 
 ```python

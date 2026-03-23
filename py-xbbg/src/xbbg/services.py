@@ -63,6 +63,9 @@ class RequestParams:
         end_date: End date for historical requests (YYYYMMDD format).
         start_datetime: Start datetime for intraday requests (ISO format).
         end_datetime: End datetime for intraday requests (ISO format).
+        request_tz: How naive intraday datetimes are interpreted before the API call
+            (``UTC``, ``local``, ``exchange``, ``NY``/``LN``/…, reference ticker, or IANA).
+        output_tz: Relabel Arrow ``time`` to this zone (same instants; handled in Rust).
         event_type: Event type for intraday bars (TRADE, BID, ASK, etc.).
         event_types: Event types for intraday ticks (TRADE, BID, ASK, etc.).
         interval: Bar interval in minutes for intraday bars.
@@ -91,6 +94,8 @@ class RequestParams:
     end_date: str | None = None
     start_datetime: str | None = None
     end_datetime: str | None = None
+    request_tz: str | None = None
+    output_tz: str | None = None
     event_type: str | None = None
     event_types: Sequence[str] | None = None
     interval: int | None = None
@@ -237,6 +242,10 @@ class RequestParams:
             result["start_datetime"] = self.start_datetime
         if self.end_datetime is not None:
             result["end_datetime"] = self.end_datetime
+        if self.request_tz is not None:
+            result["request_tz"] = self.request_tz
+        if self.output_tz is not None:
+            result["output_tz"] = self.output_tz
         if self.event_type is not None:
             result["event_type"] = self.event_type
         if self.event_types is not None:
