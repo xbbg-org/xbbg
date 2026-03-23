@@ -1,6 +1,7 @@
 [workspace]
 name = "xbbg"
 description = "Intuitive Bloomberg data API"
+# Conda packages below resolve from conda-forge only (see `channels`).
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
 requires-pixi = ">=0.40"
@@ -8,6 +9,8 @@ requires-pixi = ">=0.40"
 [dependencies]
 python = ">=3.10,<3.15"
 rust = ">=1.75"
+# conda-forge package `libclang` (versioned on its own schedule; often tracks LLVM major).
+# bindgen loads `$CONDA_PREFIX/lib` via LIBCLANG_PATH in [activation.env].
 libclang = ">=22"
 pkg-config = "*"
 pip = "*"
@@ -94,7 +97,7 @@ psutil = ">=5.9"
 bench-rs = "cargo bench --package xbbg-bench"
 
 [feature.docs.dependencies]
-nodejs = ">=20"
+nodejs = ">=24"
 
 [feature.docs.tasks]
 docs-install = { cmd = "npm install", cwd = "docs" }
