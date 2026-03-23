@@ -6,7 +6,6 @@
 pub use xbbg_sys::{
     blpapi_AuthApplication_t, blpapi_AuthOptions_t, blpapi_AuthToken_t, blpapi_AuthUser_t,
     blpapi_CorrelationId_t, blpapi_Element_t, blpapi_Event_t, blpapi_Identity_t,
-    blpapi_ManagedPtr_t,
     blpapi_MessageIterator_t, blpapi_Message_t, blpapi_Name_t, blpapi_Request_t, blpapi_Service_t,
     blpapi_SessionOptions_t, blpapi_Session_t, blpapi_SubscriptionList_t, blpapi_TlsOptions_t,
 };

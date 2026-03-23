@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **Consolidated config files**: Merged `.coveragerc` into `pyproject.toml` `[tool.coverage.*]`; deleted `.env` (pixi activation replaces it); un-gitignored `.cargo/config.toml` (now contains only project-standard `BLPAPI_ROOT`).
 - **CI lint job uses pixi**: `lint-python` job now uses `prefix-dev/setup-pixi` with the lightweight `lint` environment, replacing `uvx ruff`.
 - **Request tracing is more consistent**: Python request middleware now sees the generated `request_id` in both `RequestContext.request_id` and `RequestContext.params_dict`, centralized request logs include the request ID, and the Rust request path forwards it as the Bloomberg request label for better audit/debug correlation.
+- **Bindgen/libclang toolchain aligned**: All Rust FFI crates now use `bindgen 0.72.1` with runtime loading, and the pixi environment now requires `libclang >=22`. This fixes incorrect Bloomberg SDK `blpapi_ManagedPtr_t_` generation under newer libclang releases and removes the need for correlation-ID layout workarounds.
 
 ### Removed
 

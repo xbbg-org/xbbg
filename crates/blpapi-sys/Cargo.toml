@@ -17,7 +17,7 @@ dynamic = []
 cty = "0.2"
 
 [build-dependencies]
-bindgen = { version = "0.69", default-features = false, features = ["runtime"] }
+bindgen = { version = "0.72.1", default-features = false, features = ["runtime"] }
 
 [package.metadata.docs.rs]
 all-features = true
