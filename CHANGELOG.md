@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0rc2] - 2026-03-23
+
 ### Added
 
 - **Subscription field exposure** (#265): `all_fields` on `asubscribe`, `astream`, and `stream` (and `PyEngine.subscribe` / `subscribe_with_options`). When `False` (default), batches include only requested fields plus `MKTDATA_EVENT_TYPE` and `MKTDATA_EVENT_SUBTYPE`. When `True`, each batch includes every top-level scalar field Bloomberg sends (e.g. full `SUMMARY`/`INITPAINT` snapshots), with the schema growing as new fields appear. The same flag is available on `avwap`, `amktbar`, `adepth`, and `achains` for consistency across streaming services.
@@ -1087,7 +1089,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...HEAD
+[1.0.0rc2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...v1.0.0rc1
 [1.0.0b7]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...v1.0.0b7
 [1.0.0b6]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...v1.0.0b6
