@@ -141,12 +141,80 @@ impl BqlState {
             detail: format!("Failed to parse BQL JSON: {}", e),
         })?;
 
-        let results = json.get("results").ok_or_else(|| BlpError::Internal {
-            detail: "BQL JSON missing 'results' field".into(),
+        // Check for Bloomberg error envelope before extracting results.
+        // When BQL entitlements are absent (e.g. DAPI via Parallels), Bloomberg
+        // may return an error object instead of the expected results structure.
+        if let Some(errors) = json.get("errors") {
+            let msg = errors.to_string();
+            return Err(BlpError::RequestFailure {
+                service: "//blp/bqlsvc".into(),
+                operation: Some("sendQuery".into()),
+                cid: None,
+                label: None,
+                request_id: None,
+                source: Some(
+                    format!(
+                        "BQL query failed (possible entitlement issue — \
+                         check that //blp/bqlsvc is available on this connection): {msg}"
+                    )
+                    .into(),
+                ),
+            });
+        }
+        if let Some(message) = json.get("message") {
+            if json.get("results").is_none() {
+                let msg = message.as_str().unwrap_or("unknown");
+                return Err(BlpError::RequestFailure {
+                    service: "//blp/bqlsvc".into(),
+                    operation: Some("sendQuery".into()),
+                    cid: None,
+                    label: None,
+                    request_id: None,
+                    source: Some(
+                        format!(
+                            "BQL query failed (possible entitlement issue — \
+                             check that //blp/bqlsvc is available on this connection): {msg}"
+                        )
+                        .into(),
+                    ),
+                });
+            }
+        }
+
+        let results = json.get("results").ok_or_else(|| BlpError::RequestFailure {
+            service: "//blp/bqlsvc".into(),
+            operation: Some("sendQuery".into()),
+            cid: None,
+            label: None,
+            request_id: None,
+            source: Some(
+                "BQL response missing 'results' — the BQL service may not be \
+                 entitled on this connection (//blp/bqlsvc)"
+                    .into(),
+            ),
         })?;
 
-        let results_obj = results.as_object().ok_or_else(|| BlpError::Internal {
-            detail: "BQL 'results' is not an object".into(),
+        let results_obj = results.as_object().ok_or_else(|| BlpError::RequestFailure {
+            service: "//blp/bqlsvc".into(),
+            operation: Some("sendQuery".into()),
+            cid: None,
+            label: None,
+            request_id: None,
+            source: Some(
+                format!(
+                    "BQL 'results' has unexpected type (expected object, got {}) — \
+                     the BQL service may not be entitled on this connection (//blp/bqlsvc)",
+                    match results {
+                        JsonValue::Null => "null",
+                        JsonValue::Array(_) => "array",
+                        JsonValue::String(_) => "string",
+                        JsonValue::Bool(_) => "bool",
+                        JsonValue::Number(_) => "number",
+                        _ => "unknown",
+                    }
+                )
+                .into(),
+            ),
         })?;
 
         if results_obj.is_empty() {

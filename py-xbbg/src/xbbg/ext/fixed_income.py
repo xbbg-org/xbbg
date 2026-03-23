@@ -229,12 +229,23 @@ async def apreferreds(
         asyncio.run(main())
     """
     from xbbg import abql
+    from xbbg.exceptions import BlpError as _BlpError
 
     # Build BQL query using Rust (handles ticker normalization, field dedup)
     extra = list(fields) if fields else []
     bql_query = ext_build_preferreds_query(equity_ticker, extra)
 
-    return await abql(bql_query, **kwargs)
+    try:
+        return await abql(bql_query, **kwargs)
+    except _BlpError as exc:
+        msg = str(exc).lower()
+        if "bql" in msg or "results" in msg or "bqlsvc" in msg:
+            raise type(exc)(
+                f"preferreds() requires BQL entitlements (//blp/bqlsvc). "
+                f"This service may not be available on DAPI or certain "
+                f"connection types. Original error: {exc}"
+            ) from exc
+        raise
 
 
 async def acorporate_bonds(
@@ -280,12 +291,23 @@ async def acorporate_bonds(
         asyncio.run(main())
     """
     from xbbg import abql
+    from xbbg.exceptions import BlpError as _BlpError
 
     # Build BQL query using Rust (handles field dedup, filter construction)
     extra = list(fields) if fields else []
     bql_query = ext_build_corporate_bonds_query(ticker, ccy, extra, active_only)
 
-    return await abql(bql_query, **kwargs)
+    try:
+        return await abql(bql_query, **kwargs)
+    except _BlpError as exc:
+        msg = str(exc).lower()
+        if "bql" in msg or "results" in msg or "bqlsvc" in msg:
+            raise type(exc)(
+                f"corporate_bonds() requires BQL entitlements (//blp/bqlsvc). "
+                f"This service may not be available on DAPI or certain "
+                f"connection types. Original error: {exc}"
+            ) from exc
+        raise
 
 
 async def abqr(
