@@ -85,7 +85,7 @@ jobs:
         if [ -z "$CURRENT" ]; then
           CURRENT="0.0.0"
         fi
-        echo "current=$CURRENT" >> $GITHUB_OUTPUT
+        echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
         echo "Current version: $CURRENT"
 
     - name: Calculate new version
@@ -129,15 +129,14 @@ jobs:
           NEW_VERSION="${NEW_VERSION}${PRE_SUFFIX}${PRE_NUM}"
         fi
 
-        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-        echo "tag=v${NEW_VERSION}" >> $GITHUB_OUTPUT
+        echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+        echo "tag=v${NEW_VERSION}" >> "$GITHUB_OUTPUT"
         echo "New version: $NEW_VERSION"
         echo "Tag: v${NEW_VERSION}"
 
     - name: Validate and extract release notes from CHANGELOG.md
       id: changelog
       run: |
-        VERSION="${{ steps.new_version.outputs.new_version }}"
         TAG="${{ steps.new_version.outputs.tag }}"
         PREV_TAG="v${{ steps.current_version.outputs.current }}"
         
@@ -294,9 +293,11 @@ jobs:
       run: |
         SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-setup.outputs.sdk-rel-root }}"
         LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-setup.outputs.lib-rel-dir }}"
-        echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-        echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-        echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+        {
+          echo "BLPAPI_ROOT=$SDK_ROOT"
+          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+        } >> "$GITHUB_ENV"
 
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -353,12 +354,14 @@ jobs:
     steps:
     - name: Output summary
       run: |
-        echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **Previous version**: ${{ needs.bump-version.outputs.current_version }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **New version**: ${{ needs.bump-version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Tag**: ${{ needs.bump-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Type**: ${{ inputs.bump_type }}${{ inputs.pre_release != 'none' && inputs.pre_release != '' && format(' ({0})', inputs.pre_release) || '' }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-        echo "The tag push will automatically trigger **pypi_upload.yml** to build and publish wheels." >> $GITHUB_STEP_SUMMARY
+        {
+          echo "## Release Summary"
+          echo ""
+          echo "- **Previous version**: ${{ needs.bump-version.outputs.current_version }}"
+          echo "- **New version**: ${{ needs.bump-version.outputs.new_version }}"
+          echo "- **Tag**: ${{ needs.bump-version.outputs.tag }}"
+          echo "- **Type**: ${{ inputs.bump_type }}${{ inputs.pre_release != 'none' && inputs.pre_release != '' && format(' ({0})', inputs.pre_release) || '' }}"
+          echo ""
+          echo "### Next Steps"
+          echo "The tag push will automatically trigger **pypi_upload.yml** to build and publish wheels."
+        } >> "$GITHUB_STEP_SUMMARY"

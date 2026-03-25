@@ -60,9 +60,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Generate bindings artifact
         run: |
@@ -250,9 +252,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -442,9 +446,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
@@ -544,9 +550,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Bloomberg SDK (macOS)
         if: runner.os == 'macOS'
@@ -622,9 +630,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -664,9 +674,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -713,9 +725,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -853,9 +867,11 @@ jobs:
         run: |
           SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
           LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
