@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **BQL error handling**: Parse Bloomberg's `responseExceptions` for actionable error messages (e.g. "Undefined item: CUR_YLD") instead of opaque "missing 'results' field" errors. Null results with no exceptions now return an empty DataFrame. Partial exceptions with valid results log warnings instead of failing.
+- **`corporate_bonds()` cross-market support**: Switched from `bondsuniv` + `TICKER==` filter (US-only) to `debt()` universe, matching the approach used by `preferreds()`. Now accepts full equity tickers (e.g. "9984 JT Equity") and works across all markets.
+- **CDX on-the-run indicator**: Accept `'true'` (returned by Bloomberg for CDX generic tickers) in addition to `'Y'` for `ON_THE_RUN_CURRENT_BD_INDICATOR`, fixing false warnings on CDX instruments.
+
 ## [1.0.0rc2] - 2026-03-23
 
 ### Added
