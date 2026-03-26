@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0rc3] - 2026-03-26
+
 ### Fixed
 
 - **BQL error handling**: Parse Bloomberg's `responseExceptions` for actionable error messages (e.g. "Undefined item: CUR_YLD") instead of opaque "missing 'results' field" errors. Null results with no exceptions now return an empty DataFrame. Partial exceptions with valid results log warnings instead of failing.
