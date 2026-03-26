@@ -274,12 +274,11 @@ class PyEngine:
         You usually don't need to call this directly.
         """
     def worker_health(self) -> builtins.list[tuple[builtins.int, builtins.str]]: ...
-    def is_available(self) -> builtins.bool:
+    def is_connected(self) -> builtins.bool:
         r"""
-        Check if engine is available.
+        Check if the Bloomberg connection is healthy.
         
-        Returns True if the engine exists. Note that this doesn't guarantee
-        Bloomberg is still connected - a request might still fail.
+        Returns True if at least one worker has a live Bloomberg session.
         """
 
 @typing.final
