@@ -511,9 +511,9 @@ async def acdx_ticker(
             ticker_data = nw_info
 
     otr = _extract_field_value(ticker_data, _FLD_OTR_INDICATOR)
-    if otr is not None and str(otr).upper() != "Y":
+    if otr is not None and str(otr).upper() not in ("Y", "TRUE"):
         logger.warning(
-            "Generic ticker %s has ON_THE_RUN_CURRENT_BD_INDICATOR=%r (expected 'Y')",
+            "Generic ticker %s has ON_THE_RUN_CURRENT_BD_INDICATOR=%r (expected 'Y' or 'true')",
             gen_ticker,
             otr,
         )
