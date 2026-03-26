@@ -1392,17 +1392,22 @@ impl PyEngine {
     }
 
     fn worker_health(&self) -> PyResult<Vec<(usize, String)>> {
-        // TODO: replace with self.engine.request_pool_health() once Engine exposes it.
-        Ok(Vec::new())
+        Ok(self
+            .engine
+            .request_pool_health()
+            .into_iter()
+            .map(|(id, h)| (id, h.as_str().to_string()))
+            .collect())
     }
 
-    /// Check if engine is available.
+    /// Check if the Bloomberg connection is healthy.
     ///
-    /// Returns True if the engine exists. Note that this doesn't guarantee
-    /// Bloomberg is still connected - a request might still fail.
-    fn is_available(&self) -> bool {
-        // Engine exists if we have it
-        true
+    /// Returns True if at least one worker has a live Bloomberg session.
+    fn is_connected(&self) -> bool {
+        self.engine
+            .request_pool_health()
+            .iter()
+            .any(|(_, h)| h.as_str() == "healthy")
     }
 }
 

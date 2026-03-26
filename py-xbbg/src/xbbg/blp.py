@@ -311,11 +311,11 @@ def reset() -> None:
 
 
 def is_connected() -> bool:
-    """Check if the Bloomberg engine is initialized.
+    """Check if Bloomberg is connected and healthy.
 
-    Returns True if the engine exists. Note that this doesn't guarantee
-    Bloomberg is still connected - a request might still fail if the
-    connection was lost.
+    Returns True if the engine exists and at least one worker has
+    a live Bloomberg session. Returns False if the engine hasn't
+    been created yet or all workers have lost their connection.
 
     Example::
 
@@ -325,9 +325,11 @@ def is_connected() -> bool:
 
         df = xbbg.bdp("AAPL US Equity", "PX_LAST")
 
-        print(xbbg.is_connected())  # True - engine created
+        print(xbbg.is_connected())  # True - connected
     """
-    return _engine is not None
+    if _engine is None:
+        return False
+    return _engine.is_connected()
 
 
 def _normalize_config_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
