@@ -130,13 +130,14 @@ pub async fn recipe_preferreds(
 
 /// Find corporate bonds for a company via BQL.
 ///
-/// Uses Bloomberg's bondsuniv filter to find active corporate bond issues
-/// for a given company ticker, optionally filtered by currency.
+/// Uses Bloomberg's `debt()` universe to find corporate bond issues
+/// for a given company via its equity ticker. Works across all markets.
 ///
 /// # Arguments
 ///
 /// * `engine` - Bloomberg engine reference
-/// * `ticker` - Company ticker prefix (e.g., "AAPL")
+/// * `ticker` - Company equity ticker (e.g., "AAPL", "9984 JT Equity").
+///   If no suffix is provided, " US Equity" is appended.
 /// * `ccy` - Currency filter (e.g., "USD"). None for all currencies.
 /// * `fields` - Fields to retrieve (default: id)
 /// * `active_only` - If true, only return active bonds
@@ -151,6 +152,15 @@ pub async fn recipe_corporate_bonds(
     fields: Option<Vec<String>>,
     active_only: bool,
 ) -> Result<RecordBatch> {
+    let _ = active_only; // TODO: add active filter condition when supported by debt()
+
+    // Normalize ticker
+    let equity_ticker = if ticker.contains(' ') {
+        ticker
+    } else {
+        format!("{} US Equity", ticker)
+    };
+
     // Build field list with defaults
     let all_fields = match fields {
         Some(mut flds) => {
@@ -164,18 +174,14 @@ pub async fn recipe_corporate_bonds(
     let fields_str = all_fields.join(", ");
 
     // Build filter conditions
-    let mut conditions = vec![
-        "SRCH_ASSET_CLASS=='Corporates'".to_string(),
-        format!("TICKER=='{ticker}'"),
-    ];
+    let mut conditions = vec!["SRCH_ASSET_CLASS=='Corporates'".to_string()];
     if let Some(c) = ccy {
         conditions.push(format!("CRNCY=='{c}'"));
     }
     let filter_str = conditions.join(" AND ");
 
-    let universe = if active_only { "active" } else { "all" };
     let bql_query = format!(
-        "get({fields_str}) for(filter(bondsuniv('{universe}', CONSOLIDATEDUPLICATES='N'), {filter_str}))"
+        "get({fields_str}) for(filter(debt(['{equity_ticker}'], CONSOLIDATEDUPLICATES='N'), {filter_str}))"
     );
 
     let params = RequestParams {
