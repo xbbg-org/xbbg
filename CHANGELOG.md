@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **BQL error handling**: Parse Bloomberg's `responseExceptions` for actionable error messages (e.g. "Undefined item: CUR_YLD") instead of opaque "missing 'results' field" errors. Null results with no exceptions now return an empty DataFrame. Partial exceptions with valid results log warnings instead of failing.
 - **`corporate_bonds()` cross-market support**: Switched from `bondsuniv` + `TICKER==` filter (US-only) to `debt()` universe, matching the approach used by `preferreds()`. Now accepts full equity tickers (e.g. "9984 JT Equity") and works across all markets.
 - **CDX on-the-run indicator**: Accept `'true'` (returned by Bloomberg for CDX generic tickers) in addition to `'Y'` for `ON_THE_RUN_CURRENT_BD_INDICATOR`, fixing false warnings on CDX instruments.
+- **`is_connected()` checks real session health**: Now queries actual Bloomberg worker health via `request_pool_health()` instead of just checking if the Python engine object exists.
+- **`fieldExceptions` logging**: Downgraded from WARN to DEBUG and now includes actual field names and error messages (e.g. "MATURITY: Field not applicable to security") instead of just a count.
 
 ## [1.0.0rc2] - 2026-03-23
 
