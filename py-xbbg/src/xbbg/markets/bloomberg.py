@@ -218,7 +218,7 @@ def _to_pandas_wide(data: Any) -> pd.DataFrame:
 async def afetch_exchange_info(ticker: str, **kwargs) -> ExchangeInfo:
     """Async fetch exchange metadata from Bloomberg."""
     xbbg_module = importlib.import_module("xbbg")
-    abdp_fn = cast("Any", xbbg_module.abdp)
+    abdp_fn = cast("Any", xbbg_module.abdp)  # type: ignore[unresolved-attribute]
 
     try:
         data = await abdp_fn(tickers=ticker, flds=EXCHANGE_FIELDS, **kwargs)

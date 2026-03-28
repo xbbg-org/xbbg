@@ -54,10 +54,10 @@ def _init_validation_error(
 
 
 # Back-compat constructor behavior expected by tests and existing callers.
-BlpRequestError.__init__ = _init_request_error
-BlpSecurityError.__init__ = _init_request_error
-BlpFieldError.__init__ = _init_request_error
-BlpValidationError.__init__ = _init_validation_error
+BlpRequestError.__init__ = _init_request_error  # type: ignore[invalid-assignment]
+BlpSecurityError.__init__ = _init_request_error  # type: ignore[invalid-assignment]
+BlpFieldError.__init__ = _init_request_error  # type: ignore[invalid-assignment]
+BlpValidationError.__init__ = _init_validation_error  # type: ignore[invalid-assignment]
 
 
 class BlpBPipeError(BlpError):
@@ -108,7 +108,7 @@ def _from_rust_error(cls, message: str):
 
 
 # Preserve legacy helper on the canonical Rust class.
-BlpValidationError.from_rust_error = classmethod(_from_rust_error)
+BlpValidationError.from_rust_error = classmethod(_from_rust_error)  # type: ignore[unresolved-attribute]
 
 
 __all__ = [

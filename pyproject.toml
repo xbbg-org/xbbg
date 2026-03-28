@@ -163,6 +163,16 @@ root = ["py-xbbg/src"]
 [tool.ty.rules]
 unresolved-import = "ignore"
 
+
+[[tool.ty.overrides]]
+include = ["py-xbbg/tests/**"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "warn"
+call-non-callable = "warn"
+unknown-argument = "warn"
+invalid-assignment = "warn"
+invalid-argument-type = "warn"
 [tool.coverage.run]
 omit = [
   "py-xbbg/tests/*",

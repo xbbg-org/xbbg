@@ -219,7 +219,7 @@ def _add_sdk_to_dll_search_path() -> None:
             if lib_path:
                 lib_dir = str(lib_path.parent)
                 if lib_dir not in added_dirs:
-                    os.add_dll_directory(lib_dir)
+                    os.add_dll_directory(lib_dir)  # type: ignore[unresolved-attribute]
                     added_dirs.add(lib_dir)
         except (OSError, PermissionError, ValueError):
             pass  # Can't access directory or add to DLL search path

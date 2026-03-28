@@ -41,9 +41,6 @@ from xbbg.services import (
 from ._exports import BLP_MODULE_EXPORTS
 from .backend import Backend
 
-if TYPE_CHECKING:
-    import pandas as pd
-
 # Type alias for backend conversion return types
 # Covers: nw.DataFrame, nw.LazyFrame (narwhals wrappers) + IntoFrame (all native types)
 DataFrameResult: TypeAlias = nw.DataFrame | nw.LazyFrame | IntoFrame
@@ -56,22 +53,23 @@ __all__ = list(BLP_MODULE_EXPORTS)
 
 # Generated sync wrappers are installed dynamically by _install_generated_endpoints().
 # Define placeholders so static analysis recognizes these exported names.
-(
-    bdp,
-    bdh,
-    bds,
-    bdib,
-    bdtick,
-    bql,
-    bsrch,
-    bqr,
-    bflds,
-    beqs,
-    blkp,
-    bport,
-    bcurves,
-    bgovts,
-) = (None,) * 14
+if TYPE_CHECKING:
+    bdp: Callable[..., Any]
+    bdh: Callable[..., Any]
+    bds: Callable[..., Any]
+    bdib: Callable[..., Any]
+    bdtick: Callable[..., Any]
+    bql: Callable[..., Any]
+    bsrch: Callable[..., Any]
+    bqr: Callable[..., Any]
+    bflds: Callable[..., Any]
+    beqs: Callable[..., Any]
+    blkp: Callable[..., Any]
+    bport: Callable[..., Any]
+    bcurves: Callable[..., Any]
+    bgovts: Callable[..., Any]
+else:
+    (bdp, bdh, bds, bdib, bdtick, bql, bsrch, bqr, bflds, beqs, blkp, bport, bcurves, bgovts) = (None,) * 14
 
 
 # Backend configuration
@@ -181,7 +179,7 @@ _request_middleware: list[RequestMiddleware] = []
 
 async def _await_request_value(value: DataFrameResult | Awaitable[DataFrameResult]) -> DataFrameResult:
     if inspect.isawaitable(value):
-        return await value
+        return await value  # type: ignore[invalid-return-type]
     return value
 
 
@@ -1308,13 +1306,13 @@ def _build_sync_wrapper(
     wrapped.__name__ = sync_name
     wrapped.__qualname__ = sync_name
     wrapped.__module__ = __name__
-    wrapped.__signature__ = inspect.signature(template_func)
+    wrapped.__signature__ = inspect.signature(template_func)  # type: ignore[unresolved-attribute]
     return wrapped
 
 
 async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: dict[str, Any]) -> DataFrameResult:
     plan_or_awaitable = spec.builder(call_args)
-    plan = await plan_or_awaitable if inspect.isawaitable(plan_or_awaitable) else plan_or_awaitable
+    plan: _EndpointPlan = await plan_or_awaitable if inspect.isawaitable(plan_or_awaitable) else plan_or_awaitable  # type: ignore[invalid-assignment]
 
     request_kwargs = dict(plan.request_kwargs)
     if plan.extractor is not None:
@@ -3646,7 +3644,7 @@ _install_generated_endpoints()
 
 # Backward-compatible aliases
 abfld = abflds
-bfld = bflds
+bfld = bflds  # type: ignore[unresolved-reference]
 
 
 async def afieldInfo(

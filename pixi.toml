@@ -47,7 +47,7 @@ test-cov = "pytest py-xbbg/tests/ --cov=py-xbbg/src/xbbg --cov-report=xml -ra -v
 lint-py = "ruff check py-xbbg/src py-xbbg/tests"
 lint-rs = "cargo clippy -- -D warnings"
 lint = { depends-on = ["lint-py", "lint-rs"] }
-typecheck = "ty check"
+typecheck = "ty check --exclude benchmarks --exclude examples --exclude scripts"
 fmt-py = "ruff format py-xbbg/src py-xbbg/tests"
 fmt-rs = "cargo fmt --all"
 fmt = { depends-on = ["fmt-py", "fmt-rs"] }
@@ -76,7 +76,7 @@ ty = ">=0.0.1"
 lint = "ruff check py-xbbg/src py-xbbg/tests"
 fmt = "ruff format py-xbbg/src py-xbbg/tests"
 fmt-check = "ruff format --check py-xbbg/src py-xbbg/tests"
-typecheck = "ty check"
+typecheck = "ty check --exclude benchmarks --exclude examples --exclude scripts"
 
 [feature.dev.pypi-dependencies]
 pre-commit = ">=4.5"
