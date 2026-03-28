@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import importlib
 import logging
 from typing import Any, cast
-import warnings
 
 import pandas as pd
 
@@ -19,7 +18,6 @@ __all__ = [
     "exch_info_bloomberg",
     "market_info",
     "market_timing",
-    "asset_config",
     "ccy_pair",
     "convert_session_times_to_utc",
     "CurrencyPair",
@@ -150,18 +148,6 @@ def market_info(ticker: str) -> pd.Series:
         info["is_fut"] = False
 
     return pd.Series(info)
-
-
-def asset_config(asset: str) -> pd.DataFrame:
-    """Deprecated market config helper."""
-    warnings.warn(
-        "asset_config() is deprecated. Use market_info(ticker) to get ticker metadata "
-        "from Bloomberg directly, or use bdp(ticker, 'FUT_GEN_MONTH') for futures cycles.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    _ = asset
-    return pd.DataFrame()
 
 
 def explode(data: pd.DataFrame, columns: list[str]) -> pd.DataFrame:

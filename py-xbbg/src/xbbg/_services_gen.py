@@ -137,9 +137,6 @@ class Format(str, Enum):
     SEMI_LONG = "semi_long"
     """Semi-long format with one row per ticker/timestamp and fields as columns."""
 
-    WIDE = "wide"
-    """Wide format with fields as columns (DEPRECATED)."""
-
 
 class OutputMode(str, Enum):
     """Output mode for generic requests."""

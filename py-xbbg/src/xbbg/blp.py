@@ -726,106 +726,6 @@ def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
     return dt.strftime(fmt)
 
 
-def _handle_deprecated_wide_format(
-    format: Format | str | None,
-    pivot_index: str | list[str],
-    stacklevel: int = 3,
-) -> tuple[Format | None, bool]:
-    """Handle deprecated WIDE format with warning.
-
-    Args:
-        format: User-provided format (may be Format.WIDE)
-        pivot_index: Column(s) to use as index when pivoting
-            - For bdp: "ticker"
-            - For bdh: ["ticker", "date"]
-        stacklevel: Stack level for the deprecation warning
-
-    Returns:
-        Tuple of (adjusted_format, want_wide) where:
-        - adjusted_format: Format to use (None if WIDE was requested)
-        - want_wide: True if WIDE was requested and post-pivot is needed
-    """
-    fmt = Format(format) if isinstance(format, str) else format
-    want_wide = fmt == Format.WIDE if fmt else False
-
-    if want_wide:
-        # Build the pivot example string
-        if isinstance(pivot_index, list):
-            index_str = str(pivot_index)
-        else:
-            index_str = f"'{pivot_index}'"
-
-        warnings.warn(
-            f"Format.WIDE is deprecated and will be removed in v2.0. "
-            f"Use format=Format.LONG (default) and then call "
-            f"df.pivot(on='field', index={index_str}, values='value') "
-            f"to convert to wide format.",
-            DeprecationWarning,
-            stacklevel=stacklevel,
-        )
-        fmt = None  # Use default long format, then pivot
-
-    return fmt, want_wide
-
-
-def _apply_wide_pivot_bdp(df) -> pd.DataFrame:
-    """Apply wide format pivot to BDP DataFrame for 0.7.7 compatibility.
-
-    Converts from long format to wide format with ticker as index.
-
-    Args:
-        df: DataFrame with columns [ticker, field, value]
-
-    Returns:
-        pandas DataFrame with ticker as index and fields as columns
-    """
-    # Convert to pandas if needed
-    if hasattr(df, "to_pandas"):
-        pdf = df.to_pandas()
-    else:
-        pdf = df
-
-    # Pivot: ticker as index, field as columns, value as values
-    result = pdf.pivot(index="ticker", columns="field", values="value")
-    result.columns.name = None  # Remove column name
-    return result
-
-
-def _apply_wide_pivot_bdh(df) -> pd.DataFrame:
-    """Apply wide format pivot to BDH DataFrame for 0.7.7 compatibility.
-
-    Converts from Long format [ticker, date, field, value] to
-    0.7.7 wide format with DatetimeIndex and MultiIndex columns (ticker, field).
-
-    Args:
-        df: DataFrame with columns [ticker, date, field, value]
-
-    Returns:
-        pandas DataFrame with DatetimeIndex and MultiIndex columns
-    """
-    import pandas as pd
-
-    # Convert to pandas if needed
-    if hasattr(df, "to_pandas"):
-        pdf = df.to_pandas()
-    else:
-        pdf = df
-
-    # Data is already in Long format: [ticker, date, field, value]
-    # Just need to pivot to 0.7.7 Wide format
-    pivoted = pdf.pivot_table(
-        index="date",
-        columns=["ticker", "field"],
-        values="value",
-        aggfunc="first",  # In case of duplicates
-    )
-
-    # Convert index to DatetimeIndex
-    pivoted.index = pd.to_datetime(pivoted.index)
-    pivoted.index.name = None  # 0.7.7 style has no index name
-
-    return pivoted
-
 
 def _convert_backend(
     nw_df: Any,
@@ -1158,7 +1058,6 @@ async def abdp(
             - Format.LONG (default): ticker, field, value (strings)
             - Format.LONG_TYPED: ticker, field, value_f64, value_i64, etc.
             - Format.LONG_WITH_METADATA: ticker, field, value, dtype
-            - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
         include_security_errors: Include ``__SECURITY_ERROR__`` rows for
@@ -1211,7 +1110,6 @@ async def abdh(
             - Format.LONG (default): ticker, date, field, value (strings)
             - Format.LONG_TYPED: ticker, date, field, value_f64, value_i64, etc.
             - Format.LONG_WITH_METADATA: ticker, date, field, value, dtype
-            - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
         validate_fields: Optional per-request override for field validation.
@@ -3245,7 +3143,7 @@ async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
     kwargs = dict(args.get("kwargs", {}))
 
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
-    fmt, want_wide = _handle_deprecated_wide_format(args.get("format"), pivot_index="ticker")
+    fmt = Format(args["format"]) if isinstance(args.get("format"), str) else args.get("format")
 
     resolved_types = await _get_engine().resolve_field_types(
         field_list,
@@ -3265,7 +3163,7 @@ async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
             "validate_fields": args.get("validate_fields"),
         },
         backend=args.get("backend"),
-        postprocess=_apply_wide_pivot_bdp if want_wide else None,
+        postprocess=None,
     )
 
 
@@ -3274,7 +3172,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
     field_list = _normalize_fields(args.get("flds"))
     kwargs = dict(args.get("kwargs", {}))
 
-    fmt, want_wide = _handle_deprecated_wide_format(args.get("format"), pivot_index=["ticker", "date"])
+    fmt = Format(args["format"]) if isinstance(args.get("format"), str) else args.get("format")
 
     end_value = args.get("end_date", "today")
     start_value = args.get("start_date")
@@ -3328,7 +3226,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
             "validate_fields": args.get("validate_fields"),
         },
         backend=args.get("backend"),
-        postprocess=_apply_wide_pivot_bdh if want_wide else None,
+        postprocess=None,
     )
 
 

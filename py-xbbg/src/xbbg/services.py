@@ -74,7 +74,7 @@ class RequestParams:
         output: Output format (arrow or json).
         extractor: Override the auto-detected extractor hint.  When ``None``
             the Rust layer picks the correct extractor for the operation.
-        format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
+        format: Output format (LONG, LONG_TYPED, LONG_WITH_METADATA).
         include_security_errors: When True for ReferenceData requests, include
             ``__SECURITY_ERROR__`` rows for securities that failed.
         validate_fields: Optional per-request override for field validation.
@@ -257,8 +257,7 @@ class RequestParams:
         if self.field_types is not None:
             result["field_types"] = self.field_types
         if self.format is not None:
-            # Pass format value to Rust (handles LONG, LONG_TYPED, LONG_WITH_METADATA)
-            # WIDE is handled in Python layer via pivot
+            # Pass format value to Rust
             result["format"] = self.format.value if isinstance(self.format, Format) else self.format
         if self.include_security_errors:
             result["include_security_errors"] = True

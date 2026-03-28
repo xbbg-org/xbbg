@@ -142,29 +142,26 @@ MODULE_NAMES: dict[Backend, str] = {
 # Which ``Format`` variants each backend supports.
 #
 # * LONG / SEMI_LONG / LONG_TYPED / LONG_WITH_METADATA — universally supported
-#   for eager backends.
-# * WIDE — requires a pivot operation; only efficient for eager backends.
-# * Lazy backends support only LONG, SEMI_LONG, LONG_TYPED, and
-#   LONG_WITH_METADATA (no WIDE).
+#   for all backends.
 SUPPORTED_FORMATS: dict[Backend, frozenset[Format]] = {
     # Eager backends — full format support
     Backend.PANDAS: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.WIDE, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
+        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
     ),
     Backend.POLARS: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.WIDE, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
+        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
     ),
     Backend.PYARROW: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.WIDE, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
+        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
     ),
     Backend.NARWHALS: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.WIDE, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
+        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
     ),
-    Backend.CUDF: frozenset({Format.LONG, Format.SEMI_LONG, Format.WIDE, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
+    Backend.CUDF: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.MODIN: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.WIDE, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
+        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
     ),
-    # Lazy backends — no WIDE support
+    # Lazy backends
     Backend.NARWHALS_LAZY: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.POLARS_LAZY: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.DUCKDB: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
@@ -451,13 +448,7 @@ def check_format_compatibility(
         f"Supported formats for {backend.value}: {supported_str}\n\n"
     )
 
-    if fmt == Format.WIDE:
-        msg += (
-            "Hint: WIDE format requires pivot operations which are not efficient "
-            "for lazy backends. Consider using SEMI_LONG format instead, or switch "
-            "to an eager backend like 'pandas' or 'polars'."
-        )
-    elif fmt in (Format.LONG_TYPED, Format.LONG_WITH_METADATA):
+    if fmt in (Format.LONG_TYPED, Format.LONG_WITH_METADATA):
         msg += "Hint: LONG_TYPED and LONG_WITH_METADATA are v1.0 preview formats."
 
     if raise_on_error:
