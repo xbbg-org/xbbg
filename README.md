@@ -622,7 +622,7 @@ configure(EngineConfig(request_pool_size=4, subscription_pool_size=2))
 |-----------|---------|-------------|
 | `subscription_flush_threshold` | `1` | Ticks buffered before flushing to Python (increase for throughput, decrease for latency) |
 | `subscription_stream_capacity` | `256` | Backpressure buffer size per subscription stream |
-| `overflow_policy` | `'drop_newest'` | Slow consumer policy: `'drop_newest'`, `'drop_oldest'`, or `'block'` |
+| `overflow_policy` | `'drop_newest'` | Slow consumer policy: `'drop_newest'` or `'block'` |
 
 #### Internal Buffers
 

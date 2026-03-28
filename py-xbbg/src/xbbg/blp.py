@@ -1675,17 +1675,12 @@ async def asubscribe(
         raise ValueError("flush_threshold must be >= 1")
     if stream_capacity is not None and stream_capacity < 1:
         raise ValueError("stream_capacity must be >= 1")
-    if overflow_policy is not None and overflow_policy not in ("drop_newest", "drop_oldest", "block"):
+    if overflow_policy is not None and overflow_policy not in ("drop_newest", "block"):
         raise ValueError(
-            f"overflow_policy must be one of 'drop_newest', 'drop_oldest', 'block', got {overflow_policy!r}"
+            f"overflow_policy must be one of 'drop_newest', 'block', got {overflow_policy!r}"
         )
     if recovery_policy is not None and recovery_policy not in ("none", "resubscribe"):
         raise ValueError(f"recovery_policy must be one of 'none', 'resubscribe', got {recovery_policy!r}")
-    if overflow_policy == "drop_oldest":
-        warnings.warn(
-            "overflow_policy='drop_oldest' currently behaves as 'drop_newest' for performance-safe bounded streaming",
-            stacklevel=2,
-        )
 
     # tick_mode=True forces flush_threshold=1
     if tick_mode and flush_threshold is not None and flush_threshold > 1:

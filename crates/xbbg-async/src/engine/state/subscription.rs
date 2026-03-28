@@ -128,13 +128,6 @@ impl SubscriptionState {
             last_data_loss_us: Arc::new(AtomicU64::new(0)),
         });
 
-        if overflow_policy == OverflowPolicy::DropOldest {
-            xbbg_log::warn!(
-                topic = %topic,
-                "DropOldest overflow policy requested but not yet implemented; \
-                 will behave as DropNewest until ring buffer support is added"
-            );
-        }
 
         Self {
             topic: topic.into(),
@@ -405,8 +398,7 @@ impl SubscriptionState {
 
     /// Send a batch according to the configured overflow policy.
     ///
-    /// NOTE: `DropOldest` is not yet implemented; a warn is emitted once at construction.
-    /// `Block` now works properly using `blocking_send`.
+    /// `Block` uses `blocking_send` to apply backpressure.
     fn send_batch(&mut self, batch: RecordBatch) {
         match self.overflow_policy {
             OverflowPolicy::Block => {
@@ -420,8 +412,8 @@ impl SubscriptionState {
                     self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
                 }
             }
-            _ => {
-                // DropNewest and DropOldest both use try_send (DropOldest warned at construction).
+            OverflowPolicy::DropNewest => {
+                // try_send: drop newest batch when buffer is full
                 match self.stream.try_send(Ok(batch)) {
                     Ok(()) => {
                         self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
@@ -429,11 +421,7 @@ impl SubscriptionState {
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         self.dropped_batches += 1;
                         self.metrics.dropped_batches.fetch_add(1, Ordering::Relaxed);
-                        let policy_label = match self.overflow_policy {
-                            OverflowPolicy::DropNewest => "DropNewest",
-                            OverflowPolicy::DropOldest => "DropOldest",
-                            OverflowPolicy::Block => "Block",
-                        };
+                        let policy_label = "DropNewest";
                         xbbg_log::warn!(
                             topic = %self.topic,
                             dropped = self.dropped_batches,

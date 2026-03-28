@@ -192,13 +192,6 @@ pub enum OverflowPolicy {
     /// Drop the newest data when buffer is full (default, non-blocking)
     #[default]
     DropNewest,
-    /// Drop the oldest data when buffer is full.
-    ///
-    /// **Not yet implemented**: `mpsc::Sender` does not own the receiver, so true
-    /// oldest-first eviction requires a ring-buffer channel type. Until that is
-    /// added, this policy behaves identically to `DropNewest` and a warning is
-    /// emitted once at subscription construction.
-    DropOldest,
     /// Block the producer until space is available (use with caution)
     Block,
 }
@@ -838,10 +831,9 @@ impl std::str::FromStr for OverflowPolicy {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "drop_newest" | "dropnewest" => Ok(Self::DropNewest),
-            "drop_oldest" | "dropoldest" => Ok(Self::DropOldest),
             "block" => Ok(Self::Block),
             _ => Err(format!(
-                "unknown overflow policy '{}': expected drop_newest, drop_oldest, or block",
+                "unknown overflow policy '{}': expected 'drop_newest' or 'block'",
                 s
             )),
         }
@@ -852,7 +844,6 @@ impl std::fmt::Display for OverflowPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DropNewest => write!(f, "drop_newest"),
-            Self::DropOldest => write!(f, "drop_oldest"),
             Self::Block => write!(f, "block"),
         }
     }

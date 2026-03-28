@@ -163,7 +163,7 @@ from xbbg import blp, configure
 configure(
     subscription_flush_threshold=10,   # buffer up to 10 ticks before flushing
     subscription_stream_capacity=512,  # internal channel depth
-    overflow_policy='drop_oldest',     # what to do when the channel is full
+    overflow_policy='drop_newest',     # what to do when the channel is full
 )
 ```
 
@@ -183,7 +183,7 @@ sub = await blp.asubscribe(
 |-----------|---------|-------------|
 | `flush_threshold` | `1` | Ticks buffered before flushing to Python. Increase for throughput, decrease for latency. |
 | `stream_capacity` | `256` | Backpressure buffer size (number of batches). |
-| `overflow_policy` | `'drop_newest'` | Slow-consumer policy: `'drop_newest'`, `'drop_oldest'`, or `'block'`. |
+| `overflow_policy` | `'drop_newest'` | Slow-consumer policy: `'drop_newest'` or `'block'`. |
 
 <Aside type="caution">
 `overflow_policy='block'` prevents data loss but will stall the Bloomberg SDK event thread if your consumer is too slow. Use it only when every tick is critical and your processing loop is fast enough to keep up.

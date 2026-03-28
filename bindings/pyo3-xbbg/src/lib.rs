@@ -357,7 +357,7 @@ pub struct PyEngineConfig {
     /// Subscription stream backpressure capacity (default: 256)
     #[pyo3(get, set)]
     pub subscription_stream_capacity: usize,
-    /// Overflow policy for slow consumers: "drop_newest" (default), "drop_oldest", "block"
+    /// Overflow policy for slow consumers: "drop_newest" (default) or "block"
     #[pyo3(get, set)]
     pub overflow_policy: String,
     /// Services to pre-warm on startup (default: ["//blp/refdata", "//blp/apiflds"])
@@ -1204,7 +1204,6 @@ impl PyEngine {
         let fields_clone = fields.clone();
 
         let op = overflow_policy.as_deref().map(|s| match s {
-            "drop_oldest" => OverflowPolicy::DropOldest,
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
         });
@@ -1311,7 +1310,6 @@ impl PyEngine {
         let service_clone = service.clone();
 
         let op = overflow_policy.as_deref().map(|s| match s {
-            "drop_oldest" => OverflowPolicy::DropOldest,
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
         });
@@ -1652,7 +1650,6 @@ impl PySubscription {
                         .unwrap_or(OverflowPolicy::DropNewest)
                     {
                         OverflowPolicy::DropNewest => "drop_newest".to_string(),
-                        OverflowPolicy::DropOldest => "drop_newest".to_string(),
                         OverflowPolicy::Block => "block".to_string(),
                     },
                 }

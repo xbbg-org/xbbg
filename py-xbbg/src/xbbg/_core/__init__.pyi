@@ -406,12 +406,12 @@ class PyEngineConfig:
     @property
     def overflow_policy(self) -> builtins.str:
         r"""
-        Overflow policy for slow consumers: "drop_newest" (default), "drop_oldest", "block"
+        Overflow policy for slow consumers: "drop_newest" (default) or "block"
         """
     @overflow_policy.setter
     def overflow_policy(self, value: builtins.str) -> None:
         r"""
-        Overflow policy for slow consumers: "drop_newest" (default), "drop_oldest", "block"
+        Overflow policy for slow consumers: "drop_newest" (default) or "block"
         """
     @property
     def warmup_services(self) -> builtins.list[builtins.str]:

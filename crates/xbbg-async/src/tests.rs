@@ -53,12 +53,9 @@ fn test_overflow_policy_default() {
 #[test]
 fn test_overflow_policy_variants() {
     assert_eq!(OverflowPolicy::DropNewest, OverflowPolicy::DropNewest);
-    assert_eq!(OverflowPolicy::DropOldest, OverflowPolicy::DropOldest);
     assert_eq!(OverflowPolicy::Block, OverflowPolicy::Block);
 
-    assert_ne!(OverflowPolicy::DropNewest, OverflowPolicy::DropOldest);
     assert_ne!(OverflowPolicy::DropNewest, OverflowPolicy::Block);
-    assert_ne!(OverflowPolicy::DropOldest, OverflowPolicy::Block);
 }
 
 #[test]
