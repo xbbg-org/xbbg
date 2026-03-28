@@ -86,7 +86,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
 def market_info(ticker: str) -> pd.Series:
     """Get market info for a ticker using Bloomberg metadata fields."""
     xbbg_module = importlib.import_module("xbbg")
-    bdp_fn = cast("Any", xbbg_module.bdp)  # type: ignore[unresolved-attribute]
+    bdp_fn = getattr(xbbg_module, "bdp")  # noqa: B009
 
     t_info = ticker.split()
     if len(t_info) < 2:

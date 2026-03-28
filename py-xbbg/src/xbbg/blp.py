@@ -22,7 +22,7 @@ import functools
 import inspect
 import logging
 import time
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 import warnings
 
 import narwhals.stable.v1 as nw
@@ -179,7 +179,7 @@ _request_middleware: list[RequestMiddleware] = []
 
 async def _await_request_value(value: DataFrameResult | Awaitable[DataFrameResult]) -> DataFrameResult:
     if inspect.isawaitable(value):
-        return await value  # type: ignore[invalid-return-type]
+        return cast("DataFrameResult", await value)
     return value
 
 
@@ -1312,7 +1312,10 @@ def _build_sync_wrapper(
 
 async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: dict[str, Any]) -> DataFrameResult:
     plan_or_awaitable = spec.builder(call_args)
-    plan: _EndpointPlan = await plan_or_awaitable if inspect.isawaitable(plan_or_awaitable) else plan_or_awaitable  # type: ignore[invalid-assignment]
+    if inspect.isawaitable(plan_or_awaitable):
+        plan: _EndpointPlan = cast("_EndpointPlan", await plan_or_awaitable)
+    else:
+        plan = plan_or_awaitable
 
     request_kwargs = dict(plan.request_kwargs)
     if plan.extractor is not None:
@@ -3644,7 +3647,7 @@ _install_generated_endpoints()
 
 # Backward-compatible aliases
 abfld = abflds
-bfld = bflds  # type: ignore[unresolved-reference]
+bfld = globals()["bflds"]
 
 
 async def afieldInfo(

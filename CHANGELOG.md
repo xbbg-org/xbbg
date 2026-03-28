@@ -16,9 +16,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
+- **Bloomberg SDK ABI compatibility check**: New `scripts/abi-check.sh` and CI job that verifies every C symbol xbbg-core depends on exists across SDK versions (oldest supported through latest). Minimum supported SDK version defined in `defs/bloomberg.toml` (`min_sdk_version`).
 - **SECURITY.md**: Restored security policy with vulnerability reporting instructions and hardening notes.
 - **GitHub Pages deploy workflow**: Added `deploy-docs.yml` for automated Starlight docs deployment on push to main.
 - **Documentation**: Wrote complete content for all guide and reference pages (migration, streaming, async, backends, output formats, configuration, type mappings).
+
+### Fixed
+
+- **`DropOldest` overflow policy**: No longer silently degrades to `DropNewest`. Now emits a warning at subscription construction time explaining the `mpsc::Sender` limitation. The `DropOldest` enum variant doc comment documents the current behavior.
+- **Type checking**: Resolved all 178 `ty` errors to zero. Exception classes properly subclassed in Python instead of monkey-patching `__init__` on Rust classes. Added exception stubs to `_core/__init__.pyi`. Remaining 6 `type: ignore` comments are all upstream stub gaps (narwhals, stdlib, platform-specific).
+- **Unused `pandas` import**: Removed leftover `TYPE_CHECKING` import of `pandas` in `blp.py` after `Format.WIDE` removal.
+- **Exception hierarchy**: `BlpRequestError`, `BlpSecurityError`, `BlpFieldError`, and `BlpValidationError` are now proper Python subclasses of the Rust base classes with typed `__init__` signatures, replacing fragile `__init__` monkey-patching.
 
 ### Removed
 
