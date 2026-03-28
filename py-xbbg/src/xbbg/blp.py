@@ -724,7 +724,6 @@ def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
     return dt.strftime(fmt)
 
 
-
 def _convert_backend(
     nw_df: Any,
     backend: Backend | str | None,
@@ -1676,9 +1675,7 @@ async def asubscribe(
     if stream_capacity is not None and stream_capacity < 1:
         raise ValueError("stream_capacity must be >= 1")
     if overflow_policy is not None and overflow_policy not in ("drop_newest", "block"):
-        raise ValueError(
-            f"overflow_policy must be one of 'drop_newest', 'block', got {overflow_policy!r}"
-        )
+        raise ValueError(f"overflow_policy must be one of 'drop_newest', 'block', got {overflow_policy!r}")
     if recovery_policy is not None and recovery_policy not in ("none", "resubscribe"):
         raise ValueError(f"recovery_policy must be one of 'none', 'resubscribe', got {recovery_policy!r}")
 

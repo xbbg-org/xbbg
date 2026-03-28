@@ -145,22 +145,12 @@ MODULE_NAMES: dict[Backend, str] = {
 #   for all backends.
 SUPPORTED_FORMATS: dict[Backend, frozenset[Format]] = {
     # Eager backends — full format support
-    Backend.PANDAS: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
-    ),
-    Backend.POLARS: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
-    ),
-    Backend.PYARROW: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
-    ),
-    Backend.NARWHALS: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
-    ),
+    Backend.PANDAS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
+    Backend.POLARS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
+    Backend.PYARROW: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
+    Backend.NARWHALS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.CUDF: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.MODIN: frozenset(
-        {Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}
-    ),
+    Backend.MODIN: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     # Lazy backends
     Backend.NARWHALS_LAZY: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.POLARS_LAZY: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),

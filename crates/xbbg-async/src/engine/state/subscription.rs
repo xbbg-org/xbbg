@@ -128,7 +128,6 @@ impl SubscriptionState {
             last_data_loss_us: Arc::new(AtomicU64::new(0)),
         });
 
-
         Self {
             topic: topic.into(),
             field_strings,

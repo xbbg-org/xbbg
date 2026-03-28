@@ -150,7 +150,6 @@ class TestConfigValidation:
                 )
             )
 
-
     def test_config_validation_recovery_policy(self):
         """Invalid recovery_policy raises ValueError."""
         from xbbg.blp import asubscribe
