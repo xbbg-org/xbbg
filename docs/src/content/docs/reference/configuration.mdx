@@ -3,30 +3,330 @@ title: Configuration
 description: Configure engine settings, pool sizes, and connection options
 ---
 
+import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
+
 # Configuration
 
-:::note[TODO]
-This guide needs to be written. Topics to cover:
-- configure() function
-- EngineConfig dataclass
-- Pool sizes (request_pool_size, subscription_pool_size)
-- Host/port settings
-- When to configure (before first request)
-:::
+## configure()
+
+Call `configure()` before any Bloomberg request to set connection parameters, pool sizes, and auth. Once the engine starts on the first request, calling `configure()` again raises `RuntimeError`.
 
 ```python
 import xbbg
-from xbbg import EngineConfig
+from xbbg import blp, EngineConfig
 
-# Configure before first request
-xbbg.configure(
-    request_pool_size=4,
-    subscription_pool_size=8,
-    host='localhost',
+# Keyword arguments — most common
+xbbg.configure(request_pool_size=4, subscription_pool_size=2)
+
+# EngineConfig object
+xbbg.configure(EngineConfig(request_pool_size=4, subscription_pool_size=2))
+
+# EngineConfig + overrides (kwargs take precedence)
+cfg = EngineConfig(request_pool_size=4)
+xbbg.configure(cfg, subscription_pool_size=2)
+```
+
+`configure()` is also available on the `blp` module:
+
+```python
+from xbbg import blp
+
+blp.configure(server_host='192.168.1.100', server_port=18194)
+```
+
+<Aside type="caution">
+`configure()` must be called before the first Bloomberg request. Calling it after the engine has started raises `RuntimeError: Cannot configure after engine has started`.
+</Aside>
+
+**Legacy aliases** are accepted and normalized:
+
+| Alias | Canonical field |
+|-------|----------------|
+| `server`, `server_host` | `host` |
+| `server_port` | `port` |
+| `max_attempt` | `num_start_attempts` |
+| `auto_restart` | `auto_restart_on_disconnection` |
+| `retry_max` | `retry_max_retries` |
+| `retry_delay` | `retry_initial_delay_ms` |
+| `retry_backoff` | `retry_backoff_factor` |
+| `max_recovery` | `max_recovery_attempts` |
+
+---
+
+## Engine Architecture
+
+xbbg runs a Rust async engine with pre-warmed worker pools:
+
+```
+┌─────────────────────────────────────────────────┐
+│                   xbbg Engine                   │
+│                                                 │
+│  ┌──────────────────────┐  ┌─────────────────┐  │
+│  │  Request Worker Pool │  │ Subscription    │  │
+│  │  (request_pool_size) │  │ Session Pool    │  │
+│  │                      │  │ (sub_pool_size) │  │
+│  │  Worker 1 ──session  │  │                 │  │
+│  │  Worker 2 ──session  │  │  Session 1      │  │
+│  │  ...                 │  │  ...            │  │
+│  └──────────────────────┘  └─────────────────┘  │
+│           │ round-robin          │ isolated      │
+│           ▼                      ▼               │
+│    bdp/bdh/bds/bdib       subscribe/stream       │
+│    bql/bsrch/beqs         vwap/mktbar/depth      │
+└─────────────────────────────────────────────────┘
+```
+
+- **Request workers** each hold an independent Bloomberg session. Concurrent `bdp`/`bdh`/`bds` calls are dispatched round-robin. `request_pool_size=4` allows 4 parallel Bloomberg requests.
+- **Subscription sessions** are isolated per session to prevent cross-contamination between topic streams. Each `subscribe()` call gets its own session from the pool.
+- Workers are **pre-warmed** at first use — sessions are started and services opened before your first request, eliminating cold-start latency.
+
+---
+
+## EngineConfig Reference
+
+### Connection & Session
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `host` | `'localhost'` | Bloomberg server host. Aliases: `server_host`, `server` |
+| `port` | `8194` | Bloomberg server port. Alias: `server_port` |
+| `num_start_attempts` | `3` | Retries before giving up on session start. Alias: `max_attempt` |
+| `auto_restart_on_disconnection` | `True` | Auto-reconnect on session disconnect. Alias: `auto_restart` |
+
+### Worker Pools
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `request_pool_size` | `2` | Number of pre-warmed request workers (parallel Bloomberg sessions for bdp/bdh/bds/etc.) |
+| `subscription_pool_size` | `1` | Number of pre-warmed subscription sessions (isolated sessions for subscribe/stream) |
+| `warmup_services` | `['//blp/refdata', '//blp/apiflds']` | Services to pre-open on startup |
+
+### Subscription Tuning
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `subscription_flush_threshold` | `1` | Ticks buffered before flushing to Python. Increase for throughput; decrease for latency |
+| `subscription_stream_capacity` | `256` | Backpressure buffer size per subscription stream |
+| `overflow_policy` | `'drop_newest'` | Slow consumer policy: `'drop_newest'`, `'drop_oldest'`, or `'block'` |
+
+### Internal Buffers
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_event_queue_size` | `10000` | Bloomberg SDK event queue depth |
+| `command_queue_size` | `256` | Internal command channel capacity |
+
+### Validation
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `validation_mode` | `'disabled'` | Field validation: `'disabled'`, `'strict'` (reject unknown fields), or `'lenient'` (warn) |
+| `field_cache_path` | `~/.xbbg/field_cache.json` | Path for persistent field type cache |
+
+### Authentication (SAPI / B-PIPE)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `auth_method` | `None` | Auth mode: `'user'`, `'app'`, `'userapp'`, `'dir'`, `'manual'`, or `'token'` |
+| `app_name` | `None` | Application name (required for `app`, `userapp`, `manual`) |
+| `user_id` | `None` | Bloomberg user ID (required for `manual`) |
+| `ip_address` | `None` | Bloomberg IP address (required for `manual`) |
+| `dir_property` | `None` | Active Directory property (required for `dir`) |
+| `token` | `None` | Auth token (required for `token`) |
+
+---
+
+## Authentication Examples
+
+<Tabs>
+<TabItem label="B-PIPE app">
+
+```python
+from xbbg import blp
+
+# Application auth — requires app name registered with Bloomberg
+blp.configure(
+    auth_method='app',
+    app_name='myapp:8888',
+    host='bpipe-host',
     port=8194,
 )
-
-# Or with EngineConfig
-config = EngineConfig(request_pool_size=4)
-xbbg.configure(config)
 ```
+
+</TabItem>
+<TabItem label="manual (SAPI)">
+
+```python
+from xbbg import blp
+
+# Manual auth — provides explicit Bloomberg user and IP
+blp.configure(
+    auth_method='manual',
+    app_name='myapp',
+    user_id='12345',
+    ip_address='10.0.0.1',
+)
+```
+
+</TabItem>
+<TabItem label="dir">
+
+```python
+from xbbg import blp
+
+# Active Directory auth — uses an AD property to identify the user
+blp.configure(
+    auth_method='dir',
+    dir_property='mail',
+)
+```
+
+</TabItem>
+<TabItem label="token">
+
+```python
+from xbbg import blp
+
+# Token auth
+blp.configure(
+    auth_method='token',
+    token='<your-auth-token>',
+)
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Multi-Server Failover
+
+Pass a list of `(host, port)` tuples to `servers`. When set, `servers` overrides `host`/`port`.
+
+```python
+from xbbg import blp
+
+blp.configure(
+    servers=[
+        ('bbg-primary.example.com', 8194),
+        ('bbg-secondary.example.com', 8194),
+    ]
+)
+```
+
+Bloomberg will attempt servers in order and fall back on failure.
+
+---
+
+## ZFP over Leased Lines
+
+For Bloomberg Zero-Footprint (ZFP) connectivity over leased lines, set `zfp_remote` to the remote port string. Accepted values are `"8194"` and `"8196"`. TLS credentials are required.
+
+```python
+from xbbg import blp
+
+blp.configure(
+    zfp_remote='8194',
+    tls_client_credentials='/path/to/client.p12',
+    tls_client_credentials_password='secret',
+    tls_trust_material='/path/to/trust.p12',
+)
+```
+
+---
+
+## TLS
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `tls_client_credentials` | `None` | Path to client certificate file (PKCS#12) |
+| `tls_client_credentials_password` | `None` | Password for the client certificate |
+| `tls_trust_material` | `None` | Path to trust store file (PKCS#12) |
+| `tls_handshake_timeout_ms` | `None` | TLS handshake timeout in milliseconds |
+| `tls_crl_fetch_timeout_ms` | `None` | CRL fetch timeout in milliseconds |
+
+```python
+from xbbg import blp
+
+blp.configure(
+    host='bbg-tls.example.com',
+    tls_client_credentials='/certs/client.p12',
+    tls_client_credentials_password='changeit',
+    tls_trust_material='/certs/trust.p12',
+    tls_handshake_timeout_ms=5000,
+)
+```
+
+---
+
+## SOCKS5 Proxy
+
+Route Bloomberg connections through a SOCKS5 proxy by setting both `socks5_host` and `socks5_port`.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `socks5_host` | `None` | SOCKS5 proxy hostname |
+| `socks5_port` | `None` | SOCKS5 proxy port (required when `socks5_host` is set) |
+
+```python
+from xbbg import blp
+
+blp.configure(
+    host='bbg-server.example.com',
+    socks5_host='proxy.internal',
+    socks5_port=1080,
+)
+```
+
+---
+
+## Retry Policy
+
+Retries apply to individual Bloomberg requests that fail transiently. Retry is disabled by default (`retry_max_retries=0`).
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `retry_max_retries` | `0` | Maximum retry attempts per request. `0` disables retry |
+| `retry_initial_delay_ms` | `1000` | Delay before first retry (milliseconds) |
+| `retry_backoff_factor` | `2.0` | Multiplier applied to delay after each retry |
+| `retry_max_delay_ms` | `30000` | Maximum delay between retries (milliseconds) |
+
+```python
+from xbbg import blp
+
+# Retry up to 3 times with exponential backoff: 1s → 2s → 4s (capped at 30s)
+blp.configure(
+    retry_max_retries=3,
+    retry_initial_delay_ms=1000,
+    retry_backoff_factor=2.0,
+    retry_max_delay_ms=30000,
+)
+```
+
+<Aside>
+Delay sequence: `initial_delay_ms * backoff_factor^n`, capped at `retry_max_delay_ms`. With the defaults above: 1000 ms, 2000 ms, 4000 ms.
+</Aside>
+
+---
+
+## SDK Logging
+
+Bloomberg SDK log output is suppressed by default. Two ways to enable it:
+
+**At configure time** — set `sdk_log_level` in `EngineConfig`:
+
+```python
+from xbbg import blp
+
+blp.configure(sdk_log_level='INFO')
+```
+
+**At runtime** — call `enable_sdk_logging()` after configuration:
+
+```python
+import xbbg
+
+xbbg.enable_sdk_logging('DEBUG')
+```
+
+Accepted levels are Bloomberg SDK level strings: `'OFF'`, `'FATAL'`, `'ERROR'`, `'WARN'`, `'INFO'`, `'DEBUG'`, `'TRACE'`.

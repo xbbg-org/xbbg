@@ -3,23 +3,248 @@ title: Type Mappings
 description: Bloomberg to Arrow type mappings
 ---
 
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
 # Type Mappings
 
-:::note[TODO]
-This guide needs to be written. Topics to cover:
-- BLPAPI ftype → Arrow type table
-- Boolean detection (ASCII 78='N', 89='Y')
-- Field type resolution hierarchy
-- Manual type overrides
-:::
+xbbg maps every Bloomberg field type to an Apache Arrow type at the Rust layer, before data surfaces in Python.
+This reference covers the full mapping table, how types are resolved at runtime, and how to override them.
 
-## BLPAPI → Arrow Type Mapping
+## BLPAPI to Arrow Type Mapping
 
-| BLPAPI ftype | Arrow Type | Typed Column |
-|--------------|------------|--------------|
-| Double, Float, Price, Real | Float64 | value_f64 |
-| Int32, Int64, Integer | Int64 | value_i64 |
-| String, Character | Utf8 | value_str |
-| Date | Date32 | value_date |
-| DateTime, Time | Timestamp | value_ts |
-| Boolean, Bool | Boolean | value_bool |
+Bloomberg's `//blp/apiflds` service exposes two type descriptors per field: `datatype` (preferred) and `ftype` (fallback).
+The Rust engine reads whichever is present and maps it to an Arrow type.
+
+| Bloomberg ftype / datatype | Arrow Type | Type string | Notes |
+|---------------------------|------------|-------------|-------|
+| `Double`, `Real`, `Price`, `Float` | Float64 | `float64` | All floating-point Bloomberg types map to Float64 |
+| `Int32`, `Integer` | Int64 | `int64` | Promoted to Int64 for consistency |
+| `Int64`, `Long` | Int64 | `int64` | |
+| `String`, `LongCharacter`, `StringOrReal` | Utf8 | `string` | |
+| `Character`, `Char` | Utf8 | `string` | Also used for Y/N boolean fields — see below |
+| `Date` | Date32 | `date32` | Days since Unix epoch (1970-01-01) |
+| `Datetime` | Timestamp (UTC, microseconds) | `timestamp` | Full datetime with date and time parts |
+| `Time` | Time64 (microseconds) | `time64` | Time-of-day only; no date component |
+| `DateOrTime` | Utf8 | `string` | Ambiguous; kept as string to avoid data loss |
+| `Boolean`, `Bool` | Boolean | `bool` | |
+| `BulkFormat`, `Bulk` | Utf8 | `string` | Bulk data encoded as JSON string |
+| Unknown / unrecognised | Utf8 | `string` | Safe default |
+
+<Aside type="note">
+Bloomberg's `Int32` is normalised to Arrow `Int64` by the Rust engine. There is no `Int32` column in xbbg output.
+</Aside>
+
+## Type Resolution Hierarchy
+
+For every field in a request, the Rust engine resolves the Arrow type using a four-step hierarchy, stopping at the first match:
+
+1. **Manual override** — the `field_types` parameter passed to the request function (highest priority).
+2. **Disk cache** — `~/.xbbg/field_cache.json` (configurable via `field_cache_path`). Loaded at engine start.
+3. **API query** — live lookup against Bloomberg's `//blp/apiflds` service. Result written back to cache.
+4. **Request default** — `string` for `bdp`/`bds`, `float64` for `bdh` (lowest priority, applied when no type information is available).
+
+All caching, disk I/O, and API fallback are implemented in Rust (`crates/xbbg-async/src/field_cache.rs`).
+The Python `field_cache` module is a thin wrapper that delegates every call to the engine.
+
+Within the API query (step 3), the engine prefers the `datatype` field from the `//blp/apiflds` response.
+If `datatype` is absent, it falls back to `ftype`.
+
+## Boolean Detection
+
+Bloomberg frequently stores boolean fields at the wire level as `Char` elements containing ASCII `Y` (byte 89) or `N` (byte 78),
+even when the logical field type is Boolean.
+The Rust engine calls `blpapi_Element_getValueAsBool` for every `Char`/`Byte` element —
+Bloomberg's C API coerces `Y`/`N` to `true`/`false` transparently.
+If that call fails, the value falls back to a raw byte.
+
+Because of this coercion, fields whose `ftype` is `Character` but whose values are always `Y`/`N`
+(such as many flag fields) will arrive in Python as Arrow `Boolean`, not `Utf8`.
+The field cache stores the resolved type; inspecting it with `get_field_info` will show `bool` for such fields.
+
+## Field Type Cache
+
+The field type cache avoids repeated `//blp/apiflds` round-trips for fields you request frequently.
+It persists to `~/.xbbg/field_cache.json` and is loaded automatically when the engine starts.
+
+### Module-level functions
+
+```python
+from xbbg import blp
+from xbbg.field_cache import (
+    resolve_field_types,
+    aresolve_field_types,
+    cache_field_types,
+    get_field_info,
+    clear_field_cache,
+    get_field_cache_stats,
+)
+```
+
+| Function | Description |
+|----------|-------------|
+| `resolve_field_types(fields, overrides=None)` | Resolve Arrow type strings for a list of fields. Queries API for cache misses. Returns `dict[str, str]`. |
+| `aresolve_field_types(fields, overrides=None)` | Async version of `resolve_field_types`. |
+| `cache_field_types(fields)` | Pre-populate the cache for a list of fields without returning results. Async. |
+| `get_field_info(fields)` | Return `list[FieldInfo]` with `field_id`, `arrow_type`, `description`, `category`. Async. |
+| `clear_field_cache()` | Flush both the in-memory cache and the on-disk JSON file. |
+| `get_field_cache_stats()` | Return `{"entry_count": int, "cache_path": str}`. |
+
+**Pre-populating the cache** before bulk requests avoids per-request API lookups:
+
+```python
+import asyncio
+from xbbg.field_cache import cache_field_types
+
+# Run once at startup
+asyncio.run(cache_field_types([
+    "PX_LAST", "VOLUME", "NAME", "INDUSTRY_SECTOR", "DVD_EX_DT",
+]))
+```
+
+**Inspecting the cache:**
+
+```python
+from xbbg.field_cache import get_field_cache_stats, resolve_field_types
+
+stats = get_field_cache_stats()
+print(stats["entry_count"])   # e.g. 42
+print(stats["cache_path"])    # e.g. /home/user/.xbbg/field_cache.json
+
+types = resolve_field_types(["PX_LAST", "NAME", "VOLUME"])
+# {'PX_LAST': 'float64', 'NAME': 'string', 'VOLUME': 'float64'}
+```
+
+**Changing the cache location** must be done before the engine starts:
+
+```python
+import xbbg
+xbbg.configure(field_cache_path="/data/bloomberg/field_cache.json")
+```
+
+### FieldTypeCache class
+
+`FieldTypeCache` is a facade over the Rust resolver, kept for compatibility:
+
+```python
+from xbbg.field_cache import FieldTypeCache
+
+cache = FieldTypeCache()
+types = cache.resolve_types(["PX_LAST", "NAME"])
+print(cache.cache_path)   # active JSON path
+print(cache.stats)        # {"entry_count": ..., "cache_path": ...}
+cache.clear_cache()
+```
+
+## LONG_TYPED Column Mapping
+
+When `format='long_typed'` is passed, each row carries one value in the typed column that matches the field's resolved Arrow type.
+All other value columns are null for that row.
+
+| Arrow Type | Typed column | Arrow schema |
+|------------|--------------|--------------|
+| Float64 | `value_f64` | `Float64` |
+| Int64 | `value_i64` | `Int64` |
+| Utf8 | `value_str` | `Utf8` |
+| Boolean | `value_bool` | `Boolean` |
+| Date32 | `value_date` | `Date32` |
+| Timestamp (UTC, µs) | `value_ts` | `Timestamp[us, UTC]` |
+
+The full column order for `LONG_TYPED` output is:
+`ticker`, `field`, `value_f64`, `value_i64`, `value_str`, `value_bool`, `value_date`, `value_ts`.
+
+```python
+from xbbg import blp
+
+df = blp.bdp(
+    ["AAPL US Equity", "MSFT US Equity"],
+    ["PX_LAST", "VOLUME", "NAME", "DVD_EX_DT"],
+    format="long_typed",
+)
+# PX_LAST  → value_f64 populated, others null
+# VOLUME   → value_f64 populated (float64 default for bdp)
+# NAME     → value_str populated
+# DVD_EX_DT → value_date populated
+```
+
+<Aside type="note">
+`LONG_TYPED` is supported by all backends including lazy backends (Polars lazy, DuckDB, narwhals lazy).
+</Aside>
+
+## Time Types
+
+Bloomberg has three distinct temporal datatypes. xbbg maps each to a different Arrow type to preserve semantics:
+
+### Date32
+
+Fields with Bloomberg `datatype=Date` (e.g. `DVD_EX_DT`, `MATURITY`) are stored as `Date32` —
+a 32-bit integer counting days since 1970-01-01.
+This is lossless and compact.
+
+### Timestamp (microseconds, UTC)
+
+Fields with Bloomberg `datatype=Datetime` (e.g. `LAST_TRADE_TIME`, `NEWS_SENTIMENT_DT_TIME`) are stored
+as `Timestamp[us, UTC]`. The Rust engine checks the Bloomberg datetime's parts bitmask to confirm both
+date and time components are present before emitting a Timestamp.
+
+### Time64 (microseconds)
+
+Fields with Bloomberg `datatype=Time` (e.g. `TIME_OF_TRADE`, real-time time-of-day fields) are stored as
+`Time64[us]` — microseconds elapsed since midnight with no date component.
+
+Bloomberg Time fields have zeroed date parts. Converting them to a Timestamp would produce a garbage
+value anchored near year 0 (or the Unix epoch) rather than a meaningful wall-clock time.
+The Rust engine detects this case for `Datetime` fields too: if the date parts bitmask is zero, the value
+is emitted as `Time64` even when the Bloomberg datatype is `Datetime`.
+
+The mapping in `value_ts` (LONG_TYPED) captures both Timestamp and Datetime values.
+Pure time-of-day values (`Time64`) do not appear in `value_ts`; they appear in `value_str` unless
+the field cache has resolved them as a time type and the schema is built accordingly.
+
+## Manual Type Overrides
+
+You can override the resolved type for any field on a per-request basis using the `field_types` parameter.
+This is the highest-priority step in the resolution hierarchy and takes precedence over both the cache
+and the live API lookup.
+
+```python
+from xbbg import blp
+
+# Bloomberg resolves VOLUME as float64 by default.
+# Override to int64 for cleaner output.
+df = blp.bdp(
+    "AAPL US Equity",
+    ["PX_LAST", "VOLUME"],
+    field_types={"VOLUME": "int64"},
+)
+```
+
+Accepted type strings are:
+
+| Type string(s) | Arrow type |
+|----------------|------------|
+| `float64`, `float`, `double`, `f64` | Float64 |
+| `int64`, `int`, `integer`, `i64` | Int64 |
+| `int32`, `i32` | Int32 |
+| `bool`, `boolean` | Boolean |
+| `date32`, `date` | Date32 |
+| `timestamp`, `datetime`, `timestamp_us` | Timestamp (UTC, µs) |
+| `time64`, `time`, `time64_us` | Time64 (µs) |
+| `string` (or any unrecognised string) | Utf8 |
+
+### Field validation
+
+The `validate_fields` parameter controls whether unknown field mnemonics are rejected:
+
+```python
+# Strict: raise on any field not found in //blp/apiflds
+df = blp.bdp("AAPL US Equity", ["PX_LAST", "BADFIELD"], validate_fields=True)
+
+# Lenient (default, follows engine-level validation_mode setting)
+df = blp.bdp("AAPL US Equity", ["PX_LAST", "BADFIELD"], validate_fields=None)
+
+# Disabled: skip validation regardless of engine config
+df = blp.bdp("AAPL US Equity", ["PX_LAST", "BADFIELD"], validate_fields=False)
+```
+
+The engine-level default is `validation_mode='disabled'`.
+Set it globally with `xbbg.configure(validation_mode='strict')` or `'lenient'`.

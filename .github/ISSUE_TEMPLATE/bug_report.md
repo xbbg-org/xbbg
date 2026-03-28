@@ -42,11 +42,11 @@ Paste the full error message or traceback here
 
 ## Environment
 
-- **xbbg version**: [e.g., 0.7.11]
+- **xbbg version**: [e.g., 1.0.0]
 - **Python version**: [e.g., 3.11.5]
 - **Operating System**: [e.g., Windows 11, Ubuntu 22.04, macOS 14]
 - **Bloomberg API version**: [e.g., blpapi 3.20.0]
-- **pandas version**: [e.g., 2.1.0]
+- **pyarrow version**: [e.g., 22.0.0]
 
 ## Additional Context
 
@@ -58,6 +58,6 @@ Add any other context about the problem here, such as:
 
 ## Checklist
 
-- [ ] I have checked the [documentation](https://xbbg.readthedocs.io/) for similar issues
+- [ ] I have checked the [documentation](https://alpha-xone.github.io/xbbg/) for similar issues
 - [ ] I have searched existing [issues](https://github.com/alpha-xone/xbbg/issues) to see if this has been reported
 - [ ] I can provide a minimal reproducible example

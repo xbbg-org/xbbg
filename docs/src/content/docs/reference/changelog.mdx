@@ -5,24 +5,26 @@ description: Release notes and version history
 
 # Changelog
 
-## 1.0.0 (Upcoming)
+The full changelog is maintained in the repository root:
 
-### Breaking Changes
-- Default output format changed from wide to long
-- Removed pandas MultiIndex support
-- Removed legacy caching system
+**[CHANGELOG.md on GitHub](https://github.com/alpha-xone/xbbg/blob/main/CHANGELOG.md)**
 
-### New Features
-- Rust backend with ~10x performance improvement
-- Multi-backend support (pandas, polars, pyarrow, duckdb)
-- Native async/await API
-- Zero-copy Arrow data transfer
-- Real-time streaming subscriptions
-- BQL (Bloomberg Query Language) support
-- Schema introspection API
-- Field type resolution with caching
+xbbg follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) and the [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) format.
 
-### Improvements
-- Worker pool architecture for concurrent requests
-- GIL release during I/O operations
-- Comprehensive exception hierarchy
+## Version History
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| 1.0.0rc3 | 2026-03-26 | BQL error handling, corporate bonds cross-market, CDX on-the-run fix, session health checks |
+| 1.0.0rc2 | 2026-03-23 | Subscription `all_fields` exposure for streaming services |
+| 1.0.0rc1 | 2026-03-23 | Intraday timezone controls, pixi environment, mimalloc allocator, SOCKS5 proxy, request middleware |
+| 1.0.0b7 | 2026-03-18 | Python type stubs, macOS ARM64 wheels, Engine class, TLS support, reconnect resilience, multi-server failover, ZFP, identity entitlements, SDK logging bridge |
+| 1.0.0b6 | 2026-03-16 | Correlation ID dispatch overhaul, logging level cleanup |
+| 1.0.0b5 | 2026-03-12 | Session authentication (SAPI/B-PIPE), request middleware, `configure()` as canonical setup |
+| 1.0.0b4 | 2026-03-10 | Subscription failure isolation, lifecycle observability, disconnect handling with opt-in recovery |
+| 1.0.0b3 | 2026-03-06 | Backend enum with 13 backends, subscription mutation sync, GIL release coverage |
+| 1.0.0b2 | 2026-03-05 | Field validation toggle, canonical exception exports, generated sync wrappers |
+| 1.0.0b1 | 2026-03-03 | Template endpoint generation, endpoint factory tests |
+| 1.0.0a3 | 2026-02-27 | BQR, bflds, extension modules (bonds, options, CDX), streaming enhancements, exchange APIs |
+| 1.0.0a2 | 2026-02-19 | Comprehensive README rewrite |
+| 1.0.0a1 | 2026-02-19 | Initial Rust-powered engine: 11 crates, PyO3 bindings, streaming APIs, datamock, Starlight docs |

@@ -3,23 +3,214 @@ title: Output Formats
 description: Control output shape with Format.LONG, LONG_TYPED, and more
 ---
 
+import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
+
 # Output Formats
 
-:::note[TODO]
-This guide needs to be written. Topics to cover:
-- Format.LONG (default) - string values
-- Format.LONG_TYPED - typed value columns
-- Format.LONG_WITH_METADATA - values with dtype column
-- Format.WIDE (deprecated) - migration to .pivot()
-- Visual examples of each format
-:::
+xbbg returns data in a tidy long format by default. The `format` parameter on any data function lets you select a different shape. Pass a `Format` enum value or its string equivalent.
 
 ```python
-from xbbg import bdp, Format
+from xbbg import blp, Format
 
-# Default: all values as strings
-df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+df = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'], format=Format.LONG_TYPED)
+# or equivalently
+df = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'], format='long_typed')
+```
 
-# Typed columns (value_f64, value_i64, etc.)
-df = bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'], format=Format.LONG_TYPED)
+## Quick Reference
+
+| Format | String alias | Columns | Use case |
+|---|---|---|---|
+| `Format.LONG` | `'long'` | ticker, field, value | Default. Joins, aggregations, tidy data |
+| `Format.LONG_TYPED` | `'long_typed'` | ticker, field, value_f64, value_i64, value_str, value_date, value_ts, value_bool | Type-safe analysis without casting |
+| `Format.LONG_WITH_METADATA` | `'long_metadata'` | ticker, field, value, dtype | Serialization, debugging, data catalogs |
+| `Format.SEMI_LONG` | `'semi_long'` | ticker (+ date for bdh), one column per field | Quick inspection, closest to wide behavior |
+
+<Aside type="note">
+Lazy backends (Polars lazy, narwhals lazy, SQLFrame) support `LONG`, `SEMI_LONG`, `LONG_TYPED`, and `LONG_WITH_METADATA`.
+</Aside>
+
+---
+
+## Format.LONG (default)
+
+All field values are returned as strings. This is the default and is backwards-compatible with all backends.
+
+**Columns:** `ticker`, `field`, `value`
+
+```python
+from xbbg import blp
+
+df = blp.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME'],
+)
+```
+
+```
+            ticker    field       value
+0  AAPL US Equity  PX_LAST      189.30
+1  AAPL US Equity   VOLUME  58234100.0
+2  MSFT US Equity  PX_LAST      415.12
+3  MSFT US Equity   VOLUME  22183400.0
+```
+
+Because `value` is always a string, downstream code that needs numeric types must cast explicitly. This is intentional: LONG makes no assumptions about the field type, so it works correctly regardless of Bloomberg's metadata for a field.
+
+**Best for:** tidy-data workflows, `groupby`/`join` operations, writing to columnar stores, passing data to ML pipelines that apply their own type inference.
+
+---
+
+## Format.LONG_TYPED
+
+Each row is placed in the value column matching its Arrow type. Unmatched columns are null for that row. No casting is required by callers.
+
+**Columns:** `ticker`, `field`, `value_f64`, `value_i64`, `value_str`, `value_bool`, `value_date`, `value_ts`
+
+```python
+from xbbg import blp, Format
+
+df = blp.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME', 'SECURITY_NAME'],
+    format=Format.LONG_TYPED,
+)
+```
+
+```
+            ticker          field  value_f64  value_i64    value_str  value_bool value_date value_ts
+0  AAPL US Equity        PX_LAST     189.30       null         null        null       null     null
+1  AAPL US Equity         VOLUME       null   58234100         null        null       null     null
+2  AAPL US Equity  SECURITY_NAME       null       null    Apple Inc        null       null     null
+3  MSFT US Equity        PX_LAST     415.12       null         null        null       null     null
+4  MSFT US Equity         VOLUME       null   22183400         null        null       null     null
+5  MSFT US Equity  SECURITY_NAME       null       null  Microsoft Co        null       null     null
+```
+
+Field types come from Bloomberg's field metadata and are resolved at query time. You can override the type for specific fields with `field_types`:
+
+```python
+df = blp.bdp(
+    'AAPL US Equity',
+    ['PX_LAST', 'VOLUME'],
+    format=Format.LONG_TYPED,
+    field_types={'VOLUME': 'float64'},  # treat VOLUME as f64 instead of i64
+)
+```
+
+**Best for:** type-safe downstream analysis, Arrow/Parquet pipelines, anything where you need to branch on numeric vs. string values without inspecting dtype metadata at runtime.
+
+---
+
+## Format.LONG_WITH_METADATA
+
+Like `LONG`, but adds a `dtype` column containing the Arrow type name for each value. The `value` column is still a string.
+
+**Columns:** `ticker`, `field`, `value`, `dtype`
+
+```python
+from xbbg import blp, Format
+
+df = blp.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME', 'SECURITY_NAME'],
+    format=Format.LONG_WITH_METADATA,
+)
+```
+
+```
+            ticker          field         value   dtype
+0  AAPL US Equity        PX_LAST        189.30  float64
+1  AAPL US Equity         VOLUME      58234100    int64
+2  AAPL US Equity  SECURITY_NAME     Apple Inc   string
+3  MSFT US Equity        PX_LAST        415.12  float64
+4  MSFT US Equity         VOLUME      22183400    int64
+5  MSFT US Equity  SECURITY_NAME  Microsoft Co   string
+```
+
+The `dtype` values are Arrow type names: `float64`, `int64`, `string`, `bool`, `date32`, `timestamp[us]`. These are stable across backends.
+
+**Best for:** serialization to JSON/CSV where typed columns are not available, debugging unexpected type resolutions, building data catalogs that track field-level types.
+
+---
+
+## Format.SEMI_LONG
+
+One row per ticker (for `bdp`) or per ticker/date (for `bdh`). Fields become columns. Values are typed according to each field's Bloomberg metadata.
+
+**Columns (bdp):** `ticker`, then one column per requested field  
+**Columns (bdh):** `ticker`, `date`, then one column per requested field
+
+```python
+from xbbg import blp, Format
+
+# Reference data
+df = blp.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME', 'SECURITY_NAME'],
+    format=Format.SEMI_LONG,
+)
+```
+
+```
+            ticker  PX_LAST    VOLUME  SECURITY_NAME
+0  AAPL US Equity   189.30  58234100      Apple Inc
+1  MSFT US Equity   415.12  22183400   Microsoft Co
+```
+
+```python
+# Historical data
+df = blp.bdh(
+    'SPX Index',
+    ['PX_LAST', 'PX_VOLUME'],
+    '2024-01-02',
+    '2024-01-05',
+    format=Format.SEMI_LONG,
+)
+```
+
+```
+      ticker        date   PX_LAST   PX_VOLUME
+0  SPX Index  2024-01-02  4742.83  2134500000
+1  SPX Index  2024-01-03  4704.81  2011800000
+2  SPX Index  2024-01-04  4697.24  2198200000
+3  SPX Index  2024-01-05  4697.24  1834600000
+```
+
+SEMI_LONG retains the `ticker` column as an identifier rather than pivoting tickers into column headers. Multi-ticker queries produce stacked rows, not expanded columns.
+
+**Best for:** quick visual inspection, passing to charting libraries, situations where you want named field columns but not a fully pivoted multi-ticker layout.
+
+---
+
+---
+
+## Which Format to Choose
+
+<CardGrid>
+<Card title="LONG">
+You are doing joins, groupby, or aggregations. You need maximum backend compatibility. You will cast values yourself or don't need typed access.
+</Card>
+<Card title="LONG_TYPED">
+You need typed numeric/string/date values without writing casts. You are writing to Parquet or Arrow. You branch logic on value type.
+</Card>
+<Card title="LONG_WITH_METADATA">
+You need to know the Arrow type of each value alongside its string representation. Useful for serialization layers and debug workflows.
+</Card>
+<Card title="SEMI_LONG">
+You want fields as columns for immediate inspection or charting. Multi-ticker output is acceptable as stacked rows.
+</Card>
+</CardGrid>
+
+When in doubt, use the default (`LONG`). It is stable, backend-agnostic, and the easiest to reason about. Promote to `LONG_TYPED` when type safety is required, or to `SEMI_LONG` when a column-per-field layout simplifies downstream code.
+
+### Setting a session-wide default
+
+If all calls in your script should use the same format, pass `format` to each call rather than relying on a global — it keeps each call self-documenting. For exploratory work, the string aliases are concise:
+
+```python
+from xbbg import blp
+
+df = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME', 'SECURITY_NAME'], format='long_typed')
+df = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format='semi_long')
 ```

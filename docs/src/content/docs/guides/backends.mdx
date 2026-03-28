@@ -3,25 +3,172 @@ title: DataFrame Backends
 description: Choose between pandas, Polars, PyArrow, and more
 ---
 
+import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
+
 # DataFrame Backends
 
-:::note[TODO]
-This guide needs to be written. Topics to cover:
-- Backend enum options (pandas, polars, pyarrow, duckdb, narwhals)
-- Global vs per-call backend selection
-- Lazy backends (polars_lazy, narwhals_lazy)
-- Performance considerations
-- Conversion examples
-:::
+xbbg is DataFrame-library agnostic. The core engine returns [Apache Arrow](https://arrow.apache.org/) data; conversion to your preferred library happens at the boundary before results are returned to you. This means you can use whichever DataFrame library fits your stack without forking or wrapping xbbg.
+
+The backend abstraction is provided by [narwhals](https://github.com/narwhals-dev/narwhals), which handles the translation layer between Arrow and the supported libraries.
+
+## Supported Backends
+
+### Eager Backends
+
+Eager backends return a fully materialized DataFrame immediately.
+
+| Backend | Output type | Best for |
+|---------|-------------|----------|
+| `pandas` | `pd.DataFrame` | Traditional workflows, ecosystem compatibility |
+| `polars` | `pl.DataFrame` | High performance, large datasets |
+| `pyarrow` | `pa.Table` | Zero-copy interop, memory efficiency |
+| `narwhals` | Narwhals DataFrame | Library-agnostic code |
+| `modin` | Modin DataFrame | Pandas API with parallel execution |
+| `cudf` | cuDF DataFrame | GPU-accelerated processing (requires NVIDIA) |
+
+### Lazy Backends
+
+Lazy backends defer execution. The query graph is built when you call xbbg functions and evaluated only when you explicitly trigger execution (e.g. `.collect()` for Polars, `.execute()` for DuckDB).
+
+| Backend | Output type | Best for |
+|---------|-------------|----------|
+| `polars_lazy` | `pl.LazyFrame` | Deferred execution, query optimization |
+| `narwhals_lazy` | Narwhals LazyFrame | Library-agnostic lazy evaluation |
+| `duckdb` | DuckDB relation | SQL analytics, OLAP queries |
+| `dask` | Dask DataFrame | Out-of-core and distributed computing |
+| `ibis` | Ibis Table | Unified interface to many backends |
+| `pyspark` | Spark DataFrame | Big data processing (requires Java) |
+| `sqlframe` | SQLFrame DataFrame | SQL-first DataFrame operations |
+
+<Aside type="caution">
+  Lazy backends support `LONG`, `SEMI_LONG`, `LONG_TYPED`, and `LONG_WITH_METADATA` output formats.
+</Aside>
+
+## Selecting a Backend
+
+### Global default
+
+Set the backend once for your session. All subsequent calls use it unless overridden.
 
 ```python
-# Quick reference
 import xbbg
 from xbbg import Backend
 
-# Set global default
 xbbg.set_backend(Backend.POLARS)
 
-# Per-call override
-df = xbbg.bdp('AAPL US Equity', 'PX_LAST', backend='pandas')
+# All calls now return pl.DataFrame
+from xbbg import blp
+df = blp.bdp('AAPL US Equity', 'PX_LAST')
 ```
+
+You can also pass a string:
+
+```python
+xbbg.set_backend('polars')
+```
+
+### Per-call override
+
+Pass `backend` as a keyword argument to any data function. This overrides the global default for that call only.
+
+```python
+from xbbg import blp
+
+# Overrides the global default for this call
+df = blp.bdp('AAPL US Equity', 'PX_LAST', backend='pandas')
+```
+
+## Checking Availability
+
+Not all backends are installed in every environment. Use these utilities to inspect what is available before writing code that assumes a specific backend.
+
+```python
+from xbbg import get_available_backends, is_backend_available, print_backend_status
+
+# Returns a list of installed backend names
+print(get_available_backends())
+# ['pandas', 'polars', 'pyarrow', ...]
+
+# Check a specific backend
+if is_backend_available('polars'):
+    print("Polars is installed")
+
+# Print a detailed status table for all backends
+print_backend_status()
+```
+
+## Backend Examples
+
+<Tabs>
+  <TabItem label="pandas">
+
+```python
+from xbbg import blp, Backend
+
+df = blp.bdp('AAPL US Equity', 'PX_LAST', backend=Backend.PANDAS)
+# Returns pd.DataFrame
+print(type(df))  # <class 'pandas.core.frame.DataFrame'>
+```
+
+  </TabItem>
+  <TabItem label="polars">
+
+```python
+from xbbg import blp, Backend
+
+df = blp.bdp('AAPL US Equity', 'PX_LAST', backend=Backend.POLARS)
+# Returns pl.DataFrame
+print(type(df))  # <class 'polars.dataframe.frame.DataFrame'>
+```
+
+  </TabItem>
+  <TabItem label="pyarrow">
+
+```python
+from xbbg import blp, Backend
+
+table = blp.bdh(
+    'SPX Index',
+    'PX_LAST',
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    backend=Backend.PYARROW,
+)
+# Returns pa.Table — no copy from the internal representation
+print(type(table))  # <class 'pyarrow.lib.Table'>
+```
+
+  </TabItem>
+  <TabItem label="duckdb">
+
+```python
+from xbbg import blp, Backend
+
+relation = blp.bdh(
+    'SPX Index',
+    'PX_LAST',
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    backend=Backend.DUCKDB,
+)
+# Returns a DuckDB relation — not yet executed
+result = relation.fetchdf()  # trigger execution, returns pd.DataFrame
+```
+
+  </TabItem>
+</Tabs>
+
+## Performance Considerations
+
+**PyArrow** is the zero-copy option. Because xbbg's internal representation is Arrow, returning a `pa.Table` requires no serialization or memory copy. Use this when passing data to other Arrow-compatible systems (DuckDB, Polars, Spark via Arrow flight, etc.) or when memory pressure matters.
+
+**Polars** is the best choice for pure computation on large datasets. Its columnar engine and lazy execution model handle datasets that would be slow or impractical in pandas. The `polars_lazy` backend lets you chain additional query steps before triggering evaluation.
+
+**pandas** remains the widest-compatibility option. Use it when integrating with libraries that only accept `pd.DataFrame`, or when working with existing pandas-based pipelines. It is not required as a dependency — if your code uses the `polars` or `pyarrow` backends exclusively, pandas does not need to be installed.
+
+**Lazy backends** (DuckDB, Polars lazy, Dask, etc.) are useful when you want to compose queries across multiple xbbg calls before materializing any data, or when the result set is too large to hold in memory.
+
+## Related
+
+- [Output Formats](/xbbg/guides/output-formats/) — control the shape of returned data (LONG, LONG_TYPED, etc.)
+- [API Reference](/xbbg/api/blp/) — full function documentation with all parameters

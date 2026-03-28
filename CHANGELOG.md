@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **PyPI classifiers**: Added `Development Status :: 5 - Production/Stable`, `Intended Audience :: Financial and Insurance Industry`, `Intended Audience :: Science/Research`, `Topic :: Office/Business :: Financial`, `Programming Language :: Rust`, and `Typing :: Typed`.
+- **README**: Fixed all documentation links from defunct ReadTheDocs to Starlight site (`alpha-xone.github.io/xbbg`), updated latest-release marker to rc3, removed stale Codecov/Codacy/CodeFactor badges, replaced dead `Auto CI` build badge with `ci-rust.yml`, and removed "beta" language in project description.
+- **Issue templates**: Updated documentation links and environment version examples for v1.
+- **CONTRIBUTING.md**: Corrected minimum Rust version from 1.70 to 1.75.
+
+### Added
+
+- **SECURITY.md**: Restored security policy with vulnerability reporting instructions and hardening notes.
+- **GitHub Pages deploy workflow**: Added `deploy-docs.yml` for automated Starlight docs deployment on push to main.
+- **Documentation**: Wrote complete content for all guide and reference pages (migration, streaming, async, backends, output formats, configuration, type mappings).
+
+### Removed
+
+- **`Format.WIDE`**: Removed the deprecated wide output format. Use `Format.SEMI_LONG` for field-as-column output, or call `.pivot()` on `Format.LONG` results.
+- **`asset_config()`**: Removed the deprecated market config helper. Use `market_info(ticker)` instead.
+
 ## [1.0.0rc3] - 2026-03-26
 
 ### Fixed

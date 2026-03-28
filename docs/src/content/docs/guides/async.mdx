@@ -3,26 +3,209 @@ title: Async Patterns
 description: Concurrent Bloomberg requests with async/await
 ---
 
+import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
+
 # Async Patterns
 
-:::note[TODO]
-This guide needs to be written. Topics to cover:
-- Sync vs async API (bdp vs abdp)
-- asyncio.gather for concurrent requests
-- GIL release and true parallelism
-- Best practices for batching
-- Error handling in async contexts
-:::
+xbbg v1 is async-first. Every data function has an `async` counterpart: `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`, and so on. The async versions are the canonical implementation — the sync functions are thin wrappers that delegate via `_run_sync()`.
+
+## Architecture
+
+Under the hood, xbbg runs a Rust async engine with pre-warmed worker pools. Each request worker holds an independent Bloomberg session, and concurrent calls are dispatched round-robin:
+
+```
+┌─────────────────────────────────────────────────┐
+│                   xbbg Engine                   │
+│                                                 │
+│  ┌──────────────────────┐  ┌─────────────────┐  │
+│  │  Request Worker Pool │  │ Subscription    │  │
+│  │  (request_pool_size) │  │ Session Pool    │  │
+│  │                      │  │ (sub_pool_size) │  │
+│  │  Worker 1 ──session  │  │                 │  │
+│  │  Worker 2 ──session  │  │  Session 1      │  │
+│  │  ...                 │  │  ...            │  │
+│  └──────────────────────┘  └─────────────────┘  │
+│           │ round-robin          │ isolated      │
+│           ▼                      ▼               │
+│    bdp/bdh/bds/bdib       subscribe/stream       │
+└─────────────────────────────────────────────────┘
+```
+
+With `request_pool_size=2` (the default), two Bloomberg requests can run in parallel at the session level. Raising the pool size allows more simultaneous requests.
+
+### Sync/async function mapping
+
+| Sync | Async |
+|------|-------|
+| `bdp()` | `abdp()` |
+| `bdh()` | `abdh()` |
+| `bds()` | `abds()` |
+| `bdib()` | `abdib()` |
+| `bdtick()` | `abdtick()` |
+| `request()` | `arequest()` |
+
+All async functions accept identical parameters to their sync equivalents and return the same DataFrame types.
+
+## Basic usage in scripts
+
+In a plain script or application (no existing event loop), use `asyncio.run()`:
 
 ```python
 import asyncio
-import xbbg
+from xbbg import blp
 
-async def fetch_prices(tickers):
-    tasks = [xbbg.abdp(t, 'PX_LAST') for t in tickers]
-    return await asyncio.gather(*tasks)
+async def get_data():
+    df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
+    return df
 
-# Run concurrent requests
-tickers = ['AAPL US Equity', 'MSFT US Equity', 'GOOGL US Equity']
-results = asyncio.run(fetch_prices(tickers))
+data = asyncio.run(get_data())
 ```
+
+## Concurrent requests
+
+`asyncio.gather()` runs multiple Bloomberg requests in parallel on a single thread. Requests are dispatched across the worker pool simultaneously rather than sequentially:
+
+```python
+import asyncio
+from xbbg import blp
+
+async def get_multiple():
+    results = await asyncio.gather(
+        blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST']),
+        blp.abdp(tickers='MSFT US Equity', flds=['PX_LAST']),
+        blp.abdh(tickers='GOOGL US Equity', flds=['PX_LAST'], start_date='2024-01-01'),
+    )
+    return results  # list of DataFrames, one per awaitable
+
+results = asyncio.run(get_multiple())
+```
+
+The three requests above are dispatched at once. With the default `request_pool_size=2`, two run immediately and the third waits for a free worker. Increase the pool size to raise the concurrency ceiling:
+
+```python
+from xbbg import configure
+
+configure(request_pool_size=4)
+```
+
+## Jupyter notebooks
+
+Jupyter already runs an event loop. Calling `asyncio.run()` inside a notebook cell raises `RuntimeError: asyncio.run() cannot be called from a running event loop`. Use `await` directly instead:
+
+```python
+from xbbg import blp
+
+# Single request — await directly in the cell
+df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
+
+# Concurrent requests work the same way
+import asyncio
+results = await asyncio.gather(
+    blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST']),
+    blp.abdp(tickers='MSFT US Equity', flds=['PX_LAST']),
+)
+```
+
+<Aside type="tip">
+Jupyter's top-level `await` support is enabled automatically. No cell magic or helper libraries are needed.
+</Aside>
+
+## GIL release
+
+The Rust engine releases the Python GIL while waiting for Bloomberg I/O. This means Python threads can execute concurrently during a Bloomberg request — CPU-bound Python work is not blocked while requests are in flight. In practice:
+
+- A `asyncio.gather()` over multiple Bloomberg calls does not serialize at the GIL boundary.
+- Threads running independent Python work alongside Bloomberg requests are not stalled waiting for network responses.
+
+This is a property of the Rust/PyO3 integration, not Python's asyncio scheduler.
+
+## Error handling
+
+All xbbg exceptions inherit from `BlpError`, which lets you catch any Bloomberg-related failure with a single clause. The hierarchy:
+
+| Exception | When raised |
+|-----------|-------------|
+| `BlpSessionError` | Session start, connect, or service open failure |
+| `BlpRequestError` | Request-level error returned by Bloomberg |
+| `BlpSecurityError` | Invalid or inaccessible security identifier |
+| `BlpFieldError` | Invalid or inaccessible field name |
+| `BlpTimeoutError` | Request timed out |
+| `BlpValidationError` | Field validation failure (strict mode) |
+| `BlpInternalError` | Internal engine error |
+
+### Single request
+
+```python
+import asyncio
+from xbbg import blp
+from xbbg.exceptions import BlpSecurityError, BlpError
+
+async def safe_fetch(ticker: str):
+    try:
+        return await blp.abdp(tickers=ticker, flds=['PX_LAST'])
+    except BlpSecurityError as e:
+        print(f"Unknown security: {ticker} — {e}")
+        return None
+    except BlpError as e:
+        print(f"Bloomberg error: {e}")
+        raise
+
+asyncio.run(safe_fetch('INVALID US Equity'))
+```
+
+### Concurrent requests with partial failures
+
+By default, `asyncio.gather()` cancels all pending awaitables and re-raises the first exception. Pass `return_exceptions=True` to collect results and errors together instead:
+
+```python
+import asyncio
+from xbbg import blp
+from xbbg.exceptions import BlpError
+
+async def fetch_all(tickers: list[str]):
+    results = await asyncio.gather(
+        *[blp.abdp(tickers=t, flds=['PX_LAST']) for t in tickers],
+        return_exceptions=True,
+    )
+    for ticker, result in zip(tickers, results):
+        if isinstance(result, BlpError):
+            print(f"Failed: {ticker} — {result}")
+        else:
+            print(f"OK: {ticker}, rows={len(result)}")
+
+asyncio.run(fetch_all(['AAPL US Equity', 'INVALID', 'MSFT US Equity']))
+```
+
+<Aside type="caution">
+With `return_exceptions=True`, exceptions are returned as values in the results list — they are not raised. Check each result with `isinstance(result, Exception)` before using it.
+</Aside>
+
+## Best practices
+
+**Batch tickers in a single call instead of many parallel calls.**
+`abdp()` and `abdh()` accept a list of tickers. A single call with `['AAPL US Equity', 'MSFT US Equity', 'GOOGL US Equity']` is more efficient than three parallel calls — it sends one Bloomberg request and Bloomberg returns results for all tickers together.
+
+```python
+# Preferred: one request, many tickers
+df = await blp.abdp(
+    tickers=['AAPL US Equity', 'MSFT US Equity', 'GOOGL US Equity'],
+    flds=['PX_LAST', 'VOLUME'],
+)
+
+# Use gather when requests are genuinely different (different fields, dates, services)
+results = await asyncio.gather(
+    blp.abdp(tickers=['AAPL US Equity', 'MSFT US Equity'], flds=['PX_LAST']),
+    blp.abdh(tickers='AAPL US Equity', flds=['PX_LAST'], start_date='2024-01-01'),
+)
+```
+
+**Use async when integrating with async frameworks.**
+If you are building a FastAPI service, async task queue, or other async application, prefer the `a`-prefixed functions — they participate in the event loop without blocking it. The sync wrappers call `asyncio.run()` internally, which starts a new event loop and cannot be called from within an existing one.
+
+**Sync functions work everywhere else.**
+If your script is sequential and you have no async requirements, the sync functions (`bdp`, `bdh`, `bdib`, etc.) are fully supported in scripts, notebooks, and modules. There is no performance penalty for using sync in non-async contexts.
+
+**Match pool size to workload.**
+The default `request_pool_size=2` is appropriate for most workloads. If you are issuing many concurrent `gather()` calls with large fan-outs, raise it — but Bloomberg API servers also have per-connection limits, so test before committing to a large value.
+
+For the full API reference, see [Bloomberg Data API](/xbbg/api/blp/).

@@ -14,7 +14,7 @@
 
 <a href="https://www.buymeacoffee.com/Lntx29Oof"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
 
-**Quick Links:** [Discord](https://discord.gg/P34uMwgCjC) • [Documentation](https://xbbg.readthedocs.io/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Contributing](CONTRIBUTING.md) • [Changelog](CHANGELOG.md)
+**Quick Links:** [Discord](https://discord.gg/P34uMwgCjC) • [Documentation](https://alpha-xone.github.io/xbbg/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Contributing](CONTRIBUTING.md) • [Changelog](CHANGELOG.md)
 
 </div>
 <!-- markdownlint-enable MD033 MD041 -->
@@ -22,10 +22,10 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==1.0.0rc2 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0rc2))
+Latest release: xbbg==1.0.0rc3 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.0.0rc3))
 <!-- xbbg:latest-release-end -->
 
-> This `main` branch now tracks the Rust-based v1 beta line, a significant upgrade over 0.x in performance and architecture.
+> This `main` branch is the Rust-powered v1 release, a significant upgrade over 0.x in performance and architecture.
 > Need the legacy pure-Python behavior? Use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
 
 ## Table of Contents
@@ -59,7 +59,7 @@ Latest release: xbbg==1.0.0rc2 (release: [notes](https://github.com/alpha-xone/x
 ## Overview
 
 xbbg is a comprehensive Bloomberg API wrapper for Python, providing a clean, Pythonic interface to Bloomberg data services.
-This `main` branch is the v1 beta generation: core request execution is now Rust-powered while preserving the familiar xbbg API for day-to-day workflows.
+This `main` branch is the v1 release: core request execution is Rust-powered while preserving the familiar xbbg API for day-to-day workflows.
 
 ### Key Features
 
@@ -1655,7 +1655,7 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 **Get help fast:**
 - 💬 **Discord**: [Join our community](https://discord.gg/P34uMwgCjC) - Usually get answers within hours
 - 🐛 **GitHub Issues**: [Report bugs](https://github.com/alpha-xone/xbbg/issues) - Include error messages & code
-- 📚 **Documentation**: [ReadTheDocs](https://xbbg.readthedocs.io/) - Comprehensive guides
+- 📚 **Documentation**: [Docs](https://alpha-xone.github.io/xbbg/) - Comprehensive guides
 - 📓 **Examples**: [`xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipynb) - 100+ working examples
 
 **When reporting issues, include:**
@@ -1760,7 +1760,7 @@ pixi run ci
 
 ### Resources
 
-- **Documentation**: [ReadTheDocs](https://xbbg.readthedocs.io/)
+- **Documentation**: [alpha-xone.github.io/xbbg](https://alpha-xone.github.io/xbbg/)
 - **Examples**: [`examples/xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipynb)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Security**: [SECURITY.md](SECURITY.md)
@@ -1768,7 +1768,7 @@ pixi run ci
 ## Links
 
 - [PyPI Package](https://pypi.org/project/xbbg/)
-- [Documentation](https://xbbg.readthedocs.io/)
+- [Documentation](https://alpha-xone.github.io/xbbg/)
 - [Source Code](https://github.com/alpha-xone/xbbg)
 - [Issue Tracker](https://github.com/alpha-xone/xbbg/issues)
 - [Discord Community](https://discord.gg/P34uMwgCjC)
@@ -1791,11 +1791,8 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 | Category       | Badge                                                                                                                                    |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Docs           | [![Documentation Status](https://readthedocs.org/projects/xbbg/badge/?version=latest)](https://xbbg.readthedocs.io/)                    |
-| Build          | [![Actions Status](https://github.com/alpha-xone/xbbg/workflows/Auto%20CI/badge.svg)](https://github.com/alpha-xone/xbbg/actions)       |
-| Coverage       | [![codecov](https://codecov.io/gh/alpha-xone/xbbg/branch/main/graph/badge.svg)](https://codecov.io/gh/alpha-xone/xbbg)                  |
-| Quality        | [![Codacy Badge](https://app.codacy.com/project/badge/Grade/daec9f52ba344e3ea116c15f1fc6d541)](https://www.codacy.com/gh/alpha-xone/xbbg/) |
-|                | [![CodeFactor](https://www.codefactor.io/repository/github/alpha-xone/xbbg/badge)](https://www.codefactor.io/repository/github/alpha-xone/xbbg) |
+| Docs           | [![Documentation](https://img.shields.io/badge/docs-Starlight-blue)](https://alpha-xone.github.io/xbbg/)                                |
+| Build          | [![CI](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml) |
 | License        | [![GitHub license](https://img.shields.io/github/license/alpha-xone/xbbg.svg)](https://github.com/alpha-xone/xbbg/blob/main/LICENSE)   |
 
 For detailed release history, see [CHANGELOG.md](CHANGELOG.md).
