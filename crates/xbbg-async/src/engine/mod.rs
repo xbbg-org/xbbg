@@ -192,7 +192,12 @@ pub enum OverflowPolicy {
     /// Drop the newest data when buffer is full (default, non-blocking)
     #[default]
     DropNewest,
-    /// Drop the oldest data when buffer is full (requires bounded ring buffer)
+    /// Drop the oldest data when buffer is full.
+    ///
+    /// **Not yet implemented**: `mpsc::Sender` does not own the receiver, so true
+    /// oldest-first eviction requires a ring-buffer channel type. Until that is
+    /// added, this policy behaves identically to `DropNewest` and a warning is
+    /// emitted once at subscription construction.
     DropOldest,
     /// Block the producer until space is available (use with caution)
     Block,
