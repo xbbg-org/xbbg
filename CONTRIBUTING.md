@@ -7,7 +7,7 @@ Thank you for your interest in contributing to xbbg!
 ### Prerequisites
 
 - Python 3.10+
-- Rust 1.70+
+- Rust 1.75+
 - [pixi](https://pixi.sh/) (recommended) or pip
 - Bloomberg C++ SDK (for building the Rust backend)
 
@@ -37,6 +37,22 @@ Thank you for your interest in contributing to xbbg!
    ```bash
    pixi run test
    ```
+
+### Bloomberg SDK Compatibility
+
+The minimum supported Bloomberg C SDK version is defined in
+`defs/bloomberg.toml` (`min_sdk_version`). If you add a dependency on a new
+`blpapi_*` function or type, verify it exists in the minimum version:
+
+```bash
+# Check against min SDK (reads defs/bloomberg.toml)
+bash scripts/abi-check.sh
+
+# Check against specific versions
+bash scripts/abi-check.sh --versions "3.24.6.1 3.26.2.1"
+```
+
+CI runs this automatically as the **ABI Compat** job.
 
 ## Code Style
 

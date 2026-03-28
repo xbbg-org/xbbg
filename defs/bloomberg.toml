@@ -15,6 +15,16 @@
 
 
 # ============================================================================
+# SDK Compatibility
+# ============================================================================
+# Oldest Bloomberg C SDK version that xbbg supports. Used by:
+#   - scripts/abi-check.sh    (ABI compatibility verification)
+#   - .github/workflows/      (CI matrix)
+#   - crates/blpapi-sys/      (build-time validation, future)
+min_sdk_version = "3.24.6.1"
+
+
+# ============================================================================
 # Services
 # ============================================================================
 # Bloomberg service URIs.  Each key becomes the Python enum name (UPPER_SNAKE).
@@ -250,9 +260,6 @@ doc = "Long format with string values and dtype metadata column."
 value = "semi_long"
 doc = "Semi-long format with one row per ticker/timestamp and fields as columns."
 
-[formats.WIDE]
-value = "wide"
-doc = "Wide format with fields as columns (DEPRECATED)."
 
 
 # ============================================================================

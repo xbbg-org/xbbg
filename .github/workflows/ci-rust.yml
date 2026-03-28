@@ -698,6 +698,31 @@ jobs:
             cargo-geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml" || true
           done
 
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Bloomberg SDK ABI Compatibility (optional, non-blocking)
+  # ════════════════════════════════════════════════════════════════════════════
+  abi-compat:
+    name: ABI Compat
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
+    continue-on-error: true
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install bindgen-cli
+        run: cargo install bindgen-cli --version 0.72.1
+
+      - name: Run ABI compatibility check
+        run: |
+          # Read min supported version from defs/bloomberg.toml (single source of truth),
+          # then check that version plus the latest detected SDK.
+          MIN_SDK=$(grep '^min_sdk_version' defs/bloomberg.toml | sed 's/.*= *"\(.*\)"/\1/')
+          bash scripts/abi-check.sh --versions "$MIN_SDK $BLPAPI_VERSION"
+
   # ════════════════════════════════════════════════════════════════════════════
   # Semver Compatibility (optional, non-blocking)
   # ════════════════════════════════════════════════════════════════════════════
