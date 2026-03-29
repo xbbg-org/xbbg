@@ -7,7 +7,7 @@
 //!
 //! The async API releases the GIL during Bloomberg SDK operations:
 //! - `future_into_py` schedules work on tokio (no GIL held)
-//! - GIL is only acquired via `Python::attach()` for final Arrow conversion
+//! - GIL is only acquired via `Python::try_attach()` for final Arrow conversion
 //! - `py.detach()` releases GIL during blocking `Engine::start()`
 //!
 //! # Exception Mapping
@@ -84,6 +84,61 @@ async fn wait_for_subscription_close(close_rx: &mut watch::Receiver<bool>) {
         if *close_rx.borrow() {
             return;
         }
+    }
+}
+
+/// Shutdown-safe wrapper for [`future_into_py`].
+///
+/// Wraps any async future with interpreter-shutdown detection. If the engine
+/// signals shutdown before the future completes, or if the interpreter has been
+/// finalized by the time the future returns, the future suspends indefinitely
+/// instead of delivering a result. This prevents `future_into_py` from calling
+/// `Python::attach()` on a dead interpreter. (Issue #270)
+///
+/// Callers use `Python::attach()` naturally inside their closures — the guard
+/// is applied automatically at the boundary.
+fn shutdown_safe_future<'py, F>(
+    py: Python<'py>,
+    engine: &Arc<Engine>,
+    fut: F,
+) -> PyResult<Bound<'py, PyAny>>
+where
+    F: std::future::Future<Output = PyResult<Py<PyAny>>> + Send + 'static,
+{
+    let mut shutdown_rx = engine.shutdown_receiver();
+    future_into_py(py, async move {
+        tokio::select! {
+            result = fut => {
+                // Future completed. Verify interpreter is still alive before
+                // returning — returning triggers future_into_py's internal
+                // Python::attach() for result delivery.
+                if Python::try_attach(|_| ()).is_some() {
+                    result
+                } else {
+                    std::future::pending().await
+                }
+            }
+            _ = shutdown_rx.changed() => std::future::pending().await,
+        }
+    })
+}
+
+/// Defense-in-depth for `future_into_py` closures that lack an `Arc<Engine>`.
+///
+/// Attempts `Python::attach` to run `f`. If the interpreter has already been
+/// finalized, suspends the future forever instead of panicking — the tokio
+/// runtime drops the suspended future during process exit.
+///
+/// Used by `PySubscription` methods that cannot use [`shutdown_safe_future`]
+/// because they don't hold an `Arc<Engine>`.
+async fn try_attach_or_suspend<F, T>(f: F) -> PyResult<T>
+where
+    F: FnOnce(Python<'_>) -> PyResult<T> + Send,
+    T: Send,
+{
+    match Python::try_attach(f) {
+        Some(result) => result,
+        None => std::future::pending().await,
     }
 }
 
@@ -842,7 +897,7 @@ impl PyEngine {
             "PyEngine: sending request"
         );
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let batch = engine.request(rust_params).await.map_err(|e| {
                 warn!(error = %e, "PyEngine: request failed");
                 blp_async_error_to_pyerr(e)
@@ -861,7 +916,7 @@ impl PyEngine {
         ticker: String,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let info = engine.resolve_exchange(&ticker).await;
             Python::attach(|py| exchange_info_to_pydict(py, &info))
         })
@@ -874,7 +929,7 @@ impl PyEngine {
         ticker: String,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let info = engine
                 .fetch_market_info(&ticker)
                 .await
@@ -899,7 +954,7 @@ impl PyEngine {
         let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
             .map_err(|_| PyValueError::new_err("date must be YYYY-MM-DD"))?;
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let value = engine
                 .resolve_market_timing(&ticker, date, timing, tz.as_deref())
                 .await
@@ -939,7 +994,7 @@ impl PyEngine {
         let engine = self.engine.clone();
         let default = default_type.to_string();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let resolved = engine
                 .resolve_field_types(&fields, overrides.as_ref(), &default)
                 .await
@@ -1003,7 +1058,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let invalid = engine
                 .validate_fields(&fields)
                 .await
@@ -1025,7 +1080,7 @@ impl PyEngine {
     fn get_schema<'py>(&self, py: Python<'py>, service: String) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let schema = engine
                 .get_schema(&service)
                 .await
@@ -1051,7 +1106,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let op = engine
                 .get_operation(&service, &operation)
                 .await
@@ -1073,7 +1128,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let ops = engine
                 .list_operations(&service)
                 .await
@@ -1127,7 +1182,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let values = engine
                 .get_enum_values(&service, &operation, &element)
                 .await
@@ -1153,7 +1208,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let elements = engine
                 .list_valid_elements(&service, &operation)
                 .await
@@ -1218,7 +1273,7 @@ impl PyEngine {
             "PyEngine: creating subscription"
         );
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let stream = engine
                 .subscribe_with_options(
                     "//blp/mktdata".to_string(),
@@ -1261,6 +1316,7 @@ impl PyEngine {
                     stream: Arc::new(Mutex::new(Some(handle))),
                     ops: Arc::new(Mutex::new(())),
                     close_signal,
+                    engine_shutdown: engine.shutdown_receiver(),
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
             })
@@ -1326,7 +1382,7 @@ impl PyEngine {
             "PyEngine: creating subscription with options"
         );
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let stream = engine
                 .subscribe_with_options(
                     service_clone.clone(),
@@ -1367,6 +1423,7 @@ impl PyEngine {
                     stream: Arc::new(Mutex::new(Some(handle))),
                     ops: Arc::new(Mutex::new(())),
                     close_signal,
+                    engine_shutdown: engine.shutdown_receiver(),
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
             })
@@ -1459,6 +1516,8 @@ pub struct PySubscription {
     ops: Arc<Mutex<()>>,
     /// Signal used to wake pending iteration during unsubscribe/close.
     close_signal: watch::Sender<bool>,
+    /// Engine-level shutdown signal — wakes pending iteration when the engine shuts down.
+    engine_shutdown: watch::Receiver<bool>,
 }
 
 /// Internal handle for subscription metadata and operations (without the receiver)
@@ -1681,6 +1740,7 @@ impl PySubscription {
     fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let rx = self.rx.clone();
         let close_signal = self.close_signal.clone();
+        let mut engine_shutdown_rx = self.engine_shutdown.clone();
 
         future_into_py(py, async move {
             let mut close_rx = close_signal.subscribe();
@@ -1692,11 +1752,14 @@ impl PySubscription {
                 tokio::select! {
                     item = rx_ref.recv() => Ok(item),
                     _ = wait_for_subscription_close(&mut close_rx) => Err(()),
+                    _ = engine_shutdown_rx.changed() => Err(()),
                 }
             };
 
             match item {
-                Ok(Some(Ok(batch))) => Python::attach(|py| record_batch_to_pyarrow(py, batch)),
+                Ok(Some(Ok(batch))) => {
+                    try_attach_or_suspend(|py| record_batch_to_pyarrow(py, batch)).await
+                }
                 Ok(Some(Err(blp_err))) => Err(blp_error_to_pyerr(blp_err)),
                 Ok(None) => Err(PyStopAsyncIteration::new_err("subscription ended")),
                 Err(()) => Err(PyStopAsyncIteration::new_err("subscription closed")),
@@ -2011,7 +2074,7 @@ impl PySubscription {
             }
 
             if !remaining.is_empty() {
-                Python::attach(|py| {
+                try_attach_or_suspend(|py| {
                     let list = pyo3::types::PyList::empty(py);
                     for batch in remaining {
                         let py_batch = record_batch_to_pyarrow(py, batch)?;
@@ -2019,8 +2082,9 @@ impl PySubscription {
                     }
                     Ok(list.into_any().unbind())
                 })
+                .await
             } else {
-                Python::attach(|py| Ok(py.None()))
+                try_attach_or_suspend(|py| Ok(py.None())).await
             }
         })
     }

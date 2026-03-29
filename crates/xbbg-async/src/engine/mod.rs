@@ -24,7 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
 use parking_lot::Mutex;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use xbbg_core::session::Session;
 use xbbg_core::{apply_session_identity_options, AuthConfig, BlpError, SessionOptions};
@@ -1339,6 +1339,8 @@ pub struct Engine {
     schema_cache: crate::schema::SchemaCache,
     /// Exchange metadata cache (in-memory + disk)
     exchange_cache: ExchangeCache,
+    /// Broadcast shutdown signal for data-path consumers (e.g. PySubscription).
+    shutdown_signal: watch::Sender<bool>,
 }
 
 impl Engine {
@@ -1382,6 +1384,8 @@ impl Engine {
             "Engine ready"
         );
 
+        let (shutdown_signal, _) = watch::channel(false);
+
         Ok(Self {
             request_pool,
             subscription_pool,
@@ -1389,6 +1393,7 @@ impl Engine {
             config,
             schema_cache: crate::schema::SchemaCache::new(),
             exchange_cache: ExchangeCache::new(),
+            shutdown_signal,
         })
     }
 
@@ -1901,6 +1906,7 @@ impl Engine {
     /// Used by Drop and Python atexit to avoid blocking.
     pub fn signal_shutdown(&self) {
         xbbg_log::info!("Engine signal_shutdown requested");
+        let _ = self.shutdown_signal.send(true);
         self.request_pool.signal_shutdown();
         self.subscription_pool.signal_shutdown();
     }
@@ -1911,8 +1917,17 @@ impl Engine {
     /// Consumes the Engine.
     pub fn shutdown_blocking(mut self) {
         xbbg_log::info!("Engine shutdown_blocking requested");
+        let _ = self.shutdown_signal.send(true);
         self.request_pool.shutdown_blocking();
         self.subscription_pool.shutdown_blocking();
+    }
+
+    /// Get a receiver that fires when shutdown is signaled.
+    ///
+    /// Data-path consumers (e.g. `PySubscription.__anext__`) select on this
+    /// to break out of their recv loop promptly after `signal_shutdown()`.
+    pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
+        self.shutdown_signal.subscribe()
     }
 
     /// Get the tokio runtime (for spawning tasks).
