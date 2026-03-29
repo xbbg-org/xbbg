@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 import functools
 import inspect
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 import warnings
@@ -80,6 +81,7 @@ _config = None  # PyEngineConfig instance or None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
+_engine_lock = threading.Lock()
 
 # Scoped engine for multi-engine routing (async-safe via contextvars)
 _active_engine: contextvars.ContextVar[Engine | None] = contextvars.ContextVar("_active_engine", default=None)
@@ -404,7 +406,8 @@ def configure(
             are also supported.
 
     Raises:
-        RuntimeError: If called after the engine has already started.
+        RuntimeWarning: If called after the engine has already started
+            (the existing engine is shut down and will restart with the new config).
         NotImplementedError: If unsupported session-only options such as
             `sess` or `tls_options` are provided.
 
@@ -446,10 +449,18 @@ def configure(
     if (num_start_attempts := normalized.get("num_start_attempts")) is not None and num_start_attempts < 1:
         raise ValueError("num_start_attempts must be at least 1")
 
-    if _engine is not None:
-        raise RuntimeError(
-            "Cannot configure after engine has started. Call xbbg.configure() before any Bloomberg request."
-        )
+    with _engine_lock:
+        if _engine is not None:
+            warnings.warn(
+                "xbbg.configure() called after engine was already started. "
+                "The existing engine has been shut down and will restart with new config on next use. "
+                "To avoid this, call configure() before any Bloomberg request, "
+                "or use xbbg.Engine(...) for scoped configuration.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            _engine.signal_shutdown()
+            _engine = None
 
     from . import _core
 
@@ -523,7 +534,10 @@ def _resolve_backend(backend: Backend | str | None) -> Backend | None:
 
 
 def _get_engine(*, engine: Engine | None = None):
-    """Get the active engine: explicit arg > contextvar scope > global singleton."""
+    """Get the active engine: explicit arg > contextvar scope > global singleton.
+
+    Thread-safe: uses double-checked locking for the global singleton.
+    """
     if engine is not None:
         return engine._py_engine
 
@@ -533,15 +547,17 @@ def _get_engine(*, engine: Engine | None = None):
 
     global _engine
     if _engine is None:
-        from . import _core
+        with _engine_lock:
+            if _engine is None:
+                from . import _core
 
-        if _config is not None:
-            logger.debug("Creating PyEngine with config: %s", _config)
-            _engine = _core.PyEngine.with_config(_config)
-        else:
-            logger.debug("Creating PyEngine with default config")
-            _engine = _core.PyEngine()
-        logger.info("PyEngine connected to Bloomberg")
+                if _config is not None:
+                    logger.debug("Creating PyEngine with config: %s", _config)
+                    _engine = _core.PyEngine.with_config(_config)
+                else:
+                    logger.debug("Creating PyEngine with default config")
+                    _engine = _core.PyEngine()
+                logger.info("PyEngine connected to Bloomberg")
     return _engine
 
 
@@ -1300,6 +1316,17 @@ def _build_sync_wrapper(
 
     @functools.wraps(template_func)
     def wrapped(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # No running loop — asyncio.run() is safe
+        else:
+            raise RuntimeError(
+                f"{sync_name}() cannot be used inside an async context "
+                f"(FastAPI, Jupyter, etc.). "
+                f"Use 'await a{sync_name}()' instead, "
+                f"or use xbbg.Engine(...) for scoped async engines."
+            )
         return asyncio.run(async_func(*args, **kwargs))
 
     wrapped.__name__ = sync_name
