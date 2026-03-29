@@ -17,6 +17,16 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 logger.setLevel(logging.WARNING)
 
+import warnings
+warnings.warn(
+    "You are using xbbg 0.x which is in maintenance mode. "
+    "xbbg 1.0 release candidate is available with significant improvements. "
+    "Install it with: pip install xbbg --pre  "
+    "See https://github.com/alpha-xone/xbbg/blob/main/CHANGELOG.md for details.",
+    FutureWarning,
+    stacklevel=2,
+)
+
 # Backend and format configuration (matching Rust v1 API)
 from xbbg.backend import (  # noqa: E402, F401
     Backend,

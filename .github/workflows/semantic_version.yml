@@ -205,7 +205,7 @@ jobs:
         cat /tmp/release_notes.md
         echo "============================================================"
 
-    - name: Update CHANGELOG.md and README.md
+    - name: Update CHANGELOG.md, README.md, and docs/index.rst
       if: inputs.create_release == true
       run: |
         VERSION="${{ steps.new_version.outputs.new_version }}"
@@ -269,6 +269,43 @@ jobs:
             print("README.md latest release markers not found — skipping")
         PY
 
+        # Update docs/index.rst latest-release marker (RST format, same branch only)
+        python3 - <<'PY2'
+        from pathlib import Path
+
+        version = "${{ steps.new_version.outputs.new_version }}"
+        tag = "${{ steps.new_version.outputs.tag }}"
+        repo = "${{ github.repository }}"
+
+        index_rst = Path("docs/index.rst")
+        if not index_rst.exists():
+            print("docs/index.rst not found — skipping")
+        else:
+            text = index_rst.read_text(encoding="utf-8")
+            start = "xbbg:latest-release-start"
+            end = "xbbg:latest-release-end"
+            if start in text and end in text:
+                new_line = f"Latest release: xbbg=={version} (release: `notes <https://github.com/{repo}/releases/tag/{tag}>`_)"
+                lines = text.splitlines(keepends=True)
+                out, skip = [], False
+                for line in lines:
+                    if start in line:
+                        out.append(line)
+                        out.append("\n")
+                        out.append(new_line + "\n")
+                        out.append("\n")
+                        skip = True
+                    elif end in line:
+                        skip = False
+                        out.append(line)
+                    elif not skip:
+                        out.append(line)
+                index_rst.write_text("".join(out), encoding="utf-8")
+                print(f"docs/index.rst updated to {version}")
+            else:
+                print("docs/index.rst latest release markers not found — skipping")
+        PY2
+
     - name: Commit release doc changes
       if: inputs.create_release == true
       run: |
@@ -277,10 +314,10 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
         # Check if there are changes to commit
-        if git diff --quiet CHANGELOG.md README.md 2>/dev/null; then
+        if git diff --quiet CHANGELOG.md README.md docs/index.rst 2>/dev/null; then
           echo "No release doc changes"
         else
-          git add CHANGELOG.md README.md
+          git add CHANGELOG.md README.md docs/index.rst
           git commit -m "docs(release): update docs for ${VERSION} release"
           BRANCH="${GITHUB_REF#refs/heads/}"
           git push origin HEAD:"${BRANCH}"

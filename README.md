@@ -25,6 +25,12 @@
 Latest release: xbbg==0.12.0 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0))
 <!-- xbbg:latest-release-end -->
 
+> **xbbg 1.0 Release Candidate Available**
+> We are preparing the 1.0 release on the `main` branch with significant improvements.
+> Install the RC with `pip install xbbg --pre` and please [report any issues](https://github.com/alpha-xone/xbbg/issues).
+> See the [CHANGELOG](CHANGELOG.md) for what's new.
+
+
 ## Table of Contents
 
 - [Overview](#overview)

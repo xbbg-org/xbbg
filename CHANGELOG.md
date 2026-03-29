@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **1.0 release candidate notice**: Added a banner to README.md directing users to the 1.0 RC (`pip install xbbg --pre`).
+- **Runtime deprecation warning**: Importing xbbg 0.x now emits a `FutureWarning` informing users that 1.0 is available. Shown once per process.
+
+### Fixed
+
+- **Release workflow**: Added `docs/index.rst` latest-release marker update to the inline release workflow. Previously dropped when the cross-branch `update_index_on_release.yml` was removed.
+
 ## [0.12.2] - 2026-03-18
 
 ### Fixed
