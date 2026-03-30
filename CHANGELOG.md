@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0rc4] - 2026-03-30
+
 ### Changed
 
 - **PyPI classifiers**: Added `Development Status :: 5 - Production/Stable`, `Intended Audience :: Financial and Insurance Industry`, `Intended Audience :: Science/Research`, `Topic :: Office/Business :: Financial`, `Programming Language :: Rust`, and `Typing :: Typed`.
@@ -1131,7 +1133,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...HEAD
+[1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...v1.0.0rc4
 [1.0.0rc2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...v1.0.0rc1
 [1.0.0b7]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...v1.0.0b7
