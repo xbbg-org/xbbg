@@ -314,7 +314,7 @@ impl SubscriptionState {
         }
 
         // Build fixed arrays
-        let timestamp_array = self.timestamp_builder.finish();
+        let timestamp_array = self.timestamp_builder.finish().with_timezone("UTC");
         let topic_array = self.topic_builder.finish();
 
         // Build field arrays — use TypedBuilder where available, String nulls otherwise
@@ -368,7 +368,7 @@ impl SubscriptionState {
         let mut fields = vec![
             Field::new(
                 "timestamp",
-                DataType::Timestamp(TimeUnit::Microsecond, None),
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
                 false,
             ),
             Field::new("topic", DataType::Utf8, false),

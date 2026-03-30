@@ -2,7 +2,10 @@
 //!
 //! These tests don't require a Bloomberg connection.
 
+use crate::engine::state::SubscriptionState;
 use crate::engine::{EngineConfig, OutputFormat, OverflowPolicy};
+use arrow::datatypes::{DataType, TimeUnit};
+use tokio::sync::mpsc;
 
 // =========================================================================
 // Engine configuration tests
@@ -299,4 +302,31 @@ fn test_blp_async_error_is_send_sync() {
     // BlpAsyncError must be Send + Sync for use across async boundaries
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<BlpAsyncError>();
+}
+
+#[test]
+fn test_subscription_flush_emits_utc_timestamp_column() {
+    let (tx, mut rx) = mpsc::channel(1);
+    let mut state = SubscriptionState::new(
+        "AAPL US Equity".to_string(),
+        vec!["LAST_PRICE".to_string()],
+        tx,
+        10,
+        false,
+    );
+
+    state.timestamp_builder.append_value(1_717_242_600_000_000);
+    state.topic_builder.append_value("AAPL US Equity");
+    state.pending_count = 1;
+
+    state.flush();
+
+    let batch = rx
+        .try_recv()
+        .expect("subscription flush should emit a batch")
+        .expect("subscription flush should emit a successful batch");
+    let expected = DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()));
+
+    assert_eq!(batch.schema().field(0).data_type(), &expected);
+    assert_eq!(batch.column(0).data_type(), &expected);
 }

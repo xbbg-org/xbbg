@@ -144,7 +144,8 @@ async def test_timestamp_source():
             now = datetime.now(timezone.utc)
             # Bloomberg SDK receive time should be within a few seconds of wall clock
             if ts_val is not None and hasattr(ts_val, "timestamp"):
-                diff_seconds = abs((now - ts_val.replace(tzinfo=timezone.utc)).total_seconds())
+                assert ts_val.tzinfo == timezone.utc, f"Expected UTC-aware timestamp, got {ts_val!r}"
+                diff_seconds = abs((now - ts_val).total_seconds())
                 print(f"  Batch {batch_count}: ts={ts_val}  wall_diff={diff_seconds:.3f}s")
             else:
                 print(f"  Batch {batch_count}: ts={ts_val} (type: {type(ts_val).__name__})")
