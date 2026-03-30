@@ -14,9 +14,11 @@ Usage:
 Pass --safe to call shutdown() properly (should never panic).
 """
 
-import sys
-import os
+from __future__ import annotations
+
 import asyncio
+import os
+import sys
 import threading
 import time
 
@@ -74,6 +76,7 @@ def main():
         # Safe mode: normal asyncio.run with explicit shutdown
         async def safe_run():
             import xbbg
+
             sub = await xbbg.asubscribe(TICKER, FIELDS, tick_mode=True, all_fields=True)
             count = 0
             async for _tick in sub:

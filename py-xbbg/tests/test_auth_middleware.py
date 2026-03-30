@@ -241,11 +241,23 @@ def test_configure_rejects_invalid_num_start_attempts():
         blp.configure(max_attempt=0)
 
 
-def test_configure_still_rejects_after_engine_start():
-    blp._engine = object()
+def test_configure_warns_and_restarts_after_engine_start():
+    """configure() after engine start shuts down old engine with a warning."""
+    class MockEngine:
+        def __init__(self):
+            self.shutdown_called = False
+        def signal_shutdown(self):
+            self.shutdown_called = True
 
-    with pytest.raises(RuntimeError, match="Cannot configure after engine has started"):
+    mock = MockEngine()
+    blp._engine = mock
+
+    with pytest.warns(RuntimeWarning, match="already started"):
         blp.configure(host="bpipe-host")
+
+    assert mock.shutdown_called, "signal_shutdown should have been called"
+    assert blp._engine is None, "engine should be cleared for recreation"
+    assert blp._config is not None, "new config should be stored"
 
 
 def test_public_exports_include_configure_and_middleware_helpers():
