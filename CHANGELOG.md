@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **Subscription event timestamps (issue #273)**: `asubscribe(..., tick_mode=True)` and raw subscription batches now expose the event `timestamp` column as UTC-aware Arrow/Python datetimes instead of naive UTC values. This fixes incorrect `.timestamp()` conversions on non-UTC hosts.
+
 ## [1.0.0rc4] - 2026-03-30
 
 ### Changed
