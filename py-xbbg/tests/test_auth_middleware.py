@@ -243,9 +243,11 @@ def test_configure_rejects_invalid_num_start_attempts():
 
 def test_configure_warns_and_restarts_after_engine_start():
     """configure() after engine start shuts down old engine with a warning."""
+
     class MockEngine:
         def __init__(self):
             self.shutdown_called = False
+
         def signal_shutdown(self):
             self.shutdown_called = True
 
