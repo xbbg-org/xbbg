@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Changed
 
 - **PyPI classifiers**: Added `Development Status :: 5 - Production/Stable`, `Intended Audience :: Financial and Insurance Industry`, `Intended Audience :: Science/Research`, `Topic :: Office/Business :: Financial`, `Programming Language :: Rust`, and `Typing :: Typed`.
-- **README**: Fixed all documentation links from defunct ReadTheDocs to Starlight site (`alpha-xone.github.io/xbbg`), updated latest-release marker to rc3, removed stale Codecov/Codacy/CodeFactor badges, replaced dead `Auto CI` build badge with `ci-rust.yml`, and removed "beta" language in project description.
+- **README**: Fixed all documentation links from defunct ReadTheDocs to Starlight site (`alpha-xone.github.io/xbbg`), updated the latest-release marker to rc4, removed stale Codecov/Codacy/CodeFactor badges, replaced dead `Auto CI` build badge with `ci-rust.yml`, and removed "beta" language in project description.
 - **Issue templates**: Updated documentation links and environment version examples for v1.
 - **CONTRIBUTING.md**: Corrected minimum Rust version from 1.70 to 1.75.
 

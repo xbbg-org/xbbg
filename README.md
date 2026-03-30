@@ -32,24 +32,32 @@ Latest release: xbbg==1.0.0rc4 (release: [notes](https://github.com/alpha-xone/x
 
 - [Overview](#overview)
 - [Why Choose xbbg?](#why-choose-xbbg)
-- [Supported Functionality](#supported-functionality)
+- [Complete API Reference](#complete-api-reference)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
   - [Basic Usage](#basic-usage)
-  - [Common Use Cases](#common-use-cases)
+  - [Common Workflows](#common-workflows)
   - [Connection Options](#connection-options)
   - [Async Functions](#async-functions)
   - [Multi-Backend Support](#multi-backend-support)
+- [Power User and Infrastructure APIs](#power-user-and-infrastructure-apis)
+  - [Generic Requests and Raw JSON](#generic-requests-and-raw-json)
+  - [Schema, Operations, and IDE Stubs](#schema-operations-and-ide-stubs)
+  - [Field Metadata, Cache, and Type Resolution](#field-metadata-cache-and-type-resolution)
+  - [Market Metadata and Session Overrides](#market-metadata-and-session-overrides)
+  - [SDK Detection, Logging, and Diagnostics](#sdk-detection-logging-and-diagnostics)
+  - [Testing Utilities](#testing-utilities)
+  - [Exception Types](#exception-types)
 - [Examples](#examples)
   - [📊 Reference Data](#-reference-data)
   - [📈 Historical Data](#-historical-data)
-  - [⏱️ Intraday Data](#️-intraday-data)
-  - [🔍 Screening & Queries](#-screening--queries)
+  - [⏱️ Intraday Data](#-intraday-data)
+  - [🔍 Screening & Queries](#-screening-queries)
   - [📡 Real-time](#-real-time)
   - [🔧 Utilities](#-utilities)
 - [Data Storage](#data-storage)
-- [Troubleshooting](#troubleshooting)
+- [Troubleshooting](#-troubleshooting)
 - [Development](#development)
 - [Contributing](#contributing)
 - [Getting Help](#getting-help)
@@ -203,6 +211,8 @@ xbbg is the **only Python library** that provides:
 
 ## Complete API Reference
 
+> Unless noted otherwise, the typed request helpers below have async `a...` counterparts (`bdp` → `abdp`, `bcurves` → `abcurves`, etc.).
+
 ### Reference Data - Point-in-Time Snapshots
 
 | Function | Description | Key Features |
@@ -222,6 +232,10 @@ xbbg is the **only Python library** that provides:
 | Function | Description | Key Features |
 |----------|-------------|--------------|
 | **`yas()`** | Yield & Spread Analysis | YAS calculator wrapper<br>YTM/YTC yield types<br>Price↔yield conversion<br>Spread calculations |
+| **`preferreds()`** | Preferred security screening | Issuer-centric lookup<br>BQL-backed preferred universe |
+| **`corporate_bonds()`** | Corporate bond screening | Cross-market debt lookup<br>Issuer-to-bond discovery |
+
+> `xbbg.ext` follows the same async naming convention as the core API: extension helpers generally expose `a...` variants without needing separate conceptual documentation for each async name.
 
 ### Bond Analytics (via `xbbg.ext`)
 
@@ -244,6 +258,13 @@ xbbg is the **only Python library** that provides:
 | **`option_chain()`** | Chain via overrides | `CHAIN_TICKERS` with filtering |
 | **`option_chain_bql()`** | Chain via BQL | Rich filtering, expiry/strike ranges |
 | **`option_screen()`** | Multi-option comparison | Side-by-side analytics |
+
+Options helper enums exported by `xbbg.ext`:
+- **`PutCall`** — put/call selector
+- **`ChainPeriodicity`** — chain interval / expiry grouping
+- **`StrikeRef`** — strike-reference mode
+- **`ExerciseType`** — American/European exercise metadata
+- **`ExpiryMatch`** — expiry matching strategy
 
 ### CDX Analytics (via `xbbg.ext`)
 
@@ -283,19 +304,23 @@ xbbg is the **only Python library** that provides:
 | **`bql()`** | Bloomberg Query Language | SQL-like syntax<br>Complex transformations<br>Options chain analysis |
 | **`bqr()`** | Bloomberg Quote Request | Tick-level dealer quotes<br>Broker attribution codes<br>Spread price & yield data<br>Date offset support (-2d, -1w) |
 | **`bsrch()`** | SRCH (Search) queries | Fixed income searches<br>Commodity screens<br>Weather data |
+| **`bcurves()`** | Yield-curve discovery | Country/currency filters<br>Curve ID lookup |
+| **`bgovts()`** | Government security search | Treasury/sovereign lookup<br>Partial or exact matching |
 | **`bta()`** | Technical Analysis | 50+ technical indicators<br>Custom studies |
+| **`ta_studies()`** | Technical analysis catalog | Discover available studies |
+| **`ta_study_params()`** | TA parameter inspection | Study inputs, defaults, and metadata |
 | **`etf_holdings()`** | ETF holdings via BQL | Complete holdings list<br>Weights & positions |
 
 ### Real-Time - Live Market Data
 
 | Function | Description | Key Features |
 |----------|-------------|--------------|
-| **`subscribe()`** | Real-time subscriptions | Async iteration<br>Topic failure isolation<br>Health/status metadata |
+| **`subscribe()`** | Real-time subscriptions | Async iteration<br>Topic failure isolation<br>`status` / `events` / `stats` observability |
 | **`stream()`** | Simplified streaming | Context manager<br>Non-blocking updates |
 | **`vwap()`** | Real-time VWAP | Streaming volume-weighted average price |
 | **`mktbar()`** | Real-time market bars | Streaming OHLCV bars |
-| **`depth()`** | Market depth | Streaming order book levels |
-| **`chains()`** | Option chains | Real-time chain data |
+| **`depth()`** | Market depth | Streaming order book levels<br>B-PIPE required |
+| **`chains()`** | Option/futures chains | Real-time chain data<br>B-PIPE required |
 
 ### Utilities
 
@@ -331,7 +356,10 @@ xbbg is the **only Python library** that provides:
 | Function | Description | Key Features |
 |----------|-------------|--------------|
 | **`add_middleware()`** | Register request middleware | Logging, caching, instrumentation |
+| **`set_middleware()`** | Replace middleware chain | Install a known pipeline in one call |
+| **`get_middleware()`** | Inspect middleware chain | Useful in apps/tests before mutation |
 | **`remove_middleware()`** | Unregister middleware | Clean removal |
+| **`clear_middleware()`** | Clear middleware chain | Reset to a pristine request path |
 | **`RequestContext`** | Request metadata | Request ID, request payload, timing, results |
 | **`RequestEnvironment`** | Engine/auth snapshot | Host, auth method, validation mode, server list |
 
@@ -339,6 +367,8 @@ xbbg is the **only Python library** that provides:
 
 - **Intraday Caching**: Automatic Parquet storage for `bdib()` bar data
 - **Timezone Support**: Exchange-aware market hours for 50+ global exchanges; `bdib()` / `bdtick()` support `request_tz` and `output_tz` (interpretation and `time`-column relabeling in the Rust engine; Bloomberg wire format remains UTC)
+- **Per-request field validation**: `validate_fields=` can override engine-level validation on `bdp()` / `bds()` / `bdh()`
+- **Scoped engines**: `Engine(...)` lets you route a block of requests to a dedicated connection without mutating global state
 - **Configurable Logging**: Debug mode for troubleshooting
 - **Batch Processing**: Efficient multi-ticker queries
 - **Standardized Output**: Consistent DataFrame column naming
@@ -370,7 +400,26 @@ pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/
 pip install xbbg
 ```
 
+For most users, also install Bloomberg's official Python package so xbbg can auto-detect the SDK runtime:
+
+```cmd
+pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
+```
+
 Supported Python versions: **3.10 – 3.14** (universal wheel).
+
+Quick verification:
+
+```python
+import xbbg
+
+print(xbbg.__version__)
+print(xbbg.get_sdk_info())
+
+# Optional: if you manage the SDK yourself instead of using blpapi/DAPI
+# xbbg.set_sdk_path('/path/to/blpapi_cpp')
+# xbbg.clear_sdk_path()  # remove a manual override
+```
 
 ## Quickstart
 
@@ -666,6 +715,16 @@ configure(auth_method='dir', dir_property='mail')
 
 Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. In the v1 architecture, async implementations are the canonical source of truth and sync functions delegate via `_run_sync()`.
 
+Common async families:
+
+| Sync | Async |
+|------|-------|
+| `bdp`, `bds`, `bdh`, `bdib`, `bdtick` | `abdp`, `abds`, `abdh`, `abdib`, `abdtick` |
+| `bql`, `bsrch`, `bqr`, `beqs` | `abql`, `absrch`, `abqr`, `abeqs` |
+| `blkp`, `bport`, `bcurves`, `bgovts` | `ablkp`, `abport`, `abcurves`, `abgovts` |
+| `subscribe`, `stream`, `vwap`, `mktbar`, `depth`, `chains` | `asubscribe`, `astream`, `avwap`, `amktbar`, `adepth`, `achains` |
+| `bta`, `bflds`, `fieldInfo`, `fieldSearch` | `abta`, `abflds`, `afieldInfo`, `afieldSearch` |
+
 #### In scripts (no existing event loop)
 
 ```python
@@ -739,7 +798,7 @@ Starting with v0.11.0, xbbg is **DataFrame-library agnostic**. You can get outpu
 | `pyspark` | Lazy | Spark DataFrame | Big data processing (requires Java) |
 | `sqlframe` | Lazy | SQLFrame DataFrame | SQL-first DataFrame operations |
 
-**Note:** Lazy backends only support `LONG`, `SEMI_LONG`, `LONG_TYPED`, and `LONG_WITH_METADATA` output formats (not `WIDE`).
+**Note:** `wide` / `Format.WIDE` was removed in v1.0.0rc4. Use `semi_long` for one row per security, or pivot a `long` result explicitly in your downstream DataFrame library.
 
 #### Check Backend Availability
 
@@ -780,9 +839,8 @@ Control the shape of your data with the `format` parameter:
 |--------|-------------|----------|
 | `long` | Tidy format with ticker, field, value columns | Analysis, joins, aggregations |
 | `long_typed` | Typed value columns per data type | Type-safe analysis, no casting needed |
-| `long_metadata` | String values with dtype column | Serialization, debugging, data catalogs |
-| `semi_long` | One row per ticker, fields as columns | Quick inspection |
-| `wide` | Tickers as columns (pandas only) | Time series alignment, Excel-like |
+| `long_metadata` | String values with dtype metadata column | Serialization, debugging, data catalogs |
+| `semi_long` | One row per security/date, fields as columns | Quick inspection, Excel-style output, replacement for removed `wide` |
 
 ```python
 from xbbg import blp
@@ -800,9 +858,11 @@ Set defaults for your entire session:
 
 ```python
 from xbbg import set_backend, Backend
+from xbbg import blp, get_backend
 
 # Set Polars as default backend
 set_backend(Backend.POLARS)
+print(get_backend())  # Backend.POLARS
 
 # All subsequent calls use this default
 df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame
@@ -814,6 +874,224 @@ df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame
 - **Memory**: Arrow-based backends use zero-copy and columnar storage
 - **Interoperability**: Direct integration with DuckDB, Spark, and other Arrow-compatible tools
 - **Future-proof**: Write library-agnostic code with narwhals backend
+
+## Power User and Infrastructure APIs
+
+The core `blp.bdp()` / `blp.bdh()` workflow covers most day-to-day usage, but the current package exposes several advanced surfaces that are easy to miss if you only skim the quickstart. This section summarizes the non-obvious parts of the public API so the README tracks the package more faithfully.
+
+### Generic Requests and Raw JSON
+
+For uncommon Bloomberg operations, raw service access, or debugging request payloads, use the generic request layer:
+
+| Surface | Purpose | Notes |
+|---------|---------|-------|
+| `request()` / `arequest()` | Low-level request entrypoint | Works with arbitrary Bloomberg services and operations |
+| `Service` / `Operation` | Enum wrappers for service URIs and request types | Safer than hand-typed strings |
+| `RequestParams` | Dataclass for validated request payloads | Useful in middleware or reusable request builders |
+| `OutputMode` | Output transport (`ARROW` or `JSON`) | `JSON` is useful for debugging Bloomberg payloads |
+| `ExtractorHint` | Override extraction strategy | Advanced escape hatch for bulk/custom responses |
+
+```python
+from xbbg import Operation, OutputMode, Service, request
+
+# Generic refdata request
+df = request(
+    Service.REFDATA,
+    Operation.REFERENCE_DATA,
+    securities=['AAPL US Equity'],
+    fields=['PX_LAST', 'VOLUME'],
+)
+
+# Raw JSON transport for debugging/custom parsing
+raw = request(
+    Service.REFDATA,
+    Operation.REFERENCE_DATA,
+    securities=['AAPL US Equity'],
+    fields=['PX_LAST'],
+    output=OutputMode.JSON,
+)
+```
+
+### Schema, Operations, and IDE Stubs
+
+xbbg ships two schema surfaces:
+
+- `blp.bops()` / `blp.bschema()` for quick interactive discovery
+- `xbbg.schema` for typed schema objects and stub-generation utilities
+
+| Surface | Purpose |
+|---------|---------|
+| `bops()` / `abops()` | List operations available on a Bloomberg service |
+| `bschema()` / `abschema()` | Return service/operation schema as plain dictionaries |
+| `xbbg.schema.get_schema()` / `aget_schema()` | Return typed `ServiceSchema` objects |
+| `xbbg.schema.get_operation()` / `aget_operation()` | Return typed `OperationSchema` objects backed by `ElementInfo` trees |
+| `xbbg.schema.list_operations()` / `alist_operations()` | Enumerate operations for a service |
+| `xbbg.schema.get_enum_values()` / `aget_enum_values()` | Discover valid enum values for an element |
+| `xbbg.schema.list_valid_elements()` / `alist_valid_elements()` | Inspect valid request element names before sending |
+| `generate_stubs()` / `configure_ide_stubs()` | Generate IDE-friendly stubs from cached Bloomberg schema |
+| `generate_ta_stubs()` | Generate TA helper stubs for study-specific autocomplete |
+
+```python
+from xbbg import blp
+from xbbg.schema import get_operation, list_operations
+
+print(blp.bops())  # quick list for //blp/refdata
+print(list_operations('//blp/instruments'))
+
+hist_schema = get_operation('//blp/refdata', 'HistoricalDataRequest')
+print(hist_schema.request.children[0].name)
+```
+
+### Field Metadata, Cache, and Type Resolution
+
+There are three related layers here:
+
+1. `bflds()` / `fieldInfo()` / `fieldSearch()` for Bloomberg field catalog discovery
+2. `xbbg.field_cache` for Arrow type resolution and cache management
+3. `field_types=` request overrides for per-call control
+
+| Surface | Purpose |
+|---------|---------|
+| `bflds()` / `abflds()` | Unified field-info and field-search entrypoint |
+| `bfld()` / `abfld()` | Alias for `bflds()` |
+| `fieldInfo()` / `afieldInfo()` | Alias for `bflds(fields=...)` |
+| `fieldSearch()` / `afieldSearch()` | Alias for `bflds(search_spec=...)` |
+| `resolve_field_types()` / `aresolve_field_types()` | Resolve Bloomberg fields to Arrow types |
+| `cache_field_types()` | Pre-warm the field cache |
+| `get_field_info()` | Return structured `FieldInfo` objects |
+| `get_field_cache_stats()` | Inspect cache path and entry count |
+| `clear_field_cache()` | Clear in-memory and on-disk field cache |
+| `FieldTypeCache` | Compatibility facade over the Rust resolver |
+
+```python
+from xbbg import blp
+from xbbg.field_cache import (
+    get_field_cache_stats,
+    resolve_field_types,
+)
+
+catalog = blp.fieldSearch('vwap')
+details = blp.fieldInfo(['PX_LAST', 'VOLUME'])
+types = resolve_field_types(['PX_LAST', 'NAME', 'DVD_EX_DT'])
+stats = get_field_cache_stats()
+```
+
+**Important current behavior:**
+
+- Field type resolution is Rust-backed and persistent
+- `field_cache_path=` can be set via `configure(...)` before the engine starts
+- `long_typed` and `long_metadata` formats are driven by these resolved field types
+
+### Market Metadata and Session Overrides
+
+The `xbbg.markets` module exposes exchange/session helpers that complement request APIs:
+
+| Surface | Purpose |
+|---------|---------|
+| `ExchangeInfo` | Structured exchange metadata record returned by Bloomberg-backed helpers |
+| `SessionWindows` | Dataclass representing derived market sessions (`day`, `pre`, `post`, etc.) |
+| `market_info()` | Lightweight market metadata for a security |
+| `market_timing()` | Session timing lookup for a ticker/session combination |
+| `ccy_pair()` | FX conversion metadata for currency pair normalization |
+| `exch_info()` | Exchange/session metadata lookup |
+| `get_session_windows()` / `derive_sessions()` | Derive named session windows without a data request |
+| `fetch_exchange_info()` / `afetch_exchange_info()` | Bloomberg-backed exchange metadata fetch |
+| `set_exchange_override()` / `get_exchange_override()` / `clear_exchange_override()` | Runtime override lifecycle for timezone/session metadata |
+| `list_exchange_overrides()` / `has_override()` | Inspect override state |
+| `convert_session_times_to_utc()` | Convert local market sessions to UTC |
+
+```python
+from xbbg.markets import get_session_windows, market_info, set_exchange_override
+
+print(market_info('ES1 Index'))
+print(get_session_windows('AAPL US Equity', mic='XNAS', regular_hours=('09:30', '16:00')))
+
+set_exchange_override(
+    'MY_PRIVATE_TICKER Equity',
+    timezone='America/New_York',
+    sessions={'regular': ('09:30', '16:00')},
+)
+```
+
+### SDK Detection, Logging, and Diagnostics
+
+Beyond `configure()`, the package exposes helpers for SDK discovery, backend validation, and engine diagnostics:
+
+| Surface | Purpose |
+|---------|---------|
+| `get_sdk_info()` | Show detected Bloomberg SDK sources and active runtime |
+| `set_sdk_path()` / `clear_sdk_path()` | Manually override SDK discovery |
+| `set_log_level()` / `get_log_level()` | Control Rust-side logging verbosity |
+| `enable_sdk_logging()` | Surface underlying Bloomberg SDK logs |
+| `get_available_backends()` / `is_backend_available()` | Inspect installed dataframe backends |
+| `check_backend()` | Validate backend availability/version and get install guidance |
+| `get_supported_formats()` / `is_format_supported()` | Inspect backend/format compatibility |
+| `check_format_compatibility()` / `validate_backend_format()` | Guard backend + format combinations programmatically |
+
+```python
+from xbbg import Backend, check_backend, get_sdk_info, print_backend_status, validate_backend_format
+
+print(get_sdk_info())
+check_backend('polars')
+validate_backend_format(Backend.PANDAS, 'semi_long')
+print_backend_status()
+```
+
+### Testing Utilities
+
+`xbbg.testing` is part of the supported public surface for non-live tests:
+
+| Helper | Purpose |
+|--------|---------|
+| `MockResponse` | Structured canned-response container used by `mock_engine()` |
+| `create_mock_response()` | Build canned request responses without a live terminal |
+| `mock_engine()` | Context manager that intercepts xbbg calls and returns canned responses |
+| `create_mock_event()` | Build Bloomberg `blpapi.test` events when `blpapi` is installed |
+| `get_admin_message_definition()` | Fetch TestUtil admin-message definitions for mocked admin events |
+| `deserialize_service()` | Deserialize service XML for TestUtil-backed mocks |
+| `append_message_dict()` | Populate mock Bloomberg messages from Python dictionaries |
+
+```python
+from xbbg import blp
+from xbbg.testing import create_mock_response, mock_engine
+
+response = create_mock_response(
+    service='//blp/refdata',
+    operation='ReferenceDataRequest',
+    data={'AAPL US Equity': {'PX_LAST': 210.5}},
+)
+
+with mock_engine([response]):
+    df = blp.bdp('AAPL US Equity', 'PX_LAST')
+```
+
+### Exception Types
+
+The current exception surface is intentionally typed and worth calling out in the README because many workflows want to catch Bloomberg failures explicitly:
+
+| Exception | Typical use |
+|-----------|-------------|
+| `BlpError` | Base class for Bloomberg-related failures |
+| `BlpSessionError` | Session startup/connectivity/auth failures |
+| `BlpRequestError` | Request-level failure with service/operation context |
+| `BlpSecurityError` | Security-specific request failure |
+| `BlpFieldError` | Field-specific request failure |
+| `BlpValidationError` | Invalid request shape, bad elements, bad enum values |
+| `BlpTimeoutError` | Request timed out |
+| `BlpInternalError` | Internal engine/runtime failure |
+| `BlpBPipeError` | B-PIPE-only feature used without B-PIPE access (`depth`, `chains`) |
+
+```python
+from xbbg import blp
+from xbbg.exceptions import BlpBPipeError, BlpValidationError
+
+try:
+    blp.depth('AAPL US Equity')
+except BlpBPipeError:
+    ...
+except BlpValidationError as exc:
+    print(exc.element, exc.suggestion)
+```
 
 ## Examples
 

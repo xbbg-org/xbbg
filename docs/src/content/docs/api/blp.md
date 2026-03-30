@@ -326,7 +326,7 @@ Async Bloomberg reference data (BDP).
   - Format.LONG (default): ticker, field, value (strings)
   - Format.LONG_TYPED: ticker, field, value_f64, value_i64, etc.
   - Format.LONG_WITH_METADATA: ticker, field, value, dtype
-  - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
+  - Format.SEMI_LONG: one row per ticker with fields as columns
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
   If None, types are auto-resolved from Bloomberg field metadata.
 - `**kwargs` - Bloomberg overrides and infrastructure options.
@@ -378,7 +378,7 @@ Async Bloomberg historical data (BDH).
   - Format.LONG (default): ticker, date, field, value (strings)
   - Format.LONG_TYPED: ticker, date, field, value_f64, value_i64, etc.
   - Format.LONG_WITH_METADATA: ticker, date, field, value, dtype
-  - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
+  - Format.SEMI_LONG: one row per security/date with fields as columns
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
   If None, types are auto-resolved from Bloomberg field metadata.
 - `**kwargs` - Additional overrides and infrastructure options.
@@ -540,7 +540,7 @@ Sync wrapper around abdp(). For async usage, use abdp() directly.
 - `tickers` - Single ticker or list of tickers.
 - `flds` - Single field or list of fields to query.
 - `backend` - DataFrame backend to return. If None, uses global default.
-- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
+- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, SEMI_LONG).
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
 - `**kwargs` - Bloomberg overrides and infrastructure options.
   
@@ -581,7 +581,7 @@ Sync wrapper around abdh(). For async usage, use abdh() directly.
 - `start_date` - Start date. Defaults to 8 weeks before end_date.
 - `end_date` - End date. Defaults to 'today'.
 - `backend` - DataFrame backend to return. If None, uses global default.
-- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
+- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, SEMI_LONG).
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
 - `**kwargs` - Additional overrides and infrastructure options.
   
@@ -1381,4 +1381,3 @@ Schemas are cached locally (~/.xbbg/schemas/) for fast subsequent access.
   >>> op = bschema(operation="ReferenceDataRequest")
   >>> [c['name'] for c in op['request']['children']]
   ['securities', 'fields', 'overrides', ...]
-

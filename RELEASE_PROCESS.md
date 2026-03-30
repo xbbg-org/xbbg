@@ -151,7 +151,7 @@ pip index versions xbbg
 
 | Branch | Purpose |
 |--------|---------|
-| `main` | v1.x development (Rust-backed beta line) |
+| `main` | v1.x development (Rust-backed stable line) |
 | `release/0.x` | v0.x maintenance releases (pure-Python stable line) |
 | `feat/*` | New features (PRs to main) |
 | `fix/*` | Bug fixes (PRs to main or release/0.x) |
@@ -255,14 +255,14 @@ When asked to create a release:
 
 ### Added
 - Multi-backend support with `Backend` enum (narwhals, pandas, polars, pyarrow, duckdb) (#173)
-- Output format control with `Format` enum (long, semi_long, wide)
+- Output format control with `Format` enum (long, semi_long, long_typed, long_metadata)
 - `bta()` function for Bloomberg Technical Analysis (#175)
 - `get_sdk_info()` as replacement for deprecated `getBlpapiVersion()`
 
 ### Changed
 - All API functions now accept `backend` and `format` parameters
 - Internal pipeline uses PyArrow tables with narwhals transformations
-- **BREAKING**: Default output format changed from `wide` to `long`
+- **BREAKING**: Deprecated `wide` output removed; use `semi_long` or pivot `long` results explicitly
 
 ### Deprecated
 - `connect()` / `disconnect()` - engine auto-initializes in v1.0
