@@ -18,6 +18,7 @@ members = [
     # Applications
     # "apps/xbbg-cli",
     # "apps/xbbg-server",
+    "apps/xbbg-mcp",
 ]
 # Omit datamock / datamock-sys so plain `cargo build` / `cargo test` at the repo
 # root does not compile the mock stack; use `cargo test -p datamock` or
