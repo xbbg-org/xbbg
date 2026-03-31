@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-03-31
+
 ### Fixed
 
 - **Subscription event timestamps (issue #273)**: `asubscribe(..., tick_mode=True)` and raw subscription batches now expose the event `timestamp` column as UTC-aware Arrow/Python datetimes instead of naive UTC values. This fixes incorrect `.timestamp()` conversions on non-UTC hosts.
@@ -1137,7 +1139,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...v1.0.0
 [1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc1...v1.0.0rc2
