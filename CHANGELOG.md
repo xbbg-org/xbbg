@@ -1138,7 +1138,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ---
 
 [Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...HEAD
-[1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...v1.0.0rc4
+[1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc3...v1.0.0rc4
+[1.0.0rc3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...v1.0.0rc1
 [1.0.0b7]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...v1.0.0b7
