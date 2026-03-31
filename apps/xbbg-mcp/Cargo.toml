@@ -1,0 +1,23 @@
+[package]
+name = "xbbg-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "MCP stdio server for xbbg request/response operations"
+publish = false
+
+[[bin]]
+name = "xbbg-mcp"
+path = "src/main.rs"
+
+[dependencies]
+arrow = { version = "57.1.0" }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+rmcp = { version = "1.3.0", features = ["server", "macros", "transport-io", "schemars"] }
+schemars = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "sync"] }
+xbbg-async = { path = "../../crates/xbbg-async" }
+xbbg_core = { path = "../../crates/xbbg-core" }
