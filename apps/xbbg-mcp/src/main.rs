@@ -78,7 +78,6 @@ struct XbbgMcpServer {
     result_limits: ResultLimits,
 }
 
-
 #[derive(Debug, Deserialize, JsonSchema)]
 struct BdpArgs {
     tickers: Vec<String>,
@@ -984,7 +983,10 @@ fn map_blp_error(error: BlpError) -> ErrorData {
                 .iter()
                 .map(|error| match &error.suggestion {
                     Some(suggestion) => {
-                        format!("{}: {} (did you mean '{suggestion}'?)", error.path, error.message)
+                        format!(
+                            "{}: {} (did you mean '{suggestion}'?)",
+                            error.path, error.message
+                        )
                     }
                     None => format!("{}: {}", error.path, error.message),
                 })
@@ -1076,7 +1078,9 @@ fn array_cell_to_json(
         DataType::UInt32 => Value::Number(Number::from(
             downcast::<UInt32Array>(column, "UInt32")?.value(row_index),
         )),
-        DataType::UInt64 => uint64_to_json(downcast::<UInt64Array>(column, "UInt64")?.value(row_index)),
+        DataType::UInt64 => {
+            uint64_to_json(downcast::<UInt64Array>(column, "UInt64")?.value(row_index))
+        }
         DataType::Float32 => float_to_json(
             downcast::<Float32Array>(column, "Float32")?.value(row_index) as f64,
             column.as_ref(),
