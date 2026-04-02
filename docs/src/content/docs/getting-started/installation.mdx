@@ -71,6 +71,50 @@ print(xbbg.__version__)
   Run `xbbg.get_sdk_info()` to see all detected SDK sources and which one is active.
 </Aside>
 
+## Install xbbg-mcp for coding agents
+
+If you want Claude Code or OpenCode to call Bloomberg directly, install the local MCP launcher and binary from GitHub Releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alpha-xone/xbbg/main/scripts/install-xbbg-mcp.sh | sh
+```
+
+This installer currently targets **macOS arm64** and **Linux amd64**. Windows release `.zip` assets are attached to GitHub Releases for manual installation.
+
+GitHub release assets include only the xbbg wrapper/binary pair. They do **not** bundle Bloomberg SDK files or the Bloomberg runtime; you must provide those locally via `blpapi`, `BLPAPI_ROOT`, or another supported runtime source.
+
+The launcher uses the same Bloomberg runtime detection order as the Python package family:
+
+1. `XBBG_MCP_LIB_DIR`
+2. `BLPAPI_LIB_DIR`
+3. `BLPAPI_ROOT`
+4. vendored SDK under `vendor/blpapi-sdk/`
+5. the official Python `blpapi` package
+
+### Claude Code
+
+```bash
+claude mcp add --transport stdio xbbg -- ~/.local/bin/xbbg-mcp
+```
+
+### OpenCode
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "xbbg": {
+      "type": "local",
+      "command": ["/Users/you/.local/bin/xbbg-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+For the full env surface and local smoke test instructions, see [`apps/xbbg-mcp/README.md`](https://github.com/alpha-xone/xbbg/blob/main/apps/xbbg-mcp/README.md).
+
+
 ## Next Steps
 
 Continue to [Quick Start](/xbbg/getting-started/quickstart) to make your first Bloomberg request.

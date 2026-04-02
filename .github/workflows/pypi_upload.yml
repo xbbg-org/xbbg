@@ -230,6 +230,180 @@ jobs:
           name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist/*.whl
 
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Build xbbg-mcp release binaries
+  # ════════════════════════════════════════════════════════════════════════════
+  mcp-binary:
+    name: Build xbbg-mcp (${{ matrix.asset_target }})
+    needs: [sdk-version, generate-bindings]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_target: linux-amd64
+          - os: macos-latest
+            asset_target: darwin-arm64
+          - os: windows-latest
+            asset_target: windows-amd64
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Download pre-generated bindings
+        uses: actions/download-artifact@v8
+        with:
+          name: blpapi-bindings
+          path: ci-bindings
+
+      - name: Configure pre-generated bindings path (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure pre-generated bindings path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bindingsPath = Join-Path $env:GITHUB_WORKSPACE "ci-bindings\bindings.rs"
+          if (-not (Test-Path $bindingsPath)) {
+            throw "Bindings artifact not found at $bindingsPath"
+          }
+          "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
+
+      - name: Configure pre-generated bindings path (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        id: sdk-windows
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Windows
+
+      - name: Export Bloomberg SDK env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.sdk-rel-root }}'
+          $binPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.bin-rel-dir }}'
+          "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+          "PATH=$binPath;$env:PATH" >> $env:GITHUB_ENV
+
+      - name: Setup Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        id: sdk-macos
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: macOS
+
+      - name: Export Bloomberg SDK env (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
+          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build xbbg-mcp (Unix)
+        if: runner.os != 'Windows'
+        run: cargo build --release -p xbbg-mcp --locked
+
+      - name: Build xbbg-mcp (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build --release -p xbbg-mcp --locked
+
+      - name: Package xbbg-mcp (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) VERSION=${GITHUB_REF#refs/tags/v} ;;
+            *) VERSION="0.0.0-dev-$(printf '%.7s' "$GITHUB_SHA")" ;;
+          esac
+          DIST_DIR="$GITHUB_WORKSPACE/dist"
+          PACKAGE_DIR="$RUNNER_TEMP/xbbg-mcp-package"
+          ASSET="xbbg-mcp-v${VERSION}-${{ matrix.asset_target }}.tar.gz"
+          rm -rf "$PACKAGE_DIR"
+          mkdir -p "$DIST_DIR" "$PACKAGE_DIR"
+          cp scripts/xbbg-mcp "$PACKAGE_DIR/xbbg-mcp"
+          cp target/release/xbbg-mcp "$PACKAGE_DIR/xbbg-mcp-real"
+          chmod +x "$PACKAGE_DIR/xbbg-mcp" "$PACKAGE_DIR/xbbg-mcp-real"
+          if find "$PACKAGE_DIR" -type f \( -name 'libblpapi*' -o -name 'blpapi3*.dll' \) | grep -q .; then
+            echo "Unexpected Bloomberg SDK file detected in MCP package payload" >&2
+            exit 1
+          fi
+          tar -czf "$DIST_DIR/$ASSET" -C "$PACKAGE_DIR" xbbg-mcp xbbg-mcp-real
+
+      - name: Package xbbg-mcp (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $version = $env:GITHUB_REF.Substring(11)
+          } else {
+            $version = "0.0.0-dev-$($env:GITHUB_SHA.Substring(0, 7))"
+          }
+          $distDir = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          $packageDir = Join-Path $env:RUNNER_TEMP 'xbbg-mcp-package'
+          $asset = "xbbg-mcp-v$version-${{ matrix.asset_target }}.zip"
+          New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+          Remove-Item -Path $packageDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          Copy-Item target\release\xbbg-mcp.exe (Join-Path $packageDir 'xbbg-mcp.exe')
+          $sdkFiles = Get-ChildItem -Path $packageDir -Recurse -Include 'blpapi3*.dll','libblpapi*' -File
+          if ($sdkFiles.Count -gt 0) {
+            throw "Unexpected Bloomberg SDK file detected in MCP package payload: $($sdkFiles[0].FullName)"
+          }
+          Compress-Archive -Path (Join-Path $packageDir 'xbbg-mcp.exe') -DestinationPath (Join-Path $distDir $asset) -Force
+
+      - name: Upload xbbg-mcp asset
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcp-${{ matrix.asset_target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
   # ════════════════════════════════════════════════════════════════════════════
   # Build source distribution
   # ════════════════════════════════════════════════════════════════════════════
@@ -253,12 +427,77 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Validate release payloads do not contain Bloomberg SDK files
+  # ════════════════════════════════════════════════════════════════════════════
+  validate-release-payload:
+    name: Validate release payloads
+    needs: [build, mcp-binary, sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wheels, sdist, and xbbg-mcp assets
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: "{wheel-*,sdist,mcp-*}"
+          merge-multiple: true
+
+      - name: Reject Bloomberg SDK files in release artifacts
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import sys
+          import tarfile
+          import zipfile
+
+          dist_dir = Path("dist")
+          archive_paths = sorted(path for path in dist_dir.iterdir() if path.is_file())
+          if not archive_paths:
+              raise SystemExit("No release artifacts found under dist/")
+
+          def is_forbidden(path_name: str) -> bool:
+              normalized = path_name.replace('\\', '/').lower()
+              basename = normalized.rsplit('/', 1)[-1]
+              if '/vendor/blpapi-sdk/' in f'/{normalized}':
+                  return True
+              if basename.startswith('libblpapi') or basename.startswith('blpapi3') or basename.startswith('blpapi_cpp_'):
+                  return True
+              return False
+
+          violations: list[str] = []
+          for archive_path in archive_paths:
+              if is_forbidden(archive_path.name):
+                  violations.append(f"{archive_path}: forbidden top-level artifact name")
+                  continue
+
+              archive_name = archive_path.name.lower()
+              if archive_name.endswith(('.tar.gz', '.tar.xz', '.tgz')):
+                  with tarfile.open(archive_path) as archive:
+                      for member in archive.getmembers():
+                          if is_forbidden(member.name):
+                              violations.append(f"{archive_path}: {member.name}")
+              elif archive_name.endswith(('.zip', '.whl')):
+                  with zipfile.ZipFile(archive_path) as archive:
+                      for member in archive.namelist():
+                          if is_forbidden(member):
+                              violations.append(f"{archive_path}: {member}")
+
+          if violations:
+              print('Bloomberg SDK files detected in release artifacts:', file=sys.stderr)
+              for violation in violations:
+                  print(f'  - {violation}', file=sys.stderr)
+              raise SystemExit(1)
+          PY
+
   # ════════════════════════════════════════════════════════════════════════════
   # Publish to PyPI
   # ════════════════════════════════════════════════════════════════════════════
   publish:
     name: Publish to PyPI
-    needs: [build, sdist]
+    needs: [build, sdist, validate-release-payload]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry-run
     environment: pypi
@@ -282,22 +521,22 @@ jobs:
           packages-dir: dist/
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Attach wheels + sdist to GitHub Release (created by semantic_version.yml)
+  # Attach wheels, sdist, and xbbg-mcp binaries to GitHub Release
   # ════════════════════════════════════════════════════════════════════════════
   release-assets:
     name: Attach Release Assets
-    needs: [build, sdist, publish]
+    needs: [build, mcp-binary, sdist, validate-release-payload, publish]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry-run
     permissions:
       contents: write
 
     steps:
-      - name: Download wheels and sdist
+      - name: Download wheels, sdist, and xbbg-mcp assets
         uses: actions/download-artifact@v8
         with:
           path: dist
-          pattern: "{wheel-*,sdist}"
+          pattern: "{wheel-*,sdist,mcp-*}"
           merge-multiple: true
 
       - name: Upload to GitHub Release

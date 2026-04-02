@@ -421,6 +421,41 @@ print(xbbg.get_sdk_info())
 # xbbg.clear_sdk_path()  # remove a manual override
 ```
 
+### MCP Server for Claude Code / OpenCode
+
+Need xbbg inside a coding agent instead of Python code? Install the local MCP wrapper + binary from GitHub Releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alpha-xone/xbbg/main/scripts/install-xbbg-mcp.sh | sh
+```
+
+The installer currently targets **macOS arm64** and **Linux amd64**. Windows `.zip` assets are attached to GitHub releases for manual installation.
+
+GitHub release assets include only the xbbg wrapper/binary pair. They do **not** bundle Bloomberg SDK files or the Bloomberg runtime; you must supply those locally via `blpapi`, `BLPAPI_ROOT`, or another supported runtime source.
+
+Claude Code:
+
+```bash
+claude mcp add --transport stdio xbbg -- ~/.local/bin/xbbg-mcp
+```
+
+OpenCode:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "xbbg": {
+      "type": "local",
+      "command": ["/Users/you/.local/bin/xbbg-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+The launcher searches for the Bloomberg runtime via `XBBG_MCP_LIB_DIR`, `BLPAPI_LIB_DIR`, `BLPAPI_ROOT`, a vendored SDK under `vendor/blpapi-sdk/`, or the official `blpapi` Python package. See [`apps/xbbg-mcp/README.md`](apps/xbbg-mcp/README.md) for the full env surface.
+
 ## Quickstart
 
 ### Basic Usage

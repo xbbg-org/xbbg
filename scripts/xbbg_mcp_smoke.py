@@ -5,7 +5,7 @@ Usage:
     uv run python -X utf8 scripts/xbbg_mcp_smoke.py
 
 Requires:
-    - `target/debug/xbbg-mcp` built locally
+    - `target/debug/xbbg-mcp` built locally, or `target/release/xbbg-mcp` as a fallback
     - Bloomberg Terminal/B-PIPE connectivity available to xbbg
     - Bloomberg runtime library under `vendor/blpapi-sdk/<version>/Darwin/`
 """
@@ -20,9 +20,16 @@ import sys
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BINARY = REPO_ROOT / "target" / "debug" / "xbbg-mcp"
+DEBUG_BINARY = REPO_ROOT / "target" / "debug" / "xbbg-mcp"
+RELEASE_BINARY = REPO_ROOT / "target" / "release" / "xbbg-mcp"
 SDK_ROOT = REPO_ROOT / "vendor" / "blpapi-sdk"
 PROTOCOL_VERSION = "2025-06-18"
+
+
+def default_binary() -> Path:
+    if DEBUG_BINARY.exists():
+        return DEBUG_BINARY
+    return RELEASE_BINARY
 
 
 class McpProtocolError(RuntimeError):
@@ -125,10 +132,10 @@ def print_tool_result(name: str, result: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    binary = DEFAULT_BINARY
+    binary = default_binary()
     if not binary.exists():
         print(
-            f"Missing MCP binary at {binary}. Build it first with: cargo build -p xbbg-mcp",
+            f"Missing MCP binary at {binary}. Build it first with: cargo build --release -p xbbg-mcp or cargo build -p xbbg-mcp",
             file=sys.stderr,
         )
         return 1
