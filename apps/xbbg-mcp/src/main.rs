@@ -234,16 +234,15 @@ impl XbbgMcpServer {
         self.engine
             .get_or_try_init(|| async {
                 let config = self.engine_config.clone();
-                tokio::task::spawn_blocking(move || Engine::start(config))
-                    .await
-                    .map_err(|err| {
-                        ErrorData::internal_error(
-                            format!("engine startup task failed: {err}"),
-                            None,
-                        )
-                    })?
-                    .map(Arc::new)
-                    .map_err(map_request_error)
+                tokio::task::spawn_blocking(move || {
+                    Engine::start(config)
+                        .map(Arc::new)
+                        .map_err(map_request_error)
+                })
+                .await
+                .map_err(|err| {
+                    ErrorData::internal_error(format!("engine startup task failed: {err}"), None)
+                })?
             })
             .await
     }
