@@ -4,22 +4,23 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "HTTP/WebSocket/gRPC gateway for Bloomberg data via xbbg"
+description = "Async HTTP/WebSocket gateway for Bloomberg data via xbbg"
 publish = false
 
-# [[bin]]
-# name = "xbbg-server"
-# path = "src/main.rs"
+[[bin]]
+name = "xbbg-server"
+path = "src/main.rs"
 
-# [dependencies]
-# axum = { version = "0.8", features = ["ws"] }
-# xbbg_core = { path = "../../crates/xbbg-core" }
-# xbbg-async = { path = "../../crates/xbbg-async" }
-# xbbg-log = { path = "../../crates/xbbg-log" }
-# arrow = { version = "57.1.0", features = ["json", "ipc"] }
-# tokio = { version = "1", features = ["full"] }
-# serde = { version = "1", features = ["derive"] }
-# serde_json = "1.0"
-# tower = "0.5"
-# tower-http = { version = "0.6", features = ["cors", "trace"] }
-# tracing = "0.1"
+[dependencies]
+axum = { version = "0.8", features = ["ws", "json"] }
+arrow = { version = "57.1.0", default-features = false }
+arrow-json = "57.1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread", "sync", "signal", "time", "net"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+xbbg-async = { path = "../../crates/xbbg-async", default-features = false, features = ["live"] }
+xbbg_core = { path = "../../crates/xbbg-core", default-features = false, features = ["live"] }
+xbbg-log = { path = "../../crates/xbbg-log" }

@@ -1,0 +1,24 @@
+{
+  "files": {
+    "includes": [
+      "index.js",
+      "index.d.ts",
+      "scripts/*.js",
+      "test.js",
+      "test-live.js"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "linter": {
+    "enabled": true
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  }
+}

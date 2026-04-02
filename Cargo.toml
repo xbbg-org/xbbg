@@ -13,11 +13,11 @@ members = [
     "crates/datamock-sys",
     # Language bindings
     "bindings/pyo3-xbbg",
-    # "bindings/napi-xbbg",
+    "bindings/napi-xbbg",
     # "bindings/dotnet-xbbg",
     # Applications
     # "apps/xbbg-cli",
-    # "apps/xbbg-server",
+    "apps/xbbg-server",
     "apps/xbbg-mcp",
 ]
 # Omit datamock / datamock-sys so plain `cargo build` / `cargo test` at the repo

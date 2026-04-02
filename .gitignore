@@ -33,6 +33,14 @@ Logs/
 # Rust build artifacts (Cargo)
 /target/
 
+# JavaScript dependencies
+**/node_modules/
+js-xbbg/*.node
+packages/xbbg-bridge-*/bin/xbbg-server*
+
+# Ignore local PMC mapping and cache files
+xbbg/markets/pmc_map.json
+xbbg/markets/cached/pmc_cache.pkl
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -51,6 +59,10 @@ eggs/
 .eggs/
 lib/
 lib64/
+!packages/xbbg-bridge/lib/
+!packages/xbbg-bridge/lib/platform-map.js
+!packages/xbbg-bridge/lib/resolve-binary.js
+!packages/xbbg-bridge/lib/runtime-env.js
 parts/
 sdist/
 var/
