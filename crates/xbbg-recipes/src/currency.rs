@@ -21,6 +21,7 @@ use xbbg_ext::transforms::currency::{build_fx_pair, same_currency, FxConversionI
 use xbbg_ext::{fmt_date, parse_date};
 
 use crate::error::{RecipeError, Result};
+use crate::utils::{array_value_as_string, as_string_col, date32_to_naive};
 
 const DATE_COL: &str = "date";
 const FX_FIELD: &str = "PX_LAST";
@@ -476,11 +477,6 @@ fn naive_to_date32(date: chrono::NaiveDate) -> Option<i32> {
     i32::try_from(days).ok()
 }
 
-fn date32_to_naive(days_since_epoch: i32) -> Option<chrono::NaiveDate> {
-    let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1)?;
-    epoch.checked_add_signed(chrono::Duration::days(days_since_epoch as i64))
-}
-
 fn find_value_column(batch: &RecordBatch) -> Result<&ArrayRef> {
     batch
         .column_by_name("value")
@@ -493,26 +489,6 @@ fn find_value_column(batch: &RecordBatch) -> Result<&ArrayRef> {
                     .to_string(),
             )
         })
-}
-
-fn array_value_as_string(array: &ArrayRef, row: usize) -> Option<String> {
-    if let Some(col) = array.as_any().downcast_ref::<StringArray>() {
-        return (!col.is_null(row)).then(|| col.value(row).to_string());
-    }
-
-    if let Some(col) = array.as_any().downcast_ref::<Float64Array>() {
-        return (!col.is_null(row)).then(|| col.value(row).to_string());
-    }
-
-    if let Some(col) = array.as_any().downcast_ref::<Int64Array>() {
-        return (!col.is_null(row)).then(|| col.value(row).to_string());
-    }
-
-    if let Some(col) = array.as_any().downcast_ref::<Int32Array>() {
-        return (!col.is_null(row)).then(|| col.value(row).to_string());
-    }
-
-    None
 }
 
 fn array_value_as_f64(array: &ArrayRef, row: usize) -> Option<f64> {
@@ -540,15 +516,6 @@ fn array_value_as_f64(array: &ArrayRef, row: usize) -> Option<f64> {
     }
 
     None
-}
-
-fn as_string_col<'a>(batch: &'a RecordBatch, column: &str) -> Result<&'a StringArray> {
-    batch
-        .column_by_name(column)
-        .ok_or_else(|| RecipeError::Other(format!("missing '{column}' column")))?
-        .as_any()
-        .downcast_ref::<StringArray>()
-        .ok_or_else(|| RecipeError::Other(format!("'{column}' column must be Utf8")))
 }
 
 #[cfg(test)]

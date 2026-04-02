@@ -32,7 +32,7 @@ jobs:
         id: detect
         run: |
           VERSION=$(curl -s https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/ \
-            | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+            | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?' | sort -V | tail -1)
           echo "Detected Bloomberg SDK version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -47,28 +47,24 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
+      - uses: actions/checkout@v6
 
       - name: Setup Bloomberg SDK
+        id: sdk
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env
         run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Generate bindings artifact
         run: |
@@ -77,7 +73,7 @@ jobs:
           test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
 
       - name: Upload bindings artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: blpapi-bindings
           path: ci-bindings/bindings.rs
@@ -90,7 +86,7 @@ jobs:
     name: Lint (Rust)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -108,7 +104,7 @@ jobs:
     name: Codegen Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -117,7 +113,7 @@ jobs:
           cache: false
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -131,16 +127,23 @@ jobs:
     name: Lint (Python)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v4
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: latest
+          environments: lint
+          cache: true
 
       - name: Python lint
-        run: uvx ruff check .
+        run: pixi run -e lint lint
 
       - name: Python format check
-        run: uvx ruff format --check .
+        run: pixi run -e lint fmt-check
+
+      - name: Type check (advisory)
+        run: pixi run -e lint typecheck || true
 
   # ════════════════════════════════════════════════════════════════════════════
   # Docs Build (fast, no SDK needed)
@@ -149,17 +152,17 @@ jobs:
     name: Docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: docs/package-lock.json
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -197,7 +200,7 @@ jobs:
         run: npm run build
 
       - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docs-build
           path: docs/dist
@@ -210,7 +213,7 @@ jobs:
     name: Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: cargo-bins/cargo-binstall@v1.17.5
       - run: cargo binstall -y cargo-audit && cargo audit
 
@@ -221,7 +224,7 @@ jobs:
     name: Deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: cargo-bins/cargo-binstall@v1.17.5
       - run: cargo binstall -y cargo-deny && cargo deny check
 
@@ -236,28 +239,24 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Linux)
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
+      - uses: actions/checkout@v6
 
       - name: Setup Bloomberg SDK (Linux)
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
         run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -276,7 +275,7 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -286,7 +285,7 @@ jobs:
           rustflags: ""
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -300,26 +299,20 @@ jobs:
           }
           "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
 
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Windows-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Windows)
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $sdkUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-windows.zip"
-          Invoke-WebRequest -Uri $sdkUrl -OutFile blpapi.zip
-          Expand-Archive -Path blpapi.zip -DestinationPath $HOME/blpapi
-
       - name: Setup Bloomberg SDK (Windows)
+        id: sdk-windows
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Windows
+
+      - name: Export Bloomberg SDK env (Windows)
         shell: pwsh
         run: |
-          $sdkPath = (Get-ChildItem $HOME/blpapi -Directory)[0].FullName
+          $sdkPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.sdk-rel-root }}'
+          $binPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.bin-rel-dir }}'
           "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+          "PATH=$binPath;$env:PATH" >> $env:GITHUB_ENV
 
       - name: Cargo clippy
         shell: bash
@@ -332,7 +325,7 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -342,7 +335,7 @@ jobs:
           rustflags: ""
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -353,26 +346,19 @@ jobs:
           test -s "$BINDINGS_PATH"
           echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
 
-      - name: Cache Bloomberg SDK (macOS)
-        id: cache-sdk-macos
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (macOS)
-        if: steps.cache-sdk-macos.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-macos-arm64.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
-
       - name: Setup Bloomberg SDK (macOS)
+        id: sdk-macos
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: macOS
+
+      - name: Export Bloomberg SDK env (macOS)
         run: |
-          ln -sf "$HOME/blpapi/Darwin" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.dylib"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
+          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Cargo clippy
         run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
@@ -579,7 +565,7 @@ jobs:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -587,7 +573,7 @@ jobs:
           rustflags: ""
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -616,90 +602,72 @@ jobs:
           test -s "$BINDINGS_PATH"
           echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
 
-      - name: Cache Bloomberg SDK (Linux)
-        if: runner.os == 'Linux'
-        id: cache-sdk-linux
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Linux)
-        if: runner.os == 'Linux' && steps.cache-sdk-linux.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
-
       - name: Setup Bloomberg SDK (Linux)
         if: runner.os == 'Linux'
-        run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$HOME/blpapi/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
-
-      - name: Cache Bloomberg SDK (Windows)
-        if: runner.os == 'Windows'
-        id: cache-sdk-windows
-        uses: actions/cache@v4
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
         with:
-          path: ~/blpapi
-          key: blpapi-Windows-${{ env.BLPAPI_VERSION }}
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
 
-      - name: Download Bloomberg SDK (Windows)
-        if: runner.os == 'Windows' && steps.cache-sdk-windows.outputs.cache-hit != 'true'
-        shell: pwsh
+      - name: Export Bloomberg SDK env (Linux)
+        if: runner.os == 'Linux'
         run: |
-          $sdkUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${{ env.BLPAPI_VERSION }}-windows.zip"
-          Invoke-WebRequest -Uri $sdkUrl -OutFile blpapi.zip
-          Expand-Archive -Path blpapi.zip -DestinationPath $HOME/blpapi
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
+        id: sdk-windows
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Windows
+
+      - name: Export Bloomberg SDK env (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $sdkPath = (Get-ChildItem $HOME/blpapi -Directory)[0].FullName
+          $sdkPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.sdk-rel-root }}'
+          $binPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.bin-rel-dir }}'
           "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
-
-      - name: Cache Bloomberg SDK (macOS)
-        if: runner.os == 'macOS'
-        id: cache-sdk-macos
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (macOS)
-        if: runner.os == 'macOS' && steps.cache-sdk-macos.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-macos-arm64.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
+          "PATH=$binPath;$env:PATH" >> $env:GITHUB_ENV
 
       - name: Setup Bloomberg SDK (macOS)
         if: runner.os == 'macOS'
+        id: sdk-macos
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: macOS
+
+      - name: Export Bloomberg SDK env (macOS)
+        if: runner.os == 'macOS'
         run: |
-          ln -sf "$HOME/blpapi/Darwin" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.dylib"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
+          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Setup Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Build wheel (setuptools-rust via uv)
         run: uv build --wheel --out-dir dist/
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist/*.whl
@@ -721,69 +689,57 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
 
       - name: Download wheel
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: wheel-${{ matrix.os }}-py${{ matrix.python }}
           path: dist
 
-      - name: Cache Bloomberg SDK (Linux)
-        if: runner.os == 'Linux'
-        id: cache-sdk-linux
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Linux)
-        if: runner.os == 'Linux' && steps.cache-sdk-linux.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
-
       - name: Setup Bloomberg SDK (Linux)
         if: runner.os == 'Linux'
-        run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$HOME/blpapi/lib:$LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
-
-      - name: Cache Bloomberg SDK (macOS)
-        if: runner.os == 'macOS'
-        id: cache-sdk-macos
-        uses: actions/cache@v4
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
         with:
-          path: ~/blpapi
-          key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
 
-      - name: Download Bloomberg SDK (macOS)
-        if: runner.os == 'macOS' && steps.cache-sdk-macos.outputs.cache-hit != 'true'
+      - name: Export Bloomberg SDK env (Linux)
+        if: runner.os == 'Linux'
         run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-macos-arm64.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Bloomberg SDK (macOS)
         if: runner.os == 'macOS'
+        id: sdk-macos
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: macOS
+
+      - name: Export Bloomberg SDK env (macOS)
+        if: runner.os == 'macOS'
         run: |
-          ln -sf "$HOME/blpapi/Darwin" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.dylib"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "DYLD_LIBRARY_PATH=$HOME/blpapi/lib:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
+          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Install blpapi from Bloomberg
         run: uv pip install --system --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
@@ -813,7 +769,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage.xml
           fail_ci_if_error: false
@@ -830,28 +786,24 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Linux)
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
+      - uses: actions/checkout@v6
 
       - name: Setup Bloomberg SDK (Linux)
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
         run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -878,28 +830,24 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Linux)
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
+      - uses: actions/checkout@v6
 
       - name: Setup Bloomberg SDK (Linux)
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
         run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -919,6 +867,31 @@ jobs:
             cargo-geiger --manifest-path "$GITHUB_WORKSPACE/crates/$crate/Cargo.toml" || true
           done
 
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Bloomberg SDK ABI Compatibility (optional, non-blocking)
+  # ════════════════════════════════════════════════════════════════════════════
+  abi-compat:
+    name: ABI Compat
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
+    continue-on-error: true
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install bindgen-cli
+        run: cargo install bindgen-cli --version 0.72.1
+
+      - name: Run ABI compatibility check
+        run: |
+          # Read min supported version from defs/bloomberg.toml (single source of truth),
+          # then check that version plus the latest detected SDK.
+          MIN_SDK=$(grep '^min_sdk_version' defs/bloomberg.toml | sed 's/.*= *"\(.*\)"/\1/')
+          bash scripts/abi-check.sh --versions "$MIN_SDK $BLPAPI_VERSION"
+
   # ════════════════════════════════════════════════════════════════════════════
   # Semver Compatibility (optional, non-blocking)
   # ════════════════════════════════════════════════════════════════════════════
@@ -931,30 +904,26 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history for baseline
 
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK (Linux)
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
-
       - name: Setup Bloomberg SDK (Linux)
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
         run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -986,14 +955,14 @@ jobs:
   #   env:
   #     BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v6
   #
   #     - name: Install libclang
   #       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev
   #
   #     - name: Cache Bloomberg SDK
   #       id: cache-sdk
-  #       uses: actions/cache@v4
+  #       uses: actions/cache@v5
   #       with:
   #         path: ~/blpapi
   #         key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
@@ -1070,7 +1039,7 @@ jobs:
     env:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -1081,26 +1050,22 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Cache Bloomberg SDK
-        id: cache-sdk
-        uses: actions/cache@v4
-        with:
-          path: ~/blpapi
-          key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
-
-      - name: Download Bloomberg SDK
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/blpapi"
-          curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-            | tar -xz -C "$HOME/blpapi" --strip-components=1
-
       - name: Setup Bloomberg SDK
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env
         run: |
-          ln -sf "$HOME/blpapi/Linux" "$HOME/blpapi/lib"
-          ln -sf "$HOME/blpapi/lib/libblpapi3_64.so" "$HOME/blpapi/lib/libblpapi3.so"
-          echo "BLPAPI_ROOT=$HOME/blpapi" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/blpapi/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1

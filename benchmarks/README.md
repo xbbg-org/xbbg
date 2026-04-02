@@ -26,7 +26,7 @@ Run benchmarks locally and control frequency to manage Bloomberg data limits.
 | **bbg-fetch** | 1.1.2 | Active | Modern alternative |
 | **pdblp** | 0.1.8 | Legacy | Historical comparison |
 
-See [../BLOOMBERG_PACKAGES_BENCHMARK.md](../BLOOMBERG_PACKAGES_BENCHMARK.md) for full package details.
+See the table above for full package details.
 
 ---
 
@@ -55,9 +55,6 @@ python benchmarks/run_all.py
 python benchmarks/bench_bdp.py
 python benchmarks/bench_bdh.py
 python benchmarks/bench_bdib.py
-
-# Generate report
-python benchmarks/generate_report.py
 ```
 
 ---

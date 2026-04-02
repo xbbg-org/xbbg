@@ -156,6 +156,15 @@ pub use xbbg_sys::{
     blpapi_TlsOptions_setTlsHandshakeTimeoutMs,
 };
 
+// --- Socks5Config type ---
+pub use xbbg_sys::blpapi_Socks5Config_t;
+
+// --- Socks5Config functions ---
+pub use xbbg_sys::{blpapi_Socks5Config_create, blpapi_Socks5Config_destroy};
+
+// --- SessionOptions proxy function ---
+pub use xbbg_sys::blpapi_SessionOptions_setServerAddressWithProxy;
+
 // --- Identity functions ---
 pub use xbbg_sys::{
     blpapi_Identity_getSeatType, blpapi_Identity_hasEntitlements, blpapi_Identity_isAuthorized,

@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::error::Result;
+use crate::utils::array_value_as_string;
 use arrow::array::RecordBatch;
 use arrow::array::{
     Array, ArrayRef, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray,
@@ -265,30 +266,6 @@ fn normalize_earning_header_value(value: &str) -> String {
 
     normalized = normalized.replace("_20", "20");
     normalized.trim_matches('_').to_string()
-}
-
-fn array_value_as_string(array: &ArrayRef, idx: usize) -> Option<String> {
-    if idx >= array.len() || array.is_null(idx) {
-        return None;
-    }
-
-    if let Some(arr) = array.as_any().downcast_ref::<StringArray>() {
-        return Some(arr.value(idx).to_string());
-    }
-    if let Some(arr) = array.as_any().downcast_ref::<LargeStringArray>() {
-        return Some(arr.value(idx).to_string());
-    }
-    if let Some(arr) = array.as_any().downcast_ref::<Float64Array>() {
-        return Some(arr.value(idx).to_string());
-    }
-    if let Some(arr) = array.as_any().downcast_ref::<Int64Array>() {
-        return Some(arr.value(idx).to_string());
-    }
-    if let Some(arr) = array.as_any().downcast_ref::<Int32Array>() {
-        return Some(arr.value(idx).to_string());
-    }
-
-    None
 }
 
 fn add_earning_percentage_columns(batch: RecordBatch) -> Result<RecordBatch> {

@@ -124,15 +124,20 @@ impl BqlState {
 
     /// Parse BQL JSON response into a proper table.
     ///
-    /// BQL JSON structure:
+    /// Bloomberg BQL JSON response structure:
     /// ```json
     /// {
-    ///   "results": {
+    ///   "clientContext": { "clientRequestId": "...", ... },
+    ///   "responseExceptions": null | [{ "message", "messageCategory",
+    ///       "messageSubcategory", "nodeName", "type" }],
+    ///   "results": null | {
     ///     "field_name": {
-    ///       "idColumn": { "values": ["ticker1", "ticker2", ...] },
-    ///       "valuesColumn": { "values": [value1, value2, ...] }
-    ///     },
-    ///     ...
+    ///       "idColumn": { "name": "ID", "type": "STRING", "values": [...] },
+    ///       "valuesColumn": { "name": "VALUE", "type": "DOUBLE"|..., "values": [...] },
+    ///       "secondaryColumns": [{ "name": "DATE"|"CURRENCY", "values": [...] }],
+    ///       "responseExceptions": [],
+    ///       "partialErrorMap": { "errorIterator": null | [...] }
+    ///     }
     ///   }
     /// }
     /// ```
@@ -141,24 +146,45 @@ impl BqlState {
             detail: format!("Failed to parse BQL JSON: {}", e),
         })?;
 
-        let results = json.get("results").ok_or_else(|| BlpError::Internal {
-            detail: "BQL JSON missing 'results' field".into(),
-        })?;
+        let request_id = json
+            .get("clientContext")
+            .and_then(|c| c.get("clientRequestId"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
-        let results_obj = results.as_object().ok_or_else(|| BlpError::Internal {
-            detail: "BQL 'results' is not an object".into(),
-        })?;
+        // Collect top-level responseExceptions (syntax errors, invalid fields, etc.)
+        let top_exceptions = Self::extract_exception_messages(&json);
 
-        if results_obj.is_empty() {
-            // Return empty batch
-            let schema = Schema::new(vec![Field::new("ticker", DataType::Utf8, true)]);
-            return RecordBatch::try_new(
-                Arc::new(schema),
-                vec![Arc::new(StringArray::from(Vec::<&str>::new()))],
-            )
-            .map_err(|e| BlpError::Internal {
-                detail: format!("Failed to create empty batch: {}", e),
-            });
+        // Route on results: object → parse fields, null/missing → empty or error.
+        let results_obj = match json.get("results") {
+            Some(JsonValue::Object(obj)) if !obj.is_empty() => obj,
+            Some(JsonValue::Object(_)) | Some(JsonValue::Null) | None => {
+                // No results. If there were exceptions, report them as the error.
+                if !top_exceptions.is_empty() {
+                    return Err(BlpError::RequestFailure {
+                        service: "//blp/bqlsvc".into(),
+                        operation: Some("sendQuery".into()),
+                        cid: None,
+                        label: None,
+                        request_id,
+                        source: Some(top_exceptions.join("; ").into()),
+                    });
+                }
+                return Self::empty_batch();
+            }
+            Some(other) => {
+                return Err(BlpError::Internal {
+                    detail: format!("BQL 'results' has unexpected type: {other}"),
+                });
+            }
+        };
+
+        // Results present — log any partial exceptions as warnings but continue.
+        if !top_exceptions.is_empty() {
+            xbbg_log::warn!(
+                exceptions = top_exceptions.join("; ").as_str(),
+                "BQL response has partial exceptions but results are present"
+            );
         }
 
         // Collect field names and determine row count from first field
@@ -203,6 +229,16 @@ impl BqlState {
             // Pad values to match id_values length if needed
             while values.len() < id_values.len() {
                 values.push(None);
+            }
+
+            // Warn about per-field partial errors
+            let field_exceptions = Self::extract_exception_messages(field_data);
+            if !field_exceptions.is_empty() {
+                xbbg_log::warn!(
+                    field = field_name.as_str(),
+                    exceptions = field_exceptions.join("; ").as_str(),
+                    "BQL field has partial errors"
+                );
             }
 
             field_columns.push((field_name.as_str(), values));
@@ -262,6 +298,38 @@ impl BqlState {
         let schema = Arc::new(Schema::new(fields));
         RecordBatch::try_new(schema, arrays).map_err(|e| BlpError::Internal {
             detail: format!("Failed to create RecordBatch: {}", e),
+        })
+    }
+
+    /// Extract human-readable messages from a `responseExceptions` array.
+    /// Works for both the top-level response and per-field exception arrays.
+    fn extract_exception_messages(json: &JsonValue) -> Vec<String> {
+        let Some(JsonValue::Array(exceptions)) = json.get("responseExceptions") else {
+            return Vec::new();
+        };
+        exceptions
+            .iter()
+            .filter_map(|e| {
+                e.get("message").and_then(|m| m.as_str()).map(|msg| {
+                    if let Some(node) = e.get("nodeName").and_then(|n| n.as_str()) {
+                        format!("{msg} (in {node})")
+                    } else {
+                        msg.to_string()
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// Return an empty single-column batch (no results).
+    fn empty_batch() -> Result<RecordBatch, BlpError> {
+        let schema = Schema::new(vec![Field::new("ticker", DataType::Utf8, true)]);
+        RecordBatch::try_new(
+            Arc::new(schema),
+            vec![Arc::new(StringArray::from(Vec::<&str>::new()))],
+        )
+        .map_err(|e| BlpError::Internal {
+            detail: format!("Failed to create empty batch: {}", e),
         })
     }
 

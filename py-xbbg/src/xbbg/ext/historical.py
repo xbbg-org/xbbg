@@ -447,7 +447,7 @@ async def _calc_turnover_from_volume(
             turnover_df = turnover_df.with_columns(s)
 
         if len(nw_df) > 0:
-            nw_df = nw.concat([nw_df, turnover_df])
+            nw_df = nw.concat([nw_df, turnover_df])  # type: ignore[invalid-assignment]
         else:
             nw_df = turnover_df
 

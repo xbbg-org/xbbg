@@ -114,7 +114,7 @@ namespace BEmu
 	bool operator==(const Name& lhs, const char *rhs)
 	{
 		bool lhsIsNull = lhs.isNull();
-		bool rhsIsNull = rhs == "";
+		bool rhsIsNull = (rhs == nullptr || rhs[0] == '\0');
 
 		if(lhsIsNull)
 			return rhsIsNull;

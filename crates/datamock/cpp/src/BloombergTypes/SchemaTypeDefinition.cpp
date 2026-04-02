@@ -13,7 +13,7 @@
 
 namespace BEmu
 {
-	SchemaTypeDefinition::~SchemaTypeDefinition() { throw BEmu::Exception("not implemented"); }
+	SchemaTypeDefinition::~SchemaTypeDefinition() noexcept(false) { throw BEmu::Exception("not implemented"); }
 
 	void SchemaTypeDefinition::setUserData(void *userData) { (void)userData; throw BEmu::Exception("not implemented"); }
 	int SchemaTypeDefinition::datatype() const { throw BEmu::Exception("not implemented"); }

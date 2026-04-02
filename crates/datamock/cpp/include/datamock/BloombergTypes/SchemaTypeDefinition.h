@@ -19,7 +19,7 @@ namespace BEmu
 	class SchemaTypeDefinition
 	{
 		public:
-			DLL_EXPORT ~SchemaTypeDefinition();
+			DLL_EXPORT ~SchemaTypeDefinition() noexcept(false);
 
 			DLL_EXPORT void setUserData(void *userData);
 			DLL_EXPORT int datatype() const;

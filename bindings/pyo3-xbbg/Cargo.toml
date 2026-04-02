@@ -15,6 +15,7 @@ name = "stub_gen"
 path = "src/bin/stub_gen.rs"
 
 [dependencies]
+mimalloc = { version = "0.1", default-features = false, optional = true }
 pyo3 = { version = "0.26" }
 pyo3-async-runtimes = { version = "0.26", features = ["tokio-runtime"] }
 pyo3-stub-gen = { version = "0.19", default-features = false, features = ["infer_signature"] }
@@ -31,8 +32,9 @@ xbbg-ext = { path = "../../crates/xbbg-ext" }
 xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 
 [features]
-default = ["live", "extension-module"]
+default = ["live", "extension-module", "mimalloc"]
 extension-module = ["pyo3/extension-module"]
+mimalloc = ["dep:mimalloc"]
 mock = ["xbbg-async/mock", "xbbg-recipes/mock"]
 live = ["xbbg-async/live", "xbbg-recipes/live"]
 

@@ -42,6 +42,6 @@ Describe any alternative solutions or features you've considered.
 
 ## Checklist
 
-- [ ] I have checked the [documentation](https://xbbg.readthedocs.io/) to ensure this doesn't already exist
+- [ ] I have checked the [documentation](https://alpha-xone.github.io/xbbg/) to ensure this doesn't already exist
 - [ ] I have searched existing [issues](https://github.com/alpha-xone/xbbg/issues) to see if this has been requested
 - [ ] This feature would be useful to other users (not just my specific use case)

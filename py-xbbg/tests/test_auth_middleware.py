@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 import pyarrow as pa
 import pytest
@@ -110,6 +111,56 @@ def test_arequest_runs_sync_and_async_middleware_in_order(monkeypatch):
     assert contexts[0].frame is result
 
 
+def test_request_context_exposes_environment_snapshot(monkeypatch):
+    config = DummyConfig(
+        host="bpipe-host",
+        port=8195,
+        auth_method="manual",
+        app_name="my-app",
+        user_id="123456",
+        validation_mode="strict",
+    )
+    blp.configure(config)
+
+    captured: dict[str, object] = {}
+
+    class FakeEngine:
+        async def request(self, params_dict):
+            return _sample_batch()
+
+    async def recorder(context: blp.RequestContext, call_next):
+        captured.update(
+            {
+                "request_id": context.request_id,
+                "environment": context.environment,
+                "params_request_id": context.params_dict["request_id"],
+            }
+        )
+        return await call_next(context)
+
+    monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
+    blp.add_middleware(recorder)
+
+    asyncio.run(
+        blp.arequest(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=["IBM US Equity"],
+            fields=["PX_LAST"],
+        )
+    )
+
+    environment = cast("blp.RequestEnvironment", captured["environment"])
+    assert captured["params_request_id"] == captured["request_id"]
+    assert environment.source == "global_config"
+    assert environment.host == "bpipe-host"
+    assert environment.port == 8195
+    assert environment.auth_method == "manual"
+    assert environment.app_name == "my-app"
+    assert environment.user_id == "123456"
+    assert environment.validation_mode == "strict"
+
+
 def test_arequest_middleware_can_short_circuit(monkeypatch):
     called = False
     cached_result = [{"ticker": "IBM US Equity", "field": "PX_LAST", "value": "123.45"}]
@@ -190,11 +241,25 @@ def test_configure_rejects_invalid_num_start_attempts():
         blp.configure(max_attempt=0)
 
 
-def test_configure_still_rejects_after_engine_start():
-    blp._engine = object()
+def test_configure_warns_and_restarts_after_engine_start():
+    """configure() after engine start shuts down old engine with a warning."""
 
-    with pytest.raises(RuntimeError, match="Cannot configure after engine has started"):
+    class MockEngine:
+        def __init__(self):
+            self.shutdown_called = False
+
+        def signal_shutdown(self):
+            self.shutdown_called = True
+
+    mock = MockEngine()
+    blp._engine = mock
+
+    with pytest.warns(RuntimeWarning, match="already started"):
         blp.configure(host="bpipe-host")
+
+    assert mock.shutdown_called, "signal_shutdown should have been called"
+    assert blp._engine is None, "engine should be cleared for recreation"
+    assert blp._config is not None, "new config should be stored"
 
 
 def test_public_exports_include_configure_and_middleware_helpers():
@@ -229,3 +294,4 @@ def test_arequest_preserves_centralized_request_logging(monkeypatch, caplog):
 
     messages = [record.message for record in caplog.records]
     assert any("bloomberg" in message and "ReferenceDataRequest" in message for message in messages)
+    assert any("request_id=req-" in message for message in messages)

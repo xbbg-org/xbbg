@@ -10,6 +10,7 @@
 mod dispatch;
 mod exchange;
 mod exchange_cache;
+mod intraday_timezone;
 mod request_pool;
 pub mod state;
 mod subscription_pool;
@@ -23,7 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
 use parking_lot::Mutex;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use xbbg_core::session::Session;
 use xbbg_core::{apply_session_identity_options, AuthConfig, BlpError, SessionOptions};
@@ -63,8 +64,23 @@ fn configure_session_options(
     } else {
         &config.servers
     };
+    // Build optional SOCKS5 proxy config
+    let socks5 = match (config.socks5_host.as_deref(), config.socks5_port) {
+        (Some(host), Some(port)) => Some(xbbg_core::socks5::Socks5Config::new(host, port)?),
+        (Some(_), None) => {
+            return Err(BlpError::InvalidArgument {
+                detail: "socks5_host set without socks5_port".into(),
+            });
+        }
+        _ => None,
+    };
+
     for (index, (host, port)) in servers.iter().enumerate() {
-        options.set_server_address(host, *port, index)?;
+        if let Some(ref proxy) = socks5 {
+            options.set_server_address_with_proxy(host, *port, proxy, index)?;
+        } else {
+            options.set_server_address(host, *port, index)?;
+        }
     }
     options.set_num_start_attempts(config.num_start_attempts)?;
     options.set_auto_restart_on_disconnection(config.auto_restart_on_disconnection);
@@ -176,8 +192,6 @@ pub enum OverflowPolicy {
     /// Drop the newest data when buffer is full (default, non-blocking)
     #[default]
     DropNewest,
-    /// Drop the oldest data when buffer is full (requires bounded ring buffer)
-    DropOldest,
     /// Block the producer until space is available (use with caution)
     Block,
 }
@@ -817,10 +831,9 @@ impl std::str::FromStr for OverflowPolicy {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "drop_newest" | "dropnewest" => Ok(Self::DropNewest),
-            "drop_oldest" | "dropoldest" => Ok(Self::DropOldest),
             "block" => Ok(Self::Block),
             _ => Err(format!(
-                "unknown overflow policy '{}': expected drop_newest, drop_oldest, or block",
+                "unknown overflow policy '{}': expected 'drop_newest' or 'block'",
                 s
             )),
         }
@@ -831,7 +844,6 @@ impl std::fmt::Display for OverflowPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DropNewest => write!(f, "drop_newest"),
-            Self::DropOldest => write!(f, "drop_oldest"),
             Self::Block => write!(f, "block"),
         }
     }
@@ -849,6 +861,7 @@ pub struct RequestParams {
     pub operation: String,
     /// Actual Bloomberg operation name when using the RawRequest marker.
     pub request_operation: Option<String>,
+    pub request_id: Option<String>,
     /// Extractor type hint for Arrow conversion
     pub extractor: ExtractorType,
     /// Whether extractor was explicitly provided by the caller.
@@ -873,6 +886,11 @@ pub struct RequestParams {
     pub start_datetime: Option<String>,
     /// End datetime (ISO for intraday)
     pub end_datetime: Option<String>,
+    /// How to interpret naive `start_datetime` / `end_datetime` before sending to Bloomberg:
+    /// `UTC`, `local`, `exchange`, `NY`/`LN`/… aliases, another ticker (space), or an IANA name.
+    pub request_tz: Option<String>,
+    /// Relabel Arrow `time` from UTC to this zone (same instants): same tokens as `request_tz`.
+    pub output_tz: Option<String>,
     /// Event type (TRADE, BID, ASK for intraday bars - singular)
     pub event_type: Option<String>,
     /// Event types (TRADE, BID, ASK for intraday ticks - array)
@@ -1259,6 +1277,10 @@ pub struct EngineConfig {
     /// Bloomberg SDK internal log level. Bridges SDK logs into xbbg tracing.
     /// Must be set before first session starts. Default: Off.
     pub sdk_log_level: crate::sdk_logging::SdkLogLevel,
+    /// SOCKS5 proxy hostname. When set, all server connections route through this proxy.
+    pub socks5_host: Option<String>,
+    /// SOCKS5 proxy port (required when socks5_host is set).
+    pub socks5_port: Option<u16>,
 }
 impl Default for EngineConfig {
     fn default() -> Self {
@@ -1293,6 +1315,8 @@ impl Default for EngineConfig {
             retry_policy: RetryPolicy::default(),
             health_check_interval_ms: 30_000,
             sdk_log_level: crate::sdk_logging::SdkLogLevel::Off,
+            socks5_host: None,
+            socks5_port: None,
         }
     }
 }
@@ -1315,6 +1339,8 @@ pub struct Engine {
     schema_cache: crate::schema::SchemaCache,
     /// Exchange metadata cache (in-memory + disk)
     exchange_cache: ExchangeCache,
+    /// Broadcast shutdown signal for data-path consumers (e.g. PySubscription).
+    shutdown_signal: watch::Sender<bool>,
 }
 
 impl Engine {
@@ -1358,6 +1384,8 @@ impl Engine {
             "Engine ready"
         );
 
+        let (shutdown_signal, _) = watch::channel(false);
+
         Ok(Self {
             request_pool,
             subscription_pool,
@@ -1365,6 +1393,7 @@ impl Engine {
             config,
             schema_cache: crate::schema::SchemaCache::new(),
             exchange_cache: ExchangeCache::new(),
+            shutdown_signal,
         })
     }
 
@@ -1373,10 +1402,25 @@ impl Engine {
     /// Generic Bloomberg request - dispatches to worker pool.
     ///
     /// All request types are handled by the same pool of workers.
-    pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
+    /// Dispatch a prepared request without intraday timezone transforms.
+    ///
+    /// Used for nested RefData calls (e.g. exchange metadata) so `request_tz=exchange` does not
+    /// recurse into [`Engine::request`].
+    pub(crate) async fn request_without_intraday_transform(
+        &self,
+        params: RequestParams,
+    ) -> Result<RecordBatch, BlpAsyncError> {
         let params = self.prepare_request_params(params)?;
         self.maybe_validate_request_fields(&params).await?;
         self.request_pool.request(params).await
+    }
+
+    pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
+        let mut params = self.prepare_request_params(params)?;
+        intraday_timezone::apply_intraday_request_timezone(self, &mut params).await?;
+        self.maybe_validate_request_fields(&params).await?;
+        let batch = self.request_pool.request(params.clone()).await?;
+        intraday_timezone::apply_intraday_output_timezone(self, batch, &params).await
     }
 
     /// Streaming generic request - dispatches to worker pool.
@@ -1384,9 +1428,14 @@ impl Engine {
         &self,
         params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
-        let params = self.prepare_request_params(params)?;
+        let mut params = self.prepare_request_params(params)?;
+        intraday_timezone::apply_intraday_request_timezone(self, &mut params).await?;
+        let out_iana = intraday_timezone::resolve_output_tz_iana(self, &params).await?;
         self.maybe_validate_request_fields(&params).await?;
-        self.request_pool.request_stream(params).await
+        let rx = self.request_pool.request_stream(params).await?;
+        Ok(intraday_timezone::wrap_batch_stream_with_output_tz(
+            rx, out_iana,
+        ))
     }
 
     /// Resolve defaults, validate, and schema-route kwargs before dispatch.
@@ -1504,11 +1553,13 @@ impl Engine {
         &self,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
         self.subscribe_with_options(
             crate::services::Service::MktData.to_string(),
             topics,
             fields,
+            all_fields,
             vec![],
             None,
             None,
@@ -1534,6 +1585,7 @@ impl Engine {
         service: String,
         topics: Vec<String>,
         fields: Vec<String>,
+        all_fields: bool,
         options: Vec<String>,
         stream_capacity: Option<usize>,
         flush_threshold: Option<usize>,
@@ -1553,6 +1605,7 @@ impl Engine {
                 service.clone(),
                 topics.clone(),
                 fields.clone(),
+                all_fields,
                 options.clone(),
                 flush_threshold,
                 overflow_policy,
@@ -1574,6 +1627,7 @@ impl Engine {
             tx,
             claim: Some(claim),
             fields,
+            all_fields,
             service,
             options,
             status,
@@ -1852,6 +1906,7 @@ impl Engine {
     /// Used by Drop and Python atexit to avoid blocking.
     pub fn signal_shutdown(&self) {
         xbbg_log::info!("Engine signal_shutdown requested");
+        let _ = self.shutdown_signal.send(true);
         self.request_pool.signal_shutdown();
         self.subscription_pool.signal_shutdown();
     }
@@ -1862,8 +1917,17 @@ impl Engine {
     /// Consumes the Engine.
     pub fn shutdown_blocking(mut self) {
         xbbg_log::info!("Engine shutdown_blocking requested");
+        let _ = self.shutdown_signal.send(true);
         self.request_pool.shutdown_blocking();
         self.subscription_pool.shutdown_blocking();
+    }
+
+    /// Get a receiver that fires when shutdown is signaled.
+    ///
+    /// Data-path consumers (e.g. `PySubscription.__anext__`) select on this
+    /// to break out of their recv loop promptly after `signal_shutdown()`.
+    pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
+        self.shutdown_signal.subscribe()
     }
 
     /// Get the tokio runtime (for spawning tasks).
@@ -1903,6 +1967,8 @@ pub struct SubscriptionStream {
     claim: Option<SessionClaim>,
     /// Subscribed fields.
     fields: Vec<String>,
+    /// Whether batches should expose all top-level Bloomberg fields.
+    all_fields: bool,
     /// Bloomberg service (e.g., "//blp/mktdata", "//blp/mktvwap").
     service: String,
     /// Subscription options.
@@ -1968,6 +2034,7 @@ impl SubscriptionStream {
                 self.service.clone(),
                 new_topics.clone(),
                 self.fields.clone(),
+                self.all_fields,
                 self.options.clone(),
                 self.flush_threshold,
                 self.overflow_policy,
@@ -2090,6 +2157,7 @@ impl SubscriptionStream {
             Option<OverflowPolicy>, // overflow_policy
             String,                 // service
             Vec<String>,            // options
+            bool,                   // all_fields
         ),
         BlpError,
     > {
@@ -2110,6 +2178,7 @@ impl SubscriptionStream {
             let overflow_policy = ptr::read(&this.overflow_policy);
             let service = ptr::read(&this.service);
             let options = ptr::read(&this.options);
+            let all_fields = ptr::read(&this.all_fields);
 
             let Some(claim) = claim else {
                 return Err(BlpError::Internal {
@@ -2127,6 +2196,7 @@ impl SubscriptionStream {
                 overflow_policy,
                 service,
                 options,
+                all_fields,
             ))
         }
     }

@@ -247,12 +247,12 @@ async def acorporate_bonds(
 ) -> IntoDataFrame:
     """Async find corporate bonds for a company using BQL.
 
-    Uses Bloomberg's bondsuniv filter to find active corporate bond issues
-    for a given company ticker.
+    Uses Bloomberg's debt() universe to find corporate bond issues
+    for a given company via its equity ticker. Works across all markets.
 
     Args:
-        ticker: Company ticker without suffix (e.g., "AAPL", "MSFT").
-            This is the Bloomberg ticker prefix used to match bonds.
+        ticker: Company equity ticker (e.g., "AAPL", "9984 JT Equity").
+            If no suffix is provided, " US Equity" is appended.
         ccy: Currency filter (default: "USD"). Set to None for all currencies.
         fields: Optional list of additional fields to retrieve.
             Default field is: id.

@@ -1,11 +1,5 @@
 [env]
-XBBG_DEV_SDK_ROOT = { value = "vendor/blpapi-sdk/3.26.1.1", relative = true }
+BLPAPI_ROOT = { value = "vendor/blpapi-sdk", relative = true }
 # Note: LIBCLANG_PATH is NOT set here — it varies per machine.
-# If you need bindgen locally, set it in your shell environment:
-#   Windows (VS BuildTools): set LIBCLANG_PATH=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin
-#   Windows (VS Enterprise):  set LIBCLANG_PATH=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin
-#   Linux:                     export LIBCLANG_PATH=/usr/lib/llvm-18/lib
-# CI uses BLPAPI_PREGENERATED_BINDINGS to skip bindgen entirely.
-#
-# PYO3_PYTHON is not set here — PyO3 auto-detects the Python interpreter.
-# For local dev with uv venv, activate the venv or set PYO3_PYTHON manually.
+# Pixi users get it automatically via [activation.env].
+# Non-pixi users: set LIBCLANG_PATH in your shell environment.

@@ -57,6 +57,35 @@ impl SessionOptions {
         Ok(self)
     }
 
+    pub fn set_server_address_with_proxy(
+        &mut self,
+        host: &str,
+        port: u16,
+        socks5: &crate::socks5::Socks5Config,
+        index: usize,
+    ) -> Result<&mut Self> {
+        let cs = CString::new(host).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid host: {e}"),
+        })?;
+        let rc = unsafe {
+            ffi::blpapi_SessionOptions_setServerAddressWithProxy(
+                self.ptr,
+                cs.as_ptr(),
+                port,
+                socks5.as_ptr(),
+                index,
+            )
+        };
+        if rc != 0 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!(
+                    "setServerAddressWithProxy failed: host={host} port={port} index={index} rc={rc}"
+                ),
+            });
+        }
+        Ok(self)
+    }
+
     pub fn set_session_identity_options(
         &mut self,
         auth_options: &AuthOptions,

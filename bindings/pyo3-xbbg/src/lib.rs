@@ -7,7 +7,7 @@
 //!
 //! The async API releases the GIL during Bloomberg SDK operations:
 //! - `future_into_py` schedules work on tokio (no GIL held)
-//! - GIL is only acquired via `Python::attach()` for final Arrow conversion
+//! - GIL is only acquired via `Python::try_attach()` for final Arrow conversion
 //! - `py.detach()` releases GIL during blocking `Engine::start()`
 //!
 //! # Exception Mapping
@@ -36,6 +36,10 @@
 //! ```bash
 //! RUST_LOG=xbbg_core=trace,xbbg_async=debug python my_script.py
 //! ```
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
@@ -80,6 +84,61 @@ async fn wait_for_subscription_close(close_rx: &mut watch::Receiver<bool>) {
         if *close_rx.borrow() {
             return;
         }
+    }
+}
+
+/// Shutdown-safe wrapper for [`future_into_py`].
+///
+/// Wraps any async future with interpreter-shutdown detection. If the engine
+/// signals shutdown before the future completes, or if the interpreter has been
+/// finalized by the time the future returns, the future suspends indefinitely
+/// instead of delivering a result. This prevents `future_into_py` from calling
+/// `Python::attach()` on a dead interpreter. (Issue #270)
+///
+/// Callers use `Python::attach()` naturally inside their closures — the guard
+/// is applied automatically at the boundary.
+fn shutdown_safe_future<'py, F>(
+    py: Python<'py>,
+    engine: &Arc<Engine>,
+    fut: F,
+) -> PyResult<Bound<'py, PyAny>>
+where
+    F: std::future::Future<Output = PyResult<Py<PyAny>>> + Send + 'static,
+{
+    let mut shutdown_rx = engine.shutdown_receiver();
+    future_into_py(py, async move {
+        tokio::select! {
+            result = fut => {
+                // Future completed. Verify interpreter is still alive before
+                // returning — returning triggers future_into_py's internal
+                // Python::attach() for result delivery.
+                if Python::try_attach(|_| ()).is_some() {
+                    result
+                } else {
+                    std::future::pending().await
+                }
+            }
+            _ = shutdown_rx.changed() => std::future::pending().await,
+        }
+    })
+}
+
+/// Defense-in-depth for `future_into_py` closures that lack an `Arc<Engine>`.
+///
+/// Attempts `Python::attach` to run `f`. If the interpreter has already been
+/// finalized, suspends the future forever instead of panicking — the tokio
+/// runtime drops the suspended future during process exit.
+///
+/// Used by `PySubscription` methods that cannot use [`shutdown_safe_future`]
+/// because they don't hold an `Arc<Engine>`.
+async fn try_attach_or_suspend<F, T>(f: F) -> PyResult<T>
+where
+    F: FnOnce(Python<'_>) -> PyResult<T> + Send,
+    T: Send,
+{
+    match Python::try_attach(f) {
+        Some(result) => result,
+        None => std::future::pending().await,
     }
 }
 
@@ -353,7 +412,7 @@ pub struct PyEngineConfig {
     /// Subscription stream backpressure capacity (default: 256)
     #[pyo3(get, set)]
     pub subscription_stream_capacity: usize,
-    /// Overflow policy for slow consumers: "drop_newest" (default), "drop_oldest", "block"
+    /// Overflow policy for slow consumers: "drop_newest" (default) or "block"
     #[pyo3(get, set)]
     pub overflow_policy: String,
     /// Services to pre-warm on startup (default: ["//blp/refdata", "//blp/apiflds"])
@@ -411,6 +470,12 @@ pub struct PyEngineConfig {
     pub health_check_interval_ms: u64,
     #[pyo3(get, set)]
     pub sdk_log_level: String,
+    /// SOCKS5 proxy hostname for Bloomberg connections.
+    #[pyo3(get, set)]
+    pub socks5_host: Option<String>,
+    /// SOCKS5 proxy port (required when socks5_host is set).
+    #[pyo3(get, set)]
+    pub socks5_port: Option<u16>,
 }
 
 #[gen_stub_pymethods]
@@ -459,6 +524,8 @@ impl PyEngineConfig {
             retry_max_delay_ms: 30_000,
             health_check_interval_ms: 30_000,
             sdk_log_level: "off".to_string(),
+            socks5_host: None,
+            socks5_port: None,
         };
 
         if let Some(kw) = kwargs {
@@ -566,6 +633,12 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("sdk_log_level")? {
                 config.sdk_log_level = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("socks5_host")? {
+                config.socks5_host = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("socks5_port")? {
+                config.socks5_port = v.extract()?;
             }
         }
 
@@ -708,6 +781,8 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
                 .sdk_log_level
                 .parse()
                 .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?,
+            socks5_host: py_config.socks5_host.clone(),
+            socks5_port: py_config.socks5_port,
         })
     }
 }
@@ -822,7 +897,7 @@ impl PyEngine {
             "PyEngine: sending request"
         );
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let batch = engine.request(rust_params).await.map_err(|e| {
                 warn!(error = %e, "PyEngine: request failed");
                 blp_async_error_to_pyerr(e)
@@ -841,7 +916,7 @@ impl PyEngine {
         ticker: String,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let info = engine.resolve_exchange(&ticker).await;
             Python::attach(|py| exchange_info_to_pydict(py, &info))
         })
@@ -854,7 +929,7 @@ impl PyEngine {
         ticker: String,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let info = engine
                 .fetch_market_info(&ticker)
                 .await
@@ -879,7 +954,7 @@ impl PyEngine {
         let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
             .map_err(|_| PyValueError::new_err("date must be YYYY-MM-DD"))?;
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let value = engine
                 .resolve_market_timing(&ticker, date, timing, tz.as_deref())
                 .await
@@ -919,7 +994,7 @@ impl PyEngine {
         let engine = self.engine.clone();
         let default = default_type.to_string();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let resolved = engine
                 .resolve_field_types(&fields, overrides.as_ref(), &default)
                 .await
@@ -983,7 +1058,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let invalid = engine
                 .validate_fields(&fields)
                 .await
@@ -1005,7 +1080,7 @@ impl PyEngine {
     fn get_schema<'py>(&self, py: Python<'py>, service: String) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let schema = engine
                 .get_schema(&service)
                 .await
@@ -1031,7 +1106,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let op = engine
                 .get_operation(&service, &operation)
                 .await
@@ -1053,7 +1128,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let ops = engine
                 .list_operations(&service)
                 .await
@@ -1107,7 +1182,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let values = engine
                 .get_enum_values(&service, &operation, &element)
                 .await
@@ -1133,7 +1208,7 @@ impl PyEngine {
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let elements = engine
                 .list_valid_elements(&service, &operation)
                 .await
@@ -1167,7 +1242,7 @@ impl PyEngine {
     /// await sub.unsubscribe()
     /// ```
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None))]
+    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None, all_fields=false))]
     fn subscribe<'py>(
         &self,
         py: Python<'py>,
@@ -1177,13 +1252,13 @@ impl PyEngine {
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
         recovery_policy: Option<String>,
+        all_fields: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
         let fields_clone = fields.clone();
 
         let op = overflow_policy.as_deref().map(|s| match s {
-            "drop_oldest" => OverflowPolicy::DropOldest,
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
         });
@@ -1198,12 +1273,13 @@ impl PyEngine {
             "PyEngine: creating subscription"
         );
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let stream = engine
                 .subscribe_with_options(
                     "//blp/mktdata".to_string(),
                     tickers_clone.clone(),
                     fields_clone.clone(),
+                    all_fields,
                     vec![],
                     stream_capacity,
                     flush_threshold,
@@ -1217,7 +1293,7 @@ impl PyEngine {
 
             // Destructure the SubscriptionStream to separate rx from the rest
             // This allows iteration (rx) and modification (claim) to use separate locks
-            let (rx, tx, claim, status, ft, op_policy, service, options) =
+            let (rx, tx, claim, status, ft, op_policy, service, options, all_fields) =
                 stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
@@ -1225,6 +1301,7 @@ impl PyEngine {
                 tx,
                 claim: Some(claim),
                 fields: fields_clone,
+                all_fields,
                 service,
                 options,
                 flush_threshold: ft,
@@ -1239,6 +1316,7 @@ impl PyEngine {
                     stream: Arc::new(Mutex::new(Some(handle))),
                     ops: Arc::new(Mutex::new(())),
                     close_signal,
+                    engine_shutdown: engine.shutdown_receiver(),
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
             })
@@ -1266,7 +1344,7 @@ impl PyEngine {
     /// async for batch in sub:
     ///     print(batch)
     /// ```
-    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None))]
+    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None, all_fields=false))]
     #[allow(clippy::too_many_arguments)]
     fn subscribe_with_options<'py>(
         &self,
@@ -1279,6 +1357,7 @@ impl PyEngine {
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
         recovery_policy: Option<String>,
+        all_fields: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
         let tickers_clone = tickers.clone();
@@ -1287,7 +1366,6 @@ impl PyEngine {
         let service_clone = service.clone();
 
         let op = overflow_policy.as_deref().map(|s| match s {
-            "drop_oldest" => OverflowPolicy::DropOldest,
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
         });
@@ -1304,12 +1382,13 @@ impl PyEngine {
             "PyEngine: creating subscription with options"
         );
 
-        future_into_py(py, async move {
+        shutdown_safe_future(py, &self.engine, async move {
             let stream = engine
                 .subscribe_with_options(
                     service_clone.clone(),
                     tickers_clone.clone(),
                     fields_clone.clone(),
+                    all_fields,
                     options_clone.clone(),
                     stream_capacity,
                     flush_threshold,
@@ -1321,7 +1400,7 @@ impl PyEngine {
 
             debug!("PyEngine: subscription with options created");
 
-            let (rx, tx, claim, status, ft, op_policy, service, options) =
+            let (rx, tx, claim, status, ft, op_policy, service, options, all_fields) =
                 stream.into_parts().map_err(blp_error_to_pyerr)?;
 
             let (close_signal, _) = watch::channel(false);
@@ -1329,6 +1408,7 @@ impl PyEngine {
                 tx,
                 claim: Some(claim),
                 fields: fields_clone,
+                all_fields,
                 service,
                 options,
                 flush_threshold: ft,
@@ -1343,6 +1423,7 @@ impl PyEngine {
                     stream: Arc::new(Mutex::new(Some(handle))),
                     ops: Arc::new(Mutex::new(())),
                     close_signal,
+                    engine_shutdown: engine.shutdown_receiver(),
                 };
                 Ok(Py::new(py, py_sub)?.into_any())
             })
@@ -1366,17 +1447,22 @@ impl PyEngine {
     }
 
     fn worker_health(&self) -> PyResult<Vec<(usize, String)>> {
-        // TODO: replace with self.engine.request_pool_health() once Engine exposes it.
-        Ok(Vec::new())
+        Ok(self
+            .engine
+            .request_pool_health()
+            .into_iter()
+            .map(|(id, h)| (id, h.as_str().to_string()))
+            .collect())
     }
 
-    /// Check if engine is available.
+    /// Check if the Bloomberg connection is healthy.
     ///
-    /// Returns True if the engine exists. Note that this doesn't guarantee
-    /// Bloomberg is still connected - a request might still fail.
-    fn is_available(&self) -> bool {
-        // Engine exists if we have it
-        true
+    /// Returns True if at least one worker has a live Bloomberg session.
+    fn is_connected(&self) -> bool {
+        self.engine
+            .request_pool_health()
+            .iter()
+            .any(|(_, h)| h.as_str() == "healthy")
     }
 }
 
@@ -1430,6 +1516,8 @@ pub struct PySubscription {
     ops: Arc<Mutex<()>>,
     /// Signal used to wake pending iteration during unsubscribe/close.
     close_signal: watch::Sender<bool>,
+    /// Engine-level shutdown signal — wakes pending iteration when the engine shuts down.
+    engine_shutdown: watch::Receiver<bool>,
 }
 
 /// Internal handle for subscription metadata and operations (without the receiver)
@@ -1437,6 +1525,7 @@ struct SubscriptionStreamHandle {
     tx: StreamSender,
     claim: Option<xbbg_async::engine::SessionClaim>,
     fields: Vec<String>,
+    all_fields: bool,
     service: String,
     options: Vec<String>,
     flush_threshold: Option<usize>,
@@ -1450,6 +1539,7 @@ struct PendingAdd {
     new_topics: Vec<String>,
     service: String,
     fields: Vec<String>,
+    all_fields: bool,
     options: Vec<String>,
     flush_threshold: Option<usize>,
     overflow_policy: Option<OverflowPolicy>,
@@ -1487,6 +1577,7 @@ impl SubscriptionStreamHandle {
             new_topics,
             service: self.service.clone(),
             fields: self.fields.clone(),
+            all_fields: self.all_fields,
             options: self.options.clone(),
             flush_threshold: self.flush_threshold,
             overflow_policy: self.overflow_policy,
@@ -1618,7 +1709,6 @@ impl PySubscription {
                         .unwrap_or(OverflowPolicy::DropNewest)
                     {
                         OverflowPolicy::DropNewest => "drop_newest".to_string(),
-                        OverflowPolicy::DropOldest => "drop_newest".to_string(),
                         OverflowPolicy::Block => "block".to_string(),
                     },
                 }
@@ -1650,6 +1740,7 @@ impl PySubscription {
     fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let rx = self.rx.clone();
         let close_signal = self.close_signal.clone();
+        let mut engine_shutdown_rx = self.engine_shutdown.clone();
 
         future_into_py(py, async move {
             let mut close_rx = close_signal.subscribe();
@@ -1661,11 +1752,14 @@ impl PySubscription {
                 tokio::select! {
                     item = rx_ref.recv() => Ok(item),
                     _ = wait_for_subscription_close(&mut close_rx) => Err(()),
+                    _ = engine_shutdown_rx.changed() => Err(()),
                 }
             };
 
             match item {
-                Ok(Some(Ok(batch))) => Python::attach(|py| record_batch_to_pyarrow(py, batch)),
+                Ok(Some(Ok(batch))) => {
+                    try_attach_or_suspend(|py| record_batch_to_pyarrow(py, batch)).await
+                }
                 Ok(Some(Err(blp_err))) => Err(blp_error_to_pyerr(blp_err)),
                 Ok(None) => Err(PyStopAsyncIteration::new_err("subscription ended")),
                 Err(()) => Err(PyStopAsyncIteration::new_err("subscription closed")),
@@ -1704,6 +1798,7 @@ impl PySubscription {
                     pending.service.clone(),
                     pending.new_topics.clone(),
                     pending.fields.clone(),
+                    pending.all_fields,
                     pending.options.clone(),
                     pending.flush_threshold,
                     pending.overflow_policy,
@@ -1979,7 +2074,7 @@ impl PySubscription {
             }
 
             if !remaining.is_empty() {
-                Python::attach(|py| {
+                try_attach_or_suspend(|py| {
                     let list = pyo3::types::PyList::empty(py);
                     for batch in remaining {
                         let py_batch = record_batch_to_pyarrow(py, batch)?;
@@ -1987,8 +2082,9 @@ impl PySubscription {
                     }
                     Ok(list.into_any().unbind())
                 })
+                .await
             } else {
-                Python::attach(|py| Ok(py.None()))
+                try_attach_or_suspend(|py| Ok(py.None())).await
             }
         })
     }
@@ -2049,6 +2145,11 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
 
     let request_operation: Option<String> = dict
         .get_item("request_operation")?
+        .map(|v| v.extract())
+        .transpose()?;
+
+    let request_id: Option<String> = dict
+        .get_item("request_id")?
         .map(|v| v.extract())
         .transpose()?;
 
@@ -2144,10 +2245,20 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
 
     let format: Option<String> = dict.get_item("format")?.map(|v| v.extract()).transpose()?;
 
+    let request_tz: Option<String> = dict
+        .get_item("request_tz")?
+        .map(|v| v.extract())
+        .transpose()?;
+    let output_tz: Option<String> = dict
+        .get_item("output_tz")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     Ok(RequestParams {
         service,
         operation,
         request_operation,
+        request_id,
         extractor,
         extractor_set,
         securities,
@@ -2160,6 +2271,8 @@ fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
         end_date,
         start_datetime,
         end_datetime,
+        request_tz,
+        output_tz,
         event_type,
         event_types,
         interval,
@@ -2465,5 +2578,20 @@ mod tests {
                 token: "tok-123".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn dict_to_request_params_extracts_request_id() {
+        Python::initialize();
+        Python::attach(|py| {
+            let dict = PyDict::new(py);
+            dict.set_item("service", "//blp/refdata").expect("service");
+            dict.set_item("operation", "ReferenceDataRequest")
+                .expect("operation");
+            dict.set_item("request_id", "req-123").expect("request_id");
+
+            let params = dict_to_request_params(&dict).expect("request params");
+            assert_eq!(params.request_id.as_deref(), Some("req-123"));
+        });
     }
 }

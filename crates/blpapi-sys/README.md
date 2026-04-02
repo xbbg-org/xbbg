@@ -24,15 +24,12 @@ blpapi-sys/
   - Windows x64: `blpapi3_64`
   - Windows x86: `blpapi3_32`
   - Linux/macOS: `blpapi3`
-- Override with `BLPAPI_LINK_LIB_NAME` env var
-
 ## SDK discovery (precedence)
 
 | Priority | Environment variable(s) | Notes |
 |----------|------------------------|-------|
 | 1 | `BLPAPI_INCLUDE_DIR` + `BLPAPI_LIB_DIR` | Explicit paths (CI/prod) |
-| 2 | `BLPAPI_ROOT` | Derives `include/` and `lib/` from root |
-| 3 | `XBBG_DEV_SDK_ROOT` | Dev-only, same derivation as above |
+| 2 | `BLPAPI_ROOT` | Derives `include/` and `lib/` from root; scans versioned subdirs |
 
 The build script tries these layouts under a root directory:
 - `<root>/include` + `<root>/lib`
@@ -52,13 +49,20 @@ By default, bindings are generated with bindgen at build time.
 
 **Dev (quickest)**: run the SDK tool from the repo root, then build:
 
-```powershell
-.\scripts\sdktool.ps1            # downloads, extracts, sets .env
+```bash
+bash ./scripts/sdktool.sh
 ```
 
-This writes `XBBG_DEV_SDK_ROOT=vendor/blpapi-sdk/<version>` to `.env`.
+```powershell
+.\scripts\sdktool.ps1            # downloads and extracts SDK
+```
 
-**Dev (manual)**: set `XBBG_DEV_SDK_ROOT` to the SDK root, then build the workspace.
+The build script scans versioned subdirs under `BLPAPI_ROOT`, so pointing it at
+`vendor/blpapi-sdk/` automatically finds the latest installed version.
+
+**Pixi users**: `pixi.toml` sets `BLPAPI_ROOT` via activation — just run `pixi run install`.
+
+**Dev (manual)**: set `BLPAPI_ROOT` to the SDK root, then build the workspace.
 
 **CI build**: set `BLPAPI_ROOT` or `BLPAPI_INCLUDE_DIR`/`BLPAPI_LIB_DIR`.
 

@@ -17,4 +17,4 @@ datamock = { path = "../datamock", optional = true }
 blpapi-sys = { path = "../blpapi-sys", optional = true }
 
 [build-dependencies]
-bindgen = { version = "0.70", optional = true }
+bindgen = { version = "0.72.1", default-features = false, features = ["runtime"], optional = true }

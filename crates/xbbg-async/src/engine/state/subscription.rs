@@ -4,6 +4,7 @@
 //! without JSON intermediate serialization. Uses dynamic type dispatch
 //! to preserve all Bloomberg types (string, int, float, datetime, etc.).
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
 
-use xbbg_core::{BlpError, Message};
+use xbbg_core::{BlpError, DataType as BlpDataType, Message, Value};
 
 use super::super::OverflowPolicy;
 use super::typed_builder::{ArrowType, TypedBuilder};
@@ -33,6 +34,8 @@ pub struct SubscriptionState {
     pub topic: Arc<str>,
     /// Field names as strings (for schema and lookup)
     pub field_strings: Vec<String>,
+    /// Fast lookup from field name to column index.
+    field_indices: HashMap<String, usize>,
     /// Timestamp builder (event time)
     pub timestamp_builder: TimestampMicrosecondBuilder,
     /// Topic builder (repeated for each row)
@@ -60,15 +63,21 @@ pub struct SubscriptionState {
     has_received_data: bool,
     /// Suppress stream-closed warnings during expected shutdown paths.
     suppress_closed_warning: bool,
+    /// Whether to append all top-level scalar fields Bloomberg exposes.
+    capture_all_fields: bool,
 }
 
 impl SubscriptionState {
+    const EVENT_METADATA_FIELDS: [&'static str; 2] =
+        ["MKTDATA_EVENT_TYPE", "MKTDATA_EVENT_SUBTYPE"];
+
     /// Create a new subscription state with default overflow policy.
     pub fn new(
         topic: String,
         fields: Vec<String>,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         flush_threshold: usize,
+        capture_all_fields: bool,
     ) -> Self {
         Self::with_policy(
             topic,
@@ -76,6 +85,7 @@ impl SubscriptionState {
             stream,
             flush_threshold,
             OverflowPolicy::default(),
+            capture_all_fields,
         )
     }
 
@@ -86,8 +96,28 @@ impl SubscriptionState {
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
         flush_threshold: usize,
         overflow_policy: OverflowPolicy,
+        capture_all_fields: bool,
     ) -> Self {
-        let field_builders = fields.iter().map(|_| None).collect();
+        let mut field_strings =
+            Vec::with_capacity(fields.len() + Self::EVENT_METADATA_FIELDS.len());
+        let mut field_indices =
+            HashMap::with_capacity(fields.len() + Self::EVENT_METADATA_FIELDS.len());
+        for field in fields {
+            if !field_indices.contains_key(&field) {
+                let idx = field_strings.len();
+                field_indices.insert(field.clone(), idx);
+                field_strings.push(field);
+            }
+        }
+        for field in Self::EVENT_METADATA_FIELDS {
+            if !field_indices.contains_key(field) {
+                let idx = field_strings.len();
+                let field_name = field.to_string();
+                field_indices.insert(field_name.clone(), idx);
+                field_strings.push(field_name);
+            }
+        }
+        let field_builders = field_strings.iter().map(|_| None).collect();
         let metrics = Arc::new(SubscriptionMetrics {
             messages_received: Arc::new(AtomicU64::new(0)),
             dropped_batches: Arc::new(AtomicU64::new(0)),
@@ -100,7 +130,8 @@ impl SubscriptionState {
 
         Self {
             topic: topic.into(),
-            field_strings: fields,
+            field_strings,
+            field_indices,
             timestamp_builder: TimestampMicrosecondBuilder::new(),
             topic_builder: StringBuilder::new(),
             field_builders,
@@ -114,6 +145,7 @@ impl SubscriptionState {
             cached_schema: None,
             has_received_data: false,
             suppress_closed_warning: false,
+            capture_all_fields,
         }
     }
 
@@ -139,36 +171,11 @@ impl SubscriptionState {
         self.timestamp_builder.append_value(timestamp);
         self.topic_builder.append_value(self.topic.as_ref());
 
-        // Extract each field value using dynamic type dispatch
         let elem = msg.elements();
-        for (i, field_name) in self.field_strings.iter().enumerate() {
-            if let Some(field_elem) = elem.get_by_str(field_name) {
-                let value = field_elem.get_value(0);
-
-                if let Some(builder) = &mut self.field_builders[i] {
-                    // Builder exists — append value (TypedBuilder handles coercion)
-                    builder.append_value(value);
-                } else if let Some(ref v) = value {
-                    if !matches!(v, xbbg_core::Value::Null) {
-                        // First non-null value for this field — infer type and create builder
-                        let arrow_type = ArrowType::from_value(v);
-                        let mut builder = TypedBuilder::new(arrow_type);
-                        // Backfill nulls for all previous rows
-                        for _ in 0..self.pending_count {
-                            builder.append_null();
-                        }
-                        builder.append_value(value);
-                        self.field_builders[i] = Some(builder);
-                        self.cached_schema = None; // Schema needs rebuild
-                    }
-                }
-                // If value is None/Null and no builder yet: skip — backfilled on creation
-            } else {
-                // Field not present in this message — append null if builder exists
-                if let Some(builder) = &mut self.field_builders[i] {
-                    builder.append_null();
-                }
-            }
+        if self.capture_all_fields {
+            self.append_all_fields(&elem);
+        } else {
+            self.append_requested_fields(&elem);
         }
 
         self.pending_count += 1;
@@ -188,6 +195,93 @@ impl SubscriptionState {
         }
 
         first_message
+    }
+
+    fn append_requested_fields(&mut self, elem: &xbbg_core::Element<'_>) {
+        for idx in 0..self.field_strings.len() {
+            let field_name = &self.field_strings[idx];
+            if let Some(field_elem) = elem.get_by_str(field_name) {
+                self.append_value_at(idx, field_elem.get_value(0));
+            } else {
+                self.append_missing_at(idx);
+            }
+        }
+    }
+
+    fn append_all_fields(&mut self, elem: &xbbg_core::Element<'_>) {
+        let mut seen = vec![false; self.field_strings.len()];
+
+        for child_idx in 0..elem.num_children() {
+            let Some(child) = elem.get_at(child_idx) else {
+                continue;
+            };
+            if !Self::should_capture_field(&child) {
+                continue;
+            }
+
+            let field_name = child.name().as_str().to_string();
+            let idx = self.ensure_field(&field_name);
+            if idx >= seen.len() {
+                seen.resize(self.field_strings.len(), false);
+            }
+            seen[idx] = true;
+            self.append_value_at(idx, child.get_value(0));
+        }
+
+        for (idx, was_seen) in seen.iter().enumerate() {
+            if !*was_seen {
+                self.append_missing_at(idx);
+            }
+        }
+    }
+
+    fn should_capture_field(field: &xbbg_core::Element<'_>) -> bool {
+        !matches!(
+            field.datatype(),
+            BlpDataType::Sequence
+                | BlpDataType::Choice
+                | BlpDataType::ByteArray
+                | BlpDataType::CorrelationId
+        )
+    }
+
+    fn ensure_field(&mut self, field_name: &str) -> usize {
+        if let Some(&idx) = self.field_indices.get(field_name) {
+            return idx;
+        }
+
+        let idx = self.field_strings.len();
+        self.field_strings.push(field_name.to_string());
+        self.field_builders.push(None);
+        self.field_indices.insert(field_name.to_string(), idx);
+        self.cached_schema = None;
+        idx
+    }
+
+    fn append_value_at(&mut self, idx: usize, value: Option<Value<'_>>) {
+        if let Some(builder) = &mut self.field_builders[idx] {
+            builder.append_value(value);
+            return;
+        }
+
+        if let Some(ref v) = value {
+            if !matches!(v, Value::Null) {
+                let arrow_type = ArrowType::from_value(v);
+                let mut builder = TypedBuilder::new(arrow_type);
+                for _ in 0..self.pending_count {
+                    builder.append_null();
+                }
+                builder.append_value(value);
+                self.field_builders[idx] = Some(builder);
+                self.cached_schema = None;
+            }
+        }
+    }
+
+    fn append_missing_at(&mut self, idx: usize) {
+        if let Some(builder) = &mut self.field_builders[idx] {
+            builder.append_null();
+        }
     }
 
     /// Handle DATALOSS indicator.
@@ -220,7 +314,7 @@ impl SubscriptionState {
         }
 
         // Build fixed arrays
-        let timestamp_array = self.timestamp_builder.finish();
+        let timestamp_array = self.timestamp_builder.finish().with_timezone("UTC");
         let topic_array = self.topic_builder.finish();
 
         // Build field arrays — use TypedBuilder where available, String nulls otherwise
@@ -274,7 +368,7 @@ impl SubscriptionState {
         let mut fields = vec![
             Field::new(
                 "timestamp",
-                DataType::Timestamp(TimeUnit::Microsecond, None),
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
                 false,
             ),
             Field::new("topic", DataType::Utf8, false),
@@ -303,8 +397,7 @@ impl SubscriptionState {
 
     /// Send a batch according to the configured overflow policy.
     ///
-    /// NOTE: `DropOldest` is still degraded to `DropNewest` (needs ring buffer).
-    /// `Block` now works properly using `blocking_send`.
+    /// `Block` uses `blocking_send` to apply backpressure.
     fn send_batch(&mut self, batch: RecordBatch) {
         match self.overflow_policy {
             OverflowPolicy::Block => {
@@ -318,9 +411,8 @@ impl SubscriptionState {
                     self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
                 }
             }
-            _ => {
-                // DropNewest and DropOldest both use try_send.
-                // DropOldest is degraded to DropNewest — proper ring buffer not yet implemented.
+            OverflowPolicy::DropNewest => {
+                // try_send: drop newest batch when buffer is full
                 match self.stream.try_send(Ok(batch)) {
                     Ok(()) => {
                         self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
@@ -328,11 +420,7 @@ impl SubscriptionState {
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         self.dropped_batches += 1;
                         self.metrics.dropped_batches.fetch_add(1, Ordering::Relaxed);
-                        let policy_label = match self.overflow_policy {
-                            OverflowPolicy::DropNewest => "DropNewest",
-                            OverflowPolicy::DropOldest => "DropOldest (degraded to DropNewest)",
-                            OverflowPolicy::Block => "Block",
-                        };
+                        let policy_label = "DropNewest";
                         xbbg_log::warn!(
                             topic = %self.topic,
                             dropped = self.dropped_batches,

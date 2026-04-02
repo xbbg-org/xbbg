@@ -233,14 +233,6 @@ Long format with string values and dtype metadata column.
 Columns: ticker, field, value, dtype
 The dtype column contains the Arrow type name (float64, int64, string, etc.)
 
-<a id="xbbg.services.Format.WIDE"></a>
-
-#### WIDE
-
-Wide format with fields as columns (DEPRECATED).
-
-Use df.pivot(on='field', index='ticker', values='value') instead.
-
 <a id="xbbg.services.RequestParams"></a>
 
 ## RequestParams Objects
@@ -277,7 +269,7 @@ Parameters are validated before being sent to the Rust layer.
 - `field_types` - Manual type overrides for fields (for issue `168`).
 - `output` - Output format (arrow or json).
 - `extractor` - Override the auto-detected extractor hint.
-- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
+- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, SEMI_LONG).
 
 <a id="xbbg.services.RequestParams.__post_init__"></a>
 
@@ -316,4 +308,3 @@ Convert to dictionary for passing to Rust.
 **Returns**:
 
   Dictionary with only non-None values, suitable for Rust consumption.
-

@@ -10,54 +10,38 @@ from __future__ import annotations
 
 from . import _core
 
-# Canonical Rust exceptions (single source of truth)
+# Rust base exceptions that are not extended — re-exported as-is.
 BlpError = _core.BlpError
 BlpSessionError = _core.BlpSessionError
-BlpRequestError = _core.BlpRequestError
-BlpSecurityError = _core.BlpSecurityError
-BlpFieldError = _core.BlpFieldError
-BlpValidationError = _core.BlpValidationError
 BlpTimeoutError = _core.BlpTimeoutError
 BlpInternalError = _core.BlpInternalError
 
 
-def _init_request_error(
-    self,
-    message: str,
-    *,
-    service: str | None = None,
-    operation: str | None = None,
-    request_id: str | None = None,
-    code: int | None = None,
-) -> None:
-    """Back-compat init for request-derived errors with context attributes."""
-    Exception.__init__(self, message)
-    self.service = service
-    self.operation = operation
-    self.request_id = request_id
-    self.code = code
+class BlpRequestError(_core.BlpRequestError):
+    """Bloomberg request-level error with extended request context attributes."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        service: str | None = None,
+        operation: str | None = None,
+        request_id: str | None = None,
+        code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.service = service
+        self.operation = operation
+        self.request_id = request_id
+        self.code = code
 
 
-def _init_validation_error(
-    self,
-    message: str,
-    *,
-    element: str | None = None,
-    suggestion: str | None = None,
-    valid_values: list[str] | None = None,
-) -> None:
-    """Back-compat init for validation errors with parsed metadata."""
-    Exception.__init__(self, message)
-    self.element = element
-    self.suggestion = suggestion
-    self.valid_values = valid_values
+class BlpSecurityError(BlpRequestError):
+    """Bloomberg security-level error (request failed for a specific security)."""
 
 
-# Back-compat constructor behavior expected by tests and existing callers.
-BlpRequestError.__init__ = _init_request_error
-BlpSecurityError.__init__ = _init_request_error
-BlpFieldError.__init__ = _init_request_error
-BlpValidationError.__init__ = _init_validation_error
+class BlpFieldError(BlpRequestError):
+    """Bloomberg field-level error (request failed for a specific field)."""
 
 
 class BlpBPipeError(BlpError):
@@ -96,19 +80,27 @@ def _parse_validation_error(message: str) -> tuple[str | None, str | None]:
     return element, suggestion
 
 
-def _from_rust_error(cls, message: str):
-    """Back-compat helper for constructing BlpValidationError from text."""
-    element, suggestion = _parse_validation_error(message)
-    err = cls(message)
-    if element is not None:
-        err.element = element
-    if suggestion is not None:
-        err.suggestion = suggestion
-    return err
+class BlpValidationError(_core.BlpValidationError):
+    """Bloomberg validation error with element and suggestion metadata."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        element: str | None = None,
+        suggestion: str | None = None,
+        valid_values: list[str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.element = element
+        self.suggestion = suggestion
+        self.valid_values = valid_values
 
-# Preserve legacy helper on the canonical Rust class.
-BlpValidationError.from_rust_error = classmethod(_from_rust_error)
+    @classmethod
+    def from_rust_error(cls, message: str) -> BlpValidationError:
+        """Construct a BlpValidationError by parsing metadata from a Rust error message."""
+        element, suggestion = _parse_validation_error(message)
+        return cls(message, element=element, suggestion=suggestion)
 
 
 __all__ = [

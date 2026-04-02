@@ -190,7 +190,9 @@ async def arequest(
         output: OutputMode | str = OutputMode.ARROW,
         extractor: ExtractorHint | str | None = None,
         format: Format | str | None = None,
-        backend: Backend | str | None = None)
+        backend: Backend | str | None = None,
+        request_tz: str | None = None,
+        output_tz: str | None = None)
 ```
 
 Async generic Bloomberg request.
@@ -223,6 +225,8 @@ For common use cases, prefer the typed functions: abdp, abdh, abds, abdib, abdti
   bulk data fields. If None, auto-detected from operation.
 - `format` - Output format hint for result structure.
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional intraday: naive datetime interpretation (Rust engine).
+- `output_tz` - Optional intraday: `time` column relabel (Rust engine).
   
 
 **Returns**:
@@ -322,7 +326,7 @@ Async Bloomberg reference data (BDP).
   - Format.LONG (default): ticker, field, value (strings)
   - Format.LONG_TYPED: ticker, field, value_f64, value_i64, etc.
   - Format.LONG_WITH_METADATA: ticker, field, value, dtype
-  - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
+  - Format.SEMI_LONG: one row per ticker with fields as columns
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
   If None, types are auto-resolved from Bloomberg field metadata.
 - `**kwargs` - Bloomberg overrides and infrastructure options.
@@ -374,7 +378,7 @@ Async Bloomberg historical data (BDH).
   - Format.LONG (default): ticker, date, field, value (strings)
   - Format.LONG_TYPED: ticker, date, field, value_f64, value_i64, etc.
   - Format.LONG_WITH_METADATA: ticker, date, field, value, dtype
-  - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
+  - Format.SEMI_LONG: one row per security/date with fields as columns
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
   If None, types are auto-resolved from Bloomberg field metadata.
 - `**kwargs` - Additional overrides and infrastructure options.
@@ -442,6 +446,8 @@ async def abdib(ticker: str,
                 end_datetime: str | None = None,
                 interval: int = 1,
                 backend: Backend | str | None = None,
+                request_tz: str | None = None,
+                output_tz: str | None = None,
                 **kwargs)
 ```
 
@@ -457,6 +463,8 @@ Async Bloomberg intraday bar data (BDIB).
 - `end_datetime` - Explicit end datetime for multi-day requests.
 - `interval` - Bar interval in minutes (default: 1).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. How naive datetimes are interpreted before the Bloomberg call (`UTC`, `local`, `exchange`, `NY`/`LN`/…, reference ticker, or IANA). Resolved and converted to UTC in the Rust engine.
+- `output_tz` - Optional. Relabel the `time` column to this IANA zone (same instants; Rust engine).
 - `**kwargs` - Additional options.
   
 
@@ -479,7 +487,10 @@ async def abdtick(ticker: str,
                   start_datetime: str,
                   end_datetime: str,
                   *,
+                  event_types: Sequence[str] | None = None,
                   backend: Backend | str | None = None,
+                  request_tz: str | None = None,
+                  output_tz: str | None = None,
                   **kwargs)
 ```
 
@@ -490,7 +501,10 @@ Async Bloomberg tick data (BDTICK).
 - `ticker` - Ticker name.
 - `start_datetime` - Start datetime.
 - `end_datetime` - End datetime.
+- `event_types` - Event types (default TRADE).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. Same semantics as `abdib` (Rust engine).
+- `output_tz` - Optional. Same semantics as `abdib` (Rust engine).
 - `**kwargs` - Additional options.
   
 
@@ -526,7 +540,7 @@ Sync wrapper around abdp(). For async usage, use abdp() directly.
 - `tickers` - Single ticker or list of tickers.
 - `flds` - Single field or list of fields to query.
 - `backend` - DataFrame backend to return. If None, uses global default.
-- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
+- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, SEMI_LONG).
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
 - `**kwargs` - Bloomberg overrides and infrastructure options.
   
@@ -567,7 +581,7 @@ Sync wrapper around abdh(). For async usage, use abdh() directly.
 - `start_date` - Start date. Defaults to 8 weeks before end_date.
 - `end_date` - End date. Defaults to 'today'.
 - `backend` - DataFrame backend to return. If None, uses global default.
-- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, WIDE).
+- `format` - Output format (LONG, LONG_TYPED, LONG_WITH_METADATA, SEMI_LONG).
 - `field_types` - Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
 - `**kwargs` - Additional overrides and infrastructure options.
   
@@ -628,6 +642,8 @@ def bdib(ticker: str,
          end_datetime: str | None = None,
          interval: int = 1,
          backend: Backend | str | None = None,
+         request_tz: str | None = None,
+         output_tz: str | None = None,
          **kwargs)
 ```
 
@@ -645,6 +661,8 @@ Sync wrapper around abdib(). For async usage, use abdib() directly.
 - `end_datetime` - Explicit end datetime for multi-day requests.
 - `interval` - Bar interval in minutes (default: 1).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. Same as `abdib`.
+- `output_tz` - Optional. Same as `abdib`.
 - `**kwargs` - Additional options.
   
 
@@ -667,7 +685,10 @@ def bdtick(ticker: str,
            start_datetime: str,
            end_datetime: str,
            *,
+           event_types: Sequence[str] | None = None,
            backend: Backend | str | None = None,
+           request_tz: str | None = None,
+           output_tz: str | None = None,
            **kwargs)
 ```
 
@@ -680,7 +701,10 @@ Sync wrapper around abdtick(). For async usage, use abdtick() directly.
 - `ticker` - Ticker name.
 - `start_datetime` - Start datetime.
 - `end_datetime` - End datetime.
+- `event_types` - Event types (default TRADE).
 - `backend` - DataFrame backend to return. If None, uses global default.
+- `request_tz` - Optional. Same as `abdib`.
+- `output_tz` - Optional. Same as `abdib`.
 - `**kwargs` - Additional options.
   
 
@@ -1357,4 +1381,3 @@ Schemas are cached locally (~/.xbbg/schemas/) for fast subsequent access.
   >>> op = bschema(operation="ReferenceDataRequest")
   >>> [c['name'] for c in op['request']['children']]
   ['securities', 'fields', 'overrides', ...]
-

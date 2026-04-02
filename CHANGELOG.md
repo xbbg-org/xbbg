@@ -7,6 +7,106 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **`xbbg-mcp` local MCP server**: Added a stdio Bloomberg MCP application under `apps/xbbg-mcp` with tool surfaces for `bdp`, `bdh`, `bds`, `bdib`, `bql`, `bsrch`, `bflds`, and generic request execution. Responses are bounded structured JSON with Arrow schema metadata for coding agents.
+- **GitHub-release MCP distribution path**: Added release packaging for `xbbg-mcp`, a Unix launcher wrapper (`scripts/xbbg-mcp`), and a convenience installer (`scripts/install-xbbg-mcp.sh`) so Claude Code and OpenCode users can install a local MCP binary without cloning or compiling the repo first.
+
+
+## [1.0.0] - 2026-03-31
+
+### Fixed
+
+- **Subscription event timestamps (issue #273)**: `asubscribe(..., tick_mode=True)` and raw subscription batches now expose the event `timestamp` column as UTC-aware Arrow/Python datetimes instead of naive UTC values. This fixes incorrect `.timestamp()` conversions on non-UTC hosts.
+
+## [1.0.0rc4] - 2026-03-30
+
+### Changed
+
+- **PyPI classifiers**: Added `Development Status :: 5 - Production/Stable`, `Intended Audience :: Financial and Insurance Industry`, `Intended Audience :: Science/Research`, `Topic :: Office/Business :: Financial`, `Programming Language :: Rust`, and `Typing :: Typed`.
+- **README**: Fixed all documentation links from defunct ReadTheDocs to Starlight site (`alpha-xone.github.io/xbbg`), updated the latest-release marker to rc4, removed stale Codecov/Codacy/CodeFactor badges, replaced dead `Auto CI` build badge with `ci-rust.yml`, and removed "beta" language in project description.
+- **Issue templates**: Updated documentation links and environment version examples for v1.
+- **CONTRIBUTING.md**: Corrected minimum Rust version from 1.70 to 1.75.
+
+### Added
+
+- **Bloomberg SDK ABI compatibility check**: New `scripts/abi-check.sh` and CI job that verifies every C symbol xbbg-core depends on exists across SDK versions (oldest supported through latest). Minimum supported SDK version defined in `defs/bloomberg.toml` (`min_sdk_version`).
+- **SECURITY.md**: Restored security policy with vulnerability reporting instructions and hardening notes.
+- **GitHub Pages deploy workflow**: Added `deploy-docs.yml` for automated Starlight docs deployment on push to main.
+- **Documentation**: Wrote complete content for all guide and reference pages (migration, streaming, async, backends, output formats, configuration, type mappings).
+
+### Fixed
+
+- **Shutdown panic (issue #270)**: Fixed tokio worker thread panic (`Python::attach` after `Py_Finalize`) when Python exits with active subscriptions. Root cause: `signal_shutdown()` didn't close the data path to `__anext__`, leaving tokio futures alive during interpreter teardown. Fix adds `Engine::shutdown_signal` (watch channel) that immediately wakes pending `__anext__` futures, and `shutdown_safe_future` wrapper that prevents `future_into_py` from delivering results to a dead interpreter. Affects all async methods (requests, subscriptions, recipes).
+- **Engine startup race condition (issue #272)**: `configure()` no longer raises `RuntimeError` if the engine was auto-created with defaults before configuration (e.g., by a health check or background thread in FastAPI). It now shuts down the default engine with a `RuntimeWarning` and stores the new config for the next request. Also added thread safety to `_get_engine()` (double-checked locking) and clear error messages when sync wrappers (`bdp`, `bdh`, etc.) are called inside async contexts.
+- **Type checking**: Resolved all 178 `ty` errors to zero. Exception classes properly subclassed in Python instead of monkey-patching `__init__` on Rust classes. Added exception stubs to `_core/__init__.pyi`. Remaining 6 `type: ignore` comments are all upstream stub gaps (narwhals, stdlib, platform-specific).
+- **Unused `pandas` import**: Removed leftover `TYPE_CHECKING` import of `pandas` in `blp.py` after `Format.WIDE` removal.
+- **Exception hierarchy**: `BlpRequestError`, `BlpSecurityError`, `BlpFieldError`, and `BlpValidationError` are now proper Python subclasses of the Rust base classes with typed `__init__` signatures, replacing fragile `__init__` monkey-patching.
+
+### Security
+
+- **Pygments ReDoS (CVE)**: Upgraded Pygments 2.19.2 to 2.20.0, fixing a regular expression denial of service in GUID matching.
+
+### Removed
+
+- **`OverflowPolicy::DropOldest`**: Removed unimplemented overflow policy that silently behaved as `DropNewest`. Will be reintroduced in a future release with correct ring-buffer semantics. Use `'drop_newest'` (default) or `'block'`.
+- **`Format.WIDE`**: Removed the deprecated wide output format. Use `Format.SEMI_LONG` for field-as-column output, or call `.pivot()` on `Format.LONG` results.
+- **`asset_config()`**: Removed the deprecated market config helper. Use `market_info(ticker)` instead.
+
+## [1.0.0rc3] - 2026-03-26
+
+### Fixed
+
+- **BQL error handling**: Parse Bloomberg's `responseExceptions` for actionable error messages (e.g. "Undefined item: CUR_YLD") instead of opaque "missing 'results' field" errors. Null results with no exceptions now return an empty DataFrame. Partial exceptions with valid results log warnings instead of failing.
+- **`corporate_bonds()` cross-market support**: Switched from `bondsuniv` + `TICKER==` filter (US-only) to `debt()` universe, matching the approach used by `preferreds()`. Now accepts full equity tickers (e.g. "9984 JT Equity") and works across all markets.
+- **CDX on-the-run indicator**: Accept `'true'` (returned by Bloomberg for CDX generic tickers) in addition to `'Y'` for `ON_THE_RUN_CURRENT_BD_INDICATOR`, fixing false warnings on CDX instruments.
+- **`is_connected()` checks real session health**: Now queries actual Bloomberg worker health via `request_pool_health()` instead of just checking if the Python engine object exists.
+- **`fieldExceptions` logging**: Downgraded from WARN to DEBUG and now includes actual field names and error messages (e.g. "MATURITY: Field not applicable to security") instead of just a count.
+
+## [1.0.0rc2] - 2026-03-23
+
+### Added
+
+- **Subscription field exposure** (#265): `all_fields` on `asubscribe`, `astream`, and `stream` (and `PyEngine.subscribe` / `subscribe_with_options`). When `False` (default), batches include only requested fields plus `MKTDATA_EVENT_TYPE` and `MKTDATA_EVENT_SUBTYPE`. When `True`, each batch includes every top-level scalar field Bloomberg sends (e.g. full `SUMMARY`/`INITPAINT` snapshots), with the schema growing as new fields appear. The same flag is available on `avwap`, `amktbar`, `adepth`, and `achains` for consistency across streaming services.
+
+## [1.0.0rc1] - 2026-03-23
+
+### Added
+
+- **Intraday timezone controls (`request_tz` / `output_tz`)**: `abdib`/`bdib`, `abdtick`/`bdtick`, `arequest`, and Rust `RequestParams` accept optional `request_tz` (interpret naive `start_datetime`/`end_datetime` before Bloomberg) and `output_tz` (relabel Arrow `time` to an IANA zone). Supported labels include `UTC`, `local`, `exchange`, `NY`/`LN`/`TK`/`HK`, reference tickers, and explicit IANA names. Implemented in `xbbg-async` (`chrono-tz`, `iana-time-zone`) with nested RefData calls routed through `request_without_intraday_transform` to avoid recursion.
+- **Pixi environment management**: Added `pixi.toml` with 11 environments (default, test, lint, benchmark, docs, py310–py314), 21 tasks, and conda-forge deps for Rust, libclang, and pyarrow. Single `pixi install && pixi run install` replaces manual toolchain setup.
+- **mimalloc allocator**: PyO3 extension now uses mimalloc by default (feature-gated) for improved Rust-side allocation performance.
+- **`ty` type checking**: Lint environment includes Astral's `ty` type checker alongside ruff; CI lint job now runs type checking automatically.
+- **SOCKS5 proxy support** (#180): Route Bloomberg connections through a SOCKS5 proxy via `socks5_host` and `socks5_port` kwargs on `configure()` and `Engine()`. Uses the Bloomberg SDK's `Socks5Config` API (no auth, hostname + port only).
+- **Enterprise-friendly request middleware context**: `RequestContext` now carries a read-only `RequestEnvironment` snapshot so middleware can inspect engine source, host/port, server list, auth method, app/user context, and validation mode without reaching into private globals.
+
+### Changed
+
+- **Workspace default build scope**: Root `Cargo.toml` sets `[workspace].default-members` to exclude `crates/datamock` and `crates/datamock-sys`, so plain `cargo build` / `cargo test` at the repo root does not compile the C++ mock stack. Use `cargo test -p datamock` or `cargo build --workspace` when working on mocks. The `mock` Cargo feature on `xbbg-sys` and downstream crates remains optional and off by default.
+- **Standardised on `BLPAPI_ROOT`**: Removed `XBBG_DEV_SDK_ROOT` env var across the codebase (build.rs, scripts, docs). SDK discovery now uses `BLPAPI_ROOT` only (set by pixi activation or `.cargo/config.toml`). No hardcoded SDK version — build.rs scans versioned subdirs automatically.
+- **Removed `BLPAPI_LINK_LIB_NAME`**: Library name is now always auto-detected by `detect_link_lib_name()` based on target platform.
+- **Build profiles cleaned up**: Removed redundant `[profile.release.package.xbbg_core]`; added `[profile.dev.package."*"] opt-level = 2` so all deps are optimised in dev builds; `pixi run install` uses `target-cpu=native` for local builds.
+- **Migrated from uv to pixi for dev tooling**: Removed `[dependency-groups]`, `[tool.uv.*]` from pyproject.toml; deleted `uv.lock`; pre-commit hooks use bare `ruff` instead of `uvx ruff`; README dev instructions updated to pixi commands.
+- **Consolidated config files**: Merged `.coveragerc` into `pyproject.toml` `[tool.coverage.*]`; deleted `.env` (pixi activation replaces it); un-gitignored `.cargo/config.toml` (now contains only project-standard `BLPAPI_ROOT`).
+- **CI lint job uses pixi**: `lint-python` job now uses `prefix-dev/setup-pixi` with the lightweight `lint` environment, replacing `uvx ruff`.
+- **Request tracing is more consistent**: Python request middleware now sees the generated `request_id` in both `RequestContext.request_id` and `RequestContext.params_dict`, centralized request logs include the request ID, and the Rust request path forwards it as the Bloomberg request label for better audit/debug correlation.
+- **Bindgen/libclang toolchain aligned**: All Rust FFI crates now use `bindgen 0.72.1` with runtime loading, and the pixi environment now requires `libclang >=22`. This fixes incorrect Bloomberg SDK `blpapi_ManagedPtr_t_` generation under newer libclang releases and removes the need for correlation-ID layout workarounds.
+
+### Removed
+
+- **`XBBG_DEV_SDK_ROOT` env var**: Use `BLPAPI_ROOT` instead. The `.env` file fallback in `blpapi-sys/build.rs` has been removed.
+- **`BLPAPI_LINK_LIB_NAME` env var**: Auto-detection covers all platforms.
+- **`uv.lock`**: Replaced by `pixi.lock`.
+- **`.coveragerc`**: Configuration moved to `pyproject.toml`.
+
+### Fixed
+
+- **datamock C API** (`datamock_c_api.cpp`): `datamock_Message_typeString` and `datamock_Element_nameString` returned `const char*` into temporaries (`Name` destroyed at end of full-expression). Pointers are now stable via thread-local string copies before returning.
+- **datamock tests**: C API integration tests moved to `crates/datamock/tests/c_api.rs`; message/field strings decoded with lossy UTF-8 (mock data is not always valid UTF-8); tests serialized behind a mutex to avoid races on C++ global state; `build.rs` passes `-Wno-unused-parameter` for stub-heavy sources.
+- **datamock C++ warnings**: Safer null/empty check in `Name` equality vs C string; `ServiceRefData` marks `name` / `createRequest` with `override`; `SchemaTypeDefinition` destructor matches throwing body with `noexcept(false)`.
+- **De-duplicated Rust recipe helpers**: Extracted `array_value_as_string`, `date32_to_naive`, `as_string_col` into shared `xbbg-recipes/src/utils.rs`.
+- **De-duplicated Python code**: Consolidated `_to_pandas_wide` (was in both `info.py` and `bloomberg.py`); unified `_FUTURES_MONTH_CODES` to use Rust-sourced `ext_get_futures_months()`; extracted `_apply_settle_override` helper replacing 5 repeated blocks in `bonds.py`.
+
 ## [1.0.0b7] - 2026-03-18
 
 ### Added
@@ -1045,7 +1145,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...v1.0.0
+[1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc3...v1.0.0rc4
+[1.0.0rc3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...v1.0.0rc3
+[1.0.0rc2]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc1...v1.0.0rc2
+[1.0.0rc1]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b7...v1.0.0rc1
 [1.0.0b7]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b6...v1.0.0b7
 [1.0.0b6]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b5...v1.0.0b6
 [1.0.0b5]: https://github.com/alpha-xone/xbbg/compare/v1.0.0b4...v1.0.0b5

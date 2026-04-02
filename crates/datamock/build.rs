@@ -39,9 +39,14 @@ fn main() {
             .define("NOMINMAX", None);
     }
 
-    // Add warning flags (similar to CMake setup)
+    // Add warning flags (similar to CMake setup). Many BEmu stubs intentionally
+    // omit parameter names in overrides; suppress the resulting noise.
     if cfg!(not(target_env = "msvc")) {
-        build.flag("-Wall").flag("-Wextra").flag("-Wpedantic");
+        build
+            .flag("-Wall")
+            .flag("-Wextra")
+            .flag("-Wpedantic")
+            .flag_if_supported("-Wno-unused-parameter");
     }
 
     // Add all source files

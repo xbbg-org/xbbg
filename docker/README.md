@@ -30,14 +30,10 @@ podman run --rm \
   -e BLPAPI_BINDINGS_EXPORT_PATH=/work/target/ci-bindings/bindings.rs \
   xbbg-ci:local \
   bash -lc '
-    BLPAPI_VERSION=3.25.12.1
-    mkdir -p /tmp/blpapi
-    curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-      | tar -xz -C /tmp/blpapi --strip-components=1
-    ln -sf /tmp/blpapi/Linux /tmp/blpapi/lib
-    ln -sf /tmp/blpapi/lib/libblpapi3_64.so /tmp/blpapi/lib/libblpapi3.so
-    export BLPAPI_ROOT=/tmp/blpapi
-    export LD_LIBRARY_PATH=/tmp/blpapi/lib:$LD_LIBRARY_PATH
+    BLPAPI_VERSION=${BLPAPI_VERSION:-3.26.2.1}
+    bash ./scripts/sdktool.sh --version "$BLPAPI_VERSION" --no-set-active
+    export BLPAPI_ROOT=/work/vendor/blpapi-sdk/$BLPAPI_VERSION
+    export LD_LIBRARY_PATH=/work/vendor/blpapi-sdk/$BLPAPI_VERSION/Linux:$LD_LIBRARY_PATH
     cargo build -p blpapi-sys
   '
 ```
@@ -50,14 +46,10 @@ podman run --rm \
   -w /work \
   xbbg-ci:local \
   bash -lc '
-    BLPAPI_VERSION=3.25.12.1
-    mkdir -p /tmp/blpapi
-    curl -sSL "https://blpapi.bloomberg.com/download/releases/raw/files/blpapi_cpp_${BLPAPI_VERSION}-linux.tar.gz" \
-      | tar -xz -C /tmp/blpapi --strip-components=1
-    ln -sf /tmp/blpapi/Linux /tmp/blpapi/lib
-    ln -sf /tmp/blpapi/lib/libblpapi3_64.so /tmp/blpapi/lib/libblpapi3.so
-    export BLPAPI_ROOT=/tmp/blpapi
-    export LD_LIBRARY_PATH=/tmp/blpapi/lib:$LD_LIBRARY_PATH
+    BLPAPI_VERSION=${BLPAPI_VERSION:-3.26.2.1}
+    bash ./scripts/sdktool.sh --version "$BLPAPI_VERSION" --no-set-active
+    export BLPAPI_ROOT=/work/vendor/blpapi-sdk/$BLPAPI_VERSION
+    export LD_LIBRARY_PATH=/work/vendor/blpapi-sdk/$BLPAPI_VERSION/Linux:$LD_LIBRARY_PATH
     cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
   '
 ```

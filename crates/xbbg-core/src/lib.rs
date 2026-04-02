@@ -33,6 +33,7 @@ pub mod request;
 pub mod schema;
 pub mod service;
 pub mod session;
+pub mod socks5;
 pub mod subscription;
 pub mod tls;
 pub mod zfp;
@@ -53,6 +54,7 @@ pub use name::{clear_name_cache, name_cache_size, Name};
 pub use request::Request;
 pub use service::Service;
 pub use session::{Session, SessionOptions};
+pub use socks5::Socks5Config;
 pub use subscription::SubscriptionList;
 pub use value::{OwnedValue, Value};
 

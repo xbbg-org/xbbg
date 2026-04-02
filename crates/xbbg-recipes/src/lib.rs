@@ -12,5 +12,7 @@ pub mod error;
 pub mod fixed_income;
 pub mod futures;
 pub mod historical;
+pub mod utils;
 
 pub use error::{RecipeError, Result};
+pub use utils::*;

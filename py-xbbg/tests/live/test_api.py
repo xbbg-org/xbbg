@@ -1434,9 +1434,9 @@ class TestConfig:
         try:
             configure()
             logger.info("  configure() succeeded")
-        except RuntimeError:
-            # Engine already started from prior tests — expected behavior
-            logger.info("  configure() raised RuntimeError (engine already started) — expected")
+        except RuntimeWarning:
+            # Engine already started from prior tests — reconfigured with warning
+            logger.info("  configure() warned and reconfigured (engine already started) — expected")
 
     def test_is_connected(self):
         """Config: check connection status."""

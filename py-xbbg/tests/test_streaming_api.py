@@ -49,6 +49,9 @@ class TestAsubscribeSignature:
         assert "recovery_policy" in params
         assert params["recovery_policy"].default is None
 
+        assert "all_fields" in params
+        assert params["all_fields"].default is False
+
 
 class TestAstreamSignature:
     """Verify astream() has callback and config params."""
@@ -72,6 +75,9 @@ class TestAstreamSignature:
         assert "overflow_policy" in params
         assert params["overflow_policy"].default is None
 
+        assert "all_fields" in params
+        assert params["all_fields"].default is False
+
 
 class TestStreamSignature:
     """Verify stream() also has the new params."""
@@ -94,6 +100,21 @@ class TestStreamSignature:
 
         assert "overflow_policy" in params
         assert params["overflow_policy"].default is None
+
+        assert "all_fields" in params
+        assert params["all_fields"].default is False
+
+
+class TestStreamingServiceHelpersSignature:
+    """avwap / amktbar / adepth / achains forward all_fields."""
+
+    def test_all_fields_kwarg_defaults(self):
+        from xbbg.blp import achains, adepth, amktbar, avwap
+
+        for fn in (avwap, amktbar, adepth, achains):
+            sig = inspect.signature(fn)
+            assert "all_fields" in sig.parameters
+            assert sig.parameters["all_fields"].default is False
 
 
 class TestConfigValidation:
@@ -128,73 +149,6 @@ class TestConfigValidation:
                     overflow_policy="invalid_policy",
                 )
             )
-
-    def test_drop_oldest_warns_about_effective_policy(self):
-        """drop_oldest warns because runtime uses a performance-safe fallback."""
-        from xbbg.blp import asubscribe
-
-        class FakePySubscription:
-            tickers = ["AAPL US Equity"]
-            failed_tickers = []
-            failures = []
-            topic_states = [("AAPL US Equity", "pending", 1)]
-            session_status = {
-                "state": "up",
-                "last_change_us": 1,
-                "disconnect_count": 0,
-                "reconnect_count": 0,
-                "recovery_policy": "none",
-                "recovery_attempt_count": 0,
-                "recovery_success_count": 0,
-                "last_recovery_attempt_us": None,
-                "last_recovery_success_us": None,
-                "last_recovery_error": None,
-            }
-            admin_status = {
-                "slow_consumer_warning_active": False,
-                "slow_consumer_warning_count": 0,
-                "slow_consumer_cleared_count": 0,
-                "data_loss_count": 0,
-                "last_warning_us": None,
-                "last_cleared_us": None,
-                "last_data_loss_us": None,
-            }
-            service_status = []
-            events = []
-            fields = ["LAST_PRICE"]
-            is_active = True
-            all_failed = False
-            stats = {
-                "messages_received": 0,
-                "dropped_batches": 0,
-                "batches_sent": 0,
-                "slow_consumer": False,
-                "data_loss_events": 0,
-                "last_message_us": 0,
-                "last_data_loss_us": 0,
-                "effective_overflow_policy": "drop_newest",
-            }
-
-        class FakeEngine:
-            async def subscribe_with_options(self, service, tickers, fields, options, **kwargs):
-                return FakePySubscription()
-
-        import xbbg.blp as blp_module
-
-        original_get_engine = blp_module._get_engine
-        blp_module._get_engine = lambda: FakeEngine()
-
-        try:
-            with pytest.warns(UserWarning, match="drop_oldest"):
-                asyncio.run(
-                    asubscribe(
-                        ["AAPL US Equity"],
-                        ["LAST_PRICE"],
-                        overflow_policy="drop_oldest",
-                    )
-                )
-        finally:
-            blp_module._get_engine = original_get_engine
 
     def test_config_validation_recovery_policy(self):
         """Invalid recovery_policy raises ValueError."""

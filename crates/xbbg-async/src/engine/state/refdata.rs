@@ -246,11 +246,30 @@ impl RefDataState {
             }
 
             if let Some(field_exceptions) = sec.get_by_str("fieldExceptions") {
-                if !field_exceptions.is_empty() {
-                    xbbg_log::warn!(
+                let n = field_exceptions.len();
+                if n > 0 {
+                    // Collect field names and error messages for diagnostics
+                    let mut details: Vec<String> = Vec::with_capacity(n);
+                    for j in 0..n {
+                        if let Some(exc) = field_exceptions.get_element(j) {
+                            let field_id = exc
+                                .get_by_str("fieldId")
+                                .and_then(|e| e.get_str(0))
+                                .unwrap_or("?");
+                            let err_info = exc.get_by_str("errorInfo");
+                            let message = err_info
+                                .as_ref()
+                                .and_then(|e| e.get_by_str("message"))
+                                .and_then(|e| e.get_str(0))
+                                .unwrap_or("");
+                            details.push(format!("{field_id}: {message}"));
+                        }
+                    }
+                    xbbg_log::debug!(
                         ticker = ticker,
-                        count = field_exceptions.len(),
-                        "ReferenceData fieldExceptions present"
+                        count = n,
+                        fields = details.join(", ").as_str(),
+                        "ReferenceData fieldExceptions"
                     );
                 }
             }

@@ -1,9 +1,0 @@
-[run]
-omit =
-    py-xbbg/tests/*
-    */__init__.py
-    */__pycache__/*
-    */.venv/*
-
-[html]
-directory = htmlcov

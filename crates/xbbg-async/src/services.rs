@@ -329,8 +329,6 @@ pub enum Format {
     LongWithMetadata,
     /// Semi-long format with one row per ticker/timestamp and fields as columns.
     SemiLong,
-    /// Wide format with fields as columns (DEPRECATED).
-    Wide,
 }
 
 impl Format {
@@ -341,7 +339,6 @@ impl Format {
             Self::LongTyped => "long_typed",
             Self::LongWithMetadata => "long_metadata",
             Self::SemiLong => "semi_long",
-            Self::Wide => "wide",
         }
     }
 }
@@ -361,7 +358,6 @@ impl FromStr for Format {
             "long_typed" => Ok(Self::LongTyped),
             "long_metadata" => Ok(Self::LongWithMetadata),
             "semi_long" => Ok(Self::SemiLong),
-            "wide" => Ok(Self::Wide),
             other => Err(format!("Unknown format: {}", other)),
         }
     }
@@ -679,7 +675,6 @@ mod tests {
             ("long_typed", Format::LongTyped),
             ("long_metadata", Format::LongWithMetadata),
             ("semi_long", Format::SemiLong),
-            ("wide", Format::Wide),
         ] {
             assert_eq!(Format::from_str(s).unwrap(), expected);
             assert_eq!(expected.as_str(), s);

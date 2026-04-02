@@ -65,6 +65,7 @@ EXCEPTION_EXPORTS = (
 MODULE_EXPORTS = (
     "ext",
     "markets",
+    "testing",
 )
 
 BACKEND_EXPORTS = (
@@ -147,6 +148,7 @@ PACKAGE_CONFIG_EXPORTS = (
 )
 
 PACKAGE_MIDDLEWARE_EXPORTS = (
+    "RequestEnvironment",
     "RequestContext",
     "add_middleware",
     "remove_middleware",

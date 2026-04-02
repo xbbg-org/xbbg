@@ -6,10 +6,10 @@ from dataclasses import dataclass
 import importlib
 import logging
 from typing import Any, cast
-import warnings
 
-import narwhals.stable.v1 as nw
 import pandas as pd
+
+from xbbg.markets.bloomberg import _to_pandas_wide
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,6 @@ __all__ = [
     "exch_info_bloomberg",
     "market_info",
     "market_timing",
-    "asset_config",
     "ccy_pair",
     "convert_session_times_to_utc",
     "CurrencyPair",
@@ -32,14 +31,6 @@ class CurrencyPair:
     ticker: str
     factor: float
     power: float
-
-
-def _to_pandas_wide(data: Any) -> pd.DataFrame:
-    utils = importlib.import_module("xbbg.ext._utils")
-    pivot_fn = cast("Any", utils._pivot_bdp_to_wide)
-    nw_df = nw.from_native(data)
-    nw_df = pivot_fn(nw_df)
-    return nw_df.to_pandas()
 
 
 def exch_info_bloomberg(ticker: str, **kwargs) -> pd.Series:
@@ -95,7 +86,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
 def market_info(ticker: str) -> pd.Series:
     """Get market info for a ticker using Bloomberg metadata fields."""
     xbbg_module = importlib.import_module("xbbg")
-    bdp_fn = cast("Any", xbbg_module.bdp)
+    bdp_fn = getattr(xbbg_module, "bdp")  # noqa: B009
 
     t_info = ticker.split()
     if len(t_info) < 2:
@@ -157,18 +148,6 @@ def market_info(ticker: str) -> pd.Series:
         info["is_fut"] = False
 
     return pd.Series(info)
-
-
-def asset_config(asset: str) -> pd.DataFrame:
-    """Deprecated market config helper."""
-    warnings.warn(
-        "asset_config() is deprecated. Use market_info(ticker) to get ticker metadata "
-        "from Bloomberg directly, or use bdp(ticker, 'FUT_GEN_MONTH') for futures cycles.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    _ = asset
-    return pd.DataFrame()
 
 
 def explode(data: pd.DataFrame, columns: list[str]) -> pd.DataFrame:

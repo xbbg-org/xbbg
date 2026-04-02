@@ -223,7 +223,7 @@ class PyEngine:
         r"""
         List all valid element names for an operation.
         """
-    def subscribe(self, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None) -> typing.Any:
+    def subscribe(self, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None, all_fields: builtins.bool = False) -> typing.Any:
         r"""
         Subscribe to real-time market data.
         
@@ -239,7 +239,7 @@ class PyEngine:
         await sub.unsubscribe()
         ```
         """
-    def subscribe_with_options(self, service: builtins.str, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], options: typing.Optional[typing.Sequence[builtins.str]] = None, flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None) -> typing.Any:
+    def subscribe_with_options(self, service: builtins.str, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], options: typing.Optional[typing.Sequence[builtins.str]] = None, flush_threshold: typing.Optional[builtins.int] = None, overflow_policy: typing.Optional[builtins.str] = None, stream_capacity: typing.Optional[builtins.int] = None, recovery_policy: typing.Optional[builtins.str] = None, all_fields: builtins.bool = False) -> typing.Any:
         r"""
         Subscribe to real-time data with custom service and options.
         
@@ -274,12 +274,11 @@ class PyEngine:
         You usually don't need to call this directly.
         """
     def worker_health(self) -> builtins.list[tuple[builtins.int, builtins.str]]: ...
-    def is_available(self) -> builtins.bool:
+    def is_connected(self) -> builtins.bool:
         r"""
-        Check if engine is available.
+        Check if the Bloomberg connection is healthy.
         
-        Returns True if the engine exists. Note that this doesn't guarantee
-        Bloomberg is still connected - a request might still fail.
+        Returns True if at least one worker has a live Bloomberg session.
         """
 
 @typing.final
@@ -399,12 +398,12 @@ class PyEngineConfig:
     @property
     def overflow_policy(self) -> builtins.str:
         r"""
-        Overflow policy for slow consumers: "drop_newest" (default), "drop_oldest", "block"
+        Overflow policy for slow consumers: "drop_newest" (default) or "block"
         """
     @overflow_policy.setter
     def overflow_policy(self, value: builtins.str) -> None:
         r"""
-        Overflow policy for slow consumers: "drop_newest" (default), "drop_oldest", "block"
+        Overflow policy for slow consumers: "drop_newest" (default) or "block"
         """
     @property
     def warmup_services(self) -> builtins.list[builtins.str]:
@@ -548,6 +547,26 @@ class PyEngineConfig:
     def sdk_log_level(self) -> builtins.str: ...
     @sdk_log_level.setter
     def sdk_log_level(self, value: builtins.str) -> None: ...
+    @property
+    def socks5_host(self) -> typing.Optional[builtins.str]:
+        r"""
+        SOCKS5 proxy hostname for Bloomberg connections.
+        """
+    @socks5_host.setter
+    def socks5_host(self, value: typing.Optional[builtins.str]) -> None:
+        r"""
+        SOCKS5 proxy hostname for Bloomberg connections.
+        """
+    @property
+    def socks5_port(self) -> typing.Optional[builtins.int]:
+        r"""
+        SOCKS5 proxy port (required when socks5_host is set).
+        """
+    @socks5_port.setter
+    def socks5_port(self, value: typing.Optional[builtins.int]) -> None:
+        r"""
+        SOCKS5 proxy port (required when socks5_host is set).
+        """
     def __new__(cls, **kwargs: typing.Any) -> PyEngineConfig:
         r"""
         Create a new configuration with defaults.

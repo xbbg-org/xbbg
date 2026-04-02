@@ -117,11 +117,9 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 ### Build Locally
 
 ```bash
-# Set Bloomberg SDK path (required for wheel builds)
-# Windows PowerShell:
-$env:BLPAPI_ROOT = "$PWD\vendor\blpapi-sdk\3.25.12.1"
-# Linux/macOS:
-export BLPAPI_ROOT=$PWD/vendor/blpapi-sdk/3.25.12.1
+# Install the SDK into vendor/blpapi-sdk/ and let the build discover it
+bash ./scripts/sdktool.sh
+# Windows PowerShell: .\scripts\sdktool.ps1
 
 # Build wheel (includes Rust extension)
 uv build
@@ -153,7 +151,7 @@ pip index versions xbbg
 
 | Branch | Purpose |
 |--------|---------|
-| `main` | v1.x development (Rust-backed beta line) |
+| `main` | v1.x development (Rust-backed stable line) |
 | `release/0.x` | v0.x maintenance releases (pure-Python stable line) |
 | `feat/*` | New features (PRs to main) |
 | `fix/*` | Bug fixes (PRs to main or release/0.x) |
@@ -208,3 +206,106 @@ When asked to create a release:
 - Edit version numbers in code (managed by `setuptools_scm` from git tags)
 - Create git tags directly (workflow handles this)
 - Upload to PyPI manually (OIDC trusted publishing only)
+
+## CHANGELOG.md Format
+
+```markdown
+## [Unreleased]
+
+### Added
+- New feature description (#PR_NUMBER)
+
+### Changed
+- Modified behavior description (#PR_NUMBER)
+
+### Deprecated
+- Feature that will be removed in future versions
+
+### Removed
+- Feature removed in this release
+
+### Fixed
+- Bug fix description (#ISSUE_NUMBER)
+
+### Security
+- Security fix description (CVE if applicable)
+```
+
+## Writing Good Release Notes
+
+### DO:
+- Write from the user's perspective ("Users can now..." not "We added...")
+- Be specific about what changed and why it matters
+- Link to relevant issues/PRs with `(#123)` format
+- Group related changes together
+- Mention breaking changes prominently
+- Include migration instructions for breaking changes
+
+### DON'T:
+- Leave the `[Unreleased]` section empty
+- Use vague descriptions ("Various improvements")
+- Include internal implementation details users don't need
+- Forget to categorize changes
+- Leave placeholder text
+
+### Example: Good Release Notes
+
+```markdown
+## [Unreleased]
+
+### Added
+- Multi-backend support with `Backend` enum (narwhals, pandas, polars, pyarrow, duckdb) (#173)
+- Output format control with `Format` enum (long, semi_long, long_typed, long_metadata)
+- `bta()` function for Bloomberg Technical Analysis (#175)
+- `get_sdk_info()` as replacement for deprecated `getBlpapiVersion()`
+
+### Changed
+- All API functions now accept `backend` and `format` parameters
+- Internal pipeline uses PyArrow tables with narwhals transformations
+- **BREAKING**: Deprecated `wide` output removed; use `semi_long` or pivot `long` results explicitly
+
+### Deprecated
+- `connect()` / `disconnect()` - engine auto-initializes in v1.0
+- `getBlpapiVersion()` - use `get_sdk_info()` instead
+
+### Fixed
+- Empty DataFrame handling in helper functions with LONG format output (#180)
+- Memory leak in streaming subscriptions (#182)
+```
+
+### Example: Bad Release Notes
+
+```markdown
+## [Unreleased]
+
+- Various bug fixes
+- Performance improvements
+- TODO: add more details
+- Updated some stuff
+```
+
+## Pre-release Types
+
+| Type | When to Use |
+|------|-------------|
+| **alpha** | Early testing, API may change significantly |
+| **beta** | Feature complete, testing for bugs |
+| **rc** | Release candidate, final testing before stable |
+
+## Validation
+
+The release workflow validates:
+
+1. **Non-empty**: `[Unreleased]` must have content (workflow fails if empty)
+2. **No placeholders**: Warns if TODO/FIXME/WIP/TBD detected
+3. **Format check**: Warns if standard categories not found
+
+## Pre-Release Checklist
+
+Before triggering a release, ensure:
+
+- [ ] `CHANGELOG.md` `[Unreleased]` section is populated with all changes
+- [ ] Changes are categorized correctly (Added, Changed, Deprecated, Removed, Fixed, Security)
+- [ ] No placeholder text (TODO, FIXME, WIP, TBD) remains
+- [ ] Issue/PR numbers are referenced where applicable
+- [ ] Breaking changes are clearly marked

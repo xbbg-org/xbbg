@@ -13,6 +13,12 @@ authors = [
   { name = "Alpha x1", email = "alpha.xone@outlook.com" },
 ]
 classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Intended Audience :: Science/Research",
+  "Topic :: Office/Business :: Financial",
+  "Topic :: Office/Business :: Financial :: Investment",
+  "Topic :: Software Development :: Libraries :: Python Modules",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
@@ -20,6 +26,8 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Rust",
+  "Typing :: Typed",
 ]
 dynamic = ["version"]
 dependencies = [
@@ -28,15 +36,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Kept for compatibility if consumers expect extras, but dev/test tooling
-# is managed via uv dependency groups below.
-test = ["pytest", "pytest-cov", "coverage", "codecov"]
-dev = ["ruff", "ipykernel", "build", "twine", "pre-commit"]
-docs = ["sphinx>=5.3.0", "sphinx-rtd-theme>=2.0.0", "sphinx-llms-txt>=0.7.0"]
+# Minimal extras for downstream consumers; dev tooling is managed by pixi.
+test = ["pytest", "pytest-cov", "pytest-asyncio"]
 
 [project.urls]
 Homepage = "https://github.com/alpha-xone/xbbg"
-Documentation = "https://xbbg.readthedocs.io/"
+Documentation = "https://alpha-xone.github.io/xbbg"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
 
@@ -59,14 +64,6 @@ binding = "PyO3"
 [tool.setuptools.packages.find]
 where = ["py-xbbg/src"]
 include = ["xbbg*"]
-
-[[tool.uv.index]]
-name = "bloomberg"
-url = "https://blpapi.bloomberg.com/repository/releases/python/simple/"
-explicit = true
-
-[tool.uv.sources]
-blpapi = { index = "bloomberg" }
 
 [tool.ruff]
 target-version = "py310"
@@ -143,9 +140,6 @@ ignore = [
 "py-xbbg/tests/live/**" = ["D", "B007", "B905", "F841", "B023", "RUF001"]
 "py-xbbg/tests/**" = ["D", "PT"]
 "scripts/**" = ["D103"]
-"xbbg/api/**/__init__.py" = ["F401", "F403"]
-"xbbg/api/__init__.py" = ["F401", "F403"]
-"xbbg/core/strategies/__init__.py" = ["F403"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["xbbg"]
@@ -162,8 +156,33 @@ convention = "google"
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 
+[tool.ty.environment]
+python-version = "3.10"
+root = ["py-xbbg/src"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
 
 
+[[tool.ty.overrides]]
+include = ["py-xbbg/tests/**"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "warn"
+call-non-callable = "warn"
+unknown-argument = "warn"
+invalid-assignment = "warn"
+invalid-argument-type = "warn"
+[tool.coverage.run]
+omit = [
+  "py-xbbg/tests/*",
+  "*/__init__.py",
+  "*/__pycache__/*",
+  "*/.venv/*",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.pytest.ini_options]
 addopts = "-ra"
@@ -175,20 +194,3 @@ filterwarnings = [
   "error::FutureWarning",
 ]
 
-[dependency-groups]
-dev = [
-    "setuptools>=82",
-    "setuptools-rust>=1.12",
-    "setuptools-scm>=9",
-    "pre-commit>=4.5.1",
-    "pytest>=8.4.2",
-    "pytest-asyncio>=0.24.0",
-    "ruff>=0.14.10",
-]
-benchmark = [
-    "pytest-benchmark>=4.0.0",
-    "tabulate>=0.9.0",
-    "psutil>=5.9.0",
-    "pandas>=2.0.0",
-    "polars>=0.20.0",
-]

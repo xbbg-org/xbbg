@@ -1,0 +1,93 @@
+name: Setup Bloomberg SDK
+description: Restore or install the Bloomberg C++ SDK for the current runner OS
+
+inputs:
+  version:
+    description: Bloomberg SDK version
+    required: true
+  os:
+    description: Target runner OS (Linux, macOS, or Windows)
+    required: true
+
+outputs:
+  sdk-rel-root:
+    description: SDK root relative to the workspace
+    value: ${{ steps.paths.outputs.sdk-rel-root }}
+  lib-rel-dir:
+    description: Platform library directory relative to the workspace
+    value: ${{ steps.paths.outputs.lib-rel-dir }}
+  bin-rel-dir:
+    description: Windows runtime binary directory relative to the workspace
+    value: ${{ steps.paths.outputs.bin-rel-dir }}
+
+runs:
+  using: composite
+  steps:
+    - id: paths
+      shell: bash
+      run: |
+        sdk_rel_root="vendor/blpapi-sdk/${{ inputs.version }}"
+        case "${{ inputs.os }}" in
+          Linux)
+            lib_rel_dir="$sdk_rel_root/Linux"
+            archive_file="blpapi_cpp_${{ inputs.version }}-linux.tar.gz"
+            extractor="tar.gz"
+            ;;
+          macOS)
+            lib_rel_dir="$sdk_rel_root/Darwin"
+            archive_file="blpapi_cpp_${{ inputs.version }}-macos-arm64.tar.gz"
+            extractor="tar.gz"
+            ;;
+          Windows)
+            lib_rel_dir="$sdk_rel_root/lib"
+            archive_file="blpapi_cpp_${{ inputs.version }}-windows.zip"
+            extractor="zip"
+            ;;
+          *)
+            echo "Unsupported workflow OS input: ${{ inputs.os }}" >&2
+            exit 1
+            ;;
+        esac
+
+        echo "sdk-rel-root=$sdk_rel_root" >> "$GITHUB_OUTPUT"
+        echo "lib-rel-dir=$lib_rel_dir" >> "$GITHUB_OUTPUT"
+        echo "bin-rel-dir=$sdk_rel_root/bin" >> "$GITHUB_OUTPUT"
+        echo "archive-file=$archive_file" >> "$GITHUB_OUTPUT"
+        echo "extractor=$extractor" >> "$GITHUB_OUTPUT"
+
+    - id: cache-sdk
+      uses: actions/cache@v5
+      with:
+        path: vendor/blpapi-sdk/${{ inputs.version }}
+        key: blpapi-${{ inputs.os }}-${{ runner.arch }}-${{ inputs.version }}
+
+    - if: inputs.os != 'Windows' && steps.cache-sdk.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        archive_url="https://blpapi.bloomberg.com/download/releases/raw/files/${{ steps.paths.outputs.archive-file }}"
+        archive_path="$RUNNER_TEMP/${{ steps.paths.outputs.archive-file }}"
+        sdk_root="$GITHUB_WORKSPACE/${{ steps.paths.outputs.sdk-rel-root }}"
+        extract_root="$RUNNER_TEMP/blpapi-extract"
+        rm -rf "$sdk_root" "$extract_root"
+        mkdir -p "$(dirname "$sdk_root")" "$extract_root"
+        curl -fsSL "$archive_url" -o "$archive_path"
+        tar -xzf "$archive_path" -C "$extract_root"
+        inner_dir=$(find "$extract_root" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+        mv "$inner_dir" "$sdk_root"
+
+    - if: inputs.os == 'Windows' && steps.cache-sdk.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $archiveName = '${{ steps.paths.outputs.archive-file }}'
+        $archiveUrl = "https://blpapi.bloomberg.com/download/releases/raw/files/$archiveName"
+        $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+        $extractRoot = Join-Path $env:RUNNER_TEMP 'blpapi-extract'
+        $sdkRoot = Join-Path $env:GITHUB_WORKSPACE '${{ steps.paths.outputs.sdk-rel-root }}'
+        if (Test-Path $sdkRoot) { Remove-Item -Path $sdkRoot -Recurse -Force }
+        if (Test-Path $extractRoot) { Remove-Item -Path $extractRoot -Recurse -Force }
+        New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path (Split-Path $sdkRoot -Parent) -Force | Out-Null
+        Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath -UseBasicParsing
+        Expand-Archive -Path $archivePath -DestinationPath $extractRoot -Force
+        $innerDir = (Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1).FullName
+        Move-Item -Path $innerDir -Destination $sdkRoot -Force

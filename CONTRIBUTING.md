@@ -7,8 +7,8 @@ Thank you for your interest in contributing to xbbg!
 ### Prerequisites
 
 - Python 3.10+
-- Rust 1.70+
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+- Rust 1.75+
+- [pixi](https://pixi.sh/) (recommended) or pip
 - Bloomberg C++ SDK (for building the Rust backend)
 
 ### Getting Started
@@ -21,25 +21,44 @@ Thank you for your interest in contributing to xbbg!
 
 2. Set up the Bloomberg SDK:
    ```bash
-   # Set BLPAPI_ROOT to your SDK location
-   export BLPAPI_ROOT=/path/to/blpapi_cpp_x.x.x.x
+   # macOS/Linux
+   bash ./scripts/sdktool.sh
+
+   # Windows PowerShell
+   # .\scripts\sdktool.ps1
    ```
 
 3. Install dependencies and build:
    ```bash
-   uv sync
+   pixi install && pixi run install
    ```
 
 4. Run tests:
    ```bash
-   uv run pytest py-xbbg/tests -q
+   pixi run test
    ```
+
+### Bloomberg SDK Compatibility
+
+The minimum supported Bloomberg C SDK version is defined in
+`defs/bloomberg.toml` (`min_sdk_version`). If you add a dependency on a new
+`blpapi_*` function or type, verify it exists in the minimum version:
+
+```bash
+# Check against min SDK (reads defs/bloomberg.toml)
+bash scripts/abi-check.sh
+
+# Check against specific versions
+bash scripts/abi-check.sh --versions "3.24.6.1 3.26.2.1"
+```
+
+CI runs this automatically as the **ABI Compat** job.
 
 ## Code Style
 
 ### Python
 - We use [ruff](https://github.com/astral-sh/ruff) for linting and formatting
-- Run `uvx ruff check .` and `uvx ruff format .` before committing
+- Run `pixi run lint` before committing
 
 ### Rust
 - Run `cargo fmt` for formatting

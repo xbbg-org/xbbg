@@ -3,7 +3,6 @@
 //! Exposes all 12 recipe functions to Python via `#[pyfunction]` wrappers.
 
 use pyo3::prelude::*;
-use pyo3_async_runtimes::tokio::future_into_py;
 use pyo3_stub_gen::derive::*;
 
 use xbbg_ext::transforms::fixed_income::YieldType;
@@ -32,7 +31,7 @@ macro_rules! recipe_wrapper {
             let $eng = engine.engine.clone();
             $($($prepare)*)?
 
-            future_into_py(py, async move {
+            crate::shutdown_safe_future(py, &engine.engine, async move {
                 let batch = $call.await.map_err(recipe_err)?;
                 Python::attach(|py| record_batch_to_pyarrow(py, batch))
             })

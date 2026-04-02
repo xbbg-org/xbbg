@@ -21,8 +21,9 @@ from datetime import datetime, timedelta
 import functools
 import inspect
 import logging
+import threading
 import time
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 import warnings
 
 import narwhals.stable.v1 as nw
@@ -41,9 +42,6 @@ from xbbg.services import (
 from ._exports import BLP_MODULE_EXPORTS
 from .backend import Backend
 
-if TYPE_CHECKING:
-    import pandas as pd
-
 # Type alias for backend conversion return types
 # Covers: nw.DataFrame, nw.LazyFrame (narwhals wrappers) + IntoFrame (all native types)
 DataFrameResult: TypeAlias = nw.DataFrame | nw.LazyFrame | IntoFrame
@@ -56,22 +54,23 @@ __all__ = list(BLP_MODULE_EXPORTS)
 
 # Generated sync wrappers are installed dynamically by _install_generated_endpoints().
 # Define placeholders so static analysis recognizes these exported names.
-(
-    bdp,
-    bdh,
-    bds,
-    bdib,
-    bdtick,
-    bql,
-    bsrch,
-    bqr,
-    bflds,
-    beqs,
-    blkp,
-    bport,
-    bcurves,
-    bgovts,
-) = (None,) * 14
+if TYPE_CHECKING:
+    bdp: Callable[..., Any]
+    bdh: Callable[..., Any]
+    bds: Callable[..., Any]
+    bdib: Callable[..., Any]
+    bdtick: Callable[..., Any]
+    bql: Callable[..., Any]
+    bsrch: Callable[..., Any]
+    bqr: Callable[..., Any]
+    bflds: Callable[..., Any]
+    beqs: Callable[..., Any]
+    blkp: Callable[..., Any]
+    bport: Callable[..., Any]
+    bcurves: Callable[..., Any]
+    bgovts: Callable[..., Any]
+else:
+    (bdp, bdh, bds, bdib, bdtick, bql, bsrch, bqr, bflds, beqs, blkp, bport, bcurves, bgovts) = (None,) * 14
 
 
 # Backend configuration
@@ -82,6 +81,7 @@ _config = None  # PyEngineConfig instance or None
 
 # Lazy-load the engine to avoid import errors when the Rust module isn't built
 _engine = None
+_engine_lock = threading.Lock()
 
 # Scoped engine for multi-engine routing (async-safe via contextvars)
 _active_engine: contextvars.ContextVar[Engine | None] = contextvars.ContextVar("_active_engine", default=None)
@@ -108,6 +108,7 @@ class Engine:
 
         normalized = _normalize_config_kwargs(kwargs)
         config = _core.PyEngineConfig(**normalized)
+        self._config_snapshot = config
         self._py_engine = _core.PyEngine.with_config(config)
         self._token: contextvars.Token | None = None
 
@@ -140,6 +141,21 @@ RequestMiddleware: TypeAlias = Callable[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class RequestEnvironment:
+    """Read-only engine and auth snapshot available to request middleware."""
+
+    source: str
+    host: str | None = None
+    port: int | None = None
+    servers: tuple[tuple[str, int], ...] = ()
+    zfp_remote: int | None = None
+    auth_method: str | None = None
+    app_name: str | None = None
+    user_id: str | None = None
+    validation_mode: str | None = None
+
+
 @dataclass(slots=True)
 class RequestContext:
     """Mutable context object passed through the request middleware chain."""
@@ -150,6 +166,7 @@ class RequestContext:
     backend: Backend | str | None
     securities: list[str]
     fields: list[str]
+    environment: RequestEnvironment
     metadata: dict[str, Any] = field(default_factory=dict)
     started_at: float = field(default_factory=time.perf_counter)
     elapsed_ms: float | None = None
@@ -164,7 +181,7 @@ _request_middleware: list[RequestMiddleware] = []
 
 async def _await_request_value(value: DataFrameResult | Awaitable[DataFrameResult]) -> DataFrameResult:
     if inspect.isawaitable(value):
-        return await value
+        return cast("DataFrameResult", await value)
     return value
 
 
@@ -294,11 +311,11 @@ def reset() -> None:
 
 
 def is_connected() -> bool:
-    """Check if the Bloomberg engine is initialized.
+    """Check if Bloomberg is connected and healthy.
 
-    Returns True if the engine exists. Note that this doesn't guarantee
-    Bloomberg is still connected - a request might still fail if the
-    connection was lost.
+    Returns True if the engine exists and at least one worker has
+    a live Bloomberg session. Returns False if the engine hasn't
+    been created yet or all workers have lost their connection.
 
     Example::
 
@@ -308,9 +325,11 @@ def is_connected() -> bool:
 
         df = xbbg.bdp("AAPL US Equity", "PX_LAST")
 
-        print(xbbg.is_connected())  # True - engine created
+        print(xbbg.is_connected())  # True - connected
     """
-    return _engine is not None
+    if _engine is None:
+        return False
+    return _engine.is_connected()
 
 
 def _normalize_config_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -387,7 +406,8 @@ def configure(
             are also supported.
 
     Raises:
-        RuntimeError: If called after the engine has already started.
+        RuntimeWarning: If called after the engine has already started
+            (the existing engine is shut down and will restart with the new config).
         NotImplementedError: If unsupported session-only options such as
             `sess` or `tls_options` are provided.
 
@@ -429,10 +449,18 @@ def configure(
     if (num_start_attempts := normalized.get("num_start_attempts")) is not None and num_start_attempts < 1:
         raise ValueError("num_start_attempts must be at least 1")
 
-    if _engine is not None:
-        raise RuntimeError(
-            "Cannot configure after engine has started. Call xbbg.configure() before any Bloomberg request."
-        )
+    with _engine_lock:
+        if _engine is not None:
+            warnings.warn(
+                "xbbg.configure() called after engine was already started. "
+                "The existing engine has been shut down and will restart with new config on next use. "
+                "To avoid this, call configure() before any Bloomberg request, "
+                "or use xbbg.Engine(...) for scoped configuration.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            _engine.signal_shutdown()
+            _engine = None
 
     from . import _core
 
@@ -506,7 +534,10 @@ def _resolve_backend(backend: Backend | str | None) -> Backend | None:
 
 
 def _get_engine(*, engine: Engine | None = None):
-    """Get the active engine: explicit arg > contextvar scope > global singleton."""
+    """Get the active engine: explicit arg > contextvar scope > global singleton.
+
+    Thread-safe: uses double-checked locking for the global singleton.
+    """
     if engine is not None:
         return engine._py_engine
 
@@ -516,16 +547,71 @@ def _get_engine(*, engine: Engine | None = None):
 
     global _engine
     if _engine is None:
-        from . import _core
+        with _engine_lock:
+            if _engine is None:
+                from . import _core
 
-        if _config is not None:
-            logger.debug("Creating PyEngine with config: %s", _config)
-            _engine = _core.PyEngine.with_config(_config)
-        else:
-            logger.debug("Creating PyEngine with default config")
-            _engine = _core.PyEngine()
-        logger.info("PyEngine connected to Bloomberg")
+                if _config is not None:
+                    logger.debug("Creating PyEngine with config: %s", _config)
+                    _engine = _core.PyEngine.with_config(_config)
+                else:
+                    logger.debug("Creating PyEngine with default config")
+                    _engine = _core.PyEngine()
+                logger.info("PyEngine connected to Bloomberg")
     return _engine
+
+
+def _coerce_server_snapshot(value: Any) -> tuple[tuple[str, int], ...]:
+    if not value:
+        return ()
+
+    servers: list[tuple[str, int]] = []
+    for item in value:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+        host, port = item
+        try:
+            servers.append((str(host), int(port)))
+        except (TypeError, ValueError):
+            continue
+    return tuple(servers)
+
+
+def _snapshot_request_environment() -> RequestEnvironment:
+    scoped = _active_engine.get()
+    if scoped is not None:
+        config = getattr(scoped, "_config_snapshot", None)
+        source = "scoped_engine"
+    elif _config is not None:
+        config = _config
+        source = "global_config"
+    else:
+        config = None
+        source = "default_engine"
+
+    if config is None:
+        return RequestEnvironment(source=source, host="localhost", port=8194)
+
+    host = getattr(config, "host", None)
+    port = getattr(config, "port", None)
+    servers = _coerce_server_snapshot(getattr(config, "servers", None))
+    if not servers and host is not None and port is not None:
+        try:
+            servers = ((str(host), int(port)),)
+        except (TypeError, ValueError):
+            servers = ()
+
+    return RequestEnvironment(
+        source=source,
+        host=str(host) if host is not None else None,
+        port=int(port) if port is not None else None,
+        servers=servers,
+        zfp_remote=getattr(config, "zfp_remote", None),
+        auth_method=getattr(config, "auth_method", None),
+        app_name=getattr(config, "app_name", None),
+        user_id=getattr(config, "user_id", None),
+        validation_mode=getattr(config, "validation_mode", None),
+    )
 
 
 def _normalize_tickers(tickers: str | Sequence[str]) -> list[str]:
@@ -654,107 +740,6 @@ def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
     return dt.strftime(fmt)
 
 
-def _handle_deprecated_wide_format(
-    format: Format | str | None,
-    pivot_index: str | list[str],
-    stacklevel: int = 3,
-) -> tuple[Format | None, bool]:
-    """Handle deprecated WIDE format with warning.
-
-    Args:
-        format: User-provided format (may be Format.WIDE)
-        pivot_index: Column(s) to use as index when pivoting
-            - For bdp: "ticker"
-            - For bdh: ["ticker", "date"]
-        stacklevel: Stack level for the deprecation warning
-
-    Returns:
-        Tuple of (adjusted_format, want_wide) where:
-        - adjusted_format: Format to use (None if WIDE was requested)
-        - want_wide: True if WIDE was requested and post-pivot is needed
-    """
-    fmt = Format(format) if isinstance(format, str) else format
-    want_wide = fmt == Format.WIDE if fmt else False
-
-    if want_wide:
-        # Build the pivot example string
-        if isinstance(pivot_index, list):
-            index_str = str(pivot_index)
-        else:
-            index_str = f"'{pivot_index}'"
-
-        warnings.warn(
-            f"Format.WIDE is deprecated and will be removed in v2.0. "
-            f"Use format=Format.LONG (default) and then call "
-            f"df.pivot(on='field', index={index_str}, values='value') "
-            f"to convert to wide format.",
-            DeprecationWarning,
-            stacklevel=stacklevel,
-        )
-        fmt = None  # Use default long format, then pivot
-
-    return fmt, want_wide
-
-
-def _apply_wide_pivot_bdp(df) -> pd.DataFrame:
-    """Apply wide format pivot to BDP DataFrame for 0.7.7 compatibility.
-
-    Converts from long format to wide format with ticker as index.
-
-    Args:
-        df: DataFrame with columns [ticker, field, value]
-
-    Returns:
-        pandas DataFrame with ticker as index and fields as columns
-    """
-    # Convert to pandas if needed
-    if hasattr(df, "to_pandas"):
-        pdf = df.to_pandas()
-    else:
-        pdf = df
-
-    # Pivot: ticker as index, field as columns, value as values
-    result = pdf.pivot(index="ticker", columns="field", values="value")
-    result.columns.name = None  # Remove column name
-    return result
-
-
-def _apply_wide_pivot_bdh(df) -> pd.DataFrame:
-    """Apply wide format pivot to BDH DataFrame for 0.7.7 compatibility.
-
-    Converts from Long format [ticker, date, field, value] to
-    0.7.7 wide format with DatetimeIndex and MultiIndex columns (ticker, field).
-
-    Args:
-        df: DataFrame with columns [ticker, date, field, value]
-
-    Returns:
-        pandas DataFrame with DatetimeIndex and MultiIndex columns
-    """
-    import pandas as pd
-
-    # Convert to pandas if needed
-    if hasattr(df, "to_pandas"):
-        pdf = df.to_pandas()
-    else:
-        pdf = df
-
-    # Data is already in Long format: [ticker, date, field, value]
-    # Just need to pivot to 0.7.7 Wide format
-    pivoted = pdf.pivot_table(
-        index="date",
-        columns=["ticker", "field"],
-        values="value",
-        aggfunc="first",  # In case of duplicates
-    )
-
-    # Convert index to DatetimeIndex
-    pivoted.index = pd.to_datetime(pivoted.index)
-    pivoted.index.name = None  # 0.7.7 style has no index name
-
-    return pivoted
-
-
 def _convert_backend(
     nw_df: Any,
     backend: Backend | str | None,
@@ -837,9 +822,10 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
     context.elapsed_ms = (time.perf_counter() - started) * 1000
 
     logger.info(
-        "bloomberg %s.%s: %d rows in %.1fms | securities=%s fields=%s",
+        "bloomberg %s.%s [request_id=%s]: %d rows in %.1fms | securities=%s fields=%s",
         context.params.service,
         context.params.operation,
+        context.request_id,
         batch.num_rows,
         context.elapsed_ms,
         context.securities or None,
@@ -882,6 +868,8 @@ async def arequest(
     include_security_errors: bool = False,
     validate_fields: bool | None = None,
     backend: Backend | str | None = None,
+    request_tz: str | None = None,
+    output_tz: str | None = None,
 ):
     """Async generic Bloomberg request.
 
@@ -907,6 +895,11 @@ async def arequest(
         end_date: End date for historical requests (YYYYMMDD format).
         start_datetime: Start datetime for intraday requests (ISO format).
         end_datetime: End datetime for intraday requests (ISO format).
+        request_tz: For intraday requests, how naive datetimes are interpreted before
+            sending to Bloomberg (``UTC``, ``local``, ``exchange``, aliases, or IANA).
+            Resolved and converted to UTC in the Rust engine.
+        output_tz: For intraday responses, relabel the ``time`` column to this zone
+            (same instants; handled in the Rust engine).
         event_type: Event type for intraday bars (TRADE, BID, ASK, etc.).
         interval: Bar interval in minutes for intraday bars.
         options: Additional Bloomberg options as dict or list of (key, value) tuples.
@@ -1026,17 +1019,22 @@ async def arequest(
         format=format_hint,
         include_security_errors=include_security_errors,
         validate_fields=validate_fields,
+        request_tz=request_tz,
+        output_tz=output_tz,
     )
     params.validate()
 
     params_dict = params.to_dict()
+    request_id = f"req-{time.time_ns()}"
+    params_dict["request_id"] = request_id
     context = RequestContext(
-        request_id=f"req-{time.time_ns()}",
+        request_id=request_id,
         params=params,
         params_dict=params_dict,
         backend=backend,
         securities=list(securities_list or []),
         fields=list(fields_list or []),
+        environment=_snapshot_request_environment(),
     )
 
     try:
@@ -1073,7 +1071,6 @@ async def abdp(
             - Format.LONG (default): ticker, field, value (strings)
             - Format.LONG_TYPED: ticker, field, value_f64, value_i64, etc.
             - Format.LONG_WITH_METADATA: ticker, field, value, dtype
-            - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
         include_security_errors: Include ``__SECURITY_ERROR__`` rows for
@@ -1126,7 +1123,6 @@ async def abdh(
             - Format.LONG (default): ticker, date, field, value (strings)
             - Format.LONG_TYPED: ticker, date, field, value_f64, value_i64, etc.
             - Format.LONG_WITH_METADATA: ticker, date, field, value, dtype
-            - Format.WIDE: Pivoted format (DEPRECATED, use df.pivot() instead)
         field_types: Manual type overrides for fields (e.g., {'VOLUME': 'int64'}).
             If None, types are auto-resolved from Bloomberg field metadata.
         validate_fields: Optional per-request override for field validation.
@@ -1193,6 +1189,8 @@ async def abdib(
     end_datetime: str | None = None,
     interval: int = 1,
     backend: Backend | str | None = None,
+    request_tz: str | None = None,
+    output_tz: str | None = None,
     **kwargs,
 ):
     """Async Bloomberg intraday bar data (BDIB).
@@ -1206,6 +1204,11 @@ async def abdib(
         end_datetime: Explicit end datetime for multi-day requests.
         interval: Bar interval in minutes (default: 1), or seconds if intervalHasSeconds=True.
         backend: DataFrame backend to return. If None, uses global default.
+        request_tz: How naive ``start_datetime`` / ``end_datetime`` (and full-day ``dt`` window)
+            are interpreted before Bloomberg: ``UTC`` (default when omitted), ``local``,
+            ``exchange`` (uses this ticker), ``NY``/``LN``/``TK``/``HK``, another ticker string,
+            or an IANA zone. Conversion to UTC is done in the Rust engine.
+        output_tz: Relabel the ``time`` column to this zone (same instants; Rust engine).
         **kwargs: Additional Bloomberg options (e.g., intervalHasSeconds, gapFillInitialBar).
 
     Returns:
@@ -1237,6 +1240,8 @@ async def abdtick(
     *,
     event_types: Sequence[str] | None = None,
     backend: Backend | str | None = None,
+    request_tz: str | None = None,
+    output_tz: str | None = None,
     **kwargs,
 ):
     """Async Bloomberg tick data (BDTICK).
@@ -1248,6 +1253,8 @@ async def abdtick(
         event_types: Event types to retrieve. Defaults to ["TRADE"].
             Options: TRADE, BID, ASK, BID_BEST, ASK_BEST, MID_PRICE, AT_TRADE, BEST_BID, BEST_ASK.
         backend: DataFrame backend to return. If None, uses global default.
+        request_tz: How naive datetimes are interpreted before Bloomberg (see ``abdib``).
+        output_tz: Relabel ``time`` column (same instants; Rust engine).
         **kwargs: Additional options.
 
     Returns:
@@ -1309,18 +1316,32 @@ def _build_sync_wrapper(
 
     @functools.wraps(template_func)
     def wrapped(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # No running loop — asyncio.run() is safe
+        else:
+            raise RuntimeError(
+                f"{sync_name}() cannot be used inside an async context "
+                f"(FastAPI, Jupyter, etc.). "
+                f"Use 'await a{sync_name}()' instead, "
+                f"or use xbbg.Engine(...) for scoped async engines."
+            )
         return asyncio.run(async_func(*args, **kwargs))
 
     wrapped.__name__ = sync_name
     wrapped.__qualname__ = sync_name
     wrapped.__module__ = __name__
-    wrapped.__signature__ = inspect.signature(template_func)
+    wrapped.__signature__ = inspect.signature(template_func)  # type: ignore[unresolved-attribute]
     return wrapped
 
 
 async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: dict[str, Any]) -> DataFrameResult:
     plan_or_awaitable = spec.builder(call_args)
-    plan = await plan_or_awaitable if inspect.isawaitable(plan_or_awaitable) else plan_or_awaitable
+    if inspect.isawaitable(plan_or_awaitable):
+        plan: _EndpointPlan = cast("_EndpointPlan", await plan_or_awaitable)
+    else:
+        plan = plan_or_awaitable
 
     request_kwargs = dict(plan.request_kwargs)
     if plan.extractor is not None:
@@ -1613,6 +1634,7 @@ async def asubscribe(
     fields: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
     service: str | None = None,
     options: list[str] | None = None,
@@ -1631,6 +1653,7 @@ async def asubscribe(
         tickers: Securities to subscribe to
         fields: Fields to subscribe to (e.g., 'LAST_PRICE', 'BID', 'ASK')
         raw: If True, yield raw Arrow RecordBatches for max performance
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion (ignored if raw=True)
         service: Bloomberg service (e.g., '//blp/mktdata'). If provided, uses subscribe_with_options
         options: List of subscription options. If provided, uses subscribe_with_options
@@ -1678,17 +1701,10 @@ async def asubscribe(
         raise ValueError("flush_threshold must be >= 1")
     if stream_capacity is not None and stream_capacity < 1:
         raise ValueError("stream_capacity must be >= 1")
-    if overflow_policy is not None and overflow_policy not in ("drop_newest", "drop_oldest", "block"):
-        raise ValueError(
-            f"overflow_policy must be one of 'drop_newest', 'drop_oldest', 'block', got {overflow_policy!r}"
-        )
+    if overflow_policy is not None and overflow_policy not in ("drop_newest", "block"):
+        raise ValueError(f"overflow_policy must be one of 'drop_newest', 'block', got {overflow_policy!r}")
     if recovery_policy is not None and recovery_policy not in ("none", "resubscribe"):
         raise ValueError(f"recovery_policy must be one of 'none', 'resubscribe', got {recovery_policy!r}")
-    if overflow_policy == "drop_oldest":
-        warnings.warn(
-            "overflow_policy='drop_oldest' currently behaves as 'drop_newest' for performance-safe bounded streaming",
-            stacklevel=2,
-        )
 
     # tick_mode=True forces flush_threshold=1
     if tick_mode and flush_threshold is not None and flush_threshold > 1:
@@ -1721,6 +1737,7 @@ async def asubscribe(
                 "stream_capacity": stream_capacity,
                 "overflow_policy": overflow_policy,
                 "recovery_policy": recovery_policy,
+                "all_fields": all_fields,
             }.items()
             if v is not None
         }
@@ -1732,7 +1749,7 @@ async def asubscribe(
             **opt_kwargs,
         )
     else:
-        py_sub = await engine.subscribe(ticker_list, field_list)
+        py_sub = await engine.subscribe(ticker_list, field_list, all_fields=all_fields)
 
     return Subscription(py_sub, raw=raw or tick_mode, backend=effective_backend, tick_mode=tick_mode)
 
@@ -1742,6 +1759,7 @@ async def astream(
     fields: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
     callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
     tick_mode: bool = False,
@@ -1759,6 +1777,7 @@ async def astream(
         tickers: Securities to subscribe to
         fields: Fields to subscribe to
         raw: If True, yield raw Arrow RecordBatches
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion
         callback: Optional callback function to invoke on each batch
         tick_mode: If True, convert batches to dicts
@@ -1786,6 +1805,7 @@ async def astream(
         tickers,
         fields,
         raw=raw,
+        all_fields=all_fields,
         backend=backend,
         tick_mode=tick_mode,
         flush_threshold=flush_threshold,
@@ -1807,6 +1827,7 @@ def stream(
     fields: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
     callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
     tick_mode: bool = False,
@@ -1823,6 +1844,7 @@ def stream(
         tickers: Securities to subscribe to
         fields: Fields to subscribe to
         raw: If True, yield raw Arrow RecordBatches
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion
         callback: Optional callback function to invoke on each batch
         tick_mode: If True, convert batches to dicts
@@ -1849,6 +1871,7 @@ def stream(
                 tickers,
                 fields,
                 raw=raw,
+                all_fields=all_fields,
                 backend=backend,
                 callback=callback,
                 tick_mode=tick_mode,
@@ -1895,6 +1918,7 @@ async def avwap(
     start_time: str | None = None,
     end_time: str | None = None,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to real-time VWAP data (//blp/mktvwap).
@@ -1907,6 +1931,7 @@ async def avwap(
         start_time: VWAP calculation start time (e.g., "09:30")
         end_time: VWAP calculation end time (e.g., "16:00")
         raw: If True, yield raw Arrow RecordBatches for max performance
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion (ignored if raw=True)
 
     Returns:
@@ -1949,6 +1974,7 @@ async def avwap(
         ticker_list,
         field_list,
         options if options else None,
+        all_fields=all_fields,
     )
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
@@ -1966,6 +1992,7 @@ async def amktbar(
     start_time: str | None = None,
     end_time: str | None = None,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to real-time streaming OHLC bars.
@@ -1979,6 +2006,7 @@ async def amktbar(
         start_time: Optional start time in HH:MM format.
         end_time: Optional end time in HH:MM format.
         raw: If True, return raw pyarrow RecordBatch (default: False).
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -2016,6 +2044,7 @@ async def amktbar(
         ticker_list,
         ["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME", "NUM_TRADES"],
         options if options else None,
+        all_fields=all_fields,
     )
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
@@ -2030,6 +2059,7 @@ async def adepth(
     tickers: str | list[str],
     *,
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to Level 2 market depth / order book data.
@@ -2044,6 +2074,7 @@ async def adepth(
     Args:
         tickers: Security identifier(s).
         raw: If True, return raw pyarrow RecordBatch (default: False).
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -2075,6 +2106,7 @@ async def adepth(
             ticker_list,
             [],  # Fields are implicit for market depth
             None,
+            all_fields=all_fields,
         )
     except Exception as e:
         # Check for B-PIPE related errors
@@ -2095,6 +2127,7 @@ async def achains(
     *,
     chain_type: str = "OPTIONS",
     raw: bool = False,
+    all_fields: bool = False,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to option or futures chain updates.
@@ -2110,6 +2143,7 @@ async def achains(
         underlying: Underlying security identifier.
         chain_type: Type of chain - "OPTIONS" or "FUTURES" (default: "OPTIONS").
         raw: If True, return raw pyarrow RecordBatch (default: False).
+        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -2145,6 +2179,7 @@ async def achains(
             [underlying],
             [],  # Fields depend on chain type
             options,
+            all_fields=all_fields,
         )
     except Exception as e:
         # Check for B-PIPE related errors
@@ -3128,7 +3163,7 @@ async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
     kwargs = dict(args.get("kwargs", {}))
 
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
-    fmt, want_wide = _handle_deprecated_wide_format(args.get("format"), pivot_index="ticker")
+    fmt = Format(args["format"]) if isinstance(args.get("format"), str) else args.get("format")
 
     resolved_types = await _get_engine().resolve_field_types(
         field_list,
@@ -3148,7 +3183,7 @@ async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
             "validate_fields": args.get("validate_fields"),
         },
         backend=args.get("backend"),
-        postprocess=_apply_wide_pivot_bdp if want_wide else None,
+        postprocess=None,
     )
 
 
@@ -3157,7 +3192,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
     field_list = _normalize_fields(args.get("flds"))
     kwargs = dict(args.get("kwargs", {}))
 
-    fmt, want_wide = _handle_deprecated_wide_format(args.get("format"), pivot_index=["ticker", "date"])
+    fmt = Format(args["format"]) if isinstance(args.get("format"), str) else args.get("format")
 
     end_value = args.get("end_date", "today")
     start_value = args.get("start_date")
@@ -3211,7 +3246,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
             "validate_fields": args.get("validate_fields"),
         },
         backend=args.get("backend"),
-        postprocess=_apply_wide_pivot_bdh if want_wide else None,
+        postprocess=None,
     )
 
 
@@ -3251,15 +3286,21 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
 
     elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
 
+    req: dict[str, Any] = {
+        "security": args["ticker"],
+        "event_type": args["typ"],
+        "interval": args["interval"],
+        "start_datetime": s_dt,
+        "end_datetime": e_dt,
+        "elements": elements if elements else None,
+    }
+    if args.get("request_tz") is not None:
+        req["request_tz"] = args["request_tz"]
+    if args.get("output_tz") is not None:
+        req["output_tz"] = args["output_tz"]
+
     return _EndpointPlan(
-        request_kwargs={
-            "security": args["ticker"],
-            "event_type": args["typ"],
-            "interval": args["interval"],
-            "start_datetime": s_dt,
-            "end_datetime": e_dt,
-            "elements": elements if elements else None,
-        },
+        request_kwargs=req,
         backend=args.get("backend"),
     )
 
@@ -3276,14 +3317,20 @@ async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
 
     elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
 
+    req: dict[str, Any] = {
+        "security": args["ticker"],
+        "start_datetime": s_dt,
+        "end_datetime": e_dt,
+        "event_types": list(event_types),
+        "elements": elements if elements else None,
+    }
+    if args.get("request_tz") is not None:
+        req["request_tz"] = args["request_tz"]
+    if args.get("output_tz") is not None:
+        req["output_tz"] = args["output_tz"]
+
     return _EndpointPlan(
-        request_kwargs={
-            "security": args["ticker"],
-            "start_datetime": s_dt,
-            "end_datetime": e_dt,
-            "event_types": list(event_types),
-            "elements": elements if elements else None,
-        },
+        request_kwargs=req,
         backend=args.get("backend"),
     )
 
@@ -3619,7 +3666,7 @@ _install_generated_endpoints()
 
 # Backward-compatible aliases
 abfld = abflds
-bfld = bflds
+bfld = globals()["bflds"]
 
 
 async def afieldInfo(

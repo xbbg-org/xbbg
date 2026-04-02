@@ -7,8 +7,6 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BLPAPI_INCLUDE_DIR");
     println!("cargo:rerun-if-env-changed=BLPAPI_LIB_DIR");
     println!("cargo:rerun-if-env-changed=BLPAPI_ROOT");
-    println!("cargo:rerun-if-env-changed=XBBG_DEV_SDK_ROOT");
-    println!("cargo:rerun-if-env-changed=BLPAPI_LINK_LIB_NAME");
     println!("cargo:rerun-if-env-changed=BLPAPI_PREGENERATED_BINDINGS");
     println!("cargo:rerun-if-env-changed=BLPAPI_BINDINGS_EXPORT_PATH");
 
@@ -27,21 +25,7 @@ fn main() {
     }
 
     // Determine library base name based on target platform and architecture
-    let lib_name = env::var("BLPAPI_LINK_LIB_NAME").ok().unwrap_or_else(|| {
-        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-        let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-
-        if target_os == "windows" {
-            if target_arch == "x86" {
-                "blpapi3_32".to_string()
-            } else {
-                "blpapi3_64".to_string()
-            }
-        } else {
-            // Linux uses blpapi3 (symlinked from blpapi3_64)
-            "blpapi3".to_string()
-        }
-    });
+    let lib_name = detect_link_lib_name(&lib_dir);
 
     // Emit link type
     if want_static {
@@ -142,67 +126,226 @@ fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {
     // 2) Root
     if let Some(root) = env::var_os("BLPAPI_ROOT") {
         let root = PathBuf::from(root);
-        let (inc, lib) = derive_include_lib(&root)?;
+        let (inc, lib) = resolve_sdk_layout(&root)?;
         validate_header_exists(&inc)?;
         return Ok((inc, lib));
     }
 
-    // 3) Dev-only SDK root (may be relative to workspace root)
-    if let Some(root) = env::var_os("XBBG_DEV_SDK_ROOT") {
-        let mut root = PathBuf::from(root);
-        // Resolve relative paths against the workspace root (CARGO_MANIFEST_DIR's grandparent)
-        if root.is_relative() {
-            if let Some(manifest_dir) = env::var_os("CARGO_MANIFEST_DIR") {
-                // crates/blpapi-sys -> repo root (two levels up)
-                let workspace_root = PathBuf::from(manifest_dir)
-                    .parent()
-                    .and_then(|p| p.parent())
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_default();
-                root = workspace_root.join(&root);
+    Err("Cannot locate Bloomberg SDK. Set BLPAPI_INCLUDE_DIR/BLPAPI_LIB_DIR or BLPAPI_ROOT.".into())
+}
+
+fn resolve_sdk_layout(root: &Path) -> Result<(PathBuf, PathBuf), String> {
+    let mut last_error = None;
+
+    for candidate in candidate_sdk_roots(root)? {
+        match derive_include_lib(&candidate) {
+            Ok(layout) => return Ok(layout),
+            Err(err) => last_error = Some(err),
+        }
+    }
+
+    if let Some(err) = last_error {
+        Err(err)
+    } else {
+        Err(format!("No SDK candidates found under {}", root.display()))
+    }
+}
+
+fn candidate_sdk_roots(root: &Path) -> Result<Vec<PathBuf>, String> {
+    if !root.is_dir() {
+        return Err(format!(
+            "SDK root does not exist or is not a directory: {}",
+            root.display()
+        ));
+    }
+
+    let mut roots = vec![root.to_path_buf()];
+
+    let children = sorted_child_dirs(root)?;
+
+    for child in &children {
+        if !roots.iter().any(|existing| existing == child) {
+            roots.push(child.clone());
+        }
+    }
+
+    for child in children {
+        for grandchild in sorted_child_dirs(&child)? {
+            if !roots.iter().any(|existing| existing == &grandchild) {
+                roots.push(grandchild);
             }
         }
-        let (inc, lib) = derive_include_lib(&root)?;
-        validate_header_exists(&inc)?;
-        return Ok((inc, lib));
     }
 
-    Err("Cannot locate Bloomberg SDK. Set BLPAPI_INCLUDE_DIR/BLPAPI_LIB_DIR, or BLPAPI_ROOT, or XBBG_DEV_SDK_ROOT".into())
+    Ok(roots)
+}
+
+fn sorted_child_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut entries = Vec::new();
+
+    for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            entries.push(path);
+        }
+    }
+
+    entries.sort_by(|a, b| compare_sdk_dir_names(a.file_name(), b.file_name()));
+    Ok(entries)
+}
+
+fn compare_sdk_dir_names(
+    a: Option<&std::ffi::OsStr>,
+    b: Option<&std::ffi::OsStr>,
+) -> std::cmp::Ordering {
+    let a_name = a.and_then(|value| value.to_str()).unwrap_or_default();
+    let b_name = b.and_then(|value| value.to_str()).unwrap_or_default();
+
+    match (
+        parse_version_components(a_name),
+        parse_version_components(b_name),
+    ) {
+        (Some(a_version), Some(b_version)) => b_version.cmp(&a_version),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a_name.cmp(b_name),
+    }
+}
+
+fn parse_version_components(value: &str) -> Option<Vec<u32>> {
+    let mut parts = Vec::new();
+
+    for piece in value.split('.') {
+        if piece.is_empty() {
+            return None;
+        }
+        parts.push(piece.parse().ok()?);
+    }
+
+    if parts.len() >= 3 && parts.len() <= 4 {
+        Some(parts)
+    } else {
+        None
+    }
 }
 
 fn derive_include_lib(root: &Path) -> Result<(PathBuf, PathBuf), String> {
-    let inc = root.join("include");
-    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let include_candidates = [root.join("include"), root.join("Include")];
 
-    // Try common layouts:
-    // <root>/include and <root>/lib
-    let lib1 = root.join("lib");
-    if inc.is_dir() && lib1.is_dir() {
-        return Ok((inc, lib1));
-    }
+    for include_dir in include_candidates {
+        if !include_dir.is_dir() || validate_header_exists(&include_dir).is_err() {
+            continue;
+        }
 
-    // Windows: check architecture-specific lib directories
-    let win_lib_subdir = if target_arch == "x86" {
-        "win32"
-    } else {
-        "win64"
-    };
-    let lib2 = root.join("lib").join(win_lib_subdir);
-    if inc.is_dir() && lib2.is_dir() {
-        return Ok((inc, lib2));
-    }
-
-    // Fallback: try capitalized Include/Lib (rare)
-    let inc3 = root.join("Include");
-    let lib3 = root.join("Lib");
-    if inc3.is_dir() && lib3.is_dir() {
-        return Ok((inc3, lib3));
+        for lib_dir in library_dir_candidates(root) {
+            if lib_dir.is_dir() && contains_linkable_blpapi_lib(&lib_dir) {
+                return Ok((include_dir.clone(), lib_dir));
+            }
+        }
     }
 
     Err(format!(
-        "Could not derive include/lib under {}. Expected include/ and lib/ (or lib/{win_lib_subdir}/).",
+        "Could not derive include/lib under {}.",
         root.display()
     ))
+}
+
+fn library_dir_candidates(root: &Path) -> Vec<PathBuf> {
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let mut candidates = vec![
+        root.join("lib"),
+        root.join("Lib"),
+        root.join("lib64"),
+        root.join("bin"),
+    ];
+
+    if target_os == "windows" {
+        let win_lib_subdir = if target_arch == "x86" {
+            "win32"
+        } else {
+            "win64"
+        };
+        candidates.push(root.join("lib").join(win_lib_subdir));
+    } else if target_os == "linux" {
+        candidates.push(root.join("Linux"));
+        candidates.push(root.join("linux"));
+    } else if target_os == "macos" {
+        candidates.push(root.join("Darwin"));
+        candidates.push(root.join("darwin"));
+        candidates.push(root.join("MacOS"));
+        candidates.push(root.join("macos"));
+    }
+
+    candidates
+}
+
+fn contains_linkable_blpapi_lib(lib_dir: &Path) -> bool {
+    expected_library_files()
+        .iter()
+        .any(|file_name| lib_dir.join(file_name).is_file())
+}
+
+fn detect_link_lib_name(lib_dir: &Path) -> String {
+    if lib_dir.join("blpapi3_64.lib").is_file()
+        || lib_dir.join("blpapi3_64.dll").is_file()
+        || lib_dir.join("libblpapi3_64.so").is_file()
+        || lib_dir.join("libblpapi3_64.dylib").is_file()
+        || lib_dir.join("libblpapi3_64.a").is_file()
+    {
+        return "blpapi3_64".to_string();
+    }
+
+    if lib_dir.join("blpapi3_32.lib").is_file()
+        || lib_dir.join("blpapi3_32.dll").is_file()
+        || lib_dir.join("libblpapi3_32.so").is_file()
+        || lib_dir.join("libblpapi3_32.dylib").is_file()
+        || lib_dir.join("libblpapi3_32.a").is_file()
+    {
+        return "blpapi3_32".to_string();
+    }
+
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    if target_os == "windows" {
+        if target_arch == "x86" {
+            "blpapi3_32".to_string()
+        } else {
+            "blpapi3_64".to_string()
+        }
+    } else {
+        "blpapi3".to_string()
+    }
+}
+
+fn expected_library_files() -> Vec<&'static str> {
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
+    if target_os == "windows" {
+        if target_arch == "x86" {
+            vec!["blpapi3_32.lib", "blpapi3_32.dll"]
+        } else {
+            vec!["blpapi3_64.lib", "blpapi3_64.dll"]
+        }
+    } else if target_os == "macos" {
+        vec![
+            "libblpapi3.so",
+            "libblpapi3_64.so",
+            "libblpapi3.dylib",
+            "libblpapi3_64.dylib",
+            "libblpapi3.a",
+            "libblpapi3_64.a",
+        ]
+    } else {
+        vec![
+            "libblpapi3.so",
+            "libblpapi3_64.so",
+            "libblpapi3.a",
+            "libblpapi3_64.a",
+        ]
+    }
 }
 
 fn validate_header_exists(include_dir: &Path) -> Result<(), String> {
