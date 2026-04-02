@@ -1,5 +1,4 @@
-'use strict';
-const assert = require('assert');
+const assert = require('node:assert');
 
 try {
   const api = require('./index');
@@ -8,9 +7,36 @@ try {
 
   // Test 1: All exports exist
   const requiredExports = [
-    'Engine', 'Subscription', 'connect', 'Backend', 'Format',
-    'BlpError', 'BlpSessionError', 'BlpRequestError', 'BlpValidationError',
-    'BlpTimeoutError', 'BlpInternalError', 'wrapError', 'version', 'setLogLevel', 'getLogLevel'
+    'Engine',
+    'Subscription',
+    'connect',
+    'configure',
+    'blp',
+    'ext',
+    'Backend',
+    'Format',
+    'bdp',
+    'bdh',
+    'bds',
+    'bdib',
+    'bdtick',
+    'subscribe',
+    'abdp',
+    'abdh',
+    'abds',
+    'abdib',
+    'abdtick',
+    'asubscribe',
+    'BlpError',
+    'BlpSessionError',
+    'BlpRequestError',
+    'BlpValidationError',
+    'BlpTimeoutError',
+    'BlpInternalError',
+    'wrapError',
+    'version',
+    'setLogLevel',
+    'getLogLevel',
   ];
   for (const key of requiredExports) {
     assert(key in api, `Missing export: ${key}`);
@@ -35,12 +61,30 @@ try {
   console.log('PASS: Format enum');
 
   // Test 4: Error class hierarchy and properties
-  assert(api.BlpError.prototype instanceof Error, 'BlpError not instanceof Error');
-  assert(api.BlpSessionError.prototype instanceof api.BlpError, 'BlpSessionError not instanceof BlpError');
-  assert(api.BlpRequestError.prototype instanceof api.BlpError, 'BlpRequestError not instanceof BlpError');
-  assert(api.BlpValidationError.prototype instanceof api.BlpError, 'BlpValidationError not instanceof BlpError');
-  assert(api.BlpTimeoutError.prototype instanceof api.BlpError, 'BlpTimeoutError not instanceof BlpError');
-  assert(api.BlpInternalError.prototype instanceof api.BlpError, 'BlpInternalError not instanceof BlpError');
+  assert(
+    api.BlpError.prototype instanceof Error,
+    'BlpError not instanceof Error',
+  );
+  assert(
+    api.BlpSessionError.prototype instanceof api.BlpError,
+    'BlpSessionError not instanceof BlpError',
+  );
+  assert(
+    api.BlpRequestError.prototype instanceof api.BlpError,
+    'BlpRequestError not instanceof BlpError',
+  );
+  assert(
+    api.BlpValidationError.prototype instanceof api.BlpError,
+    'BlpValidationError not instanceof BlpError',
+  );
+  assert(
+    api.BlpTimeoutError.prototype instanceof api.BlpError,
+    'BlpTimeoutError not instanceof BlpError',
+  );
+  assert(
+    api.BlpInternalError.prototype instanceof api.BlpError,
+    'BlpInternalError not instanceof BlpError',
+  );
   console.log('PASS: error class hierarchy');
 
   // Test 5: Error instances have correct name property
@@ -59,14 +103,21 @@ try {
   console.log('PASS: error instance names');
 
   // Test 6: BlpRequestError has optional properties
-  const reqErr = new api.BlpRequestError('test', { service: '//blp/refdata', operation: 'BDP', code: 123 });
+  const reqErr = new api.BlpRequestError('test', {
+    service: '//blp/refdata',
+    operation: 'BDP',
+    code: 123,
+  });
   assert.strictEqual(reqErr.service, '//blp/refdata');
   assert.strictEqual(reqErr.operation, 'BDP');
   assert.strictEqual(reqErr.code, 123);
   console.log('PASS: BlpRequestError properties');
 
   // Test 7: BlpValidationError has optional properties
-  const valErr = new api.BlpValidationError('test', { element: 'field1', suggestion: 'PX_LAST' });
+  const valErr = new api.BlpValidationError('test', {
+    element: 'field1',
+    suggestion: 'PX_LAST',
+  });
   assert.strictEqual(valErr.element, 'field1');
   assert.strictEqual(valErr.suggestion, 'PX_LAST');
   console.log('PASS: BlpValidationError properties');
@@ -78,32 +129,77 @@ try {
   console.log('PASS: Engine constructor');
 
   // Test 9: Engine.withConfig static method
-  const engineWithConfig = api.Engine.withConfig({ host: SESSION_HOST, port: SESSION_PORT });
+  const engineWithConfig = api.Engine.withConfig({
+    host: SESSION_HOST,
+    port: SESSION_PORT,
+  });
   assert(engineWithConfig instanceof api.Engine);
   assert(engineWithConfig._inner !== undefined);
   console.log('PASS: Engine.withConfig');
 
   // Test 10: Engine async methods exist and are functions
   const asyncMethods = [
-    'bdp', 'bds', 'bdh', 'bdib', 'bdtick', 'bql', 'beqs', 'bsrch', 'bta',
-    'bflds', 'blkp', 'bport', 'bcurves', 'bgovts', 'stream', 'vwap',
-    'mktbar', 'depth', 'chains', 'bops', 'bschema', 'fieldInfo', 'fieldSearch',
-    'bqr', 'subscribe', 'subscribeWithOptions', 'request', 'resolveFieldTypes'
+    'bdp',
+    'bds',
+    'bdh',
+    'bdib',
+    'bdtick',
+    'bql',
+    'beqs',
+    'bsrch',
+    'bta',
+    'bflds',
+    'blkp',
+    'bport',
+    'bcurves',
+    'bgovts',
+    'stream',
+    'vwap',
+    'mktbar',
+    'depth',
+    'chains',
+    'bops',
+    'bschema',
+    'fieldInfo',
+    'fieldSearch',
+    'bqr',
+    'subscribe',
+    'subscribeWithOptions',
+    'request',
+    'resolveFieldTypes',
   ];
   for (const method of asyncMethods) {
-    assert(typeof engine[method] === 'function', `Engine.${method} is not a function`);
+    assert(
+      typeof engine[method] === 'function',
+      `Engine.${method} is not a function`,
+    );
   }
   console.log('PASS: Engine async methods exist');
 
   // Test 11: Engine sync methods exist and are functions
   const syncMethods = [
-    'getFieldInfo', 'clearFieldCache', 'saveFieldCache', 'validateFields',
-    'isFieldValidationEnabled', 'getSchema', 'getOperation', 'listOperations',
-    'getCachedSchema', 'invalidateSchema', 'clearSchemaCache', 'listCachedSchemas',
-    'getEnumValues', 'listValidElements', 'signalShutdown', 'isAvailable'
+    'getFieldInfo',
+    'clearFieldCache',
+    'saveFieldCache',
+    'validateFields',
+    'isFieldValidationEnabled',
+    'getSchema',
+    'getOperation',
+    'listOperations',
+    'getCachedSchema',
+    'invalidateSchema',
+    'clearSchemaCache',
+    'listCachedSchemas',
+    'getEnumValues',
+    'listValidElements',
+    'signalShutdown',
+    'isAvailable',
   ];
   for (const method of syncMethods) {
-    assert(typeof engine[method] === 'function', `Engine.${method} is not a function`);
+    assert(
+      typeof engine[method] === 'function',
+      `Engine.${method} is not a function`,
+    );
   }
   console.log('PASS: Engine sync methods exist');
 
@@ -114,16 +210,98 @@ try {
   assert(typeof subProto.add === 'function');
   assert(typeof subProto.remove === 'function');
   assert(typeof subProto.unsubscribe === 'function');
-  assert(subProto.hasOwnProperty('tickers') || Object.getOwnPropertyDescriptor(subProto, 'tickers'));
-  assert(subProto.hasOwnProperty('fields') || Object.getOwnPropertyDescriptor(subProto, 'fields'));
-  assert(subProto.hasOwnProperty('isActive') || Object.getOwnPropertyDescriptor(subProto, 'isActive'));
-  assert(subProto.hasOwnProperty('stats') || Object.getOwnPropertyDescriptor(subProto, 'stats'));
+  assert(
+    Object.hasOwn(subProto, 'tickers') ||
+      Object.getOwnPropertyDescriptor(subProto, 'tickers'),
+  );
+  assert(
+    Object.hasOwn(subProto, 'fields') ||
+      Object.getOwnPropertyDescriptor(subProto, 'fields'),
+  );
+  assert(
+    Object.hasOwn(subProto, 'isActive') ||
+      Object.getOwnPropertyDescriptor(subProto, 'isActive'),
+  );
+  assert(
+    Object.hasOwn(subProto, 'stats') ||
+      Object.getOwnPropertyDescriptor(subProto, 'stats'),
+  );
   assert(typeof subProto[Symbol.asyncIterator] === 'function');
   console.log('PASS: Subscription class structure');
 
   // Test 13: connect function exists and is callable
   assert(typeof api.connect === 'function');
   console.log('PASS: connect function exists');
+
+  // Test 14: configure accepts both config objects and host/port arguments
+  assert(typeof api.configure === 'function');
+  assert.deepStrictEqual(
+    api.configure({ host: SESSION_HOST, port: SESSION_PORT }),
+    { host: SESSION_HOST, port: SESSION_PORT },
+  );
+  assert.deepStrictEqual(api.configure(SESSION_HOST, SESSION_PORT), {
+    host: SESSION_HOST,
+    port: SESSION_PORT,
+  });
+  console.log('PASS: configure helper');
+
+  // Test 15: top-level async wrappers exist
+  const topLevelAsyncMethods = [
+    'bdp',
+    'bdh',
+    'bds',
+    'bdib',
+    'bdtick',
+    'subscribe',
+    'abdp',
+    'abdh',
+    'abds',
+    'abdib',
+    'abdtick',
+    'asubscribe',
+  ];
+  for (const method of topLevelAsyncMethods) {
+    assert(
+      typeof api[method] === 'function',
+      `Top-level ${method} is not a function`,
+    );
+  }
+  console.log('PASS: top-level wrapper exports');
+
+  // Test 16: blp namespace exposes Python-style async helpers
+  assert.ok(api.blp && typeof api.blp === 'object');
+  const blpMethods = [
+    'bdp',
+    'bdh',
+    'bds',
+    'bdib',
+    'bdtick',
+    'subscribe',
+    'abdp',
+    'abdh',
+    'abds',
+    'abdib',
+    'abdtick',
+    'asubscribe',
+  ];
+  for (const method of blpMethods) {
+    assert(
+      typeof api.blp[method] === 'function',
+      `blp.${method} is not a function`,
+    );
+  }
+  console.log('PASS: blp namespace exports');
+
+  // Test 17: ext.cdx namespace exposes requested async helpers
+  assert.ok(api.ext && typeof api.ext === 'object');
+  assert.ok(api.ext.cdx && typeof api.ext.cdx === 'object');
+  for (const method of ['acdx_info', 'acdx_pricing', 'acdx_risk']) {
+    assert(
+      typeof api.ext.cdx[method] === 'function',
+      `ext.cdx.${method} is not a function`,
+    );
+  }
+  console.log('PASS: ext.cdx namespace exports');
 
   // Test 14: version is a function that returns a string
   assert(typeof api.version === 'function');
@@ -155,22 +333,29 @@ try {
   ];
   for (const [msg, Cls] of wrapCases) {
     const e = wrapError(new Error(msg));
-    assert(e instanceof Cls, `wrapError('${msg}') → ${e.constructor.name}, expected ${Cls.name}`);
+    assert(
+      e instanceof Cls,
+      `wrapError('${msg}') → ${e.constructor.name}, expected ${Cls.name}`,
+    );
   }
   console.log('PASS: wrapError prefix mapping');
 
   console.log('ALL TESTS PASSED');
 } catch (error) {
-  const message = String(error && error.message ? error.message : error);
+  const message = String(error?.message ? error.message : error);
   if (message.includes('Unable to load native napi-xbbg module')) {
-    console.log('js-xbbg test skipped: native module not built in this environment');
+    console.log(
+      'js-xbbg test skipped: native module not built in this environment',
+    );
     process.exit(0);
   }
   if (
-    message.toLowerCase().includes('session start failed')
-    || message.toLowerCase().includes('failed to spawn worker')
+    message.toLowerCase().includes('session start failed') ||
+    message.toLowerCase().includes('failed to spawn worker')
   ) {
-    console.log('js-xbbg test skipped: Bloomberg session is not available in this environment');
+    console.log(
+      'js-xbbg test skipped: Bloomberg session is not available in this environment',
+    );
     process.exit(0);
   }
   throw error;

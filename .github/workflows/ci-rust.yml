@@ -145,6 +145,30 @@ jobs:
       - name: Type check (advisory)
         run: pixi run -e lint typecheck || true
 
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JavaScript wrapper lint (Biome via pixi js env)
+  # ════════════════════════════════════════════════════════════════════════════
+  lint-js:
+    name: Lint (JS wrapper)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          pixi-version: latest
+          environments: js
+          cache: true
+
+      - name: Install js-xbbg dependencies
+        working-directory: js-xbbg
+        run: npm ci
+
+      - name: Biome check
+        run: pixi run -e js js-lint
+
   # ════════════════════════════════════════════════════════════════════════════
   # Docs Build (fast, no SDK needed)
   # ════════════════════════════════════════════════════════════════════════════

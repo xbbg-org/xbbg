@@ -1,9 +1,15 @@
-'use strict';
-
 const fs = require('node:fs');
 const path = require('node:path');
 const { tableFromIPC } = require('apache-arrow');
-const { wrapError, BlpError, BlpSessionError, BlpRequestError, BlpValidationError, BlpTimeoutError, BlpInternalError } = require('./errors');
+const {
+  wrapError,
+  BlpError,
+  BlpSessionError,
+  BlpRequestError,
+  BlpValidationError,
+  BlpTimeoutError,
+  BlpInternalError,
+} = require('./errors');
 
 function loadNative() {
   const root = path.resolve(__dirname, '..');
@@ -23,7 +29,7 @@ function loadNative() {
   }
 
   throw new Error(
-    'Unable to load native napi-xbbg module. Build it with "npm run build" from js-xbbg or "cargo build -p napi-xbbg" from repo root.'
+    'Unable to load native napi-xbbg module. Build it with "npm run build" from js-xbbg or "cargo build -p napi-xbbg" from repo root.',
   );
 }
 
@@ -54,6 +60,119 @@ function mapObjectToPairs(obj) {
     key: String(key),
     value: String(value),
   }));
+}
+
+const CDX_INFO_FIELDS = Object.freeze([
+  'ROLLING_SERIES',
+  'VERSION',
+  'ON_THE_RUN_CURRENT_BD_INDICATOR',
+  'CDS_FIRST_ACCRUAL_START_DATE',
+  'NAME',
+  'NUM_CURRENT_COMPANIES_CCY_TKR',
+  'NUM_ORIG_COMPANIES_CRNCY_TKR',
+  'PX_LAST',
+]);
+
+const CDX_PRICING_FIELDS = Object.freeze([
+  'PX_LAST',
+  'PX_BID',
+  'PX_ASK',
+  'UPFRONT_LAST',
+  'UPFRONT_BID',
+  'UPFRONT_ASK',
+  'CDS_FLAT_SPREAD',
+  'UPFRONT_FEE',
+  'PV_CDS_PREMIUM_LEG',
+  'PV_CDS_DEFAULT_LEG',
+]);
+
+const CDX_RISK_FIELDS = Object.freeze([
+  'SW_CNV_BPV',
+  'SW_EQV_BPV',
+  'CDS_SPREAD_MID_MODIFIED_DURATION',
+  'CDS_SPREAD_MID_CONVEXITY',
+  'RECOVERY_RATE_SEN',
+  'CDS_RECOVERY_RT',
+]);
+
+function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item));
+  }
+  if (value == null) {
+    return [];
+  }
+  return [String(value)];
+}
+
+function normalizeConfigureArgs(configOrHost = undefined, port = undefined) {
+  if (configOrHost == null) {
+    return undefined;
+  }
+  if (typeof configOrHost === 'string' || port !== undefined) {
+    const config = {};
+    if (configOrHost != null) {
+      config.host = String(configOrHost);
+    }
+    if (port != null) {
+      config.port = Number(port);
+    }
+    return config;
+  }
+  if (isPlainObject(configOrHost)) {
+    return { ...configOrHost };
+  }
+  throw new TypeError(
+    'configure expects either a config object or host/port arguments',
+  );
+}
+
+function normalizeRecoveryOptions(options = {}) {
+  const normalized = { ...options };
+  const recoveryRate = normalized.recoveryRate ?? normalized.recovery_rate;
+  delete normalized.recoveryRate;
+  delete normalized.recovery_rate;
+  if (recoveryRate != null) {
+    normalized.overrides = {
+      ...(normalized.overrides || {}),
+      CDS_RR: String(recoveryRate),
+    };
+  }
+  return normalized;
+}
+
+function fullDayRange(dt) {
+  const normalized = String(dt).trim().replace(' ', 'T');
+  const day = normalized.split('T')[0];
+  if (!day) {
+    throw new TypeError('dt must be a non-empty ISO date string');
+  }
+  return {
+    start: `${day}T00:00:00`,
+    end: `${day}T23:59:59`,
+  };
+}
+
+let configuredEngineConfig;
+let configuredEnginePromise;
+
+function clearConfiguredEngine() {
+  const existing = configuredEnginePromise;
+  configuredEnginePromise = undefined;
+  if (existing) {
+    existing.then((engine) => engine.signalShutdown()).catch(() => {});
+  }
+}
+
+async function getConfiguredEngine() {
+  if (!configuredEnginePromise) {
+    configuredEnginePromise = connect(configuredEngineConfig);
+  }
+  return configuredEnginePromise;
 }
 
 const TA_STUDIES = Object.freeze({
@@ -114,17 +233,64 @@ const TA_STUDIES = Object.freeze({
 });
 
 const TA_DEFAULTS = Object.freeze({
-  smavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
-  emavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
-  wmavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
-  vmavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
-  tmavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
-  rsiStudyAttributes: Object.freeze({ period: 14, priceSourceClose: 'PX_LAST' }),
-  macdStudyAttributes: Object.freeze({ maPeriod1: 12, maPeriod2: 26, sigPeriod: 9, priceSourceClose: 'PX_LAST' }),
-  bollStudyAttributes: Object.freeze({ period: 20, upperBand: 2.0, lowerBand: 2.0, priceSourceClose: 'PX_LAST' }),
-  dmiStudyAttributes: Object.freeze({ period: 14, priceSourceHigh: 'PX_HIGH', priceSourceLow: 'PX_LOW', priceSourceClose: 'PX_LAST' }),
-  atrStudyAttributes: Object.freeze({ maType: 'Simple', period: 14, priceSourceHigh: 'PX_HIGH', priceSourceLow: 'PX_LOW', priceSourceClose: 'PX_LAST' }),
-  tasStudyAttributes: Object.freeze({ periodK: 14, periodD: 3, periodDS: 3, periodDSS: 3, priceSourceHigh: 'PX_HIGH', priceSourceLow: 'PX_LOW', priceSourceClose: 'PX_LAST' }),
+  smavgStudyAttributes: Object.freeze({
+    period: 20,
+    priceSourceClose: 'PX_LAST',
+  }),
+  emavgStudyAttributes: Object.freeze({
+    period: 20,
+    priceSourceClose: 'PX_LAST',
+  }),
+  wmavgStudyAttributes: Object.freeze({
+    period: 20,
+    priceSourceClose: 'PX_LAST',
+  }),
+  vmavgStudyAttributes: Object.freeze({
+    period: 20,
+    priceSourceClose: 'PX_LAST',
+  }),
+  tmavgStudyAttributes: Object.freeze({
+    period: 20,
+    priceSourceClose: 'PX_LAST',
+  }),
+  rsiStudyAttributes: Object.freeze({
+    period: 14,
+    priceSourceClose: 'PX_LAST',
+  }),
+  macdStudyAttributes: Object.freeze({
+    maPeriod1: 12,
+    maPeriod2: 26,
+    sigPeriod: 9,
+    priceSourceClose: 'PX_LAST',
+  }),
+  bollStudyAttributes: Object.freeze({
+    period: 20,
+    upperBand: 2.0,
+    lowerBand: 2.0,
+    priceSourceClose: 'PX_LAST',
+  }),
+  dmiStudyAttributes: Object.freeze({
+    period: 14,
+    priceSourceHigh: 'PX_HIGH',
+    priceSourceLow: 'PX_LOW',
+    priceSourceClose: 'PX_LAST',
+  }),
+  atrStudyAttributes: Object.freeze({
+    maType: 'Simple',
+    period: 14,
+    priceSourceHigh: 'PX_HIGH',
+    priceSourceLow: 'PX_LOW',
+    priceSourceClose: 'PX_LAST',
+  }),
+  tasStudyAttributes: Object.freeze({
+    periodK: 14,
+    periodD: 3,
+    periodDS: 3,
+    periodDSS: 3,
+    priceSourceHigh: 'PX_HIGH',
+    priceSourceLow: 'PX_LOW',
+    priceSourceClose: 'PX_LAST',
+  }),
 });
 
 function normalizeDate(value) {
@@ -132,7 +298,10 @@ function normalizeDate(value) {
 }
 
 function getStudyAttrName(study) {
-  const normalized = String(study).toLowerCase().replace(/-/g, '_').replace(/ /g, '_');
+  const normalized = String(study)
+    .toLowerCase()
+    .replace(/-/g, '_')
+    .replace(/ /g, '_');
   if (TA_STUDIES[normalized]) {
     return TA_STUDIES[normalized];
   }
@@ -143,19 +312,27 @@ function getStudyAttrName(study) {
 }
 
 function buildTaRequest(ticker, study, options = {}) {
-  const rawStudy = typeof study === 'string' ? { studyType: study } : { ...study };
+  const rawStudy =
+    typeof study === 'string' ? { studyType: study } : { ...study };
   const studyType = rawStudy.studyType || rawStudy.study || study;
   const attrName = getStudyAttrName(studyType);
 
   const kwargs = { ...(options.kwargs || {}) };
-  const startDate = normalizeDate(kwargs.startDate || kwargs.start_date || options.startDate || options.start_date);
-  const endDate = normalizeDate(kwargs.endDate || kwargs.end_date || options.endDate || options.end_date);
+  const startDate = normalizeDate(
+    kwargs.startDate ||
+      kwargs.start_date ||
+      options.startDate ||
+      options.start_date,
+  );
+  const endDate = normalizeDate(
+    kwargs.endDate || kwargs.end_date || options.endDate || options.end_date,
+  );
   const periodicity = String(
-    kwargs.periodicitySelection
-    || kwargs.periodicity
-    || rawStudy.calcInterval
-    || options.periodicity
-    || 'DAILY'
+    kwargs.periodicitySelection ||
+      kwargs.periodicity ||
+      rawStudy.calcInterval ||
+      options.periodicity ||
+      'DAILY',
   ).toUpperCase();
   const interval = kwargs.interval || rawStudy.interval || options.interval;
 
@@ -186,13 +363,12 @@ function buildTaRequest(ticker, study, options = {}) {
   delete params.length;
   delete params.calcInterval;
 
-  const elements = [
-    { key: 'priceSource.securityName', value: String(ticker) },
-  ];
+  const elements = [{ key: 'priceSource.securityName', value: String(ticker) }];
 
   if (periodicity === 'INTRADAY') {
     const prefix = 'priceSource.dataRange.intraday';
-    if (startDate) elements.push({ key: `${prefix}.startDate`, value: startDate });
+    if (startDate)
+      elements.push({ key: `${prefix}.startDate`, value: startDate });
     if (endDate) elements.push({ key: `${prefix}.endDate`, value: endDate });
     elements.push({ key: `${prefix}.eventType`, value: 'TRADE' });
     if (interval != null) {
@@ -200,14 +376,21 @@ function buildTaRequest(ticker, study, options = {}) {
     }
   } else {
     const prefix = 'priceSource.dataRange.historical';
-    if (startDate) elements.push({ key: `${prefix}.startDate`, value: startDate });
+    if (startDate)
+      elements.push({ key: `${prefix}.startDate`, value: startDate });
     if (endDate) elements.push({ key: `${prefix}.endDate`, value: endDate });
-    elements.push({ key: `${prefix}.periodicitySelection`, value: periodicity });
+    elements.push({
+      key: `${prefix}.periodicitySelection`,
+      value: periodicity,
+    });
   }
 
   for (const [key, value] of Object.entries(params)) {
     if (value == null) continue;
-    elements.push({ key: `studyAttributes.${attrName}.${key}`, value: String(value) });
+    elements.push({
+      key: `studyAttributes.${attrName}.${key}`,
+      value: String(value),
+    });
   }
 
   for (const [key, value] of Object.entries(kwargs)) {
@@ -293,8 +476,13 @@ class Engine {
       }
       if (backend === Backend.POLARS) {
         let pl;
-        try { pl = require('nodejs-polars'); }
-        catch { throw new Error('nodejs-polars is required for Polars backend. Install: npm install nodejs-polars'); }
+        try {
+          pl = require('nodejs-polars');
+        } catch {
+          throw new Error(
+            'nodejs-polars is required for Polars backend. Install: npm install nodejs-polars',
+          );
+        }
         return pl.readIPC(buffer);
       }
       return tableFromIPC(buffer);
@@ -394,7 +582,8 @@ class Engine {
       { key: 'screenType', value: String(options.screenType || 'PRIVATE') },
       { key: 'Group', value: String(options.group || 'General') },
     ];
-    if (options.asof) elements.push({ key: 'asOfDate', value: String(options.asof) });
+    if (options.asof)
+      elements.push({ key: 'asOfDate', value: String(options.asof) });
     const overrides = {
       ...(options.overrides || {}),
     };
@@ -448,7 +637,11 @@ class Engine {
         format: options.format,
       });
     }
-    const fields = Array.isArray(options.fields) ? options.fields : (options.fields ? [options.fields] : []);
+    const fields = Array.isArray(options.fields)
+      ? options.fields
+      : options.fields
+        ? [options.fields]
+        : [];
     return this.request({
       service: '//blp/apiflds',
       operation: 'FieldInfoRequest',
@@ -505,8 +698,16 @@ class Engine {
     });
   }
 
-  async resolveFieldTypes(fields, overrides = undefined, defaultType = 'string') {
-    const items = await this._inner.resolveFieldTypes(fields, mapObjectToPairs(overrides), defaultType);
+  async resolveFieldTypes(
+    fields,
+    overrides = undefined,
+    defaultType = 'string',
+  ) {
+    const items = await this._inner.resolveFieldTypes(
+      fields,
+      mapObjectToPairs(overrides),
+      defaultType,
+    );
     return Object.fromEntries(items.map((item) => [item.key, item.value]));
   }
 
@@ -535,7 +736,9 @@ class Engine {
   }
 
   getOperation(service, operation) {
-    return this._inner.getOperation(service, operation).then((json) => JSON.parse(json));
+    return this._inner
+      .getOperation(service, operation)
+      .then((json) => JSON.parse(json));
   }
 
   listOperations(service) {
@@ -583,7 +786,7 @@ class Engine {
     options = undefined,
     flushThreshold = undefined,
     overflowPolicy = undefined,
-    streamCapacity = undefined
+    streamCapacity = undefined,
   ) {
     try {
       const stream = await this._inner.subscribeWithOptions(
@@ -593,7 +796,7 @@ class Engine {
         options,
         flushThreshold,
         overflowPolicy,
-        streamCapacity
+        streamCapacity,
       );
       return new Subscription(stream);
     } catch (err) {
@@ -610,23 +813,63 @@ class Engine {
   }
 
   async stream(tickers, fields, options = {}) {
-    return this.subscribeWithOptions('//blp/mktdata', tickers, fields, options.options, options.flushThreshold, options.overflowPolicy, options.streamCapacity);
+    return this.subscribeWithOptions(
+      '//blp/mktdata',
+      tickers,
+      fields,
+      options.options,
+      options.flushThreshold,
+      options.overflowPolicy,
+      options.streamCapacity,
+    );
   }
 
   async vwap(tickers, fields, options = {}) {
-    return this.subscribeWithOptions('//blp/mktvwap', tickers, fields, options.options, options.flushThreshold, options.overflowPolicy, options.streamCapacity);
+    return this.subscribeWithOptions(
+      '//blp/mktvwap',
+      tickers,
+      fields,
+      options.options,
+      options.flushThreshold,
+      options.overflowPolicy,
+      options.streamCapacity,
+    );
   }
 
   async mktbar(ticker, options = {}) {
-    return this.subscribeWithOptions('//blp/mktbar', [ticker], options.fields || [], options.options, options.flushThreshold, options.overflowPolicy, options.streamCapacity);
+    return this.subscribeWithOptions(
+      '//blp/mktbar',
+      [ticker],
+      options.fields || [],
+      options.options,
+      options.flushThreshold,
+      options.overflowPolicy,
+      options.streamCapacity,
+    );
   }
 
   async depth(ticker, options = {}) {
-    return this.subscribeWithOptions('//blp/mktdepthdata', [ticker], options.fields || [], options.options, options.flushThreshold, options.overflowPolicy, options.streamCapacity);
+    return this.subscribeWithOptions(
+      '//blp/mktdepthdata',
+      [ticker],
+      options.fields || [],
+      options.options,
+      options.flushThreshold,
+      options.overflowPolicy,
+      options.streamCapacity,
+    );
   }
 
   async chains(ticker, options = {}) {
-    return this.subscribeWithOptions('//blp/mktlist', [ticker], options.fields || [], options.options, options.flushThreshold, options.overflowPolicy, options.streamCapacity);
+    return this.subscribeWithOptions(
+      '//blp/mktlist',
+      [ticker],
+      options.fields || [],
+      options.options,
+      options.flushThreshold,
+      options.overflowPolicy,
+      options.streamCapacity,
+    );
   }
 
   async bops(service) {
@@ -634,12 +877,18 @@ class Engine {
   }
 
   async bschema(service, operation) {
-    if (operation) return this._inner.getOperation(service, operation).then(json => JSON.parse(json));
-    return this._inner.getSchema(service).then(json => JSON.parse(json));
+    if (operation)
+      return this._inner
+        .getOperation(service, operation)
+        .then((json) => JSON.parse(json));
+    return this._inner.getSchema(service).then((json) => JSON.parse(json));
   }
 
   fieldInfo(fields, options = {}) {
-    return this.bflds({ fields: Array.isArray(fields) ? fields : [fields], ...options });
+    return this.bflds({
+      fields: Array.isArray(fields) ? fields : [fields],
+      ...options,
+    });
   }
 
   fieldSearch(searchSpec, options = {}) {
@@ -652,8 +901,13 @@ class Engine {
     }
     if (backend === Backend.POLARS) {
       let pl;
-      try { pl = require('nodejs-polars'); }
-      catch { throw new Error('nodejs-polars is required for Polars backend. Install: npm install nodejs-polars'); }
+      try {
+        pl = require('nodejs-polars');
+      } catch {
+        throw new Error(
+          'nodejs-polars is required for Polars backend. Install: npm install nodejs-polars',
+        );
+      }
       return pl.readIPC(buffer);
     }
     return tableFromIPC(buffer);
@@ -682,10 +936,171 @@ async function connect(config = undefined) {
   return Engine.withConfig(config);
 }
 
+function configure(configOrHost = undefined, port = undefined) {
+  configuredEngineConfig = normalizeConfigureArgs(configOrHost, port);
+  clearConfiguredEngine();
+  return configuredEngineConfig;
+}
+
+async function abdp(tickers, fields, options = {}) {
+  const engine = await getConfiguredEngine();
+  return engine.bdp(toStringArray(tickers), toStringArray(fields), options);
+}
+
+async function bdp(tickers, fields, options = {}) {
+  return abdp(tickers, fields, options);
+}
+
+async function abdh(
+  tickers,
+  fields,
+  start = undefined,
+  end = undefined,
+  options = {},
+) {
+  const engine = await getConfiguredEngine();
+  if (isPlainObject(start) && end === undefined) {
+    return engine.bdh(toStringArray(tickers), toStringArray(fields), start);
+  }
+  return engine.bdh(toStringArray(tickers), toStringArray(fields), {
+    ...options,
+    start,
+    end,
+  });
+}
+
+async function bdh(tickers, fields, options = {}) {
+  return abdh(tickers, fields, options);
+}
+
+async function abds(tickers, fields, overrides = undefined, options = {}) {
+  const engine = await getConfiguredEngine();
+  const normalizedOptions = isPlainObject(overrides)
+    ? { ...options, overrides: { ...(options.overrides || {}), ...overrides } }
+    : options;
+  return engine.bds(
+    toStringArray(tickers),
+    toStringArray(fields),
+    normalizedOptions,
+  );
+}
+
+async function bds(tickers, fields, options = {}) {
+  return abds(tickers, fields, undefined, options);
+}
+
+async function abdib(ticker, dt = undefined, interval = 1, options = {}) {
+  const engine = await getConfiguredEngine();
+  if (
+    isPlainObject(dt) &&
+    interval === 1 &&
+    Object.keys(options).length === 0
+  ) {
+    return engine.bdib(String(ticker), dt);
+  }
+  const normalizedOptions = isPlainObject(interval)
+    ? { ...interval }
+    : { ...options, interval };
+  if (normalizedOptions.start == null && normalizedOptions.end == null) {
+    if (dt == null) {
+      throw new TypeError('abdib requires dt or explicit start/end options');
+    }
+    Object.assign(normalizedOptions, fullDayRange(dt));
+  }
+  return engine.bdib(String(ticker), normalizedOptions);
+}
+
+async function bdib(ticker, options = {}) {
+  return abdib(ticker, options);
+}
+
+async function abdtick(ticker, start, end, options = {}) {
+  if (start == null || end == null) {
+    throw new TypeError('abdtick requires both start and end datetimes');
+  }
+  const engine = await getConfiguredEngine();
+  return engine.bdtick(String(ticker), { ...options, start, end });
+}
+
+async function bdtick(ticker, options = {}) {
+  const engine = await getConfiguredEngine();
+  return engine.bdtick(String(ticker), options);
+}
+
+async function asubscribe(tickers, fields) {
+  const engine = await getConfiguredEngine();
+  return engine.subscribe(toStringArray(tickers), toStringArray(fields));
+}
+
+async function subscribe(tickers, fields) {
+  return asubscribe(tickers, fields);
+}
+
+async function acdx_info(ticker, options = {}) {
+  const engine = await getConfiguredEngine();
+  return engine.bdp([String(ticker)], [...CDX_INFO_FIELDS], options);
+}
+
+async function acdx_pricing(ticker, options = {}) {
+  const engine = await getConfiguredEngine();
+  return engine.bdp(
+    [String(ticker)],
+    [...CDX_PRICING_FIELDS],
+    normalizeRecoveryOptions(options),
+  );
+}
+
+async function acdx_risk(ticker, options = {}) {
+  const engine = await getConfiguredEngine();
+  return engine.bdp(
+    [String(ticker)],
+    [...CDX_RISK_FIELDS],
+    normalizeRecoveryOptions(options),
+  );
+}
+
+const blp = Object.freeze({
+  bdp,
+  bdh,
+  bds,
+  bdib,
+  bdtick,
+  subscribe,
+  abdp,
+  abdh,
+  abds,
+  abdib,
+  abdtick,
+  asubscribe,
+});
+
+const ext = Object.freeze({
+  cdx: Object.freeze({
+    acdx_info,
+    acdx_pricing,
+    acdx_risk,
+  }),
+});
+
 module.exports = {
   Engine,
   Subscription,
   connect,
+  configure,
+  bdp,
+  bdh,
+  bds,
+  bdib,
+  bdtick,
+  subscribe,
+  abdp,
+  abdh,
+  abds,
+  abdib,
+  abdtick,
+  asubscribe,
+  blp,
+  ext,
   Backend,
   Format,
   BlpError,

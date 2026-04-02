@@ -104,6 +104,17 @@ docs-install = { cmd = "npm install", cwd = "docs" }
 docs-dev = { cmd = "npm run dev", cwd = "docs" }
 docs-build = { cmd = "npm run build", cwd = "docs" }
 
+[feature.js.dependencies]
+nodejs = ">=24"
+
+[feature.js.tasks]
+js-install = { cmd = "npm install", cwd = "js-xbbg" }
+js-build = { cmd = "npm run build", cwd = "js-xbbg" }
+js-lint = { cmd = "npm run lint", cwd = "js-xbbg" }
+js-format = { cmd = "npm run format", cwd = "js-xbbg" }
+js-test = { cmd = "npm test", cwd = "js-xbbg" }
+js-test-live = { cmd = "npm run test:live", cwd = "js-xbbg" }
+
 [feature.py310.dependencies]
 python = "3.10.*"
 
@@ -132,3 +143,5 @@ py311 = { features = ["test", "py311"] }
 py312 = { features = ["test", "py312"] }
 py313 = { features = ["test", "py313"] }
 py314 = { features = ["test", "py314"] }
+
+js = { features = ["js"], solve-group = "main" }

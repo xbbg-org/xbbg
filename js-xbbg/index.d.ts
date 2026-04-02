@@ -25,6 +25,7 @@ export interface RequestInput {
   service: string;
   operation: string;
   requestOperation?: string;
+  requestId?: string;
   extractor?: string;
   securities?: string[];
   security?: string;
@@ -37,6 +38,8 @@ export interface RequestInput {
   endDate?: string;
   startDatetime?: string;
   endDatetime?: string;
+  requestTz?: string;
+  outputTz?: string;
   eventType?: string;
   eventTypes?: string[];
   interval?: number;
@@ -91,6 +94,11 @@ export interface BdtickOptions {
   end?: string;
   eventTypes?: string[];
   kwargs?: Record<string, string | number | boolean>;
+}
+
+export interface CdxOptions extends BdpOptions {
+  recoveryRate?: number;
+  recovery_rate?: number;
 }
 
 export class BlpError extends Error {
@@ -202,15 +210,27 @@ export class Engine {
   static withConfig(config?: EngineConfig): Engine;
   request(params: RequestInput): Promise<Table>;
   requestRaw(params: RequestInput): Promise<Buffer>;
-  bdp(tickers: string[], fields: string[], options?: BdpOptions): Promise<Table>;
-  bds(tickers: string[], fields: string[], options?: BdpOptions): Promise<Table>;
-  bdh(tickers: string[], fields: string[], options?: BdhOptions): Promise<Table>;
+  bdp(
+    tickers: string[],
+    fields: string[],
+    options?: BdpOptions,
+  ): Promise<Table>;
+  bds(
+    tickers: string[],
+    fields: string[],
+    options?: BdpOptions,
+  ): Promise<Table>;
+  bdh(
+    tickers: string[],
+    fields: string[],
+    options?: BdhOptions,
+  ): Promise<Table>;
   bdib(ticker: string, options?: BdibOptions): Promise<Table>;
   bdtick(ticker: string, options?: BdtickOptions): Promise<Table>;
   resolveFieldTypes(
     fields: string[],
     overrides?: Record<string, string | number | boolean>,
-    defaultType?: string
+    defaultType?: string,
   ): Promise<Record<string, string>>;
   getFieldInfo(field: string): FieldInfo | null;
   clearFieldCache(): void;
@@ -224,8 +244,15 @@ export class Engine {
   invalidateSchema(service: string): void;
   clearSchemaCache(): void;
   listCachedSchemas(): string[];
-  getEnumValues(service: string, operation: string, element: string): Promise<string[] | null>;
-  listValidElements(service: string, operation: string): Promise<string[] | null>;
+  getEnumValues(
+    service: string,
+    operation: string,
+    element: string,
+  ): Promise<string[] | null>;
+  listValidElements(
+    service: string,
+    operation: string,
+  ): Promise<string[] | null>;
   subscribe(tickers: string[], fields: string[]): Promise<Subscription>;
   subscribeWithOptions(
     service: string,
@@ -234,21 +261,37 @@ export class Engine {
     options?: string[],
     flushThreshold?: number,
     overflowPolicy?: string,
-    streamCapacity?: number
+    streamCapacity?: number,
   ): Promise<Subscription>;
   signalShutdown(): void;
   isAvailable(): boolean;
   bql(query: string, options?: BqlOptions): Promise<Table>;
   beqs(screen: string, options?: BeqsOptions): Promise<Table>;
   bsrch(searchSpec: string, options?: BsrchOptions): Promise<Table>;
-  bta(ticker: string, study: string | Record<string, unknown>, options?: BtaOptions): Promise<Table>;
+  bta(
+    ticker: string,
+    study: string | Record<string, unknown>,
+    options?: BtaOptions,
+  ): Promise<Table>;
   bflds(options: BfldsOptions): Promise<Table>;
   blkp(query: string, options?: BlkpOptions): Promise<Table>;
-  bport(portfolio: string, fields: string | string[], options?: RequestOptions): Promise<Table>;
+  bport(
+    portfolio: string,
+    fields: string | string[],
+    options?: RequestOptions,
+  ): Promise<Table>;
   bcurves(ticker: string, options?: RequestOptions): Promise<Table>;
   bgovts(ticker: string, options?: RequestOptions): Promise<Table>;
-  stream(tickers: string[], fields: string[], options?: StreamOptions): Promise<Subscription>;
-  vwap(tickers: string[], fields: string[], options?: StreamOptions): Promise<Subscription>;
+  stream(
+    tickers: string[],
+    fields: string[],
+    options?: StreamOptions,
+  ): Promise<Subscription>;
+  vwap(
+    tickers: string[],
+    fields: string[],
+    options?: StreamOptions,
+  ): Promise<Subscription>;
   mktbar(ticker: string, options?: StreamOptions): Promise<Subscription>;
   depth(ticker: string, options?: StreamOptions): Promise<Subscription>;
   chains(ticker: string, options?: StreamOptions): Promise<Subscription>;
@@ -259,7 +302,137 @@ export class Engine {
   bqr(ticker: string, options?: BqrOptions): Promise<Table>;
 }
 
+export interface BlpNamespace {
+  bdp(
+    tickers: string | string[],
+    fields: string | string[],
+    options?: BdpOptions,
+  ): Promise<Table>;
+  bdh(
+    tickers: string | string[],
+    fields: string | string[],
+    options?: BdhOptions,
+  ): Promise<Table>;
+  bds(
+    tickers: string | string[],
+    fields: string | string[],
+    options?: BdpOptions,
+  ): Promise<Table>;
+  bdib(ticker: string, options?: BdibOptions): Promise<Table>;
+  bdtick(ticker: string, options?: BdtickOptions): Promise<Table>;
+  subscribe(
+    tickers: string | string[],
+    fields: string | string[],
+  ): Promise<Subscription>;
+  abdp(
+    tickers: string | string[],
+    fields: string | string[],
+    options?: BdpOptions,
+  ): Promise<Table>;
+  abdh(
+    tickers: string | string[],
+    fields: string | string[],
+    start?: string,
+    end?: string,
+    options?: BdhOptions,
+  ): Promise<Table>;
+  abds(
+    tickers: string | string[],
+    fields: string | string[],
+    overrides?: Record<string, string | number | boolean>,
+    options?: BdpOptions,
+  ): Promise<Table>;
+  abdib(
+    ticker: string,
+    dt?: string,
+    interval?: number,
+    options?: BdibOptions,
+  ): Promise<Table>;
+  abdtick(
+    ticker: string,
+    start: string,
+    end: string,
+    options?: BdtickOptions,
+  ): Promise<Table>;
+  asubscribe(
+    tickers: string | string[],
+    fields: string | string[],
+  ): Promise<Subscription>;
+}
+
+export interface CdxNamespace {
+  acdx_info(ticker: string, options?: BdpOptions): Promise<Table>;
+  acdx_pricing(ticker: string, options?: CdxOptions): Promise<Table>;
+  acdx_risk(ticker: string, options?: CdxOptions): Promise<Table>;
+}
+
+export interface ExtNamespace {
+  cdx: CdxNamespace;
+}
+
 export function connect(config?: EngineConfig): Promise<Engine>;
+export function configure(config?: EngineConfig): EngineConfig | undefined;
+export function configure(
+  host?: string,
+  port?: number,
+): EngineConfig | undefined;
+export function bdp(
+  tickers: string | string[],
+  fields: string | string[],
+  options?: BdpOptions,
+): Promise<Table>;
+export function bdh(
+  tickers: string | string[],
+  fields: string | string[],
+  options?: BdhOptions,
+): Promise<Table>;
+export function bds(
+  tickers: string | string[],
+  fields: string | string[],
+  options?: BdpOptions,
+): Promise<Table>;
+export function bdib(ticker: string, options?: BdibOptions): Promise<Table>;
+export function bdtick(ticker: string, options?: BdtickOptions): Promise<Table>;
+export function subscribe(
+  tickers: string | string[],
+  fields: string | string[],
+): Promise<Subscription>;
+export function abdp(
+  tickers: string | string[],
+  fields: string | string[],
+  options?: BdpOptions,
+): Promise<Table>;
+export function abdh(
+  tickers: string | string[],
+  fields: string | string[],
+  start?: string,
+  end?: string,
+  options?: BdhOptions,
+): Promise<Table>;
+export function abds(
+  tickers: string | string[],
+  fields: string | string[],
+  overrides?: Record<string, string | number | boolean>,
+  options?: BdpOptions,
+): Promise<Table>;
+export function abdib(
+  ticker: string,
+  dt?: string,
+  interval?: number,
+  options?: BdibOptions,
+): Promise<Table>;
+export function abdtick(
+  ticker: string,
+  start: string,
+  end: string,
+  options?: BdtickOptions,
+): Promise<Table>;
+export function asubscribe(
+  tickers: string | string[],
+  fields: string | string[],
+): Promise<Subscription>;
+export const blp: BlpNamespace;
+export const ext: ExtNamespace;
 export function version(): string;
 export function setLogLevel(level: string): void;
 export function getLogLevel(): string;
