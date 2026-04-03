@@ -13,7 +13,7 @@ use xbbg_async::engine::{
     Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, SharedSubscriptionStatus,
 };
 use xbbg_async::{BlpAsyncError, ValidationMode};
-use xbbg_core::BlpError;
+use xbbg_core::{AuthConfig, BlpError};
 
 type StreamBatchResult = std::result::Result<RecordBatch, BlpError>;
 type StreamReceiver = tokio::sync::mpsc::Receiver<StreamBatchResult>;
@@ -38,9 +38,50 @@ pub struct StringPair {
 }
 
 #[napi(object)]
+pub struct ServerAddressInput {
+    pub host: String,
+    pub port: u16,
+}
+
+#[napi(object)]
+pub struct AuthConfigInput {
+    pub method: String,
+    pub app_name: Option<String>,
+    pub dir_property: Option<String>,
+    pub user_id: Option<String>,
+    pub ip_address: Option<String>,
+    pub token: Option<String>,
+}
+
+#[napi(object)]
+pub struct TlsConfigInput {
+    pub client_credentials: Option<String>,
+    pub client_credentials_password: Option<String>,
+    pub trust_material: Option<String>,
+    pub handshake_timeout_ms: Option<i32>,
+    pub crl_fetch_timeout_ms: Option<i32>,
+}
+
+#[napi(object)]
+pub struct RetryPolicyInput {
+    pub max_retries: Option<u32>,
+    pub initial_delay_ms: Option<i64>,
+    pub backoff_factor: Option<f64>,
+    pub max_delay_ms: Option<i64>,
+}
+
+#[napi(object)]
+pub struct Socks5ConfigInput {
+    pub host: String,
+    pub port: u16,
+}
+
+#[napi(object)]
 pub struct EngineConfigInput {
     pub host: Option<String>,
     pub port: Option<u16>,
+    pub servers: Option<Vec<ServerAddressInput>>,
+    pub zfp_remote: Option<String>,
     pub request_pool_size: Option<u32>,
     pub subscription_pool_size: Option<u32>,
     pub validation_mode: Option<String>,
@@ -50,6 +91,17 @@ pub struct EngineConfigInput {
     pub subscription_stream_capacity: Option<u32>,
     pub overflow_policy: Option<String>,
     pub warmup_services: Option<Vec<String>>,
+    pub field_cache_path: Option<String>,
+    pub auth: Option<AuthConfigInput>,
+    pub tls: Option<TlsConfigInput>,
+    pub num_start_attempts: Option<u32>,
+    pub auto_restart_on_disconnection: Option<bool>,
+    pub max_recovery_attempts: Option<u32>,
+    pub recovery_timeout_ms: Option<i64>,
+    pub retry_policy: Option<RetryPolicyInput>,
+    pub health_check_interval_ms: Option<i64>,
+    pub sdk_log_level: Option<String>,
+    pub socks5: Option<Socks5ConfigInput>,
 }
 
 #[napi(object)]
@@ -108,11 +160,94 @@ fn to_i64_saturating(value: u64) -> i64 {
     }
 }
 
+fn require_auth_value(
+    value: Option<&String>,
+    field: &str,
+    method: &str,
+) -> Result<String, Error> {
+    value
+        .cloned()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            Error::new(
+                Status::InvalidArg,
+                format!("auth.{field} is required for auth.method='{method}'"),
+            )
+        })
+}
+
+fn require_non_negative_duration(value: i64, field: &str) -> Result<u64, Error> {
+    u64::try_from(value).map_err(|_| {
+        Error::new(
+            Status::InvalidArg,
+            format!("{field} must be a non-negative integer number of milliseconds"),
+        )
+    })
+}
+
+fn require_non_negative_timeout(value: i32, field: &str) -> Result<i32, Error> {
+    if value < 0 {
+        return Err(Error::new(
+            Status::InvalidArg,
+            format!("{field} must be a non-negative integer number of milliseconds"),
+        ));
+    }
+    Ok(value)
+}
+
+fn build_auth_config(input: Option<&AuthConfigInput>) -> Result<Option<AuthConfig>, Error> {
+    let Some(input) = input else {
+        return Ok(None);
+    };
+
+    let method = input.method.trim().to_ascii_lowercase();
+    let auth = match method.as_str() {
+        "" | "none" => None,
+        "user" => Some(AuthConfig::User),
+        "app" => Some(AuthConfig::App {
+            app_name: require_auth_value(input.app_name.as_ref(), "appName", &method)?,
+        }),
+        "userapp" => Some(AuthConfig::UserApp {
+            app_name: require_auth_value(input.app_name.as_ref(), "appName", &method)?,
+        }),
+        "dir" | "directory" => Some(AuthConfig::Directory {
+            property_name: require_auth_value(
+                input.dir_property.as_ref(),
+                "dirProperty",
+                &method,
+            )?,
+        }),
+        "manual" => Some(AuthConfig::Manual {
+            app_name: require_auth_value(input.app_name.as_ref(), "appName", &method)?,
+            user_id: require_auth_value(input.user_id.as_ref(), "userId", &method)?,
+            ip_address: require_auth_value(
+                input.ip_address.as_ref(),
+                "ipAddress",
+                &method,
+            )?,
+        }),
+        "token" => Some(AuthConfig::Token {
+            token: require_auth_value(input.token.as_ref(), "token", &method)?,
+        }),
+        other => {
+            return Err(Error::new(
+                Status::InvalidArg,
+                format!(
+                    "invalid auth.method: {other}. Must be one of ['none', 'user', 'app', 'userapp', 'dir', 'directory', 'manual', 'token']",
+                ),
+            ));
+        }
+    };
+
+    Ok(auth)
+}
+
 impl TryFrom<EngineConfigInput> for EngineConfig {
     type Error = Error;
 
     fn try_from(input: EngineConfigInput) -> Result<Self, Self::Error> {
         let mut config = EngineConfig::default();
+        let auth = build_auth_config(input.auth.as_ref())?;
 
         let validation_mode = match input.validation_mode {
             Some(mode) => ValidationMode::from_str(&mode)
@@ -131,6 +266,16 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
         }
         if let Some(port) = input.port {
             config.server_port = port;
+        }
+        if let Some(servers) = input.servers {
+            config.servers = servers.into_iter().map(|server| (server.host, server.port)).collect();
+        }
+        if let Some(zfp_remote) = input.zfp_remote {
+            config.zfp_remote = Some(
+                zfp_remote
+                    .parse()
+                    .map_err(|e: String| Error::new(Status::InvalidArg, e))?,
+            );
         }
         if let Some(size) = input.request_pool_size {
             config.request_pool_size = size as usize;
@@ -153,9 +298,70 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
         if let Some(services) = input.warmup_services {
             config.warmup_services = services;
         }
+        if let Some(field_cache_path) = input.field_cache_path {
+            config.field_cache_path = Some(field_cache_path.into());
+        }
+        if let Some(tls) = input.tls {
+            config.tls_client_credentials = tls.client_credentials;
+            config.tls_client_credentials_password = tls.client_credentials_password;
+            config.tls_trust_material = tls.trust_material;
+            config.tls_handshake_timeout_ms = tls
+                .handshake_timeout_ms
+                .map(|value| require_non_negative_timeout(value, "tls.handshakeTimeoutMs"))
+                .transpose()?;
+            config.tls_crl_fetch_timeout_ms = tls
+                .crl_fetch_timeout_ms
+                .map(|value| require_non_negative_timeout(value, "tls.crlFetchTimeoutMs"))
+                .transpose()?;
+        }
+        if let Some(num_start_attempts) = input.num_start_attempts {
+            config.num_start_attempts = num_start_attempts as usize;
+        }
+        if let Some(auto_restart) = input.auto_restart_on_disconnection {
+            config.auto_restart_on_disconnection = auto_restart;
+        }
+        if let Some(max_recovery_attempts) = input.max_recovery_attempts {
+            config.max_recovery_attempts = max_recovery_attempts as usize;
+        }
+        if let Some(recovery_timeout_ms) = input.recovery_timeout_ms {
+            config.recovery_timeout_ms =
+                require_non_negative_duration(recovery_timeout_ms, "recoveryTimeoutMs")?;
+        }
+        if let Some(retry_policy) = input.retry_policy {
+            if let Some(max_retries) = retry_policy.max_retries {
+                config.retry_policy.max_retries = max_retries;
+            }
+            if let Some(initial_delay_ms) = retry_policy.initial_delay_ms {
+                config.retry_policy.initial_delay_ms =
+                    require_non_negative_duration(initial_delay_ms, "retryPolicy.initialDelayMs")?;
+            }
+            if let Some(backoff_factor) = retry_policy.backoff_factor {
+                config.retry_policy.backoff_factor = backoff_factor;
+            }
+            if let Some(max_delay_ms) = retry_policy.max_delay_ms {
+                config.retry_policy.max_delay_ms =
+                    require_non_negative_duration(max_delay_ms, "retryPolicy.maxDelayMs")?;
+            }
+        }
+        if let Some(health_check_interval_ms) = input.health_check_interval_ms {
+            config.health_check_interval_ms = require_non_negative_duration(
+                health_check_interval_ms,
+                "healthCheckIntervalMs",
+            )?;
+        }
+        if let Some(sdk_log_level) = input.sdk_log_level {
+            config.sdk_log_level = sdk_log_level
+                .parse()
+                .map_err(|e: String| Error::new(Status::InvalidArg, e))?;
+        }
+        if let Some(socks5) = input.socks5 {
+            config.socks5_host = Some(socks5.host);
+            config.socks5_port = Some(socks5.port);
+        }
 
         config.validation_mode = validation_mode;
         config.overflow_policy = overflow_policy;
+        config.auth = auth;
 
         Ok(config)
     }
@@ -1058,5 +1264,192 @@ impl JsSubscription {
         } else {
             Ok(Some(remaining))
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn engine_config_input_defaults_leave_auth_unset() {
+        let config = EngineConfig::try_from(EngineConfigInput {
+            host: None,
+            port: None,
+            servers: None,
+            zfp_remote: None,
+            request_pool_size: None,
+            subscription_pool_size: None,
+            validation_mode: None,
+            subscription_flush_threshold: None,
+            max_event_queue_size: None,
+            command_queue_size: None,
+            subscription_stream_capacity: None,
+            overflow_policy: None,
+            warmup_services: None,
+            field_cache_path: None,
+            auth: None,
+            tls: None,
+            num_start_attempts: None,
+            auto_restart_on_disconnection: None,
+            max_recovery_attempts: None,
+            recovery_timeout_ms: None,
+            retry_policy: None,
+            health_check_interval_ms: None,
+            sdk_log_level: None,
+            socks5: None,
+        })
+        .expect("default config should convert");
+
+        assert_eq!(config.auth, None);
+        assert_eq!(config.server_host, "localhost");
+        assert_eq!(config.server_port, 8194);
+    }
+
+    #[test]
+    fn engine_config_input_maps_bpipe_and_auth_options() {
+        let config = EngineConfig::try_from(EngineConfigInput {
+            host: Some("primary.example.com".to_string()),
+            port: Some(8194),
+            servers: Some(vec![
+                ServerAddressInput {
+                    host: "primary.example.com".to_string(),
+                    port: 8194,
+                },
+                ServerAddressInput {
+                    host: "secondary.example.com".to_string(),
+                    port: 8196,
+                },
+            ]),
+            zfp_remote: Some("8194".to_string()),
+            request_pool_size: Some(4),
+            subscription_pool_size: Some(2),
+            validation_mode: Some("strict".to_string()),
+            subscription_flush_threshold: Some(8),
+            max_event_queue_size: Some(16_000),
+            command_queue_size: Some(512),
+            subscription_stream_capacity: Some(1024),
+            overflow_policy: Some("block".to_string()),
+            warmup_services: Some(vec!["//blp/refdata".to_string()]),
+            field_cache_path: Some("/tmp/xbbg-field-cache.json".to_string()),
+            auth: Some(AuthConfigInput {
+                method: "manual".to_string(),
+                app_name: Some("app-name".to_string()),
+                dir_property: None,
+                user_id: Some("123456".to_string()),
+                ip_address: Some("10.0.0.1".to_string()),
+                token: None,
+            }),
+            tls: Some(TlsConfigInput {
+                client_credentials: Some("/tmp/client.p12".to_string()),
+                client_credentials_password: Some("secret".to_string()),
+                trust_material: Some("/tmp/trust.p7".to_string()),
+                handshake_timeout_ms: Some(2000),
+                crl_fetch_timeout_ms: Some(3000),
+            }),
+            num_start_attempts: Some(5),
+            auto_restart_on_disconnection: Some(false),
+            max_recovery_attempts: Some(7),
+            recovery_timeout_ms: Some(45_000),
+            retry_policy: Some(RetryPolicyInput {
+                max_retries: Some(3),
+                initial_delay_ms: Some(250),
+                backoff_factor: Some(1.5),
+                max_delay_ms: Some(5_000),
+            }),
+            health_check_interval_ms: Some(12_000),
+            sdk_log_level: Some("warn".to_string()),
+            socks5: Some(Socks5ConfigInput {
+                host: "proxy.example.com".to_string(),
+                port: 1080,
+            }),
+        })
+        .expect("config with auth should convert");
+
+        assert_eq!(
+            config.servers,
+            vec![
+                ("primary.example.com".to_string(), 8194),
+                ("secondary.example.com".to_string(), 8196),
+            ]
+        );
+        assert_eq!(config.zfp_remote, Some(xbbg_core::zfp::ZfpRemote::Remote8194));
+        assert_eq!(
+            config.auth,
+            Some(AuthConfig::Manual {
+                app_name: "app-name".to_string(),
+                user_id: "123456".to_string(),
+                ip_address: "10.0.0.1".to_string(),
+            })
+        );
+        assert_eq!(
+            config.field_cache_path,
+            Some(std::path::PathBuf::from("/tmp/xbbg-field-cache.json"))
+        );
+        assert_eq!(
+            config.tls_client_credentials.as_deref(),
+            Some("/tmp/client.p12")
+        );
+        assert_eq!(
+            config.tls_client_credentials_password.as_deref(),
+            Some("secret")
+        );
+        assert_eq!(config.tls_trust_material.as_deref(), Some("/tmp/trust.p7"));
+        assert_eq!(config.tls_handshake_timeout_ms, Some(2000));
+        assert_eq!(config.tls_crl_fetch_timeout_ms, Some(3000));
+        assert_eq!(config.num_start_attempts, 5);
+        assert!(!config.auto_restart_on_disconnection);
+        assert_eq!(config.max_recovery_attempts, 7);
+        assert_eq!(config.recovery_timeout_ms, 45_000);
+        assert_eq!(config.retry_policy.max_retries, 3);
+        assert_eq!(config.retry_policy.initial_delay_ms, 250);
+        assert_eq!(config.retry_policy.backoff_factor, 1.5);
+        assert_eq!(config.retry_policy.max_delay_ms, 5_000);
+        assert_eq!(config.health_check_interval_ms, 12_000);
+        assert_eq!(config.socks5_host.as_deref(), Some("proxy.example.com"));
+        assert_eq!(config.socks5_port, Some(1080));
+    }
+
+    #[test]
+    fn engine_config_input_requires_auth_fields_for_selected_method() {
+        let err = match EngineConfig::try_from(EngineConfigInput {
+            host: None,
+            port: None,
+            servers: None,
+            zfp_remote: None,
+            request_pool_size: None,
+            subscription_pool_size: None,
+            validation_mode: None,
+            subscription_flush_threshold: None,
+            max_event_queue_size: None,
+            command_queue_size: None,
+            subscription_stream_capacity: None,
+            overflow_policy: None,
+            warmup_services: None,
+            field_cache_path: None,
+            auth: Some(AuthConfigInput {
+                method: "app".to_string(),
+                app_name: None,
+                dir_property: None,
+                user_id: None,
+                ip_address: None,
+                token: None,
+            }),
+            tls: None,
+            num_start_attempts: None,
+            auto_restart_on_disconnection: None,
+            max_recovery_attempts: None,
+            recovery_timeout_ms: None,
+            retry_policy: None,
+            health_check_interval_ms: None,
+            sdk_log_level: None,
+            socks5: None,
+        }) {
+            Ok(_) => panic!("missing appName should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("auth.appName is required"));
     }
 }

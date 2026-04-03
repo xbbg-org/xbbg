@@ -233,12 +233,32 @@ try {
   assert(typeof api.connect === 'function');
   console.log('PASS: connect function exists');
 
-  // Test 14: configure accepts both config objects and host/port arguments
+  // Test 14: configure accepts simple and nested engine config objects
   assert(typeof api.configure === 'function');
   assert.deepStrictEqual(
     api.configure({ host: SESSION_HOST, port: SESSION_PORT }),
     { host: SESSION_HOST, port: SESSION_PORT },
   );
+  const advancedConfig = {
+    servers: [
+      { host: 'primary.example.com', port: 8194 },
+      { host: 'secondary.example.com', port: 8196 },
+    ],
+    auth: { method: 'userapp', appName: 'my-bpipe-app' },
+    tls: {
+      clientCredentials: '/secure/client.p12',
+      trustMaterial: '/secure/trust.p7',
+    },
+    zfpRemote: '8194',
+    retryPolicy: {
+      maxRetries: 2,
+      initialDelayMs: 100,
+      backoffFactor: 1.5,
+      maxDelayMs: 1000,
+    },
+    socks5: { host: 'proxy.example.com', port: 1080 },
+  };
+  assert.deepStrictEqual(api.configure(advancedConfig), advancedConfig);
   assert.deepStrictEqual(api.configure(SESSION_HOST, SESSION_PORT), {
     host: SESSION_HOST,
     port: SESSION_PORT,

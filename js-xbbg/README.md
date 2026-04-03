@@ -44,7 +44,25 @@ The JS package automatically loads a local `js-xbbg/napi_xbbg.node` addon first,
 ```typescript
 import * as xbbg from '@xbbg/core';
 
-xbbg.configure('localhost', 8194);
+xbbg.configure({
+  host: 'localhost',
+  port: 8194,
+});
+
+// BPIPE / leased-line capable session config
+const engine = await xbbg.connect({
+  servers: [
+    { host: 'bpipe-primary.example.com', port: 8194 },
+    { host: 'bpipe-secondary.example.com', port: 8196 },
+  ],
+  auth: { method: 'userapp', appName: 'my-bpipe-app' },
+  tls: {
+    clientCredentials: '/secure/client.p12',
+    clientCredentialsPassword: process.env.BPIPE_TLS_PASSWORD,
+    trustMaterial: '/secure/trust.p7',
+  },
+  zfpRemote: '8194',
+});
 
 // Python-style blp namespace
 const hist = await xbbg.blp.abdh(['AAPL US Equity'], ['PX_LAST'], '2024-01-01', '2024-12-31');
@@ -63,7 +81,22 @@ for await (const tick of sub) {
 const cdxInfo = await xbbg.ext.cdx.acdx_info('CDX IG CDSI GEN 5Y Corp');
 const cdxPricing = await xbbg.ext.cdx.acdx_pricing('CDX IG CDSI GEN 5Y Corp');
 const cdxRisk = await xbbg.ext.cdx.acdx_risk('CDX IG CDSI GEN 5Y Corp');
+
+engine.signalShutdown();
 ```
+
+## Engine configuration
+
+`connect()` and `configure()` accept a structured `EngineConfig` object. The most important connection controls are:
+
+- `host` / `port` for a single Bloomberg session endpoint
+- `servers` for ordered failover across multiple Bloomberg hosts
+- `auth` for Bloomberg session identity auth: `user`, `app`, `userapp`, `dir`, `manual`, or `token`
+- `tls` plus `zfpRemote` for leased-line / BPIPE-style sessions
+- `socks5` for proxied Bloomberg connectivity
+- `retryPolicy`, `numStartAttempts`, and recovery settings for reconnect behavior
+
+The JS binding now forwards these fields directly to the Rust engine, so Node can configure the same auth and transport features already available in the core runtime.
 
 ## Features (planned)
 

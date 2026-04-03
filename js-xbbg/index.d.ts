@@ -7,9 +7,44 @@ export interface StringPair {
   value: string;
 }
 
+export interface ServerAddress {
+  host: string;
+  port: number;
+}
+
+export type AuthConfig =
+  | { method: 'user' }
+  | { method: 'app'; appName: string }
+  | { method: 'userapp'; appName: string }
+  | { method: 'dir' | 'directory'; dirProperty: string }
+  | { method: 'manual'; appName: string; userId: string; ipAddress: string }
+  | { method: 'token'; token: string };
+
+export interface TlsConfig {
+  clientCredentials?: string;
+  clientCredentialsPassword?: string;
+  trustMaterial?: string;
+  handshakeTimeoutMs?: number;
+  crlFetchTimeoutMs?: number;
+}
+
+export interface RetryPolicy {
+  maxRetries?: number;
+  initialDelayMs?: number;
+  backoffFactor?: number;
+  maxDelayMs?: number;
+}
+
+export interface Socks5Config {
+  host: string;
+  port: number;
+}
+
 export interface EngineConfig {
   host?: string;
   port?: number;
+  servers?: ServerAddress[];
+  zfpRemote?: '8194' | '8196';
   requestPoolSize?: number;
   subscriptionPoolSize?: number;
   validationMode?: string;
@@ -19,6 +54,17 @@ export interface EngineConfig {
   subscriptionStreamCapacity?: number;
   overflowPolicy?: string;
   warmupServices?: string[];
+  fieldCachePath?: string;
+  auth?: AuthConfig;
+  tls?: TlsConfig;
+  numStartAttempts?: number;
+  autoRestartOnDisconnection?: boolean;
+  maxRecoveryAttempts?: number;
+  recoveryTimeoutMs?: number;
+  retryPolicy?: RetryPolicy;
+  healthCheckIntervalMs?: number;
+  sdkLogLevel?: string;
+  socks5?: Socks5Config;
 }
 
 export interface RequestInput {
