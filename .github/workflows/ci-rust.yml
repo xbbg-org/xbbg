@@ -400,12 +400,15 @@ jobs:
           - os: ubuntu-latest
             label: linux-x64
             package_dir: packages/xbbg-bridge-linux-x64
+            core_package_dir: packages/xbbg-core-linux-x64
           - os: windows-latest
             label: win32-x64
             package_dir: packages/xbbg-bridge-win32-x64
-          - os: macos-latest
+            core_package_dir: packages/xbbg-core-win32-x64
+          - os: macos-15
             label: darwin-arm64
             package_dir: packages/xbbg-bridge-darwin-arm64
+            core_package_dir: packages/xbbg-core-darwin-arm64
 
     runs-on: ${{ matrix.os }}
     env:
@@ -542,11 +545,39 @@ jobs:
       - name: Build js-xbbg native package
         run: npm --prefix js-xbbg run build
 
+      - name: Stage packaged core native addon
+        run: npm --prefix js-xbbg run stage:native-package
+
+      - name: Validate core native package export
+        run: |
+          node -e "const addon = require('./${{ matrix.core_package_dir }}'); console.log(addon.binaryPath);"
+
+      - name: Remove local js-xbbg build artifact (Unix)
+        if: runner.os != 'Windows'
+        run: rm -f js-xbbg/napi_xbbg.node
+
+      - name: Remove local js-xbbg build artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Remove-Item js-xbbg\napi_xbbg.node -Force
+
+      - name: Smoke test packaged @xbbg/core install
+        shell: bash
+        run: npm --prefix js-xbbg run smoke:packaged-install -- 0.0.0-ci
+
+
       - name: Upload staged bridge package artifact
         uses: actions/upload-artifact@v4
         with:
           name: bridge-package-${{ matrix.label }}
           path: ${{ matrix.package_dir }}
+          retention-days: 7
+
+      - name: Upload staged core package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-package-${{ matrix.label }}
+          path: ${{ matrix.core_package_dir }}
           retention-days: 7
 
       - name: Upload js-xbbg native artifact

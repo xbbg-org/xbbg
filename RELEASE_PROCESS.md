@@ -4,7 +4,7 @@ This document explains the release process for xbbg, intended for AI agents and 
 
 ## Overview
 
-xbbg uses **semantic versioning** (SemVer) with versions **automatically derived from git tags** via `setuptools_scm`. The build system is `setuptools` + `setuptools-rust` + `setuptools_scm`.
+xbbg uses **semantic versioning** (SemVer) with Python package versions **automatically derived from git tags** via `setuptools_scm`. The JS wrapper packages derive their publish version from the same git tags during the npm release workflow. The build system is `setuptools` + `setuptools-rust` + `setuptools_scm` for Python and npm package stamping for JS.
 
 ### Version Format
 
@@ -26,7 +26,8 @@ Dev builds (untagged commits) automatically get versions like `0.12.1.dev268+g84
 |-----------|---------|---------|
 | Build backend | `setuptools` | Python packaging |
 | Rust extension | `setuptools-rust` | Compiles PyO3 extension (`xbbg._core`) |
-| Version | `setuptools_scm` | Derives version from git tags |
+| Version | `setuptools_scm` | Derives Python package versions from git tags |
+| JS package version | `js-xbbg/scripts/stamp-version.js` | Stamps `@xbbg/core` and platform package versions from git tags at publish time |
 | Build tool | `uv` | Fast package manager and build frontend |
 
 ## Release Workflow
@@ -88,8 +89,10 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 3. **README Release Sync**: Updates the `README.md` latest-release marker block to the new version/tag
 4. **Git Tag**: Creates `vX.Y.Z` tag and pushes it
 5. **GitHub Release**: Creates release with notes from CHANGELOG
+5. **GitHub Release**: Creates release with notes from CHANGELOG
 6. **PyPI Publish**: Tag push triggers `pypi_upload.yml` — builds wheels and publishes via OIDC trusted publishing
-7. **Release Assets**: Wheels and sdist are attached to the GitHub release
+7. **npm Publish**: Tag push triggers `npm_publish.yml` — builds platform-native `@xbbg/core-*` packages, stamps JS versions from the git tag, and publishes `@xbbg/core` to npm via trusted publishing
+8. **Release Assets**: Wheels and sdist are attached to the GitHub release
 
 ## CI/CD Workflows
 
@@ -105,6 +108,7 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | Workflow | File | Purpose |
 |----------|------|---------|
 | Release | `pypi_upload.yml` | Build wheels (Linux + Windows × Python 3.10–3.14), sdist, publish to PyPI, attach to GitHub release |
+| Release | `npm_publish.yml` | Build and publish `@xbbg/core` prebuilt native packages for supported platforms, then publish the `@xbbg/core` wrapper package |
 
 ### Manual Trigger
 

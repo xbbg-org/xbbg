@@ -1,0 +1,240 @@
+name: Publish JS Packages
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  sdk-version:
+    name: Detect SDK Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - name: Detect latest blpapi version
+        id: detect
+        run: |
+          VERSION=$(curl -s https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/ \
+            | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?' | sort -V | tail -1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  generate-bindings:
+    name: Generate blpapi bindings artifact
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bloomberg SDK
+        id: sdk
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate bindings artifact
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/ci-bindings"
+          BLPAPI_BINDINGS_EXPORT_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs" cargo build -p blpapi-sys
+          test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+
+      - name: Upload bindings artifact
+        uses: actions/upload-artifact@v8
+        with:
+          name: blpapi-bindings
+          path: ci-bindings/bindings.rs
+          retention-days: 7
+
+  build-core-native:
+    name: Build @xbbg/core native package (${{ matrix.label }})
+    needs: [sdk-version, generate-bindings]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            package_dir: packages/xbbg-core-linux-x64
+          - os: windows-latest
+            label: win32-x64
+            package_dir: packages/xbbg-core-win32-x64
+          - os: macos-15
+            label: darwin-arm64
+            package_dir: packages/xbbg-core-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download pre-generated bindings
+        uses: actions/download-artifact@v8
+        with:
+          name: blpapi-bindings
+          path: ci-bindings
+
+      - name: Configure pre-generated bindings path (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure pre-generated bindings path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bindingsPath = Join-Path $env:GITHUB_WORKSPACE "ci-bindings\bindings.rs"
+          if (-not (Test-Path $bindingsPath)) {
+            throw "Bindings artifact not found at $bindingsPath"
+          }
+          "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
+
+      - name: Configure pre-generated bindings path (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        id: sdk-windows
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Windows
+
+      - name: Export Bloomberg SDK env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.sdk-rel-root }}'
+          $binPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.bin-rel-dir }}'
+          "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+          "PATH=$binPath;$env:PATH" >> $env:GITHUB_ENV
+
+      - name: Setup Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        id: sdk-macos
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: macOS
+
+      - name: Export Bloomberg SDK env (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
+          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Stage @xbbg/core native package
+        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ github.ref_name }}"
+
+      - name: Upload staged native package artifact
+        uses: actions/upload-artifact@v8
+        with:
+          name: core-package-${{ matrix.label }}
+          path: ${{ matrix.package_dir }}
+          retention-days: 7
+
+  publish-core:
+    name: Publish @xbbg/core packages
+    needs: [build-core-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download linux package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: core-package-linux-x64
+          path: packages/xbbg-core-linux-x64
+
+      - name: Download windows package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: core-package-win32-x64
+          path: packages/xbbg-core-win32-x64
+
+      - name: Download macOS package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: core-package-darwin-arm64
+          path: packages/xbbg-core-darwin-arm64
+
+      - name: Stamp @xbbg/core package versions
+        run: node js-xbbg/scripts/stamp-version.js "${{ github.ref_name }}"
+
+      - name: Smoke test packed @xbbg/core install
+        shell: bash
+        run: npm --prefix js-xbbg run smoke:packaged-install -- --packed
+
+      - name: Publish platform packages
+        run: |
+          npm publish packages/xbbg-core-linux-x64 --access public
+          npm publish packages/xbbg-core-win32-x64 --access public
+          npm publish packages/xbbg-core-darwin-arm64 --access public
+
+      - name: Publish @xbbg/core
+        run: npm publish js-xbbg --access public

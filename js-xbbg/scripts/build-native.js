@@ -156,8 +156,8 @@ if (process.platform === 'darwin') {
 }
 
 const env = { ...process.env };
-env.BLPAPI_ROOT = process.env.BLPAPI_ROOT || sdkRoot;
-env.BLPAPI_LIB_DIR = process.env.BLPAPI_LIB_DIR || sdkLibDir;
+env.BLPAPI_ROOT = sdkRoot;
+env.BLPAPI_LIB_DIR = sdkLibDir;
 env.RUSTFLAGS = [process.env.RUSTFLAGS, ...extraRustFlags]
   .filter(Boolean)
   .join(' ')

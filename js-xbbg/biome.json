@@ -3,6 +3,7 @@
     "includes": [
       "index.js",
       "index.d.ts",
+      "lib/*.js",
       "scripts/*.js",
       "test.js",
       "test-live.js"

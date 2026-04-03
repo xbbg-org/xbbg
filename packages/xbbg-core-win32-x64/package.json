@@ -1,0 +1,17 @@
+{
+  "name": "@xbbg/core-win32-x64",
+  "version": "0.0.0",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "package.json",
+    "napi_xbbg.node"
+  ]
+}

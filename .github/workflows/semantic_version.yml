@@ -363,5 +363,5 @@ jobs:
           echo "- **Type**: ${{ inputs.bump_type }}${{ inputs.pre_release != 'none' && inputs.pre_release != '' && format(' ({0})', inputs.pre_release) || '' }}"
           echo ""
           echo "### Next Steps"
-          echo "The tag push will automatically trigger **pypi_upload.yml** to build and publish wheels."
+          echo "The tag push will automatically trigger **pypi_upload.yml** for Python artifacts and **npm_publish.yml** for @xbbg/core native npm packages."
         } >> "$GITHUB_STEP_SUMMARY"

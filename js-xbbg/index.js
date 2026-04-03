@@ -1,6 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const packageJson = require('./package.json');
 const { tableFromIPC } = require('apache-arrow');
+const { resolveNativeAddon } = require('./lib/resolve-native');
 const {
   wrapError,
   BlpError,
@@ -13,13 +15,10 @@ const {
 
 function loadNative() {
   const root = path.resolve(__dirname, '..');
+
   const candidates = [
     path.join(__dirname, 'napi_xbbg.node'),
     path.join(__dirname, 'napi-xbbg.node'),
-    path.join(root, 'target', 'debug', 'napi_xbbg.node'),
-    path.join(root, 'target', 'release', 'napi_xbbg.node'),
-    path.join(root, 'target', 'debug', 'napi-xbbg.node'),
-    path.join(root, 'target', 'release', 'napi-xbbg.node'),
   ];
 
   for (const candidate of candidates) {
@@ -28,8 +27,18 @@ function loadNative() {
     }
   }
 
+  const { key, packageName, binaryPath } = resolveNativeAddon(root);
+  if (binaryPath) {
+    return require(binaryPath);
+  }
+  if (!packageName) {
+    throw new Error(
+      `No packaged @xbbg/core native addon is available for ${key}. Build it locally with "npm run build" from js-xbbg.`,
+    );
+  }
+
   throw new Error(
-    'Unable to load native napi-xbbg module. Build it with "npm run build" from js-xbbg or "cargo build -p napi-xbbg" from repo root.',
+    `Unable to load native napi-xbbg module for ${key}. Install ${packageName} via Bun/npm, or build it locally with "npm run build" from js-xbbg.`,
   );
 }
 
@@ -1110,7 +1119,7 @@ module.exports = {
   BlpTimeoutError,
   BlpInternalError,
   wrapError,
-  version: native.version,
+  version: () => packageJson.version,
   setLogLevel: native.setLogLevel,
   getLogLevel: native.getLogLevel,
 };
