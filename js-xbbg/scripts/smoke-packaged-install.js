@@ -20,7 +20,8 @@ function packageDirName(packageName) {
 }
 
 function run(command, args, options = {}) {
-  const useShell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
+  const useShell =
+    process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,
@@ -37,7 +38,8 @@ function run(command, args, options = {}) {
 }
 
 function runCapture(command, args, options = {}) {
-  const useShell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
+  const useShell =
+    process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,

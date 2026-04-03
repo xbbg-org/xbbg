@@ -13,6 +13,50 @@ const {
   BlpInternalError,
 } = require('./errors');
 
+function containsBlpapiRuntime(dir) {
+  if (!dir || !fs.existsSync(dir)) {
+    return false;
+  }
+  return [
+    'blpapi3_64.dll',
+    'blpapi3_32.dll',
+    'libblpapi3.dylib',
+    'libblpapi3_64.so',
+    'libblpapi3.so',
+  ].some((name) => fs.existsSync(path.join(dir, name)));
+}
+
+function configureRuntimeSearchPath() {
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  const candidates = [];
+  if (process.env.BLPAPI_LIB_DIR) {
+    candidates.push(path.resolve(process.env.BLPAPI_LIB_DIR));
+  }
+  if (process.env.BLPAPI_ROOT) {
+    const root = path.resolve(process.env.BLPAPI_ROOT);
+    candidates.push(root, path.join(root, 'bin'), path.join(root, 'lib'));
+  }
+
+  for (const candidate of candidates) {
+    if (!containsBlpapiRuntime(candidate)) {
+      continue;
+    }
+    const currentPath = process.env.PATH || '';
+    const parts = currentPath.split(';').filter(Boolean);
+    if (!parts.includes(candidate)) {
+      process.env.PATH = currentPath
+        ? `${candidate};${currentPath}`
+        : candidate;
+    }
+    break;
+  }
+}
+
+configureRuntimeSearchPath();
+
 function loadNative() {
   const root = path.resolve(__dirname, '..');
 
