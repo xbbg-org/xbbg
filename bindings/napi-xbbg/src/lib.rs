@@ -1,4 +1,5 @@
 mod ext;
+pub use ext::*;
 
 use std::collections::HashMap;
 use std::io::Cursor;
