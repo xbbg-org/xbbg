@@ -20,22 +20,34 @@ function packageDirName(packageName) {
 }
 
 function run(command, args, options = {}) {
+  const useShell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,
     stdio: 'inherit',
+    shell: useShell,
+    windowsHide: true,
   });
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
     process.exit(result.status || 1);
   }
 }
 
 function runCapture(command, args, options = {}) {
+  const useShell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,
     encoding: 'utf8',
+    shell: useShell,
+    windowsHide: true,
   });
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
     process.stderr.write(result.stderr || '');
     process.exit(result.status || 1);
