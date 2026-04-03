@@ -160,11 +160,7 @@ fn to_i64_saturating(value: u64) -> i64 {
     }
 }
 
-fn require_auth_value(
-    value: Option<&String>,
-    field: &str,
-    method: &str,
-) -> Result<String, Error> {
+fn require_auth_value(value: Option<&String>, field: &str, method: &str) -> Result<String, Error> {
     value
         .cloned()
         .filter(|value| !value.is_empty())
@@ -211,20 +207,12 @@ fn build_auth_config(input: Option<&AuthConfigInput>) -> Result<Option<AuthConfi
             app_name: require_auth_value(input.app_name.as_ref(), "appName", &method)?,
         }),
         "dir" | "directory" => Some(AuthConfig::Directory {
-            property_name: require_auth_value(
-                input.dir_property.as_ref(),
-                "dirProperty",
-                &method,
-            )?,
+            property_name: require_auth_value(input.dir_property.as_ref(), "dirProperty", &method)?,
         }),
         "manual" => Some(AuthConfig::Manual {
             app_name: require_auth_value(input.app_name.as_ref(), "appName", &method)?,
             user_id: require_auth_value(input.user_id.as_ref(), "userId", &method)?,
-            ip_address: require_auth_value(
-                input.ip_address.as_ref(),
-                "ipAddress",
-                &method,
-            )?,
+            ip_address: require_auth_value(input.ip_address.as_ref(), "ipAddress", &method)?,
         }),
         "token" => Some(AuthConfig::Token {
             token: require_auth_value(input.token.as_ref(), "token", &method)?,
@@ -268,7 +256,10 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
             config.server_port = port;
         }
         if let Some(servers) = input.servers {
-            config.servers = servers.into_iter().map(|server| (server.host, server.port)).collect();
+            config.servers = servers
+                .into_iter()
+                .map(|server| (server.host, server.port))
+                .collect();
         }
         if let Some(zfp_remote) = input.zfp_remote {
             config.zfp_remote = Some(
@@ -344,10 +335,8 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
             }
         }
         if let Some(health_check_interval_ms) = input.health_check_interval_ms {
-            config.health_check_interval_ms = require_non_negative_duration(
-                health_check_interval_ms,
-                "healthCheckIntervalMs",
-            )?;
+            config.health_check_interval_ms =
+                require_non_negative_duration(health_check_interval_ms, "healthCheckIntervalMs")?;
         }
         if let Some(sdk_log_level) = input.sdk_log_level {
             config.sdk_log_level = sdk_log_level
@@ -1267,7 +1256,6 @@ impl JsSubscription {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1374,7 +1362,10 @@ mod tests {
                 ("secondary.example.com".to_string(), 8196),
             ]
         );
-        assert_eq!(config.zfp_remote, Some(xbbg_core::zfp::ZfpRemote::Remote8194));
+        assert_eq!(
+            config.zfp_remote,
+            Some(xbbg_core::zfp::ZfpRemote::Remote8194)
+        );
         assert_eq!(
             config.auth,
             Some(AuthConfig::Manual {
