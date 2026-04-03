@@ -1,3 +1,5 @@
+mod ext;
+
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::str::FromStr;

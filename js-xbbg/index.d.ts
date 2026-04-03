@@ -412,8 +412,205 @@ export interface CdxNamespace {
   acdx_risk(ticker: string, options?: CdxOptions): Promise<Table>;
 }
 
+export interface TimeRange {
+  start: string;
+  end: string;
+}
+
+export interface TickerParts {
+  prefix: string;
+  index: number;
+  asset: string;
+  exchange?: string;
+}
+
+export interface FuturesCandidate {
+  ticker: string;
+  year: number;
+  month: number;
+}
+
+export interface CdxTickerInfo {
+  index: string;
+  series: string;
+  tenor: string;
+  asset: string;
+  isGeneric: boolean;
+  seriesNum?: number;
+}
+
+export interface FxPairInfo {
+  fxPair: string;
+  factor: number;
+  fromCcy: string;
+  toCcy: string;
+}
+
+export interface SessionWindowsInfo {
+  day?: TimeRange;
+  allday?: TimeRange;
+  pre?: TimeRange;
+  post?: TimeRange;
+  am?: TimeRange;
+  pm?: TimeRange;
+}
+
+export interface MarketRule {
+  preMinutes: number;
+  postMinutes: number;
+  lunchStartMin?: number;
+  lunchEndMin?: number;
+  isContinuous: boolean;
+}
+
+export interface ExchangeInfoResult {
+  ticker: string;
+  mic?: string;
+  exchCode?: string;
+  timezone: string;
+  utcOffset?: number;
+  source: string;
+  day?: TimeRange;
+  allday?: TimeRange;
+  pre?: TimeRange;
+  post?: TimeRange;
+  am?: TimeRange;
+  pm?: TimeRange;
+}
+
+export interface ExchangeOverrideInput {
+  timezone?: string;
+  mic?: string;
+  exchCode?: string;
+  day?: TimeRange;
+  allday?: TimeRange;
+  pre?: TimeRange;
+  post?: TimeRange;
+  am?: TimeRange;
+  pm?: TimeRange;
+}
+
 export interface ExtNamespace {
   cdx: CdxNamespace;
+
+  // Date utilities
+  parseDate(dateStr: string): number[];
+  fmtDate(year: number, month: number, day: number, fmt?: string): string;
+
+  // Pivot utilities
+  pivotToWide(ipcBuffer: Buffer): Buffer;
+  isLongFormat(ipcBuffer: Buffer): boolean;
+
+  // Ticker utilities
+  parseTicker(ticker: string): TickerParts;
+  isSpecificContract(ticker: string): boolean;
+  buildFuturesTicker(
+    prefix: string,
+    monthCode: string,
+    year: string,
+    asset: string,
+  ): string;
+  normalizeTickers(tickers: string[]): string[];
+  filterEquityTickers(tickers: string[]): string[];
+
+  // Futures resolution
+  generateFuturesCandidates(
+    genTicker: string,
+    year: number,
+    month: number,
+    day: number,
+    freq?: string,
+    count?: number,
+  ): FuturesCandidate[];
+  validateGenericTicker(ticker: string): void;
+  contractIndex(genTicker: string): number;
+  filterCandidatesByCycle(
+    candidates: FuturesCandidate[],
+    cycle: string,
+  ): FuturesCandidate[];
+  filterValidContracts(
+    contracts: StringPair[],
+    year: number,
+    month: number,
+    day: number,
+  ): string[];
+
+  // CDX resolution
+  parseCdxTicker(ticker: string): CdxTickerInfo;
+  previousCdxSeries(ticker: string): string | null;
+  cdxGenToSpecific(genTicker: string, series: number): string;
+
+  // Currency utilities
+  buildFxPair(fromCcy: string, toCcy: string): FxPairInfo;
+  sameCurrency(ccy1: string, ccy2: string): boolean;
+  currenciesNeedingConversion(currencies: string[], target: string): string[];
+
+  // Column renaming
+  renameDividendColumns(columns: string[]): StringPair[];
+  renameEtfColumns(columns: string[]): StringPair[];
+
+  // Constants
+  getMonthCode(monthName: string): string | null;
+  getMonthName(code: string): string | null;
+  getFuturesMonths(): StringPair[];
+  getDvdType(typ: string): string | null;
+  getDvdTypes(): StringPair[];
+  getDvdCols(): StringPair[];
+  getEtfCols(): StringPair[];
+
+  // Fixed income / YAS
+  buildYasOverrides(
+    settleDt?: string,
+    yieldType?: number,
+    spread?: number,
+    yieldVal?: number,
+    price?: number,
+    benchmark?: string,
+  ): StringPair[];
+
+  // Earnings utilities
+  buildEarningHeaderRename(
+    headerRow: StringPair[],
+    dataColumns: string[],
+  ): StringPair[];
+  calculateLevelPercentages(
+    values: (number | null)[],
+    levels: (number | null)[],
+  ): (number | null)[];
+
+  // BQL query builders
+  buildPreferredsQuery(equityTicker: string, extraFields?: string[]): string;
+  buildCorporateBondsQuery(
+    ticker: string,
+    ccy?: string,
+    extraFields?: string[],
+    activeOnly?: boolean,
+  ): string;
+  buildEtfHoldingsQuery(etfTicker: string, extraFields?: string[]): string;
+
+  // DateTime defaults
+  defaultTurnoverDates(startDate?: string, endDate?: string): TimeRange;
+  defaultBqrDatetimes(startDatetime?: string, endDatetime?: string): TimeRange;
+
+  // Markets -- sessions & timezone
+  deriveSessions(
+    dayStart: string,
+    dayEnd: string,
+    mic?: string,
+    exchCode?: string,
+  ): SessionWindowsInfo;
+  getMarketRule(mic?: string, exchCode?: string): MarketRule | null;
+  inferTimezone(countryIso: string): string | null;
+  setExchangeOverride(ticker: string, input: ExchangeOverrideInput): void;
+  getExchangeOverride(ticker: string): ExchangeInfoResult | null;
+  clearExchangeOverride(ticker?: string): void;
+  listExchangeOverrides(): ExchangeInfoResult[];
+  sessionTimesToUtc(
+    startTime: string,
+    endTime: string,
+    exchangeTz: string,
+    date: string,
+  ): TimeRange;
 }
 
 export function connect(config?: EngineConfig): Promise<Engine>;

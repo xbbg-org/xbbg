@@ -1133,6 +1133,77 @@ const ext = Object.freeze({
     acdx_pricing,
     acdx_risk,
   }),
+
+  // Date utilities
+  parseDate: native.extParseDate,
+  fmtDate: native.extFmtDate,
+
+  // Pivot utilities
+  pivotToWide: native.extPivotToWide,
+  isLongFormat: native.extIsLongFormat,
+
+  // Ticker utilities
+  parseTicker: native.extParseTicker,
+  isSpecificContract: native.extIsSpecificContract,
+  buildFuturesTicker: native.extBuildFuturesTicker,
+  normalizeTickers: native.extNormalizeTickers,
+  filterEquityTickers: native.extFilterEquityTickers,
+
+  // Futures resolution
+  generateFuturesCandidates: native.extGenerateFuturesCandidates,
+  validateGenericTicker: native.extValidateGenericTicker,
+  contractIndex: native.extContractIndex,
+  filterCandidatesByCycle: native.extFilterCandidatesByCycle,
+  filterValidContracts: native.extFilterValidContracts,
+
+  // CDX resolution
+  parseCdxTicker: native.extParseCdxTicker,
+  previousCdxSeries: native.extPreviousCdxSeries,
+  cdxGenToSpecific: native.extCdxGenToSpecific,
+
+  // Currency utilities
+  buildFxPair: native.extBuildFxPair,
+  sameCurrency: native.extSameCurrency,
+  currenciesNeedingConversion: native.extCurrenciesNeedingConversion,
+
+  // Column renaming
+  renameDividendColumns: native.extRenameDividendColumns,
+  renameEtfColumns: native.extRenameEtfColumns,
+
+  // Constants
+  getMonthCode: native.extGetMonthCode,
+  getMonthName: native.extGetMonthName,
+  getFuturesMonths: native.extGetFuturesMonths,
+  getDvdType: native.extGetDvdType,
+  getDvdTypes: native.extGetDvdTypes,
+  getDvdCols: native.extGetDvdCols,
+  getEtfCols: native.extGetEtfCols,
+
+  // Fixed income / YAS
+  buildYasOverrides: native.extBuildYasOverrides,
+
+  // Earnings utilities
+  buildEarningHeaderRename: native.extBuildEarningHeaderRename,
+  calculateLevelPercentages: native.extCalculateLevelPercentages,
+
+  // BQL query builders
+  buildPreferredsQuery: native.extBuildPreferredsQuery,
+  buildCorporateBondsQuery: native.extBuildCorporateBondsQuery,
+  buildEtfHoldingsQuery: native.extBuildEtfHoldingsQuery,
+
+  // DateTime defaults
+  defaultTurnoverDates: native.extDefaultTurnoverDates,
+  defaultBqrDatetimes: native.extDefaultBqrDatetimes,
+
+  // Markets — sessions & timezone
+  deriveSessions: native.extDeriveSessions,
+  getMarketRule: native.extGetMarketRule,
+  inferTimezone: native.extInferTimezone,
+  setExchangeOverride: native.extSetExchangeOverride,
+  getExchangeOverride: native.extGetExchangeOverride,
+  clearExchangeOverride: native.extClearExchangeOverride,
+  listExchangeOverrides: native.extListExchangeOverrides,
+  sessionTimesToUtc: native.extSessionTimesToUtc,
 });
 
 module.exports = {

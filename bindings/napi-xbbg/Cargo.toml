@@ -14,11 +14,13 @@ crate-type = ["cdylib"]
 napi = { version = "3", features = ["async", "tokio_rt", "serde-json", "napi4"] }
 napi-derive = "3"
 arrow = "57.1.0"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 serde_json = "1.0"
 tokio = { version = "1.48", features = ["sync"] }
 xbbg_core = { path = "../../crates/xbbg-core", default-features = false }
 xbbg-async = { path = "../../crates/xbbg-async", default-features = false }
 xbbg-log = { path = "../../crates/xbbg-log" }
+xbbg-ext = { path = "../../crates/xbbg-ext" }
 xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 
 [features]
