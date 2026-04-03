@@ -64,6 +64,9 @@ lib64/
 !packages/xbbg-bridge/lib/platform-map.js
 !packages/xbbg-bridge/lib/resolve-binary.js
 !packages/xbbg-bridge/lib/runtime-env.js
+!js-xbbg/lib/
+!js-xbbg/lib/platform-map.js
+!js-xbbg/lib/resolve-native.js
 parts/
 sdist/
 var/
