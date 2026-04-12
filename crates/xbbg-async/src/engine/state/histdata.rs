@@ -72,6 +72,13 @@ impl HistDataState {
             columns.set_type_hint(name, *arrow_type);
         }
 
+        // Set type hint for the "value" column based on common field type.
+        if long_mode == LongMode::String {
+            use super::value_utils::common_value_type;
+            let common_type = common_value_type(&arrow_types);
+            columns.set_type_hint("value", common_type);
+        }
+
         Self {
             field_names: fields,
             field_types: arrow_types,
@@ -212,7 +219,7 @@ impl HistDataState {
                 .as_ref()
                 .map(|v| dtype_from_hints(field_types, field_name, v));
 
-            append_long_value_row(columns, long_mode, field_name, &value, dtype, |columns| {
+            append_long_value_row(columns, long_mode, field_name, value, dtype, |columns| {
                 columns.append_str("ticker", ticker);
                 if let Some(date_value) = date_value {
                     columns.append("date", date_value.clone());

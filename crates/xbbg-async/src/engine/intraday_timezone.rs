@@ -306,7 +306,7 @@ mod tests {
     fn parse_rfc3339_utc() {
         let u = parse_user_datetime("2024-06-01T14:30:00+00:00").unwrap();
         match u {
-            UserDateTime::Utc(dt) => assert_eq!(dt.timestamp(), 1717242600),
+            UserDateTime::Utc(dt) => assert_eq!(dt.timestamp(), 1717252200),
             UserDateTime::Naive(_) => panic!("expected utc"),
         }
     }
