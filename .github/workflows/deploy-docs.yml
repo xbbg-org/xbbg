@@ -5,7 +5,11 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'CHANGELOG.md'
+      - 'py-xbbg/src/**'
+      - 'js-xbbg/index.d.ts'
       - '.github/workflows/deploy-docs.yml'
+      - 'pixi.toml'
   workflow_dispatch:
 
 concurrency:
@@ -23,19 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.9.4
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
+          pixi-version: latest
+          environments: docs
+          cache: true
 
-      - name: Install dependencies
-        working-directory: docs
-        run: npm ci
-
-      - name: Build site
-        working-directory: docs
-        run: npm run build
+      - name: Build public docs
+        run: pixi run -e docs docs-ci
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

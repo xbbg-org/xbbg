@@ -1,0 +1,44 @@
+---
+title: "404"
+description: The page you requested is not part of the public xbbg documentation.
+template: splash
+hero:
+  title: "404"
+  tagline: The page you requested is not part of the public xbbg documentation.
+  actions:
+    - text: Go to homepage
+      link: /xbbg/
+      icon: right-arrow
+    - text: Python docs
+      link: /xbbg/python/
+      icon: document
+      variant: minimal
+    - text: JavaScript docs
+      link: /xbbg/javascript/
+      icon: document
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Try one of these public entry points
+
+<CardGrid>
+  <Card title="Package Map" icon="puzzle">
+    Compare the public packages in the monorepo and choose the right surface for your workflow.
+
+    [Open package map](/xbbg/overview/package-map/)
+  </Card>
+  <Card title="Python docs" icon="document">
+    Start with `xbbg`, the primary public package for research workflows, notebooks, and Python services.
+
+    [Open Python docs](/xbbg/python/)
+  </Card>
+  <Card title="JavaScript docs" icon="lightning">
+    Explore `@xbbg/core`, the public Node.js package backed by the shared Rust engine.
+
+    [Open JavaScript docs](/xbbg/javascript/)
+  </Card>
+</CardGrid>
+
+If you followed an old link, the project moved from a flatter docs layout to public package sections under `/python/`, `/javascript/`, and `/overview/`.

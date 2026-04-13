@@ -1,18 +1,24 @@
 #!/bin/bash
-# Generate API documentation from Python docstrings using pydoc-markdown
+# Generate Python API documentation from docstrings using pydoc-markdown.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCS_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$(dirname "$DOCS_DIR")"
-API_DIR="$DOCS_DIR/src/content/docs/api"
+API_DIR="$DOCS_DIR/src/content/docs/python/api"
+
+if ! command -v pydoc-markdown >/dev/null 2>&1; then
+    echo "pydoc-markdown is required. Run docs commands through the pixi docs environment." >&2
+    echo "Example: pixi run -e docs docs-build" >&2
+    exit 1
+fi
 
 cd "$PROJECT_ROOT"
+mkdir -p "$API_DIR"
 
-echo "Generating API documentation..."
+echo "Generating Python API documentation..."
 
-# Generate docs for each module
 modules=("blp" "services" "exceptions" "schema")
 titles=("Bloomberg Data API" "Services and Enums" "Exceptions" "Schema Introspection")
 descriptions=(
@@ -29,16 +35,16 @@ for i in "${!modules[@]}"; do
     outfile="$API_DIR/$module.md"
 
     echo "  Generating $module.md..."
+    module_output="$(pydoc-markdown -I py-xbbg/src -m "xbbg.$module" 2>/dev/null)"
 
-    # Generate frontmatter + content
     {
         echo "---"
         echo "title: $title"
         echo "description: $desc"
         echo "---"
         echo ""
-        uv run --no-project pydoc-markdown -I py-xbbg/src -m "xbbg.$module" 2>/dev/null | grep -v "^\[WARNING"
+        printf '%s\n' "$module_output" | grep -v "^\[WARNING" || true
     } > "$outfile"
 done
 
-echo "Done! Generated ${#modules[@]} API docs in $API_DIR"
+echo "Done! Generated ${#modules[@]} Python API docs in $API_DIR"

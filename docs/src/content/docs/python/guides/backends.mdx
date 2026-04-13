@@ -5,8 +5,6 @@ description: Choose between pandas, Polars, PyArrow, and more
 
 import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
 
-# DataFrame Backends
-
 xbbg is DataFrame-library agnostic. The core engine returns [Apache Arrow](https://arrow.apache.org/) data; conversion to your preferred library happens at the boundary before results are returned to you. This means you can use whichever DataFrame library fits your stack without forking or wrapping xbbg.
 
 The backend abstraction is provided by [narwhals](https://github.com/narwhals-dev/narwhals), which handles the translation layer between Arrow and the supported libraries.
@@ -170,5 +168,5 @@ result = relation.fetchdf()  # trigger execution, returns pd.DataFrame
 
 ## Related
 
-- [Output Formats](/xbbg/guides/output-formats/) — control the shape of returned data (LONG, LONG_TYPED, etc.)
-- [API Reference](/xbbg/api/blp/) — full function documentation with all parameters
+- [Output Formats](/xbbg/python/guides/output-formats/) — control the shape of returned data (LONG, LONG_TYPED, etc.)
+- [API Reference](/xbbg/python/api/blp/) — full function documentation with all parameters

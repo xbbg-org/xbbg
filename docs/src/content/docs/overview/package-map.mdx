@@ -1,0 +1,47 @@
+---
+title: Package Map
+description: Choose the right public package in the xbbg monorepo
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+import { PhBracketsCurly, PhPackage } from 'phosphor-icons-astro';
+
+This monorepo contains many crates and packages, but the public documentation is intentionally organized around the packages you can install and use directly.
+
+<CardGrid>
+  <Card title="xbbg">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhPackage size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    The primary public package. Install it from PyPI for notebooks, research, data pipelines, and Python services.
+  </Card>
+  <Card title="@xbbg/core">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhBracketsCurly size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    The public Node.js package. It exposes the Rust-backed engine directly in Node.js and is currently marked experimental alpha.
+  </Card>
+</CardGrid>
+
+## Choose a package
+
+| Package | Ecosystem | Install | Status | Use when |
+|---------|-----------|---------|--------|----------|
+| `xbbg` | Python / PyPI | `pip install xbbg` | Primary public package | You want the main supported API surface, DataFrame backends, notebooks, or Python services |
+| `@xbbg/core` | Node.js / npm | `npm install @xbbg/core` | Experimental alpha | You need direct Node.js access to the shared Rust engine and Bloomberg request APIs |
+
+<Aside type="note">
+  Choose `xbbg` unless you specifically need Node.js. It is the main public package and the center of the documentation set.
+</Aside>
+
+## Packaging details that matter publicly
+
+- `@xbbg/core` automatically resolves a supported platform package at install time for its native addon.
+- Those platform-specific npm packages are implementation details of `@xbbg/core`, so they are not documented as separate products.
+- Internal Rust crates, bindings, and private packages in the monorepo are intentionally omitted from this public docs tree.
+
+## Next steps
+
+- [Python docs](/xbbg/python/) — the main public documentation surface
+- [JavaScript docs](/xbbg/javascript/) — public docs for `@xbbg/core`
+- [Release notes](/xbbg/releases/changelog/) — track behavior and API changes

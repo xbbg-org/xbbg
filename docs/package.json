@@ -3,17 +3,29 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
-    "dev": "astro dev",
-    "start": "astro dev",
-    "build": "astro build",
+    "dev": "npm run generate-content && astro dev",
+    "start": "npm run generate-content && astro dev",
+    "build": "npm run generate-content && astro build",
+    "check": "npm run generate-content && astro check",
     "preview": "astro preview",
     "astro": "astro",
-    "generate-api": "bash scripts/generate-api-docs.sh"
+    "generate-content": "npm run generate-python-api && npm run generate-changelog",
+    "generate-python-api": "bash scripts/generate-python-api-docs.sh",
+    "generate-changelog": "bash scripts/generate-changelog-docs.sh"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.37.1",
-    "astro": "^5.18.1",
+    "astro": "^6.1.5",
     "sharp": "^0.34.2",
-    "starlight-llms-txt": "^0.7.0"
+    "starlight-llms-txt": "^0.8.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.8",
+    "@astrojs/starlight": "^0.38.3",
+    "apache-arrow": "^21.1.0",
+    "phosphor-icons-astro": "^2.1.1-17042025",
+    "starlight-typedoc": "^0.21.5",
+    "typedoc": "^0.28.19",
+    "typedoc-plugin-markdown": "^4.11.0",
+    "typescript": "^5.9.3"
   }
 }

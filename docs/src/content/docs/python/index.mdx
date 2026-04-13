@@ -1,0 +1,59 @@
+---
+title: Python
+description: Public documentation for the xbbg Python package
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import { PhCpu, PhLightning, PhPackage, PhStackSimple } from 'phosphor-icons-astro';
+
+`xbbg` is the primary public package in this monorepo. It keeps the familiar Bloomberg-oriented Python API while moving transport, session management, and Arrow-native data handling into the shared Rust engine.
+
+## What you get
+
+<CardGrid>
+  <Card title="Production package">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhPackage size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Install `xbbg` from PyPI and use it for notebooks, research workflows, and production Python services.
+  </Card>
+  <Card title="Backend choice">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhStackSimple size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Return data as pandas, Polars, PyArrow, DuckDB, or Narwhals depending on the pipeline you already have.
+  </Card>
+  <Card title="Async support">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhLightning size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Use the synchronous API in scripts or the `a`-prefixed functions inside async applications without switching packages.
+  </Card>
+  <Card title="Shared engine">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhCpu size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Python gets the same Rust-backed request engine, validation model, and Arrow transport used across the public runtime surface.
+  </Card>
+</CardGrid>
+
+## Quick example
+
+```python
+import xbbg
+
+xbbg.configure(host='localhost', port=8194)
+prices = xbbg.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME'],
+)
+```
+
+Prefer the top-level helpers in these docs (`xbbg.bdp(...)`, `xbbg.configure(...)`). If you are coming from the repository README, the module-style import remains supported too: `from xbbg import blp` and `blp.bdp(...)`.
+
+## Next steps
+
+- [Installation](/xbbg/python/installation) - Set up `xbbg` and the Bloomberg runtime
+- [Quick Start](/xbbg/python/quickstart) - Make your first requests
+- [API Reference](/xbbg/python/api/blp) - Browse the generated Python API reference
+- [Package Map](/xbbg/overview/package-map) - See how the public packages fit together

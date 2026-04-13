@@ -98,11 +98,17 @@ bench-rs = "cargo bench --package xbbg-bench"
 
 [feature.docs.dependencies]
 nodejs = ">=24"
+python = "3.12.*"
+
+[feature.docs.pypi-dependencies]
+pydoc-markdown = ">=4.8"
 
 [feature.docs.tasks]
-docs-install = { cmd = "npm install", cwd = "docs" }
+docs-install = { cmd = "npm ci", cwd = "docs" }
 docs-dev = { cmd = "npm run dev", cwd = "docs" }
-docs-build = { cmd = "npm run build", cwd = "docs" }
+docs-check = { cmd = "npm run check", cwd = "docs", description = "Generate Python API docs, sync the changelog page, and run astro check for the public docs site" }
+docs-build = { cmd = "npm run build", cwd = "docs", description = "Generate public docs content and build the Starlight site, including JS TypeDoc pages" }
+docs-ci = { depends-on = ["docs-install", "docs-check", "docs-build"], description = "CI gate: install docs deps, regenerate public docs content, run astro check, then the production build" }
 
 [feature.js.dependencies]
 nodejs = ">=24"

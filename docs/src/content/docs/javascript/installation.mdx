@@ -1,0 +1,58 @@
+---
+title: Installation
+description: Install @xbbg/core and understand its native packaging model
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Install from a package manager
+
+<Tabs>
+  <TabItem label="npm">
+    ```bash
+    npm install @xbbg/core
+    ```
+  </TabItem>
+  <TabItem label="bun">
+    ```bash
+    bun add @xbbg/core
+    ```
+  </TabItem>
+</Tabs>
+
+`@xbbg/core` loads a packaged native addon through platform-specific optional dependencies on supported targets.
+
+## Supported prebuilt addon targets
+
+- macOS arm64
+- Linux x64
+- Windows x64
+
+<Aside type="note">
+  The platform-specific `@xbbg/core-*` packages are installation artifacts behind `@xbbg/core`. Public docs stay centered on `@xbbg/core` itself.
+</Aside>
+
+## Bloomberg connectivity
+
+After install, point the package at the Bloomberg endpoint you use:
+
+```ts
+import * as xbbg from '@xbbg/core';
+
+xbbg.configure({
+  host: 'localhost',
+  port: 8194,
+});
+```
+
+For B-PIPE, leased-line, or advanced auth scenarios, `connect()` and `configure()` accept the structured `EngineConfig` object exposed by the package.
+
+## Unsupported platforms or source builds
+
+If you need to build the addon yourself, follow the repository instructions in [`js-xbbg/README.md`](https://github.com/alpha-xone/xbbg/blob/main/js-xbbg/README.md). The public docs stay focused on the installable package; contributor and unsupported-platform workflows live in the package README.
+
+## Next steps
+
+- [JavaScript overview](/xbbg/javascript/) — understand the public Node.js surface
+- [Package Map](/xbbg/overview/package-map/) — choose between `xbbg` and `@xbbg/core`
+- Browse the `@xbbg/core API` section in the sidebar for the generated TypeScript reference

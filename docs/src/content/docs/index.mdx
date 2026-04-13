@@ -1,17 +1,21 @@
 ---
 title: xbbg
-description: An intuitive Bloomberg API for Python — powered by Rust
+description: Public documentation for the xbbg Python package and @xbbg/core Node.js package
 template: splash
 hero:
-  tagline: An intuitive Bloomberg API for Python — now powered by Rust
+  tagline: Python-first Bloomberg APIs powered by a shared Rust engine
   image:
     file: ../../assets/xbbg-logo.png
   actions:
-    - text: Get Started
-      link: /xbbg/getting-started/introduction/
+    - text: Python package
+      link: /xbbg/python/
       icon: right-arrow
-    - text: API Reference
-      link: /xbbg/api/blp/
+    - text: Node.js package
+      link: /xbbg/javascript/
+      icon: right-arrow
+      variant: minimal
+    - text: Package Map
+      link: /xbbg/overview/package-map/
       icon: document
       variant: minimal
     - text: GitHub
@@ -20,43 +24,72 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import {
+  PhBracketsCurly,
+  PhCpu,
+  PhGitBranch,
+  PhPackage,
+} from 'phosphor-icons-astro';
 
-## Features
+## Public packages
+
+This site documents the public surfaces of the xbbg monorepo: the production Python package, `xbbg`, and the published Node.js package, `@xbbg/core`. Internal Rust crates, private browser packages, and platform-specific packaging artifacts stay out of the public navigation on purpose.
 
 <CardGrid stagger>
-  <Card title="Rust Backend" icon="rocket">
-    Up to 10x faster data retrieval with Arrow integration and async I/O.
+  <Card title="xbbg (Python)">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhPackage size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    The primary public package: Bloomberg requests, streaming, async support, and backend selection for pandas, Polars, PyArrow, and more.
   </Card>
-  <Card title="Multi-Backend Support" icon="puzzle">
-    Return data as pandas, Polars, PyArrow, or DuckDB.
+  <Card title="@xbbg/core (Node.js)">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhBracketsCurly size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Direct Node.js access to the same Rust engine. The package is public today, but still marked experimental alpha while the API matures.
   </Card>
-  <Card title="Async-First Design" icon="lightning">
-    Native async/await API with sync wrappers.
+  <Card title="Shared Rust engine">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhCpu size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Python and Node.js both ride on the same Rust core for transport, Arrow-native data handling, and Bloomberg session management.
   </Card>
-  <Card title="Zero-Copy Transfer" icon="document">
-    Arrow C Data Interface between Rust and Python.
+  <Card title="Monorepo-aware docs">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhGitBranch size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    The navigation is organized around public packages and language surfaces instead of repo folders, so the docs scale with the monorepo.
   </Card>
 </CardGrid>
 
-## Quick Example
+## Quick examples
 
-```python
-import xbbg
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    import xbbg
 
-# Reference data
-df = xbbg.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'])
+    xbbg.configure(host='localhost', port=8194)
+    prices = xbbg.bdp(
+        ['AAPL US Equity', 'MSFT US Equity'],
+        ['PX_LAST', 'VOLUME'],
+    )
+    ```
+  </TabItem>
+  <TabItem label="Node.js">
+    ```ts
+    import * as xbbg from '@xbbg/core';
 
-# Historical data  
-df = xbbg.bdh('AAPL US Equity', 'PX_LAST', start_date='2024-01-01')
+    xbbg.configure({ host: 'localhost', port: 8194 });
+    const prices = await xbbg.blp.abdp(
+        ['AAPL US Equity'],
+        ['PX_LAST', 'SECURITY_NAME'],
+    );
+    ```
+  </TabItem>
+</Tabs>
 
-# Use Polars instead of pandas
-xbbg.set_backend('polars')
-df = xbbg.bdp('AAPL US Equity', 'PX_LAST')
-```
+The docs use top-level Python helpers like `xbbg.bdp(...)`. If you already use the module-style import from the repository README, `from xbbg import blp` and `blp.bdp(...)` continue to work too.
 
-## Install
-
-```bash
-pip install xbbg
-```
+Use the [package map](/xbbg/overview/package-map/) when you need to choose the right public package for a workflow, or jump straight into the [Python docs](/xbbg/python/) or [JavaScript docs](/xbbg/javascript/).

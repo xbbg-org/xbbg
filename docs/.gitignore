@@ -19,3 +19,8 @@ pnpm-debug.log*
 
 # macOS-specific files
 .DS_Store
+
+
+# generated API content
+src/content/docs/python/api/
+src/content/docs/javascript/api/

@@ -5,8 +5,6 @@ description: Concurrent Bloomberg requests with async/await
 
 import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
 
-# Async Patterns
-
 xbbg v1 is async-first. Every data function has an `async` counterpart: `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`, and so on. The async versions are the canonical implementation — the sync functions are thin wrappers that delegate via `_run_sync()`.
 
 ## Architecture
@@ -208,4 +206,4 @@ If your script is sequential and you have no async requirements, the sync functi
 **Match pool size to workload.**
 The default `request_pool_size=2` is appropriate for most workloads. If you are issuing many concurrent `gather()` calls with large fan-outs, raise it — but Bloomberg API servers also have per-connection limits, so test before committing to a large value.
 
-For the full API reference, see [Bloomberg Data API](/xbbg/api/blp/).
+For the full API reference, see [Bloomberg Data API](/xbbg/python/api/blp/).

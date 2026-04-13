@@ -2,6 +2,9 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import starlightLlmsTxt from 'starlight-llms-txt';
+import { createStarlightTypeDocPlugin } from 'starlight-typedoc';
+
+const [coreTypeDoc, coreTypeDocSidebarGroup] = createStarlightTypeDocPlugin();
 
 // https://astro.build/config
 export default defineConfig({
@@ -10,45 +13,67 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'xbbg',
-			description: 'An intuitive Bloomberg API for Python — powered by Rust',
+			description: 'Public documentation for the xbbg Python package and @xbbg/core Node.js package',
 			logo: {
 				src: './src/assets/xbbg-logo.png',
 				alt: 'xbbg logo',
 			},
-			plugins: [starlightLlmsTxt()],
+			disable404Route: true,
+			plugins: [
+				starlightLlmsTxt(),
+				coreTypeDoc({
+					entryPoints: ['../js-xbbg/index.d.ts'],
+					output: 'javascript/api/core',
+					sidebar: { label: '@xbbg/core API', collapsed: true },
+					tsconfig: './typedoc/js-core.json',
+					typeDoc: { name: '@xbbg/core' },
+				}),
+			],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/alpha-xone/xbbg' },
 			],
 			sidebar: [
 				{
-					label: 'Getting Started',
+					label: 'Overview',
+					items: [{ label: 'Package Map', slug: 'overview/package-map' }],
+				},
+				{
+					label: 'Python',
 					items: [
-						{ label: 'Introduction', slug: 'getting-started/introduction' },
-						{ label: 'Installation', slug: 'getting-started/installation' },
-						{ label: 'Quick Start', slug: 'getting-started/quickstart' },
+						{ label: 'Overview', slug: 'python' },
+						{ label: 'Installation', slug: 'python/installation' },
+						{ label: 'Quick Start', slug: 'python/quickstart' },
+						{
+							label: 'Guides',
+							items: [
+								{ label: 'DataFrame Backends', slug: 'python/guides/backends' },
+								{ label: 'Output Formats', slug: 'python/guides/output-formats' },
+								{ label: 'Async Patterns', slug: 'python/guides/async' },
+								{ label: 'Streaming Data', slug: 'python/guides/streaming' },
+								{ label: 'Migration from Legacy', slug: 'python/guides/migration' },
+							],
+						},
+						{ label: 'API Reference', autogenerate: { directory: 'python/api' } },
+						{
+							label: 'Reference',
+							items: [
+								{ label: 'Configuration', slug: 'python/reference/configuration' },
+								{ label: 'Type Mappings', slug: 'python/reference/type-mappings' },
+							],
+						},
 					],
 				},
 				{
-					label: 'API Reference',
-					autogenerate: { directory: 'api' },
-				},
-				{
-					label: 'Guides',
+					label: 'JavaScript',
 					items: [
-						{ label: 'DataFrame Backends', slug: 'guides/backends' },
-						{ label: 'Output Formats', slug: 'guides/output-formats' },
-						{ label: 'Async Patterns', slug: 'guides/async' },
-						{ label: 'Streaming Data', slug: 'guides/streaming' },
-						{ label: 'Migration from Legacy', slug: 'guides/migration' },
+						{ label: 'Overview', slug: 'javascript' },
+						{ label: 'Installation', slug: 'javascript/installation' },
+						coreTypeDocSidebarGroup,
 					],
 				},
 				{
-					label: 'Reference',
-					items: [
-						{ label: 'Configuration', slug: 'reference/configuration' },
-						{ label: 'Type Mappings', slug: 'reference/type-mappings' },
-						{ label: 'Changelog', slug: 'reference/changelog' },
-					],
+					label: 'Release Notes',
+					items: [{ label: 'Changelog', slug: 'releases/changelog' }],
 				},
 			],
 			editLink: {

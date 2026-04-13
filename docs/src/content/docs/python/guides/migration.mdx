@@ -1,0 +1,953 @@
+---
+title: Migration from Legacy
+description: Upgrading from xbbg < 1.0 to the new Rust-powered backend
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+xbbg 1.0 replaces the pure-Python 0.x implementation with a Rust-powered core. The public function
+names you already use (`bdp`, `bdh`, `bdib`, etc.) still exist with the same call shapes, but
+**output formats, dependencies, several utility functions, and the connection lifecycle have all
+changed**. This guide is a comprehensive walkthrough of every breaking change, with concrete
+before/after examples and migration recipes.
+
+<Aside type="caution">
+  The `main` branch is xbbg 1.0. If you need exact 0.x behavior, install from the maintained
+  `release/0.x` branch — there is no shim layer that restores the old defaults. Migration is
+  required, but most call sites change only by one or two parameters.
+</Aside>
+
+## At-a-glance summary
+
+| Area | xbbg 0.x | xbbg 1.0 |
+|------|----------|----------|
+| Engine | Pure Python wrapping the Bloomberg Python wheel | Rust core, zero-copy Arrow transport into Python |
+| Default output format | Wide (ticker as index / MultiIndex columns) | Long (`ticker`, `field`, `value` rows) |
+| pandas dependency | Required hard dependency | Optional — install separately |
+| Default DataFrame backend | pandas | narwhals (lazy) |
+| Core dependencies | pandas | narwhals ≥ 1.30, pyarrow ≥ 22 |
+| Connection setup | `blp.connect()` / `blp.disconnect()` | `xbbg.configure()` — engine auto-starts on first use |
+| Authentication | `connect(auth_method=…, app_name=…)` | `configure(auth_method=…, app_name=…)` — same fields, six methods |
+| Bloomberg SDK at runtime | `pip install blpapi` (vendor wheel bundles `libblpapi3_64`) | Same — `pip install blpapi`, no system C++ SDK install needed (1.0.1+) |
+| MultiIndex columns from `bdh` | Yes | Removed — pivot afterwards |
+| Async support | `abdp` / `abdh` / etc. wrapping a thread pool | `abdp` / `abdh` / etc. backed by true async Rust I/O |
+| Field metadata lookup | `fieldInfo()` / `fieldSearch()` | `bfld()` / `bflds()` (aliases of each other; the legacy names also still work) |
+| Portfolio helper | `getPortfolio()` | `bport()` |
+| Security lookup | `lookupSecurity(name)` | `blkp(query, yellowkey='YK_FILTER_*')` |
+| Equity screening param | `beqs(screen, typ=…)` | `beqs(screen, screen_type=…)` |
+| Subscription / streaming | `live()` async generator, `subscribe()` context manager | `stream()` / `subscribe()` / `asubscribe()` returning `Subscription` objects, yielding DataFrames |
+| Extension functions (dividends, earnings, options, bonds, CDX, currency) | Top-level on `xbbg.blp` | Moved under `xbbg.ext` |
+| `asset_config()` | Returns empty DataFrame (deprecated since 0.12.x) | Removed — use `xbbg.markets.market_info(ticker)` |
+| Bloomberg SDK version query | `blp.getBlpapiVersion()` | `xbbg.get_sdk_info()` (returns dict) |
+| Middleware / hooks | None | `add_middleware()` / `remove_middleware()` chain around every request |
+| Exception hierarchy | Generic `RuntimeError`, often swallowed | `BlpErrorBase` with `BlpSessionError`, `BlpBPipeError`, `BlpRequestError`, `BlpValidationError`, `BlpTimeoutError`, `BlpFieldError`, `BlpSecurityError`, `BlpInternalError` |
+| Python minimum | 3.8+ | 3.10+ |
+| Source layout | `xbbg/` at repo root | `py-xbbg/src/xbbg/` |
+
+## Install & runtime requirements
+
+### Runtime
+
+`pip install xbbg blpapi` is sufficient on **Linux, macOS, and Windows**. xbbg 1.0.1 and later
+locate `libblpapi3_64.so` from the `blpapi` Python package automatically at first import — there
+is no need to install the Bloomberg C++ SDK at runtime, set `LD_LIBRARY_PATH` /
+`DYLD_LIBRARY_PATH`, or use `install_name_tool`.
+
+The `blpapi` Python wheel from Bloomberg ships the C library bundled inside the package
+(`site-packages/blpapi/libblpapi3_64.so`). xbbg's preload step (`xbbg._sdk._preload_sdk_library`,
+fired from `xbbg/__init__.py`) `dlopen`s it before the native engine module loads, so the engine's
+`@rpath/libblpapi3_64.so` dependency resolves against the already-loaded image.
+
+<Aside type="note">
+  The published **1.0.0** wheel did not yet include the cross-platform preload step. macOS and
+  Linux users on exactly 1.0.0 need the workaround
+  `LD_LIBRARY_PATH=$(python -c 'import os, blpapi; print(os.path.dirname(blpapi.__file__))')`
+  (Linux) or the equivalent `DYLD_LIBRARY_PATH` setting (macOS). Upgrading to 1.0.1+ removes the
+  need for this entirely.
+</Aside>
+
+### Build from source
+
+If you are building xbbg from source rather than installing a wheel, you do still need the full
+Bloomberg C++ SDK (headers and import library) at build time. Set `BLPAPI_ROOT` to the extracted
+SDK directory before running `pip install -e .` or `pixi run install`. The build script accepts
+`BLPAPI_INCLUDE_DIR` + `BLPAPI_LIB_DIR` as an alternative.
+
+### Python version
+
+xbbg 1.0 requires Python 3.10+. Python 3.8 and 3.9 are no longer supported. CPython 3.10 through
+3.14 are tested.
+
+## Output format migration
+
+The largest behavioral change is the default output shape.
+
+xbbg 0.x defaulted to **wide** format: `bdp` returned a DataFrame with tickers as the index and
+field names as columns; `bdh` with multiple tickers returned a DataFrame with a two-level
+MultiIndex on the columns axis `(ticker, field)`.
+
+xbbg 1.0 defaults to **long** format: every function returns one row per (ticker, field)
+observation with a `value` column. Long format is tidy data — it composes directly with `groupby`,
+`merge`, and filter operations without unpacking MultiIndex levels, and it is the natural shape
+for an Arrow-backed engine.
+
+### BDP before and after
+
+<Tabs>
+  <TabItem label="0.x — wide default">
+```python
+from xbbg import blp
+
+df = blp.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME'],
+)
+# pandas DataFrame — ticker as index, fields as columns
+#                   px_last     volume
+# AAPL US Equity   <price>   <volume>
+# MSFT US Equity   <price>   <volume>
+
+price = df.loc['AAPL US Equity', 'px_last']
+```
+  </TabItem>
+  <TabItem label="1.0 — long default">
+```python
+from xbbg import blp
+
+df = blp.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME'],
+)
+# narwhals DataFrame — ticker, field, value columns
+#            ticker    field      value
+# AAPL US Equity  PX_LAST    <price>
+# AAPL US Equity   VOLUME   <volume>
+# MSFT US Equity  PX_LAST    <price>
+# MSFT US Equity   VOLUME   <volume>
+```
+  </TabItem>
+</Tabs>
+
+### BDH before and after
+
+<Tabs>
+  <TabItem label="0.x — MultiIndex columns">
+```python
+from xbbg import blp
+
+df = blp.bdh(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    'PX_LAST',
+    '2024-01-01', '2024-01-05',
+)
+# MultiIndex columns: (ticker, field)
+#        (AAPL US Equity, PX_LAST)  (MSFT US Equity, PX_LAST)
+# date
+# 2024-01-02                <price>                    <price>
+```
+  </TabItem>
+  <TabItem label="1.0 — long default">
+```python
+from xbbg import blp
+
+df = blp.bdh(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    'PX_LAST',
+    '2024-01-01', '2024-01-05',
+)
+# long format — ticker, date, field, value columns
+#            ticker        date    field    value
+# AAPL US Equity  2024-01-02  PX_LAST  <price>
+# AAPL US Equity  2024-01-03  PX_LAST  <price>
+# MSFT US Equity  2024-01-02  PX_LAST  <price>
+# MSFT US Equity  2024-01-03  PX_LAST  <price>
+```
+  </TabItem>
+</Tabs>
+
+### BDIB before and after
+
+<Tabs>
+  <TabItem label="0.x">
+```python
+from xbbg import blp
+
+bars = blp.bdib('AAPL US Equity', dt='2024-01-15', interval=5)
+# pandas DataFrame indexed by datetime
+# time                    open    high     low   close   volume
+# 2024-01-15 09:30:00  <ohlcv values>
+```
+  </TabItem>
+  <TabItem label="1.0 — semi_long for OHLCV shape">
+```python
+from xbbg import blp
+
+# Default long format
+bars = blp.bdib('AAPL US Equity', dt='2024-01-15', interval=5)
+# long: ticker, time, field, value
+
+# semi_long restores the OHLCV-per-row shape closest to 0.x
+bars = blp.bdib('AAPL US Equity', dt='2024-01-15', interval=5,
+                format='semi_long')
+# ticker          time                  open  high   low  close  volume
+# AAPL US Equity  2024-01-15 09:30:00   ...   ...   ...   ...    ...
+```
+  </TabItem>
+</Tabs>
+
+### Restoring wide output with pivot()
+
+When downstream code requires the wide layout, apply `.pivot()` after the request. The exact
+parameter names differ between backends:
+
+```python
+from xbbg import blp
+
+# --- narwhals / Polars backend (default) ---
+df = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'])
+wide = df.pivot(on='field', index='ticker', values='value')
+
+# BDH with narwhals / Polars
+hist = blp.bdh('AAPL US Equity', ['open', 'high', 'low', 'close'],
+               '2024-01-01', '2024-01-31')
+hist_wide = hist.pivot(on='field', index=['ticker', 'date'], values='value')
+
+# --- pandas backend ---
+df_pd = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'],
+                backend='pandas')
+wide_pd = df_pd.pivot(columns='field', index='ticker', values='value')
+```
+
+### `format='semi_long'` — closest to old wide
+
+`format='semi_long'` returns one row per ticker with each field as a column. For `bdp` this is the
+shape closest to the 0.x default and is the smallest-effort migration:
+
+```python
+from xbbg import blp
+
+df = blp.bdp(
+    ['AAPL US Equity', 'MSFT US Equity'],
+    ['PX_LAST', 'VOLUME'],
+    format='semi_long',
+)
+#            ticker  px_last     volume
+# AAPL US Equity    <price>   <volume>
+# MSFT US Equity    <price>   <volume>
+```
+
+### Format reference
+
+| Format | Shape | Supports lazy backends |
+|--------|-------|------------------------|
+| `long` (default) | `ticker, [date,] field, value` | Yes |
+| `long_typed` | `ticker, [date,] field, value_f64, value_i64, …` | Yes |
+| `long_with_metadata` | `ticker, [date,] field, value, dtype` | Yes |
+| `semi_long` | `ticker, [date,]` then one column per field | Yes |
+
+`Format.WIDE` was **removed**. Passing `format='wide'` raises `ValueError` — use `pivot()` or
+`format='semi_long'` instead.
+
+## Backend migration
+
+### Before: pandas only
+
+xbbg 0.x depended on pandas. Every function returned `pd.DataFrame`. No configuration was needed.
+
+### After: narwhals default, pandas optional
+
+xbbg 1.0 uses PyArrow for the on-the-wire data transport between Rust and Python, and narwhals
+for the DataFrame construction layer. pandas is no longer pulled in automatically.
+
+**Core dependencies** (installed with `pip install xbbg`):
+
+- `narwhals >= 1.30`
+- `pyarrow >= 22`
+
+**Optional backends** (install separately as needed):
+
+```bash
+pip install pandas    # pandas DataFrames
+pip install polars    # Polars DataFrames (eager and lazy)
+pip install duckdb    # DuckDB relations
+```
+
+### Restoring pandas globally
+
+To make every xbbg call return a `pd.DataFrame` for an entire session, set the backend once at
+the top of your script:
+
+```python
+from xbbg import set_backend
+
+set_backend('pandas')
+# All subsequent calls return pd.DataFrame
+```
+
+Or per-call:
+
+```python
+df = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'], backend='pandas')
+```
+
+Combine with `format='semi_long'` to get the closest match to the 0.x default:
+
+```python
+df = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'],
+             backend='pandas', format='semi_long')
+```
+
+### Inspecting available backends
+
+```python
+from xbbg import get_available_backends, print_backend_status
+
+print(get_available_backends())   # e.g. ['narwhals', 'pyarrow', 'pandas']
+print_backend_status()            # installed/missing with version info
+```
+
+## Connection setup
+
+`blp.connect()` and `blp.disconnect()` no longer exist. The engine starts automatically on the
+first request. Call `xbbg.configure()` once before your first request only if you need a
+non-default host, port, or authentication. Connecting to `localhost:8194` (the default Bloomberg
+Terminal port) requires no `configure()` call at all.
+
+<Tabs>
+  <TabItem label="0.x">
+```python
+from xbbg import blp
+
+blp.connect(host='192.168.1.100', port=18194)
+
+df = blp.bdp('AAPL US Equity', 'PX_LAST')
+
+blp.disconnect()
+```
+  </TabItem>
+  <TabItem label="1.0">
+```python
+import xbbg
+from xbbg import blp
+
+# configure() replaces connect() — call once before first request
+xbbg.configure(host='192.168.1.100', port=18194)
+
+df = blp.bdp('AAPL US Equity', 'PX_LAST')
+
+# No disconnect needed — engine lifecycle is managed automatically
+```
+  </TabItem>
+</Tabs>
+
+`xbbg.configure()` accepts every field on `EngineConfig`. The full list, with defaults, is in
+the [configuration reference](/xbbg/python/reference/configuration). The most common ones for migration
+from 0.x are:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `host` | `"localhost"` | Bloomberg server hostname. Aliases: `server`, `server_host` |
+| `port` | `8194` | Bloomberg server port. Alias: `server_port` |
+| `servers` | `None` | List of `(host, port)` tuples for failover; overrides `host`/`port` if set |
+| `auth_method` | `None` | One of `"user"`, `"app"`, `"userapp"`, `"dir"`, `"manual"`, `"token"` (see below) |
+| `app_name` | `None` | Required when `auth_method` is `"app"`, `"userapp"`, or `"manual"` |
+| `user_id` | `None` | Required when `auth_method="manual"` |
+| `ip_address` | `None` | Required when `auth_method="manual"` |
+| `token` | `None` | Required when `auth_method="token"` |
+| `dir_property` | `None` | Required when `auth_method="dir"` (Active Directory property name) |
+| `request_pool_size` | `2` | Number of concurrent reference-data workers |
+| `subscription_pool_size` | `1` | Number of concurrent subscription workers |
+| `num_start_attempts` | (engine default) | Session retry count. Alias: `max_attempt` |
+| `auto_restart_on_disconnection` | `True` | Auto-reconnect on disconnect. Alias: `auto_restart` |
+
+Several legacy aliases are accepted for backward compatibility — `server`, `server_host`,
+`server_port`, `max_attempt`, `auto_restart`, `max_recovery`, `retry_max`, `retry_delay`,
+`retry_backoff` — and are normalized to the canonical names internally.
+
+## Authentication, SAPI, and B-PIPE
+
+xbbg 1.0 supports six authentication modes via `auth_method`. Each mode requires a specific set
+of additional fields. The Rust engine wires these into the underlying `blpapi_AuthOptions` and
+performs session authorization during startup; failures surface as `BlpSessionError` (or
+`BlpBPipeError` for B-PIPE-specific failures) on the first request — they do not silently produce
+empty results.
+
+| `auth_method` | Required fields | Use case |
+|---------------|-----------------|----------|
+| `"user"` | _(none)_ | OS logon name — typical desktop SAPI |
+| `"app"` | `app_name` | Application authentication — a single named application |
+| `"userapp"` | `app_name` | Combined OS logon + application |
+| `"dir"` | `dir_property` | Active Directory property lookup |
+| `"manual"` | `app_name`, `user_id`, `ip_address` | B-PIPE entitlement — application acting on behalf of a specific user |
+| `"token"` | `token` | Pre-generated authorization token |
+
+### B-PIPE manual authentication
+
+```python
+import xbbg
+from xbbg import blp
+
+xbbg.configure(
+    host='bpipe-host.internal',
+    port=8195,
+    auth_method='manual',
+    app_name='MyApp',
+    user_id='UserOnPlatform',
+    ip_address='10.0.0.42',
+)
+
+df = blp.bdp('SPX Index', 'PX_LAST')
+```
+
+### Application authentication (no per-user identity)
+
+```python
+import xbbg
+
+xbbg.configure(
+    host='sapi-gateway.internal',
+    port=8194,
+    auth_method='app',
+    app_name='MyApp',
+)
+```
+
+### Token authentication
+
+```python
+import xbbg
+
+xbbg.configure(
+    auth_method='token',
+    token='<authorization-token-from-blpapi>',
+)
+```
+
+### TLS for ZFP / leased line
+
+For ZFP (Zero Footprint) connections, `EngineConfig` exposes the full TLS surface:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `tls_client_credentials` | `str` | Path to client credentials file |
+| `tls_client_credentials_password` | `str` | Password for the credentials file |
+| `tls_trust_material` | `str` | Path to the trusted-CA bundle |
+| `tls_handshake_timeout_ms` | `int` | TLS handshake timeout |
+| `tls_crl_fetch_timeout_ms` | `int` | CRL fetch timeout |
+| `zfp_remote` | `str` | ZFP remote endpoint identifier |
+
+## Renamed and replaced functions
+
+| 0.x | 1.0 | Notes |
+|-----|-----|-------|
+| `blp.connect(host, port, …)` | `xbbg.configure(host=…, port=…, …)` | Engine auto-starts; `configure()` is only needed for non-default settings |
+| `blp.disconnect()` | _(none — automatic)_ | The engine handles its own lifecycle. Use `xbbg.shutdown()` only if you need to force cleanup |
+| `blp.getBlpapiVersion()` | `xbbg.get_sdk_info()` | Returns a `dict` with all detected SDK sources and their versions, plus `runtime_version` |
+| `blp.fieldInfo(fields)` | `blp.bfld(fields=…)` | `fieldInfo` still works as an alias |
+| `blp.fieldSearch(keyword)` | `blp.bfld(search_spec=keyword)` | Search merged into `bfld()` / `bflds()` |
+| `blp.lookupSecurity(name)` | `blp.blkp(query, yellowkey='YK_FILTER_*')` | Renamed; **yellowkey format changed** — the legacy short codes are replaced by `YK_FILTER_NONE` / `YK_FILTER_CMDTY` / `YK_FILTER_EQTY` / `YK_FILTER_CRNCY` / etc. |
+| `blp.getPortfolio(portfolio, …)` | `blp.bport(portfolio, fields, …)` | Renamed for consistency with other `b*` helpers |
+| `blp.bta_studies(…)` | `blp.ta_studies(…)` | Renamed; the `_studies` shortcut is now the canonical name |
+| `blp.refresh_studies(…)` | _(removed)_ | No replacement |
+| `blp.live(tickers, flds, …)` | `blp.stream(…)` / `blp.subscribe(…)` / `blp.asubscribe(…)` | The async generator returning `dict`s is gone. The new APIs return a `Subscription` object that yields DataFrames |
+| `blp.subscribe(…)` (context manager) | `blp.subscribe(…)` / `blp.asubscribe(…)` | No longer a context manager. Returns a `Subscription` object with dynamic add/remove and DataFrame yielding |
+
+### Parameter renames
+
+| Function | 0.x parameter | 1.0 parameter |
+|----------|---------------|---------------|
+| `blp.beqs` | `typ` | `screen_type` |
+
+## Functions moved to `xbbg.ext`
+
+These helpers used to live on the top-level `xbbg.blp` module in 0.x. They have **moved** to
+`xbbg.ext` in 1.0:
+
+| 0.x | 1.0 |
+|-----|-----|
+| `blp.dividend(…)` | `xbbg.ext.dividend(…)` |
+| `blp.earning(…)` | `xbbg.ext.earnings(…)` *(note plural)* |
+| `blp.turnover(…)` | `xbbg.ext.turnover(…)` |
+| `blp.adjust_ccy(…)` | `xbbg.ext.convert_ccy(…)` |
+| `blp.fut_ticker(…)` | `xbbg.ext.fut_ticker(…)` |
+| `blp.active_futures(…)` | `xbbg.ext.active_futures(…)` |
+| `blp.cdx_ticker(…)` | `xbbg.ext.cdx_ticker(…)` |
+| `blp.active_cdx(…)` | `xbbg.ext.active_cdx(…)` |
+| `blp.etf_holdings(…)` | `xbbg.ext.etf_holdings(…)` |
+| `blp.preferreds(…)` | `xbbg.ext.preferreds(…)` |
+| `blp.corporate_bonds(…)` | `xbbg.ext.corporate_bonds(…)` |
+| `blp.yas(…)` | `xbbg.ext.yas(…)` |
+
+Migration is mechanical — change the import:
+
+```python
+# 0.x
+from xbbg import blp
+df = blp.dividend('AAPL US Equity', '2023-01-01', '2024-01-01')
+
+# 1.0
+from xbbg import ext
+df = ext.dividend('AAPL US Equity', '2023-01-01', '2024-01-01')
+```
+
+`xbbg.ext` also adds new analytics that didn't exist in 0.x — bonds (`bond_info`, `bond_curve`,
+`bond_cashflows`, `bond_risk`, …), CDX (`cdx_pricing`, `cdx_curve`, …), and options. Each function
+has an `a*`-prefixed async variant.
+
+## Removals
+
+### `Format.WIDE`
+
+Removed. Passing `format='wide'` raises `ValueError`. Use `format='semi_long'` or `pivot()`.
+
+### `asset_config()`
+
+Removed. In 0.12.x this already returned an empty DataFrame and was deprecated. Use
+`xbbg.markets.market_info(ticker)` to retrieve exchange code, timezone, and futures-cycle
+metadata directly from Bloomberg:
+
+```python
+from xbbg.markets import market_info
+info = market_info('ES1 Index')
+# pd.Series with 'exch', 'tz', session times, and related fields
+```
+
+### `refresh_studies()`
+
+Removed. No direct replacement — recompute by issuing a fresh `bta()` call.
+
+## Async migration
+
+Every reference, historical, intraday, screening, and TA function has an `a`-prefixed async
+variant: `abdp`, `abdh`, `abdib`, `abdtick`, `abds`, `abql`, `absrch`, `abeqs`, `ablkp`, `abport`,
+`abfld` / `abflds`, `abqr`, `abta`, etc. The same names existed in 0.x — but in 0.x they wrapped
+synchronous blpapi calls in a thread pool and held the GIL. In 1.0 they are backed by a true
+async Rust engine that releases the GIL for the duration of the request.
+
+The migration is "do nothing" — the same code keeps working — but it is now actually concurrent:
+
+```python
+import asyncio
+from xbbg import blp
+
+async def fetch_all():
+    return await asyncio.gather(
+        blp.abdp('SPX Index',  'PX_LAST'),
+        blp.abdp('NDX Index',  'PX_LAST'),
+        blp.abdp('INDU Index', 'PX_LAST'),
+    )
+
+results = asyncio.run(fetch_all())
+# Three Bloomberg requests issued in parallel against the engine's request pool.
+```
+
+The size of the request worker pool is controlled by `EngineConfig.request_pool_size` (default
+`2`); subscriptions use a separate `subscription_pool_size`. Increase these if you have many
+concurrent in-flight requests.
+
+## Request validation, field metadata, and other 1.0-only options
+
+xbbg 1.0 adds several per-request and per-engine options that have no 0.x equivalent. They are
+designed to catch problems locally instead of round-tripping bad input to Bloomberg, and to give
+you finer control over how the engine resolves field types and reports per-security failures.
+
+### Engine-level field validation (`validation_mode`)
+
+The Rust engine can validate every field against Bloomberg's field metadata catalog before the
+request is dispatched. There are three modes, controlled by `EngineConfig.validation_mode`:
+
+| Mode | Behavior |
+|------|----------|
+| `"disabled"` (default) | Skip validation entirely. Fastest path; matches 0.x behavior |
+| `"lenient"` | Validate, log a warning for unknown fields, but still send the request |
+| `"strict"` | Raise `BlpValidationError` on unknown fields before sending the request |
+
+```python
+import xbbg
+
+xbbg.configure(validation_mode='strict')
+
+# Now this raises BlpValidationError immediately — no network round-trip
+df = xbbg.bdp('AAPL US Equity', 'PX_LSAT')   # typo in PX_LAST
+```
+
+### Per-request validation override (`validate_fields`)
+
+Every reference / historical / intraday function accepts a per-call `validate_fields` argument
+that overrides the engine-level mode for one request only:
+
+| Value | Effect |
+|-------|--------|
+| `None` (default) | Follow `EngineConfig.validation_mode` |
+| `True` | Force strict validation for this request |
+| `False` | Disable validation for this request |
+
+```python
+# Engine is in 'disabled' mode but you want strict checking on this one call
+df = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'], validate_fields=True)
+```
+
+### Field metadata cache (`field_cache_path`)
+
+Field validation, type resolution, and `bfld` / `bflds` lookups all consult a local field
+metadata cache at `~/.xbbg/field_cache.json` by default. The first lookup of an unknown field
+populates the cache from `//blp/apiflds`; subsequent calls are zero-network. Override the
+location with `EngineConfig.field_cache_path`:
+
+```python
+xbbg.configure(field_cache_path='/var/cache/xbbg/fields.json')
+```
+
+This was previously not exposed at all in 0.x, which made every request re-resolve fields
+through the C SDK.
+
+### Manual type overrides (`field_types`)
+
+`bdp` and `bdh` accept a `field_types` dict that forces specific fields to be returned as a
+specific Arrow / numpy type, bypassing the type-inference path. Useful when Bloomberg's metadata
+disagrees with what you actually want — e.g., forcing a string field to integer:
+
+```python
+df = blp.bdp(
+    'AAPL US Equity',
+    ['PX_LAST', 'VOLUME'],
+    field_types={'VOLUME': 'int64'},
+)
+```
+
+When `field_types` is `None` (the default), types are auto-resolved from the field cache.
+
+### Surface per-security failures (`include_security_errors`)
+
+In 0.x, when Bloomberg rejected a security inside a multi-ticker request, that ticker was
+silently dropped from the response. In 1.0 you can surface those failures explicitly:
+
+```python
+df = blp.bdp(
+    ['AAPL US Equity', 'NOT_A_TICKER'],
+    'PX_LAST',
+    include_security_errors=True,
+)
+# Includes a row with field '__SECURITY_ERROR__' for NOT_A_TICKER
+```
+
+Combined with the typed exception hierarchy, this means malformed inputs are easy to detect
+without comparing the response shape against the request shape.
+
+### Warm-up services (`warmup_services`)
+
+The engine pre-warms a list of Bloomberg services at startup so the first real request doesn't
+pay the connection-cold-start cost. The default is `["//blp/refdata", "//blp/apiflds"]`. Add
+extra services if your workload always starts with, say, intraday bars or screening:
+
+```python
+xbbg.configure(warmup_services=[
+    '//blp/refdata',
+    '//blp/apiflds',
+    '//blp/exrsvc',     # for bdh
+    '//blp/srcref',     # for bsrch / beqs
+])
+```
+
+## Error handling
+
+In 0.x, errors were typically generic `RuntimeError`s, and several failure modes (notably
+authorization failures during session startup) silently produced empty results. In 1.0 every
+error has a typed exception class:
+
+| Class | When it raises |
+|-------|----------------|
+| `BlpErrorBase` | Base class for every xbbg-originated exception |
+| `BlpSessionError` | Session startup, authentication, or session-level failures |
+| `BlpBPipeError` | B-PIPE-specific session/auth failures |
+| `BlpRequestError` | Request-level failure (malformed request, service unavailable, etc.) |
+| `BlpFieldError` | Per-field failure inside a request (subclass of `BlpRequestError`) |
+| `BlpSecurityError` | Per-security failure inside a request (subclass of `BlpRequestError`) |
+| `BlpValidationError` | Local validation of inputs failed before sending the request |
+| `BlpTimeoutError` | Request exceeded the configured timeout |
+| `BlpInternalError` | Unexpected internal engine error (please report) |
+
+```python
+from xbbg import blp
+from xbbg.exceptions import BlpSessionError, BlpRequestError, BlpValidationError
+
+try:
+    df = blp.bdp('AAPL US Equity', 'PX_LAST')
+except BlpSessionError as e:
+    # Authentication / session failures land here
+    log.error("Bloomberg session failed: %s", e)
+except BlpRequestError as e:
+    # The request reached Bloomberg but the response was an error
+    log.error("Bloomberg request failed: %s", e)
+except BlpValidationError as e:
+    # Local validation rejected the request before sending
+    log.error("Invalid request: %s", e)
+```
+
+To catch any xbbg-originated error, use `BlpErrorBase`:
+
+```python
+from xbbg.exceptions import BlpErrorBase
+
+try:
+    df = blp.bdp(tickers, fields)
+except BlpErrorBase as e:
+    log.exception("xbbg failure")
+    raise
+```
+
+## Middleware and observability
+
+xbbg 1.0 exposes a public middleware API around every reference, historical, and intraday
+request. Middleware are async callables that wrap the request pipeline; they have full access to
+the request context before and after the engine call, can mutate metadata, can raise to abort,
+and compose like ASGI / Express middleware.
+
+This is the supported integration point for telemetry, structured logging, OpenTelemetry spans,
+per-request metrics, request authorization, and dynamic parameter rewriting.
+
+### Registering middleware
+
+```python
+import time
+from xbbg import blp
+
+async def logging_middleware(context, call_next):
+    started = time.perf_counter()
+    try:
+        result = await call_next(context)
+    except Exception:
+        elapsed = (time.perf_counter() - started) * 1000
+        log.exception("xbbg request %s failed after %.1fms", context.request_id, elapsed)
+        raise
+
+    elapsed = (time.perf_counter() - started) * 1000
+    log.info(
+        "xbbg request %s ok: %d securities × %d fields → %d rows in %.1fms",
+        context.request_id,
+        len(context.securities),
+        len(context.fields),
+        context.batch.num_rows if context.batch is not None else 0,
+        elapsed,
+    )
+    return result
+
+blp.add_middleware(logging_middleware)
+
+# Use add_middleware as a decorator if you prefer:
+@blp.add_middleware
+async def trace_middleware(context, call_next):
+    return await call_next(context)
+```
+
+The full middleware management API:
+
+| Function | Purpose |
+|----------|---------|
+| `blp.add_middleware(mw)` | Append a middleware to the chain. Usable as a decorator |
+| `blp.remove_middleware(mw)` | Remove a previously registered middleware |
+| `blp.clear_middleware()` | Drop all middleware |
+| `blp.get_middleware()` | Inspect the current chain (returns a tuple) |
+| `blp.set_middleware([mw1, mw2, …])` | Replace the entire chain in one call |
+
+Middleware must be `async`. They are invoked once per top-level `bdp` / `bdh` / `bdib` / `abdp` /
+etc. call, and run in registration order. Each middleware receives `(context, call_next)` and
+must `await call_next(context)` to invoke the next stage in the pipeline (or the engine itself
+if it's the last middleware).
+
+### `RequestContext` fields
+
+The `context` object passed through the middleware chain is a mutable dataclass-like container.
+Every field listed below is populated before user middleware runs:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `request_id` | `str` | Unique ID like `req-1776071581054356000`, useful as a correlation key |
+| `params` | `RequestParams` | Parsed positional + keyword arguments to the original call |
+| `params_dict` | `dict[str, Any]` | Raw kwargs dict |
+| `backend` | `Backend \| str \| None` | Resolved backend (after applying defaults) |
+| `securities` | `list[str]` | Normalized ticker list |
+| `fields` | `list[str]` | Normalized field list |
+| `environment` | `RequestEnvironment` | Snapshot of host / port / auth_method / etc. for this call |
+| `metadata` | `dict[str, Any]` | Mutable bag for user middleware to attach extra context (request tags, span IDs, …) |
+| `started_at` | `float` | `time.perf_counter()` at middleware-chain entry |
+| `elapsed_ms` | `float \| None` | Populated after the engine call returns |
+| `batch` | `pa.RecordBatch \| None` | Raw Arrow batch from the engine, populated after the engine call |
+| `table` | `pa.Table \| None` | Optional Arrow table form |
+| `frame` | _backend frame_ `\| None` | Final converted DataFrame (pandas, polars, narwhals, etc.) |
+| `error` | `Exception \| None` | Set when middleware downstream raises |
+
+### OpenTelemetry example
+
+```python
+from opentelemetry import trace
+from xbbg import blp
+
+tracer = trace.get_tracer("xbbg")
+
+@blp.add_middleware
+async def otel_middleware(context, call_next):
+    with tracer.start_as_current_span("xbbg.request") as span:
+        span.set_attribute("xbbg.request_id", context.request_id)
+        span.set_attribute("xbbg.host", context.environment.host)
+        span.set_attribute("xbbg.securities", len(context.securities))
+        span.set_attribute("xbbg.fields", len(context.fields))
+        try:
+            result = await call_next(context)
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(trace.Status(trace.StatusCode.ERROR))
+            raise
+        span.set_attribute("xbbg.rows", context.batch.num_rows if context.batch else 0)
+        span.set_attribute("xbbg.elapsed_ms", context.elapsed_ms or 0.0)
+        return result
+```
+
+Middleware is the right granularity for per-request telemetry. Per-ticker and per-field
+fan-in/fan-out is not currently exposed as a separate hook — the engine deduplicates and batches
+internally — but `context.securities` / `context.fields` give you the dimensions you need for
+labelled metrics.
+
+## Logging and tracing
+
+### Python loggers
+
+xbbg uses the standard `logging` module under the `xbbg.*` namespace:
+
+| Logger | What it covers |
+|--------|----------------|
+| `xbbg` | Parent logger for the package |
+| `xbbg.blp` | Request pipeline, middleware dispatch, backend resolution |
+| `xbbg.backend` | Backend selection and availability checks |
+| `xbbg.markets.bloomberg`, `xbbg.markets.overrides`, `xbbg.markets.info` | Market metadata lookups |
+| `xbbg.ext.*` | Extension modules (bonds, options, cdx, futures, currency, historical) |
+
+Enable debug output with the standard incantation:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+logging.getLogger('xbbg').setLevel(logging.DEBUG)
+```
+
+### Rust tracing
+
+The Rust core uses the `tracing` crate. Logging targets (`xbbg_core`, `xbbg_async`, `xbbg_log`,
+`pyo3_xbbg`, …) can be controlled via the standard `RUST_LOG` environment variable:
+
+```bash
+RUST_LOG=xbbg_async=debug,xbbg_core=info python my_script.py
+```
+
+xbbg also exposes Python-side helpers to set / get the global Rust log level without process
+restart (`xbbg.set_log_level('debug')`, `xbbg.get_log_level()`). These are atomic and contention-
+free; safe to call from request paths.
+
+## Step-by-step upgrade
+
+<Steps>
+
+1. **Upgrade the package and the Bloomberg Python wheel**
+
+   ```bash
+   pip install --upgrade xbbg blpapi --extra-index-url https://blpapi.bloomberg.com/repository/releases/python/simple/
+   ```
+
+   Make sure `blpapi` resolves to `>= 3.25` and you are on xbbg `>= 1.0.1` (1.0.0 has a known
+   `libblpapi` discovery bug on macOS / Linux fixed in 1.0.1).
+
+2. **Verify the engine loads**
+
+   ```python
+   import xbbg
+   info = xbbg.get_sdk_info()
+   print(info['active'], info['runtime_version'])
+   ```
+
+   If this raises `ImportError`, see the install notes above — on 1.0.1+ you should not need
+   any `LD_LIBRARY_PATH` setup.
+
+3. **Install whichever DataFrame backend you actually use**
+
+   ```bash
+   pip install pandas    # if your code returns / consumes pd.DataFrame
+   pip install polars    # if you want polars
+   ```
+
+4. **Set a session-wide backend default if your code expects one**
+
+   ```python
+   from xbbg import set_backend
+   set_backend('pandas')
+   ```
+
+5. **Remove `connect()` / `disconnect()` calls**
+
+   Delete every `blp.connect(...)` and `blp.disconnect()`. If you were passing a non-default
+   `host` / `port` / auth, replace those calls with a single `xbbg.configure(...)` call before
+   your first request. `configure()` accepts the same field names as `connect()` plus the legacy
+   `server_host` / `server_port` / `max_attempt` / `auto_restart` aliases.
+
+6. **Migrate B-PIPE / SAPI auth call sites**
+
+   Look at the [authentication section](#authentication-sapi-and-b-pipe) for the six supported
+   `auth_method` values and the required fields for each. The most common B-PIPE migration is
+   `auth_method='manual'` with `app_name`, `user_id`, and `ip_address`. Auth failures now raise
+   `BlpSessionError` / `BlpBPipeError` on the first request — they don't silently produce empty
+   results, so add explicit `try` / `except` for graceful degradation if you need it.
+
+7. **Pick an output-format strategy**
+
+   The smallest-effort migration is to add `format='semi_long'` to each `bdp` and `bdib` call
+   (one row per ticker, fields as columns). For `bdh`, follow each call with
+   `.pivot(on='field', index=['ticker', 'date'], values='value')` if you need the old
+   MultiIndex shape.
+
+   The recommended longer-term path is to migrate downstream code to long format — it composes
+   directly with `groupby` / `merge` / filter operations and is the natural shape for
+   Arrow-backed pipelines.
+
+8. **Update extension function imports**
+
+   `dividend`, `earning(s)`, `turnover`, `adjust_ccy` (now `convert_ccy`), `etf_holdings`,
+   `preferreds`, `corporate_bonds`, `yas`, `fut_ticker`, `active_futures`, `cdx_ticker`,
+   `active_cdx` — all moved from `xbbg.blp` to `xbbg.ext`. Change the import:
+
+   ```python
+   from xbbg import ext
+   ext.dividend('AAPL US Equity', '2023-01-01', '2024-01-01')
+   ```
+
+9. **Replace deprecated function names**
+
+   - `blp.connect` / `blp.disconnect` → `xbbg.configure` (or remove entirely)
+   - `blp.getBlpapiVersion` → `xbbg.get_sdk_info`
+   - `blp.lookupSecurity` → `blp.blkp` (note the new `YK_FILTER_*` yellowkey format)
+   - `blp.getPortfolio` → `blp.bport`
+   - `blp.fieldInfo` / `blp.fieldSearch` → `blp.bfld` / `blp.bflds` (legacy names also work)
+   - `blp.bta_studies` → `blp.ta_studies`
+   - `beqs(typ=…)` → `beqs(screen_type=…)`
+   - `blp.live(…)` / `blp.subscribe(…)` (context manager) → `blp.stream(…)` / `blp.asubscribe(…)`
+     returning a `Subscription`
+
+10. **Wrap in error handling**
+
+    Catch `BlpSessionError` (auth / session) and `BlpRequestError` (per-request failure) at the
+    boundary of your data-fetching code rather than the old generic `RuntimeError`. See
+    [Error handling](#error-handling).
+
+11. **Add observability if you need it**
+
+    Register a middleware via `blp.add_middleware(...)` for structured logging, OpenTelemetry
+    spans, or per-request metrics. See [Middleware and observability](#middleware-and-observability)
+    for the canonical pattern.
+
+</Steps>
+
+## Further reading
+
+- [Output Formats](/xbbg/python/guides/output-formats) — full format reference with column-level examples
+- [DataFrame Backends](/xbbg/python/guides/backends) — backend selection, lazy backends, performance
+- [Async Patterns](/xbbg/python/guides/async) — async usage, concurrency, cancellation
+- [Configuration Reference](/xbbg/python/reference/configuration) — every `EngineConfig` field with defaults
+- [API Reference](/xbbg/python/api/blp) — complete function signatures and parameter documentation

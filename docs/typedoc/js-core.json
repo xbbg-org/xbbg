@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "types": ["node"],
+    "baseUrl": "..",
+    "paths": {
+      "apache-arrow": ["./node_modules/apache-arrow"]
+    }
+  },
+  "include": ["../../js-xbbg/index.d.ts"]
+}

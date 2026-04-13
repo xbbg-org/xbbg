@@ -178,50 +178,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.9.4
         with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: docs/package-lock.json
+          pixi-version: latest
+          environments: docs
+          cache: true
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Install pydoc-markdown
-        run: pip install pydoc-markdown
-
-      - name: Install docs dependencies
-        working-directory: docs
-        run: npm ci
-
-      - name: Generate API docs from docstrings
-        run: |
-          cd docs
-          mkdir -p src/content/docs/api
-          for module in blp services exceptions schema; do
-            echo "Generating $module.md..."
-            case $module in
-              blp) title="Bloomberg Data API"; desc="Core API functions for Bloomberg data" ;;
-              services) title="Services and Enums"; desc="Bloomberg service definitions" ;;
-              exceptions) title="Exceptions"; desc="Exception hierarchy" ;;
-              schema) title="Schema Introspection"; desc="Schema introspection" ;;
-            esac
-            {
-              echo "---"
-              echo "title: $title"
-              echo "description: $desc"
-              echo "---"
-              echo ""
-              pydoc-markdown -I ../py-xbbg/src -m "xbbg.$module" 2>/dev/null | grep -v "^\[WARNING" || true
-            } > "src/content/docs/api/$module.md"
-          done
-
-      - name: Build docs
-        working-directory: docs
-        run: npm run build
+      - name: Build public docs
+        run: pixi run -e docs docs-ci
 
       - name: Upload docs artifact
         uses: actions/upload-artifact@v7

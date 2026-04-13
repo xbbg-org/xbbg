@@ -5,8 +5,6 @@ description: Configure engine settings, pool sizes, and connection options
 
 import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
 
-# Configuration
-
 ## configure()
 
 Call `configure()` before any Bloomberg request to set connection parameters, pool sizes, and auth. Once the engine starts on the first request, calling `configure()` again raises `RuntimeError`.

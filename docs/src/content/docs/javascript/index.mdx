@@ -1,0 +1,64 @@
+---
+title: JavaScript
+description: Public documentation for the @xbbg/core Node.js package
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+import { PhBookOpenText, PhBracketsCurly, PhCpu } from 'phosphor-icons-astro';
+
+The public JavaScript package in this monorepo is `@xbbg/core`.
+
+<Aside type="caution">
+  `@xbbg/core` is currently marked experimental alpha in the package README. The public package is real and installable, but the high-level API is still evolving.
+</Aside>
+
+`@xbbg/core` exposes the same Bloomberg session model and Rust-backed request engine used by the Python package, but in a Node.js-friendly shape with namespaces such as `xbbg.blp` and `xbbg.ext`.
+
+<CardGrid>
+  <Card title="Direct Node.js binding">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhBracketsCurly size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Use the public npm package when you need Bloomberg access directly inside Node.js without wrapping the Python runtime.
+  </Card>
+  <Card title="Shared engine">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhCpu size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    Session configuration, authentication, transport, and Arrow-native data handling come from the shared Rust core.
+  </Card>
+  <Card title="Generated API reference">
+    <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
+      <PhBookOpenText size={20} weight="duotone" aria-hidden="true" />
+    </div>
+    The `@xbbg/core` API reference in this section is generated from the published TypeScript surface so it stays aligned with the package.
+  </Card>
+</CardGrid>
+
+## Public surface today
+
+- Bloomberg request helpers for point-in-time, historical, bulk, intraday bar, tick, and subscription workflows
+- Structured `EngineConfig` support for host/port, ordered failover, auth, TLS, ZFP, SOCKS5, and recovery tuning
+- Public namespaces such as `xbbg.blp` and `xbbg.ext` for both core requests and higher-level helpers
+- Arrow-native tables and a generated TypeScript reference for the current package surface
+
+## Quick example
+
+```ts
+import * as xbbg from '@xbbg/core';
+
+xbbg.configure({ host: 'localhost', port: 8194 });
+
+const hist = await xbbg.blp.abdh(
+  ['AAPL US Equity'],
+  ['PX_LAST'],
+  '2024-01-01',
+  '2024-01-31',
+);
+```
+
+## Next steps
+
+- [Installation](/xbbg/javascript/installation/) — install `@xbbg/core` and understand how the native package is distributed
+- [Package Map](/xbbg/overview/package-map/) — compare the public Python and Node.js packages
+- Browse the `@xbbg/core API` section in the sidebar for the generated JavaScript reference
