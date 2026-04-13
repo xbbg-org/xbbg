@@ -20,12 +20,16 @@ def _get_lib_version(_lib_path: Path) -> str | None:
 
 
 def _find_sdk_lib(sdk_path: Path) -> Path | None:
-    """Find the blpapi DLL/SO in an SDK directory."""
+    """Find the blpapi DLL/SO in an SDK directory.
+
+    Bloomberg ships `libblpapi3_64.so` (not `.dylib`) on macOS as well as
+    Linux, so the non-Windows candidate list is the same for both.
+    """
     import sys
 
     if sys.platform == "win32":
         candidates = ["blpapi3_64.dll", "blpapi3_32.dll", "lib/blpapi3_64.dll", "lib/blpapi3_32.dll"]
-    else:  # Linux
+    else:  # macOS and Linux
         candidates = ["libblpapi3_64.so", "libblpapi3.so", "lib/libblpapi3_64.so", "lib/libblpapi3.so"]
 
     for candidate in candidates:
@@ -196,62 +200,144 @@ def clear_sdk_path() -> None:
     _sdk_info = None  # Clear cached info to refresh on next get_sdk_info() call
 
 
-def _add_sdk_to_dll_search_path() -> None:
-    """Add all detected SDK library paths to Windows DLL search path.
+def _collect_sdk_candidate_dirs() -> list[Path]:
+    """Walk all SDK sources in priority order and return existing directories.
 
-    This must be called before importing the native extension (_core).
-    Checks all SDK sources: manual path, blpapi package, DAPI, BLPAPI_ROOT.
-
-    All operations are wrapped in try/except to handle permission errors
-    gracefully (e.g., no admin access, restricted folders).
+    Priority: manual path → blpapi Python package → DAPI → BLPAPI_ROOT.
+    Duplicates (by resolved path) are removed.
     """
     import os
-    from pathlib import Path
+    import sys
 
-    added_dirs: set[str] = set()
+    seen: set[str] = set()
+    result: list[Path] = []
 
-    def try_add_dir(sdk_path: Path | None) -> None:
-        """Try to add SDK library directory to DLL search path. Silently fails on errors."""
-        if sdk_path is None:
+    def add(candidate: Path | None) -> None:
+        if candidate is None:
             return
         try:
-            lib_path = _find_sdk_lib(sdk_path)
-            if lib_path:
-                lib_dir = str(lib_path.parent)
-                if lib_dir not in added_dirs:
-                    os.add_dll_directory(lib_dir)  # type: ignore[unresolved-attribute]
-                    added_dirs.add(lib_dir)
-        except (OSError, PermissionError, ValueError):
-            pass  # Can't access directory or add to DLL search path
+            if not candidate.is_dir():
+                return
+            key = str(candidate.resolve())
+        except (OSError, PermissionError):
+            return
+        if key in seen:
+            return
+        seen.add(key)
+        result.append(candidate)
 
     # 1. Manual SDK path (highest priority)
     if _manual_sdk_path is not None:
-        try_add_dir(_manual_sdk_path)
+        add(_manual_sdk_path)
 
-    # 2. blpapi Python package
+    # 2. blpapi Python package (most common for pip users)
     try:
         import blpapi
 
         blpapi_file = getattr(blpapi, "__file__", None)
         if blpapi_file:
-            try_add_dir(Path(blpapi_file).parent)
+            add(Path(blpapi_file).parent)
     except (ImportError, OSError):
         pass
 
-    # 3. DAPI (Bloomberg Terminal) - typically already in PATH but add as fallback
-    dapi_paths = [
-        Path(r"C:\blp\DAPI"),
-        Path(os.path.expandvars(r"%LOCALAPPDATA%\Bloomberg\DAPI")),
-    ]
+    # 3. DAPI (Bloomberg Terminal)
+    if sys.platform == "win32":
+        dapi_paths = [
+            Path(r"C:\blp\DAPI"),
+            Path(os.path.expandvars(r"%LOCALAPPDATA%\Bloomberg\DAPI")),
+        ]
+    else:
+        dapi_paths = [
+            Path.home() / "blp" / "DAPI",
+            Path("/opt/bloomberg/DAPI"),
+        ]
     for dapi_path in dapi_paths:
         try:
             if dapi_path.is_dir():
-                try_add_dir(dapi_path)
+                add(dapi_path)
                 break
         except (OSError, PermissionError):
-            continue  # Can't access this path, try next
+            continue
 
     # 4. BLPAPI_ROOT environment variable
     blpapi_root = os.environ.get("BLPAPI_ROOT")
     if blpapi_root:
-        try_add_dir(Path(blpapi_root))
+        add(Path(blpapi_root))
+
+    return result
+
+
+def _add_sdk_to_dll_search_path() -> None:
+    """Windows: add each detected SDK library directory to the DLL search path.
+
+    Must be called before importing the native extension (_core). Errors are
+    swallowed so permission issues or missing directories don't block import.
+    """
+    import os
+
+    for sdk_dir in _collect_sdk_candidate_dirs():
+        lib_path = _find_sdk_lib(sdk_dir)
+        if lib_path is None:
+            continue
+        try:
+            os.add_dll_directory(str(lib_path.parent))  # type: ignore[unresolved-attribute]
+        except (OSError, PermissionError, ValueError):
+            continue
+
+
+def _preload_sdk_library() -> bool:
+    """macOS/Linux: dlopen libblpapi so @rpath refs in _core resolve via install-name match.
+
+    The pyo3 cdylib (_core) declares `@rpath/libblpapi3_64.so` as a dynamic
+    dependency but ships with no LC_RPATH entries. On macOS, once any image
+    with LC_ID_DYLIB `@rpath/libblpapi3_64.so` is loaded into the process,
+    dyld satisfies subsequent `@rpath/libblpapi3_64.so` references by
+    install-name match — no rpath search occurs. This is the same pattern
+    Bloomberg's own `blpapi/internals.py::_loadLibrary` uses to load its
+    `ffiutils.cpython-*-darwin.so` extension, which also ships with no rpath.
+
+    On Linux, loading with RTLD_GLOBAL ensures the library's symbols are
+    available to subsequently loaded modules, avoiding a second DT_NEEDED
+    search (which may fail if `site-packages/blpapi` isn't on `LD_LIBRARY_PATH`).
+
+    Returns True on first successful preload, False if nothing could be
+    loaded. Failure is non-fatal — `_import_core` still surfaces the
+    friendly error message if the C extension can't open the library.
+    """
+    import ctypes
+
+    for sdk_dir in _collect_sdk_candidate_dirs():
+        lib_path = _find_sdk_lib(sdk_dir)
+        if lib_path is None:
+            continue
+        try:
+            ctypes.CDLL(str(lib_path), mode=ctypes.RTLD_GLOBAL)
+            return True
+        except OSError:
+            continue
+    return False
+
+
+def _prepare_sdk_for_core_import() -> None:
+    """Prepare the current process to load xbbg._core on any platform.
+
+    Dispatches to the correct per-platform mechanism:
+
+    - Windows: add each detected SDK directory to the DLL search path.
+    - macOS/Linux: dlopen libblpapi so _core's `@rpath/libblpapi3_64.so`
+      dependency resolves via dyld's install-name match (macOS) or is
+      already in the process's loaded image list (Linux).
+
+    All errors are swallowed; `_import_core()` surfaces the friendly error
+    message if no SDK can be found at the point the native extension is
+    actually imported.
+    """
+    import sys
+
+    try:
+        if sys.platform == "win32":
+            _add_sdk_to_dll_search_path()
+        else:
+            _preload_sdk_library()
+    except Exception:
+        pass

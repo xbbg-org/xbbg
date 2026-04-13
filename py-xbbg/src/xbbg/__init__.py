@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import importlib
 from importlib.metadata import PackageNotFoundError, version
-import sys
 from typing import TYPE_CHECKING
 
 from ._exports import (
@@ -34,17 +33,20 @@ except PackageNotFoundError:
 if TYPE_CHECKING:
     from . import _core
 
-# DLL search path setup (Windows)
+# Prepare SDK for native extension (_core) import on all platforms.
 # MUST run at module level, not inside __getattr__. When Python resolves
 # `from xbbg._core import X`, it imports `xbbg` first (here) then loads
-# the native extension as a submodule - bypassing __getattr__ entirely.
-if sys.platform == "win32":
-    try:
-        from . import _sdk
+# the native extension as a submodule — bypassing __getattr__ entirely.
+#
+# Windows adds SDK dirs to the DLL search path; macOS/Linux preload libblpapi
+# via ctypes so dyld/ld.so satisfies _core's `@rpath/libblpapi3_64.so`
+# dependency via install-name / already-loaded image matching.
+try:
+    from . import _sdk
 
-        _sdk._add_sdk_to_dll_search_path()
-    except Exception:
-        pass  # SDK detection failures shouldn't block package import
+    _sdk._prepare_sdk_for_core_import()
+except Exception:
+    pass  # SDK detection failures shouldn't block package import
 
 _importing_core = False
 _core_module = None
@@ -66,17 +68,23 @@ def _import_core():
         _core_module = mod
         return mod
     except ImportError as e:
-        if "DLL load failed" in str(e) or "cannot open shared object" in str(e):
+        msg = str(e)
+        if (
+            "DLL load failed" in msg  # Windows
+            or "cannot open shared object" in msg  # Linux
+            or "Library not loaded" in msg  # macOS dlopen
+            or "image not found" in msg  # older macOS dlopen
+        ):
             raise ImportError(
                 f"{e}\n\n"
                 "The xbbg native extension requires the Bloomberg C++ SDK shared library.\n"
-                "Supported platforms: Linux x64, Windows x64/x86\n\n"
+                "Supported platforms: Linux x64, macOS arm64/x64, Windows x64/x86\n\n"
                 "You can provide the SDK from any of these sources:\n"
                 "  1. blpapi Python package: pip install blpapi --index-url "
                 "https://blpapi.bloomberg.com/repository/releases/python/simple/\n"
                 "  2. Bloomberg Terminal (DAPI) - automatically detected if installed\n"
                 "  3. Bloomberg C++ SDK: set BLPAPI_ROOT environment variable\n"
-                "  4. xbbg.set_sdk_path('/path/to/sdk') - manually set SDK path (Windows only)"
+                "  4. xbbg.set_sdk_path('/path/to/sdk') - manually set SDK path"
             ) from e
         raise
     finally:
