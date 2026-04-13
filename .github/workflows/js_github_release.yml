@@ -456,14 +456,14 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           mkdir -p dist
-          npm pack packages/xbbg-core-darwin-arm64 --pack-destination dist
-          npm pack packages/xbbg-core-linux-x64 --pack-destination dist
-          npm pack packages/xbbg-core-win32-x64 --pack-destination dist
-          npm pack js-xbbg --pack-destination dist
-          npm pack packages/xbbg-bridge-darwin-arm64 --pack-destination dist
-          npm pack packages/xbbg-bridge-linux-x64 --pack-destination dist
-          npm pack packages/xbbg-bridge-win32-x64 --pack-destination dist
-          npm pack packages/xbbg-bridge --pack-destination dist
+          npm pack ./packages/xbbg-core-darwin-arm64 --pack-destination dist
+          npm pack ./packages/xbbg-core-linux-x64 --pack-destination dist
+          npm pack ./packages/xbbg-core-win32-x64 --pack-destination dist
+          npm pack ./js-xbbg --pack-destination dist
+          npm pack ./packages/xbbg-bridge-darwin-arm64 --pack-destination dist
+          npm pack ./packages/xbbg-bridge-linux-x64 --pack-destination dist
+          npm pack ./packages/xbbg-bridge-win32-x64 --pack-destination dist
+          npm pack ./packages/xbbg-bridge --pack-destination dist
           ls -1 dist
 
       - name: Smoke test packed @xbbg/bridge install
