@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - **`xbbg-mcp` local MCP server**: Added a stdio Bloomberg MCP application under `apps/xbbg-mcp` with tool surfaces for `bdp`, `bdh`, `bds`, `bdib`, `bql`, `bsrch`, `bflds`, and generic request execution. Responses are bounded structured JSON with Arrow schema metadata for coding agents.
 - **GitHub-release MCP distribution path**: Added release packaging for `xbbg-mcp`, a Unix launcher wrapper (`scripts/xbbg-mcp`), and a convenience installer (`scripts/install-xbbg-mcp.sh`) so Claude Code and OpenCode users can install a local MCP binary without cloning or compiling the repo first.
+- **GitHub-only JS package release workflow**: Added a manual `js_github_release.yml` path that builds, versions, validates, and attaches GitHub release tarballs for `@xbbg/core` and `@xbbg/bridge` without npm publishing. The workflow intentionally ships the currently supported 8-asset set only: `@xbbg/core` wrapper plus `darwin-arm64`/`linux-x64`/`win32-x64`, and `@xbbg/bridge` wrapper plus `darwin-arm64`/`linux-x64`/`win32-x64`. The unreleased `@xbbg/bridge-darwin-x64` and `@xbbg/bridge-linux-arm64` package stubs remain excluded until Bloomberg SDK archive support exists.
 
 ### Changed
 

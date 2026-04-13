@@ -223,7 +223,7 @@ jobs:
           name: core-package-darwin-arm64
           path: packages/xbbg-core-darwin-arm64
 
-      - name: Stamp @xbbg/core package versions
+      - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ github.ref_name }}"
 
       - name: Smoke test packed @xbbg/core install
