@@ -381,7 +381,7 @@ jobs:
 
   pack-assets:
     name: Pack JS release assets
-    needs: [prepare, build-core-native, build-bridge-native]
+    needs: [prepare, sdk-version, build-core-native, build-bridge-native]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -429,6 +429,23 @@ jobs:
 
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+
+      - name: Setup Bloomberg SDK for packed-install smoke tests
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ needs.sdk-version.outputs.version }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env for packed-install smoke tests
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
 
       - name: Smoke test packed @xbbg/core install
         shell: bash
