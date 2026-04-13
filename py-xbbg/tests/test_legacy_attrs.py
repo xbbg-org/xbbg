@@ -20,4 +20,4 @@ def test_removed_legacy_attr_points_to_replacement(name: str, needle: str) -> No
 
 def test_unknown_attr_still_raises_plain_attribute_error() -> None:
     with pytest.raises(AttributeError, match="no attribute 'definitely_not_a_real_attr'"):
-        blp.definitely_not_a_real_attr  # type: ignore[attr-defined]
+        _ = blp.definitely_not_a_real_attr  # type: ignore[attr-defined]
