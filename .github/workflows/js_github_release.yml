@@ -121,7 +121,7 @@ jobs:
           test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
 
       - name: Upload bindings artifact
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v4
         with:
           name: blpapi-bindings
           path: ci-bindings/bindings.rs
@@ -162,7 +162,7 @@ jobs:
           node-version: "24"
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -247,7 +247,7 @@ jobs:
         run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ needs.prepare.outputs.version }}"
 
       - name: Upload staged core package artifact
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v4
         with:
           name: core-package-${{ matrix.label }}
           path: ${{ matrix.package_dir }}
@@ -288,7 +288,7 @@ jobs:
           node-version: "24"
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -373,7 +373,7 @@ jobs:
         run: npm --prefix packages/xbbg-bridge run build:binary
 
       - name: Upload staged bridge package artifact
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v4
         with:
           name: bridge-package-${{ matrix.label }}
           path: ${{ matrix.package_dir }}
@@ -392,37 +392,37 @@ jobs:
           node-version: "24"
 
       - name: Download linux core package artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: core-package-linux-x64
           path: packages/xbbg-core-linux-x64
 
       - name: Download windows core package artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: core-package-win32-x64
           path: packages/xbbg-core-win32-x64
 
       - name: Download macOS core package artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: core-package-darwin-arm64
           path: packages/xbbg-core-darwin-arm64
 
       - name: Download linux bridge package artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: bridge-package-linux-x64
           path: packages/xbbg-bridge-linux-x64
 
       - name: Download windows bridge package artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: bridge-package-win32-x64
           path: packages/xbbg-bridge-win32-x64
 
       - name: Download macOS bridge package artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: bridge-package-darwin-arm64
           path: packages/xbbg-bridge-darwin-arm64
@@ -490,7 +490,7 @@ jobs:
           NODE
 
       - name: Upload JS release artifacts
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v4
         with:
           name: js-release-assets
           path: dist/*.tgz
@@ -502,7 +502,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download JS release artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: js-release-assets
           path: dist
@@ -566,7 +566,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download JS release artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: js-release-assets
           path: dist
