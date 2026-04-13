@@ -52,6 +52,41 @@ logger = logging.getLogger(__name__)
 __all__ = list(BLP_MODULE_EXPORTS)
 
 
+_REMOVED_LEGACY_ATTRS: dict[str, str] = {
+    "connect": (
+        "blp.connect() was removed in xbbg 1.0. The engine now starts automatically "
+        "on the first request. If you need a non-default host, port, or auth (e.g. "
+        "for B-PIPE), call xbbg.configure() once before your first request:\n\n"
+        "    import xbbg\n"
+        "    xbbg.configure(\n"
+        "        server_host='bpipe-host',\n"
+        "        server_port=8194,\n"
+        "        auth_method='app',\n"
+        "        app_name='my-app',\n"
+        "    )\n\n"
+        "Legacy aliases (server_host, server_port, max_attempt, auto_restart) are "
+        "accepted. See https://alpha-xone.github.io/xbbg/guides/migration/#connection-setup"
+    ),
+    "disconnect": (
+        "blp.disconnect() was removed in xbbg 1.0. The engine lifecycle is managed "
+        "automatically and you no longer need to disconnect. If you really need to "
+        "tear down the engine (e.g. in tests), call xbbg.shutdown() or xbbg.reset()."
+    ),
+    "getBlpapiVersion": (
+        "blp.getBlpapiVersion() was removed in xbbg 1.0. Use xbbg.get_sdk_info() "
+        "instead, which returns a dict including 'runtime_version' (the linked C "
+        "SDK version) and the active SDK source."
+    ),
+}
+
+
+def __getattr__(name: str):
+    msg = _REMOVED_LEGACY_ATTRS.get(name)
+    if msg is not None:
+        raise AttributeError(msg)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 # Generated sync wrappers are installed dynamically by _install_generated_endpoints().
 # Define placeholders so static analysis recognizes these exported names.
 if TYPE_CHECKING:
