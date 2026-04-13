@@ -1,14 +1,44 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use super::refdata::LongMode;
-use super::typed_builder::ColumnSet;
+use super::typed_builder::{ArrowType, ColumnSet};
 use xbbg_core::Value;
+
+/// Compute the common Arrow type for the "value" column from field type hints.
+///
+/// If all fields resolve to the same numeric type family, returns that type
+/// (promoting mixed int/float to Float64). If any field is non-numeric or no
+/// hints are provided, falls back to String.
+pub(crate) fn common_value_type(field_types: &HashMap<String, ArrowType>) -> ArrowType {
+    if field_types.is_empty() {
+        return ArrowType::String;
+    }
+
+    let mut has_float = false;
+    let mut has_int = false;
+
+    for arrow_type in field_types.values() {
+        match arrow_type {
+            ArrowType::Float64 => has_float = true,
+            ArrowType::Int64 | ArrowType::Int32 => has_int = true,
+            // Any non-numeric type → fall back to string
+            _ => return ArrowType::String,
+        }
+    }
+
+    if has_float || has_int {
+        ArrowType::Float64
+    } else {
+        ArrowType::String
+    }
+}
 
 pub(crate) fn append_long_value_row<F>(
     columns: &mut ColumnSet,
     long_mode: LongMode,
     field_name: &str,
-    value: &Option<Value<'_>>,
+    value: Option<Value<'_>>,
     dtype: Option<&str>,
     prefix: F,
 ) where
@@ -19,15 +49,14 @@ pub(crate) fn append_long_value_row<F>(
 
     match long_mode {
         LongMode::String => {
-            if let Some(value) = value.as_ref() {
-                let value_str = value_to_string(value);
-                columns.append_str("value", value_str.as_ref());
+            if let Some(value) = value {
+                columns.append("value", value);
             } else {
                 columns.append_null("value");
             }
         }
         LongMode::WithMetadata => {
-            if let Some(value) = value.as_ref() {
+            if let Some(ref value) = value {
                 let value_str = value_to_string(value);
                 columns.append_str("value", value_str.as_ref());
                 columns.append_str("dtype", dtype.unwrap_or("null"));

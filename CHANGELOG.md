@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **`xbbg-mcp` local MCP server**: Added a stdio Bloomberg MCP application under `apps/xbbg-mcp` with tool surfaces for `bdp`, `bdh`, `bds`, `bdib`, `bql`, `bsrch`, `bflds`, and generic request execution. Responses are bounded structured JSON with Arrow schema metadata for coding agents.
 - **GitHub-release MCP distribution path**: Added release packaging for `xbbg-mcp`, a Unix launcher wrapper (`scripts/xbbg-mcp`), and a convenience installer (`scripts/install-xbbg-mcp.sh`) so Claude Code and OpenCode users can install a local MCP binary without cloning or compiling the repo first.
 
+### Fixed
+
+- **Incorrect value types in `bdp`/`bdh` long format (issue #280)**: The default long format (`LongMode::String`) was converting all Bloomberg values to strings, ignoring resolved `field_types`. Now the Rust engine computes a common Arrow type from the field type hints at construction time — when all fields are numeric, the `value` column is `Float64` instead of `Utf8`. Mixed-type queries (e.g., numeric + string fields) gracefully fall back to string. The fix is zero-copy: `Value` is moved into the Arrow builder instead of being stringified and re-parsed.
+- **Incorrect timestamp in `parse_rfc3339_utc` test**: Fixed hardcoded expected value from `1717242600` to `1717252200` (correct UTC epoch for `2024-06-01T14:30:00+00:00`).
+
 
 ## [1.0.0] - 2026-03-31
 
