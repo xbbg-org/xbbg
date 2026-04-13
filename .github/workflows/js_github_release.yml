@@ -1,0 +1,641 @@
+name: JS GitHub Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version (release tag will be js-v<version>)"
+        required: true
+        type: string
+      notes:
+        description: "Optional release notes appended after the standard asset summary"
+        required: false
+        type: string
+      draft:
+        description: "Create the GitHub release as a draft"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: js-github-release-${{ github.event.inputs.version || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Prepare JS release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      release_name: ${{ steps.prepare.outputs.release_name }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate version and tag
+        id: prepare
+        run: |
+          RAW_VERSION="${{ inputs.version }}"
+          VERSION="${RAW_VERSION#js-v}"
+          VERSION="${VERSION#v}"
+          if ! printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([A-Za-z0-9.-]+)?$'; then
+            echo "Unsupported version format: $RAW_VERSION" >&2
+            exit 1
+          fi
+
+          TAG="js-v${VERSION}"
+          git fetch --tags origin
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            EXISTING_SHA=$(git rev-list -n 1 "$TAG")
+            if [ "$EXISTING_SHA" != "$GITHUB_SHA" ]; then
+              echo "Tag $TAG already exists at $EXISTING_SHA" >&2
+              exit 1
+            fi
+          fi
+
+          if printf '%s\n' "$VERSION" | grep -Eq '[A-Za-z-]'; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release_name=xbbg JS packages $VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
+  sdk-version:
+    name: Detect SDK Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - name: Detect latest blpapi version
+        id: detect
+        run: |
+          VERSION=$(curl -s https://blpapi.bloomberg.com/repository/releases/python/simple/blpapi/ \
+            | grep -oP 'blpapi-\K[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?' | sort -V | tail -1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  generate-bindings:
+    name: Generate blpapi bindings artifact
+    needs: sdk-version
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bloomberg SDK
+        id: sdk
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate bindings artifact
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/ci-bindings"
+          BLPAPI_BINDINGS_EXPORT_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs" cargo build -p blpapi-sys
+          test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+
+      - name: Upload bindings artifact
+        uses: actions/upload-artifact@v8
+        with:
+          name: blpapi-bindings
+          path: ci-bindings/bindings.rs
+          retention-days: 7
+
+  build-core-native:
+    name: Build @xbbg/core native package (${{ matrix.label }})
+    needs: [prepare, sdk-version, generate-bindings]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            package_dir: packages/xbbg-core-linux-x64
+          - os: windows-latest
+            label: win32-x64
+            package_dir: packages/xbbg-core-win32-x64
+          - os: macos-15
+            label: darwin-arm64
+            package_dir: packages/xbbg-core-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Download pre-generated bindings
+        uses: actions/download-artifact@v8
+        with:
+          name: blpapi-bindings
+          path: ci-bindings
+
+      - name: Configure pre-generated bindings path (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure pre-generated bindings path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bindingsPath = Join-Path $env:GITHUB_WORKSPACE "ci-bindings\bindings.rs"
+          if (-not (Test-Path $bindingsPath)) {
+            throw "Bindings artifact not found at $bindingsPath"
+          }
+          "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
+
+      - name: Configure pre-generated bindings path (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        id: sdk-windows
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Windows
+
+      - name: Export Bloomberg SDK env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.sdk-rel-root }}'
+          $binPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.bin-rel-dir }}'
+          "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+          "PATH=$binPath;$env:PATH" >> $env:GITHUB_ENV
+
+      - name: Setup Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        id: sdk-macos
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: macOS
+
+      - name: Export Bloomberg SDK env (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
+          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Stage @xbbg/core native package
+        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ needs.prepare.outputs.version }}"
+
+      - name: Upload staged core package artifact
+        uses: actions/upload-artifact@v8
+        with:
+          name: core-package-${{ matrix.label }}
+          path: ${{ matrix.package_dir }}
+          retention-days: 7
+
+  build-bridge-native:
+    name: Build @xbbg/bridge native package (${{ matrix.label }})
+    needs: [prepare, sdk-version, generate-bindings]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            package_dir: packages/xbbg-bridge-linux-x64
+          - os: windows-latest
+            label: win32-x64
+            package_dir: packages/xbbg-bridge-win32-x64
+          - os: macos-15
+            label: darwin-arm64
+            package_dir: packages/xbbg-bridge-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    env:
+      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Download pre-generated bindings
+        uses: actions/download-artifact@v8
+        with:
+          name: blpapi-bindings
+          path: ci-bindings
+
+      - name: Configure pre-generated bindings path (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure pre-generated bindings path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bindingsPath = Join-Path $env:GITHUB_WORKSPACE "ci-bindings\bindings.rs"
+          if (-not (Test-Path $bindingsPath)) {
+            throw "Bindings artifact not found at $bindingsPath"
+          }
+          "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
+
+      - name: Configure pre-generated bindings path (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
+          test -s "$BINDINGS_PATH"
+          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Linux)
+        if: runner.os == 'Linux'
+        id: sdk-linux
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Linux
+
+      - name: Export Bloomberg SDK env (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
+          {
+            echo "BLPAPI_ROOT=$SDK_ROOT"
+            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
+            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup Bloomberg SDK (Windows)
+        if: runner.os == 'Windows'
+        id: sdk-windows
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: Windows
+
+      - name: Export Bloomberg SDK env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdkPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.sdk-rel-root }}'
+          $binPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.bin-rel-dir }}'
+          "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
+          "PATH=$binPath;$env:PATH" >> $env:GITHUB_ENV
+
+      - name: Setup Bloomberg SDK (macOS)
+        if: runner.os == 'macOS'
+        id: sdk-macos
+        uses: ./.github/actions/setup-blpapi-sdk
+        with:
+          version: ${{ env.BLPAPI_VERSION }}
+          os: macOS
+
+      - name: Export Bloomberg SDK env (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
+          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
+          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Stage @xbbg/bridge native package
+        run: npm --prefix packages/xbbg-bridge run build:binary
+
+      - name: Upload staged bridge package artifact
+        uses: actions/upload-artifact@v8
+        with:
+          name: bridge-package-${{ matrix.label }}
+          path: ${{ matrix.package_dir }}
+          retention-days: 7
+
+  pack-assets:
+    name: Pack JS release assets
+    needs: [prepare, build-core-native, build-bridge-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Download linux core package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: core-package-linux-x64
+          path: packages/xbbg-core-linux-x64
+
+      - name: Download windows core package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: core-package-win32-x64
+          path: packages/xbbg-core-win32-x64
+
+      - name: Download macOS core package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: core-package-darwin-arm64
+          path: packages/xbbg-core-darwin-arm64
+
+      - name: Download linux bridge package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: bridge-package-linux-x64
+          path: packages/xbbg-bridge-linux-x64
+
+      - name: Download windows bridge package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: bridge-package-win32-x64
+          path: packages/xbbg-bridge-win32-x64
+
+      - name: Download macOS bridge package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: bridge-package-darwin-arm64
+          path: packages/xbbg-bridge-darwin-arm64
+
+      - name: Stamp JS package versions
+        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+
+      - name: Smoke test packed @xbbg/core install
+        shell: bash
+        run: npm --prefix js-xbbg run smoke:packaged-install -- --packed
+
+      - name: Pack JS release artifacts
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p dist
+          npm pack packages/xbbg-core-darwin-arm64 --pack-destination dist
+          npm pack packages/xbbg-core-linux-x64 --pack-destination dist
+          npm pack packages/xbbg-core-win32-x64 --pack-destination dist
+          npm pack js-xbbg --pack-destination dist
+          npm pack packages/xbbg-bridge-darwin-arm64 --pack-destination dist
+          npm pack packages/xbbg-bridge-linux-x64 --pack-destination dist
+          npm pack packages/xbbg-bridge-win32-x64 --pack-destination dist
+          npm pack packages/xbbg-bridge --pack-destination dist
+          ls -1 dist
+
+      - name: Smoke test packed @xbbg/bridge install
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
+          const { spawnSync } = require('node:child_process');
+
+          const repoRoot = process.cwd();
+          const version = process.env.VERSION;
+          const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+          const platformTarball = path.join(repoRoot, 'dist', `xbbg-bridge-linux-x64-${version}.tgz`);
+          const wrapperTarball = path.join(repoRoot, 'dist', `xbbg-bridge-${version}.tgz`);
+          const appDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xbbg-bridge-packed-install-'));
+
+          function run(command, args, options = {}) {
+            const result = spawnSync(command, args, {
+              cwd: options.cwd,
+              env: options.env,
+              stdio: 'inherit',
+              shell: false,
+              windowsHide: true,
+            });
+            if (result.error) throw result.error;
+            if (result.status !== 0) process.exit(result.status || 1);
+          }
+
+          run(npmCmd, ['init', '-y'], { cwd: appDir, env: process.env });
+          run(npmCmd, ['install', platformTarball, wrapperTarball], {
+            cwd: appDir,
+            env: process.env,
+          });
+          run(process.execPath, ['-e', "const fs = require('node:fs'); const { resolveBinary } = require('@xbbg/bridge/lib/resolve-binary'); const resolved = resolveBinary(process.cwd()); if (!fs.existsSync(resolved.binaryPath)) throw new Error(`Missing bridge binary: ${resolved.binaryPath}`); console.log(resolved.packageName, resolved.binaryPath);"], {
+            cwd: appDir,
+            env: process.env,
+          });
+          NODE
+
+      - name: Upload JS release artifacts
+        uses: actions/upload-artifact@v8
+        with:
+          name: js-release-assets
+          path: dist/*.tgz
+          retention-days: 7
+
+  validate-release-payload:
+    name: Validate JS release payload
+    needs: [pack-assets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download JS release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: js-release-assets
+          path: dist
+
+      - name: Reject Bloomberg SDK files in release artifacts
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import sys
+          import tarfile
+          import zipfile
+
+          dist_dir = Path('dist')
+          archive_paths = sorted(path for path in dist_dir.iterdir() if path.is_file())
+          if not archive_paths:
+              raise SystemExit('No JS release artifacts found under dist/')
+
+          def is_forbidden(path_name: str) -> bool:
+              normalized = path_name.replace('\\', '/').lower()
+              basename = normalized.rsplit('/', 1)[-1]
+              if '/vendor/blpapi-sdk/' in f'/{normalized}':
+                  return True
+              if basename.startswith('libblpapi') or basename.startswith('blpapi3') or basename.startswith('blpapi_cpp_'):
+                  return True
+              return False
+
+          violations: list[str] = []
+          for archive_path in archive_paths:
+              if is_forbidden(archive_path.name):
+                  violations.append(f'{archive_path}: forbidden top-level artifact name')
+                  continue
+
+              archive_name = archive_path.name.lower()
+              if archive_name.endswith(('.tar.gz', '.tar.xz', '.tgz')):
+                  with tarfile.open(archive_path) as archive:
+                      for member in archive.getmembers():
+                          if is_forbidden(member.name):
+                              violations.append(f'{archive_path}: {member.name}')
+              elif archive_name.endswith(('.zip', '.whl')):
+                  with zipfile.ZipFile(archive_path) as archive:
+                      for member in archive.namelist():
+                          if is_forbidden(member):
+                              violations.append(f'{archive_path}: {member}')
+
+          if violations:
+              print('Bloomberg SDK files detected in JS release artifacts:', file=sys.stderr)
+              for violation in violations:
+                  print(f'  - {violation}', file=sys.stderr)
+              raise SystemExit(1)
+          PY
+
+  create-release:
+    name: Create JS GitHub release
+    needs: [prepare, validate-release-payload]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download JS release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: js-release-assets
+          path: dist
+
+      - name: Create or reuse JS release tag
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          git fetch --tags origin
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            EXISTING_SHA=$(git rev-list -n 1 "$TAG")
+            if [ "$EXISTING_SHA" != "$GITHUB_SHA" ]; then
+              echo "Tag $TAG already exists at $EXISTING_SHA" >&2
+              exit 1
+            fi
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" "$GITHUB_SHA" -m "JS release $TAG"
+          git push origin "$TAG"
+
+      - name: Write release notes
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          EXTRA_NOTES: ${{ inputs.notes }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          version = os.environ['VERSION']
+          extra_notes = os.environ.get('EXTRA_NOTES', '').strip()
+          lines = [
+              '## JS release assets',
+              '',
+              f'GitHub-only tarball release for the xbbg JavaScript package families at version {version}.',
+              '',
+              '### Included packages',
+              '- `@xbbg/core`',
+              '- `@xbbg/core-darwin-arm64`',
+              '- `@xbbg/core-linux-x64`',
+              '- `@xbbg/core-win32-x64`',
+              '- `@xbbg/bridge`',
+              '- `@xbbg/bridge-darwin-arm64`',
+              '- `@xbbg/bridge-linux-x64`',
+              '- `@xbbg/bridge-win32-x64`',
+              '',
+              '### Unsupported prebuilt targets',
+              '- `@xbbg/bridge-darwin-x64`',
+              '- `@xbbg/bridge-linux-arm64`',
+              '',
+              'These release assets do not bundle Bloomberg SDK files or the Bloomberg runtime.',
+              "Provide the runtime locally via Bloomberg's `blpapi` package, `BLPAPI_ROOT`, or another supported path.",
+          ]
+          if extra_notes:
+              lines.extend(['', '## Maintainer notes', extra_notes])
+          Path('/tmp/js-release-notes.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Upload JS artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.release_name }}
+          body_path: /tmp/js-release-notes.md
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          make_latest: false
+          generate_release_notes: false
+          files: dist/*.tgz

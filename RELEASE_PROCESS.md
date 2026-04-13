@@ -4,7 +4,7 @@ This document explains the release process for xbbg, intended for AI agents and 
 
 ## Overview
 
-xbbg uses **semantic versioning** (SemVer) with Python package versions **automatically derived from git tags** via `setuptools_scm`. The JS wrapper packages derive their publish version from the same git tags during the npm release workflow. The build system is `setuptools` + `setuptools-rust` + `setuptools_scm` for Python and npm package stamping for JS.
+xbbg uses **semantic versioning** (SemVer) with Python package versions **automatically derived from git tags** via `setuptools_scm`. The JS package families use the same version numbers, stamped during release workflows: `vX.Y.Z` for the npm publish flow and `js-vX.Y.Z` for the GitHub-only JS asset flow. The build system is `setuptools` + `setuptools-rust` + `setuptools_scm` for Python and npm package stamping for JS.
 
 ### Version Format
 
@@ -27,7 +27,7 @@ Dev builds (untagged commits) automatically get versions like `0.12.1.dev268+g84
 | Build backend | `setuptools` | Python packaging |
 | Rust extension | `setuptools-rust` | Compiles PyO3 extension (`xbbg._core`) |
 | Version | `setuptools_scm` | Derives Python package versions from git tags |
-| JS package version | `js-xbbg/scripts/stamp-version.js` | Stamps `@xbbg/core` and platform package versions from git tags at publish time |
+| JS package version | `js-xbbg/scripts/stamp-version.js` | Stamps `@xbbg/core` and `@xbbg/bridge` wrapper/platform package versions for JS release workflows |
 | Build tool | `uv` | Fast package manager and build frontend |
 
 ## Release Workflow
@@ -115,6 +115,43 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | Workflow | File | Purpose |
 |----------|------|---------|
 | Bump Version | `semantic_version.yml` | Calculate version, update CHANGELOG and README release marker, create tag + GitHub release |
+| JS GitHub Release | `js_github_release.yml` | Build, validate, and attach GitHub-only JS tarballs for `@xbbg/core` and `@xbbg/bridge` on `js-vX.Y.Z` |
+
+### JS GitHub-only package release
+
+Use this workflow when you want GitHub release assets for the JS packages without npm publishing.
+
+Go to **GitHub Actions** > **JS GitHub Release** > **Run workflow**
+
+**Parameters:**
+| Parameter | Description |
+|-----------|-------------|
+| `version` | Package version to stamp into the JS tarballs; the workflow creates or reuses the `js-vX.Y.Z` tag |
+| `notes` | Optional maintainer notes appended to the GitHub release body |
+| `draft` | Create the GitHub release as a draft |
+
+**What happens automatically:**
+
+1. Validates the requested version and targets the current workflow commit
+2. Creates or reuses the `js-vX.Y.Z` tag without touching the global `vX.Y.Z` release flow
+3. Builds native assets for the supported JS targets
+4. Stamps both JS package families with the selected version
+5. Packs and validates the GitHub release tarballs
+6. Attaches the tarballs to a GitHub release on `js-vX.Y.Z`
+
+**Attached artifacts (currently supported):**
+
+- `@xbbg/core` wrapper + `darwin-arm64`, `linux-x64`, `win32-x64` platform tarballs
+- `@xbbg/bridge` wrapper + `darwin-arm64`, `linux-x64`, `win32-x64` platform tarballs
+
+**Intentionally excluded today:**
+
+- `@xbbg/bridge-darwin-x64`
+- `@xbbg/bridge-linux-arm64`
+
+Those two bridge package stubs exist in-tree, but Bloomberg SDK archive support is not available for them in the current release tooling.
+
+Docker images are not part of this release. CI images stay in GHCR and do not bundle Bloomberg SDK files.
 
 ## Local Development
 
@@ -204,11 +241,13 @@ When asked to create a release:
    - New features → `minor`
    - Bug fixes only → `patch`
    - Pre-release → add `alpha`/`beta`/`rc`
-4. **Guide user to GitHub Actions** to trigger the `semantic_version.yml` workflow
+4. **Guide user to GitHub Actions** to trigger the `semantic_version.yml` workflow for the canonical `vX.Y.Z` release
+5. **For GitHub-only JS package assets**, guide the user to `js_github_release.yml` with an explicit version; it builds the 8 supported JS tarballs and tags `js-vX.Y.Z`
 
 **Do NOT manually:**
-- Edit version numbers in code (managed by `setuptools_scm` from git tags)
-- Create git tags directly (workflow handles this)
+- Edit version numbers in code for Python releases (managed by `setuptools_scm` from git tags)
+- Create `vX.Y.Z` git tags directly (the canonical release workflow handles this)
+- Reuse `vX.Y.Z` tags for JS-only GitHub assets; use `js-vX.Y.Z` instead so the PyPI/npm publish workflows do not trigger
 - Upload to PyPI manually (OIDC trusted publishing only)
 
 ## CHANGELOG.md Format
