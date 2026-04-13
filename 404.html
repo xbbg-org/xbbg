@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xbbg docs redirect</title>
+    <script>
+      const target = 'https://kj55-dev.github.io' + window.location.pathname + window.location.search + window.location.hash;
+      window.location.replace(target);
+    </script>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f1117;
+        color: #f5f7ff;
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+      }
+      main {
+        max-width: 42rem;
+        padding: 2rem;
+      }
+      a { color: #a5b4fc; }
+      code {
+        background: rgba(255, 255, 255, 0.08);
+        padding: 0.15rem 0.35rem;
+        border-radius: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Redirecting to xbbg docs</h1>
+      <p>
+        This GitHub Pages site is temporarily forwarding missing paths to
+        <a id="target-link" href="https://kj55-dev.github.io/xbbg/">kj55-dev.github.io/xbbg</a>.
+      </p>
+      <p>The requested path is preserved when possible.</p>
+      <script>
+        document.getElementById('target-link').href = 'https://kj55-dev.github.io' + window.location.pathname + window.location.search + window.location.hash;
+      </script>
+    </main>
+  </body>
+</html>

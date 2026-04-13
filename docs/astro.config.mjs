@@ -1,5 +1,5 @@
 // @ts-check
-import { defineConfig } from 'astro/config';
+import { defineConfig, passthroughImageService } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import { createStarlightTypeDocPlugin } from 'starlight-typedoc';
@@ -10,6 +10,9 @@ const [coreTypeDoc, coreTypeDocSidebarGroup] = createStarlightTypeDocPlugin();
 export default defineConfig({
 	site: 'https://alpha-xone.github.io',
 	base: '/xbbg',
+	image: {
+		service: passthroughImageService(),
+	},
 	integrations: [
 		starlight({
 			title: 'xbbg',

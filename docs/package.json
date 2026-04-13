@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "astro": "^6.1.5",
-    "sharp": "^0.34.2",
     "starlight-llms-txt": "^0.8.0"
   },
   "devDependencies": {
