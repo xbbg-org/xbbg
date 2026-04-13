@@ -59,13 +59,12 @@ _REMOVED_LEGACY_ATTRS: dict[str, str] = {
         "for B-PIPE), call xbbg.configure() once before your first request:\n\n"
         "    import xbbg\n"
         "    xbbg.configure(\n"
-        "        server_host='bpipe-host',\n"
-        "        server_port=8194,\n"
+        "        host='bpipe-host',\n"
+        "        port=8194,\n"
         "        auth_method='app',\n"
         "        app_name='my-app',\n"
         "    )\n\n"
-        "Legacy aliases (server_host, server_port, max_attempt, auto_restart) are "
-        "accepted. See https://alpha-xone.github.io/xbbg/guides/migration/#connection-setup"
+        "See https://alpha-xone.github.io/xbbg/guides/migration/#connection-setup"
     ),
     "disconnect": (
         "blp.disconnect() was removed in xbbg 1.0. The engine lifecycle is managed "
@@ -184,7 +183,7 @@ class RequestEnvironment:
     host: str | None = None
     port: int | None = None
     servers: tuple[tuple[str, int], ...] = ()
-    zfp_remote: int | None = None
+    zfp_remote: str | None = None
     auth_method: str | None = None
     app_name: str | None = None
     user_id: str | None = None
@@ -367,45 +366,57 @@ def is_connected() -> bool:
     return _engine.is_connected()
 
 
+_VALID_CONFIG_KEYS: frozenset[str] = frozenset(
+    {
+        "host",
+        "port",
+        "servers",
+        "zfp_remote",
+        "request_pool_size",
+        "subscription_pool_size",
+        "validation_mode",
+        "subscription_flush_threshold",
+        "max_event_queue_size",
+        "command_queue_size",
+        "subscription_stream_capacity",
+        "overflow_policy",
+        "warmup_services",
+        "field_cache_path",
+        "auth_method",
+        "app_name",
+        "dir_property",
+        "user_id",
+        "ip_address",
+        "token",
+        "tls_client_credentials",
+        "tls_client_credentials_password",
+        "tls_trust_material",
+        "tls_handshake_timeout_ms",
+        "tls_crl_fetch_timeout_ms",
+        "num_start_attempts",
+        "auto_restart_on_disconnection",
+        "max_recovery_attempts",
+        "recovery_timeout_ms",
+        "retry_max_retries",
+        "retry_initial_delay_ms",
+        "retry_backoff_factor",
+        "retry_max_delay_ms",
+        "health_check_interval_ms",
+        "sdk_log_level",
+        "socks5_host",
+        "socks5_port",
+    }
+)
+
+
 def _normalize_config_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(kwargs)
-
-    unsupported = {name for name in ("sess", "tls_options") if name in normalized}
-    if unsupported:
-        unsupported_list = ", ".join(sorted(unsupported))
-        raise NotImplementedError(
-            f"xbbg.configure() does not currently support {unsupported_list}. Use engine/session configuration instead."
+    unknown = sorted(set(kwargs) - _VALID_CONFIG_KEYS)
+    if unknown:
+        raise TypeError(
+            f"xbbg.configure() got unexpected keyword argument(s): {', '.join(unknown)}. "
+            f"See EngineConfig() for available fields."
         )
-
-    if "server" in normalized:
-        server = normalized.pop("server")
-        if "server_host" not in normalized and "host" not in normalized:
-            normalized["host"] = server
-    if "server_host" in normalized:
-        normalized["host"] = normalized.pop("server_host")
-    if "server_port" in normalized:
-        normalized["port"] = normalized.pop("server_port")
-
-    if "max_attempt" in normalized:
-        max_attempt = normalized.pop("max_attempt")
-        normalized.setdefault("num_start_attempts", max_attempt)
-    if "auto_restart" in normalized:
-        auto_restart = normalized.pop("auto_restart")
-        normalized.setdefault("auto_restart_on_disconnection", auto_restart)
-    if "max_recovery" in normalized:
-        max_recovery = normalized.pop("max_recovery")
-        normalized.setdefault("max_recovery_attempts", max_recovery)
-    if "retry_max" in normalized:
-        retry_max = normalized.pop("retry_max")
-        normalized.setdefault("retry_max_retries", retry_max)
-    if "retry_delay" in normalized:
-        retry_delay = normalized.pop("retry_delay")
-        normalized.setdefault("retry_initial_delay_ms", retry_delay)
-    if "retry_backoff" in normalized:
-        retry_backoff = normalized.pop("retry_backoff")
-        normalized.setdefault("retry_backoff_factor", retry_backoff)
-
-    return normalized
+    return dict(kwargs)
 
 
 def configure(
@@ -415,15 +426,11 @@ def configure(
     """Configure the xbbg engine before first use.
 
     This function must be called before any Bloomberg request is made.
-    If called after the engine has started, a RuntimeError is raised.
+    If called after the engine has started, the existing engine is shut
+    down and will restart with the new config on next use.
 
     Can be called with an EngineConfig object, keyword arguments, or both
     (kwargs override config fields). All defaults come from Rust.
-
-    Legacy connection-style aliases are also accepted and normalized here:
-    `server` / `server_host` -> `host`, `server_port` -> `port`,
-    `max_attempt` -> `num_start_attempts`, and `auto_restart` ->
-    `auto_restart_on_disconnection`.
 
     See ``EngineConfig()`` for available fields and their defaults::
 
@@ -436,15 +443,13 @@ def configure(
         config: An EngineConfig object with all settings.
         **kwargs: Override individual fields (host, port, request_pool_size,
             subscription_pool_size, field_cache_path, auth_method, app_name,
-            user_id, ip_address, token, etc.). Legacy aliases like
-            `server_host`, `server_port`, `max_attempt`, and `auto_restart`
-            are also supported.
+            user_id, ip_address, token, etc.).
 
     Raises:
+        TypeError: If an unknown keyword argument is passed.
+        ValueError: If `num_start_attempts` is less than 1.
         RuntimeWarning: If called after the engine has already started
             (the existing engine is shut down and will restart with the new config).
-        NotImplementedError: If unsupported session-only options such as
-            `sess` or `tls_options` are provided.
 
     Example::
 
@@ -462,16 +467,16 @@ def configure(
         cfg = EngineConfig(request_pool_size=4)
         xbbg.configure(cfg, subscription_pool_size=2)
 
-        # Option 4: Legacy-style auth/server aliases also work
+        # Option 4: B-PIPE / SAPI authentication
         xbbg.configure(
+            host="bpipe-host",
+            port=8195,
             auth_method="manual",
             app_name="my-app",
             user_id="123456",
             ip_address="10.0.0.1",
-            server_host="bpipe-host",
-            server_port=8195,
-            max_attempt=5,
-            auto_restart=False,
+            num_start_attempts=5,
+            auto_restart_on_disconnection=False,
         )
 
         # Option 5: Custom field cache location
@@ -781,26 +786,16 @@ def _convert_backend(
 ) -> DataFrameResult:
     """Convert narwhals DataFrame to the requested backend.
 
-    Note: Uses Any for input because this function handles both narwhals
-    DataFrames and already-converted native DataFrames, and the narwhals
-    generic type system makes precise typing impractical.
-
-    Args:
-        nw_df: A narwhals DataFrame (or already-converted native DataFrame).
-        backend: Target backend (Backend enum, string, or None)
-
-    Returns:
-        DataFrame/LazyFrame in the requested backend format
+    Uses Any for input because the narwhals generic type system makes
+    precise typing of the wrapper impractical.
     """
-    # Resolve effective backend
     effective = _resolve_backend(backend)
 
-    # Handle already-converted DataFrames (avoid double-conversion)
-    # Check for pandas DataFrame
-    if hasattr(nw_df, "_mgr"):  # pandas DataFrame has _mgr attribute
+    import pandas as pd
+
+    if isinstance(nw_df, pd.DataFrame):
         if effective == Backend.PANDAS:
-            return nw_df  # Already pandas
-        # Convert pandas to narwhals first for other conversions
+            return nw_df
         nw_df = nw.from_native(nw_df)
 
     if effective == Backend.PANDAS:
@@ -811,7 +806,6 @@ def _convert_backend(
         native = nw_df.to_native()
         if isinstance(native, pl.DataFrame):
             return native
-        # Native may be pyarrow — convert via polars
         if isinstance(native, pa.Table):
             return pl.from_arrow(native)
         return pl.from_pandas(nw_df.to_pandas())
@@ -825,13 +819,14 @@ def _convert_backend(
             return pl.from_arrow(native).lazy()
         return pl.from_pandas(nw_df.to_pandas()).lazy()
     if effective == Backend.PYARROW:
-        # Core return type from Rust is pyarrow; check native type before converting
         native = nw_df.to_native()
         if isinstance(native, pa.Table):
             return native
-        if hasattr(native, "to_arrow"):
-            return native.to_arrow()  # polars → arrow
-        return pa.Table.from_pandas(nw_df.to_pandas())  # pandas → arrow
+        import polars as pl
+
+        if isinstance(native, pl.DataFrame):
+            return native.to_arrow()
+        return pa.Table.from_pandas(nw_df.to_pandas())
     if effective == Backend.NARWHALS_LAZY:
         # Return narwhals LazyFrame (backed by polars)
         return nw_df.lazy()

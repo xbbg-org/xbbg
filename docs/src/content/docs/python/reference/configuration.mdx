@@ -29,25 +29,12 @@ xbbg.configure(cfg, subscription_pool_size=2)
 ```python
 from xbbg import blp
 
-blp.configure(server_host='192.168.1.100', server_port=18194)
+blp.configure(host='192.168.1.100', port=18194)
 ```
 
 <Aside type="caution">
 `configure()` must be called before the first Bloomberg request. Calling it after the engine has started raises `RuntimeError: Cannot configure after engine has started`.
 </Aside>
-
-**Legacy aliases** are accepted and normalized:
-
-| Alias | Canonical field |
-|-------|----------------|
-| `server`, `server_host` | `host` |
-| `server_port` | `port` |
-| `max_attempt` | `num_start_attempts` |
-| `auto_restart` | `auto_restart_on_disconnection` |
-| `retry_max` | `retry_max_retries` |
-| `retry_delay` | `retry_initial_delay_ms` |
-| `retry_backoff` | `retry_backoff_factor` |
-| `max_recovery` | `max_recovery_attempts` |
 
 ---
 
@@ -86,10 +73,10 @@ xbbg runs a Rust async engine with pre-warmed worker pools:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `host` | `'localhost'` | Bloomberg server host. Aliases: `server_host`, `server` |
-| `port` | `8194` | Bloomberg server port. Alias: `server_port` |
-| `num_start_attempts` | `3` | Retries before giving up on session start. Alias: `max_attempt` |
-| `auto_restart_on_disconnection` | `True` | Auto-reconnect on session disconnect. Alias: `auto_restart` |
+| `host` | `'localhost'` | Bloomberg server host |
+| `port` | `8194` | Bloomberg server port |
+| `num_start_attempts` | `3` | Retries before giving up on session start |
+| `auto_restart_on_disconnection` | `True` | Auto-reconnect on session disconnect |
 
 ### Worker Pools
 

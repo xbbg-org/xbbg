@@ -217,11 +217,10 @@ def _to_pandas_wide(data: Any) -> pd.DataFrame:
 
 async def afetch_exchange_info(ticker: str, **kwargs) -> ExchangeInfo:
     """Async fetch exchange metadata from Bloomberg."""
-    xbbg_module = importlib.import_module("xbbg")
-    abdp_fn = getattr(xbbg_module, "abdp")  # noqa: B009
+    from xbbg.blp import abdp
 
     try:
-        data = await abdp_fn(tickers=ticker, flds=EXCHANGE_FIELDS, **kwargs)
+        data = await abdp(tickers=ticker, flds=EXCHANGE_FIELDS, **kwargs)
         return _build_exchange_info_from_response(ticker, _to_pandas_wide(data))
     except Exception as e:
         logger.warning("Failed to fetch exchange info from Bloomberg for %s: %s", ticker, e)

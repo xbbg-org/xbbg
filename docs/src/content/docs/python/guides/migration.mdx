@@ -346,8 +346,8 @@ from 0.x are:
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `host` | `"localhost"` | Bloomberg server hostname. Aliases: `server`, `server_host` |
-| `port` | `8194` | Bloomberg server port. Alias: `server_port` |
+| `host` | `"localhost"` | Bloomberg server hostname |
+| `port` | `8194` | Bloomberg server port |
 | `servers` | `None` | List of `(host, port)` tuples for failover; overrides `host`/`port` if set |
 | `auth_method` | `None` | One of `"user"`, `"app"`, `"userapp"`, `"dir"`, `"manual"`, `"token"` (see below) |
 | `app_name` | `None` | Required when `auth_method` is `"app"`, `"userapp"`, or `"manual"` |
@@ -357,12 +357,13 @@ from 0.x are:
 | `dir_property` | `None` | Required when `auth_method="dir"` (Active Directory property name) |
 | `request_pool_size` | `2` | Number of concurrent reference-data workers |
 | `subscription_pool_size` | `1` | Number of concurrent subscription workers |
-| `num_start_attempts` | (engine default) | Session retry count. Alias: `max_attempt` |
-| `auto_restart_on_disconnection` | `True` | Auto-reconnect on disconnect. Alias: `auto_restart` |
+| `num_start_attempts` | (engine default) | Session retry count |
+| `auto_restart_on_disconnection` | `True` | Auto-reconnect on disconnect |
 
-Several legacy aliases are accepted for backward compatibility — `server`, `server_host`,
-`server_port`, `max_attempt`, `auto_restart`, `max_recovery`, `retry_max`, `retry_delay`,
-`retry_backoff` — and are normalized to the canonical names internally.
+`configure()` validates keyword arguments against the canonical `EngineConfig` field names
+above and raises `TypeError` on unknown kwargs. The legacy xbbg 0.x aliases (`server_host`,
+`server_port`, `max_attempt`, `auto_restart`, etc.) are no longer accepted — use the
+canonical names listed above.
 
 ## Authentication, SAPI, and B-PIPE
 
@@ -885,8 +886,8 @@ free; safe to call from request paths.
 
    Delete every `blp.connect(...)` and `blp.disconnect()`. If you were passing a non-default
    `host` / `port` / auth, replace those calls with a single `xbbg.configure(...)` call before
-   your first request. `configure()` accepts the same field names as `connect()` plus the legacy
-   `server_host` / `server_port` / `max_attempt` / `auto_restart` aliases.
+   your first request using the canonical `EngineConfig` field names (`host`, `port`,
+   `num_start_attempts`, `auto_restart_on_disconnection`, etc.).
 
 6. **Migrate B-PIPE / SAPI auth call sites**
 

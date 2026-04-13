@@ -19,10 +19,9 @@ Async functions (primary implementation):
 from __future__ import annotations
 
 import contextlib
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import logging
 import re
-from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
 
@@ -32,9 +31,6 @@ from xbbg.ext._utils import _syncify
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from datetime import date
-
 
 def _parse_date(dt: str | date) -> datetime:
     """Parse date string or date object to datetime using Rust."""
@@ -43,8 +39,7 @@ def _parse_date(dt: str | date) -> datetime:
     if isinstance(dt, str):
         year, month, day = ext_parse_date(dt)
         return datetime(year, month, day)
-    # date object
-    if hasattr(dt, "year"):
+    if isinstance(dt, date):
         return datetime(dt.year, dt.month, dt.day)
     raise ValueError(f"Cannot parse date: {dt}")
 
@@ -100,7 +95,7 @@ def _coerce_datetime(value) -> datetime | None:
     if isinstance(value, datetime):
         return value
 
-    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+    if isinstance(value, date):
         return datetime(value.year, value.month, value.day)
 
     text = str(value).strip()

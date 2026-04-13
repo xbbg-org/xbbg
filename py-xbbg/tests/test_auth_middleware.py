@@ -192,19 +192,19 @@ def test_arequest_middleware_can_short_circuit(monkeypatch):
     assert called is False
 
 
-def test_configure_normalizes_legacy_auth_kwargs():
+def test_configure_applies_auth_kwargs():
     config = DummyConfig()
 
     blp.configure(
         config,
-        max_attempt=5,
-        auto_restart=False,
+        host="bpipe-host",
+        port=8195,
+        num_start_attempts=5,
+        auto_restart_on_disconnection=False,
         auth_method="manual",
         app_name="my-app",
         user_id="123456",
         ip_address="10.0.0.1",
-        server_host="bpipe-host",
-        server_port=8195,
     )
 
     assert blp._config is config
@@ -220,25 +220,14 @@ def test_configure_normalizes_legacy_auth_kwargs():
     assert blp._engine is None
 
 
-def test_configure_consumes_server_alias_when_host_overrides_it():
-    config = DummyConfig()
-
-    blp.configure(config, server="legacy-host", host="preferred-host", server_port=8195)
-
-    assert blp._config is config
-    assert blp._config.host == "preferred-host"
-    assert blp._config.port == 8195
-    assert not hasattr(blp._config, "server")
-
-
-def test_configure_rejects_unsupported_session_inputs():
-    with pytest.raises(NotImplementedError, match="sess"):
-        blp.configure(sess=object())
+def test_configure_rejects_unknown_kwargs():
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        blp.configure(hots="bpipe-host")
 
 
 def test_configure_rejects_invalid_num_start_attempts():
     with pytest.raises(ValueError, match="num_start_attempts"):
-        blp.configure(max_attempt=0)
+        blp.configure(num_start_attempts=0)
 
 
 def test_configure_warns_and_restarts_after_engine_start():
