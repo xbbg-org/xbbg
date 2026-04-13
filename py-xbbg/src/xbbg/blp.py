@@ -822,10 +822,10 @@ def _convert_backend(
         native = nw_df.to_native()
         if isinstance(native, pa.Table):
             return native
-        import polars as pl
-
-        if isinstance(native, pl.DataFrame):
-            return native.to_arrow()
+        if isinstance(native, pd.DataFrame):
+            return pa.Table.from_pandas(native)
+        if hasattr(native, "to_arrow"):
+            return native.to_arrow()  # polars — capability check avoids importing an optional dep
         return pa.Table.from_pandas(nw_df.to_pandas())
     if effective == Backend.NARWHALS_LAZY:
         # Return narwhals LazyFrame (backed by polars)
