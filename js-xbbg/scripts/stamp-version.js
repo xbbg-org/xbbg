@@ -2,7 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { platformPackages: corePlatformPackages } = require('../lib/platform-map');
+const {
+  platformPackages: corePlatformPackages,
+} = require('../lib/platform-map');
 const {
   platformPackages: bridgePlatformPackages,
 } = require('../../packages/xbbg-bridge/lib/platform-map');
@@ -34,10 +36,9 @@ function stampPackageFamily(wrapperPackageJsonPath, platformPackages, version) {
   wrapperPackageJson.version = version;
   if (wrapperPackageJson.optionalDependencies) {
     wrapperPackageJson.optionalDependencies = Object.fromEntries(
-      Object.keys(wrapperPackageJson.optionalDependencies).map((packageName) => [
-        packageName,
-        version,
-      ]),
+      Object.keys(wrapperPackageJson.optionalDependencies).map(
+        (packageName) => [packageName, version],
+      ),
     );
   }
   writePackageJson(wrapperPackageJsonPath, wrapperPackageJson);
