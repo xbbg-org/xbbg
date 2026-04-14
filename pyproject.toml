@@ -31,7 +31,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-  "narwhals>=1.30",
+  "narwhals>=2.0",
   "pyarrow>=22.0.0",
 ]
 

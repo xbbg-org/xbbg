@@ -781,59 +781,45 @@ def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
 
 
 def _convert_backend(
-    nw_df: Any,
+    frame: Any,
     backend: Backend | str | None,
 ) -> DataFrameResult:
-    """Convert narwhals DataFrame to the requested backend.
+    """Convert a DataFrame to the requested backend.
 
-    Uses Any for input because the narwhals generic type system makes
-    precise typing of the wrapper impractical.
+    Accepts either a narwhals DataFrame or a raw native frame
+    (pandas, polars, pyarrow, ...). Input is normalized via
+    ``nw.from_native`` which is idempotent on already-wrapped frames,
+    so callers may pass either form safely.
     """
+    nw_df = nw.from_native(frame)
     effective = _resolve_backend(backend)
 
-    import pandas as pd
-
-    if isinstance(nw_df, pd.DataFrame):
-        if effective == Backend.PANDAS:
-            return nw_df
-        nw_df = nw.from_native(nw_df)
-
+    if effective is None or effective == Backend.NARWHALS:
+        return nw_df
+    if effective == Backend.NARWHALS_LAZY:
+        return nw_df.lazy()
     if effective == Backend.PANDAS:
         return nw_df.to_pandas()
+
+    impl = nw_df.implementation
+
     if effective == Backend.POLARS:
         import polars as pl
 
-        native = nw_df.to_native()
-        if isinstance(native, pl.DataFrame):
-            return native
-        if isinstance(native, pa.Table):
-            return pl.from_arrow(native)
-        return pl.from_pandas(nw_df.to_pandas())
+        if impl == nw.Implementation.POLARS:
+            return nw_df.to_native()
+        return pl.from_arrow(nw_df.to_arrow())
     if effective == Backend.POLARS_LAZY:
         import polars as pl
 
-        native = nw_df.to_native()
-        if isinstance(native, pl.DataFrame):
-            return native.lazy()
-        if isinstance(native, pa.Table):
-            return pl.from_arrow(native).lazy()
-        return pl.from_pandas(nw_df.to_pandas()).lazy()
+        if impl == nw.Implementation.POLARS:
+            return nw_df.to_native().lazy()
+        return pl.from_arrow(nw_df.to_arrow()).lazy()
     if effective == Backend.PYARROW:
-        native = nw_df.to_native()
-        if isinstance(native, pa.Table):
-            return native
-        if isinstance(native, pd.DataFrame):
-            return pa.Table.from_pandas(native)
-        if hasattr(native, "to_arrow"):
-            return native.to_arrow()  # polars — capability check avoids importing an optional dep
-        return pa.Table.from_pandas(nw_df.to_pandas())
-    if effective == Backend.NARWHALS_LAZY:
-        # Return narwhals LazyFrame (backed by polars)
-        return nw_df.lazy()
+        return nw_df.to_arrow()
     if effective == Backend.DUCKDB:
-        # Convert to DuckDB relation via narwhals lazy with duckdb backend
         return nw_df.lazy(backend="duckdb")
-    # Default: return narwhals DataFrame
+
     return nw_df
 
 
@@ -1385,7 +1371,7 @@ async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: d
     nw_df = await arequest(
         service=service,
         operation=operation,
-        backend=None,
+        backend=Backend.NARWHALS,
         **request_kwargs,
     )
 

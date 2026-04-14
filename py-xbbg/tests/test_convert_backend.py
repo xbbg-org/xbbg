@@ -268,3 +268,54 @@ class TestConvertBackendEmptyFrame:
         result = _convert_backend(nw_frame, Backend.NARWHALS)
         assert isinstance(result, nw.DataFrame)
         assert len(result) == 0
+
+
+class TestConvertBackendNativeInput:
+    """Regression tests for issue #287.
+
+    ``_convert_backend`` must accept raw native frames (not only narwhals
+    wrappers). Before the fix, feeding an already-native polars frame
+    caused ``AttributeError: 'DataFrame' object has no attribute 'to_native'``
+    because the polars branch assumed a narwhals wrapper.
+    """
+
+    def test_native_polars_to_polars(self):
+        pl = pytest.importorskip("polars")
+        plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
+        result = _convert_backend(plf, Backend.POLARS)
+        assert isinstance(result, pl.DataFrame)
+        assert result["px_last"][0] == 150.0
+
+    def test_native_polars_to_pandas(self):
+        pl = pytest.importorskip("polars")
+        plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
+        result = _convert_backend(plf, Backend.PANDAS)
+        assert isinstance(result, pd.DataFrame)
+        assert result["px_last"].iloc[0] == 150.0
+
+    def test_native_pandas_to_polars(self):
+        pl = pytest.importorskip("polars")
+        pdf = pd.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
+        result = _convert_backend(pdf, Backend.POLARS)
+        assert isinstance(result, pl.DataFrame)
+        assert result["px_last"][0] == 150.0
+
+    def test_native_polars_to_pyarrow(self):
+        pl = pytest.importorskip("polars")
+        import pyarrow as pa
+
+        plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
+        result = _convert_backend(plf, Backend.PYARROW)
+        assert isinstance(result, pa.Table)
+
+    def test_double_conversion_is_safe(self):
+        """The pre-fix bug: _execute_generated_endpoint called _convert_backend
+        twice when a non-pandas global backend was set, causing the second
+        call to receive an already-native frame. Verify this now no-ops.
+        """
+        pl = pytest.importorskip("polars")
+        nw_frame = nw.from_native(pl.DataFrame({"a": [1, 2]}))
+        first = _convert_backend(nw_frame, Backend.POLARS)
+        second = _convert_backend(first, Backend.POLARS)
+        assert isinstance(second, pl.DataFrame)
+        assert len(second) == 2

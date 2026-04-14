@@ -44,7 +44,7 @@ async def test_abqr_generated_routes_intraday_tick_defaults(monkeypatch):
 
     assert captured["service"] == Service.REFDATA
     assert captured["operation"] == Operation.INTRADAY_TICK
-    assert captured["backend"] is None
+    assert captured["backend"] == blp.Backend.NARWHALS
 
     kwargs = captured["kwargs"]
     assert kwargs["security"] == "IBM US Equity@MSG1"
@@ -86,7 +86,7 @@ async def test_abqr_generated_reshapes_generic_when_extras_requested(monkeypatch
 
     assert captured["service"] == Service.REFDATA
     assert captured["operation"] == Operation.INTRADAY_TICK
-    assert captured["backend"] is None
+    assert captured["backend"] == blp.Backend.NARWHALS
 
     kwargs = captured["kwargs"]
     assert kwargs["event_types"] == ["BID", "ASK"]
@@ -123,7 +123,7 @@ async def test_abqr_generated_uses_explicit_date_range_and_event_types(monkeypat
 
     assert captured["service"] == Service.REFDATA
     assert captured["operation"] == Operation.INTRADAY_TICK
-    assert captured["backend"] is None
+    assert captured["backend"] == blp.Backend.NARWHALS
 
     kwargs = captured["kwargs"]
     assert kwargs["security"] == "XYZ 4.5 01/15/30@MSG1 Corp"
