@@ -784,43 +784,33 @@ def _convert_backend(
     frame: Any,
     backend: Backend | str | None,
 ) -> DataFrameResult:
-    """Convert a DataFrame to the requested backend.
+    """Convert a frame to the requested backend via pa.Table as canonical form.
 
-    Accepts either a narwhals DataFrame or a raw native frame
-    (pandas, polars, pyarrow, ...). Input is normalized via
-    ``nw.from_native`` which is idempotent on already-wrapped frames,
-    so callers may pass either form safely.
+    Fast path: when ``frame`` is already a ``pa.Table`` (the common case from
+    the Rust engine), dispatch directly to the target backend via a single
+    zero-copy primitive. Slow path: unwrap narwhals or other native inputs to
+    ``pa.Table`` first via ``nw.from_native(frame).to_arrow()``.
     """
-    nw_df = nw.from_native(frame)
     effective = _resolve_backend(backend)
+    table = frame if isinstance(frame, pa.Table) else nw.from_native(frame).to_arrow()
 
-    if effective is None or effective == Backend.NARWHALS:
-        return nw_df
-    if effective == Backend.NARWHALS_LAZY:
-        return nw_df.lazy()
+    if effective == Backend.PYARROW:
+        return table
     if effective == Backend.PANDAS:
-        return nw_df.to_pandas()
-
-    impl = nw_df.implementation
-
+        return table.to_pandas()
     if effective == Backend.POLARS:
         import polars as pl
 
-        if impl == nw.Implementation.POLARS:
-            return nw_df.to_native()
-        return pl.from_arrow(nw_df.to_arrow())
+        return pl.from_arrow(table)
     if effective == Backend.POLARS_LAZY:
         import polars as pl
 
-        if impl == nw.Implementation.POLARS:
-            return nw_df.to_native().lazy()
-        return pl.from_arrow(nw_df.to_arrow()).lazy()
-    if effective == Backend.PYARROW:
-        return nw_df.to_arrow()
+        return pl.from_arrow(table).lazy()
+    if effective == Backend.NARWHALS_LAZY:
+        return nw.from_native(table).lazy()
     if effective == Backend.DUCKDB:
-        return nw_df.lazy(backend="duckdb")
-
-    return nw_df
+        return nw.from_native(table).lazy(backend="duckdb")
+    return nw.from_native(table)  # NARWHALS or None default
 
 
 async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
@@ -849,9 +839,8 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
     )
 
     context.table = pa.Table.from_batches([batch])
-    nw_df = nw.from_native(context.table)
-    context.frame = _convert_backend(nw_df, context.backend)
-    return context.frame
+    context.frame = context.table
+    return context.table
 
 
 # =============================================================================
@@ -886,6 +875,7 @@ async def arequest(
     backend: Backend | str | None = None,
     request_tz: str | None = None,
     output_tz: str | None = None,
+    _raw: bool = False,
 ):
     """Async generic Bloomberg request.
 
@@ -1054,10 +1044,17 @@ async def arequest(
     )
 
     try:
-        return await _run_request_middleware(context, _execute_request_terminal)
+        result = await _run_request_middleware(context, _execute_request_terminal)
     except Exception as exc:
         context.error = exc
         raise
+    # Only auto-convert the default terminal output (pa.Table). If a middleware
+    # short-circuited with any other type (e.g. a cache returning a list), the
+    # middleware owns the return contract — leave it alone.
+    if _raw or not isinstance(result, pa.Table):
+        return result
+    context.frame = _convert_backend(result, backend)
+    return context.frame
 
 
 # =============================================================================
@@ -1368,17 +1365,18 @@ async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: d
     service = plan.service if plan.service is not None else spec.service
     operation = plan.operation if plan.operation is not None else spec.operation
 
-    nw_df = await arequest(
+    raw = await arequest(
         service=service,
         operation=operation,
-        backend=Backend.NARWHALS,
+        backend=None,
+        _raw=True,
         **request_kwargs,
     )
 
     if plan.postprocess is not None:
-        return plan.postprocess(nw_df)
+        return plan.postprocess(raw)
 
-    return _convert_backend(nw_df, plan.backend)
+    return _convert_backend(raw, plan.backend)
 
 
 def _build_generated_async(spec: _GeneratedEndpointSpec, async_template: Callable[..., Any]) -> Callable[..., Any]:
@@ -1490,10 +1488,8 @@ class Subscription:
         if self._raw:
             return batch
 
-        # Convert to narwhals DataFrame, then to requested backend
-        table = pa.Table.from_batches([batch])
-        nw_df = nw.from_native(table)
-        return _convert_backend(nw_df, self._backend)
+        # Dispatch pa.Table directly to the requested backend.
+        return _convert_backend(pa.Table.from_batches([batch]), self._backend)
 
     async def add(self, tickers: str | list[str]) -> None:
         """Add tickers to subscription dynamically.
@@ -2496,7 +2492,7 @@ async def abta(
 
     # Combine all batches into a single table
     table = pa.concat_tables([pa.Table.from_batches([b]) for b in batches])
-    return _convert_backend(nw.from_native(table), _default_backend)
+    return _convert_backend(table, _default_backend)
 
 
 def ta_studies() -> list[str]:

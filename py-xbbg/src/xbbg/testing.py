@@ -287,8 +287,7 @@ class mock_engine:
         context.table = table
         context.elapsed_ms = 0.0
 
-        nw_df = _nw_module().from_native(table)
-        context.frame = blp._convert_backend(nw_df, context.backend)
+        context.frame = blp._convert_backend(table, context.backend)
         return context.frame
 
     def __enter__(self):
