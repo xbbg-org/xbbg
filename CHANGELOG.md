@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-04-14
+
 ### Added
 
 - **`xbbg-mcp` local MCP server**: Added a stdio Bloomberg MCP application under `apps/xbbg-mcp` with tool surfaces for `bdp`, `bdh`, `bds`, `bdib`, `bql`, `bsrch`, `bflds`, and generic request execution. Responses are bounded structured JSON with Arrow schema metadata for coding agents.
@@ -1171,7 +1173,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...v1.0.0
 [1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc2...v1.0.0rc3
