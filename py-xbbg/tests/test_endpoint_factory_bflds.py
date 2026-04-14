@@ -24,7 +24,7 @@ async def test_abflds_routes_field_info_for_fields(monkeypatch):
 
     assert captured["service"] == Service.APIFLDS
     assert captured["operation"] == Operation.FIELD_INFO
-    assert captured["backend"] is None
+    assert captured["backend"] == blp.Backend.NARWHALS
     assert captured["kwargs"] == {"fields": ["PX_LAST"]}
     assert result == [{"field": "PX_LAST"}]
 
@@ -47,7 +47,7 @@ async def test_abflds_routes_field_search_for_search_spec(monkeypatch):
 
     assert captured["service"] == Service.APIFLDS
     assert captured["operation"] == Operation.FIELD_SEARCH
-    assert captured["backend"] is None
+    assert captured["backend"] == blp.Backend.NARWHALS
     assert captured["kwargs"] == {"fields": ["vwap"], "extractor": ExtractorHint.FIELD_INFO}
     assert result == [{"field": "VWAP"}]
 
