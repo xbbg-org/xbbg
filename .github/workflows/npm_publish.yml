@@ -66,7 +66,7 @@ jobs:
           test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
 
       - name: Upload bindings artifact
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v7
         with:
           name: blpapi-bindings
           path: ci-bindings/bindings.rs
@@ -193,7 +193,7 @@ jobs:
         run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ inputs.version != '' && inputs.version || github.ref_name }}"
 
       - name: Upload staged native package artifact
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v7
         with:
           name: core-package-${{ matrix.label }}
           path: ${{ matrix.package_dir }}
