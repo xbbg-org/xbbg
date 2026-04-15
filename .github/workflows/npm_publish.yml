@@ -4,6 +4,12 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to publish (e.g. v1.1.0). Defaults to the triggering ref."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -184,7 +190,7 @@ jobs:
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Stage @xbbg/core native package
-        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ github.ref_name }}"
+        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ inputs.version != '' && inputs.version || github.ref_name }}"
 
       - name: Upload staged native package artifact
         uses: actions/upload-artifact@v8
@@ -225,7 +231,7 @@ jobs:
           path: packages/xbbg-core-darwin-arm64
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ github.ref_name }}"
+        run: node js-xbbg/scripts/stamp-version.js "${{ inputs.version != '' && inputs.version || github.ref_name }}"
 
       - name: Smoke test packed @xbbg/core install
         shell: bash
