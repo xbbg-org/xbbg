@@ -190,7 +190,8 @@ impl BqlState {
         // Collect field names and determine row count from first field
         let field_names: Vec<&String> = results_obj.keys().collect();
         let mut id_values: Vec<String> = Vec::new();
-        let mut field_columns: Vec<(&str, Vec<Option<JsonValue>>)> = Vec::new();
+        type FieldCol<'a> = (String, Vec<Option<JsonValue>>, Option<&'a str>);
+        let mut field_columns: Vec<FieldCol<'_>> = Vec::new();
 
         for field_name in &field_names {
             let field_data = &results_obj[*field_name];
@@ -213,9 +214,37 @@ impl BqlState {
                 }
             }
 
-            // Extract valuesColumn values
+            // Extract secondaryColumns (e.g. DATE, CURRENCY) — time-series and
+            // multi-axis BQL queries return per-field auxiliary dimensions here.
+            // Emit each distinct column once, placed before the primary value
+            // column so the natural column order is ticker, DATE, <field>.
+            if let Some(JsonValue::Array(sec_cols)) = field_data.get("secondaryColumns") {
+                for sec_col in sec_cols {
+                    let Some(col_name) = sec_col.get("name").and_then(|n| n.as_str()) else {
+                        continue;
+                    };
+                    let Some(JsonValue::Array(col_vals)) = sec_col.get("values") else {
+                        continue;
+                    };
+                    let col_name_lower = col_name.to_lowercase();
+                    if field_columns.iter().any(|(n, _, _)| n == &col_name_lower) {
+                        continue;
+                    }
+                    let mut sec_values: Vec<Option<JsonValue>> = col_vals
+                        .iter()
+                        .map(|v| if v.is_null() { None } else { Some(v.clone()) })
+                        .collect();
+                    sec_values.resize(id_values.len(), None);
+                    let sec_type = sec_col.get("type").and_then(|t| t.as_str());
+                    field_columns.push((col_name_lower, sec_values, sec_type));
+                }
+            }
+
+            // Extract valuesColumn values and type hint
             let mut values: Vec<Option<JsonValue>> = Vec::new();
+            let mut val_type: Option<&str> = None;
             if let Some(val_col) = field_data.get("valuesColumn") {
+                val_type = val_col.get("type").and_then(|t| t.as_str());
                 if let Some(vals) = val_col.get("values") {
                     if let Some(arr) = vals.as_array() {
                         values = arr
@@ -226,10 +255,7 @@ impl BqlState {
                 }
             }
 
-            // Pad values to match id_values length if needed
-            while values.len() < id_values.len() {
-                values.push(None);
-            }
+            values.resize(id_values.len(), None);
 
             // Warn about per-field partial errors
             let field_exceptions = Self::extract_exception_messages(field_data);
@@ -241,7 +267,7 @@ impl BqlState {
                 );
             }
 
-            field_columns.push((field_name.as_str(), values));
+            field_columns.push((field_name.to_string(), values, val_type));
         }
 
         // Build Arrow arrays
@@ -254,12 +280,15 @@ impl BqlState {
         let mut fields = vec![Field::new("ticker", DataType::Utf8, true)];
         let mut arrays: Vec<ArrayRef> = vec![Arc::new(id_builder.finish())];
 
-        // Value columns - detect type from first non-null value
-        for (name, values) in &field_columns {
-            // Detect if numeric
-            let is_numeric = values
-                .iter()
-                .any(|v| matches!(v, Some(JsonValue::Number(_))));
+        for (name, values, type_hint) in &field_columns {
+            let is_numeric = match type_hint.map(|t| t.to_uppercase()).as_deref() {
+                Some("DOUBLE" | "FLOAT" | "INT32" | "INT64" | "INTEGER") => true,
+                Some("STRING" | "DATE" | "DATETIME") => false,
+                _ => values
+                    .iter()
+                    .filter_map(|v| v.as_ref())
+                    .all(|v| matches!(v, JsonValue::Number(_))),
+            };
 
             if is_numeric {
                 let mut builder = Float64Builder::new();
@@ -279,7 +308,7 @@ impl BqlState {
                         _ => builder.append_null(),
                     }
                 }
-                fields.push(Field::new(*name, DataType::Float64, true));
+                fields.push(Field::new(name.as_str(), DataType::Float64, true));
                 arrays.push(Arc::new(builder.finish()));
             } else {
                 let mut builder = StringBuilder::new();
@@ -290,7 +319,7 @@ impl BqlState {
                         Some(other) => builder.append_value(other.to_string()),
                     }
                 }
-                fields.push(Field::new(*name, DataType::Utf8, true));
+                fields.push(Field::new(name.as_str(), DataType::Utf8, true));
                 arrays.push(Arc::new(builder.finish()));
             }
         }
@@ -333,8 +362,13 @@ impl BqlState {
         })
     }
 
-    /// Extract results from a BQL results element.
+    /// Extract results from a BQL results element (legacy Element-API fallback).
+    /// Note: secondaryColumns (DATE, CURRENCY) are only available in the JSON
+    /// path — this path does not support them.
     fn extract_results(&mut self, results: &xbbg_core::Element) {
+        xbbg_log::warn!(
+            "BQL response routed to Element-API path — secondaryColumns will be missing"
+        );
         let n = results.len();
         for i in 0..n {
             if let Some(row) = results.get_element(i) {
@@ -409,5 +443,151 @@ impl BqlState {
                 self.columns.end_row();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{Float64Array, StringArray};
+
+    fn make_state() -> BqlState {
+        let (tx, _rx) = oneshot::channel();
+        BqlState::new(tx)
+    }
+
+    #[test]
+    fn parse_bql_json_extracts_secondary_columns() {
+        let json = r#"{
+            "clientContext": { "clientRequestId": "abc" },
+            "responseExceptions": null,
+            "results": {
+                "px_last": {
+                    "idColumn": {
+                        "name": "ID",
+                        "type": "STRING",
+                        "values": ["AAPL US Equity", "AAPL US Equity", "AAPL US Equity"]
+                    },
+                    "valuesColumn": {
+                        "name": "VALUE",
+                        "type": "DOUBLE",
+                        "values": [150.1, 151.2, 152.3]
+                    },
+                    "secondaryColumns": [
+                        {
+                            "name": "DATE",
+                            "type": "DATE",
+                            "values": ["2026-04-10", "2026-04-11", "2026-04-14"]
+                        },
+                        {
+                            "name": "CURRENCY",
+                            "type": "STRING",
+                            "values": ["USD", "USD", "USD"]
+                        }
+                    ],
+                    "responseExceptions": [],
+                    "partialErrorMap": { "errorIterator": null }
+                }
+            }
+        }"#;
+
+        let batch = make_state().parse_bql_json(json).expect("parse ok");
+        let schema = batch.schema();
+        let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(names, vec!["ticker", "date", "currency", "px_last"]);
+        assert_eq!(batch.num_rows(), 3);
+
+        let dates = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("date column is utf8");
+        assert_eq!(dates.value(0), "2026-04-10");
+        assert_eq!(dates.value(2), "2026-04-14");
+
+        let px = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .expect("px_last column is f64");
+        assert_eq!(px.value(0), 150.1);
+    }
+
+    #[test]
+    fn parse_bql_json_dedupes_secondary_columns_across_fields() {
+        let json = r#"{
+            "results": {
+                "px_last": {
+                    "idColumn": { "values": ["T"] },
+                    "valuesColumn": { "values": [1.0] },
+                    "secondaryColumns": [
+                        { "name": "DATE", "values": ["2026-04-10"] }
+                    ]
+                },
+                "px_open": {
+                    "idColumn": { "values": ["T"] },
+                    "valuesColumn": { "values": [0.9] },
+                    "secondaryColumns": [
+                        { "name": "DATE", "values": ["2026-04-10"] }
+                    ]
+                }
+            }
+        }"#;
+
+        let batch = make_state().parse_bql_json(json).expect("parse ok");
+        let schema = batch.schema();
+        let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        // DATE should appear exactly once, primary fields follow in insertion order
+        let date_count = names.iter().filter(|n| **n == "date").count();
+        assert_eq!(date_count, 1);
+        assert!(names.contains(&"px_last"));
+        assert!(names.contains(&"px_open"));
+    }
+
+    #[test]
+    fn parse_bql_json_mismatched_field_lengths_truncates() {
+        let json = r#"{
+            "results": {
+                "field_a": {
+                    "idColumn": { "values": ["X", "Y"] },
+                    "valuesColumn": { "type": "DOUBLE", "values": [1.0, 2.0] }
+                },
+                "field_b": {
+                    "idColumn": { "values": ["X", "Y", "Z", "W"] },
+                    "valuesColumn": { "type": "DOUBLE", "values": [10.0, 20.0, 30.0, 40.0] }
+                }
+            }
+        }"#;
+
+        let batch = make_state().parse_bql_json(json).expect("parse ok");
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(batch.num_columns(), 3);
+        let col_b = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .expect("field_b is f64");
+        assert_eq!(col_b.value(0), 10.0);
+        assert_eq!(col_b.value(1), 20.0);
+    }
+
+    #[test]
+    fn parse_bql_json_uses_type_hint_over_value_sniffing() {
+        let json = r#"{
+            "results": {
+                "sector": {
+                    "idColumn": { "values": ["AAPL"] },
+                    "valuesColumn": { "type": "STRING", "values": ["Technology"] }
+                }
+            }
+        }"#;
+
+        let batch = make_state().parse_bql_json(json).expect("parse ok");
+        let col = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("sector is utf8 via type hint");
+        assert_eq!(col.value(0), "Technology");
     }
 }
