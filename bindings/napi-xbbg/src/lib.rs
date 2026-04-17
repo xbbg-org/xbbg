@@ -102,6 +102,11 @@ pub struct EngineConfigInput {
     pub retry_policy: Option<RetryPolicyInput>,
     pub request_timeout_ms: Option<i64>,
     pub streams_deactivated_warn_ms: Option<i64>,
+    pub keep_alive_enabled: Option<bool>,
+    pub keep_alive_inactivity_ms: Option<i32>,
+    pub keep_alive_response_timeout_ms: Option<i32>,
+    pub slow_consumer_hi_water_mark: Option<f64>,
+    pub slow_consumer_lo_water_mark: Option<f64>,
     pub sdk_log_level: Option<String>,
     pub socks5: Option<Socks5ConfigInput>,
 }
@@ -338,6 +343,45 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
                 streams_deactivated_warn_ms,
                 "streamsDeactivatedWarnMs",
             )?;
+        }
+        if let Some(keep_alive_enabled) = input.keep_alive_enabled {
+            config.keep_alive_enabled = keep_alive_enabled;
+        }
+        if let Some(v) = input.keep_alive_inactivity_ms {
+            if v < 0 {
+                return Err(Error::new(
+                    Status::InvalidArg,
+                    "keepAliveInactivityMs must be non-negative".to_string(),
+                ));
+            }
+            config.keep_alive_inactivity_ms = Some(v);
+        }
+        if let Some(v) = input.keep_alive_response_timeout_ms {
+            if v < 0 {
+                return Err(Error::new(
+                    Status::InvalidArg,
+                    "keepAliveResponseTimeoutMs must be non-negative".to_string(),
+                ));
+            }
+            config.keep_alive_response_timeout_ms = Some(v);
+        }
+        if let Some(v) = input.slow_consumer_hi_water_mark {
+            if !(0.0..=1.0).contains(&v) {
+                return Err(Error::new(
+                    Status::InvalidArg,
+                    "slowConsumerHiWaterMark must be in 0.0..=1.0".to_string(),
+                ));
+            }
+            config.slow_consumer_hi_water_mark = Some(v as f32);
+        }
+        if let Some(v) = input.slow_consumer_lo_water_mark {
+            if !(0.0..1.0).contains(&v) {
+                return Err(Error::new(
+                    Status::InvalidArg,
+                    "slowConsumerLoWaterMark must be in 0.0..1.0".to_string(),
+                ));
+            }
+            config.slow_consumer_lo_water_mark = Some(v as f32);
         }
         if let Some(sdk_log_level) = input.sdk_log_level {
             config.sdk_log_level = sdk_log_level
@@ -1283,6 +1327,11 @@ mod tests {
             retry_policy: None,
             request_timeout_ms: None,
             streams_deactivated_warn_ms: None,
+            keep_alive_enabled: None,
+            keep_alive_inactivity_ms: None,
+            keep_alive_response_timeout_ms: None,
+            slow_consumer_hi_water_mark: None,
+            slow_consumer_lo_water_mark: None,
             sdk_log_level: None,
             socks5: None,
         })
@@ -1344,6 +1393,11 @@ mod tests {
             }),
             request_timeout_ms: Some(12_000),
             streams_deactivated_warn_ms: Some(45_000),
+            keep_alive_enabled: Some(false),
+            keep_alive_inactivity_ms: Some(25_000),
+            keep_alive_response_timeout_ms: Some(11_000),
+            slow_consumer_hi_water_mark: Some(0.8),
+            slow_consumer_lo_water_mark: Some(0.4),
             sdk_log_level: Some("warn".to_string()),
             socks5: Some(Socks5ConfigInput {
                 host: "proxy.example.com".to_string(),
@@ -1429,6 +1483,11 @@ mod tests {
             retry_policy: None,
             request_timeout_ms: None,
             streams_deactivated_warn_ms: None,
+            keep_alive_enabled: None,
+            keep_alive_inactivity_ms: None,
+            keep_alive_response_timeout_ms: None,
+            slow_consumer_hi_water_mark: None,
+            slow_consumer_lo_water_mark: None,
             sdk_log_level: None,
             socks5: None,
         }) {

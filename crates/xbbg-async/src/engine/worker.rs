@@ -343,9 +343,7 @@ impl RequestWorker {
                 );
                 self.warned_requests.insert(key);
             }
-            if hard_timeout_ms > 0
-                && elapsed >= std::time::Duration::from_millis(hard_timeout_ms)
-            {
+            if hard_timeout_ms > 0 && elapsed >= std::time::Duration::from_millis(hard_timeout_ms) {
                 to_timeout.push(key);
             }
         }
@@ -957,8 +955,7 @@ impl RequestWorker {
                         self.cancellations.remove(&key);
                         let state = self.requests.remove(key);
                         state.fail(BlpError::Internal {
-                            detail: reason
-                                .unwrap_or_else(|| "RequestFailure".to_string()),
+                            detail: reason.unwrap_or_else(|| "RequestFailure".to_string()),
                         });
                     }
                 }
@@ -1004,15 +1001,30 @@ impl RequestWorker {
                 // the pool evicts it.
                 let reason = extract_reason_description(msg);
                 self.drain_in_flight_requests(
-                    reason
-                        .as_deref()
-                        .unwrap_or("Bloomberg session terminated"),
+                    reason.as_deref().unwrap_or("Bloomberg session terminated"),
                 );
                 self.health.store(2, Ordering::Release);
                 xbbg_log::error!(
                     worker_id = self.id,
                     reason = %reason.as_deref().unwrap_or(""),
                     "SessionTerminated — worker is dead"
+                );
+            }
+            "AuthorizationRevoked" => {
+                // Session identity was revoked mid-session. Authorized requests
+                // will now fail. Drain + mark Dead so the pool spawns a fresh
+                // worker which re-auths during startup.
+                let reason = extract_reason_description(msg);
+                self.drain_in_flight_requests(
+                    reason
+                        .as_deref()
+                        .unwrap_or("Bloomberg session identity revoked"),
+                );
+                self.health.store(2, Ordering::Release);
+                xbbg_log::error!(
+                    worker_id = self.id,
+                    reason = %reason.as_deref().unwrap_or(""),
+                    "AuthorizationRevoked — identity gone; worker is dead"
                 );
             }
             "SessionConnectionDown" => {

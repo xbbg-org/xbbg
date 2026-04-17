@@ -87,6 +87,20 @@ fn configure_session_options(
     options.set_max_event_queue_size(config.max_event_queue_size);
     let _ = options.set_bandwidth_save_mode_disabled(true);
 
+    options.set_keep_alive_enabled(config.keep_alive_enabled)?;
+    if let Some(ms) = config.keep_alive_inactivity_ms {
+        options.set_keep_alive_inactivity_time_ms(ms)?;
+    }
+    if let Some(ms) = config.keep_alive_response_timeout_ms {
+        options.set_keep_alive_response_timeout_ms(ms)?;
+    }
+    if let Some(hi) = config.slow_consumer_hi_water_mark {
+        options.set_slow_consumer_warning_hi_watermark(hi)?;
+    }
+    if let Some(lo) = config.slow_consumer_lo_water_mark {
+        options.set_slow_consumer_warning_lo_watermark(lo)?;
+    }
+
     if record_subscription_receive_times {
         options.set_record_subscription_receive_times(true);
     }
@@ -453,7 +467,7 @@ impl SubscriptionStatusState {
         let now = timestamp_now_us();
         let topics = status.topics.clone();
         let keys = status.keys.clone();
-        for (topic, key) in topics.into_iter().zip(keys.into_iter()) {
+        for (topic, key) in topics.into_iter().zip(keys) {
             status.topic_to_key.insert(topic.clone(), key);
             status.key_to_topic.insert(key, topic.clone());
             status.topic_states.insert(
@@ -477,7 +491,7 @@ impl SubscriptionStatusState {
         metrics: Vec<Arc<SubscriptionMetrics>>,
     ) {
         let now = timestamp_now_us();
-        for ((topic, key), metric) in topics.iter().zip(keys.iter()).zip(metrics.into_iter()) {
+        for ((topic, key), metric) in topics.iter().zip(keys.iter()).zip(metrics) {
             self.topic_to_key.insert(topic.clone(), *key);
             self.key_to_topic.insert(*key, topic.clone());
             self.topics.push(topic.clone());
@@ -1237,6 +1251,25 @@ pub struct EngineConfig {
     /// Bloomberg SDK internal log level. Bridges SDK logs into xbbg tracing.
     /// Must be set before first session starts. Default: Off.
     pub sdk_log_level: crate::sdk_logging::SdkLogLevel,
+    /// Enable BLPAPI keep-alive pings. SDK default: true.
+    pub keep_alive_enabled: bool,
+    /// Milliseconds of inactivity before the keep-alive ping is sent. When
+    /// `None`, the SDK default (20_000 = 20s) is left in place. Raise this
+    /// for laggy VPN/WAN connections where the aggressive 30s total window
+    /// (20s inactivity + 10s response) causes spurious `SessionConnectionDown`.
+    pub keep_alive_inactivity_ms: Option<i32>,
+    /// Milliseconds to wait for a keep-alive response before declaring the
+    /// connection dead. When `None`, the SDK default (10_000 = 10s) is used.
+    pub keep_alive_response_timeout_ms: Option<i32>,
+    /// Hi water mark for the "slow consumer warning" event, as a fraction of
+    /// `max_event_queue_size` (0.0..=1.0). SDK default 0.75. When `None`,
+    /// the SDK default is kept.
+    pub slow_consumer_hi_water_mark: Option<f32>,
+    /// Lo water mark for the "slow consumer warning cleared" event, as a
+    /// fraction of `max_event_queue_size` (0.0..1.0). SDK default 0.5. When
+    /// `None`, the SDK default is kept. Must be strictly less than
+    /// `slow_consumer_hi_water_mark`.
+    pub slow_consumer_lo_water_mark: Option<f32>,
     /// SOCKS5 proxy hostname. When set, all server connections route through this proxy.
     pub socks5_host: Option<String>,
     /// SOCKS5 proxy port (required when socks5_host is set).
@@ -1273,6 +1306,11 @@ impl Default for EngineConfig {
             retry_policy: RetryPolicy::default(),
             request_timeout_ms: 60_000,
             streams_deactivated_warn_ms: 30_000,
+            keep_alive_enabled: true,
+            keep_alive_inactivity_ms: None,
+            keep_alive_response_timeout_ms: None,
+            slow_consumer_hi_water_mark: None,
+            slow_consumer_lo_water_mark: None,
             sdk_log_level: crate::sdk_logging::SdkLogLevel::Off,
             socks5_host: None,
             socks5_port: None,

@@ -469,6 +469,22 @@ pub struct PyEngineConfig {
     /// 0 disables. Default: 30_000.
     #[pyo3(get, set)]
     pub streams_deactivated_warn_ms: u64,
+    /// Enable BLPAPI keep-alive pings. SDK default: True.
+    #[pyo3(get, set)]
+    pub keep_alive_enabled: bool,
+    /// Milliseconds of inactivity before keep-alive ping is sent. None = SDK default (20_000).
+    #[pyo3(get, set)]
+    pub keep_alive_inactivity_ms: Option<i32>,
+    /// Milliseconds to wait for keep-alive response before declaring the connection dead.
+    /// None = SDK default (10_000).
+    #[pyo3(get, set)]
+    pub keep_alive_response_timeout_ms: Option<i32>,
+    /// Slow-consumer hi water mark as fraction of max_event_queue_size. None = SDK default (0.75).
+    #[pyo3(get, set)]
+    pub slow_consumer_hi_water_mark: Option<f32>,
+    /// Slow-consumer lo water mark as fraction of max_event_queue_size. None = SDK default (0.5).
+    #[pyo3(get, set)]
+    pub slow_consumer_lo_water_mark: Option<f32>,
     #[pyo3(get, set)]
     pub sdk_log_level: String,
     /// SOCKS5 proxy hostname for Bloomberg connections.
@@ -523,6 +539,11 @@ impl PyEngineConfig {
             retry_max_delay_ms: 30_000,
             request_timeout_ms: defaults.request_timeout_ms,
             streams_deactivated_warn_ms: defaults.streams_deactivated_warn_ms,
+            keep_alive_enabled: defaults.keep_alive_enabled,
+            keep_alive_inactivity_ms: defaults.keep_alive_inactivity_ms,
+            keep_alive_response_timeout_ms: defaults.keep_alive_response_timeout_ms,
+            slow_consumer_hi_water_mark: defaults.slow_consumer_hi_water_mark,
+            slow_consumer_lo_water_mark: defaults.slow_consumer_lo_water_mark,
             sdk_log_level: "off".to_string(),
             socks5_host: None,
             socks5_port: None,
@@ -627,6 +648,21 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("streams_deactivated_warn_ms")? {
                 config.streams_deactivated_warn_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("keep_alive_enabled")? {
+                config.keep_alive_enabled = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("keep_alive_inactivity_ms")? {
+                config.keep_alive_inactivity_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("keep_alive_response_timeout_ms")? {
+                config.keep_alive_response_timeout_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("slow_consumer_hi_water_mark")? {
+                config.slow_consumer_hi_water_mark = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("slow_consumer_lo_water_mark")? {
+                config.slow_consumer_lo_water_mark = v.extract()?;
             }
             if let Some(v) = kw.get_item("sdk_log_level")? {
                 config.sdk_log_level = v.extract()?;
@@ -773,6 +809,11 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             },
             request_timeout_ms: py_config.request_timeout_ms,
             streams_deactivated_warn_ms: py_config.streams_deactivated_warn_ms,
+            keep_alive_enabled: py_config.keep_alive_enabled,
+            keep_alive_inactivity_ms: py_config.keep_alive_inactivity_ms,
+            keep_alive_response_timeout_ms: py_config.keep_alive_response_timeout_ms,
+            slow_consumer_hi_water_mark: py_config.slow_consumer_hi_water_mark,
+            slow_consumer_lo_water_mark: py_config.slow_consumer_lo_water_mark,
             sdk_log_level: py_config
                 .sdk_log_level
                 .parse()

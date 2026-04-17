@@ -43,14 +43,13 @@ def find_blpapi_lib_dir() -> Path:
         if path.is_file() and path.parts[-3] != ".cache"
     )
     if not candidates:
-        raise FileNotFoundError(
-            "Could not find libblpapi3.dylib under vendor/blpapi-sdk/<version>/Darwin"
-        )
+        raise FileNotFoundError("Could not find libblpapi3.dylib under vendor/blpapi-sdk/<version>/Darwin")
     return candidates[-1]
 
 
 class McpSession:
     """Minimal newline-delimited JSON-RPC client for the rmcp stdio server."""
+
     def __init__(self, binary: Path, lib_dir: Path) -> None:
         env = dict(os.environ)
         dyld = env.get("DYLD_LIBRARY_PATH", "")

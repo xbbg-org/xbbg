@@ -9,10 +9,10 @@
 //!
 //! How to produce a transient disconnection (pick one):
 //!   1. macOS host → block port 8194 for ~20s:
-//!        sudo pfctl -E
-//!        echo "block drop proto tcp from any to any port 8194" | sudo pfctl -f -
-//!        # wait ~20s
-//!        sudo pfctl -F rules
+//!      sudo pfctl -E
+//!      echo "block drop proto tcp from any to any port 8194" | sudo pfctl -f -
+//!      # wait ~20s
+//!      sudo pfctl -F rules
 //!   2. Linux: sudo iptables -A OUTPUT -p tcp --dport 8194 -j DROP   (revert with -D)
 //!   3. Yank the VM network cable / suspend the bridge for ~10-20s.
 //!   4. Toggle Wi-Fi off/on.
@@ -117,8 +117,7 @@ fn main() -> xbbg_core::Result<()> {
                     if mt.as_str() == "SessionStarted" {
                         break 'wait_started;
                     }
-                    if mt.as_str() == "SessionStartupFailure"
-                        || mt.as_str() == "SessionTerminated"
+                    if mt.as_str() == "SessionStartupFailure" || mt.as_str() == "SessionTerminated"
                     {
                         eprintln!("[{}] session could not start, bailing out", ts(start));
                         return Ok(());
@@ -313,7 +312,10 @@ fn finalize(
 ) -> xbbg_core::Result<()> {
     eprintln!();
     eprintln!("=== Summary ===");
-    eprintln!("Elapsed              : {:.1}s", start.elapsed().as_secs_f64());
+    eprintln!(
+        "Elapsed              : {:.1}s",
+        start.elapsed().as_secs_f64()
+    );
     eprintln!("Total SubscriptionData: {}", data_count);
     eprintln!("Saw SessionConnectionDown  : {}", seen_down);
     eprintln!("Saw SessionConnectionUp after Down: {}", seen_up_after_down);
