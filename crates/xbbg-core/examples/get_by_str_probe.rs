@@ -80,13 +80,13 @@ fn main() -> xbbg_core::Result<()> {
         for msg in ev.iter() {
             if et == EventType::SubscriptionData {
                 msg_count += 1;
-                let topic = msg.topic_name().unwrap_or("?");
+                let cid = msg.correlation_id(0);
                 let elem = msg.elements();
                 let n = elem.num_children();
 
                 println!(
-                    "--- msg #{} | topic={} | children={} ---",
-                    msg_count, topic, n
+                    "--- msg #{} | cid={:?} | children={} ---",
+                    msg_count, cid, n
                 );
 
                 // METHOD 1: get_by_str (what subscription code uses)

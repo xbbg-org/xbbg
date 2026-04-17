@@ -91,13 +91,13 @@ fn main() -> xbbg_core::Result<()> {
             match et {
                 EventType::SubscriptionData => {
                     msg_count += 1;
-                    let topic = msg.topic_name().unwrap_or("?");
+                    let cid = msg.correlation_id(0);
                     let elem = msg.elements();
 
                     println!(
-                        "--- msg #{} | topic={} | elapsed={:.1}s ---",
+                        "--- msg #{} | cid={:?} | elapsed={:.1}s ---",
                         msg_count,
-                        topic,
+                        cid,
                         start.elapsed().as_secs_f64()
                     );
 
