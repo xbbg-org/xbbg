@@ -53,7 +53,7 @@ pub use xbbg_sys::{
 // --- Message functions ---
 pub use xbbg_sys::{
     blpapi_Message_correlationId, blpapi_Message_elements, blpapi_Message_messageType,
-    blpapi_Message_numCorrelationIds, blpapi_Message_topicName,
+    blpapi_Message_numCorrelationIds,
 };
 
 // --- Event functions ---
