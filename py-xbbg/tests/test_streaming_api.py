@@ -147,6 +147,7 @@ class TestConfigValidation:
                 )
             )
 
+
 class TestTickModeWarning:
     """Verify warning when tick_mode=True conflicts with flush_threshold."""
 
@@ -225,6 +226,7 @@ class TestTickModeWarning:
 
         assert sub._tick_mode is True
         assert captured["flush_threshold"] == 1
+
 
 class TestSubscriptionStats:
     """Verify Subscription class has a stats property."""

@@ -554,6 +554,58 @@ class PyEngineConfig:
         0 disables. Default: 30_000.
         """
     @property
+    def keep_alive_enabled(self) -> builtins.bool:
+        r"""
+        Enable BLPAPI keep-alive pings. SDK default: True.
+        """
+    @keep_alive_enabled.setter
+    def keep_alive_enabled(self, value: builtins.bool) -> None:
+        r"""
+        Enable BLPAPI keep-alive pings. SDK default: True.
+        """
+    @property
+    def keep_alive_inactivity_ms(self) -> typing.Optional[builtins.int]:
+        r"""
+        Milliseconds of inactivity before keep-alive ping is sent. None = SDK default (20_000).
+        """
+    @keep_alive_inactivity_ms.setter
+    def keep_alive_inactivity_ms(self, value: typing.Optional[builtins.int]) -> None:
+        r"""
+        Milliseconds of inactivity before keep-alive ping is sent. None = SDK default (20_000).
+        """
+    @property
+    def keep_alive_response_timeout_ms(self) -> typing.Optional[builtins.int]:
+        r"""
+        Milliseconds to wait for keep-alive response before declaring the connection dead.
+        None = SDK default (10_000).
+        """
+    @keep_alive_response_timeout_ms.setter
+    def keep_alive_response_timeout_ms(self, value: typing.Optional[builtins.int]) -> None:
+        r"""
+        Milliseconds to wait for keep-alive response before declaring the connection dead.
+        None = SDK default (10_000).
+        """
+    @property
+    def slow_consumer_hi_water_mark(self) -> typing.Optional[builtins.float]:
+        r"""
+        Slow-consumer hi water mark as fraction of max_event_queue_size. None = SDK default (0.75).
+        """
+    @slow_consumer_hi_water_mark.setter
+    def slow_consumer_hi_water_mark(self, value: typing.Optional[builtins.float]) -> None:
+        r"""
+        Slow-consumer hi water mark as fraction of max_event_queue_size. None = SDK default (0.75).
+        """
+    @property
+    def slow_consumer_lo_water_mark(self) -> typing.Optional[builtins.float]:
+        r"""
+        Slow-consumer lo water mark as fraction of max_event_queue_size. None = SDK default (0.5).
+        """
+    @slow_consumer_lo_water_mark.setter
+    def slow_consumer_lo_water_mark(self, value: typing.Optional[builtins.float]) -> None:
+        r"""
+        Slow-consumer lo water mark as fraction of max_event_queue_size. None = SDK default (0.5).
+        """
+    @property
     def sdk_log_level(self) -> builtins.str: ...
     @sdk_log_level.setter
     def sdk_log_level(self, value: builtins.str) -> None: ...

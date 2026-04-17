@@ -67,6 +67,16 @@ export interface EngineConfig {
    * 0 disables. Default 30000.
    */
   streamsDeactivatedWarnMs?: number;
+  /** Enable BLPAPI keep-alive pings. SDK default: true. */
+  keepAliveEnabled?: boolean;
+  /** Milliseconds of inactivity before keep-alive ping is sent. SDK default: 20000. */
+  keepAliveInactivityMs?: number;
+  /** Milliseconds to wait for a keep-alive response. SDK default: 10000. */
+  keepAliveResponseTimeoutMs?: number;
+  /** Slow-consumer hi water mark as fraction of maxEventQueueSize. SDK default: 0.75. */
+  slowConsumerHiWaterMark?: number;
+  /** Slow-consumer lo water mark as fraction of maxEventQueueSize. SDK default: 0.5. */
+  slowConsumerLoWaterMark?: number;
   sdkLogLevel?: string;
   socks5?: Socks5Config;
 }
