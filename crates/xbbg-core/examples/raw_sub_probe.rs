@@ -26,7 +26,7 @@ const FIELDS: &[&str] = &[
     "RT_PX_CHG_PCT_1D",
 ];
 
-const TOPICS: &[&str] = &["ESH6 Index", "UXH6 Index", "NQH6 Index"];
+const TOPICS: &[&str] = &["ES1 Index", "UX1 Index", "NQ1 Index"];
 
 #[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
