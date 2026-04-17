@@ -116,6 +116,7 @@ export interface BdpOptions {
   overrides?: Record<string, string | number | boolean>;
   kwargs?: Record<string, string | number | boolean>;
   format?: string;
+  backend?: string;
   includeSecurityErrors?: boolean;
 }
 
@@ -125,6 +126,7 @@ export interface BdhOptions {
   overrides?: Record<string, string | number | boolean>;
   kwargs?: Record<string, string | number | boolean>;
   format?: string;
+  backend?: string;
 }
 
 export interface BdibOptions {
@@ -133,6 +135,7 @@ export interface BdibOptions {
   eventType?: string;
   interval?: number;
   kwargs?: Record<string, string | number | boolean>;
+  backend?: string;
 }
 
 export interface BdtickOptions {
@@ -140,6 +143,7 @@ export interface BdtickOptions {
   end?: string;
   eventTypes?: string[];
   kwargs?: Record<string, string | number | boolean>;
+  backend?: string;
 }
 
 export interface CdxOptions extends BdpOptions {

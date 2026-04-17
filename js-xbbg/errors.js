@@ -77,21 +77,34 @@ function wrapError(napiError) {
   const msg = napiError.message || '';
 
   // Session errors
-  if (msg.includes('Session start failed') || msg.includes('Failed to open service')) {
+  if (
+    msg.includes('Session start failed') ||
+    msg.includes('session start failed') ||
+    msg.includes('Failed to start session') ||
+    msg.includes('Failed to open service') ||
+    msg.includes('failed to spawn worker') ||
+    msg.includes('connect event failed')
+  ) {
     return new BlpSessionError(msg);
   }
 
   // Request errors
   if (msg.includes('Request failed') || msg.includes('Subscription failed')) {
     const options = {};
-    
+
     // Parse service and operation from "Request failed on {service}::{op}"
     const serviceOpMatch = msg.match(/on ([^:]+)::([^ (]+)/);
     if (serviceOpMatch) {
       options.service = serviceOpMatch[1];
       options.operation = serviceOpMatch[2];
     }
-    
+
+    // Native messages append " [request_id=<uuid>]" when a correlation id is known.
+    const requestIdMatch = msg.match(/\[request_id=([^\]]+)\]/);
+    if (requestIdMatch) {
+      options.request_id = requestIdMatch[1];
+    }
+
     return new BlpRequestError(msg, options);
   }
 

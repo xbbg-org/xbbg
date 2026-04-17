@@ -223,7 +223,13 @@ function clearConfiguredEngine() {
 
 async function getConfiguredEngine() {
   if (!configuredEnginePromise) {
-    configuredEnginePromise = connect(configuredEngineConfig);
+    const pending = connect(configuredEngineConfig);
+    pending.catch(() => {
+      if (configuredEnginePromise === pending) {
+        configuredEnginePromise = undefined;
+      }
+    });
+    configuredEnginePromise = pending;
   }
   return configuredEnginePromise;
 }
@@ -472,11 +478,19 @@ class Subscription {
   }
 
   async add(tickers) {
-    await this._inner.add(tickers);
+    try {
+      await this._inner.add(tickers);
+    } catch (err) {
+      throw wrapError(err);
+    }
   }
 
   async remove(tickers) {
-    await this._inner.remove(tickers);
+    try {
+      await this._inner.remove(tickers);
+    } catch (err) {
+      throw wrapError(err);
+    }
   }
 
   async unsubscribe(drain = false) {
@@ -510,12 +524,20 @@ class Subscription {
 
 class Engine {
   constructor(host = 'localhost', port = 8194) {
-    this._inner = new native.JsEngine(host, port);
+    try {
+      this._inner = new native.JsEngine(host, port);
+    } catch (err) {
+      throw wrapError(err);
+    }
   }
 
   static withConfig(config = {}) {
     const engine = Object.create(Engine.prototype);
-    engine._inner = native.JsEngine.withConfig(config);
+    try {
+      engine._inner = native.JsEngine.withConfig(config);
+    } catch (err) {
+      throw wrapError(err);
+    }
     return engine;
   }
 
@@ -545,7 +567,11 @@ class Engine {
   }
 
   async requestRaw(params) {
-    return this._inner.request(params);
+    try {
+      return await this._inner.request(params);
+    } catch (err) {
+      throw wrapError(err);
+    }
   }
 
   async bdp(tickers, fields, options = {}) {
@@ -557,6 +583,7 @@ class Engine {
       overrides: mapObjectToPairs(options.overrides),
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
+      backend: options.backend,
       includeSecurityErrors: Boolean(options.includeSecurityErrors),
       extractor: 'refdata',
     });
@@ -571,6 +598,7 @@ class Engine {
       overrides: mapObjectToPairs(options.overrides),
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
+      backend: options.backend,
       extractor: 'bulk',
     });
   }
@@ -586,6 +614,7 @@ class Engine {
       overrides: mapObjectToPairs(options.overrides),
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
+      backend: options.backend,
       extractor: 'histdata',
     });
   }
@@ -600,6 +629,7 @@ class Engine {
       startDatetime: options.start,
       endDatetime: options.end,
       kwargs: mapObjectToPairs(options.kwargs),
+      backend: options.backend,
       extractor: 'intraday_bar',
     });
   }
@@ -613,6 +643,7 @@ class Engine {
       startDatetime: options.start,
       endDatetime: options.end,
       kwargs: mapObjectToPairs(options.kwargs),
+      backend: options.backend,
       extractor: 'intraday_tick',
     });
   }
