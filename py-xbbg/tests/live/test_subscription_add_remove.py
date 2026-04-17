@@ -26,9 +26,9 @@ if sys.platform == "win32":
 
 # -- Configuration -----------------------------------------------------------
 
-INITIAL_TICKERS = ["ESH6 Index", "NQH6 Index"]
-ADD_TICKER = "UXH6 Index"
-REMOVE_TICKER = "ESH6 Index"
+INITIAL_TICKERS = ["ES1 Index", "NQ1 Index"]
+ADD_TICKER = "UX1 Index"
+REMOVE_TICKER = "ES1 Index"
 
 FIELDS = ["LAST_PRICE", "BID", "ASK", "VOLUME"]
 

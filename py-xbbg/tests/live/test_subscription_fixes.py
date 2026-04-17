@@ -53,7 +53,7 @@ async def test_multitype_fields():
         "RT_PX_CHG_PCT_1D",
     ]
 
-    tickers = ["ESH6 Index", "UXH6 Index", "NQH6 Index"]
+    tickers = ["ES1 Index", "UX1 Index", "NQ1 Index"]
 
     print(f"\n{'=' * 60}")
     print("TEST: Multi-type field preservation (Fix #1)")
@@ -129,7 +129,7 @@ async def test_timestamp_source():
     print("TEST: Bloomberg event timestamps (Fix #6)")
     print(f"{'=' * 60}")
 
-    sub = await engine.subscribe(["ESH6 Index"], ["LAST_PRICE", "BID", "ASK"])
+    sub = await engine.subscribe(["ES1 Index"], ["LAST_PRICE", "BID", "ASK"])
 
     batch_count = 0
     timestamps = []
@@ -261,7 +261,7 @@ async def test_schema_types():
         "TRADING_DT_REALTIME",
     ]
 
-    sub = await engine.subscribe(["ESH6 Index"], fields)
+    sub = await engine.subscribe(["ES1 Index"], fields)
 
     # Collect enough batches to see trade messages (TRADE_UPDATE_STAMP_RT
     # only appears in trade updates, not quote-only messages)
@@ -343,7 +343,7 @@ async def test_field_exposure_modes():
     set_log_level("warn")
 
     engine = PyEngine()
-    ticker = ["ESH6 Index"]
+    ticker = ["ES1 Index"]
     requested_fields = ["LAST_PRICE", "BID", "ASK"]
     metadata_fields = {"MKTDATA_EVENT_TYPE", "MKTDATA_EVENT_SUBTYPE"}
     base_columns = {"timestamp", "topic"}

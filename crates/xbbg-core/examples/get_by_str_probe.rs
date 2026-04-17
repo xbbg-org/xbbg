@@ -20,7 +20,7 @@ const FIELDS: &[&str] = &[
     "LAST_TRADE_TIME_TODAY_RT",
 ];
 
-const TOPICS: &[&str] = &["ESH6 Index"];
+const TOPICS: &[&str] = &["ES1 Index"];
 
 #[allow(clippy::result_large_err)]
 fn main() -> xbbg_core::Result<()> {
