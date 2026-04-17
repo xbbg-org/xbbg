@@ -899,12 +899,7 @@ impl SubscriptionWorker {
             match msg_type {
                 "ServiceDown" => {
                     let service_name = service.clone().unwrap_or_else(|| "unknown".to_string());
-                    status.record_service_state(
-                        service_name.clone(),
-                        false,
-                        msg_type,
-                        None,
-                    );
+                    status.record_service_state(service_name.clone(), false, msg_type, None);
                     // Emit a subscription-category warning if we have active subs so
                     // callers polling subscription status (not just service status) see
                     // that their streams may be affected. The SDK will auto-recover
