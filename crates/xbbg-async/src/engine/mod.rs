@@ -237,22 +237,6 @@ pub enum SessionLifecycleState {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SubscriptionRecoveryPolicy {
-    #[default]
-    None,
-    Resubscribe,
-}
-
-impl SubscriptionRecoveryPolicy {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Resubscribe => "resubscribe",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WorkerHealth {
     #[default]
     Healthy,
@@ -343,6 +327,13 @@ pub struct TopicStatusInfo {
     pub topic: String,
     pub state: TopicLifecycleState,
     pub last_change_us: i64,
+    /// Whether Bloomberg currently has active streams for this topic.
+    /// Set by `SubscriptionStreamsActivated` / `SubscriptionStreamsDeactivated`.
+    /// The SDK (v3.11.6+) auto-recovers streams across transient disconnections;
+    /// callers use this to see "stream alive but temporarily silent" vs. "streaming".
+    pub streams_active: bool,
+    /// Microsecond timestamp of the most recent streams_active transition.
+    pub streams_changed_us: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -369,12 +360,6 @@ pub struct SessionStatusInfo {
     pub last_change_us: i64,
     pub disconnect_count: u64,
     pub reconnect_count: u64,
-    pub recovery_policy: SubscriptionRecoveryPolicy,
-    pub recovery_attempt_count: u64,
-    pub recovery_success_count: u64,
-    pub last_recovery_attempt_us: Option<i64>,
-    pub last_recovery_success_us: Option<i64>,
-    pub last_recovery_error: Option<String>,
 }
 
 impl Default for SessionStatusInfo {
@@ -384,12 +369,6 @@ impl Default for SessionStatusInfo {
             last_change_us: timestamp_now_us(),
             disconnect_count: 0,
             reconnect_count: 0,
-            recovery_policy: SubscriptionRecoveryPolicy::None,
-            recovery_attempt_count: 0,
-            recovery_success_count: 0,
-            last_recovery_attempt_us: None,
-            last_recovery_success_us: None,
-            last_recovery_error: None,
         }
     }
 }
@@ -454,7 +433,6 @@ impl SubscriptionStatusState {
         topics: Vec<String>,
         keys: Vec<SlabKey>,
         metrics: HashMap<SlabKey, Arc<SubscriptionMetrics>>,
-        recovery_policy: SubscriptionRecoveryPolicy,
     ) -> Self {
         let mut status = Self {
             keys,
@@ -467,7 +445,6 @@ impl SubscriptionStatusState {
             events: VecDeque::with_capacity(SUBSCRIPTION_EVENT_HISTORY_LIMIT),
             session: SessionStatusInfo {
                 state: SessionLifecycleState::Up,
-                recovery_policy,
                 ..SessionStatusInfo::default()
             },
             services: HashMap::new(),
@@ -485,6 +462,8 @@ impl SubscriptionStatusState {
                     topic,
                     state: TopicLifecycleState::Pending,
                     last_change_us: now,
+                    streams_active: false,
+                    streams_changed_us: now,
                 },
             );
         }
@@ -510,6 +489,8 @@ impl SubscriptionStatusState {
                     topic: topic.clone(),
                     state: TopicLifecycleState::Pending,
                     last_change_us: now,
+                    streams_active: false,
+                    streams_changed_us: now,
                 },
             );
         }
@@ -533,10 +514,6 @@ impl SubscriptionStatusState {
 
     pub fn session(&self) -> &SessionStatusInfo {
         &self.session
-    }
-
-    pub fn set_recovery_policy(&mut self, recovery_policy: SubscriptionRecoveryPolicy) {
-        self.session.recovery_policy = recovery_policy;
     }
 
     pub fn services(&self) -> &HashMap<String, ServiceStatusInfo> {
@@ -593,7 +570,22 @@ impl SubscriptionStatusState {
                 topic: topic.to_string(),
                 state,
                 last_change_us: now,
+                streams_active: false,
+                streams_changed_us: now,
             });
+    }
+
+    /// Flip `streams_active` for a topic (driven by SubscriptionStreams{Activated,Deactivated}).
+    /// Returns the previous value if the topic existed, else None.
+    pub fn set_topic_streams_active(&mut self, topic: &str, active: bool) -> Option<bool> {
+        let now = timestamp_now_us();
+        let entry = self.topic_states.get_mut(topic)?;
+        let prev = entry.streams_active;
+        if prev != active {
+            entry.streams_active = active;
+            entry.streams_changed_us = now;
+        }
+        Some(prev)
     }
 
     pub fn mark_topic_started(&mut self, key: SlabKey) -> Option<String> {
@@ -784,43 +776,6 @@ impl SubscriptionStatusState {
             "DataLoss",
             topic,
             detail,
-        );
-    }
-
-    pub fn record_recovery_attempt(&mut self, detail: Option<String>) {
-        self.session.recovery_attempt_count += 1;
-        self.session.last_recovery_attempt_us = Some(timestamp_now_us());
-        self.session.last_recovery_error = None;
-        self.push_event(
-            SubscriptionEventCategory::Session,
-            SubscriptionEventLevel::Info,
-            "RecoveryAttempt",
-            None,
-            detail,
-        );
-    }
-
-    pub fn record_recovery_success(&mut self, detail: Option<String>) {
-        self.session.recovery_success_count += 1;
-        self.session.last_recovery_success_us = Some(timestamp_now_us());
-        self.session.last_recovery_error = None;
-        self.push_event(
-            SubscriptionEventCategory::Session,
-            SubscriptionEventLevel::Info,
-            "RecoverySucceeded",
-            None,
-            detail,
-        );
-    }
-
-    pub fn record_recovery_error(&mut self, detail: String) {
-        self.session.last_recovery_error = Some(detail.clone());
-        self.push_event(
-            SubscriptionEventCategory::Session,
-            SubscriptionEventLevel::Warning,
-            "RecoveryFailed",
-            None,
-            Some(detail),
         );
     }
 }
@@ -1266,14 +1221,19 @@ pub struct EngineConfig {
     pub num_start_attempts: usize,
     /// Whether the SDK should auto-restart the session after disconnection.
     pub auto_restart_on_disconnection: bool,
-    /// Max attempts to recover subscriptions after reconnect (default: 3).
-    pub max_recovery_attempts: usize,
-    /// Timeout in ms for the full recovery sequence (default: 30000).
-    pub recovery_timeout_ms: u64,
     /// Retry policy for transient request failures (default: no retry).
     pub retry_policy: RetryPolicy,
-    /// Interval in ms between worker health checks (default: 30000).
-    pub health_check_interval_ms: u64,
+    /// Hard per-request timeout in ms. Workers cancel the Bloomberg request and
+    /// fail the oneshot if no response arrives in this window. Guarantees that
+    /// a request cannot hang forever even if Bloomberg or the SDK misbehaves.
+    /// Set to 0 to disable the timeout. Default: 60_000 (60s).
+    pub request_timeout_ms: u64,
+    /// If a topic's subscription streams have been deactivated for more than
+    /// this many ms without reactivation, emit a one-shot escalated Warning
+    /// event. The SDK (v3.11.6+) is still trying to recover; this is a hint
+    /// to callers who poll status that their data is quiet, not dead. Set to
+    /// 0 to disable. Default: 30_000 (30s).
+    pub streams_deactivated_warn_ms: u64,
     /// Bloomberg SDK internal log level. Bridges SDK logs into xbbg tracing.
     /// Must be set before first session starts. Default: Off.
     pub sdk_log_level: crate::sdk_logging::SdkLogLevel,
@@ -1310,10 +1270,9 @@ impl Default for EngineConfig {
             tls_crl_fetch_timeout_ms: None,
             num_start_attempts: 3,
             auto_restart_on_disconnection: true,
-            max_recovery_attempts: 3,
-            recovery_timeout_ms: 30_000,
             retry_policy: RetryPolicy::default(),
-            health_check_interval_ms: 30_000,
+            request_timeout_ms: 60_000,
+            streams_deactivated_warn_ms: 30_000,
             sdk_log_level: crate::sdk_logging::SdkLogLevel::Off,
             socks5_host: None,
             socks5_port: None,
@@ -1564,7 +1523,6 @@ impl Engine {
             None,
             None,
             None,
-            None,
         )
         .await
     }
@@ -1590,7 +1548,6 @@ impl Engine {
         stream_capacity: Option<usize>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        recovery_policy: Option<SubscriptionRecoveryPolicy>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
         let (tx, rx) =
             mpsc::channel(stream_capacity.unwrap_or(self.config.subscription_stream_capacity));
@@ -1615,12 +1572,7 @@ impl Engine {
             .await?;
 
         let metrics = keys.iter().cloned().zip(raw_metrics).collect();
-        *status.lock() = SubscriptionStatusState::from_active(
-            topics.clone(),
-            keys,
-            metrics,
-            recovery_policy.unwrap_or_default(),
-        );
+        *status.lock() = SubscriptionStatusState::from_active(topics.clone(), keys, metrics);
 
         let stream = SubscriptionStream {
             rx,
@@ -2292,7 +2244,6 @@ mod tests {
             ],
             vec![10, 11],
             HashMap::from([(10, metric.clone()), (11, metric)]),
-            SubscriptionRecoveryPolicy::None,
         );
 
         let topic = status.record_failure(

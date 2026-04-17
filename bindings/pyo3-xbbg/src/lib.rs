@@ -58,7 +58,7 @@ use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{
     AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy,
     ServiceStatusInfo, SessionStatusInfo, SubscriptionCommandHandle, SubscriptionEventInfo,
-    SubscriptionFailureInfo, SubscriptionRecoveryPolicy, TopicStatusInfo,
+    SubscriptionFailureInfo, TopicStatusInfo,
 };
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::{AuthConfig, BlpError};
@@ -455,10 +455,6 @@ pub struct PyEngineConfig {
     #[pyo3(get, set)]
     pub auto_restart_on_disconnection: bool,
     #[pyo3(get, set)]
-    pub max_recovery_attempts: usize,
-    #[pyo3(get, set)]
-    pub recovery_timeout_ms: u64,
-    #[pyo3(get, set)]
     pub retry_max_retries: u32,
     #[pyo3(get, set)]
     pub retry_initial_delay_ms: u64,
@@ -466,8 +462,13 @@ pub struct PyEngineConfig {
     pub retry_backoff_factor: f64,
     #[pyo3(get, set)]
     pub retry_max_delay_ms: u64,
+    /// Hard per-request timeout in ms; 0 disables. Default: 60_000.
     #[pyo3(get, set)]
-    pub health_check_interval_ms: u64,
+    pub request_timeout_ms: u64,
+    /// Warn threshold for a subscription's streams staying deactivated, in ms;
+    /// 0 disables. Default: 30_000.
+    #[pyo3(get, set)]
+    pub streams_deactivated_warn_ms: u64,
     #[pyo3(get, set)]
     pub sdk_log_level: String,
     /// SOCKS5 proxy hostname for Bloomberg connections.
@@ -516,13 +517,12 @@ impl PyEngineConfig {
             tls_crl_fetch_timeout_ms: None,
             num_start_attempts: defaults.num_start_attempts,
             auto_restart_on_disconnection: defaults.auto_restart_on_disconnection,
-            max_recovery_attempts: 3,
-            recovery_timeout_ms: 30_000,
             retry_max_retries: 0,
             retry_initial_delay_ms: 1000,
             retry_backoff_factor: 2.0,
             retry_max_delay_ms: 30_000,
-            health_check_interval_ms: 30_000,
+            request_timeout_ms: defaults.request_timeout_ms,
+            streams_deactivated_warn_ms: defaults.streams_deactivated_warn_ms,
             sdk_log_level: "off".to_string(),
             socks5_host: None,
             socks5_port: None,
@@ -610,12 +610,6 @@ impl PyEngineConfig {
             if let Some(v) = kw.get_item("auto_restart_on_disconnection")? {
                 config.auto_restart_on_disconnection = v.extract()?;
             }
-            if let Some(v) = kw.get_item("max_recovery_attempts")? {
-                config.max_recovery_attempts = v.extract()?;
-            }
-            if let Some(v) = kw.get_item("recovery_timeout_ms")? {
-                config.recovery_timeout_ms = v.extract()?;
-            }
             if let Some(v) = kw.get_item("retry_max_retries")? {
                 config.retry_max_retries = v.extract()?;
             }
@@ -628,8 +622,11 @@ impl PyEngineConfig {
             if let Some(v) = kw.get_item("retry_max_delay_ms")? {
                 config.retry_max_delay_ms = v.extract()?;
             }
-            if let Some(v) = kw.get_item("health_check_interval_ms")? {
-                config.health_check_interval_ms = v.extract()?;
+            if let Some(v) = kw.get_item("request_timeout_ms")? {
+                config.request_timeout_ms = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("streams_deactivated_warn_ms")? {
+                config.streams_deactivated_warn_ms = v.extract()?;
             }
             if let Some(v) = kw.get_item("sdk_log_level")? {
                 config.sdk_log_level = v.extract()?;
@@ -768,15 +765,14 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             tls_crl_fetch_timeout_ms: py_config.tls_crl_fetch_timeout_ms,
             num_start_attempts: py_config.num_start_attempts,
             auto_restart_on_disconnection: py_config.auto_restart_on_disconnection,
-            max_recovery_attempts: py_config.max_recovery_attempts,
-            recovery_timeout_ms: py_config.recovery_timeout_ms,
             retry_policy: RetryPolicy {
                 max_retries: py_config.retry_max_retries,
                 initial_delay_ms: py_config.retry_initial_delay_ms,
                 backoff_factor: py_config.retry_backoff_factor,
                 max_delay_ms: py_config.retry_max_delay_ms,
             },
-            health_check_interval_ms: py_config.health_check_interval_ms,
+            request_timeout_ms: py_config.request_timeout_ms,
+            streams_deactivated_warn_ms: py_config.streams_deactivated_warn_ms,
             sdk_log_level: py_config
                 .sdk_log_level
                 .parse()
@@ -1242,7 +1238,7 @@ impl PyEngine {
     /// await sub.unsubscribe()
     /// ```
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None, all_fields=false))]
+    #[pyo3(signature = (tickers, fields, flush_threshold=None, overflow_policy=None, stream_capacity=None, all_fields=false))]
     fn subscribe<'py>(
         &self,
         py: Python<'py>,
@@ -1251,7 +1247,6 @@ impl PyEngine {
         flush_threshold: Option<usize>,
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
-        recovery_policy: Option<String>,
         all_fields: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
@@ -1261,10 +1256,6 @@ impl PyEngine {
         let op = overflow_policy.as_deref().map(|s| match s {
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
-        });
-        let recovery = recovery_policy.as_deref().map(|s| match s {
-            "resubscribe" => SubscriptionRecoveryPolicy::Resubscribe,
-            _ => SubscriptionRecoveryPolicy::None,
         });
 
         debug!(
@@ -1284,7 +1275,6 @@ impl PyEngine {
                     stream_capacity,
                     flush_threshold,
                     op,
-                    recovery,
                 )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
@@ -1344,7 +1334,7 @@ impl PyEngine {
     /// async for batch in sub:
     ///     print(batch)
     /// ```
-    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None, recovery_policy=None, all_fields=false))]
+    #[pyo3(signature = (service, tickers, fields, options=None, flush_threshold=None, overflow_policy=None, stream_capacity=None, all_fields=false))]
     #[allow(clippy::too_many_arguments)]
     fn subscribe_with_options<'py>(
         &self,
@@ -1356,7 +1346,6 @@ impl PyEngine {
         flush_threshold: Option<usize>,
         overflow_policy: Option<String>,
         stream_capacity: Option<usize>,
-        recovery_policy: Option<String>,
         all_fields: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let engine = self.engine.clone();
@@ -1368,10 +1357,6 @@ impl PyEngine {
         let op = overflow_policy.as_deref().map(|s| match s {
             "block" => OverflowPolicy::Block,
             _ => OverflowPolicy::DropNewest,
-        });
-        let recovery = recovery_policy.as_deref().map(|s| match s {
-            "resubscribe" => SubscriptionRecoveryPolicy::Resubscribe,
-            _ => SubscriptionRecoveryPolicy::None,
         });
 
         debug!(
@@ -1393,7 +1378,6 @@ impl PyEngine {
                     stream_capacity,
                     flush_threshold,
                     op,
-                    recovery,
                 )
                 .await
                 .map_err(blp_async_error_to_pyerr)?;
@@ -1913,24 +1897,6 @@ impl PySubscription {
         dict.set_item("last_change_us", snapshot.session.last_change_us)?;
         dict.set_item("disconnect_count", snapshot.session.disconnect_count)?;
         dict.set_item("reconnect_count", snapshot.session.reconnect_count)?;
-        dict.set_item("recovery_policy", snapshot.session.recovery_policy.as_str())?;
-        dict.set_item(
-            "recovery_attempt_count",
-            snapshot.session.recovery_attempt_count,
-        )?;
-        dict.set_item(
-            "recovery_success_count",
-            snapshot.session.recovery_success_count,
-        )?;
-        dict.set_item(
-            "last_recovery_attempt_us",
-            snapshot.session.last_recovery_attempt_us,
-        )?;
-        dict.set_item(
-            "last_recovery_success_us",
-            snapshot.session.last_recovery_success_us,
-        )?;
-        dict.set_item("last_recovery_error", snapshot.session.last_recovery_error)?;
         Ok(dict.into())
     }
 

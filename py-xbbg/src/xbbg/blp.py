@@ -395,13 +395,12 @@ _VALID_CONFIG_KEYS: frozenset[str] = frozenset(
         "tls_crl_fetch_timeout_ms",
         "num_start_attempts",
         "auto_restart_on_disconnection",
-        "max_recovery_attempts",
-        "recovery_timeout_ms",
         "retry_max_retries",
         "retry_initial_delay_ms",
         "retry_backoff_factor",
         "retry_max_delay_ms",
-        "health_check_interval_ms",
+        "request_timeout_ms",
+        "streams_deactivated_warn_ms",
         "sdk_log_level",
         "socks5_host",
         "socks5_port",
@@ -1654,12 +1653,16 @@ async def asubscribe(
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
     overflow_policy: str | None = None,
-    recovery_policy: str | None = None,
 ) -> Subscription:
     """Create an async subscription to real-time market data.
 
     This is the low-level subscription API with full control over
     the subscription lifecycle, including dynamic add/remove.
+
+    Subscription recovery is handled automatically by the Bloomberg SDK (see
+    BLPAPI ChangeLog v3.11.6); per-subscription availability transitions fire
+    as ``SubscriptionStreamsActivated`` / ``SubscriptionStreamsDeactivated``
+    events which are reflected in ``sub.topic_states`` (``streams_active``).
 
     Args:
         tickers: Securities to subscribe to
@@ -1673,7 +1676,6 @@ async def asubscribe(
         flush_threshold: Batch flush threshold (validation only in Wave 1)
         stream_capacity: Stream channel capacity (validation only in Wave 1)
         overflow_policy: Overflow policy for stream (validation only in Wave 1)
-        recovery_policy: Optional reconnect policy: None/"none" or "resubscribe"
 
     Returns:
         Subscription handle for iteration and control
@@ -1715,8 +1717,6 @@ async def asubscribe(
         raise ValueError("stream_capacity must be >= 1")
     if overflow_policy is not None and overflow_policy not in ("drop_newest", "block"):
         raise ValueError(f"overflow_policy must be one of 'drop_newest', 'block', got {overflow_policy!r}")
-    if recovery_policy is not None and recovery_policy not in ("none", "resubscribe"):
-        raise ValueError(f"recovery_policy must be one of 'none', 'resubscribe', got {recovery_policy!r}")
 
     # tick_mode=True forces flush_threshold=1
     if tick_mode and flush_threshold is not None and flush_threshold > 1:
@@ -1740,7 +1740,6 @@ async def asubscribe(
         or flush_threshold is not None
         or stream_capacity is not None
         or overflow_policy is not None
-        or recovery_policy is not None
     ):
         opt_kwargs = {
             k: v
@@ -1748,7 +1747,6 @@ async def asubscribe(
                 "flush_threshold": flush_threshold,
                 "stream_capacity": stream_capacity,
                 "overflow_policy": overflow_policy,
-                "recovery_policy": recovery_policy,
                 "all_fields": all_fields,
             }.items()
             if v is not None
@@ -1778,7 +1776,6 @@ async def astream(
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
     overflow_policy: str | None = None,
-    recovery_policy: str | None = None,
 ):
     """High-level async streaming - simple iteration.
 
@@ -1823,7 +1820,6 @@ async def astream(
         flush_threshold=flush_threshold,
         stream_capacity=stream_capacity,
         overflow_policy=overflow_policy,
-        recovery_policy=recovery_policy,
     ) as sub:
         async for batch in sub:
             if callback is not None:

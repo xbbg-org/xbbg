@@ -4,7 +4,7 @@
 //! Sessions are pre-warmed and returned to the pool when subscriptions end.
 //! If the pool is exhausted, new sessions are created dynamically with a warning.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
@@ -21,7 +21,7 @@ use super::state::{SubscriptionMetrics, SubscriptionState};
 use super::{
     start_configured_session, BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState,
     SharedSubscriptionStatus, SlabKey, SubscriptionEventLevel, SubscriptionFailureKind,
-    SubscriptionRecoveryPolicy,
+    WorkerHealth,
 };
 
 type SubscriptionReplyPayload = (Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>);
@@ -76,7 +76,6 @@ struct SubscriptionWorker {
     config: Arc<EngineConfig>,
     /// Services that have been opened on this session.
     open_services: std::collections::HashSet<String>,
-    opened_services: Vec<String>,
     /// Keys pending Bloomberg's SubscriptionTerminated confirmation.
     ///
     /// When we explicitly unsubscribe, the slab entry stays alive until Bloomberg
@@ -86,8 +85,12 @@ struct SubscriptionWorker {
     pending_cancel: std::collections::HashSet<SlabKey>,
     /// Shared active/failed topic metadata for the currently claimed stream.
     status: Option<SharedSubscriptionStatus>,
-    current_service: Option<String>,
-    current_options: Vec<String>,
+    /// Worker health, visible to the pool.  Goes to Dead on SessionTerminated
+    /// so the pool can refuse to hand out a worker with a dead session ptr.
+    health: Arc<AtomicU8>,
+    /// Per-topic "last deactivated warning" timestamp so we don't spam the
+    /// event stream if a topic stays in streams-inactive state for a while.
+    last_streams_warn_us: std::collections::HashMap<SlabKey, i64>,
 }
 
 impl SubscriptionWorker {
@@ -95,6 +98,7 @@ impl SubscriptionWorker {
         id: usize,
         config: Arc<EngineConfig>,
         cmd_rx: mpsc::Receiver<SubscriptionCommand>,
+        health: Arc<AtomicU8>,
     ) -> Result<Self, BlpError> {
         let session = start_configured_session(&config, true)?;
 
@@ -102,7 +106,6 @@ impl SubscriptionWorker {
         session.open_service(crate::services::Service::MktData.as_str())?;
         let mut open_services = std::collections::HashSet::new();
         open_services.insert(crate::services::Service::MktData.to_string());
-        let opened_services = vec![crate::services::Service::MktData.to_string()];
 
         xbbg_log::info!(worker_id = id, "subscription worker pre-warmed");
 
@@ -113,11 +116,10 @@ impl SubscriptionWorker {
             cmd_rx,
             config,
             open_services,
-            opened_services,
             pending_cancel: std::collections::HashSet::new(),
             status: None,
-            current_service: None,
-            current_options: Vec::new(),
+            health,
+            last_streams_warn_us: std::collections::HashMap::new(),
         })
     }
 
@@ -148,10 +150,6 @@ impl SubscriptionWorker {
             );
             self.session.open_service(service)?;
             self.open_services.insert(service.to_string());
-            let opened_name = service.to_string();
-            if !self.opened_services.contains(&opened_name) {
-                self.opened_services.push(opened_name);
-            }
             if let Some(status) = &self.status {
                 status.lock().record_service_state(
                     service.to_string(),
@@ -188,8 +186,6 @@ impl SubscriptionWorker {
                         reply,
                     }) => {
                         self.status = Some(status);
-                        self.current_service = Some(service.clone());
-                        self.current_options = options.clone();
                         if let Some(status) = &self.status {
                             status.lock().record_service_state(
                                 service.clone(),
@@ -228,8 +224,6 @@ impl SubscriptionWorker {
                         reply,
                     }) => {
                         self.status = Some(status);
-                        self.current_service = Some(service.clone());
-                        self.current_options = options.clone();
                         if let Some(status) = &self.status {
                             status.lock().record_service_state(
                                 service.clone(),
@@ -270,7 +264,14 @@ impl SubscriptionWorker {
             // 2. Poll Bloomberg (short timeout for responsiveness)
             match self.session.next_event(Some(10)) {
                 Ok(ev) => self.dispatch_event(ev),
-                Err(_) => continue,
+                Err(_) => {}
+            }
+
+            // 3. Periodically check for long-Deactivated subscriptions so callers
+            //    see "quiet, not broken" warnings while the SDK recovers.
+            //    Cheap: reads topic_states; skips entirely if no status is claimed.
+            if self.status.is_some() && !self.subs.is_empty() {
+                self.check_streams_deactivated();
             }
         }
     }
@@ -652,6 +653,70 @@ impl SubscriptionWorker {
                             }
                         }
                     }
+                    "SubscriptionStreamsActivated" => {
+                        // Bloomberg fires this on initial subscribe success and
+                        // again whenever streams come back after a temporary
+                        // disconnection (per BLPAPI ChangeLog v3.11.6). This is
+                        // the authoritative "data is flowing" signal.
+                        self.last_streams_warn_us.remove(&key);
+                        if self.subs.contains(key) {
+                            if let Some(status) = &self.status {
+                                let mut status = status.lock();
+                                if let Some(topic) =
+                                    status.topic_for_key(key).map(|t| t.to_string())
+                                {
+                                    let prev =
+                                        status.set_topic_streams_active(&topic, true);
+                                    // Only emit a status event on a real transition
+                                    // (avoids spamming on the initial activation which
+                                    // already fires SubscriptionStarted right before).
+                                    if prev == Some(false) {
+                                        status.record_subscription_event(
+                                            "SubscriptionStreamsActivated",
+                                            Some(topic),
+                                            reason.clone(),
+                                            SubscriptionEventLevel::Info,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        xbbg_log::debug!(
+                            worker_id = self.id,
+                            key = key,
+                            "subscription streams activated"
+                        );
+                    }
+                    "SubscriptionStreamsDeactivated" => {
+                        // Streams for this subscription are temporarily unavailable.
+                        // The SDK will auto-recover; we just surface the state so
+                        // callers polling status can tell "quiet" from "dead".
+                        if self.subs.contains(key) {
+                            if let Some(status) = &self.status {
+                                let mut status = status.lock();
+                                if let Some(topic) =
+                                    status.topic_for_key(key).map(|t| t.to_string())
+                                {
+                                    let prev =
+                                        status.set_topic_streams_active(&topic, false);
+                                    if prev != Some(false) {
+                                        status.record_subscription_event(
+                                            "SubscriptionStreamsDeactivated",
+                                            Some(topic),
+                                            reason.clone(),
+                                            SubscriptionEventLevel::Warning,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        xbbg_log::warn!(
+                            worker_id = self.id,
+                            key = key,
+                            reason = %reason.as_deref().unwrap_or(""),
+                            "subscription streams deactivated"
+                        );
+                    }
                     _ => {
                         xbbg_log::trace!(
                             worker_id = self.id,
@@ -680,39 +745,37 @@ impl SubscriptionWorker {
                 }
             }
             "SessionConnectionDown" => {
-                xbbg_log::error!(
+                // Bloomberg SDK contract: SessionConnectionDown is informational.
+                // The SDK's auto_restart_on_disconnection machinery handles reconnection
+                // and will auto-recover active subscriptions (see BLPAPI ChangeLog v3.11.6).
+                // We just record state for diagnostics; do NOT drain subscriptions and
+                // do NOT resubscribe on the subsequent Up.
+                let reason = extract_reason_description(msg);
+                xbbg_log::warn!(
                     worker_id = self.id,
                     active_subs = self.subs.len(),
-                    "session connection down — SDK may attempt reconnect"
+                    reason = %reason.as_deref().unwrap_or(""),
+                    "SessionConnectionDown — informational; SDK will auto-reconnect"
                 );
                 if let Some(status) = &self.status {
                     status.lock().record_session_state(
                         SessionLifecycleState::Down,
                         "SessionConnectionDown",
-                        Some(format!(
+                        reason.or_else(|| Some(format!(
                             "worker={} active_subscriptions={}",
                             self.id,
                             self.subs.len(),
-                        )),
-                    );
-                    status.lock().push_event(
-                        super::SubscriptionEventCategory::Lifecycle,
-                        SubscriptionEventLevel::Warning,
-                        "ConnectionLost",
-                        None,
-                        Some(format!(
-                            "worker={} active_subscriptions={}",
-                            self.id,
-                            self.subs.len(),
-                        )),
+                        ))),
                     );
                 }
             }
             "SessionTerminated" => {
+                let reason = extract_reason_description(msg);
                 xbbg_log::error!(
                     worker_id = self.id,
                     active_subs = self.subs.len(),
-                    "session terminated — all subscriptions lost"
+                    reason = %reason.as_deref().unwrap_or(""),
+                    "SessionTerminated — SDK gave up reconnecting; closing subscriptions"
                 );
                 // Session is dead. Send error to all consumers and remove all subs.
                 let keys: Vec<usize> = self.subs.iter().map(|(k, _)| k).collect();
@@ -721,44 +784,51 @@ impl SubscriptionWorker {
                     state.mark_closing();
                     state.fail(BlpError::Internal {
                         detail: format!(
-                            "Bloomberg session terminated (worker={}). \
+                            "Bloomberg session terminated (worker={}){}. \
                              Subscription closed. Please resubscribe.",
                             self.id,
+                            reason
+                                .as_deref()
+                                .map(|r| format!(": {}", r))
+                                .unwrap_or_default(),
                         ),
                     });
                 }
                 self.clear_active_status();
+                // Mark the worker Dead so the pool refuses to hand it out to
+                // new claims — the session ptr is terminated and can't be restarted.
+                self.health
+                    .store(WorkerHealth::Dead as u8, Ordering::Release);
                 if let Some(status) = &self.status {
                     status.lock().record_session_state(
                         SessionLifecycleState::Terminated,
                         "SessionTerminated",
-                        Some(format!("worker={}", self.id)),
+                        reason.or_else(|| Some(format!("worker={}", self.id))),
                     );
                 }
             }
             "SessionConnectionUp" => {
+                // Informational. The SDK has re-established the TCP connection and
+                // will automatically re-activate our subscriptions (per BLPAPI
+                // ChangeLog v3.11.6: Subscription Streams{Activated,Deactivated}
+                // events track per-subscription availability).
+                let reason = extract_reason_description(msg);
                 xbbg_log::info!(
                     worker_id = self.id,
                     active_subs = self.subs.len(),
-                    "session connection restored"
+                    reason = %reason.as_deref().unwrap_or(""),
+                    "SessionConnectionUp — informational; SDK re-established the connection"
                 );
                 if let Some(status) = &self.status {
-                    let mut status = status.lock();
-                    let was_down = status.session().state == SessionLifecycleState::Down;
-                    status.record_session_state(
+                    status.lock().record_session_state(
                         SessionLifecycleState::Up,
                         "SessionConnectionUp",
-                        Some(format!(
+                        reason.or_else(|| Some(format!(
                             "worker={} active_subscriptions={}",
                             self.id,
                             self.subs.len(),
-                        )),
+                        ))),
                     );
-                    let recovery_policy = status.session().recovery_policy;
-                    drop(status);
-                    if was_down && recovery_policy == SubscriptionRecoveryPolicy::Resubscribe {
-                        self.recover_active_subscriptions();
-                    }
                 }
             }
             _ => {
@@ -860,154 +930,82 @@ impl SubscriptionWorker {
         }
     }
 
-    fn recover_active_subscriptions(&mut self) {
-        if self.subs.is_empty() {
+    /// Check if any topics are in streams-deactivated state longer than the configured
+    /// warn threshold and emit a one-shot Warning event so callers polling status
+    /// see "your data is quiet, not broken — SDK is still trying to recover".
+    fn check_streams_deactivated(&mut self) {
+        let warn_ms = self.config.streams_deactivated_warn_ms;
+        if warn_ms == 0 {
             return;
         }
-
-        if let Some(status) = &self.status {
-            let attempt_count = status.lock().session().recovery_attempt_count;
-            if attempt_count as usize >= self.config.max_recovery_attempts {
-                xbbg_log::warn!(
-                    worker_id = self.id,
-                    attempts = attempt_count,
-                    max = self.config.max_recovery_attempts,
-                    "max recovery attempts reached — giving up"
-                );
-                return;
-            }
-        }
-
-        let Some(service) = self.current_service.clone() else {
+        let Some(status_arc) = self.status.clone() else {
             return;
         };
 
-        let services_to_reopen = self.opened_services.clone();
-        for service_name in &services_to_reopen {
-            match self.session.open_service(service_name) {
-                Ok(()) => {
-                    xbbg_log::info!(
-                        worker_id = self.id,
-                        service = %service_name,
-                        "re-opened service after reconnect"
-                    );
+        let now = super::timestamp_now_us();
+        let warn_us = (warn_ms as i64) * 1_000;
+
+        // Collect keys to warn about without holding the status lock across the warn emission.
+        let mut to_warn: Vec<(SlabKey, String, i64)> = Vec::new();
+        {
+            let status = status_arc.lock();
+            for (topic, info) in status.topic_statuses().iter() {
+                if info.streams_active {
+                    continue;
                 }
-                Err(error) => {
-                    if let Some(status) = &self.status {
-                        let mut status = status.lock();
-                        status.record_recovery_error(format!(
-                            "failed to re-open service {} after reconnect: {}",
-                            service_name, error,
-                        ));
-                        status.push_event(
-                            super::SubscriptionEventCategory::Lifecycle,
-                            SubscriptionEventLevel::Error,
-                            "RecoveryFailed",
-                            None,
-                            Some(format!("service={} error={}", service_name, error)),
-                        );
+                // Only warn for topics that have actually been deactivated (not pre-streaming).
+                if info.streams_changed_us == 0 {
+                    continue;
+                }
+                let elapsed = now - info.streams_changed_us;
+                if elapsed < warn_us {
+                    continue;
+                }
+                // Map back to slab key for debouncing.
+                if let Some(&key) = status.topic_to_key().get(topic) {
+                    let last_warn = self.last_streams_warn_us.get(&key).copied().unwrap_or(0);
+                    if now - last_warn >= warn_us {
+                        to_warn.push((key, topic.clone(), elapsed));
                     }
-                    xbbg_log::error!(
-                        worker_id = self.id,
-                        service = %service_name,
-                        error = %error,
-                        "failed to re-open service during recovery — aborting recovery"
-                    );
-                    return;
                 }
             }
         }
 
-        let mut sub_list = SubscriptionList::new();
-        for (key, state) in self.subs.iter() {
-            let cid = DispatchKey::from_slab_key(key).to_correlation_id();
-            let fields: Vec<&str> = state
-                .field_strings
-                .iter()
-                .map(|field| field.as_str())
-                .collect();
-            let options = self.current_options.join(",");
-            if let Err(error) = sub_list.add(&state.topic, &fields, &options, &cid) {
-                if let Some(status) = &self.status {
-                    let mut status = status.lock();
-                    status.record_recovery_error(format!(
-                        "failed to prepare recovery subscription for {}: {}",
-                        state.topic, error,
-                    ));
-                }
-                xbbg_log::warn!(
-                    worker_id = self.id,
-                    topic = %state.topic,
-                    error = %error,
-                    "failed to prepare reconnect recovery"
-                );
-                return;
-            }
+        if to_warn.is_empty() {
+            return;
         }
 
-        if let Some(status) = &self.status {
-            status.lock().record_recovery_attempt(Some(format!(
-                "service={} active_subscriptions={}",
-                service,
-                self.subs.len(),
-            )));
-        }
-
-        match self.session.subscribe(&sub_list, Some("xbbg-recovery")) {
-            Ok(()) => {
-                if let Some(status) = &self.status {
-                    let mut status = status.lock();
-                    status.record_recovery_success(Some(format!(
-                        "service={} active_subscriptions={}",
-                        service,
-                        self.subs.len(),
-                    )));
-                    status.push_event(
-                        super::SubscriptionEventCategory::Lifecycle,
-                        SubscriptionEventLevel::Info,
-                        "Reconnected",
-                        None,
-                        Some(format!(
-                            "service={} subscriptions={}",
-                            service,
-                            self.subs.len()
-                        )),
-                    );
-                }
-                xbbg_log::info!(
-                    worker_id = self.id,
-                    service = %service,
-                    active_subs = self.subs.len(),
-                    "recovery subscribe issued after reconnect"
-                );
-            }
-            Err(error) => {
-                if let Some(status) = &self.status {
-                    let mut status = status.lock();
-                    status.record_recovery_error(format!(
-                        "service={} active_subscriptions={} error={}",
-                        service,
-                        self.subs.len(),
-                        error,
-                    ));
-                    status.push_event(
-                        super::SubscriptionEventCategory::Lifecycle,
-                        SubscriptionEventLevel::Error,
-                        "RecoveryFailed",
-                        None,
-                        Some(format!("service={} error={}", service, error)),
-                    );
-                }
-                xbbg_log::warn!(
-                    worker_id = self.id,
-                    service = %service,
-                    active_subs = self.subs.len(),
-                    error = %error,
-                    "recovery subscribe failed after reconnect"
-                );
-            }
+        let mut status = status_arc.lock();
+        for (key, topic, elapsed_us) in to_warn {
+            self.last_streams_warn_us.insert(key, now);
+            let detail = format!(
+                "topic has been streams-inactive for {}ms; SDK is still trying to recover",
+                elapsed_us / 1_000
+            );
+            xbbg_log::warn!(
+                worker_id = self.id,
+                topic = %topic,
+                elapsed_ms = elapsed_us / 1_000,
+                "subscription streams still deactivated"
+            );
+            status.record_subscription_event(
+                "SubscriptionStreamsDeactivatedPersisting",
+                Some(topic),
+                Some(detail),
+                SubscriptionEventLevel::Warning,
+            );
         }
     }
+}
+
+fn extract_reason_description(msg: &xbbg_core::Message<'_>) -> Option<String> {
+    let reason = msg.elements().get_by_str("reason")?;
+    for key in ["description", "category", "message"] {
+        if let Some(s) = reason.get_by_str(key).and_then(|e| e.get_str(0)) {
+            return Some(s.to_string());
+        }
+    }
+    None
 }
 
 /// Cloneable command path for a claimed subscription worker.
@@ -1122,18 +1120,21 @@ impl SubscriptionCommandHandle {
 pub struct SubscriptionWorkerHandle {
     command: SubscriptionCommandHandle,
     thread: Option<JoinHandle<()>>,
+    health: Arc<AtomicU8>,
 }
 
 impl SubscriptionWorkerHandle {
     fn spawn(id: usize, config: Arc<EngineConfig>) -> Result<Self, BlpError> {
         let (cmd_tx, cmd_rx) = mpsc::channel(config.command_queue_size);
         let (startup_tx, startup_rx) = std::sync::mpsc::channel();
+        let health = Arc::new(AtomicU8::new(WorkerHealth::Healthy as u8));
 
         let config_clone = config.clone();
+        let worker_health = health.clone();
         let thread = thread::Builder::new()
             .name(format!("xbbg-sub-{}", id))
             .spawn(move || {
-                match SubscriptionWorker::new(id, config_clone, cmd_rx) {
+                match SubscriptionWorker::new(id, config_clone, cmd_rx, worker_health) {
                     Ok(mut worker) => {
                         let _ = startup_tx.send(Ok(()));
                         if let Err(e) = worker.run() {
@@ -1166,7 +1167,17 @@ impl SubscriptionWorkerHandle {
         Ok(Self {
             command: SubscriptionCommandHandle { id, cmd_tx },
             thread: Some(thread),
+            health,
         })
+    }
+
+    pub fn health(&self) -> WorkerHealth {
+        match self.health.load(Ordering::Acquire) {
+            0 => WorkerHealth::Healthy,
+            1 => WorkerHealth::Degraded,
+            2 => WorkerHealth::Dead,
+            _ => WorkerHealth::Dead,
+        }
     }
 
     fn id(&self) -> usize {
@@ -1237,14 +1248,31 @@ impl SubscriptionSessionPool {
 
     /// Claim a session from the pool.
     ///
-    /// If the pool is exhausted, creates a new session dynamically with a warning.
-    /// Returns a SessionClaim that releases the session back to the pool on drop.
+    /// Skips workers whose session has gone terminal (SessionTerminated → Dead).
+    /// Spawns a fresh replacement if the pool is exhausted or every available
+    /// handle is Dead. Dead handles are dropped on the way out.
     ///
     /// Takes `Arc<Self>` to allow `SessionClaim` to have a `'static` lifetime.
     pub fn claim(self: &Arc<Self>) -> Result<SessionClaim, BlpAsyncError> {
         let handle = {
             let mut available = self.available.lock();
-            if let Some(handle) = available.pop() {
+            // Find a live handle, dropping Dead ones along the way so the pool
+            // doesn't accumulate corpses.
+            let mut chosen: Option<SubscriptionWorkerHandle> = None;
+            while let Some(candidate) = available.pop() {
+                if candidate.health() == WorkerHealth::Dead {
+                    xbbg_log::warn!(
+                        worker_id = candidate.id(),
+                        "discarding dead subscription worker (SessionTerminated)"
+                    );
+                    // Drop discards the handle; its thread exits via mpsc disconnect.
+                    drop(candidate);
+                    continue;
+                }
+                chosen = Some(candidate);
+                break;
+            }
+            if let Some(handle) = chosen {
                 xbbg_log::debug!(
                     worker_id = handle.id(),
                     remaining = available.len(),
@@ -1254,12 +1282,11 @@ impl SubscriptionSessionPool {
             } else {
                 drop(available); // Release lock before creating new worker
 
-                // Pool exhausted - create new session dynamically
                 let new_id = self.next_id.fetch_add(1, Ordering::Relaxed);
                 xbbg_log::warn!(
                     worker_id = new_id,
                     initial_size = self.initial_size,
-                    "subscription pool exhausted, creating new session"
+                    "subscription pool exhausted or all dead, creating new session"
                 );
 
                 SubscriptionWorkerHandle::spawn(new_id, self.config.clone()).map_err(|e| {
@@ -1276,8 +1303,17 @@ impl SubscriptionSessionPool {
         })
     }
 
-    /// Release a session back to the pool.
+    /// Release a session back to the pool. Dead handles are dropped instead of
+    /// being returned so subsequent claims can't land on them.
     fn release(&self, handle: SubscriptionWorkerHandle) {
+        if handle.health() == WorkerHealth::Dead {
+            xbbg_log::warn!(
+                worker_id = handle.id(),
+                "discarding dead subscription worker on release (SessionTerminated)"
+            );
+            drop(handle);
+            return;
+        }
         let mut available = self.available.lock();
         xbbg_log::debug!(
             worker_id = handle.id(),

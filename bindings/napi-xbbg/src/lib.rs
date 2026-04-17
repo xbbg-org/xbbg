@@ -99,10 +99,9 @@ pub struct EngineConfigInput {
     pub tls: Option<TlsConfigInput>,
     pub num_start_attempts: Option<u32>,
     pub auto_restart_on_disconnection: Option<bool>,
-    pub max_recovery_attempts: Option<u32>,
-    pub recovery_timeout_ms: Option<i64>,
     pub retry_policy: Option<RetryPolicyInput>,
-    pub health_check_interval_ms: Option<i64>,
+    pub request_timeout_ms: Option<i64>,
+    pub streams_deactivated_warn_ms: Option<i64>,
     pub sdk_log_level: Option<String>,
     pub socks5: Option<Socks5ConfigInput>,
 }
@@ -314,13 +313,6 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
         if let Some(auto_restart) = input.auto_restart_on_disconnection {
             config.auto_restart_on_disconnection = auto_restart;
         }
-        if let Some(max_recovery_attempts) = input.max_recovery_attempts {
-            config.max_recovery_attempts = max_recovery_attempts as usize;
-        }
-        if let Some(recovery_timeout_ms) = input.recovery_timeout_ms {
-            config.recovery_timeout_ms =
-                require_non_negative_duration(recovery_timeout_ms, "recoveryTimeoutMs")?;
-        }
         if let Some(retry_policy) = input.retry_policy {
             if let Some(max_retries) = retry_policy.max_retries {
                 config.retry_policy.max_retries = max_retries;
@@ -337,9 +329,15 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
                     require_non_negative_duration(max_delay_ms, "retryPolicy.maxDelayMs")?;
             }
         }
-        if let Some(health_check_interval_ms) = input.health_check_interval_ms {
-            config.health_check_interval_ms =
-                require_non_negative_duration(health_check_interval_ms, "healthCheckIntervalMs")?;
+        if let Some(request_timeout_ms) = input.request_timeout_ms {
+            config.request_timeout_ms =
+                require_non_negative_duration(request_timeout_ms, "requestTimeoutMs")?;
+        }
+        if let Some(streams_deactivated_warn_ms) = input.streams_deactivated_warn_ms {
+            config.streams_deactivated_warn_ms = require_non_negative_duration(
+                streams_deactivated_warn_ms,
+                "streamsDeactivatedWarnMs",
+            )?;
         }
         if let Some(sdk_log_level) = input.sdk_log_level {
             config.sdk_log_level = sdk_log_level
@@ -928,7 +926,6 @@ impl JsEngine {
                 None,
                 None,
                 None,
-                None,
             )
             .await
             .map_err(blp_async_error_to_napi)?;
@@ -967,7 +964,6 @@ impl JsEngine {
                 stream_capacity.map(|v| v as usize),
                 flush_threshold.map(|v| v as usize),
                 overflow,
-                None,
             )
             .await
             .map_err(blp_async_error_to_napi)?;
@@ -1284,10 +1280,9 @@ mod tests {
             tls: None,
             num_start_attempts: None,
             auto_restart_on_disconnection: None,
-            max_recovery_attempts: None,
-            recovery_timeout_ms: None,
             retry_policy: None,
-            health_check_interval_ms: None,
+            request_timeout_ms: None,
+            streams_deactivated_warn_ms: None,
             sdk_log_level: None,
             socks5: None,
         })
@@ -1341,15 +1336,14 @@ mod tests {
             }),
             num_start_attempts: Some(5),
             auto_restart_on_disconnection: Some(false),
-            max_recovery_attempts: Some(7),
-            recovery_timeout_ms: Some(45_000),
             retry_policy: Some(RetryPolicyInput {
                 max_retries: Some(3),
                 initial_delay_ms: Some(250),
                 backoff_factor: Some(1.5),
                 max_delay_ms: Some(5_000),
             }),
-            health_check_interval_ms: Some(12_000),
+            request_timeout_ms: Some(12_000),
+            streams_deactivated_warn_ms: Some(45_000),
             sdk_log_level: Some("warn".to_string()),
             socks5: Some(Socks5ConfigInput {
                 host: "proxy.example.com".to_string(),
@@ -1394,13 +1388,12 @@ mod tests {
         assert_eq!(config.tls_crl_fetch_timeout_ms, Some(3000));
         assert_eq!(config.num_start_attempts, 5);
         assert!(!config.auto_restart_on_disconnection);
-        assert_eq!(config.max_recovery_attempts, 7);
-        assert_eq!(config.recovery_timeout_ms, 45_000);
         assert_eq!(config.retry_policy.max_retries, 3);
         assert_eq!(config.retry_policy.initial_delay_ms, 250);
         assert_eq!(config.retry_policy.backoff_factor, 1.5);
         assert_eq!(config.retry_policy.max_delay_ms, 5_000);
-        assert_eq!(config.health_check_interval_ms, 12_000);
+        assert_eq!(config.request_timeout_ms, 12_000);
+        assert_eq!(config.streams_deactivated_warn_ms, 45_000);
         assert_eq!(config.socks5_host.as_deref(), Some("proxy.example.com"));
         assert_eq!(config.socks5_port, Some(1080));
     }
@@ -1433,10 +1426,9 @@ mod tests {
             tls: None,
             num_start_attempts: None,
             auto_restart_on_disconnection: None,
-            max_recovery_attempts: None,
-            recovery_timeout_ms: None,
             retry_policy: None,
-            health_check_interval_ms: None,
+            request_timeout_ms: None,
+            streams_deactivated_warn_ms: None,
             sdk_log_level: None,
             socks5: None,
         }) {
