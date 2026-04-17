@@ -536,33 +536,73 @@ class TestBloombergParsing:
 
 
 class TestSessionWindows:
-    """Tests for xbbg.markets.sessions.SessionWindows dataclass.
+    """Tests for xbbg.markets.sessions.SessionWindows dataclass."""
 
-    Note: SessionWindows dataclass is defined in sessions.py which imports
-    xbbg._core at module level. Since we don't have the Rust DLL, we skip
-    these tests. The dataclass itself is pure Python and doesn't need testing
-    beyond what the source code shows.
-    """
-
-    @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
     def test_session_windows_creation_empty(self):
         """SessionWindows: creates with all None fields."""
+        from xbbg.markets.sessions import SessionWindows
 
-    @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
+        sw = SessionWindows()
+        assert sw.day is None
+        assert sw.allday is None
+        assert sw.pre is None
+        assert sw.post is None
+        assert sw.am is None
+        assert sw.pm is None
+
     def test_session_windows_creation_with_fields(self):
         """SessionWindows: creates with specified fields."""
+        from xbbg.markets.sessions import SessionWindows
 
-    @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
+        sw = SessionWindows(
+            day=("09:30", "16:00"),
+            allday=("04:00", "20:00"),
+            pre=("04:00", "09:30"),
+            post=("16:00", "20:00"),
+        )
+        assert sw.day == ("09:30", "16:00")
+        assert sw.allday == ("04:00", "20:00")
+        assert sw.pre == ("04:00", "09:30")
+        assert sw.post == ("16:00", "20:00")
+        assert sw.am is None
+        assert sw.pm is None
+
     def test_session_windows_to_dict_empty(self):
         """SessionWindows.to_dict(): returns empty dict when all None."""
+        from xbbg.markets.sessions import SessionWindows
 
-    @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
+        assert SessionWindows().to_dict() == {}
+
     def test_session_windows_to_dict_excludes_none(self):
         """SessionWindows.to_dict(): excludes None values."""
+        from xbbg.markets.sessions import SessionWindows
 
-    @pytest.mark.skip(reason="sessions.py imports xbbg._core which requires Rust DLL")
+        sw = SessionWindows(day=("09:30", "16:00"), post=("16:00", "20:00"))
+        assert sw.to_dict() == {
+            "day": ("09:30", "16:00"),
+            "post": ("16:00", "20:00"),
+        }
+
     def test_session_windows_to_dict_includes_all_non_none(self):
         """SessionWindows.to_dict(): includes all non-None values."""
+        from xbbg.markets.sessions import SessionWindows
+
+        sw = SessionWindows(
+            day=("09:30", "16:00"),
+            allday=("04:00", "20:00"),
+            pre=("04:00", "09:30"),
+            post=("16:00", "20:00"),
+            am=("09:30", "12:00"),
+            pm=("13:00", "16:00"),
+        )
+        assert sw.to_dict() == {
+            "day": ("09:30", "16:00"),
+            "allday": ("04:00", "20:00"),
+            "pre": ("04:00", "09:30"),
+            "post": ("16:00", "20:00"),
+            "am": ("09:30", "12:00"),
+            "pm": ("13:00", "16:00"),
+        }
 
 
 # ============================================================================
