@@ -321,9 +321,9 @@ fn finalize(
         eprintln!();
         eprintln!("Interpretation guide:");
         eprintln!(
-            "  - If you saw SUB_STATUS SubscriptionTerminated/Failure during the blip and \
-             data RESUMED on its own after Up -> SDK auto-re-establishes subs. xbbg's \
-             recover_active_subscriptions would double-subscribe."
+            "  - If you saw SUB_STATUS SubscriptionStreamsDeactivated during the blip and \
+             SubscriptionStreamsActivated after Up, followed by DATA resuming on its own, \
+             the SDK is auto-recovering subs exactly as BLPAPI ChangeLog v3.11.6 describes."
         );
         eprintln!(
             "  - If data did NOT resume after Up -> app must resubscribe. \

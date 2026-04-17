@@ -322,9 +322,16 @@ impl RequestWorker {
         }
     }
 
-    /// Check for requests that have been waiting too long and emit warnings.
+    /// Check for requests that have been waiting too long:
+    /// 1. Emit a one-shot warning at `SLOW_REQUEST_WARN_THRESHOLD` (30s) for diagnostics.
+    /// 2. Enforce `config.request_timeout_ms` as a hard upper bound. When exceeded,
+    ///    cancel the Bloomberg request and fail the oneshot with `BlpError::Timeout`
+    ///    so callers cannot hang forever on a stuck response.
     fn check_slow_requests(&mut self) {
         let now = std::time::Instant::now();
+        let hard_timeout_ms = self.config.request_timeout_ms;
+
+        let mut to_timeout: Vec<SlabKey> = Vec::new();
         for (&key, &send_time) in &self.send_times {
             let elapsed = now.duration_since(send_time);
             if elapsed > SLOW_REQUEST_WARN_THRESHOLD && !self.warned_requests.contains(&key) {
@@ -336,7 +343,46 @@ impl RequestWorker {
                 );
                 self.warned_requests.insert(key);
             }
+            if hard_timeout_ms > 0
+                && elapsed >= std::time::Duration::from_millis(hard_timeout_ms)
+            {
+                to_timeout.push(key);
+            }
         }
+
+        for key in to_timeout {
+            self.timeout_request(key, hard_timeout_ms);
+        }
+    }
+
+    /// Cancel a request that has exceeded `request_timeout_ms` and fail the
+    /// oneshot with `BlpError::Timeout`. Guards against an SDK or Bloomberg
+    /// misbehavior leaving a caller hanging past the configured bound.
+    fn timeout_request(&mut self, key: SlabKey, timeout_ms: u64) {
+        let cid = DispatchKey::from_slab_key(key).to_correlation_id();
+        if let Err(error) = self.session.cancel(&cid) {
+            // Cancel failed — session is probably terminal. We still must fail
+            // the caller's oneshot; the request is not coming back.
+            xbbg_log::warn!(
+                worker_id = self.id,
+                key = key,
+                error = %error,
+                "timeout_request: Bloomberg cancel failed"
+            );
+        }
+        self.send_times.remove(&key);
+        self.warned_requests.remove(&key);
+        self.cancellations.remove(&key);
+        if self.requests.contains(key) {
+            let state = self.requests.remove(key);
+            state.fail(BlpError::Timeout);
+        }
+        xbbg_log::warn!(
+            worker_id = self.id,
+            key = key,
+            timeout_ms = timeout_ms,
+            "request exceeded request_timeout_ms; failed with BlpError::Timeout"
+        );
     }
 
     fn process_cancellations(&mut self) {
@@ -897,7 +943,13 @@ impl RequestWorker {
                 };
                 let key = dispatch_key.to_slab_key();
                 if msg_type == "RequestFailure" {
-                    xbbg_log::error!(worker_id = self.id, key = key, "request failed");
+                    let reason = extract_reason_description(msg);
+                    xbbg_log::error!(
+                        worker_id = self.id,
+                        key = key,
+                        reason = %reason.as_deref().unwrap_or(""),
+                        "request failed"
+                    );
                     if self.requests.contains(key) {
                         // Clean up tracking
                         self.send_times.remove(&key);
@@ -905,7 +957,8 @@ impl RequestWorker {
                         self.cancellations.remove(&key);
                         let state = self.requests.remove(key);
                         state.fail(BlpError::Internal {
-                            detail: "RequestFailure".into(),
+                            detail: reason
+                                .unwrap_or_else(|| "RequestFailure".to_string()),
                         });
                     }
                 }
@@ -946,16 +999,52 @@ impl RequestWorker {
                 xbbg_log::info!(worker_id = self.id, "session started");
             }
             "SessionTerminated" => {
-                self.drain_in_flight_requests("Bloomberg session terminated");
+                // SDK has given up reconnecting. The session ptr is dead and
+                // cannot be restarted. Drain everything and mark the worker so
+                // the pool evicts it.
+                let reason = extract_reason_description(msg);
+                self.drain_in_flight_requests(
+                    reason
+                        .as_deref()
+                        .unwrap_or("Bloomberg session terminated"),
+                );
                 self.health.store(2, Ordering::Release);
+                xbbg_log::error!(
+                    worker_id = self.id,
+                    reason = %reason.as_deref().unwrap_or(""),
+                    "SessionTerminated — worker is dead"
+                );
             }
             "SessionConnectionDown" => {
-                self.drain_in_flight_requests("Bloomberg session connection lost");
-                self.health.store(2, Ordering::Release);
+                // Transient network drop. Unlike subscriptions (which the SDK
+                // auto-recovers via SubscriptionStreamsActivated/Deactivated),
+                // requests are transactional: any response mid-transit when TCP
+                // dropped is lost. Fail in-flight requests immediately so the
+                // caller can retry on a healthy worker or back off. The session
+                // is still alive and the SDK will auto-reconnect, so we go
+                // Degraded (not Dead) — the worker resumes full service on the
+                // subsequent SessionConnectionUp.
+                let reason = extract_reason_description(msg);
+                self.drain_in_flight_requests(
+                    reason
+                        .as_deref()
+                        .unwrap_or("Bloomberg session connection lost (transient)"),
+                );
+                self.health.store(1, Ordering::Release);
+                xbbg_log::warn!(
+                    worker_id = self.id,
+                    reason = %reason.as_deref().unwrap_or(""),
+                    "SessionConnectionDown — failing in-flight requests; SDK will auto-reconnect"
+                );
             }
             "SessionConnectionUp" => {
                 self.health.store(0, Ordering::Release);
-                xbbg_log::info!(worker_id = self.id, "session connection restored");
+                let reason = extract_reason_description(msg);
+                xbbg_log::info!(
+                    worker_id = self.id,
+                    reason = %reason.as_deref().unwrap_or(""),
+                    "SessionConnectionUp — worker healthy"
+                );
             }
             _ => {
                 xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "session status");
@@ -968,6 +1057,16 @@ impl RequestWorker {
         let msg_type = msg_type_name.as_str();
         xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "service status");
     }
+}
+
+fn extract_reason_description(msg: &xbbg_core::Message<'_>) -> Option<String> {
+    let reason = msg.elements().get_by_str("reason")?;
+    for key in ["description", "category", "message"] {
+        if let Some(s) = reason.get_by_str(key).and_then(|e| e.get_str(0)) {
+            return Some(s.to_string());
+        }
+    }
+    None
 }
 
 /// Handle to communicate with a running worker.

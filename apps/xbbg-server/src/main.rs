@@ -586,7 +586,6 @@ async fn handle_subscription_socket(mut socket: WebSocket, state: AppState) {
             stream_capacity,
             flush_threshold,
             overflow_policy,
-            None,
         )
         .await
     {

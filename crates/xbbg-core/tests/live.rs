@@ -44,7 +44,7 @@ fn wait_for_session_started(sess: &Session, timeout_ms: u64) {
                 for msg in ev.iter() {
                     let ty = msg.message_type();
                     let name = ty.as_str();
-                    if name == "SessionStarted" || name == "SessionResumed" {
+                    if name == "SessionStarted" {
                         return;
                     }
                 }

@@ -46,9 +46,6 @@ class TestAsubscribeSignature:
         assert "overflow_policy" in params
         assert params["overflow_policy"].default is None
 
-        assert "recovery_policy" in params
-        assert params["recovery_policy"].default is None
-
         assert "all_fields" in params
         assert params["all_fields"].default is False
 
@@ -150,14 +147,6 @@ class TestConfigValidation:
                 )
             )
 
-    def test_config_validation_recovery_policy(self):
-        """Invalid recovery_policy raises ValueError."""
-        from xbbg.blp import asubscribe
-
-        with pytest.raises(ValueError, match="recovery_policy"):
-            asyncio.run(asubscribe(["AAPL US Equity"], ["LAST_PRICE"], recovery_policy="invalid"))
-
-
 class TestTickModeWarning:
     """Verify warning when tick_mode=True conflicts with flush_threshold."""
 
@@ -177,12 +166,6 @@ class TestTickModeWarning:
                 "last_change_us": 1,
                 "disconnect_count": 0,
                 "reconnect_count": 0,
-                "recovery_policy": "none",
-                "recovery_attempt_count": 0,
-                "recovery_success_count": 0,
-                "last_recovery_attempt_us": None,
-                "last_recovery_success_us": None,
-                "last_recovery_error": None,
             }
             admin_status = {
                 "slow_consumer_warning_active": False,
@@ -243,72 +226,6 @@ class TestTickModeWarning:
         assert sub._tick_mode is True
         assert captured["flush_threshold"] == 1
 
-    def test_recovery_policy_is_forwarded(self):
-        from xbbg.blp import asubscribe
-
-        captured: dict[str, object] = {}
-
-        class FakePySubscription:
-            tickers = ["AAPL US Equity"]
-            failed_tickers = []
-            failures = []
-            topic_states = [("AAPL US Equity", "pending", 1)]
-            session_status = {
-                "state": "up",
-                "last_change_us": 1,
-                "disconnect_count": 0,
-                "reconnect_count": 0,
-                "recovery_policy": "resubscribe",
-                "recovery_attempt_count": 0,
-                "recovery_success_count": 0,
-                "last_recovery_attempt_us": None,
-                "last_recovery_success_us": None,
-                "last_recovery_error": None,
-            }
-            admin_status = {
-                "slow_consumer_warning_active": False,
-                "slow_consumer_warning_count": 0,
-                "slow_consumer_cleared_count": 0,
-                "data_loss_count": 0,
-                "last_warning_us": None,
-                "last_cleared_us": None,
-                "last_data_loss_us": None,
-            }
-            service_status = []
-            events = []
-            fields = ["LAST_PRICE"]
-            is_active = True
-            all_failed = False
-            stats = {
-                "messages_received": 0,
-                "dropped_batches": 0,
-                "batches_sent": 0,
-                "slow_consumer": False,
-                "data_loss_events": 0,
-                "last_message_us": 0,
-                "last_data_loss_us": 0,
-                "effective_overflow_policy": "drop_newest",
-            }
-
-        class FakeEngine:
-            async def subscribe_with_options(self, service, tickers, fields, options, **kwargs):
-                captured.update(kwargs)
-                return FakePySubscription()
-
-        import xbbg.blp as blp_module
-
-        original_get_engine = blp_module._get_engine
-        blp_module._get_engine = lambda: FakeEngine()
-
-        try:
-            sub = asyncio.run(asubscribe(["AAPL US Equity"], ["LAST_PRICE"], recovery_policy="resubscribe"))
-        finally:
-            blp_module._get_engine = original_get_engine
-
-        assert captured["recovery_policy"] == "resubscribe"
-        assert sub.session_status["recovery_policy"] == "resubscribe"
-
-
 class TestSubscriptionStats:
     """Verify Subscription class has a stats property."""
 
@@ -354,12 +271,6 @@ class TestSubscriptionFailureMetadata:
                 "last_change_us": 789,
                 "disconnect_count": 1,
                 "reconnect_count": 1,
-                "recovery_policy": "resubscribe",
-                "recovery_attempt_count": 2,
-                "recovery_success_count": 1,
-                "last_recovery_attempt_us": 13,
-                "last_recovery_success_us": 14,
-                "last_recovery_error": "temporary failure",
             }
             admin_status = {
                 "slow_consumer_warning_active": True,
@@ -409,7 +320,6 @@ class TestSubscriptionFailureMetadata:
         ]
         assert sub.topic_states["SPY US Equity"]["state"] == "streaming"
         assert sub.session_status["state"] == "up"
-        assert sub.session_status["recovery_policy"] == "resubscribe"
         assert sub.admin_status["data_loss_count"] == 3
         assert sub.service_status["//blp/mktdata"]["up"] is True
         assert sub.events[1]["message_type"] == "SubscriptionFailure"
@@ -437,7 +347,6 @@ class TestBackwardCompatibility:
             "flush_threshold",
             "stream_capacity",
             "overflow_policy",
-            "recovery_policy",
         ]
         for param_name in new_params:
             assert param_name in params, f"{param_name} missing from signature"
