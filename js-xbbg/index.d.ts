@@ -59,10 +59,14 @@ export interface EngineConfig {
   tls?: TlsConfig;
   numStartAttempts?: number;
   autoRestartOnDisconnection?: boolean;
-  maxRecoveryAttempts?: number;
-  recoveryTimeoutMs?: number;
   retryPolicy?: RetryPolicy;
-  healthCheckIntervalMs?: number;
+  /** Hard per-request timeout in ms; 0 disables. Default 60000. */
+  requestTimeoutMs?: number;
+  /**
+   * Warn threshold for a subscription's streams staying deactivated, in ms.
+   * 0 disables. Default 30000.
+   */
+  streamsDeactivatedWarnMs?: number;
   sdkLogLevel?: string;
   socks5?: Socks5Config;
 }
