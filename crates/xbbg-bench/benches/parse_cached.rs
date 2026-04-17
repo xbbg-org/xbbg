@@ -203,16 +203,16 @@ fn parse_all_fields_by_datatype(event: &Event, names: &FieldNames) -> (usize, us
                                     // Float64 = 7, Int64 = 5, Int32 = 4
                                     xbbg_core::DataType::Float64
                                     | xbbg_core::DataType::Int64
-                                    | xbbg_core::DataType::Int32 => {
-                                        if field.get_f64(0).is_some() {
-                                            fields_extracted += 1;
-                                        }
+                                    | xbbg_core::DataType::Int32
+                                        if field.get_f64(0).is_some() =>
+                                    {
+                                        fields_extracted += 1;
                                     }
                                     // String = 8
-                                    xbbg_core::DataType::String => {
-                                        if unsafe { field.get_str_unchecked(0) }.is_some() {
-                                            fields_extracted += 1;
-                                        }
+                                    xbbg_core::DataType::String
+                                        if unsafe { field.get_str_unchecked(0) }.is_some() =>
+                                    {
+                                        fields_extracted += 1;
                                     }
                                     _ => {}
                                 }
