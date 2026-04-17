@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@xbbg/core`: `Engine.bdp`/`bds`/`bdh`/`bdib`/`bdtick` ignored `options.backend`**: The five core reference/historical/intraday methods did not forward `backend` into `Engine.request`, so callers asking for `Backend.JSON` or `Backend.POLARS` silently received Arrow `Table`s regardless. `backend` is now threaded through all five methods and the corresponding `BdpOptions`/`BdhOptions`/`BdibOptions`/`BdtickOptions` types in `index.d.ts`. Verified live against a Bloomberg session.
+- **`@xbbg/core`: `Engine.requestRaw` and `Subscription.add`/`remove` did not wrap native errors**: `Engine.request` and `Subscription.next` routed native rejections through `wrapError`, but the raw request path and subscription mutators did not. Callers discriminating on `BlpError`/`BlpRequestError` subclasses missed failures from those paths. All three now wrap consistently.
+- **`@xbbg/core`: session-start failures surfaced as plain `Error`**: `connect(...)`, `new Engine(...)`, and `Engine.withConfig(...)` no longer bypass `wrapError`, and `wrapError` now matches the actual NAPI session-start messages (`"failed to spawn worker"`, `"session start failed"`, `"Failed to start session"`, `"connect event failed"`). Failed connects now classify as `BlpSessionError`.
+- **`@xbbg/core`: `BlpRequestError.request_id` was never populated**: The Rust engine appends ` [request_id=<uuid>]` to request-failure messages when a correlation id exists, but `wrapError` did not parse it. The id is now extracted into `err.request_id`.
+- **`@xbbg/core`: a transient connect failure permanently poisoned every top-level helper**: `getConfiguredEngine` cached the first `connect(...)` promise unconditionally, so a rejected bootstrap produced the same rejection on every subsequent call until `configure()` was invoked again (observed live as 7.2s first attempt followed by 0ms cached rejection). Rejected promises are now cleared so the next call re-attempts.
+
+### Security
+
+- **`rand` bumped to 0.9.3 in `Cargo.lock` (GHSA-cq8v-f236-94qc / RUSTSEC-2026-0097, low)**: The advisory is scoped to runtime `rand::rng()` use from inside a custom `log` implementation that triggers `ThreadRng` reseeding — not something xbbg exercises. The remaining `rand 0.8.5` in the graph is build-time only (`phf_generator` for `phf` macros, `unicode_names2_generator` for `pyo3-stub-gen`), outside the advisory's exposure surface.
+
 ## [1.1.0] - 2026-04-14
 
 ### Added
