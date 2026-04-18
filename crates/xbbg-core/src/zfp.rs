@@ -35,6 +35,15 @@ impl std::str::FromStr for ZfpRemote {
     }
 }
 
+impl std::fmt::Display for ZfpRemote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Remote8194 => f.write_str("8194"),
+            Self::Remote8196 => f.write_str("8196"),
+        }
+    }
+}
+
 pub fn configure_zfp_options(
     options: &mut SessionOptions,
     tls: &TlsOptions,

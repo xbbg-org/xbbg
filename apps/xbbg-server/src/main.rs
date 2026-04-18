@@ -18,7 +18,9 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams};
+use xbbg_async::engine::{
+    Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, ServerAddr, Transport,
+};
 use xbbg_async::{BlpAsyncError, ValidationMode};
 use xbbg_core::BlpError;
 
@@ -239,8 +241,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     xbbg_log::set_level(xbbg_log::Level::INFO);
 
     let engine = Arc::new(Engine::start(EngineConfig {
-        server_host: config.session_host.clone(),
-        server_port: config.session_port,
+        transport: Transport::Direct(vec![ServerAddr::new(
+            config.session_host.clone(),
+            config.session_port,
+        )]),
         validation_mode: ValidationMode::Disabled,
         ..Default::default()
     })?);

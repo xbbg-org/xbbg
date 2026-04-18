@@ -21,7 +21,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{json, Map, Number, Value};
 use tokio::sync::OnceCell;
-use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy};
+use xbbg_async::engine::{
+    Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy, ServerAddr, Transport,
+};
 use xbbg_async::services::{Operation, Service};
 use xbbg_async::BlpAsyncError;
 use xbbg_core::{AuthConfig, BlpError};
@@ -631,21 +633,22 @@ fn load_settings_from_env() -> Result<(EngineConfig, ResultLimits), String> {
     // support honestly for MCP deployment, rather than implying full parity with every EngineConfig knob.
     let mut config = EngineConfig::default();
 
-    config.server_host = env_string(&[
+    let host = env_string(&[
         "XBBG_MCP_HOST",
         "XBBG_MCP_SERVER_HOST",
         "XBBG_HOST",
         "XBBG_SERVER_HOST",
         "XBBG_SERVER",
     ])
-    .unwrap_or(config.server_host);
-    config.server_port = env_u16(&[
+    .unwrap_or_else(|| "localhost".to_string());
+    let port = env_u16(&[
         "XBBG_MCP_PORT",
         "XBBG_MCP_SERVER_PORT",
         "XBBG_PORT",
         "XBBG_SERVER_PORT",
     ])?
-    .unwrap_or(config.server_port);
+    .unwrap_or(8194);
+    config.transport = Transport::Direct(vec![ServerAddr::new(host, port)]);
     config.request_pool_size =
         env_usize(&["XBBG_MCP_REQUEST_POOL_SIZE", "XBBG_REQUEST_POOL_SIZE"])?
             .unwrap_or(config.request_pool_size);

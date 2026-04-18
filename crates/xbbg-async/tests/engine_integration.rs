@@ -20,7 +20,7 @@
 use arrow::array::{Array, Float64Array, StringArray};
 use arrow::record_batch::RecordBatch;
 
-use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams};
+use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams, ServerAddr, Transport};
 
 // =============================================================================
 // Test Helpers
@@ -53,8 +53,7 @@ fn create_engine() -> Engine {
         .unwrap_or(8194);
 
     let config = EngineConfig {
-        server_host: host,
-        server_port: port,
+        transport: Transport::Direct(vec![ServerAddr::new(host, port)]),
         ..Default::default()
     };
 
@@ -92,15 +91,19 @@ async fn test_engine_config_custom_values() {
     init_tracing();
 
     let config = EngineConfig {
-        server_host: "custom.host.com".to_string(),
-        server_port: 9999,
+        transport: Transport::Direct(vec![ServerAddr::new("custom.host.com", 9999)]),
         max_event_queue_size: 20000,
         command_queue_size: 512,
         ..Default::default()
     };
 
-    assert_eq!(config.server_host, "custom.host.com");
-    assert_eq!(config.server_port, 9999);
+    match &config.transport {
+        Transport::Direct(servers) => {
+            assert_eq!(servers[0].host, "custom.host.com");
+            assert_eq!(servers[0].port, 9999);
+        }
+        other => panic!("expected Direct, got {other}"),
+    }
     assert_eq!(config.max_event_queue_size, 20000);
 }
 

@@ -3,7 +3,7 @@
 //! These tests don't require a Bloomberg connection.
 
 use crate::engine::state::SubscriptionState;
-use crate::engine::{EngineConfig, OutputFormat, OverflowPolicy};
+use crate::engine::{EngineConfig, OutputFormat, OverflowPolicy, ServerAddr, Transport};
 use arrow::datatypes::{DataType, TimeUnit};
 use tokio::sync::mpsc;
 
@@ -11,12 +11,22 @@ use tokio::sync::mpsc;
 // Engine configuration tests
 // =========================================================================
 
+fn direct_servers(config: &EngineConfig) -> &[ServerAddr] {
+    match &config.transport {
+        Transport::Direct(servers) => servers.as_slice(),
+        other => panic!("expected Direct transport, got {other}"),
+    }
+}
+
 #[test]
 fn test_engine_config_default_values() {
     let config = EngineConfig::default();
 
-    assert_eq!(config.server_host, "localhost");
-    assert_eq!(config.server_port, 8194);
+    let servers = direct_servers(&config);
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers[0].host, "localhost");
+    assert_eq!(servers[0].port, 8194);
+    assert!(servers[0].proxy.is_none());
     assert!(config.max_event_queue_size > 0);
     assert!(config.command_queue_size > 0);
     assert!(config.subscription_flush_threshold > 0);
@@ -26,8 +36,7 @@ fn test_engine_config_default_values() {
 #[test]
 fn test_engine_config_custom_values() {
     let config = EngineConfig {
-        server_host: "bloomberg.example.com".to_string(),
-        server_port: 8195,
+        transport: Transport::Direct(vec![ServerAddr::new("bloomberg.example.com", 8195)]),
         max_event_queue_size: 20000,
         command_queue_size: 512,
         subscription_flush_threshold: 200,
@@ -36,8 +45,9 @@ fn test_engine_config_custom_values() {
         ..Default::default()
     };
 
-    assert_eq!(config.server_host, "bloomberg.example.com");
-    assert_eq!(config.server_port, 8195);
+    let servers = direct_servers(&config);
+    assert_eq!(servers[0].host, "bloomberg.example.com");
+    assert_eq!(servers[0].port, 8195);
     assert_eq!(config.max_event_queue_size, 20000);
     assert_eq!(config.command_queue_size, 512);
     assert_eq!(config.overflow_policy, OverflowPolicy::Block);

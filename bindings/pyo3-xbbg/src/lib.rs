@@ -56,9 +56,9 @@ use xbbg_log::{debug, info, warn};
 
 use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{
-    AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy,
-    ServiceStatusInfo, SessionStatusInfo, SubscriptionCommandHandle, SubscriptionEventInfo,
-    SubscriptionFailureInfo, TopicStatusInfo,
+    AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy, ServerAddr,
+    ServiceStatusInfo, SessionStatusInfo, Socks5Proxy, SubscriptionCommandHandle,
+    SubscriptionEventInfo, SubscriptionFailureInfo, TlsConfig, TopicStatusInfo, Transport,
 };
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::{AuthConfig, BlpError};
@@ -505,9 +505,10 @@ impl PyEngineConfig {
     #[pyo3(signature = (**kwargs))]
     fn new(kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
         let defaults = EngineConfig::default();
+        let (default_host, default_port) = default_direct_host_port(&defaults);
         let mut config = Self {
-            host: defaults.server_host,
-            port: defaults.server_port,
+            host: default_host,
+            port: default_port,
             servers: Vec::new(),
             zfp_remote: None,
             request_pool_size: defaults.request_pool_size,
@@ -754,6 +755,104 @@ fn build_auth_config(py_config: &PyEngineConfig) -> PyResult<Option<AuthConfig>>
     Ok(auth)
 }
 
+/// Expose `(host, port)` of the first server in the default `Transport::Direct`,
+/// so `PyEngineConfig`'s Python-visible defaults stay in lockstep with the
+/// Rust-side default.
+fn default_direct_host_port(defaults: &EngineConfig) -> (String, u16) {
+    match &defaults.transport {
+        Transport::Direct(servers) => servers
+            .first()
+            .map(|s| (s.host.clone(), s.port))
+            .unwrap_or_else(|| ("localhost".to_string(), 8194)),
+        Transport::Zfp(_) => ("localhost".to_string(), 8194),
+    }
+}
+
+fn resolve_transport(py: &PyEngineConfig) -> PyResult<Transport> {
+    let zfp = py
+        .zfp_remote
+        .as_deref()
+        .map(|s| s.parse::<xbbg_core::zfp::ZfpRemote>())
+        .transpose()
+        .map_err(PyValueError::new_err)?;
+
+    let socks5 = match (py.socks5_host.as_deref(), py.socks5_port) {
+        (Some(host), Some(port)) => Some(Socks5Proxy {
+            host: host.to_string(),
+            port,
+        }),
+        (Some(_), None) => {
+            return Err(PyValueError::new_err(
+                "socks5_host set without socks5_port",
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(PyValueError::new_err(
+                "socks5_port set without socks5_host",
+            ));
+        }
+        (None, None) => None,
+    };
+
+    let explicit_servers = !py.servers.is_empty();
+    let explicit_hostport = py.host != "localhost" || py.port != 8194;
+
+    if let Some(remote) = zfp {
+        if explicit_servers || explicit_hostport {
+            return Err(PyValueError::new_err(
+                "zfp_remote cannot be combined with host/port/servers — \
+                 ZFP supplies Bloomberg endpoints via the leased-line path",
+            ));
+        }
+        if socks5.is_some() {
+            return Err(PyValueError::new_err(
+                "zfp_remote cannot be combined with socks5_host/socks5_port",
+            ));
+        }
+        return Ok(Transport::Zfp(remote));
+    }
+
+    let raw = if explicit_servers {
+        py.servers.clone()
+    } else {
+        vec![(py.host.clone(), py.port)]
+    };
+    let servers = raw
+        .into_iter()
+        .map(|(host, port)| ServerAddr {
+            host,
+            port,
+            proxy: socks5.clone(),
+        })
+        .collect();
+    Ok(Transport::Direct(servers))
+}
+
+fn resolve_tls(py: &PyEngineConfig) -> PyResult<Option<TlsConfig>> {
+    match (
+        py.tls_client_credentials.as_deref(),
+        py.tls_trust_material.as_deref(),
+    ) {
+        (None, None) => Ok(None),
+        (Some(creds), Some(trust)) => Ok(Some(TlsConfig {
+            client_credentials: creds.to_string(),
+            client_credentials_password: py
+                .tls_client_credentials_password
+                .clone()
+                .unwrap_or_default(),
+            trust_material: trust.to_string(),
+            handshake_timeout_ms: py.tls_handshake_timeout_ms,
+            crl_fetch_timeout_ms: py.tls_crl_fetch_timeout_ms,
+        })),
+        (Some(_), None) => Err(PyValueError::new_err(
+            "tls_client_credentials set without tls_trust_material",
+        )),
+        (None, Some(_)) => Err(PyValueError::new_err(
+            "tls_trust_material set without tls_client_credentials",
+        )),
+    }
+}
+
 impl TryFrom<&PyEngineConfig> for EngineConfig {
     type Error = PyErr;
 
@@ -769,17 +868,12 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?;
 
         let auth = build_auth_config(py_config)?;
+        let transport = resolve_transport(py_config)?;
+        let tls = resolve_tls(py_config)?;
 
         Ok(EngineConfig {
-            server_host: py_config.host.clone(),
-            server_port: py_config.port,
-            servers: py_config.servers.clone(),
-            zfp_remote: py_config
-                .zfp_remote
-                .as_deref()
-                .map(|s| s.parse())
-                .transpose()
-                .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?,
+            transport,
+            tls,
             request_pool_size: py_config.request_pool_size,
             subscription_pool_size: py_config.subscription_pool_size,
             validation_mode,
@@ -794,11 +888,6 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
                 .as_ref()
                 .map(std::path::PathBuf::from),
             auth,
-            tls_client_credentials: py_config.tls_client_credentials.clone(),
-            tls_client_credentials_password: py_config.tls_client_credentials_password.clone(),
-            tls_trust_material: py_config.tls_trust_material.clone(),
-            tls_handshake_timeout_ms: py_config.tls_handshake_timeout_ms,
-            tls_crl_fetch_timeout_ms: py_config.tls_crl_fetch_timeout_ms,
             num_start_attempts: py_config.num_start_attempts,
             auto_restart_on_disconnection: py_config.auto_restart_on_disconnection,
             retry_policy: RetryPolicy {
@@ -818,8 +907,6 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
                 .sdk_log_level
                 .parse()
                 .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?,
-            socks5_host: py_config.socks5_host.clone(),
-            socks5_port: py_config.socks5_port,
         })
     }
 }
@@ -848,8 +935,7 @@ impl PyEngine {
         );
 
         let config = EngineConfig {
-            server_host: host.to_string(),
-            server_port: port,
+            transport: Transport::Direct(vec![ServerAddr::new(host, port)]),
             ..Default::default()
         };
 
