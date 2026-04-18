@@ -20,7 +20,9 @@
 use arrow::array::{Array, Float64Array, StringArray};
 use arrow::record_batch::RecordBatch;
 
-use xbbg_async::engine::{Engine, EngineConfig, ExtractorType, RequestParams, ServerAddr, Transport};
+use xbbg_async::engine::{
+    Engine, EngineConfig, ExtractorType, RequestParams, ServerAddr, Transport,
+};
 
 // =============================================================================
 // Test Helpers

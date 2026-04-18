@@ -1415,7 +1415,8 @@ mod tests {
 
     #[test]
     fn engine_config_input_defaults_leave_auth_unset() {
-        let config = EngineConfig::try_from(minimal_input()).expect("default config should convert");
+        let config =
+            EngineConfig::try_from(minimal_input()).expect("default config should convert");
 
         assert_eq!(config.auth, None);
         let servers = direct_servers(&config);
