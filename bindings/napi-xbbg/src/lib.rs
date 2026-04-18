@@ -1118,6 +1118,185 @@ impl JsEngine {
         to_ipc_buffer(batch)
     }
 
+    #[napi]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn recipe_yas(
+        &self,
+        tickers: Vec<String>,
+        fields: Vec<String>,
+        settle_dt: Option<String>,
+        yield_type: Option<u8>,
+        spread: Option<f64>,
+        yield_val: Option<f64>,
+        price: Option<f64>,
+        benchmark: Option<String>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let yt = yield_type
+            .and_then(|v| xbbg_ext::transforms::fixed_income::YieldType::try_from(v).ok());
+        let batch = xbbg_recipes::fixed_income::recipe_yas(
+            &engine, tickers, fields, settle_dt, yt, spread, yield_val, price, benchmark,
+        )
+        .await
+        .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_preferreds(
+        &self,
+        equity_ticker: String,
+        fields: Option<Vec<String>>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::fixed_income::recipe_preferreds(&engine, equity_ticker, fields)
+            .await
+            .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_corporate_bonds(
+        &self,
+        ticker: String,
+        ccy: Option<String>,
+        fields: Option<Vec<String>>,
+        active_only: Option<bool>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::fixed_income::recipe_corporate_bonds(
+            &engine,
+            ticker,
+            ccy,
+            fields,
+            active_only.unwrap_or(true),
+        )
+        .await
+        .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_fut_ticker(
+        &self,
+        gen_ticker: String,
+        dt: String,
+        freq: Option<String>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::futures::recipe_fut_ticker(&engine, gen_ticker, dt, freq)
+            .await
+            .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_active_futures(
+        &self,
+        gen_ticker: String,
+        dt: String,
+        freq: Option<String>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::futures::recipe_active_futures(&engine, gen_ticker, dt, freq)
+            .await
+            .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_cdx_ticker(
+        &self,
+        gen_ticker: String,
+        dt: String,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::futures::recipe_cdx_ticker(&engine, gen_ticker, dt)
+            .await
+            .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_active_cdx(
+        &self,
+        gen_ticker: String,
+        dt: String,
+        lookback_days: Option<i32>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch =
+            xbbg_recipes::futures::recipe_active_cdx(&engine, gen_ticker, dt, lookback_days)
+                .await
+                .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_dividend(
+        &self,
+        tickers: Vec<String>,
+        start_date: String,
+        end_date: String,
+        dvd_type: Option<String>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::historical::recipe_dividend(
+            &engine, tickers, dvd_type, start_date, end_date,
+        )
+        .await
+        .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_turnover(
+        &self,
+        tickers: Vec<String>,
+        start_date: String,
+        end_date: String,
+        ccy: Option<String>,
+        factor: Option<f64>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::historical::recipe_turnover(
+            &engine, tickers, start_date, end_date, ccy, factor,
+        )
+        .await
+        .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_etf_holdings(
+        &self,
+        etf_ticker: String,
+        fields: Option<Vec<String>>,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::historical::recipe_etf_holdings(&engine, etf_ticker, fields)
+            .await
+            .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
+    #[napi]
+    pub async fn recipe_currency_conversion(
+        &self,
+        ticker: String,
+        target_ccy: String,
+        start_date: String,
+        end_date: String,
+    ) -> napi::Result<Buffer> {
+        let engine = self.engine.clone();
+        let batch = xbbg_recipes::currency::recipe_currency_conversion(
+            &engine, ticker, target_ccy, start_date, end_date,
+        )
+        .await
+        .map_err(recipe_error_to_napi)?;
+        to_ipc_buffer(batch)
+    }
+
     fn start_engine(config: EngineConfig) -> napi::Result<Self> {
         let engine = Engine::start(config).map_err(blp_async_error_to_napi)?;
         Ok(Self {

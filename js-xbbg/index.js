@@ -1011,6 +1011,156 @@ class Engine {
       throw wrapError(err);
     }
   }
+
+  async yas(tickers, fields, options = {}) {
+    try {
+      const buffer = await this._inner.recipeYas(
+        toStringArray(tickers),
+        toStringArray(fields),
+        options.settleDt || undefined,
+        options.yieldType ?? undefined,
+        options.spread ?? undefined,
+        options.yieldVal ?? undefined,
+        options.price ?? undefined,
+        options.benchmark || undefined,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async preferreds(equityTicker, options = {}) {
+    try {
+      const buffer = await this._inner.recipePreferreds(
+        String(equityTicker),
+        options.fields ? toStringArray(options.fields) : null,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async corporateBonds(ticker, options = {}) {
+    try {
+      const buffer = await this._inner.recipeCorporateBonds(
+        String(ticker),
+        options.ccy || undefined,
+        options.fields ? toStringArray(options.fields) : null,
+        options.activeOnly !== false,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async futTicker(genTicker, dt, options = {}) {
+    try {
+      const buffer = await this._inner.recipeFutTicker(
+        String(genTicker),
+        String(dt),
+        options.freq || undefined,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async activeFutures(genTicker, dt, options = {}) {
+    try {
+      const buffer = await this._inner.recipeActiveFutures(
+        String(genTicker),
+        String(dt),
+        options.freq || undefined,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async cdxTicker(genTicker, dt, options = {}) {
+    try {
+      const buffer = await this._inner.recipeCdxTicker(
+        String(genTicker),
+        String(dt),
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async activeCdx(genTicker, dt, options = {}) {
+    try {
+      const buffer = await this._inner.recipeActiveCdx(
+        String(genTicker),
+        String(dt),
+        options.lookbackDays ?? undefined,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async dividend(tickers, startDate, endDate, options = {}) {
+    try {
+      const buffer = await this._inner.recipeDividend(
+        toStringArray(tickers),
+        String(startDate),
+        String(endDate),
+        options.dvdType || undefined,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async turnover(tickers, startDate, endDate, options = {}) {
+    try {
+      const buffer = await this._inner.recipeTurnover(
+        toStringArray(tickers),
+        String(startDate),
+        String(endDate),
+        options.ccy || undefined,
+        options.factor ?? undefined,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async etfHoldings(etfTicker, options = {}) {
+    try {
+      const buffer = await this._inner.recipeEtfHoldings(
+        String(etfTicker),
+        options.fields ? toStringArray(options.fields) : null,
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  async currencyConversion(ticker, targetCcy, startDate, endDate, options = {}) {
+    try {
+      const buffer = await this._inner.recipeCurrencyConversion(
+        String(ticker),
+        String(targetCcy),
+        String(startDate),
+        String(endDate),
+      );
+      return this._ipcToBackend(buffer, options.backend || Backend.ARROW);
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
 }
 
 async function connect(config = undefined) {
