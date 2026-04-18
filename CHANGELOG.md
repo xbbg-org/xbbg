@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
-## [1.1.1] - 2026-04-18
+## [1.1.1b1] - 2026-04-18
 
 ### Added
 
@@ -1246,8 +1246,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.1...HEAD
-[1.1.1]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...v1.1.1
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.1b1...HEAD
+[1.1.1b1]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...v1.1.1b1
 [1.1.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...v1.0.0
 [1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc3...v1.0.0rc4
