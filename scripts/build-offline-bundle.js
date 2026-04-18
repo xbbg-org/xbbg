@@ -96,6 +96,9 @@ function main() {
     )}\n`,
   );
 
+  // --force bypasses npm's os/cpu check for @xbbg/core-<label> when
+  // bundling cross-platform (e.g. assembling a win32-x64 bundle on a
+  // Linux runner). The bundle is never executed on the install host.
   run(
     'npm',
     [
@@ -106,6 +109,7 @@ function main() {
       '--no-audit',
       '--no-fund',
       '--install-strategy=hoisted',
+      '--force',
     ],
     { cwd: bundle },
   );
