@@ -191,10 +191,7 @@ impl SubscriptionWorker {
             std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_OPEN_TIMEOUT_MS);
         loop {
             // Check outcome first in case dispatch already resolved it.
-            let resolved = matches!(
-                self.pending_service_opens.get(&cid_int),
-                Some((_, Some(_)))
-            );
+            let resolved = matches!(self.pending_service_opens.get(&cid_int), Some((_, Some(_))));
             if resolved {
                 let (_, outcome) = self.pending_service_opens.remove(&cid_int).unwrap();
                 return outcome.unwrap();
@@ -209,10 +206,7 @@ impl SubscriptionWorker {
                 self.pending_service_opens.remove(&cid_int);
                 return Err(BlpError::Timeout);
             }
-            let poll_ms = deadline
-                .saturating_duration_since(now)
-                .as_millis()
-                .min(200) as u32;
+            let poll_ms = deadline.saturating_duration_since(now).as_millis().min(200) as u32;
             if let Ok(ev) = self.session.next_event(Some(poll_ms.max(1))) {
                 self.dispatch_event(ev);
             }
