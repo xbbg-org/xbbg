@@ -174,8 +174,14 @@ mod tests {
 
     #[test]
     fn display_zfp() {
-        assert_eq!(Transport::Zfp(ZfpRemote::Remote8194).to_string(), "zfp:8194");
-        assert_eq!(Transport::Zfp(ZfpRemote::Remote8196).to_string(), "zfp:8196");
+        assert_eq!(
+            Transport::Zfp(ZfpRemote::Remote8194).to_string(),
+            "zfp:8194"
+        );
+        assert_eq!(
+            Transport::Zfp(ZfpRemote::Remote8196).to_string(),
+            "zfp:8196"
+        );
     }
 
     #[test]

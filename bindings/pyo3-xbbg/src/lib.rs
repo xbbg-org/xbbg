@@ -782,14 +782,10 @@ fn resolve_transport(py: &PyEngineConfig) -> PyResult<Transport> {
             port,
         }),
         (Some(_), None) => {
-            return Err(PyValueError::new_err(
-                "socks5_host set without socks5_port",
-            ));
+            return Err(PyValueError::new_err("socks5_host set without socks5_port"));
         }
         (None, Some(_)) => {
-            return Err(PyValueError::new_err(
-                "socks5_port set without socks5_host",
-            ));
+            return Err(PyValueError::new_err("socks5_port set without socks5_host"));
         }
         (None, None) => None,
     };
