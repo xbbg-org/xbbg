@@ -334,11 +334,7 @@ impl Session {
         // SAFETY: Calling the Bloomberg API with valid pointers. The cid_ffi
         // out-parameter is filled with the actual CID assigned by the SDK.
         let rc = unsafe {
-            crate::ffi::blpapi_Session_openServiceAsync(
-                self.ptr,
-                c_name.as_ptr(),
-                &mut cid_ffi,
-            )
+            crate::ffi::blpapi_Session_openServiceAsync(self.ptr, c_name.as_ptr(), &mut cid_ffi)
         };
 
         if rc != 0 {
