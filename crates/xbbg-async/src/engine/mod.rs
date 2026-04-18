@@ -14,7 +14,10 @@ mod intraday_timezone;
 mod request_pool;
 pub mod state;
 mod subscription_pool;
+mod transport;
 mod worker;
+
+pub use transport::{ServerAddr, Socks5Proxy, TlsConfig, Transport};
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::str::FromStr;
@@ -53,35 +56,33 @@ fn parse_operation_lossless(operation: &str) -> Operation {
     }
 }
 
-fn configure_session_options(
+fn apply_direct_transport(
+    options: &mut SessionOptions,
+    servers: &[ServerAddr],
+) -> Result<(), BlpError> {
+    for (index, addr) in servers.iter().enumerate() {
+        match &addr.proxy {
+            Some(proxy) => {
+                let socks5 = xbbg_core::socks5::Socks5Config::new(&proxy.host, proxy.port)?;
+                options.set_server_address_with_proxy(&addr.host, addr.port, &socks5, index)?;
+            }
+            None => {
+                options.set_server_address(&addr.host, addr.port, index)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Apply non-transport session behavior: pool sizes, keep-alive, slow-consumer
+/// watermarks, identity auth, etc. Endpoint configuration (server addresses,
+/// SOCKS5, TLS) is handled separately in `start_configured_session` so ZFP
+/// options from `ZfpUtil::getOptionsForLeasedLines` are never clobbered.
+fn configure_session_behavior(
     options: &mut SessionOptions,
     config: &EngineConfig,
     record_subscription_receive_times: bool,
 ) -> Result<(), BlpError> {
-    let fallback = vec![(config.server_host.clone(), config.server_port)];
-    let servers = if config.servers.is_empty() {
-        &fallback
-    } else {
-        &config.servers
-    };
-    // Build optional SOCKS5 proxy config
-    let socks5 = match (config.socks5_host.as_deref(), config.socks5_port) {
-        (Some(host), Some(port)) => Some(xbbg_core::socks5::Socks5Config::new(host, port)?),
-        (Some(_), None) => {
-            return Err(BlpError::InvalidArgument {
-                detail: "socks5_host set without socks5_port".into(),
-            });
-        }
-        _ => None,
-    };
-
-    for (index, (host, port)) in servers.iter().enumerate() {
-        if let Some(ref proxy) = socks5 {
-            options.set_server_address_with_proxy(host, *port, proxy, index)?;
-        } else {
-            options.set_server_address(host, *port, index)?;
-        }
-    }
     options.set_num_start_attempts(config.num_start_attempts)?;
     options.set_auto_restart_on_disconnection(config.auto_restart_on_disconnection);
     options.set_max_event_queue_size(config.max_event_queue_size);
@@ -109,24 +110,6 @@ fn configure_session_options(
         let _ = apply_session_identity_options(options, auth_config)?;
     }
 
-    if let (Some(creds), Some(trust)) = (
-        config.tls_client_credentials.as_ref(),
-        config.tls_trust_material.as_ref(),
-    ) {
-        let password = config
-            .tls_client_credentials_password
-            .as_deref()
-            .unwrap_or("");
-        let mut tls = xbbg_core::tls::TlsOptions::from_files(creds, password, trust)?;
-        if let Some(ms) = config.tls_handshake_timeout_ms {
-            tls.set_tls_handshake_timeout_ms(ms);
-        }
-        if let Some(ms) = config.tls_crl_fetch_timeout_ms {
-            tls.set_crl_fetch_timeout_ms(ms);
-        }
-        options.set_tls_options(&tls);
-    }
-
     Ok(())
 }
 
@@ -134,48 +117,39 @@ fn start_configured_session(
     config: &EngineConfig,
     record_subscription_receive_times: bool,
 ) -> Result<Session, BlpError> {
-    let mut options = SessionOptions::new()?;
+    config.transport.validate()?;
 
-    if let Some(ref zfp_remote) = config.zfp_remote {
-        let tls = build_tls_options(config)?;
-        xbbg_core::zfp::configure_zfp_options(&mut options, &tls, *zfp_remote)?;
+    let mut options = SessionOptions::new()?;
+    let tls = config.tls.as_ref().map(TlsConfig::build).transpose()?;
+
+    match &config.transport {
+        Transport::Direct(servers) => {
+            apply_direct_transport(&mut options, servers)?;
+            if let Some(tls) = &tls {
+                options.set_tls_options(tls);
+            }
+        }
+        Transport::Zfp(remote) => {
+            // SDK contract (blpapi_zfputil.h): ZfpUtil::getOptionsForLeasedLines
+            // returns SessionOptions "only valid for private leased line
+            // connectivity". TLS is bundled into that call; re-applying TLS
+            // afterwards is redundant and risks overwriting transport-level
+            // flags the SDK may set from `getOptionsForLeasedLines`.
+            let tls = tls.as_ref().ok_or_else(|| BlpError::InvalidArgument {
+                detail: "zfp_remote requires TLS (tls_client_credentials + tls_trust_material)"
+                    .into(),
+            })?;
+            xbbg_core::zfp::configure_zfp_options(&mut options, tls, *remote)?;
+        }
     }
 
-    configure_session_options(&mut options, config, record_subscription_receive_times)?;
+    configure_session_behavior(&mut options, config, record_subscription_receive_times)?;
 
     let session = Session::new(&options)?;
     session
         .start_and_wait(SESSION_STARTUP_TIMEOUT_MS)
         .map_err(|err| attach_auth_context(err, config.auth.as_ref()))?;
     Ok(session)
-}
-
-fn build_tls_options(config: &EngineConfig) -> Result<xbbg_core::tls::TlsOptions, BlpError> {
-    let creds =
-        config
-            .tls_client_credentials
-            .as_deref()
-            .ok_or_else(|| BlpError::InvalidArgument {
-                detail: "ZFP requires tls_client_credentials".into(),
-            })?;
-    let trust = config
-        .tls_trust_material
-        .as_deref()
-        .ok_or_else(|| BlpError::InvalidArgument {
-            detail: "ZFP requires tls_trust_material".into(),
-        })?;
-    let password = config
-        .tls_client_credentials_password
-        .as_deref()
-        .unwrap_or("");
-    let mut tls = xbbg_core::tls::TlsOptions::from_files(creds, password, trust)?;
-    if let Some(ms) = config.tls_handshake_timeout_ms {
-        tls.set_tls_handshake_timeout_ms(ms);
-    }
-    if let Some(ms) = config.tls_crl_fetch_timeout_ms {
-        tls.set_crl_fetch_timeout_ms(ms);
-    }
-    Ok(tls)
 }
 
 fn attach_auth_context(error: BlpError, auth: Option<&AuthConfig>) -> BlpError {
@@ -1190,15 +1164,9 @@ impl std::fmt::Display for ValidationMode {
 /// Configuration for the Engine.
 #[derive(Clone)]
 pub struct EngineConfig {
-    /// Server host for single-server mode (e.g., "localhost").
-    pub server_host: String,
-    /// Server port for single-server mode (e.g., 8194).
-    pub server_port: u16,
-    /// Multiple servers for failover. When non-empty, overrides server_host/server_port.
-    /// SDK tries servers in order — index 0 first, then index 1, etc.
-    pub servers: Vec<(String, u16)>,
-    /// ZFP over leased lines. When set, overrides host/port/servers.
-    pub zfp_remote: Option<xbbg_core::zfp::ZfpRemote>,
+    /// How sessions reach Bloomberg — direct TCP (optionally with per-server
+    /// SOCKS5) or ZFP leased lines. See [`Transport`].
+    pub transport: Transport,
     /// Max event queue size (Bloomberg SDK setting)
     pub max_event_queue_size: usize,
     /// Command channel capacity (backpressure)
@@ -1221,16 +1189,9 @@ pub struct EngineConfig {
     pub field_cache_path: Option<std::path::PathBuf>,
     /// Structured Bloomberg session auth configuration.
     pub auth: Option<AuthConfig>,
-    /// TLS client credentials file path (PKCS#12).
-    pub tls_client_credentials: Option<String>,
-    /// TLS client credentials password.
-    pub tls_client_credentials_password: Option<String>,
-    /// TLS trust material file path (PKCS#7).
-    pub tls_trust_material: Option<String>,
-    /// TLS handshake timeout in milliseconds.
-    pub tls_handshake_timeout_ms: Option<i32>,
-    /// CRL fetch timeout in milliseconds.
-    pub tls_crl_fetch_timeout_ms: Option<i32>,
+    /// Optional TLS material. Required for `Transport::Zfp`; optional for
+    /// `Transport::Direct` when connecting to B-PIPE over TLS.
+    pub tls: Option<TlsConfig>,
     /// Number of times the SDK will attempt to connect before giving up.
     pub num_start_attempts: usize,
     /// Whether the SDK should auto-restart the session after disconnection.
@@ -1270,18 +1231,12 @@ pub struct EngineConfig {
     /// `None`, the SDK default is kept. Must be strictly less than
     /// `slow_consumer_hi_water_mark`.
     pub slow_consumer_lo_water_mark: Option<f32>,
-    /// SOCKS5 proxy hostname. When set, all server connections route through this proxy.
-    pub socks5_host: Option<String>,
-    /// SOCKS5 proxy port (required when socks5_host is set).
-    pub socks5_port: Option<u16>,
 }
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            server_host: "localhost".to_string(),
-            server_port: 8194,
-            servers: Vec::new(),
-            zfp_remote: None,
+            transport: Transport::default_direct(),
+            tls: None,
             max_event_queue_size: 10_000,
             command_queue_size: 256,
             subscription_flush_threshold: 1,
@@ -1296,11 +1251,6 @@ impl Default for EngineConfig {
             validation_mode: ValidationMode::default(),
             field_cache_path: None,
             auth: None,
-            tls_client_credentials: None,
-            tls_client_credentials_password: None,
-            tls_trust_material: None,
-            tls_handshake_timeout_ms: None,
-            tls_crl_fetch_timeout_ms: None,
             num_start_attempts: 3,
             auto_restart_on_disconnection: true,
             retry_policy: RetryPolicy::default(),
@@ -1312,8 +1262,6 @@ impl Default for EngineConfig {
             slow_consumer_hi_water_mark: None,
             slow_consumer_lo_water_mark: None,
             sdk_log_level: crate::sdk_logging::SdkLogLevel::Off,
-            socks5_host: None,
-            socks5_port: None,
         }
     }
 }
@@ -1376,8 +1324,7 @@ impl Engine {
             request_workers = config.request_pool_size,
             subscription_workers = config.subscription_pool_size,
             total_bloomberg_sessions = total_sessions,
-            host = %config.server_host,
-            port = config.server_port,
+            transport = %config.transport,
             "Engine ready"
         );
 

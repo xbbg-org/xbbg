@@ -13,7 +13,8 @@ use napi::bindgen_prelude::{Buffer, Error, Status};
 use napi_derive::napi;
 use tokio::sync::Mutex;
 use xbbg_async::engine::{
-    Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, SharedSubscriptionStatus,
+    Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, ServerAddr,
+    SharedSubscriptionStatus, Socks5Proxy, TlsConfig, Transport,
 };
 use xbbg_async::{BlpAsyncError, ValidationMode};
 use xbbg_core::{AuthConfig, BlpError};
@@ -237,6 +238,102 @@ fn build_auth_config(input: Option<&AuthConfigInput>) -> Result<Option<AuthConfi
     Ok(auth)
 }
 
+fn resolve_transport_input(
+    host: Option<&str>,
+    port: Option<u16>,
+    servers: Option<&Vec<ServerAddressInput>>,
+    zfp_remote: Option<&str>,
+    socks5: Option<&Socks5ConfigInput>,
+) -> Result<Transport, Error> {
+    let zfp = zfp_remote
+        .map(|s| s.parse::<xbbg_core::zfp::ZfpRemote>())
+        .transpose()
+        .map_err(|e: String| Error::new(Status::InvalidArg, e))?;
+
+    let proxy = socks5.map(|s| Socks5Proxy {
+        host: s.host.clone(),
+        port: s.port,
+    });
+
+    let explicit_servers = servers.map(|s| !s.is_empty()).unwrap_or(false);
+    let explicit_hostport = host.is_some() || port.is_some();
+
+    if let Some(remote) = zfp {
+        if explicit_servers || explicit_hostport {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "zfpRemote cannot be combined with host/port/servers — \
+                 ZFP supplies Bloomberg endpoints via the leased-line path",
+            ));
+        }
+        if proxy.is_some() {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "zfpRemote cannot be combined with socks5",
+            ));
+        }
+        return Ok(Transport::Zfp(remote));
+    }
+
+    let raw: Vec<(String, u16)> = if explicit_servers {
+        servers
+            .unwrap()
+            .iter()
+            .map(|s| (s.host.clone(), s.port))
+            .collect()
+    } else {
+        vec![(
+            host.unwrap_or("localhost").to_string(),
+            port.unwrap_or(8194),
+        )]
+    };
+    let addrs = raw
+        .into_iter()
+        .map(|(h, p)| ServerAddr {
+            host: h,
+            port: p,
+            proxy: proxy.clone(),
+        })
+        .collect();
+    Ok(Transport::Direct(addrs))
+}
+
+fn resolve_tls_input(input: Option<&TlsConfigInput>) -> Result<Option<TlsConfig>, Error> {
+    let Some(input) = input else {
+        return Ok(None);
+    };
+    match (
+        input.client_credentials.as_deref(),
+        input.trust_material.as_deref(),
+    ) {
+        (None, None) => Ok(None),
+        (Some(creds), Some(trust)) => Ok(Some(TlsConfig {
+            client_credentials: creds.to_string(),
+            client_credentials_password: input
+                .client_credentials_password
+                .clone()
+                .unwrap_or_default(),
+            trust_material: trust.to_string(),
+            handshake_timeout_ms: input
+                .handshake_timeout_ms
+                .map(|v| require_non_negative_timeout(v, "tls.handshakeTimeoutMs"))
+                .transpose()?,
+            crl_fetch_timeout_ms: input
+                .crl_fetch_timeout_ms
+                .map(|v| require_non_negative_timeout(v, "tls.crlFetchTimeoutMs"))
+                .transpose()?,
+        })),
+        (Some(_), None) => Err(Error::new(
+            Status::InvalidArg,
+            "tls.clientCredentials set without tls.trustMaterial",
+        )),
+        (None, Some(_)) => Err(Error::new(
+            Status::InvalidArg,
+            "tls.trustMaterial set without tls.clientCredentials",
+        )),
+    }
+}
+
 impl TryFrom<EngineConfigInput> for EngineConfig {
     type Error = Error;
 
@@ -256,25 +353,14 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
             None => config.overflow_policy,
         };
 
-        if let Some(host) = input.host {
-            config.server_host = host;
-        }
-        if let Some(port) = input.port {
-            config.server_port = port;
-        }
-        if let Some(servers) = input.servers {
-            config.servers = servers
-                .into_iter()
-                .map(|server| (server.host, server.port))
-                .collect();
-        }
-        if let Some(zfp_remote) = input.zfp_remote {
-            config.zfp_remote = Some(
-                zfp_remote
-                    .parse()
-                    .map_err(|e: String| Error::new(Status::InvalidArg, e))?,
-            );
-        }
+        let transport = resolve_transport_input(
+            input.host.as_deref(),
+            input.port,
+            input.servers.as_ref(),
+            input.zfp_remote.as_deref(),
+            input.socks5.as_ref(),
+        )?;
+        config.transport = transport;
         if let Some(size) = input.request_pool_size {
             config.request_pool_size = size as usize;
         }
@@ -299,19 +385,7 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
         if let Some(field_cache_path) = input.field_cache_path {
             config.field_cache_path = Some(field_cache_path.into());
         }
-        if let Some(tls) = input.tls {
-            config.tls_client_credentials = tls.client_credentials;
-            config.tls_client_credentials_password = tls.client_credentials_password;
-            config.tls_trust_material = tls.trust_material;
-            config.tls_handshake_timeout_ms = tls
-                .handshake_timeout_ms
-                .map(|value| require_non_negative_timeout(value, "tls.handshakeTimeoutMs"))
-                .transpose()?;
-            config.tls_crl_fetch_timeout_ms = tls
-                .crl_fetch_timeout_ms
-                .map(|value| require_non_negative_timeout(value, "tls.crlFetchTimeoutMs"))
-                .transpose()?;
-        }
+        config.tls = resolve_tls_input(input.tls.as_ref())?;
         if let Some(num_start_attempts) = input.num_start_attempts {
             config.num_start_attempts = num_start_attempts as usize;
         }
@@ -388,11 +462,6 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
                 .parse()
                 .map_err(|e: String| Error::new(Status::InvalidArg, e))?;
         }
-        if let Some(socks5) = input.socks5 {
-            config.socks5_host = Some(socks5.host);
-            config.socks5_port = Some(socks5.port);
-        }
-
         config.validation_mode = validation_mode;
         config.overflow_policy = overflow_policy;
         config.auth = auth;
@@ -792,9 +861,10 @@ pub struct JsEngine {
 impl JsEngine {
     #[napi(constructor)]
     pub fn new(host: Option<String>, port: Option<u16>) -> napi::Result<Self> {
+        let host = host.unwrap_or_else(|| "localhost".to_string());
+        let port = port.unwrap_or(8194);
         let config = EngineConfig {
-            server_host: host.unwrap_or_else(|| "localhost".to_string()),
-            server_port: port.unwrap_or(8194),
+            transport: Transport::Direct(vec![ServerAddr::new(host, port)]),
             ..Default::default()
         };
         Self::start_engine(config)
@@ -1303,9 +1373,8 @@ impl JsSubscription {
 mod tests {
     use super::*;
 
-    #[test]
-    fn engine_config_input_defaults_leave_auth_unset() {
-        let config = EngineConfig::try_from(EngineConfigInput {
+    fn minimal_input() -> EngineConfigInput {
+        EngineConfigInput {
             host: None,
             port: None,
             servers: None,
@@ -1334,19 +1403,31 @@ mod tests {
             slow_consumer_lo_water_mark: None,
             sdk_log_level: None,
             socks5: None,
-        })
-        .expect("default config should convert");
+        }
+    }
 
-        assert_eq!(config.auth, None);
-        assert_eq!(config.server_host, "localhost");
-        assert_eq!(config.server_port, 8194);
+    fn direct_servers(config: &EngineConfig) -> &[ServerAddr] {
+        match &config.transport {
+            Transport::Direct(s) => s.as_slice(),
+            other => panic!("expected Direct, got {other}"),
+        }
     }
 
     #[test]
-    fn engine_config_input_maps_bpipe_and_auth_options() {
+    fn engine_config_input_defaults_leave_auth_unset() {
+        let config = EngineConfig::try_from(minimal_input()).expect("default config should convert");
+
+        assert_eq!(config.auth, None);
+        let servers = direct_servers(&config);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].host, "localhost");
+        assert_eq!(servers[0].port, 8194);
+        assert!(servers[0].proxy.is_none());
+    }
+
+    #[test]
+    fn engine_config_input_maps_bpipe_servers_with_socks5() {
         let config = EngineConfig::try_from(EngineConfigInput {
-            host: Some("primary.example.com".to_string()),
-            port: Some(8194),
             servers: Some(vec![
                 ServerAddressInput {
                     host: "primary.example.com".to_string(),
@@ -1357,7 +1438,6 @@ mod tests {
                     port: 8196,
                 },
             ]),
-            zfp_remote: Some("8194".to_string()),
             request_pool_size: Some(4),
             subscription_pool_size: Some(2),
             validation_mode: Some("strict".to_string()),
@@ -1375,13 +1455,6 @@ mod tests {
                 user_id: Some("123456".to_string()),
                 ip_address: Some("10.0.0.1".to_string()),
                 token: None,
-            }),
-            tls: Some(TlsConfigInput {
-                client_credentials: Some("/tmp/client.p12".to_string()),
-                client_credentials_password: Some("secret".to_string()),
-                trust_material: Some("/tmp/trust.p7".to_string()),
-                handshake_timeout_ms: Some(2000),
-                crl_fetch_timeout_ms: Some(3000),
             }),
             num_start_attempts: Some(5),
             auto_restart_on_disconnection: Some(false),
@@ -1403,20 +1476,23 @@ mod tests {
                 host: "proxy.example.com".to_string(),
                 port: 1080,
             }),
+            ..minimal_input()
         })
-        .expect("config with auth should convert");
+        .expect("direct+SOCKS5 config should convert");
 
-        assert_eq!(
-            config.servers,
-            vec![
-                ("primary.example.com".to_string(), 8194),
-                ("secondary.example.com".to_string(), 8196),
-            ]
-        );
-        assert_eq!(
-            config.zfp_remote,
-            Some(xbbg_core::zfp::ZfpRemote::Remote8194)
-        );
+        let servers = direct_servers(&config);
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[0].host, "primary.example.com");
+        assert_eq!(servers[0].port, 8194);
+        assert_eq!(servers[1].host, "secondary.example.com");
+        assert_eq!(servers[1].port, 8196);
+        // SOCKS5 is broadcast across every server.
+        for s in servers {
+            let proxy = s.proxy.as_ref().expect("proxy should be set");
+            assert_eq!(proxy.host, "proxy.example.com");
+            assert_eq!(proxy.port, 1080);
+        }
+        assert!(config.tls.is_none());
         assert_eq!(
             config.auth,
             Some(AuthConfig::Manual {
@@ -1429,17 +1505,6 @@ mod tests {
             config.field_cache_path,
             Some(std::path::PathBuf::from("/tmp/xbbg-field-cache.json"))
         );
-        assert_eq!(
-            config.tls_client_credentials.as_deref(),
-            Some("/tmp/client.p12")
-        );
-        assert_eq!(
-            config.tls_client_credentials_password.as_deref(),
-            Some("secret")
-        );
-        assert_eq!(config.tls_trust_material.as_deref(), Some("/tmp/trust.p7"));
-        assert_eq!(config.tls_handshake_timeout_ms, Some(2000));
-        assert_eq!(config.tls_crl_fetch_timeout_ms, Some(3000));
         assert_eq!(config.num_start_attempts, 5);
         assert!(!config.auto_restart_on_disconnection);
         assert_eq!(config.retry_policy.max_retries, 3);
@@ -1448,27 +1513,91 @@ mod tests {
         assert_eq!(config.retry_policy.max_delay_ms, 5_000);
         assert_eq!(config.request_timeout_ms, 12_000);
         assert_eq!(config.streams_deactivated_warn_ms, 45_000);
-        assert_eq!(config.socks5_host.as_deref(), Some("proxy.example.com"));
-        assert_eq!(config.socks5_port, Some(1080));
+    }
+
+    #[test]
+    fn engine_config_input_zfp_with_tls_resolves_zfp_transport() {
+        let config = EngineConfig::try_from(EngineConfigInput {
+            zfp_remote: Some("8194".to_string()),
+            tls: Some(TlsConfigInput {
+                client_credentials: Some("/tmp/client.p12".to_string()),
+                client_credentials_password: Some("secret".to_string()),
+                trust_material: Some("/tmp/trust.p7".to_string()),
+                handshake_timeout_ms: Some(2000),
+                crl_fetch_timeout_ms: Some(3000),
+            }),
+            ..minimal_input()
+        })
+        .expect("ZFP+TLS config should convert");
+
+        match &config.transport {
+            Transport::Zfp(remote) => {
+                assert_eq!(*remote, xbbg_core::zfp::ZfpRemote::Remote8194);
+            }
+            other => panic!("expected Zfp, got {other}"),
+        }
+        let tls = config.tls.as_ref().expect("tls should be set");
+        assert_eq!(tls.client_credentials, "/tmp/client.p12");
+        assert_eq!(tls.client_credentials_password, "secret");
+        assert_eq!(tls.trust_material, "/tmp/trust.p7");
+        assert_eq!(tls.handshake_timeout_ms, Some(2000));
+        assert_eq!(tls.crl_fetch_timeout_ms, Some(3000));
+    }
+
+    #[test]
+    fn engine_config_input_rejects_zfp_plus_host() {
+        let err = EngineConfig::try_from(EngineConfigInput {
+            host: Some("bpipe.firm.com".to_string()),
+            zfp_remote: Some("8194".to_string()),
+            ..minimal_input()
+        })
+        .err()
+        .expect("zfp + host should fail");
+        assert!(
+            err.to_string().contains("zfpRemote cannot be combined"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn engine_config_input_rejects_zfp_plus_servers() {
+        let err = EngineConfig::try_from(EngineConfigInput {
+            servers: Some(vec![ServerAddressInput {
+                host: "x".to_string(),
+                port: 8194,
+            }]),
+            zfp_remote: Some("8196".to_string()),
+            ..minimal_input()
+        })
+        .err()
+        .expect("zfp + servers should fail");
+        assert!(
+            err.to_string().contains("zfpRemote cannot be combined"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn engine_config_input_rejects_zfp_plus_socks5() {
+        let err = EngineConfig::try_from(EngineConfigInput {
+            zfp_remote: Some("8194".to_string()),
+            socks5: Some(Socks5ConfigInput {
+                host: "proxy".to_string(),
+                port: 1080,
+            }),
+            ..minimal_input()
+        })
+        .err()
+        .expect("zfp + socks5 should fail");
+        assert!(
+            err.to_string().contains("zfpRemote cannot be combined"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
     fn engine_config_input_requires_auth_fields_for_selected_method() {
         let err = match EngineConfig::try_from(EngineConfigInput {
-            host: None,
-            port: None,
-            servers: None,
-            zfp_remote: None,
-            request_pool_size: None,
-            subscription_pool_size: None,
-            validation_mode: None,
-            subscription_flush_threshold: None,
-            max_event_queue_size: None,
-            command_queue_size: None,
-            subscription_stream_capacity: None,
-            overflow_policy: None,
-            warmup_services: None,
-            field_cache_path: None,
             auth: Some(AuthConfigInput {
                 method: "app".to_string(),
                 app_name: None,
@@ -1477,19 +1606,7 @@ mod tests {
                 ip_address: None,
                 token: None,
             }),
-            tls: None,
-            num_start_attempts: None,
-            auto_restart_on_disconnection: None,
-            retry_policy: None,
-            request_timeout_ms: None,
-            streams_deactivated_warn_ms: None,
-            keep_alive_enabled: None,
-            keep_alive_inactivity_ms: None,
-            keep_alive_response_timeout_ms: None,
-            slow_consumer_hi_water_mark: None,
-            slow_consumer_lo_water_mark: None,
-            sdk_log_level: None,
-            socks5: None,
+            ..minimal_input()
         }) {
             Ok(_) => panic!("missing appName should fail"),
             Err(err) => err,
