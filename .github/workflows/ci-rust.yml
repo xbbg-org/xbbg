@@ -546,6 +546,54 @@ jobs:
           retention-days: 7
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Offline bundle packaging (one zip per platform, per commit)
+  # ════════════════════════════════════════════════════════════════════════════
+  pack-offline-bundles:
+    name: Pack offline bundles
+    needs: [bridge-packages]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Download linux core package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: core-package-linux-x64
+          path: packages/xbbg-core-linux-x64
+
+      - name: Download windows core package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: core-package-win32-x64
+          path: packages/xbbg-core-win32-x64
+
+      - name: Download macOS core package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: core-package-darwin-arm64
+          path: packages/xbbg-core-darwin-arm64
+
+      - name: Build offline bundles
+        run: |
+          mkdir -p dist-offline
+          for label in linux-x64 win32-x64 darwin-arm64; do
+            node scripts/build-offline-bundle.js --label "$label" --out-dir dist-offline
+          done
+          ls -1 dist-offline
+
+      - name: Upload offline bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-bundles
+          path: dist-offline/*.zip
+          retention-days: 7
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Build wheels via setuptools-rust + uv (matrix: OS × Python version)
   # ════════════════════════════════════════════════════════════════════════════
   build:

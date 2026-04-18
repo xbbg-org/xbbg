@@ -379,6 +379,54 @@ jobs:
           path: ${{ matrix.package_dir }}
           retention-days: 7
 
+  pack-offline-bundles:
+    name: Pack offline bundles
+    needs: [prepare, build-core-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Download linux core package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: core-package-linux-x64
+          path: packages/xbbg-core-linux-x64
+
+      - name: Download windows core package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: core-package-win32-x64
+          path: packages/xbbg-core-win32-x64
+
+      - name: Download macOS core package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: core-package-darwin-arm64
+          path: packages/xbbg-core-darwin-arm64
+
+      - name: Stamp JS package versions
+        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+
+      - name: Build offline bundles
+        run: |
+          mkdir -p dist-offline
+          for label in linux-x64 win32-x64 darwin-arm64; do
+            node scripts/build-offline-bundle.js --label "$label" --out-dir dist-offline
+          done
+          ls -1 dist-offline
+
+      - name: Upload offline bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-offline-bundles
+          path: dist-offline/*.zip
+          retention-days: 7
+
   pack-assets:
     name: Pack JS release assets
     needs: [prepare, sdk-version, build-core-native, build-bridge-native]
@@ -515,13 +563,19 @@ jobs:
 
   validate-release-payload:
     name: Validate JS release payload
-    needs: [pack-assets]
+    needs: [pack-assets, pack-offline-bundles]
     runs-on: ubuntu-latest
     steps:
       - name: Download JS release artifacts
         uses: actions/download-artifact@v4
         with:
           name: js-release-assets
+          path: dist
+
+      - name: Download offline bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: js-offline-bundles
           path: dist
 
       - name: Reject Bloomberg SDK files in release artifacts
@@ -588,6 +642,12 @@ jobs:
           name: js-release-assets
           path: dist
 
+      - name: Download offline bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: js-offline-bundles
+          path: dist
+
       - name: Create or reuse JS release tag
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
@@ -637,6 +697,12 @@ jobs:
               '- `@xbbg/bridge-darwin-x64`',
               '- `@xbbg/bridge-linux-arm64`',
               '',
+              '### Offline bundles',
+              'Preinstalled `bundle/node_modules` zips for air-gapped installs:',
+              f'- `xbbg-offline-linux-x64-{version}.zip`',
+              f'- `xbbg-offline-win32-x64-{version}.zip`',
+              f'- `xbbg-offline-darwin-arm64-{version}.zip`',
+              '',
               'These release assets do not bundle Bloomberg SDK files or the Bloomberg runtime.',
               "Provide the runtime locally via Bloomberg's `blpapi` package, `BLPAPI_ROOT`, or another supported path.",
           ]
@@ -655,4 +721,6 @@ jobs:
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           make_latest: false
           generate_release_notes: false
-          files: dist/*.tgz
+          files: |
+            dist/*.tgz
+            dist/*.zip
