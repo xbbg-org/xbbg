@@ -17,6 +17,9 @@ xbbg_core = { path = "../xbbg-core" }
 [dev-dependencies]
 criterion = "0.5"
 dhat = "0.3"
+hdrhistogram = "7.5"
+tempfile = "3.15"
+xbbg-async = { path = "../xbbg-async" }
 
 # =============================================================================
 # Benchmarks — Pure Rust (no Bloomberg connection required)
@@ -65,4 +68,13 @@ harness = false
 # Heap allocation profiling with dhat
 [[bench]]
 name = "alloc_profile"
+harness = false
+
+# =============================================================================
+# Benchmarks — Cache contention (pure Rust, no Bloomberg connection)
+# =============================================================================
+
+# Reader/writer latency percentiles on SchemaCache + FieldTypeResolver
+[[bench]]
+name = "cache_contention"
 harness = false
