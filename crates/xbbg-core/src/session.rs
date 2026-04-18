@@ -277,16 +277,19 @@ impl Session {
         }
     }
 
-    /// Open a service
+    /// Open a service (synchronous).
     ///
-    /// This must be called before you can get the service and create requests.
-    /// You should wait for a ServiceOpened event before calling get_service().
+    /// Blocks the calling thread until the service is opened or the open fails.
+    /// Per BLPAPI docs, the synchronous `openService` internally pumps the
+    /// session's event queue, which means events arriving during the call are
+    /// delayed until it returns. Prefer `open_service_async` inside an event
+    /// loop that already has active subscriptions to avoid stalling delivery.
+    ///
+    /// You should still wait for a `ServiceOpened` event before calling
+    /// `get_service()`.
     ///
     /// # Arguments
     /// * `name` - The service name (e.g., "//blp/refdata")
-    ///
-    /// # Returns
-    /// Ok(()) on success, Err on failure
     pub fn open_service(&self, name: &str) -> Result<()> {
         let c_name = CString::new(name).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid service name: {}", e),
@@ -304,6 +307,49 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    /// Open a service asynchronously.
+    ///
+    /// Returns immediately with the actual correlation ID the SDK will use to
+    /// tag the eventual `ServiceOpened` or `ServiceOpenFailure` event. Callers
+    /// can keep pulling events from `next_event` and match on the returned CID
+    /// to know when the open has completed.
+    ///
+    /// This is the preferred form when there are already active subscriptions
+    /// on the session — the synchronous `open_service` stalls delivery for
+    /// hundreds of milliseconds while it blocks on the internal event pump.
+    ///
+    /// # Arguments
+    /// * `name` - The service name (e.g., "//blp/mktdata")
+    /// * `cid`  - Correlation ID to tag the reply with. Use `CorrelationId::Int`
+    ///   with a value distinct from any in-flight subscription / request CID.
+    pub fn open_service_async(&self, name: &str, cid: &CorrelationId) -> Result<CorrelationId> {
+        let c_name = CString::new(name).map_err(|e| BlpError::InvalidArgument {
+            detail: format!("invalid service name: {}", e),
+        })?;
+
+        let mut cid_ffi = cid.to_ffi();
+
+        // SAFETY: Calling the Bloomberg API with valid pointers. The cid_ffi
+        // out-parameter is filled with the actual CID assigned by the SDK.
+        let rc = unsafe {
+            crate::ffi::blpapi_Session_openServiceAsync(
+                self.ptr,
+                c_name.as_ptr(),
+                &mut cid_ffi,
+            )
+        };
+
+        if rc != 0 {
+            return Err(BlpError::OpenService {
+                service: name.to_string(),
+                source: None,
+                label: None,
+            });
+        }
+
+        Ok(CorrelationId::from_ffi(&cid_ffi))
     }
 
     /// Get a service handle
