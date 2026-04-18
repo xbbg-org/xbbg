@@ -380,7 +380,7 @@ jobs:
       BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -388,14 +388,14 @@ jobs:
           rustflags: ""
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: js-xbbg/package-lock.json
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -427,7 +427,7 @@ jobs:
       - name: Cache Bloomberg SDK (Linux)
         if: runner.os == 'Linux'
         id: cache-sdk-linux-bridge
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/blpapi
           key: blpapi-Linux-${{ env.BLPAPI_VERSION }}
@@ -450,7 +450,7 @@ jobs:
       - name: Cache Bloomberg SDK (Windows)
         if: runner.os == 'Windows'
         id: cache-sdk-windows-bridge
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/blpapi
           key: blpapi-Windows-${{ env.BLPAPI_VERSION }}
@@ -473,7 +473,7 @@ jobs:
       - name: Cache Bloomberg SDK (macOS)
         if: runner.os == 'macOS'
         id: cache-sdk-macos-bridge
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/blpapi
           key: blpapi-macOS-${{ env.BLPAPI_VERSION }}
@@ -532,24 +532,17 @@ jobs:
 
 
       - name: Upload staged bridge package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bridge-package-${{ matrix.label }}
           path: ${{ matrix.package_dir }}
           retention-days: 7
 
       - name: Upload staged core package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: core-package-${{ matrix.label }}
           path: ${{ matrix.core_package_dir }}
-          retention-days: 7
-
-      - name: Upload js-xbbg native artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: napi-xbbg-${{ matrix.label }}
-          path: js-xbbg/napi_xbbg.node
           retention-days: 7
 
   # ════════════════════════════════════════════════════════════════════════════
