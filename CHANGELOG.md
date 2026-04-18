@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **`EngineConfig.request_timeout_ms` default changed from `60_000` to `0` (disabled)**: The previous 60s hard cap was self-inflicting timeouts on legitimately long requests — e.g. a full-day `bdtick` for a liquid future routinely exceeds 60s on the Bloomberg side, so the worker was cancelling healthy requests and surfacing a `BlpTimeoutError` to the caller. The enforcement machinery is unchanged; callers who want a hard upper bound must now opt in explicitly by passing `request_timeout_ms=<ms>` (Python), `requestTimeoutMs` (NAPI), or `PyEngineConfig.request_timeout_ms` (pyo3).
+
 ## [1.1.1b1] - 2026-04-18
 
 ### Added
