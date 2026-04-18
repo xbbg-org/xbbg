@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **`@xbbg/core`: recipe helpers exposed on the JS `Engine`**: Eleven recipe methods surfaced through the NAPI bindings — `yas`, `preferreds`, `corporateBonds`, `futTicker`, `activeFutures`, `cdxTicker`, `activeCdx`, `dividend`, `turnover`, `etfHoldings`, `currencyConversion` — wrapping the corresponding `xbbg_recipes` entry points. Returns Arrow `Table` by default with `Backend.JSON` / `Backend.POLARS` opt-in via `options.backend`; errors route through the standard `BlpError` hierarchy. Ships with TypeScript definitions (`YasOptions`, `PreferredsOptions`, `CorporateBondsOptions`, `FuturesResolveOptions`, `ActiveCdxOptions`, `DividendOptions`, `TurnoverOptions`, `EtfHoldingsOptions`, `RecipeBackendOptions`), README usage examples, and smoke-test coverage in `js-xbbg/test.js`.
+- **Prebuilt cross-platform offline bundles for `@xbbg/core`** (`scripts/build-offline-bundle.js`): Packages `@xbbg/core` plus the prebuilt `@xbbg/core-<label>` native addon into a hoisted `bundle/node_modules` tree alongside source tarballs for air-gapped installs. `js_github_release.yml` gains a `pack-offline-bundles` job that attaches `xbbg-offline-<label>-<version>.zip` to the GitHub release (covered by the existing `validate-release-payload` scanner for Bloomberg SDK leakage); `ci-rust.yml` mirrors the job per-commit with a 7-day artifact retention for downstream consumers.
+
 ### Changed
 
 - **`EngineConfig.request_timeout_ms` default changed from `60_000` to `0` (disabled)**: The previous 60s hard cap was self-inflicting timeouts on legitimately long requests — e.g. a full-day `bdtick` for a liquid future routinely exceeds 60s on the Bloomberg side, so the worker was cancelling healthy requests and surfacing a `BlpTimeoutError` to the caller. The enforcement machinery is unchanged; callers who want a hard upper bound must now opt in explicitly by passing `request_timeout_ms=<ms>` (Python), `requestTimeoutMs` (NAPI), or `PyEngineConfig.request_timeout_ms` (pyo3).
+
+### Fixed
+
+- **Offline-bundle packing rejected by npm with `EBADPLATFORM`**: `npm install` in the `pack-offline-bundles` job runs on a Linux runner but pulls in `@xbbg/core-<label>` packages that declare `os`/`cpu` for their target platform (e.g. `win32`/`x64`). `scripts/build-offline-bundle.js` now passes `--force` so the cross-platform install succeeds; the bundle is never executed on the install host, so the platform check is safe to skip.
 
 ## [1.1.1b1] - 2026-04-18
 
