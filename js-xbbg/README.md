@@ -85,6 +85,44 @@ const cdxRisk = await xbbg.ext.cdx.acdx_risk('CDX IG CDSI GEN 5Y Corp');
 engine.signalShutdown();
 ```
 
+## Recipes
+
+High-level workflows that wrap common Bloomberg request patterns. Each recipe returns an Arrow `Table` by default (or a JSON/Polars result when `backend` is set) and errors are mapped to the standard `BlpError` hierarchy.
+
+```javascript
+// Fixed income
+const yas = await engine.yas(['US912810TM69 Govt'], ['YAS_BOND_YLD'], {
+  settleDt: '20240115',
+  yieldType: 1, // 1=YTM, 2=YTC, 3=YTW, 4=YTB, 5=YTP, 6=YTN, 7=OAS, 8=YTS, 9=YTAL
+  price: 99.5,
+});
+const bqr = await engine.bqr('US912810TM69 Govt', {
+  startDatetime: '2024-06-03T14:30:00',
+  endDatetime: '2024-06-03T15:00:00',
+  eventTypes: ['BID', 'ASK'],
+});
+const preferreds = await engine.preferreds('BAC US Equity');
+const corpBonds = await engine.corporateBonds('AAPL', { ccy: 'USD' });
+
+// Futures and CDX resolution
+const front = await engine.futTicker('ES1 Index', '20240301');
+const active = await engine.activeFutures('CL1 Comdty', '20240301', { freq: 'M' });
+const cdx = await engine.cdxTicker('CDX IG CDSI GEN 5Y Corp', '20240301');
+const activeCdx = await engine.activeCdx('CDX IG CDSI GEN 5Y Corp', '20240301', {
+  lookbackDays: 10,
+});
+
+// Historical helpers
+const dvd = await engine.dividend(['AAPL US Equity'], '20230101', '20231231');
+const turn = await engine.turnover(['AAPL US Equity'], '20240101', '20240131', {
+  ccy: 'USD',
+});
+const holdings = await engine.etfHoldings('SPY US Equity');
+
+// Currency-converted prices
+const px = await engine.currencyConversion('700 HK Equity', 'USD', '20240101', '20240131');
+```
+
 ## Engine configuration
 
 `connect()` and `configure()` accept a structured `EngineConfig` object. The most important connection controls are:

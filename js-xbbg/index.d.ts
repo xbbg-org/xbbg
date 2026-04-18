@@ -244,6 +244,49 @@ export interface BqrOptions {
   includeBrokerCodes?: boolean;
   backend?: string;
 }
+export interface YasOptions {
+  settleDt?: string;
+  yieldType?: number;
+  spread?: number;
+  yieldVal?: number;
+  price?: number;
+  benchmark?: string;
+  backend?: string;
+}
+export interface PreferredsOptions {
+  fields?: string[];
+  backend?: string;
+}
+export interface CorporateBondsOptions {
+  ccy?: string;
+  fields?: string[];
+  activeOnly?: boolean;
+  backend?: string;
+}
+export interface FuturesResolveOptions {
+  freq?: string;
+  backend?: string;
+}
+export interface ActiveCdxOptions {
+  lookbackDays?: number;
+  backend?: string;
+}
+export interface DividendOptions {
+  dvdType?: string;
+  backend?: string;
+}
+export interface TurnoverOptions {
+  ccy?: string;
+  factor?: number;
+  backend?: string;
+}
+export interface EtfHoldingsOptions {
+  fields?: string[];
+  backend?: string;
+}
+export interface RecipeBackendOptions {
+  backend?: string;
+}
 export interface RequestOptions {
   overrides?: Record<string, string | number | boolean>;
   kwargs?: Record<string, string | number | boolean>;
@@ -364,6 +407,62 @@ export class Engine {
   fieldInfo(fields: string | string[], options?: BfldsOptions): Promise<Table>;
   fieldSearch(searchSpec: string, options?: BfldsOptions): Promise<Table>;
   bqr(ticker: string, options?: BqrOptions): Promise<Table>;
+  yas(
+    tickers: string | string[],
+    fields: string | string[],
+    options?: YasOptions,
+  ): Promise<Table>;
+  preferreds(
+    equityTicker: string,
+    options?: PreferredsOptions,
+  ): Promise<Table>;
+  corporateBonds(
+    ticker: string,
+    options?: CorporateBondsOptions,
+  ): Promise<Table>;
+  futTicker(
+    genTicker: string,
+    dt: string,
+    options?: FuturesResolveOptions,
+  ): Promise<Table>;
+  activeFutures(
+    genTicker: string,
+    dt: string,
+    options?: FuturesResolveOptions,
+  ): Promise<Table>;
+  cdxTicker(
+    genTicker: string,
+    dt: string,
+    options?: RecipeBackendOptions,
+  ): Promise<Table>;
+  activeCdx(
+    genTicker: string,
+    dt: string,
+    options?: ActiveCdxOptions,
+  ): Promise<Table>;
+  dividend(
+    tickers: string | string[],
+    startDate: string,
+    endDate: string,
+    options?: DividendOptions,
+  ): Promise<Table>;
+  turnover(
+    tickers: string | string[],
+    startDate: string,
+    endDate: string,
+    options?: TurnoverOptions,
+  ): Promise<Table>;
+  etfHoldings(
+    etfTicker: string,
+    options?: EtfHoldingsOptions,
+  ): Promise<Table>;
+  currencyConversion(
+    ticker: string,
+    targetCcy: string,
+    startDate: string,
+    endDate: string,
+    options?: RecipeBackendOptions,
+  ): Promise<Table>;
 }
 
 export interface BlpNamespace {
