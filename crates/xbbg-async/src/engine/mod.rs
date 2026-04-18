@@ -1201,7 +1201,9 @@ pub struct EngineConfig {
     /// Hard per-request timeout in ms. Workers cancel the Bloomberg request and
     /// fail the oneshot if no response arrives in this window. Guarantees that
     /// a request cannot hang forever even if Bloomberg or the SDK misbehaves.
-    /// Set to 0 to disable the timeout. Default: 60_000 (60s).
+    /// Default: 0 (disabled) — callers must opt in by setting a non-zero value.
+    /// Large historical requests (e.g. full-day `bdtick`) routinely exceed any
+    /// fixed bound, so the library does not impose one by default.
     pub request_timeout_ms: u64,
     /// If a topic's subscription streams have been deactivated for more than
     /// this many ms without reactivation, emit a one-shot escalated Warning
@@ -1254,7 +1256,7 @@ impl Default for EngineConfig {
             num_start_attempts: 3,
             auto_restart_on_disconnection: true,
             retry_policy: RetryPolicy::default(),
-            request_timeout_ms: 60_000,
+            request_timeout_ms: 0,
             streams_deactivated_warn_ms: 30_000,
             keep_alive_enabled: true,
             keep_alive_inactivity_ms: None,
