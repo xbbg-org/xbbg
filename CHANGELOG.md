@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-04-18
+
 ### Added
+
+- **BQL `secondaryColumns` extracted from responses** (#288, refs #289 / #290 / #291): `parse_bql_json` in `xbbg-async` now pulls `DATE`, `CURRENCY`, and other secondary dimensions out of BQL JSON so time-series queries like `with(dates=range(-5d, 0d))` return usable row labels instead of ambiguous duplicate-ticker rows. Three latent parser issues fixed in the same pass: column lengths are now clamped to `idColumn` size via `resize()` so partial errors with mismatched field lengths stop failing `RecordBatch::try_new` (#289); column typing now uses Bloomberg's `valuesColumn.type` metadata with `.all()` fallback instead of value-sniffing with `.any()` (#290); a warning is logged when BQL falls through to the legacy Element-API path where `secondaryColumns` are unavailable (#291).
 
 - **`xbbg-async`: per-subscription availability tracking via `SubscriptionStreamsActivated`/`SubscriptionStreamsDeactivated`**: Bloomberg SDK v3.11.6+ recovers subscriptions internally across transient disconnections; the ChangeLog explicitly instructs applications to use the `Streams*` events to detect failover. xbbg now consumes both and exposes per-topic `streams_active` on `TopicStatusInfo`. A debounced Warning event (`SubscriptionStreamsDeactivatedPersisting`) fires when a topic stays streams-inactive past `streams_deactivated_warn_ms`, so callers polling status can tell "SDK is still recovering" from "data is dead". See `.omc/research/reconnect-correctness.md` for the full SDK-contract evidence trail.
 - **`EngineConfig.request_timeout_ms`** (default `60_000`; `0` disables): Hard per-request upper bound. Request workers now cancel the Bloomberg request and fail the oneshot with `BlpError::Timeout` when the timeout expires, guaranteeing callers cannot hang forever on a stuck response regardless of SDK or server-side misbehavior. Exposed through all three bindings: Python `request_timeout_ms`, NAPI `requestTimeoutMs`, pyo3 `PyEngineConfig.request_timeout_ms`.
@@ -1242,7 +1246,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...v1.0.0
 [1.0.0rc4]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc3...v1.0.0rc4
