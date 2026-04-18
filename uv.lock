@@ -378,7 +378,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "narwhals", specifier = ">=1.30" },
+    { name = "narwhals", specifier = ">=2.0" },
     { name = "pyarrow", specifier = ">=22.0.0" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-asyncio", marker = "extra == 'test'" },

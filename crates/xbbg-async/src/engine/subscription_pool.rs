@@ -14,7 +14,15 @@ use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, EventType, SubscriptionList};
+use xbbg_core::{BlpError, CorrelationId, EventType, SubscriptionList};
+
+/// High-bit tag for CorrelationIds we generate for async `open_service` calls.
+/// Slab-key-derived subscription CIDs are small non-negative integers, so tagging
+/// service-open CIDs with bit 62 set keeps them disjoint.
+const SERVICE_OPEN_CID_TAG: i64 = 1_i64 << 62;
+
+/// Max wall time for an async open_service reply before we give up.
+const SERVICE_OPEN_TIMEOUT_MS: u64 = 10_000;
 
 use super::dispatch::DispatchKey;
 use super::state::{SubscriptionMetrics, SubscriptionState};
@@ -91,6 +99,14 @@ struct SubscriptionWorker {
     /// Per-topic "last deactivated warning" timestamp so we don't spam the
     /// event stream if a topic stays in streams-inactive state for a while.
     last_streams_warn_us: std::collections::HashMap<SlabKey, i64>,
+    /// Pending async `open_service` calls keyed by the CID we generated.
+    /// Value is (service name, outcome). `None` means still waiting; `Some(Ok)`
+    /// means ServiceOpened arrived; `Some(Err)` means ServiceOpenFailure arrived.
+    /// Populated by `ensure_service`, consumed when `handle_service_status` sees
+    /// a reply with a matching CID.
+    pending_service_opens: std::collections::HashMap<i64, (String, Option<Result<(), BlpError>>)>,
+    /// Counter for generating unique service-open CIDs.
+    next_service_open_id: i64,
 }
 
 impl SubscriptionWorker {
@@ -120,6 +136,8 @@ impl SubscriptionWorker {
             status: None,
             health,
             last_streams_warn_us: std::collections::HashMap::new(),
+            pending_service_opens: std::collections::HashMap::new(),
+            next_service_open_id: 0,
         })
     }
 
@@ -141,25 +159,64 @@ impl SubscriptionWorker {
     }
 
     /// Ensure a service is open, opening it on demand if needed.
+    ///
+    /// Uses `open_service_async` + a nested dispatch loop so that in-flight
+    /// `SubscriptionData` and other events continue to flow to the normal
+    /// dispatch path while we wait for `ServiceOpened` / `ServiceOpenFailure`.
+    /// The synchronous `open_service` would stall delivery for the full open
+    /// duration (measured at 200-300ms against a local Terminal).
     fn ensure_service(&mut self, service: &str) -> Result<(), BlpError> {
-        if !self.open_services.contains(service) {
-            xbbg_log::info!(
-                worker_id = self.id,
-                service = service,
-                "opening service on demand"
+        if self.open_services.contains(service) {
+            return Ok(());
+        }
+        xbbg_log::info!(
+            worker_id = self.id,
+            service = service,
+            "opening service on demand (async)"
+        );
+
+        self.next_service_open_id = self.next_service_open_id.wrapping_add(1);
+        let cid_int = SERVICE_OPEN_CID_TAG | self.next_service_open_id;
+        let cid = CorrelationId::Int(cid_int);
+        self.pending_service_opens
+            .insert(cid_int, (service.to_string(), None));
+
+        if let Err(e) = self.session.open_service_async(service, &cid) {
+            self.pending_service_opens.remove(&cid_int);
+            return Err(e);
+        }
+
+        // Nested dispatch loop: keep other events flowing while we wait.
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_OPEN_TIMEOUT_MS);
+        loop {
+            // Check outcome first in case dispatch already resolved it.
+            let resolved = matches!(
+                self.pending_service_opens.get(&cid_int),
+                Some((_, Some(_)))
             );
-            self.session.open_service(service)?;
-            self.open_services.insert(service.to_string());
-            if let Some(status) = &self.status {
-                status.lock().record_service_state(
-                    service.to_string(),
-                    true,
-                    "ServiceOpened",
-                    Some("service opened on demand".to_string()),
-                );
+            if resolved {
+                let (_, outcome) = self.pending_service_opens.remove(&cid_int).unwrap();
+                return outcome.unwrap();
+            }
+            if !self.pending_service_opens.contains_key(&cid_int) {
+                return Err(BlpError::Internal {
+                    detail: format!("pending service open for {} vanished", service),
+                });
+            }
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                self.pending_service_opens.remove(&cid_int);
+                return Err(BlpError::Timeout);
+            }
+            let poll_ms = deadline
+                .saturating_duration_since(now)
+                .as_millis()
+                .min(200) as u32;
+            if let Ok(ev) = self.session.next_event(Some(poll_ms.max(1))) {
+                self.dispatch_event(ev);
             }
         }
-        Ok(())
     }
 
     fn run(&mut self) -> Result<(), BlpError> {
@@ -889,6 +946,56 @@ impl SubscriptionWorker {
     fn handle_service_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
+
+        // First: is this message a reply to one of our async open_service calls?
+        if matches!(msg_type, "ServiceOpened" | "ServiceOpenFailure") {
+            if let Some(CorrelationId::Int(cid_int)) = msg.correlation_id(0) {
+                if self.pending_service_opens.contains_key(&cid_int) {
+                    let service_name = self
+                        .pending_service_opens
+                        .get(&cid_int)
+                        .map(|(s, _)| s.clone())
+                        .unwrap_or_default();
+                    match msg_type {
+                        "ServiceOpened" => {
+                            self.open_services.insert(service_name.clone());
+                            if let Some(entry) = self.pending_service_opens.get_mut(&cid_int) {
+                                entry.1 = Some(Ok(()));
+                            }
+                            if let Some(status) = &self.status {
+                                status.lock().record_service_state(
+                                    service_name,
+                                    true,
+                                    "ServiceOpened",
+                                    Some("service opened on demand".to_string()),
+                                );
+                            }
+                        }
+                        "ServiceOpenFailure" => {
+                            let reason = extract_reason_description(msg);
+                            if let Some(entry) = self.pending_service_opens.get_mut(&cid_int) {
+                                entry.1 = Some(Err(BlpError::OpenService {
+                                    service: service_name.clone(),
+                                    source: None,
+                                    label: reason.clone(),
+                                }));
+                            }
+                            if let Some(status) = &self.status {
+                                status.lock().record_service_state(
+                                    service_name,
+                                    false,
+                                    "ServiceOpenFailure",
+                                    reason,
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
+
         let service = msg
             .elements()
             .get_by_str("serviceName")

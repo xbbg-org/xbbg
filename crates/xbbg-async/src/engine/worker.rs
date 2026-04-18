@@ -21,7 +21,15 @@ use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, EventType, Service};
+use xbbg_core::{BlpError, CorrelationId, EventType, Service};
+
+/// High-bit tag for CorrelationIds we generate for async `open_service` calls.
+/// Must not collide with slab-key-derived request CIDs (small positive ints),
+/// so we tag with bit 62.
+const SERVICE_OPEN_CID_TAG: i64 = 1_i64 << 62;
+
+/// Max wall time we'll wait for an async open_service reply.
+const SERVICE_OPEN_TIMEOUT_MS: u64 = 10_000;
 
 use super::dispatch::DispatchKey;
 use super::state::{
@@ -212,6 +220,12 @@ struct RequestWorker {
     /// Per-request cancellation flags flipped when Python drops the awaitable.
     cancellations: HashMap<SlabKey, Arc<AtomicBool>>,
     health: Arc<AtomicU8>,
+    /// Pending async `open_service` calls keyed by CID we generated. Value is
+    /// (service name, outcome). `None` outcome = still waiting; `Some(result)`
+    /// populated when `handle_service_status` sees the matching reply.
+    pending_service_opens: HashMap<i64, (String, Option<Result<(), BlpError>>)>,
+    /// Counter for generating unique service-open CIDs.
+    next_service_open_id: i64,
 }
 
 impl RequestWorker {
@@ -236,6 +250,8 @@ impl RequestWorker {
             poll_counter: 0,
             cancellations: HashMap::new(),
             health,
+            pending_service_opens: HashMap::new(),
+            next_service_open_id: 0,
         };
 
         // Pre-warm commonly used services
@@ -426,13 +442,62 @@ impl RequestWorker {
         }
     }
 
+    /// Ensure a service is open and cached.
+    ///
+    /// Uses `open_service_async` + a nested dispatch loop so in-flight
+    /// request responses and session events keep flowing while we wait for
+    /// `ServiceOpened` / `ServiceOpenFailure`. Synchronous `open_service`
+    /// stalls delivery of every other event on the session for the full open
+    /// duration (measured 200-300ms in practice).
     fn ensure_service(&mut self, name: &str) -> Result<(), BlpError> {
-        if !self.services.contains_key(name) {
-            self.session.open_service(name)?;
-            let svc = self.session.get_service(name)?;
-            self.services.insert(name.to_string(), svc);
+        if self.services.contains_key(name) {
+            return Ok(());
         }
-        Ok(())
+
+        self.next_service_open_id = self.next_service_open_id.wrapping_add(1);
+        let cid_int = SERVICE_OPEN_CID_TAG | self.next_service_open_id;
+        let cid = CorrelationId::Int(cid_int);
+        self.pending_service_opens
+            .insert(cid_int, (name.to_string(), None));
+
+        if let Err(e) = self.session.open_service_async(name, &cid) {
+            self.pending_service_opens.remove(&cid_int);
+            return Err(e);
+        }
+
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_OPEN_TIMEOUT_MS);
+        loop {
+            let resolved = matches!(
+                self.pending_service_opens.get(&cid_int),
+                Some((_, Some(_)))
+            );
+            if resolved {
+                let (_, outcome) = self.pending_service_opens.remove(&cid_int).unwrap();
+                outcome.unwrap()?;
+                // Grab the Service handle once the service is confirmed open.
+                let svc = self.session.get_service(name)?;
+                self.services.insert(name.to_string(), svc);
+                return Ok(());
+            }
+            if !self.pending_service_opens.contains_key(&cid_int) {
+                return Err(BlpError::Internal {
+                    detail: format!("pending service open for {} vanished", name),
+                });
+            }
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                self.pending_service_opens.remove(&cid_int);
+                return Err(BlpError::Timeout);
+            }
+            let poll_ms = deadline
+                .saturating_duration_since(now)
+                .as_millis()
+                .min(200) as u32;
+            if let Ok(ev) = self.session.next_event(Some(poll_ms.max(1))) {
+                self.dispatch_event(ev);
+            }
+        }
     }
 
     /// Introspect a service's schema.
@@ -1067,6 +1132,33 @@ impl RequestWorker {
     fn handle_service_status(&mut self, msg: &xbbg_core::Message<'_>) {
         let msg_type_name = msg.message_type();
         let msg_type = msg_type_name.as_str();
+
+        // If this ServiceOpened/ServiceOpenFailure is a reply to one of our
+        // async `open_service_async` calls, resolve the matching outcome so
+        // the waiting `ensure_service` unblocks on its next loop iteration.
+        if matches!(msg_type, "ServiceOpened" | "ServiceOpenFailure") {
+            if let Some(CorrelationId::Int(cid_int)) = msg.correlation_id(0) {
+                if let Some(entry) = self.pending_service_opens.get_mut(&cid_int) {
+                    match msg_type {
+                        "ServiceOpened" => {
+                            entry.1 = Some(Ok(()));
+                        }
+                        "ServiceOpenFailure" => {
+                            let reason = extract_reason_description(msg);
+                            let service_name = entry.0.clone();
+                            entry.1 = Some(Err(BlpError::OpenService {
+                                service: service_name,
+                                source: None,
+                                label: reason,
+                            }));
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
+
         xbbg_log::debug!(worker_id = self.id, msg_type = msg_type, "service status");
     }
 }

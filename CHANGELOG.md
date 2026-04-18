@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Changed
 
+- **`ensure_service` switched from synchronous `openService` to `openServiceAsync` + nested event dispatch**: The synchronous `blpapi_Session_openService` internally blocks on the session's event queue, which stalls delivery of every other in-flight event for the duration of the call. Measured locally against a Bloomberg Terminal: `open_service` takes 200-300ms per call, post-call delivery rates spike to 1.6-2.3× baseline (consistent with queue-and-release). Worker threads now call `open_service_async`, tag replies with a dedicated high-bit-set correlation ID (`1 << 62`), and run a nested dispatch loop that continues to process `SubscriptionData` / `SessionStatus` / `RequestStatus` while waiting for `ServiceOpened`. Both `SubscriptionWorker::ensure_service` and `RequestWorker::ensure_service` are affected. Added `Session::open_service_async` on `xbbg-core` with a `BlpError::Timeout` after `SERVICE_OPEN_TIMEOUT_MS` (10s default).
+
+### Changed
+
 - **`SessionConnectionDown`/`Up` are now treated as informational on the subscription path** (matching Bloomberg's canonical guidance: `vendor/blpapi-sdk/.../examples/unittests/snippets/events/events.t.cpp:42-54` — "Applications can safely ignore… These events are informational only and applications should not react to them"). Only `SessionTerminated` drains active subscriptions and marks the worker `Dead`. The SDK's own auto-restart + internal subscription recovery handle transient network blips.
 - **Request-side handling preserves drain-on-Down semantics** but marks workers `Degraded` (not `Dead`): requests are transactional, so a response mid-transit when TCP drops is lost and must be failed fast. On `SessionConnectionUp` the worker flips back to `Healthy`. On `SessionTerminated`, it drains and goes `Dead` with pool replacement.
 - **`BlpError` produced on `RequestFailure` and `SessionTerminated` now includes Bloomberg's `reason.description`** instead of opaque `"RequestFailure"` / `"Bloomberg session terminated"` strings. Same parser shape as the existing `startup_error_from_message` helper.
