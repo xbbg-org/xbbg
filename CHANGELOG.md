@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bdh` / `bdp` with `format='semi_long'` dropped Int64-typed fields (#303)**: Bloomberg sends integer-typed fields (`PX_VOLUME`, `OPEN_INT`, etc.) as Float64 on the wire in HistoricalDataResponse even though FieldInfo declares them `Int64`/`Long`. `crates/xbbg-core/src/value.rs::Value::as_i64` (and its `OwnedValue` twin) and the inline `TypedBuilder::Int32::append_value` match in `crates/xbbg-async/src/engine/state/typed_builder.rs` had no Float64 arm, so the wide-path Int builder null-filled those columns. Consequence: `blp.bdh("ESH20 Index", flds=[..., "PX_VOLUME", "OPEN_INT"], format='semi_long')` returned NaN for every volume / open-interest row. `long` / `long_typed` / `long_metadata` were unaffected because their builders route via Float64 or stringify. Fixed by accepting `Float64` when it's finite, has `fract()==0.0`, and fits the target integer range. `TestOutputFormats::test_bdh_semi_long_integer_fields_issue_303` locks this in live, plus existing `bdp`/`bdh` `semi_long` tests now assert `notna().all()` per column instead of just column names.
+
 ## [1.1.1] - 2026-04-20
 
 ### Added
