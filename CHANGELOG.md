@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-04-20
+
 ### Added
 
 - **`@xbbg/core`: recipe helpers exposed on the JS `Engine`**: Eleven recipe methods surfaced through the NAPI bindings — `yas`, `preferreds`, `corporateBonds`, `futTicker`, `activeFutures`, `cdxTicker`, `activeCdx`, `dividend`, `turnover`, `etfHoldings`, `currencyConversion` — wrapping the corresponding `xbbg_recipes` entry points. Returns Arrow `Table` by default with `Backend.JSON` / `Backend.POLARS` opt-in via `options.backend`; errors route through the standard `BlpError` hierarchy. Ships with TypeScript definitions (`YasOptions`, `PreferredsOptions`, `CorporateBondsOptions`, `FuturesResolveOptions`, `ActiveCdxOptions`, `DividendOptions`, `TurnoverOptions`, `EtfHoldingsOptions`, `RecipeBackendOptions`), README usage examples, and smoke-test coverage in `js-xbbg/test.js`.
@@ -1265,7 +1267,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.1b1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/alpha-xone/xbbg/compare/v1.1.1b1...v1.1.1
 [1.1.1b1]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...v1.1.1b1
 [1.1.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...v1.0.0
