@@ -7,6 +7,7 @@ Main entry point for xbbg. For API functions, use `from xbbg import blp` or
 
 from importlib.metadata import PackageNotFoundError, version
 import logging
+import warnings
 
 try:
     __version__ = version("xbbg")
@@ -17,7 +18,6 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 logger.setLevel(logging.WARNING)
 
-import warnings
 warnings.warn(
     "You are using xbbg 0.x which is in maintenance mode. "
     "xbbg 1.0 release candidate is available with significant improvements. "
