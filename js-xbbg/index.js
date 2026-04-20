@@ -1148,7 +1148,13 @@ class Engine {
     }
   }
 
-  async currencyConversion(ticker, targetCcy, startDate, endDate, options = {}) {
+  async currencyConversion(
+    ticker,
+    targetCcy,
+    startDate,
+    endDate,
+    options = {},
+  ) {
     try {
       const buffer = await this._inner.recipeCurrencyConversion(
         String(ticker),
