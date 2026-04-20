@@ -325,6 +325,9 @@ class TestOutputFormats:
 
         assert list(df.columns) == ["ticker", *fields]
         assert len(df) == len(CONFIG.equity_multi)
+        pdf = df.to_pandas()
+        for field in fields:
+            assert pdf[field].notna().all(), f"semi_long {field} column contains NaN"
 
     def test_bdp_long_typed(self):
         from xbbg import bdp
@@ -368,6 +371,31 @@ class TestOutputFormats:
         df = bdh(CONFIG.equity_single, fields, start_date=start, end_date=end, format="semi_long")
 
         assert list(df.columns) == ["ticker", "date", *fields]
+        pdf = df.to_pandas()
+        for field in fields:
+            assert pdf[field].notna().all(), f"semi_long {field} column contains NaN"
+
+    def test_bdh_semi_long_integer_fields_issue_303(self):
+        """Regression for #303: bdh semi_long dropped Int64-typed fields.
+
+        Bloomberg sends PX_VOLUME / OPEN_INT as Float64 in HistoricalDataResponse
+        even though FieldInfo types them as Int64. Before the fix, the typed
+        Int64 builder rejected Float64 values and null-filled the column.
+        """
+        from xbbg import bdh
+
+        # Window well before today so OPEN_INT is fully published for every row.
+        end = datetime.now() - timedelta(days=14)
+        start = end - timedelta(days=5)
+        start, end = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+        fields = ["PX_LAST", "PX_VOLUME", "OPEN_INT"]
+        df = bdh(CONFIG.futures_generic, fields, start_date=start, end_date=end, format="semi_long")
+
+        assert list(df.columns) == ["ticker", "date", *fields]
+        assert len(df) > 0, "expected at least one row for the historical window"
+        pdf = df.to_pandas()
+        for field in fields:
+            assert pdf[field].notna().all(), f"#303 regression — {field} column contains NaN"
 
     def test_bdh_long_typed(self):
         from xbbg import bdh

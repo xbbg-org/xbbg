@@ -89,6 +89,17 @@ impl<'a> Value<'a> {
             Self::Date32(v) => Some(*v as i64),
             Self::TimestampMicros(v) => Some(*v),
             Self::Time64Micros(v) => Some(*v),
+            // Bloomberg often sends integer-typed fields (e.g. PX_VOLUME, OPEN_INT)
+            // as Float64 in HistoricalDataResponse. Accept only whole numbers within
+            // i64 range; anything with a fractional part stays None.
+            Self::Float64(v)
+                if v.is_finite()
+                    && v.fract() == 0.0
+                    && *v >= i64::MIN as f64
+                    && *v <= i64::MAX as f64 =>
+            {
+                Some(*v as i64)
+            }
             _ => None,
         }
     }
@@ -175,6 +186,14 @@ impl OwnedValue {
             Self::Date32(v) => Some(*v as i64),
             Self::TimestampMicros(v) => Some(*v),
             Self::Time64Micros(v) => Some(*v),
+            Self::Float64(v)
+                if v.is_finite()
+                    && v.fract() == 0.0
+                    && *v >= i64::MIN as f64
+                    && *v <= i64::MAX as f64 =>
+            {
+                Some(*v as i64)
+            }
             _ => None,
         }
     }
