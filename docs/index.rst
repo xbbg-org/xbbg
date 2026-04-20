@@ -29,9 +29,8 @@ xbbg
 ..
    xbbg:latest-release-start
 
-Latest release: xbbg==0.12.0 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.12.0>`_)
+Latest release: xbbg==0.12.3 (release: `notes <https://github.com/alpha-xone/xbbg/releases/tag/v0.12.3>`_)
 
-..
    xbbg:latest-release-end
 
 Overview
