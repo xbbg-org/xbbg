@@ -11,10 +11,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - **1.0 release candidate notice**: Added a banner to README.md directing users to the 1.0 RC (`pip install xbbg --pre`).
 - **Runtime deprecation warning**: Importing xbbg 0.x now emits a `FutureWarning` informing users that 1.0 is available. Shown once per process.
+- **`process.apply_schema_elements()` helper**: Walks the live blpapi request schema (`Request.asElement().elementDefinition().typeDefinition().elementDefinitions()`) and dispatches caller kwargs to any element the service actually accepts, resolving aliases from `overrides.ELEM_KEYS` (e.g. `Points` → `maxDataPoints`, `CshAdjNormal` → `adjustmentNormal`) and enum values from `overrides.ELEM_VALS`. Replaces hand-maintained per-request-type whitelists — new Bloomberg schema elements become usable without a code change. Companion `process.request_schema_element_names()` exposes the raw element set (#295).
 
 ### Fixed
 
 - **Release workflow**: Added `docs/index.rst` latest-release marker update to the inline release workflow. Previously dropped when the cross-branch `update_index_on_release.yml` was removed.
+- **`maxDataPoints` / `Points` silently dropped on `bdib` and `bdtick`** (#295): The intraday builders forwarded element kwargs into `**kwargs` without applying them to the Bloomberg request. `bdtick(Points=1)`, `bdtick(maxDataPoints=1)`, and `bdib(maxDataPoints=1)` now correctly cap response size by setting the top-level element on `IntradayTickRequest` / `IntradayBarRequest` via schema-driven dispatch. Other intraday elements exposed by the schema (`maxDataPointsOrigin`, `gapFillInitialBar`, `adjustment*`, `filter`, `filters`, …) are forwarded the same way when the caller provides them. Backport of #295 to 0.x.
+- **`ovrds={...}` on intraday requests now raises a clear error** (#295): `IntradayTickRequest` and `IntradayBarRequest` have no `overrides` sub-element on the Bloomberg schema, so passing overrides produced a cryptic `blpapi` "element not found" failure. `bdtick` / `bdib` / `IntradayRequestBuilder.build_request` now raise `ValueError` pointing users to `maxDataPoints` before hitting Bloomberg.
 
 ## [0.12.2] - 2026-03-18
 

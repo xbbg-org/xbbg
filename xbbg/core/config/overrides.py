@@ -130,9 +130,9 @@ def proc_ovrds(**kwargs) -> Iterable[tuple[str, Any]]:
         Iterable of (key, value) tuples.
 
     Examples:
-        >>> list(proc_ovrds(DVD_Start_Dt='20180101'))
+        >>> list(proc_ovrds(DVD_Start_Dt="20180101"))
         [('DVD_Start_Dt', '20180101')]
-        >>> list(proc_ovrds(DVD_Start_Dt='20180101', cache=True, has_date=True))
+        >>> list(proc_ovrds(DVD_Start_Dt="20180101", cache=True, has_date=True))
         [('DVD_Start_Dt', '20180101')]
     """
     excluded = list(ELEM_KEYS.keys()) + list(ELEM_KEYS.values()) + PRSV_COLS
@@ -151,17 +151,17 @@ def proc_elms(**kwargs) -> Iterable[tuple[str, Any]]:
         Iterable of (key, value) tuples.
 
     Examples:
-        >>> list(proc_elms(PerAdj='A', Per='W'))
+        >>> list(proc_elms(PerAdj="A", Per="W"))
         [('periodicityAdjustment', 'ACTUAL'), ('periodicitySelection', 'WEEKLY')]
-        >>> list(proc_elms(Days='A', Fill='B'))
+        >>> list(proc_elms(Days="A", Fill="B"))
         [('nonTradingDayFillOption', 'ALL_CALENDAR_DAYS'), ('nonTradingDayFillMethod', 'NIL_VALUE')]
         >>> list(proc_elms(CshAdjNormal=False, CshAdjAbnormal=True))
         [('adjustmentNormal', False), ('adjustmentAbnormal', True)]
-        >>> list(proc_elms(Per='W', Quote='Average', start_date='2018-01-10'))
+        >>> list(proc_elms(Per="W", Quote="Average", start_date="2018-01-10"))
         [('periodicitySelection', 'WEEKLY'), ('overrideOption', 'OVERRIDE_OPTION_GPA')]
-        >>> list(proc_elms(QuoteType='Y'))
+        >>> list(proc_elms(QuoteType="Y"))
         [('pricingOption', 'PRICING_OPTION_YIELD')]
-        >>> list(proc_elms(QuoteType='Y', cache=True))
+        >>> list(proc_elms(QuoteType="Y", cache=True))
         [('pricingOption', 'PRICING_OPTION_YIELD')]
     """
     included = list(ELEM_KEYS.keys()) + list(ELEM_KEYS.values())
@@ -181,9 +181,7 @@ def info_qry(tickers, flds) -> str:
         str
 
     Examples:
-        >>> print(info_qry(
-        ...     tickers=['NVDA US Equity'], flds=['Name', 'Security_Name']
-        ... ))
+        >>> print(info_qry(tickers=["NVDA US Equity"], flds=["Name", "Security_Name"]))
         tickers: ['NVDA US Equity']
         fields:  ['Name', 'Security_Name']
     """

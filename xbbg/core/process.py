@@ -92,6 +92,109 @@ def create_request(
     return req
 
 
+def request_schema_element_names(request: Any) -> set[str]:
+    """Return the top-level element names defined on a request's schema.
+
+    Walks the blpapi request schema (``Request.asElement().elementDefinition()
+    .typeDefinition().elementDefinitions()``) to enumerate every element the
+    Bloomberg service accepts on this particular request type.  Used by
+    :func:`apply_schema_elements` to dispatch caller kwargs without hard-coded
+    per-request-type whitelists.
+
+    Args:
+        request: A blpapi ``Request`` (or test double exposing the same
+            ``asElement().elementDefinition().typeDefinition()`` chain, whose
+            type definition iterates child definitions via
+            ``elementDefinitions()``).
+
+    Returns:
+        Set of element name strings (e.g. ``{"security", "startDateTime",
+        "endDateTime", "maxDataPoints", "maxDataPointsOrigin", ...}`` for
+        ``IntradayTickRequest``).
+
+    Raises:
+        AttributeError: If the object does not look like a blpapi Request.
+            Callers should treat this as "schema introspection unavailable"
+            and fall back to their own logic.
+    """
+    type_def = request.asElement().elementDefinition().typeDefinition()
+    return {str(d.name()) for d in type_def.elementDefinitions()}
+
+
+def apply_schema_elements(
+    request: Any,
+    *,
+    reserved: frozenset[str] | set[str] = frozenset({"overrides"}),
+    **kwargs,
+) -> list[str]:
+    """Apply caller kwargs to *request* for every element its schema accepts.
+
+    Walks the live blpapi request schema (via
+    :func:`request_schema_element_names`), resolves alias keys through
+    :data:`overrides.ELEM_KEYS` (e.g. ``Points`` -> ``maxDataPoints``,
+    ``CshAdjNormal`` -> ``adjustmentNormal``), maps enum-style values through
+    :data:`overrides.ELEM_VALS` (e.g. ``Per="W"`` -> ``"WEEKLY"``), and sets
+    the corresponding element on the request when the canonical name is
+    declared on this request type.  Elements not declared on the schema are
+    silently ignored rather than triggering a ``blpapi`` "element not found"
+    error.
+
+    This replaces hand-maintained per-request-type whitelists: any element
+    that Bloomberg adds in the future is picked up automatically, and aliases
+    defined in :data:`overrides.ELEM_KEYS` continue to work because they are
+    resolved before the schema lookup.
+
+    Args:
+        request: blpapi Request object (already created via ``service.createRequest``).
+        reserved: Canonical element names to skip even if they appear on the schema.
+            Defaults to ``{"overrides"}`` because the overrides sub-element is a
+            repeating complex element that callers handle separately (via the
+            ``ovrds`` parameter on :func:`create_request`).
+        **kwargs: Caller kwargs to dispatch to the request.  Keys may be
+            canonical Bloomberg element names, aliases from
+            :data:`overrides.ELEM_KEYS`, or unrelated names (which are ignored).
+            Keys listed in :data:`overrides.PRSV_COLS` are always ignored --
+            those are library-internal flags like ``cache`` / ``raw`` / ``log``.
+
+    Returns:
+        List of the *original* kwarg keys consumed.  Callers typically pop
+        these from their own kwargs dict so they do not re-forward to
+        downstream helpers (``conn.bbg_service`` etc.).
+
+    Examples:
+        Typical use from an intraday API::
+
+            blp_request = process.create_request(
+                service="//blp/refdata",
+                request="IntradayTickRequest",
+                settings=settings,
+            )
+            consumed = process.apply_schema_elements(blp_request, **kwargs)
+            for key in consumed:
+                kwargs.pop(key, None)
+    """
+    try:
+        schema_names = request_schema_element_names(request)
+    except AttributeError:
+        # Object doesn't expose a schema (e.g. MagicMock with no stub); nothing we can do.
+        return []
+
+    reserved_set = reserved if isinstance(reserved, frozenset) else frozenset(reserved)
+    consumed: list[str] = []
+    for key, value in list(kwargs.items()):
+        if key in overrides.PRSV_COLS:
+            continue
+        canonical = overrides.ELEM_KEYS.get(key, key)
+        if canonical in reserved_set:
+            continue
+        if canonical not in schema_names:
+            continue
+        resolved_value = overrides.ELEM_VALS.get(canonical, {}).get(value, value)
+        request.set(blpapi.Name(canonical), resolved_value)
+        consumed.append(key)
+    return consumed
+
+
 def init_request(request: Any, tickers, flds, **kwargs):
     """Initiate a Bloomberg request instance.
 

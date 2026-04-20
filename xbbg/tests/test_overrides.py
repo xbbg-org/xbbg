@@ -368,3 +368,323 @@ class TestCreateRequestOvrdsRegression:
         )
 
         mock_request.getElement.assert_not_called()
+
+
+def _make_schema_stub(element_names: list[str]):
+    """Build a MagicMock that mimics the blpapi request schema traversal chain.
+
+    Structure mirrored: ``Request.asElement() -> Element.elementDefinition() ->
+    SchemaElementDefinition.typeDefinition() -> SchemaTypeDefinition`` whose
+    ``elementDefinitions()`` yields ``SchemaElementDefinition`` children each
+    exposing a ``name()`` callable.  Matches the real blpapi Python API.
+    """
+    elem_defs = []
+    for n in element_names:
+        d = MagicMock()
+        d.name = MagicMock(return_value=n)
+        elem_defs.append(d)
+    type_def = MagicMock()
+    type_def.elementDefinitions = MagicMock(return_value=iter(elem_defs))
+    elem_def = MagicMock()
+    elem_def.typeDefinition = MagicMock(return_value=type_def)
+    root = MagicMock()
+    root.elementDefinition = MagicMock(return_value=elem_def)
+    return root
+
+
+# Live-schema element lists (minus ``overrides`` for tick/bar) captured from
+# //blp/refdata during investigation of issue #295.  Used by the test stubs
+# below so apply_schema_elements has something to walk.  Anything new that
+# Bloomberg adds is picked up automatically at runtime; these constants exist
+# only to make the mock look like the real thing.
+_INTRADAY_TICK_SCHEMA = [
+    "security",
+    "eventTypes",
+    "startDateTime",
+    "endDateTime",
+    "includeConditionCodes",
+    "includeNonPlottableEvents",
+    "includeExchangeCodes",
+    "returnEids",
+    "returnRelativeDate",
+    "includeBrokerCodes",
+    "includeRpsCodes",
+    "includeTradeTime",
+    "includeActionCodes",
+    "includeIndicatorCodes",
+    "maxDataPoints",
+    "maxDataPointsOrigin",
+    "filter",
+    "filters",
+]
+
+_INTRADAY_BAR_SCHEMA = [
+    "security",
+    "eventType",
+    "startDateTime",
+    "endDateTime",
+    "interval",
+    "intervalHasSeconds",
+    "gapFillInitialBar",
+    "returnEids",
+    "returnRelativeDate",
+    "adjustmentNormal",
+    "adjustmentAbnormal",
+    "adjustmentSplit",
+    "adjustmentFollowDPDF",
+    "maxDataPoints",
+    "maxDataPointsOrigin",
+]
+
+_REFERENCE_SCHEMA = [
+    "securities",
+    "fields",
+    "overrides",
+    "maxDataPoints",
+    "returnEids",
+    "returnFormattedValue",
+    "useUTCTime",
+    "forcedDelay",
+]
+
+
+class TestApplySchemaElements:
+    """Test apply_schema_elements -- schema-driven element dispatch (issue #295)."""
+
+    def _mock_service(self, request_obj):
+        """Patchable stub that returns a given request from service.createRequest."""
+        mock_service = MagicMock()
+        mock_service.createRequest = MagicMock(return_value=request_obj)
+        return mock_service
+
+    def _request_with_schema(self, element_names: list[str]):
+        """Build a mock Request that (a) records set() calls and (b) exposes a schema."""
+        set_calls: list[tuple[str, object]] = []
+
+        def record_set(name, value):
+            set_calls.append((str(name), value))
+
+        req = MagicMock()
+        req.set = MagicMock(side_effect=record_set)
+        req.asElement = MagicMock(return_value=_make_schema_stub(element_names))
+        return req, set_calls
+
+    def test_points_alias_applied_as_max_data_points(self):
+        """Points -> maxDataPoints via ELEM_KEYS, applied because schema lists it."""
+        from xbbg.core.process import apply_schema_elements
+
+        req, set_calls = self._request_with_schema(_INTRADAY_TICK_SCHEMA)
+        consumed = apply_schema_elements(req, Points=1)
+
+        assert consumed == ["Points"]
+        assert ("maxDataPoints", 1) in set_calls
+
+    def test_canonical_name_applied_directly(self):
+        """maxDataPoints under its canonical name passes through the schema unchanged."""
+        from xbbg.core.process import apply_schema_elements
+
+        req, set_calls = self._request_with_schema(_INTRADAY_TICK_SCHEMA)
+        consumed = apply_schema_elements(req, maxDataPoints=5)
+
+        assert consumed == ["maxDataPoints"]
+        assert ("maxDataPoints", 5) in set_calls
+
+    def test_element_not_in_schema_is_dropped(self):
+        """Elements absent from this request's schema are silently skipped."""
+        from xbbg.core.process import apply_schema_elements
+
+        req, set_calls = self._request_with_schema(_INTRADAY_TICK_SCHEMA)
+        # periodicitySelection exists on HistoricalDataRequest but not on IntradayTick.
+        consumed = apply_schema_elements(req, Per="W")
+
+        assert consumed == []
+        assert set_calls == []
+
+    def test_bar_schema_picks_up_gap_and_adjustment_elements(self):
+        """IntradayBar accepts gapFillInitialBar + adjustment* elements."""
+        from xbbg.core.process import apply_schema_elements
+
+        req, set_calls = self._request_with_schema(_INTRADAY_BAR_SCHEMA)
+        consumed = apply_schema_elements(
+            req,
+            maxDataPoints=2,
+            gapFillInitialBar=True,
+            CshAdjNormal=True,  # alias -> adjustmentNormal
+        )
+
+        assert set(consumed) == {"maxDataPoints", "gapFillInitialBar", "CshAdjNormal"}
+        # Aliases are resolved before dispatching to the request.
+        pairs = dict(set_calls)
+        assert pairs == {
+            "maxDataPoints": 2,
+            "gapFillInitialBar": True,
+            "adjustmentNormal": True,
+        }
+
+    def test_bar_only_element_skipped_on_tick_schema(self):
+        """gapFillInitialBar must not be applied when the schema is IntradayTick."""
+        from xbbg.core.process import apply_schema_elements
+
+        req, set_calls = self._request_with_schema(_INTRADAY_TICK_SCHEMA)
+        consumed = apply_schema_elements(req, gapFillInitialBar=True)
+
+        assert consumed == []
+        assert set_calls == []
+
+    def test_max_data_points_origin_applied(self):
+        """maxDataPointsOrigin has no alias but is in the schema -> forwarded directly."""
+        from xbbg.core.process import apply_schema_elements
+
+        req, set_calls = self._request_with_schema(_INTRADAY_TICK_SCHEMA)
+        apply_schema_elements(req, maxDataPoints=3, maxDataPointsOrigin="AT_END_TIME")
+
+        pairs = dict(set_calls)
+        assert pairs == {"maxDataPoints": 3, "maxDataPointsOrigin": "AT_END_TIME"}
+
+    def test_preserved_cols_never_applied(self):
+        """PRSV_COLS (cache/raw/log/...) must not be dispatched even if the schema lists them."""
+        from xbbg.core.process import apply_schema_elements
+
+        # Include 'cache' in the mock schema to prove the PRSV_COLS filter,
+        # not the schema check, is what blocks it.
+        req, set_calls = self._request_with_schema([*_INTRADAY_TICK_SCHEMA, "cache", "raw"])
+        consumed = apply_schema_elements(req, cache=True, raw=True, maxDataPoints=1)
+
+        assert consumed == ["maxDataPoints"]
+        assert ("cache", True) not in set_calls
+        assert ("raw", True) not in set_calls
+
+    def test_overrides_element_reserved_by_default(self):
+        """'overrides' is a sub-element handled separately; apply_schema_elements skips it."""
+        from xbbg.core.process import apply_schema_elements
+
+        req, set_calls = self._request_with_schema(_REFERENCE_SCHEMA)
+        consumed = apply_schema_elements(req, overrides=[("X", "Y")], maxDataPoints=10)
+
+        assert consumed == ["maxDataPoints"]
+        assert ("overrides", [("X", "Y")]) not in set_calls
+
+    def test_enum_value_resolution_via_elem_vals(self):
+        """Enum values like Quote='Average' map through ELEM_VALS to 'OVERRIDE_OPTION_GPA'."""
+        from xbbg.core.process import apply_schema_elements
+
+        # Simulate a request that exposes overrideOption on its schema.
+        schema = ["securities", "fields", "overrideOption"]
+        req, set_calls = self._request_with_schema(schema)
+        apply_schema_elements(req, Quote="Average")
+
+        assert ("overrideOption", "OVERRIDE_OPTION_GPA") in set_calls
+
+    def test_missing_schema_degrades_gracefully(self):
+        """An object without asElement() returns [] instead of raising."""
+        from xbbg.core.process import apply_schema_elements
+
+        plain_mock = MagicMock(spec=[])  # no asElement attribute
+        assert apply_schema_elements(plain_mock, maxDataPoints=1) == []
+
+
+class TestIssue295Regression:
+    """End-to-end regression tests for #295 (schema-driven path).
+
+    Covers:
+    - ``bdtick``/``bdib`` forward ``Points`` / ``maxDataPoints`` via the live
+      request schema, so the element lands as a ``request.set()`` call.
+    - ``bdtick``/``bdib`` raise a clear ``ValueError`` when ``ovrds={...}`` is
+      passed (IntradayTick/Bar schemas have no ``overrides`` sub-element).
+
+    See: https://github.com/alpha-xone/xbbg/issues/295
+    """
+
+    def _mock_bbg_service(self, schema_elements: list[str]):
+        """Mock Bloomberg service whose createRequest returns a request with a schema."""
+        set_calls: list[tuple[str, object]] = []
+
+        def record_set(name, value):
+            set_calls.append((str(name), value))
+
+        mock_request = MagicMock()
+        mock_request.set = MagicMock(side_effect=record_set)
+        mock_request.asElement = MagicMock(return_value=_make_schema_stub(schema_elements))
+
+        mock_service = MagicMock()
+        mock_service.createRequest = MagicMock(return_value=mock_request)
+        return mock_service, mock_request, set_calls
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_create_request_plus_apply_schema_forwards_points(self, mock_bbg_service):
+        """create_request + apply_schema_elements together lower Points=1 to request.set('maxDataPoints', 1)."""
+        from xbbg.core.process import apply_schema_elements, create_request
+
+        mock_service, _, set_calls = self._mock_bbg_service(_INTRADAY_TICK_SCHEMA)
+        mock_bbg_service.return_value = mock_service
+
+        req = create_request(
+            service="//blp/refdata",
+            request="IntradayTickRequest",
+            settings=[("security", "ESM6 Index")],
+        )
+        consumed = apply_schema_elements(req, Points=1)
+
+        assert consumed == ["Points"]
+        assert ("maxDataPoints", 1) in set_calls
+
+    def test_abdtick_rejects_ovrds_with_clear_error(self):
+        """abdtick(ovrds={...}) must raise ValueError pointing to maxDataPoints."""
+        import asyncio
+
+        import pytest
+
+        from xbbg.api.intraday.intraday import abdtick
+
+        async def _call():
+            await abdtick(ticker="ESM6 Index", dt="2026-04-17", ovrds={"Points": 1})
+
+        with pytest.raises(ValueError, match="maxDataPoints"):
+            asyncio.run(_call())
+
+    def test_intraday_bar_builder_rejects_ovrds_with_clear_error(self):
+        """IntradayRequestBuilder.build_request must reject ovrds= with a helpful message."""
+        import pytest
+
+        from xbbg.core.domain.contracts import DataRequest, SessionWindow
+        from xbbg.core.strategies.intraday import IntradayRequestBuilder
+
+        req = DataRequest(
+            ticker="AAPL US Equity",
+            dt="2025-11-12",
+            override_kwargs={"ovrds": {"Points": 1}},
+        )
+        window = SessionWindow(
+            start_time="2025-11-12T14:30:00",
+            end_time="2025-11-12T21:00:00",
+            session_name="allday",
+            timezone="America/New_York",
+        )
+        with pytest.raises(ValueError, match="maxDataPoints"):
+            IntradayRequestBuilder().build_request(req, window)
+
+    @patch("xbbg.core.process.conn.bbg_service")
+    def test_intraday_bar_builder_applies_max_data_points(self, mock_bbg_service):
+        """IntradayBar builder must set maxDataPoints via the schema-driven dispatch."""
+        from xbbg.core.domain.contracts import DataRequest, SessionWindow
+        from xbbg.core.strategies.intraday import IntradayRequestBuilder
+
+        mock_service, _, set_calls = self._mock_bbg_service(_INTRADAY_BAR_SCHEMA)
+        mock_bbg_service.return_value = mock_service
+
+        req = DataRequest(
+            ticker="AAPL US Equity",
+            dt="2025-11-12",
+            override_kwargs={"Points": 1},
+        )
+        window = SessionWindow(
+            start_time="2025-11-12T14:30:00",
+            end_time="2025-11-12T21:00:00",
+            session_name="allday",
+            timezone="America/New_York",
+        )
+        IntradayRequestBuilder().build_request(req, window)
+
+        # Points -> maxDataPoints via the schema walk; forwarded as a top-level
+        # element, not an override.
+        assert ("maxDataPoints", 1) in set_calls

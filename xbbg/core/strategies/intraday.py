@@ -14,6 +14,13 @@ from xbbg.core.domain.contracts import DataRequest, SessionWindow
 
 logger = logging.getLogger(__name__)
 
+_INTRADAY_BAR_OVRDS_HINT = (
+    "IntradayBarRequest has no 'overrides' sub-element on the Bloomberg schema. "
+    "To cap response size, pass maxDataPoints=N (optionally with "
+    "maxDataPointsOrigin='AT_END_TIME' or 'AT_START_TIME') as a plain kwarg. "
+    "See issue #295 for details."
+)
+
 
 class IntradayRequestBuilder:
     """Strategy for building Bloomberg intraday bar data requests."""
@@ -80,12 +87,24 @@ class IntradayRequestBuilder:
         if request.interval_has_seconds:
             settings.append(("intervalHasSeconds", True))
 
+        # IntradayBarRequest has no 'overrides' sub-element on the Bloomberg
+        # schema, so raise a clear error before the cryptic blpapi
+        # element-not-found surfaces.
+        if all_kwargs.get("ovrds"):
+            raise ValueError(_INTRADAY_BAR_OVRDS_HINT)
+        all_kwargs.pop("ovrds", None)
+
         blp_request = process.create_request(
             service="//blp/refdata",
             request="IntradayBarRequest",
             settings=settings,
             **all_kwargs,
         )
+
+        # Dispatch remaining kwargs (e.g. maxDataPoints, Points -> maxDataPoints,
+        # gapFillInitialBar, adjustment* flags) against the live request
+        # schema.  Unknown-to-this-schema keys are silently ignored.
+        process.apply_schema_elements(blp_request, **all_kwargs)
 
         if request.is_multi_day():
             logger.debug(

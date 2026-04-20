@@ -20,6 +20,13 @@ from xbbg.core.process import DEFAULT_TZ
 from xbbg.core.utils import utils
 from xbbg.io.convert import is_empty
 
+_INTRADAY_OVRDS_HINT = (
+    "{request} has no 'overrides' sub-element on the Bloomberg schema. "
+    "To cap response size, pass maxDataPoints=N (optionally with "
+    "maxDataPointsOrigin='AT_END_TIME' or 'AT_START_TIME') as a plain kwarg. "
+    "See issue #295 for details."
+)
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["bdib", "abdib", "bdtick", "abdtick", "exchange_tz"]
@@ -272,6 +279,12 @@ async def abdtick(
     """
     if types is None:
         types = ["TRADE"]
+
+    if kwargs.get("ovrds"):
+        raise ValueError(_INTRADAY_OVRDS_HINT.format(request="IntradayTickRequest"))
+    # Drop explicit-but-empty ovrds so it doesn't leak into downstream kwargs.
+    kwargs.pop("ovrds", None)
+
     exch = const.exch_info(ticker=ticker, **kwargs)
     if exch.empty:
         raise LookupError(f"Cannot find exchange info for {ticker}")
@@ -311,25 +324,32 @@ async def abdtick(
             time_fmt=time_fmt,
         )
 
+    settings = [
+        ("security", ticker),
+        ("startDateTime", start_dt),
+        ("endDateTime", end_dt),
+        ("includeConditionCodes", True),
+        ("includeExchangeCodes", True),
+        ("includeNonPlottableEvents", True),
+        ("includeBrokerCodes", True),
+        ("includeRpsCodes", True),
+        ("includeTradeTime", True),
+        ("includeActionCodes", True),
+        ("includeIndicatorCodes", True),
+    ]
     blp_request = process.create_request(
         service="//blp/refdata",
         request="IntradayTickRequest",
-        settings=[
-            ("security", ticker),
-            ("startDateTime", start_dt),
-            ("endDateTime", end_dt),
-            ("includeConditionCodes", True),
-            ("includeExchangeCodes", True),
-            ("includeNonPlottableEvents", True),
-            ("includeBrokerCodes", True),
-            ("includeRpsCodes", True),
-            ("includeTradeTime", True),
-            ("includeActionCodes", True),
-            ("includeIndicatorCodes", True),
-        ],
+        settings=settings,
         append={"eventTypes": types},
         **kwargs,
     )
+
+    # Dispatch remaining kwargs (e.g. maxDataPoints, Points -> maxDataPoints,
+    # maxDataPointsOrigin) against the live request schema.  Pops consumed
+    # keys so they do not re-forward to conn.arequest as spurious kwargs.
+    for consumed_key in process.apply_schema_elements(blp_request, **kwargs):
+        kwargs.pop(consumed_key, None)
 
     logger.debug("Sending Bloomberg tick data request for ticker: %s, event types: %s", ticker, types)
 
