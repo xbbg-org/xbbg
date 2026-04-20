@@ -633,18 +633,21 @@ impl RequestWorker {
 
         let state = match params.extractor {
             ExtractorType::RefData => {
-                let long_mode = params
+                let (output_format, long_mode) = params
                     .format
                     .as_deref()
                     .map(|s| match s {
-                        "long_typed" | "typed" => LongMode::Typed,
-                        "long_metadata" | "metadata" | "with_metadata" => LongMode::WithMetadata,
-                        _ => LongMode::String,
+                        "semi_long" | "wide" => (OutputFormat::Wide, LongMode::String),
+                        "long_typed" | "typed" => (OutputFormat::Long, LongMode::Typed),
+                        "long_metadata" | "metadata" | "with_metadata" => {
+                            (OutputFormat::Long, LongMode::WithMetadata)
+                        }
+                        _ => (OutputFormat::Long, LongMode::String),
                     })
-                    .unwrap_or(LongMode::String);
+                    .unwrap_or((OutputFormat::Long, LongMode::String));
                 UnifiedRequestState::RefData(RefDataState::with_format(
                     fields,
-                    OutputFormat::Long,
+                    output_format,
                     long_mode,
                     field_types,
                     params.include_security_errors,
@@ -657,7 +660,7 @@ impl RequestWorker {
                     .format
                     .as_deref()
                     .map(|s| match s {
-                        "wide" => (OutputFormat::Wide, LongMode::String),
+                        "semi_long" | "wide" => (OutputFormat::Wide, LongMode::String),
                         "long_typed" | "typed" => (OutputFormat::Long, LongMode::Typed),
                         "long_metadata" | "metadata" | "with_metadata" => {
                             (OutputFormat::Long, LongMode::WithMetadata)

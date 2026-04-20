@@ -297,6 +297,118 @@ class TestAbdh:
 
 
 # =============================================================================
+# Output Format Tests - regression coverage for bdp/bdh format= variants
+# =============================================================================
+
+
+class TestOutputFormats:
+    """Shape assertions for every Format variant on bdp and bdh.
+
+    Regression for #296 — semi_long silently returned long shape because
+    the worker had no "semi_long" arm for RefData or HistData.
+    """
+
+    def test_bdp_long(self):
+        from xbbg import bdp
+
+        fields = [CONFIG.price_field, CONFIG.name_field]
+        df = bdp(CONFIG.equity_multi, fields, format="long")
+
+        assert list(df.columns) == ["ticker", "field", "value"]
+        assert len(df) == len(CONFIG.equity_multi) * len(fields)
+
+    def test_bdp_semi_long(self):
+        from xbbg import bdp
+
+        fields = [CONFIG.price_field, CONFIG.name_field]
+        df = bdp(CONFIG.equity_multi, fields, format="semi_long")
+
+        assert list(df.columns) == ["ticker", *fields]
+        assert len(df) == len(CONFIG.equity_multi)
+
+    def test_bdp_long_typed(self):
+        from xbbg import bdp
+
+        df = bdp(CONFIG.equity_multi, [CONFIG.price_field], format="long_typed")
+
+        assert list(df.columns) == [
+            "ticker",
+            "field",
+            "value_f64",
+            "value_i64",
+            "value_str",
+            "value_bool",
+            "value_date",
+            "value_ts",
+        ]
+        assert len(df) == len(CONFIG.equity_multi)
+
+    def test_bdp_long_metadata(self):
+        from xbbg import bdp
+
+        df = bdp(CONFIG.equity_multi, [CONFIG.price_field], format="long_metadata")
+
+        assert list(df.columns) == ["ticker", "field", "value", "dtype"]
+        pdf = df.to_pandas()
+        assert set(pdf["dtype"].unique()) == {"float64"}
+
+    def test_bdh_long(self):
+        from xbbg import bdh
+
+        start, end = get_date_range(5)
+        df = bdh(CONFIG.equity_single, [CONFIG.price_field], start_date=start, end_date=end, format="long")
+
+        assert list(df.columns) == ["ticker", "date", "field", "value"]
+
+    def test_bdh_semi_long(self):
+        from xbbg import bdh
+
+        start, end = get_date_range(5)
+        fields = [CONFIG.price_field, CONFIG.volume_field]
+        df = bdh(CONFIG.equity_single, fields, start_date=start, end_date=end, format="semi_long")
+
+        assert list(df.columns) == ["ticker", "date", *fields]
+
+    def test_bdh_long_typed(self):
+        from xbbg import bdh
+
+        start, end = get_date_range(5)
+        df = bdh(
+            CONFIG.equity_single,
+            [CONFIG.price_field],
+            start_date=start,
+            end_date=end,
+            format="long_typed",
+        )
+
+        assert list(df.columns) == [
+            "ticker",
+            "date",
+            "field",
+            "value_f64",
+            "value_i64",
+            "value_str",
+            "value_bool",
+            "value_date",
+            "value_ts",
+        ]
+
+    def test_bdh_long_metadata(self):
+        from xbbg import bdh
+
+        start, end = get_date_range(5)
+        df = bdh(
+            CONFIG.equity_single,
+            [CONFIG.price_field],
+            start_date=start,
+            end_date=end,
+            format="long_metadata",
+        )
+
+        assert list(df.columns) == ["ticker", "date", "field", "value", "dtype"]
+
+
+# =============================================================================
 # BDS Tests - Bulk Data
 # =============================================================================
 
