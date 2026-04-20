@@ -412,10 +412,7 @@ export class Engine {
     fields: string | string[],
     options?: YasOptions,
   ): Promise<Table>;
-  preferreds(
-    equityTicker: string,
-    options?: PreferredsOptions,
-  ): Promise<Table>;
+  preferreds(equityTicker: string, options?: PreferredsOptions): Promise<Table>;
   corporateBonds(
     ticker: string,
     options?: CorporateBondsOptions,
@@ -452,10 +449,7 @@ export class Engine {
     endDate: string,
     options?: TurnoverOptions,
   ): Promise<Table>;
-  etfHoldings(
-    etfTicker: string,
-    options?: EtfHoldingsOptions,
-  ): Promise<Table>;
+  etfHoldings(etfTicker: string, options?: EtfHoldingsOptions): Promise<Table>;
   currencyConversion(
     ticker: string,
     targetCcy: string,

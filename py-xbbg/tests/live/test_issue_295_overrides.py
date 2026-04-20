@@ -52,8 +52,7 @@ def test_bdtick_respects_points_override():
     print(f"limited rows: {len(limited)}")
 
     assert len(limited) < len(full), (
-        "Points=1 override did not reduce the response — "
-        "fix may not be wired through to Bloomberg."
+        "Points=1 override did not reduce the response — fix may not be wired through to Bloomberg."
     )
 
 
@@ -82,6 +81,5 @@ def test_bdib_respects_points_override():
     print(f"limited rows: {len(limited)}")
 
     assert len(limited) < len(full), (
-        "Points=1 override did not reduce the response — "
-        "fix may not be wired through to Bloomberg."
+        "Points=1 override did not reduce the response — fix may not be wired through to Bloomberg."
     )
