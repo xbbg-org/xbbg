@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - **Offline-bundle packing rejected by npm with `EBADPLATFORM`**: `npm install` in the `pack-offline-bundles` job runs on a Linux runner but pulls in `@xbbg/core-<label>` packages that declare `os`/`cpu` for their target platform (e.g. `win32`/`x64`). `scripts/build-offline-bundle.js` now passes `--force` so the cross-platform install succeeds; the bundle is never executed on the install host, so the platform check is safe to skip.
 
+- **`bdp` / `bdh` silently returned long-shape output for `format='semi_long'` (#296, #299)**: `crates/xbbg-async/src/engine/worker.rs` had no `"semi_long"` arm in its format-string match — the `RefData` branch hardcoded `OutputFormat::Long` and only varied `LongMode`; the `HistData` branch only recognised `"wide"`. So `blp.bdp(..., format='semi_long')` returned `[ticker, field, value]` instead of the documented `[ticker, <field1>, <field2>, …]` pivoted shape, and `blp.bdh(..., format='semi_long')` returned `[ticker, date, field, value]` instead of `[ticker, date, <field1>, …]`. The `Format::SemiLong` enum in `services.rs` parsed `"semi_long"` round-trip correctly; the break was purely in the worker routing. Fixed by mapping `"semi_long" | "wide"` → `OutputFormat::Wide` in both arms. Regression coverage: new `TestOutputFormats` class in `py-xbbg/tests/live/test_api.py` asserts column shape for all four `Format` variants (`long`, `semi_long`, `long_typed`, `long_metadata`) on both `bdp` and `bdh`, verified live against Bloomberg.
+
 ## [1.1.1b1] - 2026-04-18
 
 ### Added
