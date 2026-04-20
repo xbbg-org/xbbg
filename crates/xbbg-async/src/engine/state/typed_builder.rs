@@ -151,6 +151,14 @@ impl TypedBuilder {
                     Value::Int64(i) => Some(i as i32),
                     Value::Byte(i) => Some(i as i32),
                     Value::Bool(b) => Some(if b { 1 } else { 0 }),
+                    Value::Float64(f)
+                        if f.is_finite()
+                            && f.fract() == 0.0
+                            && f >= i32::MIN as f64
+                            && f <= i32::MAX as f64 =>
+                    {
+                        Some(f as i32)
+                    }
                     _ => None,
                 }) {
                     b.append_value(v);
