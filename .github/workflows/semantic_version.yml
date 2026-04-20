@@ -80,8 +80,12 @@ jobs:
     - name: Get current version
       id: current_version
       run: |
-        # Get latest stable version tag (exclude pre-releases)
-        CURRENT=$(git tag --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 | sed 's/^v//' | sed 's/^xbbg==//')
+        # Get latest stable version tag (exclude pre-releases) reachable from
+        # the current branch so maintenance branches (release/0.x, release/1.x, ...)
+        # bump against their own history instead of the global latest tag
+        # across the repo.  Without --merged HEAD, dispatching this workflow
+        # from release/0.x while v1.1.0 exists on main would produce v1.1.1.
+        CURRENT=$(git tag --merged HEAD --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 | sed 's/^v//' | sed 's/^xbbg==//')
         if [ -z "$CURRENT" ]; then
           CURRENT="0.0.0"
         fi
