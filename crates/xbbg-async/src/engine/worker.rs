@@ -682,25 +682,29 @@ impl RequestWorker {
             ExtractorType::Bsrch => UnifiedRequestState::Bsrch(BsrchState::new(reply)),
             ExtractorType::FieldInfo => UnifiedRequestState::FieldInfo(FieldInfoState::new(reply)),
             ExtractorType::IntradayBar => {
-                // If user specified extra elements, use GENERIC extractor
-                if params.elements.as_ref().is_some_and(|e| !e.is_empty()) {
-                    UnifiedRequestState::Generic(GenericState::new(reply))
-                } else {
-                    let ticker = params.security.clone().unwrap_or_default();
-                    let event_type = params
-                        .event_type
-                        .clone()
-                        .unwrap_or_else(|| "TRADE".to_string());
-                    let interval = params.interval.unwrap_or(1);
-                    UnifiedRequestState::IntradayBar(IntradayBarState::new(
-                        ticker, event_type, interval, reply,
-                    ))
-                }
+                // IntradayBarRequest has no column-adding elements (maxDataPoints,
+                // gapFillInitialBar, adjustment*, etc. are behavior-only). The response
+                // shape is always `barData.barTickData[]` with the same fields.
+                let ticker = params.security.clone().unwrap_or_default();
+                let event_type = params
+                    .event_type
+                    .clone()
+                    .unwrap_or_else(|| "TRADE".to_string());
+                let interval = params.interval.unwrap_or(1);
+                UnifiedRequestState::IntradayBar(IntradayBarState::new(
+                    ticker, event_type, interval, reply,
+                ))
             }
             ExtractorType::IntradayTick => {
-                // If user specified extra elements (e.g., includeConditionCodes=true),
-                // use GENERIC extractor for dynamic column discovery
-                if params.elements.as_ref().is_some_and(|e| !e.is_empty()) {
+                // Only fall back to GENERIC when the response shape actually changes.
+                // `include*` flags add columns to each tick (conditionCodes, exchangeCode,
+                // brokerCode, ...); behavior-only elements like maxDataPoints / filter
+                // don't, and the typed extractor handles them fine.
+                let adds_columns = params
+                    .elements
+                    .as_ref()
+                    .is_some_and(|els| els.iter().any(|(k, _)| k.starts_with("include")));
+                if adds_columns {
                     UnifiedRequestState::Generic(GenericState::new(reply))
                 } else {
                     let ticker = params.security.clone().unwrap_or_default();
