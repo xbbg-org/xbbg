@@ -1205,11 +1205,7 @@ impl JsEngine {
     }
 
     #[napi]
-    pub async fn recipe_cdx_ticker(
-        &self,
-        gen_ticker: String,
-        dt: String,
-    ) -> napi::Result<Buffer> {
+    pub async fn recipe_cdx_ticker(&self, gen_ticker: String, dt: String) -> napi::Result<Buffer> {
         let engine = self.engine.clone();
         let batch = xbbg_recipes::futures::recipe_cdx_ticker(&engine, gen_ticker, dt)
             .await
