@@ -114,10 +114,13 @@ def cdx_ticker(
     ticker_data = nw_info.filter(nw.col("ticker") == gen_ticker)
 
     # --- Validate on-the-run indicator ---
+    # Bloomberg returns 'Y'/'N' for bonds/futures but 'true'/'false' for CDX
+    # generic tickers (e.g. CDX IG CDSI GEN 5Y Corp).  Accept both shapes to
+    # avoid false warnings on the CDX path.  Backport of main #b0860b6.
     otr = _extract_field_value(ticker_data, _FLD_OTR_INDICATOR.lower())
-    if otr is not None and str(otr).upper() != "Y":
+    if otr is not None and str(otr).upper() not in ("Y", "TRUE"):
         logger.warning(
-            "Generic ticker %s has ON_THE_RUN_CURRENT_BD_INDICATOR=%r (expected 'Y'); resolution may be stale",
+            "Generic ticker %s has ON_THE_RUN_CURRENT_BD_INDICATOR=%r (expected 'Y' or 'true'); resolution may be stale",
             gen_ticker,
             otr,
         )

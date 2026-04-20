@@ -375,8 +375,12 @@ def corporate_bonds(
     debt securities for a company.
 
     Args:
-        ticker: Company ticker symbol (e.g., 'AAPL', 'T', 'BAC'). This matches
-            against the TICKER field in Bloomberg's bond universe.
+        ticker: Equity ticker (e.g., ``'AAPL'``, ``'BAC US Equity'``,
+            ``'9984 JT Equity'``).  If no market/security-type suffix is
+            provided, ``' US Equity'`` is appended automatically.  Unlike
+            the legacy ``bondsuniv('active') + TICKER=='{ticker}'`` filter,
+            the ``debt()`` universe resolves the company from the equity
+            ticker and works across markets (US, JP, EU, ...).
         ccy: Currency filter (default: 'USD'). Filters bonds by their currency.
         fields: Optional list of additional fields to retrieve. Default field is id
             (the bond ticker). If provided, these will be added to the defaults.
@@ -397,6 +401,9 @@ def corporate_bonds(
         >>> isinstance(df, pd.DataFrame)  # doctest: +SKIP
         True
 
+        >>> # Cross-market: JPY bonds for SoftBank
+        >>> df = blp.corporate_bonds("9984 JT Equity", ccy="JPY")  # doctest: +SKIP
+
         >>> # Find EUR bonds for AT&T with additional fields
         >>> df = blp.corporate_bonds(  # doctest: +SKIP
         ...     "T", ccy="EUR", fields=["name", "cpn", "maturity", "amt_outstanding"]
@@ -406,23 +413,30 @@ def corporate_bonds(
         >>> df = blp.corporate_bonds("BAC", ccy="USD")  # doctest: +SKIP
 
     Notes:
-        The underlying BQL query uses bondsuniv('active') with filters for
-        SRCH_ASSET_CLASS=='Corporates', TICKER, and CRNCY to find matching bonds.
-        Only active (non-matured) bonds are returned.
+        The underlying BQL query uses the ``debt()`` universe (same pattern
+        as :func:`preferreds`) with a ``SRCH_ASSET_CLASS=='Corporates'``
+        filter and a currency match, so Bloomberg resolves the company from
+        the equity ticker.  Only active (non-matured) bonds are returned.
+        Backport of main #57e340f.
     """
+    # Normalize ticker format -- ensure it has a market/security-type suffix
+    # so debt() can resolve the company.  Mirrors the preferreds() helper.
+    if " " not in ticker:
+        ticker = f"{ticker} US Equity"
+
     # Default fields
     default_fields = ["id"]
 
     # Combine default fields with any additional fields
     all_fields = default_fields + [f for f in fields if f not in default_fields] if fields else default_fields
 
-    # Build BQL query
-    # Pattern: get(id) for(filter(bondsuniv('active'), SRCH_ASSET_CLASS=='Corporates' AND TICKER=='{ticker}' AND CRNCY=='{ccy}'))
+    # Build BQL query using debt() for cross-market support (see Notes above).
+    # Pattern: get(id) for(filter(debt(['{ticker}']), SRCH_ASSET_CLASS=='Corporates' AND CRNCY=='{ccy}'))
     fields_str = ", ".join(all_fields)
     bql_query = (
         f"get({fields_str}) "
-        f"for(filter(bondsuniv('active', CONSOLIDATEDUPLICATES='N'), "
-        f"SRCH_ASSET_CLASS=='Corporates' AND TICKER=='{ticker}' AND CRNCY=='{ccy}'))"
+        f"for(filter(debt(['{ticker}'], CONSOLIDATEDUPLICATES='N'), "
+        f"SRCH_ASSET_CLASS=='Corporates' AND CRNCY=='{ccy}'))"
     )
 
     logger.debug("Corporate bonds BQL query: %s", bql_query)
