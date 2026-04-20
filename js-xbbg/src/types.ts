@@ -1,0 +1,369 @@
+export interface StringPair {
+  key: string;
+  value: string;
+}
+
+export interface ServerAddress {
+  host: string;
+  port: number;
+}
+
+export type AuthConfig =
+  | { method: 'user' }
+  | { method: 'app'; appName: string }
+  | { method: 'userapp'; appName: string }
+  | { method: 'dir' | 'directory'; dirProperty: string }
+  | { method: 'manual'; appName: string; userId: string; ipAddress: string }
+  | { method: 'token'; token: string };
+
+export interface TlsConfig {
+  clientCredentials?: string;
+  clientCredentialsPassword?: string;
+  trustMaterial?: string;
+  handshakeTimeoutMs?: number;
+  crlFetchTimeoutMs?: number;
+}
+
+export interface RetryPolicy {
+  maxRetries?: number;
+  initialDelayMs?: number;
+  backoffFactor?: number;
+  maxDelayMs?: number;
+}
+
+export interface Socks5Config {
+  host: string;
+  port: number;
+}
+
+export interface EngineConfig {
+  host?: string;
+  port?: number;
+  servers?: ServerAddress[];
+  zfpRemote?: '8194' | '8196';
+  requestPoolSize?: number;
+  subscriptionPoolSize?: number;
+  validationMode?: string;
+  subscriptionFlushThreshold?: number;
+  maxEventQueueSize?: number;
+  commandQueueSize?: number;
+  subscriptionStreamCapacity?: number;
+  overflowPolicy?: string;
+  warmupServices?: string[];
+  fieldCachePath?: string;
+  auth?: AuthConfig;
+  tls?: TlsConfig;
+  numStartAttempts?: number;
+  autoRestartOnDisconnection?: boolean;
+  retryPolicy?: RetryPolicy;
+  /** Hard per-request timeout in ms; 0 disables. Default 0. */
+  requestTimeoutMs?: number;
+  /** Warn threshold for streams staying deactivated, in ms. 0 disables. Default 30000. */
+  streamsDeactivatedWarnMs?: number;
+  /** Enable BLPAPI keep-alive pings. SDK default: true. */
+  keepAliveEnabled?: boolean;
+  /** Milliseconds of inactivity before keep-alive ping. SDK default: 20000. */
+  keepAliveInactivityMs?: number;
+  /** Milliseconds to wait for a keep-alive response. SDK default: 10000. */
+  keepAliveResponseTimeoutMs?: number;
+  /** Slow-consumer hi water mark as fraction of maxEventQueueSize. SDK default: 0.75. */
+  slowConsumerHiWaterMark?: number;
+  /** Slow-consumer lo water mark as fraction of maxEventQueueSize. SDK default: 0.5. */
+  slowConsumerLoWaterMark?: number;
+  sdkLogLevel?: string;
+  socks5?: Socks5Config;
+}
+
+export interface RequestInput {
+  service: string;
+  operation: string;
+  requestOperation?: string;
+  requestId?: string;
+  extractor?: string;
+  securities?: readonly string[];
+  security?: string;
+  fields?: readonly string[];
+  overrides?: readonly StringPair[];
+  elements?: readonly StringPair[];
+  kwargs?: readonly StringPair[];
+  jsonElements?: string;
+  startDate?: string;
+  endDate?: string;
+  startDatetime?: string;
+  endDatetime?: string;
+  requestTz?: string;
+  outputTz?: string;
+  eventType?: string;
+  eventTypes?: readonly string[];
+  interval?: number;
+  options?: readonly StringPair[];
+  fieldTypes?: readonly StringPair[];
+  includeSecurityErrors?: boolean;
+  validateFields?: boolean;
+  searchSpec?: string;
+  fieldIds?: readonly string[];
+  format?: string;
+  backend?: string;
+}
+
+export interface SubscriptionStats {
+  messagesReceived: number;
+  droppedBatches: number;
+  batchesSent: number;
+  slowConsumer: boolean;
+}
+
+export interface FieldInfo {
+  fieldId: string;
+  arrowType: string;
+  description: string;
+  category: string;
+}
+
+export type PrimitiveValue = string | number | boolean;
+export type OverridesMap = Record<string, PrimitiveValue>;
+
+export interface BdpOptions {
+  overrides?: OverridesMap;
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+  includeSecurityErrors?: boolean;
+}
+
+export interface BdhOptions {
+  start?: string;
+  end?: string;
+  overrides?: OverridesMap;
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+}
+
+export interface BdibOptions {
+  start?: string;
+  end?: string;
+  eventType?: string;
+  interval?: number;
+  kwargs?: OverridesMap;
+  backend?: string;
+}
+
+export interface BdtickOptions {
+  start?: string;
+  end?: string;
+  eventTypes?: readonly string[];
+  kwargs?: OverridesMap;
+  backend?: string;
+}
+
+export interface CdxOptions extends BdpOptions {
+  recoveryRate?: number;
+  recovery_rate?: number;
+}
+
+export interface BqlOptions {
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+}
+
+export interface BeqsOptions {
+  asof?: string;
+  screenType?: string;
+  group?: string;
+  overrides?: OverridesMap;
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+}
+
+export interface BsrchOptions {
+  overrides?: OverridesMap;
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+}
+
+export interface BtaOptions {
+  studyParams?: OverridesMap;
+  kwargs?: OverridesMap;
+  startDate?: string;
+  endDate?: string;
+  start_date?: string;
+  end_date?: string;
+  periodicity?: string;
+  interval?: number;
+  format?: string;
+  backend?: string;
+}
+
+export interface BfldsOptions {
+  fields?: string | readonly string[];
+  searchSpec?: string;
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+}
+
+export interface BlkpOptions {
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+}
+
+export interface RequestOptions {
+  overrides?: OverridesMap;
+  kwargs?: OverridesMap;
+  format?: string;
+  backend?: string;
+}
+
+export interface StreamOptions {
+  options?: readonly string[];
+  flushThreshold?: number;
+  overflowPolicy?: string;
+  streamCapacity?: number;
+  fields?: readonly string[];
+}
+
+export interface BqrOptions {
+  startDatetime?: string;
+  endDatetime?: string;
+  eventTypes?: readonly string[];
+  includeBrokerCodes?: boolean;
+  backend?: string;
+}
+
+export interface YasOptions {
+  settleDt?: string;
+  yieldType?: number;
+  spread?: number;
+  yieldVal?: number;
+  price?: number;
+  benchmark?: string;
+  backend?: string;
+}
+
+export interface PreferredsOptions {
+  fields?: readonly string[];
+  backend?: string;
+}
+
+export interface CorporateBondsOptions {
+  ccy?: string;
+  fields?: readonly string[];
+  activeOnly?: boolean;
+  backend?: string;
+}
+
+export interface FuturesResolveOptions {
+  freq?: string;
+  backend?: string;
+}
+
+export interface ActiveCdxOptions {
+  lookbackDays?: number;
+  backend?: string;
+}
+
+export interface DividendOptions {
+  dvdType?: string;
+  backend?: string;
+}
+
+export interface TurnoverOptions {
+  ccy?: string;
+  factor?: number;
+  backend?: string;
+}
+
+export interface EtfHoldingsOptions {
+  fields?: readonly string[];
+  backend?: string;
+}
+
+export interface RecipeBackendOptions {
+  backend?: string;
+}
+
+export interface TimeRange {
+  start: string;
+  end: string;
+}
+
+export interface TickerParts {
+  prefix: string;
+  index: number;
+  asset: string;
+  exchange?: string;
+}
+
+export interface FuturesCandidate {
+  ticker: string;
+  year: number;
+  month: number;
+}
+
+export interface CdxTickerInfo {
+  index: string;
+  series: string;
+  tenor: string;
+  asset: string;
+  isGeneric: boolean;
+  seriesNum?: number;
+}
+
+export interface FxPairInfo {
+  fxPair: string;
+  factor: number;
+  fromCcy: string;
+  toCcy: string;
+}
+
+export interface SessionWindowsInfo {
+  day?: TimeRange;
+  allday?: TimeRange;
+  pre?: TimeRange;
+  post?: TimeRange;
+  am?: TimeRange;
+  pm?: TimeRange;
+}
+
+export interface MarketRule {
+  preMinutes: number;
+  postMinutes: number;
+  lunchStartMin?: number;
+  lunchEndMin?: number;
+  isContinuous: boolean;
+}
+
+export interface ExchangeInfoResult {
+  ticker: string;
+  mic?: string;
+  exchCode?: string;
+  timezone: string;
+  utcOffset?: number;
+  source: string;
+  day?: TimeRange;
+  allday?: TimeRange;
+  pre?: TimeRange;
+  post?: TimeRange;
+  am?: TimeRange;
+  pm?: TimeRange;
+}
+
+export interface ExchangeOverrideInput {
+  timezone?: string;
+  mic?: string;
+  exchCode?: string;
+  day?: TimeRange;
+  allday?: TimeRange;
+  pre?: TimeRange;
+  post?: TimeRange;
+  am?: TimeRange;
+  pm?: TimeRange;
+}
+
+export type BackendKind = 'arrow' | 'json' | 'polars';
+export type FormatKind = 'long' | 'long_typed' | 'long_with_metadata' | 'semi_long';
