@@ -55,6 +55,11 @@ python-source = "py-xbbg/src"
 tag_regex = '^(?:v|xbbg==)?(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc|alpha|beta)\d+)?)$'
 fallback_version = "0+unknown"
 
+# Restrict git describe to Python release tags. JS-only tags use `js-vX.Y.Z` and
+# must not participate in Python package version inference.
+[tool.setuptools_scm.scm.git]
+describe_command = 'git describe --dirty --tags --long --match "v[0-9]*" --match "xbbg==[0-9]*"'
+
 # ── Rust extension via setuptools-rust ───────────────────────────────────────
 [[tool.setuptools-rust.ext-modules]]
 target = "xbbg._core"
