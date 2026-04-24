@@ -2,6 +2,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "../../build-support/libclang.rs"]
+mod libclang;
+
 fn main() {
     // Ensure rebuilds when env changes
     println!("cargo:rerun-if-env-changed=BLPAPI_INCLUDE_DIR");
@@ -59,7 +62,8 @@ fn main() {
         return;
     }
 
-    prepare_windows_conda_libclang(&out_dir).unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
+    libclang::prepare_windows_libclang_alias(&out_dir)
+        .unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
 
     // Build bindgen wrapper that includes all blpapi_*.h headers found
     let wrapper =
@@ -113,90 +117,6 @@ fn copy_bindings(src: &Path, dst: &Path) -> Result<(), String> {
         )
     })?;
     Ok(())
-}
-
-fn prepare_windows_conda_libclang(out_dir: &Path) -> Result<(), String> {
-    if !cfg!(windows) {
-        return Ok(());
-    }
-
-    for dir in libclang_candidate_dirs() {
-        if has_bindgen_libclang_name(&dir) {
-            return Ok(());
-        }
-
-        if let Some(versioned_dll) = find_versioned_libclang_dll(&dir)? {
-            let alias_dir = out_dir.join("libclang");
-            fs::create_dir_all(&alias_dir).map_err(|e| {
-                format!(
-                    "Failed to create libclang alias directory {}: {}",
-                    alias_dir.display(),
-                    e
-                )
-            })?;
-
-            let alias = alias_dir.join("libclang.dll");
-            fs::copy(&versioned_dll, &alias).map_err(|e| {
-                format!(
-                    "Failed to copy {} to {}: {}",
-                    versioned_dll.display(),
-                    alias.display(),
-                    e
-                )
-            })?;
-
-            env::set_var("LIBCLANG_PATH", &alias_dir);
-            println!("cargo:rerun-if-changed={}", versioned_dll.display());
-            return Ok(());
-        }
-    }
-
-    Ok(())
-}
-
-fn libclang_candidate_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-
-    if let Some(path) = env::var_os("LIBCLANG_PATH").map(PathBuf::from) {
-        if path.is_dir() {
-            dirs.push(path);
-        } else if let Some(parent) = path.parent() {
-            dirs.push(parent.to_path_buf());
-        }
-    }
-
-    if let Some(conda_prefix) = env::var_os("CONDA_PREFIX") {
-        dirs.push(PathBuf::from(conda_prefix).join("Library").join("bin"));
-    }
-
-    dirs
-}
-
-fn has_bindgen_libclang_name(dir: &Path) -> bool {
-    dir.join("libclang.dll").is_file() || dir.join("clang.dll").is_file()
-}
-
-fn find_versioned_libclang_dll(dir: &Path) -> Result<Option<PathBuf>, String> {
-    if !dir.is_dir() {
-        return Ok(None);
-    }
-
-    let mut matches = Vec::new();
-    for entry in fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read libclang directory {}: {}", dir.display(), e))?
-    {
-        let path = entry.map_err(|e| e.to_string())?.path();
-        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
-            continue;
-        };
-
-        if file_name.starts_with("libclang-") && file_name.ends_with(".dll") {
-            matches.push(path);
-        }
-    }
-
-    matches.sort();
-    Ok(matches.pop())
 }
 
 fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {

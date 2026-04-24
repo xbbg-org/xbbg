@@ -137,7 +137,7 @@ fn live_bdp_single_field() {
 
                     let root = msg.elements();
                     if let Some(sd) = root.get(&security_data) {
-                        if let Some(first) = sd.get_at(0) {
+                        if let Some(first) = sd.get_element(0) {
                             if let Some(fd) = first.get(&field_data) {
                                 if let Some(px) = fd.get(&px_last) {
                                     if let Some(value) = px.get_f64(0) {
@@ -204,7 +204,7 @@ fn live_bdp_multiple_fields() {
                 for msg in ev.iter() {
                     let root = msg.elements();
                     if let Some(sd) = root.get(&security_data) {
-                        if let Some(first) = sd.get_at(0) {
+                        if let Some(first) = sd.get_element(0) {
                             if let Some(fd) = first.get(&field_data) {
                                 // Extract PX_LAST (numeric)
                                 if let Some(px) = fd.get(&px_last) {
@@ -282,7 +282,7 @@ fn live_get_value_dynamic_extraction() {
                 for msg in ev.iter() {
                     let root = msg.elements();
                     if let Some(sd) = root.get(&security_data) {
-                        if let Some(first) = sd.get_at(0) {
+                        if let Some(first) = sd.get_element(0) {
                             if let Some(fd) = first.get(&field_data) {
                                 if let Some(px) = fd.get(&px_last) {
                                     // Use get_value() for dynamic extraction

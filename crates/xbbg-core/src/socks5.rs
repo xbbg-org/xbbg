@@ -8,9 +8,6 @@ pub struct Socks5Config {
     ptr: *mut ffi::blpapi_Socks5Config_t,
 }
 
-unsafe impl Send for Socks5Config {}
-unsafe impl Sync for Socks5Config {}
-
 impl Socks5Config {
     pub fn new(hostname: &str, port: u16) -> Result<Self> {
         let cs = CString::new(hostname).map_err(|e| BlpError::InvalidArgument {

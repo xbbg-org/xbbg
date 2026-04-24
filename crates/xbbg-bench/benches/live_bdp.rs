@@ -72,7 +72,7 @@ fn bench_bdp_roundtrip(
                 for msg in ev.messages() {
                     let root = msg.elements();
                     if let Some(sd) = root.get(&names.security_data) {
-                        if let Some(first) = sd.get_at(0) {
+                        if let Some(first) = sd.get_element(0) {
                             if let Some(fd) = first.get(&names.field_data) {
                                 for field_name in field_names {
                                     if fd.get(field_name).and_then(|e| e.get_f64(0)).is_some() {

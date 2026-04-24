@@ -19,18 +19,11 @@ use crate::errors::{BlpError, Result};
 /// ```
 ///
 /// # Lifecycle
-/// The identity is owned by the session and will be released when dropped.
+/// The identity is a reference-counted Bloomberg handle. The local SDK headers
+/// do not document cross-thread use, so this wrapper is not `Send` or `Sync`.
 pub struct Identity {
     ptr: *mut crate::ffi::blpapi_Identity_t,
 }
-
-// SAFETY: Identity can be sent between threads
-// The underlying Bloomberg API allows identity to be used from different threads
-unsafe impl Send for Identity {}
-
-// SAFETY: Identity can be shared between threads
-// The underlying Bloomberg API allows concurrent access to identity
-unsafe impl Sync for Identity {}
 
 impl Identity {
     /// Create an Identity from a raw pointer (internal use only)
@@ -47,12 +40,12 @@ impl Identity {
         self.ptr
     }
 
-    pub fn is_authorized(&self, service: &crate::Service) -> bool {
+    pub fn is_authorized(&self, service: &crate::Service<'_>) -> bool {
         let rc = unsafe { crate::ffi::blpapi_Identity_isAuthorized(self.ptr, service.as_ptr()) };
         rc != 0
     }
 
-    pub fn has_entitlements(&self, service: &crate::Service, eids: &[i32]) -> Result<bool> {
+    pub fn has_entitlements(&self, service: &crate::Service<'_>, eids: &[i32]) -> Result<bool> {
         let mut failed_count: i32 = 0;
         let rc = unsafe {
             crate::ffi::blpapi_Identity_hasEntitlements(

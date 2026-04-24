@@ -1,6 +1,9 @@
 use std::env;
 use std::path::PathBuf;
 
+#[path = "../../build-support/libclang.rs"]
+mod libclang;
+
 fn main() {
     // Path to datamock crate (sibling directory)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -14,6 +17,8 @@ fn main() {
     // Link to the datamock library (built by datamock crate)
     // The datamock crate compiles to libdatamock.a via cc crate
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    libclang::prepare_windows_libclang_alias(&out_dir)
+        .unwrap_or_else(|e| panic!("datamock-sys: {}", e));
 
     // Find the datamock library in the target directory
     // The datamock crate builds to target/{profile}/build/datamock-{hash}/out/

@@ -7,9 +7,6 @@ pub struct TlsOptions {
     ptr: *mut ffi::blpapi_TlsOptions_t,
 }
 
-unsafe impl Send for TlsOptions {}
-unsafe impl Sync for TlsOptions {}
-
 impl TlsOptions {
     pub fn from_files(
         client_credentials_path: &str,

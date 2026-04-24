@@ -1,6 +1,11 @@
 //! Bloomberg service handle
+//!
+//! Bloomberg owns service data through the `Session` that opened it. This
+//! wrapper is therefore a borrowed, non-thread-safe view tied to that session.
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
+use std::marker::PhantomData;
+use std::rc::Rc;
 
 use crate::errors::{BlpError, Result};
 use crate::request::Request;
@@ -8,43 +13,39 @@ use crate::schema::Operation;
 
 /// Service handle for creating requests.
 ///
-/// A Service is obtained from a Session after opening the service.
-/// Services are immutable after creation and can be safely shared across threads.
+/// A `Service` is obtained from a `Session` after opening the service. The
+/// Bloomberg SDK owns the underlying service data through that session, so this
+/// handle must not outlive the session and is not `Send` or `Sync`.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// // Open service
 /// session.open_service("//blp/refdata")?;
 /// let svc = session.get_service("//blp/refdata")?;
-///
-/// // Create request
 /// let req = svc.create_request("ReferenceDataRequest")?;
 /// ```
-pub struct Service {
+pub struct Service<'session> {
     ptr: *mut crate::ffi::blpapi_Service_t,
+    _session: PhantomData<&'session crate::session::Session>,
+    _not_send_sync: PhantomData<Rc<()>>,
 }
 
-// SAFETY: Service can be sent between threads
-// The underlying Bloomberg API allows service handles to be used from different threads
-unsafe impl Send for Service {}
-
-// SAFETY: Service can be shared between threads
-// Service is immutable after get_service() and can be safely accessed concurrently
-unsafe impl Sync for Service {}
-
-impl Service {
-    /// Create a Service from a raw pointer (internal use only)
+impl<'session> Service<'session> {
+    /// Create a Service from a raw pointer returned by the owning session.
     pub(crate) fn from_raw(ptr: *mut crate::ffi::blpapi_Service_t) -> Result<Self> {
         if ptr.is_null() {
             return Err(BlpError::Internal {
                 detail: "null service pointer".into(),
             });
         }
-        Ok(Self { ptr })
+        Ok(Self {
+            ptr,
+            _session: PhantomData,
+            _not_send_sync: PhantomData,
+        })
     }
 
-    /// Get the raw pointer (internal use only)
+    /// Get the raw pointer (internal use only).
     #[allow(dead_code)] // Used in integration, not unit tests
     pub(crate) fn as_ptr(&self) -> *mut crate::ffi::blpapi_Service_t {
         self.ptr
@@ -56,12 +57,6 @@ impl Service {
     /// - `"ReferenceDataRequest"` - Get reference data for securities
     /// - `"HistoricalDataRequest"` - Get historical time series data
     /// - `"IntradayBarRequest"` - Get intraday bar data
-    ///
-    /// # Arguments
-    /// * `operation` - The operation name (e.g., "ReferenceDataRequest")
-    ///
-    /// # Returns
-    /// A new Request object that can be populated and sent
     pub fn create_request(&self, operation: &str) -> Result<Request> {
         let c_operation = CString::new(operation).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid operation name: {}", e),
@@ -69,10 +64,8 @@ impl Service {
 
         let mut req_ptr: *mut crate::ffi::blpapi_Request_t = std::ptr::null_mut();
 
-        // SAFETY: We're calling the Bloomberg API with valid pointers
-        // - self.ptr is guaranteed non-null by from_raw()
-        // - req_ptr is a valid mutable pointer
-        // - c_operation is a valid C string
+        // SAFETY: self.ptr is a non-null service pointer borrowed from a live
+        // Session, req_ptr is an out-parameter, and c_operation is a valid C string.
         let rc = unsafe {
             crate::ffi::blpapi_Service_createRequest(self.ptr, &mut req_ptr, c_operation.as_ptr())
         };
@@ -87,53 +80,40 @@ impl Service {
     }
 
     /// Get the service name.
-    ///
-    /// Returns the full service URI (e.g., "//blp/refdata").
-    ///
-    /// # Returns
-    /// The service name as a string slice
     pub fn name(&self) -> &str {
-        // SAFETY: We're calling the Bloomberg API with a valid pointer
-        // The returned pointer is valid for the lifetime of the Service
+        // SAFETY: the SDK returns a service-owned C string valid while this
+        // borrowed service handle remains valid.
         unsafe {
             let name_ptr = crate::ffi::blpapi_Service_name(self.ptr);
             if name_ptr.is_null() {
                 return "";
             }
 
-            // Convert C string to Rust string
-            let c_str = std::ffi::CStr::from_ptr(name_ptr);
-            c_str.to_str().unwrap_or("")
+            CStr::from_ptr(name_ptr).to_str().unwrap_or("")
         }
     }
 
     /// Get a human-readable description of this service.
     pub fn description(&self) -> &str {
+        // SAFETY: the SDK returns a service-owned C string valid while this
+        // borrowed service handle remains valid.
         unsafe {
             let desc_ptr = crate::ffi::blpapi_Service_description(self.ptr);
             if desc_ptr.is_null() {
                 return "";
             }
-            std::ffi::CStr::from_ptr(desc_ptr).to_str().unwrap_or("")
+            CStr::from_ptr(desc_ptr).to_str().unwrap_or("")
         }
     }
 
     /// Get the number of operations defined by this service.
-    ///
-    /// Operations include things like ReferenceDataRequest, HistoricalDataRequest, etc.
     pub fn num_operations(&self) -> usize {
         let count = unsafe { crate::ffi::blpapi_Service_numOperations(self.ptr) };
         count.max(0) as usize
     }
 
     /// Get an operation by index.
-    ///
-    /// # Arguments
-    /// * `index` - The index of the operation (0 to num_operations - 1)
-    ///
-    /// # Returns
-    /// The operation at the specified index, or an error if out of bounds.
-    pub fn get_operation_at(&self, index: usize) -> Result<Operation> {
+    pub fn get_operation_at(&self, index: usize) -> Result<Operation<'session>> {
         if index >= self.num_operations() {
             return Err(BlpError::InvalidArgument {
                 detail: format!(
@@ -154,14 +134,15 @@ impl Service {
             });
         }
 
-        // SAFETY: We verified the pointer is non-null
+        // SAFETY: We verified the pointer is non-null and the Operation cannot
+        // outlive this borrowed Service reference.
         unsafe { Operation::from_raw(op_ptr) }.ok_or_else(|| BlpError::Internal {
             detail: "Received null operation pointer".into(),
         })
     }
 
     /// Iterate over all operations in this service.
-    pub fn operations(&self) -> OperationIter<'_> {
+    pub fn operations(&self) -> OperationIter<'_, 'session> {
         OperationIter {
             service: self,
             index: 0,
@@ -171,14 +152,14 @@ impl Service {
 }
 
 /// Iterator over operations in a service.
-pub struct OperationIter<'a> {
-    service: &'a Service,
+pub struct OperationIter<'service, 'session> {
+    service: &'service Service<'session>,
     index: usize,
     count: usize,
 }
 
-impl<'a> Iterator for OperationIter<'a> {
-    type Item = Operation;
+impl<'service, 'session> Iterator for OperationIter<'service, 'session> {
+    type Item = Operation<'session>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.count {
@@ -196,8 +177,4 @@ impl<'a> Iterator for OperationIter<'a> {
     }
 }
 
-impl ExactSizeIterator for OperationIter<'_> {}
-
-// Note: Service does NOT implement Drop
-// The service pointer is managed by the session and will be cleaned up
-// when the session is destroyed
+impl ExactSizeIterator for OperationIter<'_, '_> {}

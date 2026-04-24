@@ -3,7 +3,7 @@
 //! Extracts ReferenceDataResponse messages directly from Bloomberg Elements
 //! without JSON intermediate serialization.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use arrow::record_batch::RecordBatch;
 use tokio::sync::oneshot;
@@ -49,6 +49,10 @@ pub struct RefDataState {
     include_security_errors: bool,
     /// Security identifiers that returned securityError.
     failed_securities: Vec<String>,
+    /// Security identifiers that returned fieldExceptions.
+    field_exception_securities: BTreeSet<String>,
+    /// Total number of fieldExceptions across all securities.
+    field_exception_count: usize,
     /// Column set for building the output
     columns: ColumnSet,
     /// Reply channel
@@ -106,6 +110,8 @@ impl RefDataState {
             long_mode,
             include_security_errors,
             failed_securities: Vec::new(),
+            field_exception_securities: BTreeSet::new(),
+            field_exception_count: 0,
             columns,
             reply,
         }
@@ -125,6 +131,15 @@ impl RefDataState {
                 count = self.failed_securities.len(),
                 tickers = ?self.failed_securities,
                 "ReferenceData completed with security failures"
+            );
+        }
+
+        if self.field_exception_count > 0 {
+            xbbg_log::warn!(
+                count = self.field_exception_count,
+                ticker_count = self.field_exception_securities.len(),
+                tickers = ?self.field_exception_securities,
+                "ReferenceData completed with field exceptions"
             );
         }
 
@@ -274,6 +289,8 @@ impl RefDataState {
                             details.push(format!("{field_id}: {message}"));
                         }
                     }
+                    self.field_exception_securities.insert(ticker.to_string());
+                    self.field_exception_count += n;
                     xbbg_log::debug!(
                         ticker = ticker,
                         count = n,

@@ -1,32 +1,35 @@
 //! Schema enumeration constant types.
 
 use std::ffi::CStr;
+use std::marker::PhantomData;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 use crate::ffi;
 use crate::name::Name;
 
 /// A list of enumeration constants.
 ///
-/// Used to represent valid values for enumeration-type schema elements.
-///
-/// This is a non-owning view into session-managed data.
+/// This is a borrowed view into session-managed schema data. It is not `Send`
+/// or `Sync`; copy out owned metadata before crossing threads.
 #[derive(Clone, Copy)]
-pub struct ConstantList {
+pub struct ConstantList<'owner> {
     ptr: *mut ffi::blpapi_ConstantList_t,
+    _owner: PhantomData<&'owner ()>,
+    _not_send_sync: PhantomData<Rc<()>>,
 }
 
-// SAFETY: ConstantList is a read-only view into session data
-unsafe impl Send for ConstantList {}
-unsafe impl Sync for ConstantList {}
-
-impl ConstantList {
+impl<'owner> ConstantList<'owner> {
     /// Create from raw pointer with null check.
     pub(crate) fn from_raw(ptr: *mut ffi::blpapi_ConstantList_t) -> Option<Self> {
         if ptr.is_null() {
             None
         } else {
-            Some(Self { ptr })
+            Some(Self {
+                ptr,
+                _owner: PhantomData,
+                _not_send_sync: PhantomData,
+            })
         }
     }
 
@@ -42,10 +45,7 @@ impl ConstantList {
     }
 
     /// Get a constant by index.
-    ///
-    /// # Arguments
-    /// * `index` - The index of the constant (0 to len - 1)
-    pub fn get(&self, index: usize) -> Option<Constant> {
+    pub fn get(&self, index: usize) -> Option<Constant<'owner>> {
         if index >= self.len() {
             return None;
         }
@@ -57,7 +57,7 @@ impl ConstantList {
     }
 
     /// Iterate over all constants in this list.
-    pub fn iter(&self) -> ConstantIter {
+    pub fn iter(&self) -> ConstantIter<'owner> {
         ConstantIter {
             list: *self,
             index: 0,
@@ -66,7 +66,7 @@ impl ConstantList {
     }
 }
 
-impl std::fmt::Debug for ConstantList {
+impl std::fmt::Debug for ConstantList<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConstantList")
             .field("len", &self.len())
@@ -74,9 +74,9 @@ impl std::fmt::Debug for ConstantList {
     }
 }
 
-impl IntoIterator for &ConstantList {
-    type Item = Constant;
-    type IntoIter = ConstantIter;
+impl<'owner> IntoIterator for &ConstantList<'owner> {
+    type Item = Constant<'owner>;
+    type IntoIter = ConstantIter<'owner>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -85,31 +85,30 @@ impl IntoIterator for &ConstantList {
 
 /// A single enumeration constant value.
 ///
-/// Represents one valid value in an enumeration type.
-///
-/// This is a non-owning view into session-managed data.
+/// This is a borrowed view into session-managed schema data. It is not `Send`
+/// or `Sync`; copy out owned metadata before crossing threads.
 #[derive(Clone, Copy)]
-pub struct Constant {
+pub struct Constant<'owner> {
     ptr: *mut ffi::blpapi_Constant_t,
+    _owner: PhantomData<&'owner ()>,
+    _not_send_sync: PhantomData<Rc<()>>,
 }
 
-// SAFETY: Constant is a read-only view into session data
-unsafe impl Send for Constant {}
-unsafe impl Sync for Constant {}
-
-impl Constant {
+impl<'owner> Constant<'owner> {
     /// Create from raw pointer with null check.
     pub(crate) fn from_raw(ptr: *mut ffi::blpapi_Constant_t) -> Option<Self> {
         if ptr.is_null() {
             None
         } else {
-            Some(Self { ptr })
+            Some(Self {
+                ptr,
+                _owner: PhantomData,
+                _not_send_sync: PhantomData,
+            })
         }
     }
 
     /// Get the constant's symbolic name.
-    ///
-    /// Returns None if the name pointer is null.
     pub fn name(&self) -> Option<Name> {
         unsafe {
             let name_ptr = ffi::blpapi_Constant_name(self.ptr);
@@ -118,8 +117,6 @@ impl Constant {
     }
 
     /// Get the constant's name as a string.
-    ///
-    /// Returns an empty string if the name is not available.
     pub fn name_str(&self) -> &str {
         unsafe {
             let name_ptr = ffi::blpapi_Constant_name(self.ptr);
@@ -146,7 +143,7 @@ impl Constant {
     }
 }
 
-impl std::fmt::Debug for Constant {
+impl std::fmt::Debug for Constant<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Constant")
             .field("name", &self.name_str())
@@ -154,21 +151,21 @@ impl std::fmt::Debug for Constant {
     }
 }
 
-impl std::fmt::Display for Constant {
+impl std::fmt::Display for Constant<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name_str())
     }
 }
 
 /// Iterator over constants in a ConstantList.
-pub struct ConstantIter {
-    list: ConstantList,
+pub struct ConstantIter<'owner> {
+    list: ConstantList<'owner>,
     index: usize,
     count: usize,
 }
 
-impl Iterator for ConstantIter {
-    type Item = Constant;
+impl<'owner> Iterator for ConstantIter<'owner> {
+    type Item = Constant<'owner>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.count {
@@ -186,4 +183,4 @@ impl Iterator for ConstantIter {
     }
 }
 
-impl ExactSizeIterator for ConstantIter {}
+impl ExactSizeIterator for ConstantIter<'_> {}

@@ -10,9 +10,6 @@ pub struct SessionOptions {
     ptr: *mut ffi::blpapi_SessionOptions_t,
 }
 
-unsafe impl Send for SessionOptions {}
-unsafe impl Sync for SessionOptions {}
-
 impl SessionOptions {
     pub fn new() -> Result<Self> {
         // SAFETY: blpapi_SessionOptions_create allocates and returns a valid pointer or null.

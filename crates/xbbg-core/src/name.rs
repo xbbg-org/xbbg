@@ -264,11 +264,6 @@ impl std::fmt::Display for Name {
     }
 }
 
-// SAFETY: Names are globally interned and immutable. The underlying Bloomberg
-// name system is thread-safe.
-unsafe impl Send for Name {}
-unsafe impl Sync for Name {}
-
 // Tests require Bloomberg API to be available (gated behind `live` feature)
 #[cfg(all(test, feature = "live"))]
 mod tests {

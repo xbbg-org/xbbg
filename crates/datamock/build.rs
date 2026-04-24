@@ -1,6 +1,9 @@
 use std::env;
 use std::path::PathBuf;
 
+#[path = "../../build-support/libclang.rs"]
+mod libclang;
+
 fn main() {
     let cpp_dir = PathBuf::from("cpp");
     let src_dir = cpp_dir.join("src");
@@ -68,14 +71,16 @@ fn main() {
     }
 
     // Generate Rust bindings from the C API header
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    libclang::prepare_windows_libclang_alias(&out_path)
+        .unwrap_or_else(|e| panic!("datamock: {}", e));
+
     let bindings = bindgen::Builder::default()
         .header("cpp/include/datamock/datamock_c_api.h")
         .clang_arg("-DDATAMOCK_EXPORT=")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings");
-
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
