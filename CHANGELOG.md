@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **Rust Bloomberg SDK handle ownership hardened**: `xbbg-core` now models session-owned SDK views with Rust lifetimes instead of unsupported `Send`/`Sync` marker impls. `Service`, schema operations/definitions, and constants are tied to their owning session/service, pointer correlation IDs are explicit unsafe values, and async request workers reopen short-lived service handles rather than caching session-owned handles across worker state.
+- **Reference data `fieldExceptions` logging aggregated**: Per-security `fieldExceptions` diagnostics now stay at `DEBUG` with field-level detail, while bulk requests emit a single summary warning with total exception count and affected tickers.
+
+### Fixed
+
+- **`bdtick` include-code options now keep typed tick tables (#309)**: `IntradayTickState` dynamically discovers scalar fields inside Bloomberg's `tickData.tickData[]` rows, so options such as `includeConditionCodes`, `includeExchangeCodes`, and `includeBloombergStandardConditionCodes` add typed columns after the stable core `[ticker, time, type, value, size]` instead of forcing callers into generic `[path, type, value_str, value_num]` output. Dynamic columns are padded with nulls for ticks where Bloomberg omitted that field; response metadata such as `tickData.eidData` remains excluded from per-tick rows.
+- **`bds` bulk rows discover subfields across the whole response**: `BulkDataState` now scans every scalar child in each Bloomberg bulk row instead of freezing the output schema from the first row. Late-appearing subfields are appended in first-seen order and earlier rows are padded with nulls, preserving row alignment for dynamic bulk datasets.
+- **`bds` manually selected bulk extraction could be overwritten by defaults**: `RequestParams::with_defaults()` now preserves an explicit non-default extractor hint, preventing bulk requests from falling back to reference-data long extraction when callers build request params manually.
+- **Pixi/libclang bindgen discovery on Windows**: Shared build support now creates an `OUT_DIR`-local `libclang.dll` alias for pixi/conda's versioned `libclang-*.dll`, so all bindgen build scripts can run without manually installing LLVM or mutating the pixi environment.
+- **Live reference-data tests and benchmarks used the wrong Bloomberg array accessor**: `securityData` value arrays now use `get_element(0)` rather than child-element lookup, matching the SDK response shape.
+
+## [1.1.2] - 2026-04-20
+
+### Fixed
+
+- **`bdh` / `bdp` with `format='semi_long'` dropped Int64-typed fields (#303)**: Bloomberg sends integer-typed fields (`PX_VOLUME`, `OPEN_INT`, etc.) as Float64 on the wire in HistoricalDataResponse even though FieldInfo declares them `Int64`/`Long`. `crates/xbbg-core/src/value.rs::Value::as_i64` (and its `OwnedValue` twin) and the inline `TypedBuilder::Int32::append_value` match in `crates/xbbg-async/src/engine/state/typed_builder.rs` had no Float64 arm, so the wide-path Int builder null-filled those columns. Consequence: `blp.bdh("ESH20 Index", flds=[..., "PX_VOLUME", "OPEN_INT"], format='semi_long')` returned NaN for every volume / open-interest row. `long` / `long_typed` / `long_metadata` were unaffected because their builders route via Float64 or stringify. Fixed by accepting `Float64` when it's finite, has `fract()==0.0`, and fits the target integer range. `TestOutputFormats::test_bdh_semi_long_integer_fields_issue_303` locks this in live, plus existing `bdp`/`bdh` `semi_long` tests now assert `notna().all()` per column instead of just column names.
+
+## [1.1.1] - 2026-04-20
+
 ### Added
 
 - **`@xbbg/core`: recipe helpers exposed on the JS `Engine`**: Eleven recipe methods surfaced through the NAPI bindings — `yas`, `preferreds`, `corporateBonds`, `futTicker`, `activeFutures`, `cdxTicker`, `activeCdx`, `dividend`, `turnover`, `etfHoldings`, `currencyConversion` — wrapping the corresponding `xbbg_recipes` entry points. Returns Arrow `Table` by default with `Backend.JSON` / `Backend.POLARS` opt-in via `options.backend`; errors route through the standard `BlpError` hierarchy. Ships with TypeScript definitions (`YasOptions`, `PreferredsOptions`, `CorporateBondsOptions`, `FuturesResolveOptions`, `ActiveCdxOptions`, `DividendOptions`, `TurnoverOptions`, `EtfHoldingsOptions`, `RecipeBackendOptions`), README usage examples, and smoke-test coverage in `js-xbbg/test.js`.
@@ -18,7 +39,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- **`bdtick` / `bdib` silently dropped `overrides=` kwargs (#295)**: `_build_abdtick_plan` and `_build_abdib_plan` in `py-xbbg/src/xbbg/blp.py` were doing `elements, _ = await _aroute_kwargs(...)` — the `_` threw away the overrides list before the request reached the Rust engine. Other endpoints (`bdp`/`bdh`/`bds`/`beqs`/`bport`) capture both; only the two intraday builders discarded overrides. Now forwarded. Note that Bloomberg's `IntradayTickRequest` / `IntradayBarRequest` schemas have no `overrides` sub-element, so forwarded overrides now surface as a Bloomberg `element-not-found` error instead of being silently no-oped; for response-size limits use the top-level `maxDataPoints` kwarg instead.
+
+- **`bdib` + `maxDataPoints` fell back to the generic flattener, losing the typed schema**: `crates/xbbg-async/src/engine/worker.rs` routed intraday-bar / tick requests through `GenericState` whenever *any* user-supplied element was set, on the assumption that extra elements imply extra response columns. That holds for tick `include*` flags (condition codes, exchange codes, etc. which add per-tick columns), but not for behavior-only elements like `maxDataPoints`, `maxDataPointsOrigin`, `gapFillInitialBar`, or `adjustment*` — those don't change the response shape. Consequence: `blp.bdib(..., maxDataPoints=1)` returned `[path, type, value_str, value_num]` instead of the typed `[ticker, time, open, high, low, close, volume, numEvents]`, and `blp.bdtick(..., maxDataPoints=1)` returned 6 rows instead of 1 (the generic extractor exploded one tick into per-field rows). Fallback removed entirely for `IntradayBar` (no column-adding elements exist on `IntradayBarRequest`); narrowed to `include*` keys on `IntradayTick`.
+
 - **Offline-bundle packing rejected by npm with `EBADPLATFORM`**: `npm install` in the `pack-offline-bundles` job runs on a Linux runner but pulls in `@xbbg/core-<label>` packages that declare `os`/`cpu` for their target platform (e.g. `win32`/`x64`). `scripts/build-offline-bundle.js` now passes `--force` so the cross-platform install succeeds; the bundle is never executed on the install host, so the platform check is safe to skip.
+
+- **`bdp` / `bdh` silently returned long-shape output for `format='semi_long'` (#296, #299)**: `crates/xbbg-async/src/engine/worker.rs` had no `"semi_long"` arm in its format-string match — the `RefData` branch hardcoded `OutputFormat::Long` and only varied `LongMode`; the `HistData` branch only recognised `"wide"`. So `blp.bdp(..., format='semi_long')` returned `[ticker, field, value]` instead of the documented `[ticker, <field1>, <field2>, …]` pivoted shape, and `blp.bdh(..., format='semi_long')` returned `[ticker, date, field, value]` instead of `[ticker, date, <field1>, …]`. The `Format::SemiLong` enum in `services.rs` parsed `"semi_long"` round-trip correctly; the break was purely in the worker routing. Fixed by mapping `"semi_long" | "wide"` → `OutputFormat::Wide` in both arms. Regression coverage: new `TestOutputFormats` class in `py-xbbg/tests/live/test_api.py` asserts column shape for all four `Format` variants (`long`, `semi_long`, `long_typed`, `long_metadata`) on both `bdp` and `bdh`, verified live against Bloomberg.
 
 ## [1.1.1b1] - 2026-04-18
 
@@ -1259,7 +1286,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.1b1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/alpha-xone/xbbg/compare/v1.1.1...v1.1.2
+[1.1.1]: https://github.com/alpha-xone/xbbg/compare/v1.1.1b1...v1.1.1
 [1.1.1b1]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...v1.1.1b1
 [1.1.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/alpha-xone/xbbg/compare/v1.0.0rc4...v1.0.0

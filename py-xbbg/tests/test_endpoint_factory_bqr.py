@@ -56,7 +56,7 @@ async def test_abqr_generated_routes_intraday_tick_defaults(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_abqr_generated_reshapes_generic_when_extras_requested(monkeypatch):
+async def test_abqr_generated_reshapes_generic_path_output(monkeypatch):
     captured: dict[str, Any] = {}
     reshape_calls: dict[str, Any] = {}
     reshaped = object()
@@ -97,6 +97,38 @@ async def test_abqr_generated_reshapes_generic_when_extras_requested(monkeypatch
 
     assert reshape_calls["ticker"] == "US037833FB15@MSG1 Corp"
     assert result is reshaped
+
+
+@pytest.mark.asyncio
+async def test_abqr_generated_keeps_typed_include_output(monkeypatch):
+    captured: dict[str, Any] = {}
+    typed_df = _FakeNwDf(columns=["ticker", "time", "type", "value", "size", "conditionCodes"])
+
+    async def fake_arequest(*, service, operation, backend, **kwargs):
+        captured["service"] = service
+        captured["operation"] = operation
+        captured["backend"] = backend
+        captured["kwargs"] = kwargs
+        return typed_df
+
+    def fail_reshape(_pdf, _ticker):
+        raise AssertionError("typed bqr output must not use generic reshaper")
+
+    monkeypatch.setattr(blp, "arequest", fake_arequest)
+    monkeypatch.setattr(blp, "_reshape_bqr_generic", fail_reshape)
+    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+
+    result = await blp.abqr(
+        "US037833FB15@MSG1 Corp",
+        date_offset="-2d",
+        include_condition_codes=True,
+    )
+
+    assert captured["service"] == Service.REFDATA
+    assert captured["operation"] == Operation.INTRADAY_TICK
+    assert captured["backend"] is None
+    assert captured["kwargs"]["elements"] == [("includeConditionCodes", "true")]
+    assert result is typed_df
 
 
 @pytest.mark.asyncio

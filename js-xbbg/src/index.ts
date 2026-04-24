@@ -12,7 +12,7 @@ import {
   BlpValidationError,
   wrapError,
 } from './errors';
-import { resolveNativeAddon } from './lib/resolve-native';
+import { resolveNativeAddon } from './native/resolve-native';
 import type {
   ActiveCdxOptions,
   AuthConfig,

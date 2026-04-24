@@ -1,6 +1,8 @@
 //! Bloomberg service operation wrapper.
 
 use std::ffi::CStr;
+use std::marker::PhantomData;
+use std::rc::Rc;
 
 use crate::errors::{BlpError, Result};
 use crate::ffi;
@@ -10,29 +12,29 @@ use super::element_def::SchemaElementDefinition;
 /// A service operation that can be invoked via requests.
 ///
 /// Operations define the request/response schema for service calls like
-/// ReferenceDataRequest, HistoricalDataRequest, etc.
-///
-/// This is a non-owning view into session-managed data.
+/// `ReferenceDataRequest` and `HistoricalDataRequest`. This is a borrowed view
+/// into data owned by the parent service/session, so it is not `Send` or `Sync`.
 #[derive(Clone, Copy)]
-pub struct Operation {
+pub struct Operation<'service> {
     ptr: *mut ffi::blpapi_Operation_t,
+    _service: PhantomData<&'service ()>,
+    _not_send_sync: PhantomData<Rc<()>>,
 }
 
-// SAFETY: Operation is a read-only view into session data
-// The underlying Bloomberg API allows concurrent reads
-unsafe impl Send for Operation {}
-unsafe impl Sync for Operation {}
-
-impl Operation {
+impl<'service> Operation<'service> {
     /// Create an Operation from a raw pointer.
     ///
     /// # Safety
-    /// The pointer must be valid and point to a Bloomberg operation object.
+    /// The pointer must be non-null and remain valid for `'service`.
     pub(crate) unsafe fn from_raw(ptr: *mut ffi::blpapi_Operation_t) -> Option<Self> {
         if ptr.is_null() {
             None
         } else {
-            Some(Self { ptr })
+            Some(Self {
+                ptr,
+                _service: PhantomData,
+                _not_send_sync: PhantomData,
+            })
         }
     }
 
@@ -59,11 +61,8 @@ impl Operation {
     }
 
     /// Get the schema definition for the request.
-    ///
-    /// This defines what elements can/must be set in requests for this operation.
-    pub fn request_definition(&self) -> Result<SchemaElementDefinition> {
+    pub fn request_definition(&self) -> Result<SchemaElementDefinition<'service>> {
         let mut def_ptr: *mut ffi::blpapi_SchemaElementDefinition_t = std::ptr::null_mut();
-
         let rc = unsafe { ffi::blpapi_Operation_requestDefinition(self.ptr, &mut def_ptr) };
 
         if rc != 0 || def_ptr.is_null() {
@@ -72,25 +71,20 @@ impl Operation {
             });
         }
 
-        // SAFETY: We verified the pointer is non-null
+        // SAFETY: We verified the pointer is non-null and tie the returned view
+        // to this borrowed operation.
         Ok(unsafe { SchemaElementDefinition::from_raw_unchecked(def_ptr) })
     }
 
     /// Get the number of response type definitions.
-    ///
-    /// Most operations have a single response type, but some may have multiple.
     pub fn num_response_definitions(&self) -> usize {
         let count = unsafe { ffi::blpapi_Operation_numResponseDefinitions(self.ptr) };
         count.max(0) as usize
     }
 
     /// Get a response definition by index.
-    ///
-    /// # Arguments
-    /// * `index` - The index of the response definition (0 to num_response_definitions - 1)
-    pub fn response_definition(&self, index: usize) -> Result<SchemaElementDefinition> {
+    pub fn response_definition(&self, index: usize) -> Result<SchemaElementDefinition<'service>> {
         let mut def_ptr: *mut ffi::blpapi_SchemaElementDefinition_t = std::ptr::null_mut();
-
         let rc = unsafe { ffi::blpapi_Operation_responseDefinition(self.ptr, &mut def_ptr, index) };
 
         if rc != 0 || def_ptr.is_null() {
@@ -102,7 +96,8 @@ impl Operation {
             });
         }
 
-        // SAFETY: We verified the pointer is non-null
+        // SAFETY: We verified the pointer is non-null and tie the returned view
+        // to this borrowed operation.
         Ok(unsafe { SchemaElementDefinition::from_raw_unchecked(def_ptr) })
     }
 
@@ -112,7 +107,7 @@ impl Operation {
     }
 }
 
-impl std::fmt::Debug for Operation {
+impl std::fmt::Debug for Operation<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Operation")
             .field("name", &self.name())

@@ -33,7 +33,7 @@ fn datatype_to_string(dt: DataType) -> String {
 }
 
 /// Extract enum values from a SchemaTypeDefinition if it's an enumeration.
-fn extract_enum_values(type_def: &SchemaTypeDefinition) -> Option<Vec<String>> {
+fn extract_enum_values(type_def: &SchemaTypeDefinition<'_>) -> Option<Vec<String>> {
     if !type_def.is_enumeration_type() {
         return None;
     }
@@ -46,7 +46,7 @@ fn extract_enum_values(type_def: &SchemaTypeDefinition) -> Option<Vec<String>> {
 /// Convert a SchemaElementDefinition to ElementInfo.
 ///
 /// This recursively converts child elements for complex types.
-fn convert_element_def(elem_def: &SchemaElementDefinition) -> ElementInfo {
+fn convert_element_def(elem_def: &SchemaElementDefinition<'_>) -> ElementInfo {
     let type_def = elem_def.type_definition();
 
     // Get children for complex types
@@ -74,7 +74,7 @@ fn convert_element_def(elem_def: &SchemaElementDefinition) -> ElementInfo {
     }
 }
 /// Convert a Bloomberg Operation to OperationSchema.
-pub fn convert_operation(op: &Operation) -> OperationSchema {
+pub fn convert_operation(op: &Operation<'_>) -> OperationSchema {
     // Convert request definition
     let request = match op.request_definition() {
         Ok(req_def) => convert_element_def(&req_def),
@@ -105,7 +105,7 @@ pub fn convert_operation(op: &Operation) -> OperationSchema {
 ///
 /// This iterates over all operations in the service and converts them
 /// to serde-enabled types suitable for JSON serialization.
-pub fn introspect_service(service: &Service, service_uri: &str) -> ServiceSchema {
+pub fn introspect_service(service: &Service<'_>, service_uri: &str) -> ServiceSchema {
     let operations: Vec<OperationSchema> = service
         .operations()
         .map(|op| convert_operation(&op))
@@ -119,7 +119,10 @@ pub fn introspect_service(service: &Service, service_uri: &str) -> ServiceSchema
 }
 
 /// Find an operation by name and convert to OperationSchema.
-pub fn introspect_operation(service: &Service, operation_name: &str) -> Option<OperationSchema> {
+pub fn introspect_operation(
+    service: &Service<'_>,
+    operation_name: &str,
+) -> Option<OperationSchema> {
     service
         .operations()
         .find(|op| op.name() == operation_name)
@@ -127,7 +130,7 @@ pub fn introspect_operation(service: &Service, operation_name: &str) -> Option<O
 }
 
 /// List all operation names for a service.
-pub fn list_operation_names(service: &Service) -> Vec<String> {
+pub fn list_operation_names(service: &Service<'_>) -> Vec<String> {
     service
         .operations()
         .map(|op| op.name().to_string())

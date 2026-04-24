@@ -11,7 +11,7 @@
 //! Workers are pre-warmed with an active Bloomberg session and commonly
 //! used services pre-opened for low-latency request handling.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -21,7 +21,7 @@ use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::session::Session;
-use xbbg_core::{BlpError, CorrelationId, EventType, Service};
+use xbbg_core::{BlpError, CorrelationId, EventType};
 
 /// High-bit tag for CorrelationIds we generate for async `open_service` calls.
 /// Must not collide with slab-key-derived request CIDs (small positive ints),
@@ -207,8 +207,8 @@ struct RequestWorker {
     requests: Slab<UnifiedRequestState>,
     /// Command receiver for this worker.
     cmd_rx: mpsc::Receiver<WorkerCommand>,
-    /// Cached services.
-    services: HashMap<String, Service>,
+    /// Services opened on this worker's session.
+    open_services: HashSet<String>,
     /// Configuration.
     config: Arc<EngineConfig>,
     /// Send times for round-trip measurement.
@@ -243,7 +243,7 @@ impl RequestWorker {
             session,
             requests: Slab::new(),
             cmd_rx,
-            services: HashMap::new(),
+            open_services: HashSet::new(),
             config,
             send_times: HashMap::new(),
             warned_requests: std::collections::HashSet::new(),
@@ -276,7 +276,7 @@ impl RequestWorker {
         }
         xbbg_log::info!(
             worker_id = self.id,
-            services = ?self.services.keys().collect::<Vec<_>>(),
+            services = ?self.open_services.iter().collect::<Vec<_>>(),
             "worker pre-warmed"
         );
         Ok(())
@@ -442,7 +442,7 @@ impl RequestWorker {
         }
     }
 
-    /// Ensure a service is open and cached.
+    /// Ensure a service is open on this worker's session.
     ///
     /// Uses `open_service_async` + a nested dispatch loop so in-flight
     /// request responses and session events keep flowing while we wait for
@@ -450,7 +450,7 @@ impl RequestWorker {
     /// stalls delivery of every other event on the session for the full open
     /// duration (measured 200-300ms in practice).
     fn ensure_service(&mut self, name: &str) -> Result<(), BlpError> {
-        if self.services.contains_key(name) {
+        if self.open_services.contains(name) {
             return Ok(());
         }
 
@@ -472,9 +472,7 @@ impl RequestWorker {
             if resolved {
                 let (_, outcome) = self.pending_service_opens.remove(&cid_int).unwrap();
                 outcome.unwrap()?;
-                // Grab the Service handle once the service is confirmed open.
-                let svc = self.session.get_service(name)?;
-                self.services.insert(name.to_string(), svc);
+                self.open_services.insert(name.to_string());
                 return Ok(());
             }
             if !self.pending_service_opens.contains_key(&cid_int) {
@@ -503,14 +501,8 @@ impl RequestWorker {
 
         self.ensure_service(service_uri)?;
 
-        let service = self
-            .services
-            .get(service_uri)
-            .ok_or_else(|| BlpError::Internal {
-                detail: format!("Service {} not found after ensure_service", service_uri),
-            })?;
-
-        let schema = crate::schema::introspect_service(service, service_uri);
+        let service = self.session.get_service(service_uri)?;
+        let schema = crate::schema::introspect_service(&service, service_uri);
 
         xbbg_log::debug!(
             worker_id = self.id,
@@ -552,16 +544,10 @@ impl RequestWorker {
         let cid = dispatch_key.to_correlation_id();
 
         let result = (|| -> Result<(), BlpError> {
-            // Build request from params
-            let service = self
-                .services
-                .get(&params.service)
-                .ok_or_else(|| BlpError::Internal {
-                    detail: format!(
-                        "service '{}' missing from worker cache after ensure_service",
-                        params.service
-                    ),
-                })?;
+            // Build request from params using a short-lived service view borrowed
+            // from this worker's session. Do not cache the SDK service handle;
+            // Bloomberg owns it through the session.
+            let service = self.session.get_service(&params.service)?;
             xbbg_log::debug!(
                 worker_id = self.id,
                 operation = %params.effective_operation(),
@@ -570,7 +556,7 @@ impl RequestWorker {
                 end_date = ?params.end_date,
                 "building request"
             );
-            let request = self.build_request_from_params(service, &params)?;
+            let request = self.build_request_from_params(&service, &params)?;
             xbbg_log::debug!(worker_id = self.id, "request built");
 
             let t_send = std::time::Instant::now();
@@ -633,18 +619,21 @@ impl RequestWorker {
 
         let state = match params.extractor {
             ExtractorType::RefData => {
-                let long_mode = params
+                let (output_format, long_mode) = params
                     .format
                     .as_deref()
                     .map(|s| match s {
-                        "long_typed" | "typed" => LongMode::Typed,
-                        "long_metadata" | "metadata" | "with_metadata" => LongMode::WithMetadata,
-                        _ => LongMode::String,
+                        "semi_long" | "wide" => (OutputFormat::Wide, LongMode::String),
+                        "long_typed" | "typed" => (OutputFormat::Long, LongMode::Typed),
+                        "long_metadata" | "metadata" | "with_metadata" => {
+                            (OutputFormat::Long, LongMode::WithMetadata)
+                        }
+                        _ => (OutputFormat::Long, LongMode::String),
                     })
-                    .unwrap_or(LongMode::String);
+                    .unwrap_or((OutputFormat::Long, LongMode::String));
                 UnifiedRequestState::RefData(RefDataState::with_format(
                     fields,
-                    OutputFormat::Long,
+                    output_format,
                     long_mode,
                     field_types,
                     params.include_security_errors,
@@ -657,7 +646,7 @@ impl RequestWorker {
                     .format
                     .as_deref()
                     .map(|s| match s {
-                        "wide" => (OutputFormat::Wide, LongMode::String),
+                        "semi_long" | "wide" => (OutputFormat::Wide, LongMode::String),
                         "long_typed" | "typed" => (OutputFormat::Long, LongMode::Typed),
                         "long_metadata" | "metadata" | "with_metadata" => {
                             (OutputFormat::Long, LongMode::WithMetadata)
@@ -682,30 +671,22 @@ impl RequestWorker {
             ExtractorType::Bsrch => UnifiedRequestState::Bsrch(BsrchState::new(reply)),
             ExtractorType::FieldInfo => UnifiedRequestState::FieldInfo(FieldInfoState::new(reply)),
             ExtractorType::IntradayBar => {
-                // If user specified extra elements, use GENERIC extractor
-                if params.elements.as_ref().is_some_and(|e| !e.is_empty()) {
-                    UnifiedRequestState::Generic(GenericState::new(reply))
-                } else {
-                    let ticker = params.security.clone().unwrap_or_default();
-                    let event_type = params
-                        .event_type
-                        .clone()
-                        .unwrap_or_else(|| "TRADE".to_string());
-                    let interval = params.interval.unwrap_or(1);
-                    UnifiedRequestState::IntradayBar(IntradayBarState::new(
-                        ticker, event_type, interval, reply,
-                    ))
-                }
+                // IntradayBarRequest has no column-adding elements (maxDataPoints,
+                // gapFillInitialBar, adjustment*, etc. are behavior-only). The response
+                // shape is always `barData.barTickData[]` with the same fields.
+                let ticker = params.security.clone().unwrap_or_default();
+                let event_type = params
+                    .event_type
+                    .clone()
+                    .unwrap_or_else(|| "TRADE".to_string());
+                let interval = params.interval.unwrap_or(1);
+                UnifiedRequestState::IntradayBar(IntradayBarState::new(
+                    ticker, event_type, interval, reply,
+                ))
             }
             ExtractorType::IntradayTick => {
-                // If user specified extra elements (e.g., includeConditionCodes=true),
-                // use GENERIC extractor for dynamic column discovery
-                if params.elements.as_ref().is_some_and(|e| !e.is_empty()) {
-                    UnifiedRequestState::Generic(GenericState::new(reply))
-                } else {
-                    let ticker = params.security.clone().unwrap_or_default();
-                    UnifiedRequestState::IntradayTick(IntradayTickState::new(ticker, reply))
-                }
+                let ticker = params.security.clone().unwrap_or_default();
+                UnifiedRequestState::IntradayTick(IntradayTickState::new(ticker, reply))
             }
         };
 
@@ -748,16 +729,8 @@ impl RequestWorker {
         let cid = dispatch_key.to_correlation_id();
 
         let result = (|| -> Result<(), BlpError> {
-            let service = self
-                .services
-                .get(&params.service)
-                .ok_or_else(|| BlpError::Internal {
-                    detail: format!(
-                        "service '{}' missing from worker cache after ensure_service",
-                        params.service
-                    ),
-                })?;
-            let request = self.build_request_from_params(service, &params)?;
+            let service = self.session.get_service(&params.service)?;
+            let request = self.build_request_from_params(&service, &params)?;
 
             let actual_cid = self.session.send_request(&request, None, Some(&cid))?;
             let actual_dispatch_key =
@@ -802,7 +775,7 @@ impl RequestWorker {
     /// Build a Bloomberg request from generic RequestParams.
     fn build_request_from_params(
         &self,
-        service: &Service,
+        service: &xbbg_core::Service<'_>,
         params: &RequestParams,
     ) -> Result<xbbg_core::Request, BlpError> {
         let operation = params.effective_operation();

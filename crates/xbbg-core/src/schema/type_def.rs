@@ -1,7 +1,9 @@
 //! Schema type definition wrapper.
 
 use std::ffi::CStr;
+use std::marker::PhantomData;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 use crate::datatype::DataType;
 use crate::ffi;
@@ -13,34 +15,30 @@ use super::SchemaStatus;
 
 /// Definition of a schema type.
 ///
-/// Types can be:
-/// - **Simple**: Atomic types like Int32, String, Float64, etc.
-/// - **Complex**: Sequence or choice of named child elements
-/// - **Enumeration**: A set of named constant values
-///
-/// This is a non-owning view into session-managed data.
+/// This is a borrowed view into session-managed schema data. It is not `Send`
+/// or `Sync`; copy out owned metadata before crossing threads.
 #[derive(Clone, Copy)]
-pub struct SchemaTypeDefinition {
+pub struct SchemaTypeDefinition<'owner> {
     ptr: *mut ffi::blpapi_SchemaTypeDefinition_t,
+    _owner: PhantomData<&'owner ()>,
+    _not_send_sync: PhantomData<Rc<()>>,
 }
 
-// SAFETY: SchemaTypeDefinition is a read-only view into session data
-unsafe impl Send for SchemaTypeDefinition {}
-unsafe impl Sync for SchemaTypeDefinition {}
-
-impl SchemaTypeDefinition {
+impl<'owner> SchemaTypeDefinition<'owner> {
     /// Create from raw pointer without null check.
     ///
     /// # Safety
-    /// The pointer must be valid and non-null.
+    /// The pointer must be non-null and valid for `'owner`.
     pub(crate) unsafe fn from_raw_unchecked(ptr: *mut ffi::blpapi_SchemaTypeDefinition_t) -> Self {
         debug_assert!(!ptr.is_null());
-        Self { ptr }
+        Self {
+            ptr,
+            _owner: PhantomData,
+            _not_send_sync: PhantomData,
+        }
     }
 
     /// Get the type name.
-    ///
-    /// Returns None if the name pointer is null.
     pub fn name(&self) -> Option<Name> {
         unsafe {
             let name_ptr = ffi::blpapi_SchemaTypeDefinition_name(self.ptr);
@@ -49,8 +47,6 @@ impl SchemaTypeDefinition {
     }
 
     /// Get the type name as a string.
-    ///
-    /// Returns an empty string if the name is not available.
     pub fn name_str(&self) -> &str {
         unsafe {
             let name_ptr = ffi::blpapi_SchemaTypeDefinition_name(self.ptr);
@@ -77,9 +73,6 @@ impl SchemaTypeDefinition {
     }
 
     /// Get the underlying data type.
-    ///
-    /// For simple types, this is the actual data type (Int32, String, etc.).
-    /// For complex types, this returns SEQUENCE or CHOICE.
     pub fn datatype(&self) -> DataType {
         unsafe {
             let dt = ffi::blpapi_SchemaTypeDefinition_datatype(self.ptr);
@@ -88,41 +81,27 @@ impl SchemaTypeDefinition {
     }
 
     /// Check if this is a complex type (sequence or choice).
-    ///
-    /// Complex types contain child element definitions.
     pub fn is_complex_type(&self) -> bool {
         unsafe { ffi::blpapi_SchemaTypeDefinition_isComplexType(self.ptr) != 0 }
     }
 
     /// Check if this is a simple type.
-    ///
-    /// Simple types are atomic values (Int32, String, Float64, etc.).
     pub fn is_simple_type(&self) -> bool {
         unsafe { ffi::blpapi_SchemaTypeDefinition_isSimpleType(self.ptr) != 0 }
     }
 
     /// Check if this is an enumeration type.
-    ///
-    /// Enumeration types have a fixed set of valid constant values.
     pub fn is_enumeration_type(&self) -> bool {
         unsafe { ffi::blpapi_SchemaTypeDefinition_isEnumerationType(self.ptr) != 0 }
     }
 
     /// Get the number of child element definitions.
-    ///
-    /// Returns 0 for non-complex types.
     pub fn num_element_definitions(&self) -> usize {
         unsafe { ffi::blpapi_SchemaTypeDefinition_numElementDefinitions(self.ptr) }
     }
 
     /// Get a child element definition by index.
-    ///
-    /// # Arguments
-    /// * `index` - The index of the element (0 to num_element_definitions - 1)
-    ///
-    /// # Returns
-    /// The element definition, or None if index is out of bounds.
-    pub fn get_element_definition(&self, index: usize) -> Option<SchemaElementDefinition> {
+    pub fn get_element_definition(&self, index: usize) -> Option<SchemaElementDefinition<'owner>> {
         if index >= self.num_element_definitions() {
             return None;
         }
@@ -134,10 +113,7 @@ impl SchemaTypeDefinition {
     }
 
     /// Get the enumeration values for this type.
-    ///
-    /// # Panics
-    /// Panics if this is not an enumeration type. Check `is_enumeration_type()` first.
-    pub fn enumeration(&self) -> Option<ConstantList> {
+    pub fn enumeration(&self) -> Option<ConstantList<'owner>> {
         if !self.is_enumeration_type() {
             return None;
         }
@@ -149,7 +125,7 @@ impl SchemaTypeDefinition {
     }
 
     /// Iterate over all child element definitions.
-    pub fn element_definitions(&self) -> ElementDefinitionIter {
+    pub fn element_definitions(&self) -> ElementDefinitionIter<'owner> {
         ElementDefinitionIter {
             type_def: *self,
             index: 0,
@@ -175,7 +151,7 @@ impl SchemaTypeDefinition {
     }
 }
 
-impl std::fmt::Debug for SchemaTypeDefinition {
+impl std::fmt::Debug for SchemaTypeDefinition<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SchemaTypeDefinition")
             .field("name", &self.name_str())
@@ -188,14 +164,14 @@ impl std::fmt::Debug for SchemaTypeDefinition {
 }
 
 /// Iterator over element definitions in a complex type.
-pub struct ElementDefinitionIter {
-    type_def: SchemaTypeDefinition,
+pub struct ElementDefinitionIter<'owner> {
+    type_def: SchemaTypeDefinition<'owner>,
     index: usize,
     count: usize,
 }
 
-impl Iterator for ElementDefinitionIter {
-    type Item = SchemaElementDefinition;
+impl<'owner> Iterator for ElementDefinitionIter<'owner> {
+    type Item = SchemaElementDefinition<'owner>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.count {
@@ -213,4 +189,4 @@ impl Iterator for ElementDefinitionIter {
     }
 }
 
-impl ExactSizeIterator for ElementDefinitionIter {}
+impl ExactSizeIterator for ElementDefinitionIter<'_> {}

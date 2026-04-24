@@ -22,11 +22,6 @@
     "rootDir": ".",
     "isolatedModules": true
   },
-  "include": [
-    "src/**/*",
-    "test/**/*",
-    "eslint.config.ts",
-    "tsup.config.ts"
-  ],
+  "include": ["src/**/*", "test/**/*", "tsup.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

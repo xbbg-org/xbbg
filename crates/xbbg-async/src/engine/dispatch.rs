@@ -63,8 +63,9 @@ mod tests {
         assert!(DispatchKey::from_correlation_id(&CorrelationId::Unset).is_none());
         assert!(DispatchKey::from_correlation_id(&CorrelationId::Int(0)).is_none());
         assert!(DispatchKey::from_correlation_id(&CorrelationId::Int(-1)).is_none());
-        assert!(
-            DispatchKey::from_correlation_id(&CorrelationId::Ptr(std::ptr::null_mut())).is_none()
-        );
+        // SAFETY: the null pointer is never dereferenced; this only verifies
+        // dispatch rejects non-integer correlation IDs.
+        let ptr_cid = unsafe { CorrelationId::new_ptr(std::ptr::null_mut()) };
+        assert!(DispatchKey::from_correlation_id(&ptr_cid).is_none());
     }
 }

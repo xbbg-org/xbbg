@@ -1,7 +1,9 @@
 //! Schema element definition wrapper.
 
 use std::ffi::CStr;
+use std::marker::PhantomData;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 use crate::ffi;
 use crate::name::Name;
@@ -11,29 +13,29 @@ use super::SchemaStatus;
 
 /// Definition of a schema element (field).
 ///
-/// Defines a field within a schema type, including its name, type,
-/// cardinality (min/max values), and metadata.
-///
-/// This is a non-owning view into session-managed data.
+/// This is a borrowed view into session-managed schema data. It is not `Send`
+/// or `Sync`; copy out owned metadata before crossing threads.
 #[derive(Clone, Copy)]
-pub struct SchemaElementDefinition {
+pub struct SchemaElementDefinition<'owner> {
     ptr: *mut ffi::blpapi_SchemaElementDefinition_t,
+    _owner: PhantomData<&'owner ()>,
+    _not_send_sync: PhantomData<Rc<()>>,
 }
 
-// SAFETY: SchemaElementDefinition is a read-only view into session data
-unsafe impl Send for SchemaElementDefinition {}
-unsafe impl Sync for SchemaElementDefinition {}
-
-impl SchemaElementDefinition {
+impl<'owner> SchemaElementDefinition<'owner> {
     /// Create from raw pointer without null check.
     ///
     /// # Safety
-    /// The pointer must be valid and non-null.
+    /// The pointer must be non-null and valid for `'owner`.
     pub(crate) unsafe fn from_raw_unchecked(
         ptr: *mut ffi::blpapi_SchemaElementDefinition_t,
     ) -> Self {
         debug_assert!(!ptr.is_null());
-        Self { ptr }
+        Self {
+            ptr,
+            _owner: PhantomData,
+            _not_send_sync: PhantomData,
+        }
     }
 
     /// Create from raw pointer with null check.
@@ -41,14 +43,15 @@ impl SchemaElementDefinition {
         if ptr.is_null() {
             None
         } else {
-            Some(Self { ptr })
+            Some(Self {
+                ptr,
+                _owner: PhantomData,
+                _not_send_sync: PhantomData,
+            })
         }
     }
 
     /// Get the element name.
-    ///
-    /// Returns the Name identifying this element within its containing type.
-    /// Returns None if the name pointer is null.
     pub fn name(&self) -> Option<Name> {
         unsafe {
             let name_ptr = ffi::blpapi_SchemaElementDefinition_name(self.ptr);
@@ -57,8 +60,6 @@ impl SchemaElementDefinition {
     }
 
     /// Get the element name as a string.
-    ///
-    /// Returns an empty string if the name is not available.
     pub fn name_str(&self) -> &str {
         unsafe {
             let name_ptr = ffi::blpapi_SchemaElementDefinition_name(self.ptr);
@@ -85,7 +86,7 @@ impl SchemaElementDefinition {
     }
 
     /// Get the type definition for this element's values.
-    pub fn type_definition(&self) -> SchemaTypeDefinition {
+    pub fn type_definition(&self) -> SchemaTypeDefinition<'owner> {
         unsafe {
             let type_ptr = ffi::blpapi_SchemaElementDefinition_type(self.ptr);
             SchemaTypeDefinition::from_raw_unchecked(type_ptr)
@@ -93,18 +94,11 @@ impl SchemaElementDefinition {
     }
 
     /// Get the minimum number of values for this element.
-    ///
-    /// - 0 means the element is optional
-    /// - 1+ means the element is required
     pub fn min_values(&self) -> usize {
         unsafe { ffi::blpapi_SchemaElementDefinition_minValues(self.ptr) }
     }
 
     /// Get the maximum number of values for this element.
-    ///
-    /// - 1 means a single value
-    /// - > 1 means an array
-    /// - UNBOUNDED means no upper limit
     pub fn max_values(&self) -> usize {
         unsafe { ffi::blpapi_SchemaElementDefinition_maxValues(self.ptr) }
     }
@@ -147,7 +141,7 @@ impl SchemaElementDefinition {
     }
 }
 
-impl std::fmt::Debug for SchemaElementDefinition {
+impl std::fmt::Debug for SchemaElementDefinition<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SchemaElementDefinition")
             .field("name", &self.name_str())

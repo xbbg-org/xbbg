@@ -3,7 +3,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # The sdist must contain everything needed to build the wheel from source:
 #   - Python source (py-xbbg/src/xbbg/)
-#   - Rust workspace (Cargo.toml, Cargo.lock, crates/, bindings/pyo3-xbbg/)
+#   - Active Rust workspace members required by Cargo metadata
 #   - Build config (pyproject.toml, .cargo/config.toml)
 #
 # It should NOT contain dev-only files (docs, benchmarks, CI, vendor SDK, etc.)
@@ -32,8 +32,12 @@ recursive-include crates/xbbg-recipes *.rs *.toml
 recursive-include crates/xbbg-log *.rs *.toml
 recursive-include crates/xbbg-bench *.rs *.toml
 
-# PyO3 binding (the actual extension we build)
+# Cargo workspace members outside crates/. Cargo metadata resolves the whole active
+# workspace even though only pyo3-xbbg is compiled for the Python wheel.
 recursive-include bindings/pyo3-xbbg *.rs *.toml
+recursive-include bindings/napi-xbbg *.rs *.toml
+recursive-include apps/xbbg-server *.rs *.toml
+recursive-include apps/xbbg-mcp *.rs *.toml
 
 # Codegen (needed for workspace compilation)
 recursive-include codegen *.py
@@ -51,18 +55,15 @@ recursive-include crates/datamock-sys *.rs *.toml
 # datamock C++ source (100+ files, ~500KB, not needed for live builds)
 prune crates/datamock/cpp
 
-# Benchmarks and examples (not needed to build the wheel)
-prune crates/xbbg-bench/benches
+# Examples/tests are not needed to build the wheel. xbbg-bench benches stay in
+# the sdist because Cargo.toml declares them as explicit bench targets.
 prune crates/xbbg-core/examples
 prune crates/xbbg-core/tests
 prune crates/xbbg-async/tests
 
-# Other language bindings (not part of Python wheel)
-prune bindings/napi-xbbg
+# Inactive language bindings / applications (not active Cargo workspace members)
 prune bindings/dotnet-xbbg
-
-# Applications (separate packages)
-prune apps
+prune apps/xbbg-cli
 
 # Dev/CI files
 prune .github

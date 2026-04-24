@@ -1226,7 +1226,9 @@ async def abdib(
             ``exchange`` (uses this ticker), ``NY``/``LN``/``TK``/``HK``, another ticker string,
             or an IANA zone. Conversion to UTC is done in the Rust engine.
         output_tz: Relabel the ``time`` column to this zone (same instants; Rust engine).
-        **kwargs: Additional Bloomberg options (e.g., intervalHasSeconds, gapFillInitialBar).
+        **kwargs: Additional Bloomberg options (e.g., intervalHasSeconds,
+            gapFillInitialBar). Pass field overrides via ``overrides={"Points": 1}``
+            (dict) or ``overrides=[("Points", 1)]`` (list of tuples).
 
     Returns:
         DataFrame with intraday bar data.
@@ -1272,7 +1274,10 @@ async def abdtick(
         backend: DataFrame backend to return. If None, uses global default.
         request_tz: How naive datetimes are interpreted before Bloomberg (see ``abdib``).
         output_tz: Relabel ``time`` column (same instants; Rust engine).
-        **kwargs: Additional options.
+        **kwargs: Additional Bloomberg options. Pass field overrides via
+            ``overrides={"Points": 1}`` (dict) or ``overrides=[("Points", 1)]``
+            (list of tuples). Schema-recognized request elements may be passed
+            as individual keyword arguments.
 
     Returns:
         DataFrame with tick data.
@@ -2790,9 +2795,9 @@ def _parse_date_offset(offset: str, reference: datetime) -> datetime:
 def _reshape_bqr_generic(table: pa.Table, ticker: str) -> nw.DataFrame:
     """Reshape generic extractor output into structured BQR rows.
 
-    When includeBrokerCodes (or similar) is set, the Rust tick extractor
-    falls back to the generic flattener. This function groups the flat
-    path/value rows back into one row per tick with proper columns.
+    Explicit generic extraction and older xbbg builds return one path/value row
+    per Bloomberg leaf. This fallback groups those flat rows back into one row
+    per tick with proper columns.
     """
     import re
 
@@ -3297,7 +3302,7 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
     else:
         raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
-    elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
 
     req: dict[str, Any] = {
         "security": args["ticker"],
@@ -3306,6 +3311,7 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
         "start_datetime": s_dt,
         "end_datetime": e_dt,
         "elements": elements if elements else None,
+        "overrides": overrides if overrides else None,
     }
     if args.get("request_tz") is not None:
         req["request_tz"] = args["request_tz"]
@@ -3328,7 +3334,7 @@ async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
     if event_types is None:
         event_types = ["TRADE"]
 
-    elements, _ = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
 
     req: dict[str, Any] = {
         "security": args["ticker"],
@@ -3336,6 +3342,7 @@ async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
         "end_datetime": e_dt,
         "event_types": list(event_types),
         "elements": elements if elements else None,
+        "overrides": overrides if overrides else None,
     }
     if args.get("request_tz") is not None:
         req["request_tz"] = args["request_tz"]

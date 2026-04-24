@@ -2,6 +2,10 @@
 use bindgen::callbacks::ParseCallbacks;
 
 #[cfg(feature = "mock")]
+#[path = "../../build-support/libclang.rs"]
+mod libclang;
+
+#[cfg(feature = "mock")]
 #[derive(Debug)]
 struct RenameCallback;
 
@@ -33,6 +37,10 @@ fn main() {
     {
         println!("cargo:rerun-if-changed=../datamock/cpp/include/datamock/datamock_c_api.h");
 
+        let out_path = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+        libclang::prepare_windows_libclang_alias(&out_path)
+            .unwrap_or_else(|e| panic!("xbbg-sys: {}", e));
+
         // Generate renamed bindings from datamock
         // Blocklist functions that have signature mismatches - shim will provide wrappers
         // Note: blocklist uses ORIGINAL names (before renaming)
@@ -53,7 +61,6 @@ fn main() {
             .generate()
             .expect("Unable to generate bindings");
 
-        let out_path = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
         bindings
             .write_to_file(out_path.join("bindings.rs"))
             .expect("Couldn't write bindings!");

@@ -151,6 +151,14 @@ impl TypedBuilder {
                     Value::Int64(i) => Some(i as i32),
                     Value::Byte(i) => Some(i as i32),
                     Value::Bool(b) => Some(if b { 1 } else { 0 }),
+                    Value::Float64(f)
+                        if f.is_finite()
+                            && f.fract() == 0.0
+                            && f >= i32::MIN as f64
+                            && f <= i32::MAX as f64 =>
+                    {
+                        Some(f as i32)
+                    }
                     _ => None,
                 }) {
                     b.append_value(v);
@@ -418,16 +426,25 @@ impl ColumnSet {
     /// Creates the column if it doesn't exist, inferring type from the value
     /// or using type hints if available.
     pub fn append(&mut self, name: &str, value: Value<'_>) {
-        let builder = self.columns.entry(name.to_string()).or_insert_with(|| {
-            // Use type hint if available, otherwise infer from value
-            let arrow_type = self
-                .type_hints
-                .get(name)
-                .copied()
-                .unwrap_or_else(|| ArrowType::from_value(&value));
-            TypedBuilder::new(arrow_type)
-        });
+        if let Some(builder) = self.columns.get_mut(name) {
+            builder.append_value(Some(value));
+            return;
+        }
+
+        // Use type hint if available, otherwise infer from value. When a column
+        // first appears after earlier rows, pre-pad those completed rows so the
+        // first value remains aligned with the current row.
+        let arrow_type = self
+            .type_hints
+            .get(name)
+            .copied()
+            .unwrap_or_else(|| ArrowType::from_value(&value));
+        let mut builder = TypedBuilder::new(arrow_type);
+        for _ in 0..self.row_count {
+            builder.append_null();
+        }
         builder.append_value(Some(value));
+        self.columns.insert(name.to_string(), builder);
     }
 
     /// Append a string value to a column (convenience method).
@@ -440,14 +457,15 @@ impl ColumnSet {
         if let Some(builder) = self.columns.get_mut(name) {
             builder.append_null();
         } else {
-            // Create string column with null (most flexible type)
             let arrow_type = self
                 .type_hints
                 .get(name)
                 .copied()
                 .unwrap_or(ArrowType::String);
             let mut builder = TypedBuilder::new(arrow_type);
-            builder.append_null();
+            for _ in 0..=self.row_count {
+                builder.append_null();
+            }
             self.columns.insert(name.to_string(), builder);
         }
     }
@@ -615,6 +633,54 @@ mod tests {
 
         let batch = cols.finish().unwrap();
         assert_eq!(batch.num_rows(), 2);
+    }
+
+    #[test]
+    fn test_column_set_late_value_pads_prior_rows() {
+        use arrow::array::{Array, StringArray};
+
+        let mut cols = ColumnSet::new();
+        cols.append("a", Value::Int64(1));
+        cols.end_row();
+
+        cols.append("a", Value::Int64(2));
+        cols.append("late", Value::String("x"));
+        cols.end_row();
+
+        let batch = cols.finish_with_order(&["a", "late"]).unwrap();
+        assert_eq!(batch.num_rows(), 2);
+
+        let late = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert!(late.is_null(0));
+        assert_eq!(late.value(1), "x");
+    }
+
+    #[test]
+    fn test_column_set_late_null_pads_current_and_prior_rows() {
+        use arrow::array::{Array, StringArray};
+
+        let mut cols = ColumnSet::new();
+        cols.append("a", Value::Int64(1));
+        cols.end_row();
+
+        cols.append("a", Value::Int64(2));
+        cols.append_null("late");
+        cols.end_row();
+
+        let batch = cols.finish_with_order(&["a", "late"]).unwrap();
+        assert_eq!(batch.num_rows(), 2);
+
+        let late = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert!(late.is_null(0));
+        assert!(late.is_null(1));
     }
 
     #[test]

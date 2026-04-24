@@ -2,6 +2,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "../../build-support/libclang.rs"]
+mod libclang;
+
 fn main() {
     // Ensure rebuilds when env changes
     println!("cargo:rerun-if-env-changed=BLPAPI_INCLUDE_DIR");
@@ -9,6 +12,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BLPAPI_ROOT");
     println!("cargo:rerun-if-env-changed=BLPAPI_PREGENERATED_BINDINGS");
     println!("cargo:rerun-if-env-changed=BLPAPI_BINDINGS_EXPORT_PATH");
+    println!("cargo:rerun-if-env-changed=CONDA_PREFIX");
 
     // Resolve include and lib directories from environment (precedence order)
     let (include_dir, lib_dir) =
@@ -57,6 +61,9 @@ fn main() {
 
         return;
     }
+
+    libclang::prepare_windows_libclang_alias(&out_dir)
+        .unwrap_or_else(|e| panic!("blpapi-sys: {}", e));
 
     // Build bindgen wrapper that includes all blpapi_*.h headers found
     let wrapper =

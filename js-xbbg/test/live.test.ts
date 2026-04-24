@@ -528,7 +528,7 @@ describe('js-xbbg live Bloomberg API', () => {
           .map(toMillis)
           .filter(Number.isFinite);
         for (let i = 1; i < times.length; i += 1) {
-          assert.ok(times[i] >= times[i - 1], 'Bar times should be ascending');
+          assert.ok(times[i]! >= times[i - 1]!, 'Bar times should be ascending');
         }
         console.log(`  ordered bars=${times.length}`);
       }));
@@ -591,7 +591,7 @@ describe('js-xbbg live Bloomberg API', () => {
           .map(toMillis)
           .filter(Number.isFinite);
         for (let i = 1; i < times.length; i += 1) {
-          assert.ok(times[i] >= times[i - 1], 'Tick times should be ascending');
+          assert.ok(times[i]! >= times[i - 1]!, 'Tick times should be ascending');
         }
         console.log(`  ordered ticks=${times.length}`);
       }));

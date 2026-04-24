@@ -1,8 +1,8 @@
 //! Bloomberg session management
 
-use std::cell::Cell;
 use std::ffi::CString;
 use std::marker::PhantomData;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::correlation::CorrelationId;
@@ -19,9 +19,9 @@ pub use crate::options::SessionOptions;
 
 /// Bloomberg session for making requests and receiving data.
 ///
-/// A Session represents a connection to the Bloomberg API. It is Send but NOT Sync,
-/// meaning it can be moved between threads but cannot be accessed concurrently from
-/// multiple threads. If you need concurrent access, wrap it in a `Mutex<Session>`.
+/// A `Session` represents a connection to the Bloomberg API. The local SDK
+/// headers document synchronous sessions as a same-thread polling model, so
+/// this wrapper is intentionally neither `Send` nor `Sync`.
 ///
 /// # Examples
 ///
@@ -75,23 +75,12 @@ pub use crate::options::SessionOptions;
 /// ```
 ///
 /// # Threading Model
-/// - `Send`: Yes - can be moved between threads
-/// - `Sync`: No - cannot be accessed concurrently (use `Mutex` if needed)
-///
-/// This matches Bloomberg's threading model where session mutations (start, stop,
-/// subscribe, sendRequest) are NOT thread-safe and must be serialized by the caller.
+/// This synchronous wrapper must be used from the thread that owns it. Create
+/// one session per worker thread instead of sharing a session across threads.
 pub struct Session {
     ptr: *mut crate::ffi::blpapi_Session_t,
-    _not_sync: PhantomData<Cell<()>>, // Makes !Sync
+    _not_send_sync: PhantomData<Rc<()>>,
 }
-
-// SAFETY: Session can be sent between threads
-// The underlying Bloomberg API allows a session to be used from different threads
-// (just not concurrently)
-unsafe impl Send for Session {}
-
-// DO NOT implement Sync for Session
-// Bloomberg API requires serialized access to session methods
 
 impl Session {
     const STARTUP_POLL_TIMEOUT_MS: u32 = 250;
@@ -127,7 +116,7 @@ impl Session {
 
         Ok(Self {
             ptr,
-            _not_sync: PhantomData,
+            _not_send_sync: PhantomData,
         })
     }
 
@@ -348,23 +337,18 @@ impl Session {
         Ok(CorrelationId::from_ffi(&cid_ffi))
     }
 
-    /// Get a service handle
+    /// Get a service handle.
     ///
-    /// The service must have been opened with open_service() first.
-    ///
-    /// # Arguments
-    /// * `name` - The service name (e.g., "//blp/refdata")
-    ///
-    /// # Returns
-    /// A Service handle on success, or an error if the service is not open
-    pub fn get_service(&self, name: &str) -> Result<Service> {
+    /// The service must have been opened first. The returned handle is borrowed
+    /// from this session and cannot outlive it.
+    pub fn get_service(&self, name: &str) -> Result<Service<'_>> {
         let c_name = CString::new(name).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid service name: {}", e),
         })?;
 
         let mut service_ptr: *mut crate::ffi::blpapi_Service_t = std::ptr::null_mut();
 
-        // SAFETY: We're calling the Bloomberg API with valid pointers
+        // SAFETY: We pass a valid session pointer, service name, and out-parameter.
         let rc = unsafe {
             crate::ffi::blpapi_Session_getService(self.ptr, &mut service_ptr, c_name.as_ptr())
         };
@@ -670,30 +654,5 @@ impl Drop for Session {
             }
             self.ptr = std::ptr::null_mut();
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Compile-time verification that Session is Send but NOT Sync
-    fn assert_send<T: Send>() {}
-    fn assert_not_sync<T: Send>() {
-        // This function compiles only if T is NOT Sync
-        // If T were Sync, we could add `T: Sync` bound and it would still compile
-    }
-
-    #[test]
-    fn session_is_send() {
-        assert_send::<Session>();
-    }
-
-    #[test]
-    fn session_is_not_sync() {
-        assert_not_sync::<Session>();
-        // If you uncomment the next line, it should NOT compile:
-        // fn assert_sync<T: Sync>() {}
-        // assert_sync::<Session>();
     }
 }

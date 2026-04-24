@@ -42,12 +42,6 @@ pub struct SubscriptionList {
     ptr: *mut crate::ffi::blpapi_SubscriptionList_t,
 }
 
-// SAFETY: SubscriptionList can be sent between threads
-unsafe impl Send for SubscriptionList {}
-
-// SAFETY: SubscriptionList can be shared between threads
-unsafe impl Sync for SubscriptionList {}
-
 impl SubscriptionList {
     /// Create a new empty subscription list.
     ///
