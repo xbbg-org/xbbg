@@ -8,15 +8,21 @@ use tokio::sync::oneshot;
 use xbbg_log::trace;
 
 use super::typed_builder::{ArrowType, ColumnSet};
-use xbbg_core::{BlpError, Message};
+use super::value_utils::{arrow_type_for_element, should_emit_scalar_field};
+use xbbg_core::{BlpError, Element, Message};
+
+const CORE_OUTPUT_COLUMNS: [&str; 5] = ["ticker", "time", "type", "value", "size"];
+const TICKER_COLUMN: &str = "ticker";
 
 /// State for an intraday tick request (bdtick).
 pub struct IntradayTickState {
-    /// Ticker for this request
+    /// Ticker for this request.
     ticker: String,
-    /// Column set for building the output
+    /// Output columns in stable order. Starts with core columns, then first-seen tick fields.
+    column_order: Vec<String>,
+    /// Column set for building the output.
     columns: ColumnSet,
-    /// Reply channel
+    /// Reply channel.
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
 
@@ -29,12 +35,13 @@ impl IntradayTickState {
         columns.set_type_hint("type", ArrowType::String);
         columns.set_type_hint("value", ArrowType::Float64);
         columns.set_type_hint("size", ArrowType::Int64);
-        // Note: conditionCodes and exchangeCode are optional - only returned when
-        // includeConditionCodes=true or includeExchangeCodes=true is set in request.
-        // Users should use the generic extractor or elements param if they need these.
 
         Self {
             ticker,
+            column_order: CORE_OUTPUT_COLUMNS
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
             columns,
             reply,
         }
@@ -49,9 +56,8 @@ impl IntradayTickState {
     pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
         let reply = self.reply;
-        let result = self
-            .columns
-            .finish_with_order(&["ticker", "time", "type", "value", "size"]);
+        let order: Vec<_> = self.column_order.iter().map(String::as_str).collect();
+        let result = self.columns.finish_with_order(&order);
         if let Ok(ref batch) = result {
             xbbg_log::debug!(rows = batch.num_rows(), "intradaytick finish");
         }
@@ -60,7 +66,7 @@ impl IntradayTickState {
 
     /// Process an IntradayTickResponse message using Element API.
     ///
-    /// Bloomberg structure (core fields only):
+    /// Bloomberg structure:
     /// ```text
     /// IntradayTickResponse {
     ///   tickData {
@@ -69,62 +75,76 @@ impl IntradayTickState {
     ///       type: "TRADE"
     ///       value: 150.0
     ///       size: 100
+    ///       conditionCodes: "..."  # optional request-dependent fields
     ///     }
+    ///     eidData[] { ... }          # response metadata, not per-tick data
     ///   }
     /// }
     /// ```
-    /// Note: For optional fields like conditionCodes, exchangeCode, etc.,
-    /// pass them via elements param which triggers GENERIC extractor.
+    ///
+    /// Extra scalar children under `tickData.tickData[]` are appended as typed
+    /// columns. Metadata outside the tick array is intentionally ignored.
     fn process_message(&mut self, msg: &Message) {
         let root = msg.elements();
 
-        // Get tickData (outer)
         let Some(tick_data_outer) = root.get_by_str("tickData") else {
             trace!("No tickData in message");
             return;
         };
 
-        // Get tickData[] (inner array)
         let Some(tick_data) = tick_data_outer.get_by_str("tickData") else {
             trace!("No inner tickData array in message");
             return;
         };
 
-        // Iterate through each tick
         let n = tick_data.len();
         for i in 0..n {
             let Some(tick) = tick_data.get_element(i) else {
                 continue;
             };
 
-            self.columns.append_str("ticker", &self.ticker);
+            self.discover_tick_fields(&tick);
 
-            // Get time
-            self.append_field(&tick, "time");
+            let columns = &mut self.columns;
+            columns.append_str(TICKER_COLUMN, &self.ticker);
+            for field_name in self
+                .column_order
+                .iter()
+                .filter(|name| name.as_str() != TICKER_COLUMN)
+            {
+                Self::append_field(columns, &tick, field_name);
+            }
+            columns.end_row();
+        }
+    }
 
-            // Get type
-            self.append_field(&tick, "type");
+    fn discover_tick_fields(&mut self, tick: &Element<'_>) {
+        for child in tick.children() {
+            if !should_emit_scalar_field(&child) {
+                continue;
+            }
 
-            // Get value
-            self.append_field(&tick, "value");
+            let name = child.name().as_str().to_string();
+            if name == TICKER_COLUMN || self.column_order.iter().any(|existing| existing == &name) {
+                continue;
+            }
 
-            // Get size
-            self.append_field(&tick, "size");
-
-            self.columns.end_row();
+            self.columns
+                .set_type_hint(&name, arrow_type_for_element(&child));
+            self.column_order.push(name);
         }
     }
 
     /// Helper to append a field value or null.
-    fn append_field(&mut self, element: &xbbg_core::Element, field_name: &str) {
+    fn append_field(columns: &mut ColumnSet, element: &Element<'_>, field_name: &str) {
         if let Some(field_elem) = element.get_by_str(field_name) {
             if let Some(value) = field_elem.get_value(0) {
-                self.columns.append(field_name, value);
+                columns.append(field_name, value);
             } else {
-                self.columns.append_null(field_name);
+                columns.append_null(field_name);
             }
         } else {
-            self.columns.append_null(field_name);
+            columns.append_null(field_name);
         }
     }
 }
