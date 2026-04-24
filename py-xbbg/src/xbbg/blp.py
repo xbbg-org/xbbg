@@ -2795,9 +2795,9 @@ def _parse_date_offset(offset: str, reference: datetime) -> datetime:
 def _reshape_bqr_generic(table: pa.Table, ticker: str) -> nw.DataFrame:
     """Reshape generic extractor output into structured BQR rows.
 
-    When includeBrokerCodes (or similar) is set, the Rust tick extractor
-    falls back to the generic flattener. This function groups the flat
-    path/value rows back into one row per tick with proper columns.
+    Explicit generic extraction and older xbbg builds return one path/value row
+    per Bloomberg leaf. This fallback groups those flat rows back into one row
+    per tick with proper columns.
     """
     import re
 

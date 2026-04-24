@@ -685,20 +685,8 @@ impl RequestWorker {
                 ))
             }
             ExtractorType::IntradayTick => {
-                // Only fall back to GENERIC when the response shape actually changes.
-                // `include*` flags add columns to each tick (conditionCodes, exchangeCode,
-                // brokerCode, ...); behavior-only elements like maxDataPoints / filter
-                // don't, and the typed extractor handles them fine.
-                let adds_columns = params
-                    .elements
-                    .as_ref()
-                    .is_some_and(|els| els.iter().any(|(k, _)| k.starts_with("include")));
-                if adds_columns {
-                    UnifiedRequestState::Generic(GenericState::new(reply))
-                } else {
-                    let ticker = params.security.clone().unwrap_or_default();
-                    UnifiedRequestState::IntradayTick(IntradayTickState::new(ticker, reply))
-                }
+                let ticker = params.security.clone().unwrap_or_default();
+                UnifiedRequestState::IntradayTick(IntradayTickState::new(ticker, reply))
             }
         };
 

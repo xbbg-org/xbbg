@@ -73,15 +73,28 @@ def recent_dates():
 
 
 @pytest.fixture
-def intraday_window():
-    """A short intraday window (1 hour)."""
-    # Use yesterday to ensure market was open
-    yesterday = datetime.now() - timedelta(days=1)
-    date_str = yesterday.strftime("%Y-%m-%d")
-    return {
-        "start_datetime": f"{date_str} 10:00:00",
-        "end_datetime": f"{date_str} 11:00:00",
-    }
+def intraday_window(single_ticker):
+    """A recent NYSE intraday window with observed bar data."""
+    from xbbg import bdib
+
+    day = datetime.now() - timedelta(days=1)
+    checked_dates: list[str] = []
+    while len(checked_dates) < 10:
+        if day.weekday() < 5:
+            date_str = day.strftime("%Y-%m-%d")
+            window = {
+                "start_datetime": f"{date_str} 10:00:00",
+                "end_datetime": f"{date_str} 11:00:00",
+                "request_tz": "NY",
+                "output_tz": "NY",
+            }
+            checked_dates.append(date_str)
+            probe = bdib(single_ticker, interval=1, **window)
+            if len(probe) >= 1:
+                return window
+        day -= timedelta(days=1)
+
+    pytest.fail("No non-empty IBM intraday-bar window found for recent NYSE weekdays: " + ", ".join(checked_dates))
 
 
 # =============================================================================
@@ -390,6 +403,8 @@ class TestBdibIntegration:
             start_datetime=intraday_window["start_datetime"],
             end_datetime=intraday_window["end_datetime"],
             interval=1,  # 1-minute bars
+            request_tz=intraday_window["request_tz"],
+            output_tz=intraday_window["output_tz"],
         )
 
         # Should have OHLCV columns
@@ -405,6 +420,8 @@ class TestBdibIntegration:
             start_datetime=intraday_window["start_datetime"],
             end_datetime=intraday_window["end_datetime"],
             interval=5,  # 5-minute bars
+            request_tz=intraday_window["request_tz"],
+            output_tz=intraday_window["output_tz"],
         )
 
         # Should have fewer bars than 1-minute
@@ -420,6 +437,8 @@ class TestBdibIntegration:
             end_datetime=intraday_window["end_datetime"],
             interval=5,
             typ="BID",  # BID prices instead of TRADE
+            request_tz=intraday_window["request_tz"],
+            output_tz=intraday_window["output_tz"],
         )
 
         assert len(df) >= 1
@@ -434,6 +453,8 @@ class TestBdibIntegration:
             start_datetime=intraday_window["start_datetime"],
             end_datetime=intraday_window["end_datetime"],
             interval=5,
+            request_tz=intraday_window["request_tz"],
+            output_tz=intraday_window["output_tz"],
         )
 
         assert len(df) >= 1
@@ -586,14 +607,15 @@ class TestErrorHandling:
         with pytest.raises(BlpError):
             bdp("INVALID_TICKER_12345 Equity", single_field)
 
-    def test_invalid_field_raises_error(self, single_ticker):
-        """Invalid field should raise an error."""
+    def test_invalid_field_strict_validation_raises_error(self, single_ticker):
+        """Invalid field should raise when strict field validation is enabled."""
         from xbbg import bdp
         from xbbg.exceptions import BlpError
 
-        # Use a clearly invalid field
-        with pytest.raises(BlpError):
-            bdp(single_ticker, "INVALID_FIELD_12345")
+        # Default refdata requests preserve Bloomberg fieldExceptions as null rows;
+        # opt into strict validation when the expected behavior is an exception.
+        with pytest.raises(BlpError, match=r"Unknown Bloomberg field\(s\).*INVALID_FIELD_12345"):
+            bdp(single_ticker, "INVALID_FIELD_12345", validate_fields=True)
 
     def test_validation_error_missing_securities(self):
         """Missing securities should raise BlpValidationError."""

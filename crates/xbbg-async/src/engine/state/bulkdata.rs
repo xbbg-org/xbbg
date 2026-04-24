@@ -8,15 +8,16 @@ use tokio::sync::oneshot;
 use xbbg_log::trace;
 
 use super::typed_builder::ColumnSet;
-use xbbg_core::{BlpError, Message};
+use super::value_utils::{arrow_type_for_element, should_emit_scalar_field};
+use xbbg_core::{BlpError, Element, Message};
 
 /// State for a bulk data request (bds).
 pub struct BulkDataState {
     /// Field name as string (the bulk field to extract)
     field_name: String,
-    /// Column set for building the output
+    /// Column set for building the output.
     columns: ColumnSet,
-    /// Discovered sub-field names (populated on first row)
+    /// Discovered scalar sub-field names, in first-seen order across all rows.
     subfield_names: Vec<String>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
@@ -123,34 +124,48 @@ impl BulkDataState {
                 self.columns.append_str("ticker", ticker);
                 self.columns.append_str("field", &self.field_name);
 
-                // Discover sub-fields on first row
-                if self.subfield_names.is_empty() {
-                    let num_children = row.num_children();
-                    for k in 0..num_children {
-                        if let Some(child) = row.get_at(k) {
-                            let name = child.name();
-                            self.subfield_names.push(name.as_str().to_string());
-                        }
-                    }
-                }
+                self.discover_subfields(&row);
 
-                // Extract sub-field values
+                // Extract sub-field values in the full discovered order. ColumnSet
+                // pads missing late columns for earlier rows and appends nulls for
+                // fields absent from this row.
                 let subfield_names = &self.subfield_names;
                 let columns = &mut self.columns;
                 for subfield_name in subfield_names {
-                    if let Some(subfield_elem) = row.get_by_str(subfield_name) {
-                        if let Some(value) = subfield_elem.get_value(0) {
-                            columns.append(subfield_name, value);
-                        } else {
-                            columns.append_null(subfield_name);
-                        }
-                    } else {
-                        columns.append_null(subfield_name);
-                    }
+                    Self::append_subfield(columns, &row, subfield_name);
                 }
 
                 self.columns.end_row();
             }
+        }
+    }
+
+    fn discover_subfields(&mut self, row: &Element<'_>) {
+        for child in row.children() {
+            if !should_emit_scalar_field(&child) {
+                continue;
+            }
+
+            let name = child.name().as_str().to_string();
+            if self.subfield_names.iter().any(|existing| existing == &name) {
+                continue;
+            }
+
+            self.columns
+                .set_type_hint(&name, arrow_type_for_element(&child));
+            self.subfield_names.push(name);
+        }
+    }
+
+    fn append_subfield(columns: &mut ColumnSet, row: &Element<'_>, subfield_name: &str) {
+        if let Some(subfield_elem) = row.get_by_str(subfield_name) {
+            if let Some(value) = subfield_elem.get_value(0) {
+                columns.append(subfield_name, value);
+            } else {
+                columns.append_null(subfield_name);
+            }
+        } else {
+            columns.append_null(subfield_name);
         }
     }
 }

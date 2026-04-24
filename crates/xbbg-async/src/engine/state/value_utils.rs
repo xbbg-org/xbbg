@@ -3,8 +3,35 @@ use std::collections::HashMap;
 
 use super::refdata::LongMode;
 use super::typed_builder::{ArrowType, ColumnSet};
-use xbbg_core::Value;
+use xbbg_core::{DataType as BlpDataType, Element, Value};
 
+pub(crate) fn should_emit_scalar_field(element: &Element<'_>) -> bool {
+    !element.is_array()
+        && !matches!(
+            element.datatype(),
+            BlpDataType::Sequence
+                | BlpDataType::Choice
+                | BlpDataType::ByteArray
+                | BlpDataType::CorrelationId
+        )
+}
+
+pub(crate) fn arrow_type_for_element(element: &Element<'_>) -> ArrowType {
+    match element.datatype() {
+        BlpDataType::Bool => ArrowType::Bool,
+        BlpDataType::Char | BlpDataType::Byte | BlpDataType::Int32 => ArrowType::Int32,
+        BlpDataType::Int64 => ArrowType::Int64,
+        BlpDataType::Float32 | BlpDataType::Float64 | BlpDataType::Decimal => ArrowType::Float64,
+        BlpDataType::String | BlpDataType::Enumeration => ArrowType::String,
+        BlpDataType::Date => ArrowType::Date32,
+        BlpDataType::Time => ArrowType::Time64Micros,
+        BlpDataType::Datetime => ArrowType::TimestampMicros,
+        BlpDataType::Sequence
+        | BlpDataType::Choice
+        | BlpDataType::ByteArray
+        | BlpDataType::CorrelationId => ArrowType::String,
+    }
+}
 /// Compute the common Arrow type for the "value" column from field type hints.
 ///
 /// If all fields resolve to the same numeric type family, returns that type
