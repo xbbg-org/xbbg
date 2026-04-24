@@ -78,9 +78,6 @@ pub struct AuthUser {
     ptr: *mut ffi::blpapi_AuthUser_t,
 }
 
-unsafe impl Send for AuthUser {}
-unsafe impl Sync for AuthUser {}
-
 impl AuthUser {
     pub fn with_logon_name() -> Result<Self> {
         let mut ptr = std::ptr::null_mut();
@@ -144,9 +141,6 @@ pub struct AuthApplication {
     ptr: *mut ffi::blpapi_AuthApplication_t,
 }
 
-unsafe impl Send for AuthApplication {}
-unsafe impl Sync for AuthApplication {}
-
 impl AuthApplication {
     pub fn new(app_name: &str) -> Result<Self> {
         let app_name = cstring(app_name, "application name")?;
@@ -178,9 +172,6 @@ pub struct AuthToken {
     ptr: *mut ffi::blpapi_AuthToken_t,
 }
 
-unsafe impl Send for AuthToken {}
-unsafe impl Sync for AuthToken {}
-
 impl AuthToken {
     pub fn new(token: &str) -> Result<Self> {
         let token = cstring(token, "token")?;
@@ -211,9 +202,6 @@ impl Drop for AuthToken {
 pub struct AuthOptions {
     ptr: *mut ffi::blpapi_AuthOptions_t,
 }
-
-unsafe impl Send for AuthOptions {}
-unsafe impl Sync for AuthOptions {}
 
 impl AuthOptions {
     pub fn none() -> Result<Self> {

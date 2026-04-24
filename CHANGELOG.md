@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Changed
+
+- **Rust Bloomberg SDK handle ownership hardened**: `xbbg-core` now models session-owned SDK views with Rust lifetimes instead of unsupported `Send`/`Sync` marker impls. `Service`, schema operations/definitions, and constants are tied to their owning session/service, pointer correlation IDs are explicit unsafe values, and async request workers reopen short-lived service handles rather than caching session-owned handles across worker state.
+- **Reference data `fieldExceptions` logging aggregated**: Per-security `fieldExceptions` diagnostics now stay at `DEBUG` with field-level detail, while bulk requests emit a single summary warning with total exception count and affected tickers.
+
+### Fixed
+
+- **`bds` manually selected bulk extraction could be overwritten by defaults**: `RequestParams::with_defaults()` now preserves an explicit non-default extractor hint, preventing bulk requests from falling back to reference-data long extraction when callers build request params manually.
+- **Pixi/libclang bindgen discovery on Windows**: Shared build support now creates an `OUT_DIR`-local `libclang.dll` alias for pixi/conda's versioned `libclang-*.dll`, so all bindgen build scripts can run without manually installing LLVM or mutating the pixi environment.
+- **Live reference-data tests and benchmarks used the wrong Bloomberg array accessor**: `securityData` value arrays now use `get_element(0)` rather than child-element lookup, matching the SDK response shape.
+
 ## [1.1.2] - 2026-04-20
 
 ### Fixed

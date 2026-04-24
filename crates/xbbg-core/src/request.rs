@@ -9,7 +9,9 @@ use crate::name::Name;
 /// Request object for sending to Bloomberg services.
 ///
 /// Requests are created by calling `Service::create_request()` and then
-/// populated with data before being sent via `Session::send_request()`.
+/// populated with data before being sent via `Session::send_request()`. The
+/// Bloomberg SDK models requests as mutable single-use handles; this wrapper is
+/// intentionally neither `Send` nor `Sync`.
 ///
 /// # Examples
 ///
@@ -34,12 +36,6 @@ use crate::name::Name;
 pub struct Request {
     ptr: *mut crate::ffi::blpapi_Request_t,
 }
-
-// SAFETY: Request can be sent between threads
-unsafe impl Send for Request {}
-
-// SAFETY: Request can be shared between threads (though typically used from one thread)
-unsafe impl Sync for Request {}
 
 impl Request {
     /// Create a Request from a raw pointer (internal use only)

@@ -163,7 +163,7 @@ fn bench_bdp_profiled(sess: &xbbg_core::Session, names: &FieldNames, ticker: &st
     for msg in ev.messages() {
         let root = msg.elements();
         if let Some(sd) = root.get(&names.security_data) {
-            if let Some(first) = sd.get_at(0) {
+            if let Some(first) = sd.get_element(0) {
                 if let Some(fd) = first.get(&names.field_data) {
                     let _ = fd.get(&names.px_last).and_then(|e| e.get_f64(0));
                 }

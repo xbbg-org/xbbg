@@ -878,7 +878,7 @@ impl RequestParams {
 
     /// Apply default values derived from operation semantics.
     pub fn with_defaults(mut self) -> Self {
-        if !self.extractor_set {
+        if !self.extractor_set && self.extractor == ExtractorType::default() {
             let operation = parse_operation_lossless(&self.operation);
             self.extractor = operation.default_extractor();
         }

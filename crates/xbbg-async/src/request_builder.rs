@@ -436,6 +436,20 @@ mod tests {
     }
 
     #[test]
+    fn request_builder_with_defaults_keeps_non_default_extractor_hint() {
+        let params = RequestParams {
+            service: "//blp/refdata".to_string(),
+            operation: Operation::ReferenceData.to_string(),
+            extractor: ExtractorType::BulkData,
+            extractor_set: false,
+            ..Default::default()
+        };
+
+        let resolved = params.with_defaults();
+        assert_eq!(resolved.extractor, ExtractorType::BulkData);
+    }
+
+    #[test]
     fn request_builder_validate_reference_data_pass_and_fail() {
         let params = base_params(Operation::ReferenceData);
         let err = params.validate().unwrap_err().to_string();
