@@ -1359,10 +1359,10 @@ impl JsSubscription {
             .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
 
         let new_topics: Vec<String> = {
-            let status = handle.status.lock();
+            let snapshot = handle.status.load();
             tickers
                 .into_iter()
-                .filter(|ticker| !status.topic_to_key().contains_key(ticker))
+                .filter(|ticker| !snapshot.topic_to_key().contains_key(ticker))
                 .collect()
         };
         if new_topics.is_empty() {
@@ -1389,10 +1389,11 @@ impl JsSubscription {
             .await
             .map_err(blp_async_error_to_napi)?;
 
-        handle
-            .status
-            .lock()
-            .add_active(&new_topics, &new_keys, new_metrics);
+        handle.status.rcu(|current| {
+            let mut next = (**current).clone();
+            next.add_active(&new_topics, &new_keys, new_metrics.clone());
+            Arc::new(next)
+        });
         Ok(())
     }
 
@@ -1404,11 +1405,11 @@ impl JsSubscription {
             .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
 
         let (keys_to_remove, topics_to_remove) = {
-            let status = handle.status.lock();
+            let snapshot = handle.status.load();
             let mut keys_to_remove = Vec::new();
             let mut topics_to_remove = Vec::new();
             for ticker in &tickers {
-                if let Some(&key) = status.topic_to_key().get(ticker) {
+                if let Some(&key) = snapshot.topic_to_key().get(ticker) {
                     keys_to_remove.push(key);
                     topics_to_remove.push(ticker.clone());
                 }
@@ -1428,10 +1429,13 @@ impl JsSubscription {
             .await
             .map_err(blp_async_error_to_napi)?;
 
-        let mut status = handle.status.lock();
-        for ticker in topics_to_remove {
-            status.remove_topic(&ticker);
-        }
+        handle.status.rcu(|current| {
+            let mut next = (**current).clone();
+            for ticker in &topics_to_remove {
+                next.remove_topic(ticker);
+            }
+            Arc::new(next)
+        });
 
         Ok(())
     }
@@ -1440,7 +1444,7 @@ impl JsSubscription {
     pub fn tickers(&self) -> Vec<String> {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
-            Some(handle) => handle.status.lock().topics().to_vec(),
+            Some(handle) => handle.status.load().topics().to_vec(),
             None => Vec::new(),
         }
     }
@@ -1458,7 +1462,7 @@ impl JsSubscription {
     pub fn is_active(&self) -> bool {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
-            Some(handle) => handle.claim.is_some() && handle.status.lock().has_active_topics(),
+            Some(handle) => handle.claim.is_some() && handle.status.load().has_active_topics(),
             None => false,
         }
     }
@@ -1468,8 +1472,8 @@ impl JsSubscription {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
             Some(handle) => {
-                let status = handle.status.lock();
-                let metrics: Vec<_> = status.fields_metrics().values().cloned().collect();
+                let snapshot = handle.status.load();
+                let metrics: Vec<_> = snapshot.fields_metrics().values().cloned().collect();
                 SubscriptionStats {
                     messages_received: to_i64_saturating(
                         metrics
@@ -1528,12 +1532,16 @@ impl JsSubscription {
 
         if let Some(mut handle) = handle {
             if let Some(claim) = handle.claim.take() {
-                let keys = handle.status.lock().keys().to_vec();
+                let keys = handle.status.load().keys().to_vec();
                 if !keys.is_empty() {
                     let _ = claim.unsubscribe(keys).await;
                 }
             }
-            handle.status.lock().clear_active();
+            handle.status.rcu(|current| {
+                let mut next = (**current).clone();
+                next.clear_active();
+                Arc::new(next)
+            });
         }
 
         if remaining.is_empty() {
