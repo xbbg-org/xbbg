@@ -18,6 +18,26 @@ import pytest
 from xbbg._core import ext_validate_generic_ticker
 
 
+class TestFuturesChainColumnMatching:
+    """Futures chain parsing accepts raw Bloomberg BDS labels."""
+
+    def test_find_col_matches_raw_bloomberg_labels(self):
+        from xbbg.ext.futures import _find_col
+
+        columns = ["ticker", "field", "Future's Ticker", "Last Trade Date"]
+
+        assert _find_col(columns, ["future's_ticker", "futures_ticker"]) == "Future's Ticker"
+        assert _find_col(columns, ["last_trade_date", "last_tradeable_dt"]) == "Last Trade Date"
+
+    def test_find_col_still_matches_normalized_aliases(self):
+        from xbbg.ext.futures import _find_col
+
+        columns = ["ticker", "field", "future's_ticker", "last_trade_date"]
+
+        assert _find_col(columns, ["future's_ticker", "futures_ticker"]) == "future's_ticker"
+        assert _find_col(columns, ["last_trade_date", "last_tradeable_dt"]) == "last_trade_date"
+
+
 class TestValidateGenericTicker:
     """Test the Rust-backed generic ticker validation."""
 
