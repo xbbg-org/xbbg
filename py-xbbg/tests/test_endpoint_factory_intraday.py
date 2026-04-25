@@ -29,7 +29,8 @@ async def test_abdtick_forwards_overrides(monkeypatch):
 
     assert captured["service"] == Service.REFDATA
     assert captured["operation"] == Operation.INTRADAY_TICK
-    assert captured["kwargs"].get("overrides") == [("Points", "1")]
+    assert captured["kwargs"].get("elements") == [("maxDataPoints", 1)]
+    assert captured["kwargs"].get("overrides") is None
 
 
 @pytest.mark.asyncio
@@ -54,4 +55,5 @@ async def test_abdib_forwards_overrides(monkeypatch):
 
     assert captured["service"] == Service.REFDATA
     assert captured["operation"] == Operation.INTRADAY_BAR
-    assert captured["kwargs"].get("overrides") == [("Points", "1")]
+    assert captured["kwargs"].get("elements") == [("maxDataPoints", 1)]
+    assert captured["kwargs"].get("overrides") is None

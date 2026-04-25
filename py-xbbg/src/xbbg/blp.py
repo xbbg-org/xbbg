@@ -5,7 +5,7 @@ with support for multiple DataFrame backends via narwhals.
 
 API Design:
 - Async-first: Core implementation uses async/await (abdp, abdh, etc.)
-- Sync wrappers: Convenience functions (bdp, bdh, etc.) wrap async with asyncio.run()
+- Sync wrappers: Convenience functions wrap async with asyncio.run(), with a notebook bridge for one-shot requests
 - Generic API: arequest() and request() for power users and arbitrary Bloomberg requests
 - Users can use either style based on their needs
 """
@@ -15,9 +15,10 @@ from __future__ import annotations
 import asyncio
 import atexit
 from collections.abc import Awaitable, Callable, Sequence
+import concurrent.futures
 import contextvars
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import functools
 import inspect
 import logging
@@ -280,6 +281,11 @@ _engine_lock = threading.Lock()
 # Scoped engine for multi-engine routing (async-safe via contextvars)
 _active_engine: contextvars.ContextVar[Engine | None] = contextvars.ContextVar("_active_engine", default=None)
 
+_NOTEBOOK_SYNC_BRIDGE_NAMES = frozenset({"bdp", "bdh", "bds", "bdib", "bdtick", "request"})
+_notebook_sync_loop: asyncio.AbstractEventLoop | None = None
+_notebook_sync_loop_thread: threading.Thread | None = None
+_notebook_sync_loop_lock = threading.Lock()
+
 
 class Engine:
     """Non-global Bloomberg engine for multi-source routing.
@@ -451,6 +457,12 @@ def _atexit_cleanup() -> None:
         except Exception:
             logger.debug("Exception during atexit cleanup (ignored)", exc_info=True)
         _engine = None
+    stop_bridge = globals().get("_stop_notebook_sync_loop")
+    if stop_bridge is not None:
+        try:
+            stop_bridge()
+        except Exception:
+            logger.debug("Exception stopping notebook sync bridge (ignored)", exc_info=True)
 
 
 # Register cleanup handler
@@ -837,6 +849,322 @@ def _normalize_fields(fields: str | Sequence[str] | None) -> list[str]:
 # Cache for valid request elements per (service, operation)
 _VALID_ELEMENTS_CACHE: dict[tuple[str, str], set[str]] = {}
 
+_ELEMENT_KEY_ALIASES: dict[str, str] = {
+    # Bloomberg request element aliases inherited from xbbg 0.x / Excel BDH conventions.
+    "PeriodAdj": "periodicityAdjustment",
+    "PerAdj": "periodicityAdjustment",
+    "Period": "periodicitySelection",
+    "Per": "periodicitySelection",
+    "Currency": "currency",
+    "Curr": "currency",
+    "FX": "currency",
+    "Days": "nonTradingDayFillOption",
+    "Fill": "nonTradingDayFillMethod",
+    "Points": "maxDataPoints",
+    "Quote": "overrideOption",
+    "QuoteType": "pricingOption",
+    "QtTyp": "pricingOption",
+    "CshAdjNormal": "adjustmentNormal",
+    "CshAdjAbnormal": "adjustmentAbnormal",
+    "CapChg": "adjustmentSplit",
+    "UseDPDF": "adjustmentFollowDPDF",
+    "Calendar": "calendarCodeOverride",
+    # v1 additions requested in issue #301.
+    "BarSz": "interval",
+    "BarSize": "interval",
+    "BarTp": "eventType",
+    "BarType": "eventType",
+    "IncludeExchangeCodes": "includeExchangeCodes",
+}
+
+_PRESENTATION_KEY_ALIASES: dict[str, str] = {
+    # Excel-only output-shape controls. These do not map to Bloomberg request
+    # elements; typed endpoints consume them before request routing and apply
+    # the shape change locally after Bloomberg returns raw data.
+    "Dts": "show_date",
+    "Dates": "show_date",
+    "DtFmt": "date_format",
+    "DateFormat": "date_format",
+    "Sort": "sort",
+    "Orientation": "orientation",
+    "Direction": "orientation",
+    "Dir": "orientation",
+}
+
+_PRESENTATION_VALUE_ALIASES: dict[str, dict[Any, Any]] = {
+    "show_date": {
+        "Show": True,
+        "S": True,
+        True: True,
+        "True": True,
+        "Hide": False,
+        "H": False,
+        False: False,
+        "False": False,
+    },
+    "date_format": {
+        "B": "BOTH",
+        "Both": "BOTH",
+        "P": "PERIODIC",
+        "Periodic": "PERIODIC",
+        "D": "DATE",
+        "Date": "DATE",
+    },
+    "sort": {
+        "C": "ASCENDING",
+        "A": "ASCENDING",
+        "Ascend": "ASCENDING",
+        "Chronological": "ASCENDING",
+        False: "ASCENDING",
+        "False": "ASCENDING",
+        "R": "DESCENDING",
+        "D": "DESCENDING",
+        "Descend": "DESCENDING",
+        "Reverse": "DESCENDING",
+        True: "DESCENDING",
+        "True": "DESCENDING",
+    },
+    "orientation": {
+        "H": "HORIZONTAL",
+        "Horizontal": "HORIZONTAL",
+        "V": "VERTICAL",
+        "Vertical": "VERTICAL",
+    },
+}
+
+_ELEMENT_VALUE_ALIASES: dict[str, dict[Any, Any]] = {
+    "periodicityAdjustment": {
+        "A": "ACTUAL",
+        "C": "CALENDAR",
+        "F": "FISCAL",
+    },
+    "periodicitySelection": {
+        "D": "DAILY",
+        "W": "WEEKLY",
+        "M": "MONTHLY",
+        "Q": "QUARTERLY",
+        "S": "SEMI_ANNUALLY",
+        "Y": "YEARLY",
+    },
+    "nonTradingDayFillOption": {
+        "N": "NON_TRADING_WEEKDAYS",
+        "W": "NON_TRADING_WEEKDAYS",
+        "Weekdays": "NON_TRADING_WEEKDAYS",
+        "C": "ALL_CALENDAR_DAYS",
+        "A": "ALL_CALENDAR_DAYS",
+        "All": "ALL_CALENDAR_DAYS",
+        "T": "ACTIVE_DAYS_ONLY",
+        "Trading": "ACTIVE_DAYS_ONLY",
+    },
+    "nonTradingDayFillMethod": {
+        "C": "PREVIOUS_VALUE",
+        "P": "PREVIOUS_VALUE",
+        "Previous": "PREVIOUS_VALUE",
+        "B": "NIL_VALUE",
+        "Blank": "NIL_VALUE",
+        "NA": "NIL_VALUE",
+    },
+    "overrideOption": {
+        "A": "OVERRIDE_OPTION_GPA",
+        "G": "OVERRIDE_OPTION_GPA",
+        "Average": "OVERRIDE_OPTION_GPA",
+        "C": "OVERRIDE_OPTION_CLOSE",
+        "Close": "OVERRIDE_OPTION_CLOSE",
+    },
+    "pricingOption": {
+        "P": "PRICING_OPTION_PRICE",
+        "Price": "PRICING_OPTION_PRICE",
+        "Y": "PRICING_OPTION_YIELD",
+        "Yield": "PRICING_OPTION_YIELD",
+    },
+    "eventType": {
+        "B": "BID",
+        "Bid": "BID",
+        "A": "ASK",
+        "Ask": "ASK",
+        "T": "TRADE",
+        "Trade": "TRADE",
+    },
+}
+
+_KNOWN_ALIAS_ELEMENT_KEYS = frozenset(_ELEMENT_KEY_ALIASES) | frozenset(_ELEMENT_KEY_ALIASES.values())
+
+
+def _normalize_element_alias(key: str, value: Any) -> tuple[str, Any]:
+    """Return canonical Bloomberg element key and enum value for a caller alias."""
+    canonical_key = _ELEMENT_KEY_ALIASES.get(key, key)
+    value_aliases = _ELEMENT_VALUE_ALIASES.get(canonical_key, {})
+    try:
+        routed_value = value_aliases.get(value, value)
+    except TypeError:
+        routed_value = value
+    return canonical_key, routed_value
+
+
+def _is_alias_element_key(original_key: str, canonical_key: str) -> bool:
+    """Return whether a key is part of the supported request-element alias table."""
+    return original_key in _ELEMENT_KEY_ALIASES or canonical_key in _KNOWN_ALIAS_ELEMENT_KEYS
+
+
+def _is_presentation_alias_key(key: str) -> bool:
+    """Return whether a key is an Excel-only presentation alias, not a Bloomberg element."""
+    return key in _PRESENTATION_KEY_ALIASES or key in _PRESENTATION_KEY_ALIASES.values()
+
+
+@dataclass(frozen=True, slots=True)
+class _PresentationOptions:
+    show_date: bool | None = None
+    date_format: str | None = None
+    sort: str | None = None
+    orientation: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return any(value is not None for value in (self.show_date, self.date_format, self.sort, self.orientation))
+
+
+def _pop_element_alias(kwargs: dict[str, Any], canonical_key: str) -> Any | None:
+    """Pop the first kwarg alias that resolves to *canonical_key*, returning its normalized value."""
+    for key in list(kwargs):
+        routed_key, routed_value = _normalize_element_alias(key, kwargs[key])
+        if routed_key == canonical_key:
+            kwargs.pop(key)
+            return routed_value
+    return None
+
+
+def _normalize_presentation_value(key: str, value: Any) -> Any:
+    """Return canonical value for a presentation-layer option."""
+    value_aliases = _PRESENTATION_VALUE_ALIASES.get(key, {})
+    try:
+        if value in value_aliases:
+            return value_aliases[value]
+    except TypeError:
+        return value
+
+    if isinstance(value, str):
+        value_lower = value.lower()
+        for alias, normalized in value_aliases.items():
+            if isinstance(alias, str) and alias.lower() == value_lower:
+                return normalized
+
+    return value
+
+
+def _normalize_presentation_alias(key: str, value: Any) -> tuple[str, Any]:
+    canonical_key = _PRESENTATION_KEY_ALIASES.get(key, key)
+    return canonical_key, _normalize_presentation_value(canonical_key, value)
+
+
+def _pop_presentation_aliases(kwargs: dict[str, Any]) -> _PresentationOptions:
+    """Remove presentation aliases from kwargs and return normalized options."""
+    options: dict[str, Any] = {}
+    for key in list(kwargs):
+        canonical_key, value = _normalize_presentation_alias(key, kwargs[key])
+        if canonical_key in _PRESENTATION_VALUE_ALIASES:
+            kwargs.pop(key)
+            options[canonical_key] = value
+
+    return _PresentationOptions(
+        show_date=options.get("show_date"),
+        date_format=options.get("date_format"),
+        sort=options.get("sort"),
+        orientation=options.get("orientation"),
+    )
+
+
+def _date_value_to_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value[:10]).date()
+        except ValueError:
+            return None
+    return None
+
+
+def _period_label(value: Any, periodicity: str | None) -> str:
+    parsed = _date_value_to_date(value)
+    if parsed is None:
+        return str(value)
+
+    normalized = (periodicity or "DAILY").upper()
+    if normalized in {"YEARLY", "Y"}:
+        return f"{parsed.year:04d}"
+    if normalized in {"SEMI_ANNUALLY", "SEMIANNUALLY", "S"}:
+        half = 1 if parsed.month <= 6 else 2
+        return f"{parsed.year:04d}H{half}"
+    if normalized in {"QUARTERLY", "Q"}:
+        quarter = ((parsed.month - 1) // 3) + 1
+        return f"{parsed.year:04d}Q{quarter}"
+    if normalized in {"MONTHLY", "M"}:
+        return f"{parsed.year:04d}-{parsed.month:02d}"
+    if normalized in {"WEEKLY", "W"}:
+        iso_year, iso_week, _weekday = parsed.isocalendar()
+        return f"{iso_year:04d}-W{iso_week:02d}"
+    return parsed.isoformat()
+
+
+def _periodicity_selection(elements: Sequence[tuple[str, Any]]) -> str | None:
+    for key, value in elements:
+        if key == "periodicitySelection":
+            return str(value)
+    return None
+
+
+def _presentation_format(fmt: Format | None, presentation: _PresentationOptions) -> Format | None:
+    if fmt is not None:
+        return fmt
+    if presentation.orientation == "HORIZONTAL":
+        return Format.SEMI_LONG
+    if presentation.orientation == "VERTICAL":
+        return Format.LONG
+    return fmt
+
+
+def _drop_columns(table: pa.Table, names: Sequence[str]) -> pa.Table:
+    result = table
+    for name in names:
+        if name in result.column_names:
+            result = result.remove_column(result.column_names.index(name))
+    return result
+
+
+def _apply_historical_presentation(
+    table: pa.Table,
+    presentation: _PresentationOptions,
+    *,
+    periodicity: str | None,
+) -> pa.Table:
+    """Apply Excel-style BDH presentation options to a raw Arrow table."""
+    result = table
+
+    if presentation.sort is not None and "date" in result.column_names:
+        date_order = "descending" if presentation.sort == "DESCENDING" else "ascending"
+        sort_keys = [("date", date_order)]
+        if "ticker" in result.column_names:
+            sort_keys.insert(0, ("ticker", "ascending"))
+        if "field" in result.column_names:
+            sort_keys.append(("field", "ascending"))
+        result = result.sort_by(sort_keys)
+
+    if presentation.date_format in {"PERIODIC", "BOTH"} and "date" in result.column_names:
+        date_idx = result.column_names.index("date")
+        period_values = [_period_label(value, periodicity) for value in result.column("date").to_pylist()]
+        period_array = pa.array(period_values, type=pa.string())
+        if presentation.date_format == "PERIODIC":
+            result = result.set_column(date_idx, pa.field("period", pa.string()), period_array)
+        else:
+            result = result.add_column(date_idx + 1, pa.field("period", pa.string()), period_array)
+
+    if presentation.show_date is False:
+        result = _drop_columns(result, ("date", "period"))
+
+    return result
+
 
 async def _aget_valid_elements(service: str, operation: str) -> set[str]:
     """Get valid request element names from schema cache (async).
@@ -890,35 +1218,50 @@ async def _aroute_kwargs(
     elements: list[tuple[str, Any]] = []
     overrides: list[tuple[str, str]] = []
 
-    # Handle explicit overrides dict first
-    if "overrides" in kwargs:
-        ovrd = kwargs.pop("overrides")
-        if isinstance(ovrd, dict):
-            overrides.extend((k, str(v)) for k, v in ovrd.items())
-        elif isinstance(ovrd, list):
-            overrides.extend((str(k), str(v)) for k, v in ovrd)
+    def route_candidate(key: Any, value: Any) -> None:
+        original_key = str(key)
+        if _is_presentation_alias_key(original_key):
+            warnings.warn(
+                f"Presentation alias '{original_key}' controls Excel-style output shape and is not "
+                "a Bloomberg request element; typed endpoints such as bdh() handle it locally, "
+                "while low-level request routing skips it.",
+                stacklevel=4,
+            )
+            return
 
-    # Route remaining kwargs
-    for key in list(kwargs.keys()):
-        value = kwargs.pop(key)
+        canonical_key, routed_value = _normalize_element_alias(original_key, value)
 
-        if key in valid_elements:
-            # Schema-recognized request element
-            elements.append((key, value))
-        elif key.isupper() or (len(key) > 2 and key[0].isupper() and "_" in key):
+        if canonical_key in valid_elements or _is_alias_element_key(original_key, canonical_key):
+            elements.append((canonical_key, routed_value))
+        elif original_key.isupper() or (len(original_key) > 2 and original_key[0].isupper() and "_" in original_key):
             # Looks like a Bloomberg field override (UPPERCASE or Mixed_Case_Field)
-            overrides.append((key, str(value)))
+            overrides.append((original_key, str(value)))
         elif valid_elements:
             # Schema available but key not recognized - warn and pass as element
             warnings.warn(
-                f"Unknown parameter '{key}' for {op} - passing to Bloomberg. "
+                f"Unknown parameter '{original_key}' for {op} - passing to Bloomberg. "
                 f"Valid elements: {sorted(valid_elements)[:10]}{'...' if len(valid_elements) > 10 else ''}",
                 stacklevel=4,
             )
-            elements.append((key, value))
+            elements.append((canonical_key, routed_value))
         else:
             # No schema available - pass as element (Bloomberg will validate)
-            elements.append((key, value))
+            elements.append((canonical_key, routed_value))
+
+    # Handle explicit overrides dict first. Entries that are actually request-element
+    # aliases (for example Points -> maxDataPoints) are routed as elements, matching 0.x.
+    if "overrides" in kwargs:
+        ovrd = kwargs.pop("overrides")
+        if isinstance(ovrd, dict):
+            for key, value in ovrd.items():
+                route_candidate(key, value)
+        elif isinstance(ovrd, list):
+            for key, value in ovrd:
+                route_candidate(key, value)
+
+    # Route remaining kwargs
+    for key in list(kwargs.keys()):
+        route_candidate(key, kwargs.pop(key))
 
     return elements, overrides
 
@@ -1390,8 +1733,8 @@ async def abdib(
             or an IANA zone. Conversion to UTC is done in the Rust engine.
         output_tz: Relabel the ``time`` column to this zone (same instants; Rust engine).
         **kwargs: Additional Bloomberg options (e.g., intervalHasSeconds,
-            gapFillInitialBar). Pass field overrides via ``overrides={"Points": 1}``
-            (dict) or ``overrides=[("Points", 1)]`` (list of tuples).
+            gapFillInitialBar, or 0.x request-element aliases such as ``Points=1``).
+            Pass true Bloomberg field overrides via ``overrides={...}``.
 
     Returns:
         DataFrame with intraday bar data.
@@ -1437,10 +1780,10 @@ async def abdtick(
         backend: DataFrame backend to return. If None, uses global default.
         request_tz: How naive datetimes are interpreted before Bloomberg (see ``abdib``).
         output_tz: Relabel ``time`` column (same instants; Rust engine).
-        **kwargs: Additional Bloomberg options. Pass field overrides via
-            ``overrides={"Points": 1}`` (dict) or ``overrides=[("Points", 1)]``
-            (list of tuples). Schema-recognized request elements may be passed
-            as individual keyword arguments.
+        **kwargs: Additional Bloomberg options. Schema-recognized request elements
+            and 0.x request-element aliases such as ``Points=1`` may be passed as
+            individual keyword arguments. Pass true Bloomberg field overrides via
+            ``overrides={...}``.
 
     Returns:
         DataFrame with tick data.
@@ -1491,11 +1834,132 @@ def _strip_signature_annotations(func: Callable[..., Any]) -> str:
     return str(stripped)
 
 
+def _is_notebook_context() -> bool:
+    """Return True when running in an IPykernel-backed notebook shell."""
+    try:
+        from IPython import get_ipython
+    except Exception:
+        return False
+
+    shell = get_ipython()
+    if shell is None:
+        return False
+
+    shell_module = shell.__class__.__module__
+    if shell_module.startswith("ipykernel."):
+        return True
+
+    config = getattr(shell, "config", None)
+    return bool(config is not None and "IPKernelApp" in config)
+
+
+def _ensure_notebook_sync_loop() -> asyncio.AbstractEventLoop:
+    global _notebook_sync_loop, _notebook_sync_loop_thread
+
+    with _notebook_sync_loop_lock:
+        if (
+            _notebook_sync_loop is not None
+            and not _notebook_sync_loop.is_closed()
+            and _notebook_sync_loop.is_running()
+            and _notebook_sync_loop_thread is not None
+            and _notebook_sync_loop_thread.is_alive()
+        ):
+            return _notebook_sync_loop
+
+        ready = threading.Event()
+        loop_holder: dict[str, asyncio.AbstractEventLoop] = {}
+        error_holder: list[Exception] = []
+
+        def run_loop() -> None:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop_holder["loop"] = loop
+                loop.call_soon(ready.set)
+                loop.run_forever()
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.run_until_complete(loop.shutdown_asyncgens())
+                loop.close()
+            except Exception as exc:
+                error_holder.append(exc)
+                ready.set()
+
+        thread = threading.Thread(
+            target=run_loop,
+            name="xbbg-notebook-sync-bridge",
+            daemon=True,
+        )
+        thread.start()
+        ready.wait()
+
+        if error_holder:
+            raise RuntimeError("Failed to start xbbg notebook sync bridge") from error_holder[0]
+
+        _notebook_sync_loop = loop_holder["loop"]
+        _notebook_sync_loop_thread = thread
+        return _notebook_sync_loop
+
+
+def _stop_notebook_sync_loop() -> None:
+    global _notebook_sync_loop, _notebook_sync_loop_thread
+
+    with _notebook_sync_loop_lock:
+        loop = _notebook_sync_loop
+        thread = _notebook_sync_loop_thread
+        _notebook_sync_loop = None
+        _notebook_sync_loop_thread = None
+
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(loop.stop)
+    if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+        thread.join(timeout=1.0)
+
+
+def _run_in_notebook_sync_bridge(
+    async_func: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Any:
+    if _notebook_sync_loop_thread is threading.current_thread():
+        raise RuntimeError("xbbg notebook sync bridge cannot be re-entered from its own event-loop thread")
+
+    loop = _ensure_notebook_sync_loop()
+    caller_context = contextvars.copy_context()
+    result: concurrent.futures.Future = concurrent.futures.Future()
+
+    def schedule() -> None:
+        try:
+            task = asyncio.ensure_future(async_func(*args, **kwargs))
+        except Exception as exc:
+            result.set_exception(exc)
+            return
+
+        def complete(task: asyncio.Future) -> None:
+            if result.cancelled():
+                return
+            try:
+                result.set_result(task.result())
+            except asyncio.CancelledError as exc:
+                result.set_exception(exc)
+            except Exception as exc:
+                result.set_exception(exc)
+
+        task.add_done_callback(complete)
+
+    loop.call_soon_threadsafe(schedule, context=caller_context)
+    return result.result()
+
+
 def _build_sync_wrapper(
     sync_name: str,
     async_func: Callable[..., Any],
     *,
     template: Callable[..., Any] | None = None,
+    allow_notebook_bridge: bool = False,
 ) -> Callable[..., Any]:
     template_func = template if template is not None else async_func
 
@@ -1504,15 +1968,16 @@ def _build_sync_wrapper(
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            pass  # No running loop — asyncio.run() is safe
-        else:
-            raise RuntimeError(
-                f"{sync_name}() cannot be used inside an async context "
-                f"(FastAPI, Jupyter, etc.). "
-                f"Use 'await a{sync_name}()' instead, "
-                f"or use xbbg.Engine(...) for scoped async engines."
-            )
-        return asyncio.run(async_func(*args, **kwargs))
+            return asyncio.run(async_func(*args, **kwargs))
+
+        if allow_notebook_bridge and _is_notebook_context():
+            return _run_in_notebook_sync_bridge(async_func, args, kwargs)
+
+        raise RuntimeError(
+            f"{sync_name}() cannot be used inside an async context. "
+            f"Use 'await a{sync_name}()' instead, "
+            f"or use xbbg.Engine(...) for scoped async engines."
+        )
 
     wrapped.__name__ = sync_name
     wrapped.__qualname__ = sync_name
@@ -1572,7 +2037,12 @@ def _install_generated_endpoint(spec: _GeneratedEndpointSpec) -> None:
     generated_async = _build_generated_async(spec, async_template)
     globals()[spec.async_name] = generated_async
 
-    globals()[spec.sync_name] = _build_sync_wrapper(spec.sync_name, generated_async, template=async_template)
+    globals()[spec.sync_name] = _build_sync_wrapper(
+        spec.sync_name,
+        generated_async,
+        template=async_template,
+        allow_notebook_bridge=spec.sync_name in _NOTEBOOK_SYNC_BRIDGE_NAMES,
+    )
 
 
 def _install_generated_endpoints() -> None:
@@ -1885,10 +2355,7 @@ async def asubscribe(
     if output is not None:
         normalized_output = output.lower()
         if normalized_output not in ("record_batch", "backend", "dict", "tick"):
-            raise ValueError(
-                "output must be one of 'record_batch', 'backend', 'dict', 'tick', "
-                f"got {output!r}"
-            )
+            raise ValueError(f"output must be one of 'record_batch', 'backend', 'dict', 'tick', got {output!r}")
         if normalized_output in ("dict", "tick"):
             tick_mode = True
         elif normalized_output == "record_batch":
@@ -3383,8 +3850,10 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
     ticker_list = _normalize_tickers(args["tickers"])
     field_list = _normalize_fields(args.get("flds"))
     kwargs = dict(args.get("kwargs", {}))
+    presentation = _pop_presentation_aliases(kwargs)
 
     fmt = Format(args["format"]) if isinstance(args.get("format"), str) else args.get("format")
+    fmt = _presentation_format(fmt, presentation)
 
     end_value = args.get("end_date", "today")
     start_value = args.get("start_date")
@@ -3417,12 +3886,28 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
         options.append(("adjustmentSplit", "true"))
 
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.HISTORICAL_DATA, kwargs)
+    presentation_periodicity = _periodicity_selection(elements)
 
     resolved_types = await _get_engine().resolve_field_types(
         field_list,
         args.get("field_types"),
         "float64",
     )
+
+    backend = args.get("backend")
+    needs_presentation_postprocess = (
+        presentation.show_date is not None
+        or presentation.sort is not None
+        or presentation.date_format in {"PERIODIC", "BOTH"}
+    )
+
+    def postprocess(raw: pa.Table) -> DataFrameResult:
+        shaped = _apply_historical_presentation(
+            raw,
+            presentation,
+            periodicity=presentation_periodicity,
+        )
+        return _convert_backend(shaped, backend)
 
     return _EndpointPlan(
         request_kwargs={
@@ -3437,8 +3922,8 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
             "format": fmt,
             "validate_fields": args.get("validate_fields"),
         },
-        backend=args.get("backend"),
-        postprocess=None,
+        backend=backend,
+        postprocess=postprocess if needs_presentation_postprocess else None,
     )
 
 
@@ -3476,12 +3961,22 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
     else:
         raise ValueError("Either dt or both start_datetime and end_datetime must be provided")
 
+    interval = args["interval"]
+    alias_interval = _pop_element_alias(kwargs, "interval")
+    if alias_interval is not None:
+        interval = int(alias_interval)
+
+    event_type = args["typ"]
+    alias_event_type = _pop_element_alias(kwargs, "eventType")
+    if alias_event_type is not None:
+        event_type = str(alias_event_type)
+
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_BAR, kwargs)
 
     req: dict[str, Any] = {
         "security": args["ticker"],
-        "event_type": args["typ"],
-        "interval": args["interval"],
+        "event_type": event_type,
+        "interval": interval,
         "start_datetime": s_dt,
         "end_datetime": e_dt,
         "elements": elements if elements else None,
@@ -3504,9 +3999,10 @@ async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
     s_dt = datetime.fromisoformat(args["start_datetime"].replace(" ", "T")).isoformat()
     e_dt = datetime.fromisoformat(args["end_datetime"].replace(" ", "T")).isoformat()
 
+    alias_event_type = _pop_element_alias(kwargs, "eventType")
     event_types = args.get("event_types")
     if event_types is None:
-        event_types = ["TRADE"]
+        event_types = [str(alias_event_type)] if alias_event_type is not None else ["TRADE"]
 
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
 
@@ -4021,7 +4517,11 @@ def _install_manual_sync_wrappers() -> None:
         ("bops", abops),
         ("bschema", abschema),
     ):
-        globals()[sync_name] = _build_sync_wrapper(sync_name, async_func)
+        globals()[sync_name] = _build_sync_wrapper(
+            sync_name,
+            async_func,
+            allow_notebook_bridge=sync_name in _NOTEBOOK_SYNC_BRIDGE_NAMES,
+        )
 
 
 _install_manual_sync_wrappers()

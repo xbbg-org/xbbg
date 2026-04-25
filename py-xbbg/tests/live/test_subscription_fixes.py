@@ -256,9 +256,8 @@ async def test_error_propagation():
 async def test_schema_types():
     """Verify Arrow schema types match expected Bloomberg types.
 
-    After INITPAINT, check that:
-    - VOLUME is Int64 (not Float64)
-    - BID_SIZE is Int32 (not Float64)
+    After INITPAINT/live updates on 24/7 XBTUSD, check that:
+    - LAST_PRICE, BID, ASK are Float64 (not String when initially null)
     - TRADE_UPDATE_STAMP_RT is Timestamp (not Null/Utf8)
     - TRADING_DT_REALTIME is Date32 (not Null/Utf8)
     """
@@ -274,33 +273,51 @@ async def test_schema_types():
 
     fields = [
         "LAST_PRICE",
-        "VOLUME",
-        "BID_SIZE",
-        "ASK_SIZE",
+        "BID",
+        "ASK",
         "TRADE_UPDATE_STAMP_RT",
         "TRADING_DT_REALTIME",
     ]
 
-    sub = await engine.subscribe(["ES1 Index"], fields)
+    sub = await engine.subscribe(["XBTUSD Curncy"], fields)
 
-    # Collect enough batches to see trade messages (TRADE_UPDATE_STAMP_RT
-    # only appears in trade updates, not quote-only messages)
+    # Collect enough XBTUSD batches to see INITPAINT plus live quote/trade updates.
     schema = None
+    raw_samples = []
     batch_count = 0
     try:
-        async for batch in sub:
+        for _ in range(10):
+            batch = await asyncio.wait_for(sub.__anext__(), timeout=10.0)
             batch_count += 1
             schema = batch.schema
-            if batch_count >= 20:
-                break
+            raw_samples.append(
+                {
+                    field.name: batch.column(field.name)[0].as_py()
+                    for field in batch.schema
+                    if field.name
+                    in {
+                        "timestamp",
+                        "topic",
+                        "LAST_PRICE",
+                        "BID",
+                        "ASK",
+                        "TRADE_UPDATE_STAMP_RT",
+                        "TRADING_DT_REALTIME",
+                        "MKTDATA_EVENT_TYPE",
+                        "MKTDATA_EVENT_SUBTYPE",
+                    }
+                }
+            )
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
 
     await sub.unsubscribe()
 
-    if schema is None:
-        print("FAILED: No schema received")
-        return
+    assert schema is not None, "No schema received"
+
+    print("\nRaw sample batches:")
+    for idx, row in enumerate(raw_samples[:5], start=1):
+        print(f"  [{idx}] {row}")
 
     print("\nFinal schema after stabilization:")
     type_map = {}
@@ -314,9 +331,8 @@ async def test_schema_types():
     passed = True
     checks = [
         ("LAST_PRICE", pa.float64(), "Float64"),
-        ("VOLUME", pa.int64(), "Int64"),
-        ("BID_SIZE", pa.int32(), "Int32"),
-        ("ASK_SIZE", pa.int32(), "Int32"),
+        ("BID", pa.float64(), "Float64"),
+        ("ASK", pa.float64(), "Float64"),
     ]
 
     for field_name, expected_type, label in checks:
@@ -350,6 +366,7 @@ async def test_schema_types():
         print("PASSED: Schema types match expectations\n")
     else:
         print("FAILED: Some schema types don't match\n")
+        assert passed, "Some schema types don't match"
 
 
 async def test_field_exposure_modes():

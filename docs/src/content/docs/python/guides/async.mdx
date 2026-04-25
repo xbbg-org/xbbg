@@ -88,24 +88,28 @@ configure(request_pool_size=4)
 
 ## Jupyter notebooks
 
-Jupyter already runs an event loop. Calling `asyncio.run()` inside a notebook cell raises `RuntimeError: asyncio.run() cannot be called from a running event loop`. Use `await` directly instead:
+Jupyter and VS Code Interactive run an IPykernel event loop. For one-shot request/response APIs, the sync wrappers keep the familiar Bloomberg syntax working by using a notebook-only background event-loop bridge:
 
 ```python
 from xbbg import blp
 
-# Single request — await directly in the cell
-df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
-
-# Concurrent requests work the same way
-import asyncio
-results = await asyncio.gather(
-    blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST']),
-    blp.abdp(tickers='MSFT US Equity', flds=['PX_LAST']),
-)
+# Sync one-shot calls work in notebook cells
+df = blp.bdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
+hist = blp.bdh(tickers='AAPL US Equity', flds=['PX_LAST'], start_date='2024-01-01')
 ```
 
-<Aside type="tip">
-Jupyter's top-level `await` support is enabled automatically. No cell magic or helper libraries are needed.
+The bridge applies to `bdp`, `bdh`, `bds`, `bdib`, `bdtick`, and `request`. It preserves scoped `xbbg.Engine(...)` context across the background thread and propagates exceptions back to the cell.
+
+If you are already writing async notebook code, keep using top-level `await`:
+
+```python
+from xbbg import blp
+
+df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
+```
+
+<Aside type="caution">
+The notebook bridge is not a generic async escape hatch. FastAPI, ASGI services, task workers, and other async applications should use the `a`-prefixed APIs directly. Streaming and long-lived lifecycle APIs also remain explicitly async-aware.
 </Aside>
 
 ## GIL release
@@ -198,10 +202,10 @@ results = await asyncio.gather(
 ```
 
 **Use async when integrating with async frameworks.**
-If you are building a FastAPI service, async task queue, or other async application, prefer the `a`-prefixed functions — they participate in the event loop without blocking it. The sync wrappers call `asyncio.run()` internally, which starts a new event loop and cannot be called from within an existing one.
+If you are building a FastAPI service, ASGI app, async task queue, or other async application, prefer the `a`-prefixed functions — they participate in the event loop without blocking it. Sync wrappers still raise in these generic async contexts and direct you to `await abdp(...)`, `await abdh(...)`, and the other async APIs.
 
-**Sync functions work everywhere else.**
-If your script is sequential and you have no async requirements, the sync functions (`bdp`, `bdh`, `bdib`, etc.) are fully supported in scripts, notebooks, and modules. There is no performance penalty for using sync in non-async contexts.
+**Sync functions work in scripts and notebooks.**
+If your script is sequential and you have no async requirements, the sync functions (`bdp`, `bdh`, `bdib`, etc.) are fully supported. In IPykernel notebooks and VS Code Interactive, one-shot sync calls use a background loop bridge; outside notebooks, sync wrappers use `asyncio.run()`.
 
 **Match pool size to workload.**
 The default `request_pool_size=2` is appropriate for most workloads. If you are issuing many concurrent `gather()` calls with large fan-outs, raise it — but Bloomberg API servers also have per-connection limits, so test before committing to a large value.

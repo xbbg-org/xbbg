@@ -25,6 +25,7 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
 use xbbg_async::engine::state::typed_builder::{ArrowType, TypedBuilder};
+use xbbg_async::engine::state::SubscriptionUpdate;
 use xbbg_async::engine::{
     BqlState, BulkDataState, Engine, EngineConfig, ExtractorType, HistDataState, IntradayTickState,
     LongMode, OutputFormat, RefDataState, RequestParams, ServerAddr, SubscriptionState, Transport,
@@ -35,6 +36,10 @@ use xbbg_core::{
     BlpError, CorrelationId, DataType as BlpDataType, Element, Event, EventType, Message, Name,
     SubscriptionList,
 };
+
+fn subscription_update_shape(update: &SubscriptionUpdate) -> (usize, usize) {
+    (1, update.layout.fields.len() + 2)
+}
 struct TrackingAllocator;
 
 static TRACK_ALLOCATIONS: AtomicBool = AtomicBool::new(false);
@@ -2969,11 +2974,12 @@ fn replay_subscription_events(
     let mut columns = 0usize;
     let mut batches = 0usize;
     while let Ok(item) = rx.try_recv() {
-        if let Ok(batch) = item {
-            rows += batch.num_rows();
-            columns = columns.max(batch.num_columns());
+        if let Ok(update) = item {
+            let (update_rows, update_columns) = subscription_update_shape(&update);
+            rows += update_rows;
+            columns = columns.max(update_columns);
             batches += 1;
-            black_box(batch);
+            black_box(update);
         }
     }
     let drain_elapsed = drain_start.elapsed();
@@ -3092,9 +3098,10 @@ async fn live_subscription(engine: &Engine, collect_ms: u64) -> BenchRecord {
     while Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
         match tokio::time::timeout(remaining, stream.next()).await {
-            Ok(Some(Ok(batch))) => {
+            Ok(Some(Ok(update))) => {
+                let (update_rows, _) = subscription_update_shape(&update);
                 batches += 1;
-                rows += batch.num_rows();
+                rows += update_rows;
             }
             Ok(Some(Err(err))) => {
                 let _ = stream.unsubscribe(true).await;
