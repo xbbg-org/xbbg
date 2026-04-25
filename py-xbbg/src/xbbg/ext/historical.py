@@ -34,13 +34,11 @@ from xbbg._core import (
     ext_get_dvd_type,
     ext_rename_dividend_columns,
 )
-from xbbg.ext._utils import _fmt_date, _syncify
+from xbbg.ext._utils import DateLike, _fmt_date, _syncify
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from datetime import date
-
     from narwhals.typing import IntoDataFrame
 
 
@@ -77,8 +75,8 @@ async def adividend(
     tickers: str | list[str],
     typ: str = "all",
     *,
-    start_date: str | date | None = None,
-    end_date: str | date | None = None,
+    start_date: DateLike = None,
+    end_date: DateLike = None,
     **kwargs,
 ) -> IntoDataFrame:
     """Async get dividend and split history for securities.
@@ -369,8 +367,8 @@ async def aearnings(
 
 async def _calc_turnover_from_volume(
     missing_tickers: list[str],
-    start_date: str | date,
-    end_date: str | date,
+    start_date: DateLike,
+    end_date: DateLike,
     nw_df: nw.DataFrame,
     **kwargs,
 ) -> tuple[nw.DataFrame, IntoDataFrame]:
@@ -457,8 +455,8 @@ async def _calc_turnover_from_volume(
 async def aturnover(
     tickers: str | list[str],
     *,
-    start_date: str | date | None = None,
-    end_date: str | date | None = None,
+    start_date: DateLike = None,
+    end_date: DateLike = None,
     ccy: str = "USD",
     factor: float = 1e6,
     **kwargs,

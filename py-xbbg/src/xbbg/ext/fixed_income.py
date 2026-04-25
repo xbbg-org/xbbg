@@ -19,7 +19,6 @@ Async functions (primary implementation):
 
 from __future__ import annotations
 
-from datetime import date
 from enum import IntEnum
 from typing import TYPE_CHECKING
 
@@ -30,7 +29,7 @@ from xbbg._core import (
     ext_build_yas_overrides,
     ext_normalize_tickers,
 )
-from xbbg.ext._utils import _fmt_date, _syncify
+from xbbg.ext._utils import DateLike, _fmt_date, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -82,7 +81,7 @@ async def ayas(
     tickers: str | list[str],
     flds: str | list[str] = "YAS_BOND_YLD",
     *,
-    settle_dt: str | date | None = None,
+    settle_dt: DateLike = None,
     yield_type: YieldType | int | None = None,
     spread: float | None = None,
     yield_: float | None = None,
@@ -291,8 +290,8 @@ async def acorporate_bonds(
 async def abqr(
     ticker: str,
     *,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
+    start_datetime: DateLike = None,
+    end_datetime: DateLike = None,
     event_types: list[str] | None = None,
     include_broker_codes: bool = True,
     **kwargs,
