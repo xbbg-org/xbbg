@@ -19,9 +19,9 @@ const CONSUME_MODES = new Set(['rows', 'vector', 'schema', 'none']);
 
 function usage() {
   return `Usage:
-  node scripts/bench-subscription-replay.js [--rows N] [--iterations N] [--consume rows|vector|schema|none]
-  node scripts/bench-subscription-replay.js --fixture tmp/xbtusd-ticks.jsonl [--iterations N] [--warmup-iterations N]
-  node scripts/bench-subscription-replay.js --capture-live "XBTUSD Curncy" --capture-ms 10000 --out tmp/xbtusd-ticks.jsonl
+  node benchmarks/bench-subscription-replay.js [--rows N] [--iterations N] [--consume rows|vector|schema|none]
+  node benchmarks/bench-subscription-replay.js --fixture tmp/xbtusd-ticks.jsonl [--iterations N] [--warmup-iterations N]
+  node benchmarks/bench-subscription-replay.js --capture-live "XBTUSD Curncy" --capture-ms 10000 --out tmp/xbtusd-ticks.jsonl
 
 Modes:
   synthetic      Default. Generates one tick/update at a time; no batching.
