@@ -2,10 +2,12 @@
 //!
 //! These tests don't require a Bloomberg connection.
 
-use crate::engine::state::SubscriptionState;
+use crate::engine::state::{
+    subscription_update_to_record_batch, FieldKind, FieldLayout, FieldMeta, SubscriptionUpdate,
+};
 use crate::engine::{EngineConfig, OutputFormat, OverflowPolicy, ServerAddr, Transport};
 use arrow::datatypes::{DataType, TimeUnit};
-use tokio::sync::mpsc;
+use std::sync::Arc;
 
 // =========================================================================
 // Engine configuration tests
@@ -315,26 +317,20 @@ fn test_blp_async_error_is_send_sync() {
 }
 
 #[test]
-fn test_subscription_flush_emits_utc_timestamp_column() {
-    let (tx, mut rx) = mpsc::channel(1);
-    let mut state = SubscriptionState::new(
-        "AAPL US Equity".to_string(),
-        vec!["LAST_PRICE".to_string()],
-        tx,
-        10,
-        false,
-    );
+fn test_subscription_arrow_adapter_emits_utc_timestamp_column() {
+    let update = SubscriptionUpdate {
+        timestamp_us: 1_717_242_600_000_000,
+        topic_id: 0,
+        topic: Arc::from("AAPL US Equity"),
+        layout: Arc::new(FieldLayout::new(
+            1,
+            vec![FieldMeta::new("LAST_PRICE", 0, FieldKind::Unknown)],
+        )),
+        values: Box::from([]),
+    };
 
-    state.timestamp_builder.append_value(1_717_242_600_000_000);
-    state.topic_builder.append_value("AAPL US Equity");
-    state.pending_count = 1;
-
-    state.flush();
-
-    let batch = rx
-        .try_recv()
-        .expect("subscription flush should emit a batch")
-        .expect("subscription flush should emit a successful batch");
+    let batch = subscription_update_to_record_batch(&update)
+        .expect("subscription update should adapt to a RecordBatch");
     let expected = DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()));
 
     assert_eq!(batch.schema().field(0).data_type(), &expected);

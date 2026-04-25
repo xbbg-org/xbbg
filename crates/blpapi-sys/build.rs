@@ -119,20 +119,42 @@ fn copy_bindings(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn resolve_env_path(value: std::ffi::OsString) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() || path.exists() {
+        return path;
+    }
+
+    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
+        let mut dir = PathBuf::from(manifest_dir);
+        loop {
+            let candidate = dir.join(&path);
+            if candidate.exists() {
+                return candidate;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+
+    path
+}
+
 fn resolve_include_and_lib_dirs() -> Result<(PathBuf, PathBuf), String> {
     // 1) Explicit include/lib
     let include = env::var_os("BLPAPI_INCLUDE_DIR");
     let lib = env::var_os("BLPAPI_LIB_DIR");
     if let (Some(inc), Some(lib)) = (include, lib) {
-        let inc = PathBuf::from(inc);
-        let lib = PathBuf::from(lib);
+        let inc = resolve_env_path(inc);
+        let lib = resolve_env_path(lib);
         validate_header_exists(&inc)?;
         return Ok((inc, lib));
     }
 
     // 2) Root
     if let Some(root) = env::var_os("BLPAPI_ROOT") {
-        let root = PathBuf::from(root);
+        let root = resolve_env_path(root);
         let (inc, lib) = resolve_sdk_layout(&root)?;
         validate_header_exists(&inc)?;
         return Ok((inc, lib));

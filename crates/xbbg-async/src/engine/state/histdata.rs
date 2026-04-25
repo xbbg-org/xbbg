@@ -11,13 +11,44 @@ use xbbg_log::trace;
 
 use super::refdata::{LongMode, OutputFormat};
 use super::typed_builder::{ArrowType, ColumnSet};
-use super::value_utils::{append_long_value_row, append_wide_row};
-use xbbg_core::{BlpError, Message, Value};
+use super::value_utils::{
+    append_long_value_row, common_value_type, get_value_cached_datatype, LongStringColumns,
+    WideColumns,
+};
+use xbbg_core::{BlpError, DataType as BlpDataType, Message, Name, Value};
+
+struct HistDataElementNames {
+    security_data: Name,
+    security: Name,
+    security_error: Name,
+    field_data: Name,
+    date: Name,
+}
+
+impl HistDataElementNames {
+    fn new() -> Self {
+        Self {
+            security_data: Name::get_or_intern("securityData"),
+            security: Name::get_or_intern("security"),
+            security_error: Name::get_or_intern("securityError"),
+            field_data: Name::get_or_intern("fieldData"),
+            date: Name::get_or_intern("date"),
+        }
+    }
+}
 
 /// State for a historical data request (bdh).
 pub struct HistDataState {
     /// Field names as strings
     field_names: Vec<String>,
+    /// Pre-interned Bloomberg field names for hot lookups
+    field_lookup_names: Vec<Name>,
+    /// Observed Bloomberg data types for requested fields, learned from returned Elements
+    field_value_datatypes: Vec<Option<BlpDataType>>,
+    /// Observed Bloomberg data type for the structural date field
+    date_datatype: Option<BlpDataType>,
+    /// Pre-interned structural names for response traversal
+    names: HistDataElementNames,
     /// Field type hints (field name -> arrow type)
     field_types: HashMap<String, ArrowType>,
     /// Output format
@@ -26,6 +57,10 @@ pub struct HistDataState {
     long_mode: LongMode,
     /// Column set for building the output
     columns: ColumnSet,
+    /// Fixed long-format builders for the common string-value output path
+    long_columns: Option<LongStringColumns>,
+    /// Fixed wide-format builders for requested field columns
+    wide_columns: Option<WideColumns>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -65,26 +100,37 @@ impl HistDataState {
             .into_iter()
             .map(|(k, v)| (k, ArrowType::parse(&v)))
             .collect();
+        let field_lookup_names: Vec<Name> = fields
+            .iter()
+            .map(|field| Name::get_or_intern(field))
+            .collect();
+        let field_value_datatypes = vec![None; field_lookup_names.len()];
 
-        // Create column set with type hints
+        // Fixed long-string output bypasses ColumnSet entirely; keep ColumnSet hints only
+        // for wide/metadata/typed paths that actually append through ColumnSet.
+        let long_value_type = (format == OutputFormat::Long && long_mode == LongMode::String)
+            .then(|| common_value_type(&arrow_types));
+        let wide_columns =
+            (format == OutputFormat::Wide).then(|| WideColumns::histdata(&fields, &arrow_types));
         let mut columns = ColumnSet::new();
-        for (name, arrow_type) in &arrow_types {
-            columns.set_type_hint(name, *arrow_type);
-        }
-
-        // Set type hint for the "value" column based on common field type.
-        if long_mode == LongMode::String {
-            use super::value_utils::common_value_type;
-            let common_type = common_value_type(&arrow_types);
-            columns.set_type_hint("value", common_type);
+        if long_value_type.is_none() && wide_columns.is_none() {
+            for (name, arrow_type) in &arrow_types {
+                columns.set_type_hint(name, *arrow_type);
+            }
         }
 
         Self {
             field_names: fields,
+            field_lookup_names,
+            field_value_datatypes,
+            date_datatype: None,
+            names: HistDataElementNames::new(),
             field_types: arrow_types,
             format,
             long_mode,
             columns,
+            long_columns: long_value_type.map(LongStringColumns::histdata),
+            wide_columns,
             reply,
         }
     }
@@ -100,9 +146,14 @@ impl HistDataState {
         let reply = self.reply;
         let result = match self.format {
             OutputFormat::Long => match self.long_mode {
-                LongMode::String => self
-                    .columns
-                    .finish_with_order(&["ticker", "date", "field", "value"]),
+                LongMode::String => {
+                    if let Some(long_columns) = self.long_columns.take() {
+                        long_columns.finish_histdata()
+                    } else {
+                        self.columns
+                            .finish_with_order(&["ticker", "date", "field", "value"])
+                    }
+                }
                 LongMode::WithMetadata => self
                     .columns
                     .finish_with_order(&["ticker", "date", "field", "value", "dtype"]),
@@ -119,9 +170,13 @@ impl HistDataState {
                 ]),
             },
             OutputFormat::Wide => {
-                let mut order = vec!["ticker", "date"];
-                order.extend(self.field_names.iter().map(|s| s.as_str()));
-                self.columns.finish_with_order(&order)
+                if let Some(wide_columns) = self.wide_columns.take() {
+                    wide_columns.finish_histdata()
+                } else {
+                    let mut order = vec!["ticker", "date"];
+                    order.extend(self.field_names.iter().map(|s| s.as_str()));
+                    self.columns.finish_with_order(&order)
+                }
             }
         };
         if let Ok(ref batch) = result {
@@ -156,38 +211,35 @@ impl HistDataState {
         let root = msg.elements();
 
         // Get securityData (note: singular in HistoricalDataResponse)
-        let Some(security_data) = root.get_by_str("securityData") else {
+        let Some(security_data) = root.get(&self.names.security_data) else {
             trace!("No securityData in message");
             return;
         };
 
         // Get ticker
         let ticker = security_data
-            .get_by_str("security")
+            .get(&self.names.security)
             .and_then(|e| e.get_str(0))
             .unwrap_or("");
 
         // Check for security error
-        if security_data.get_by_str("securityError").is_some() {
+        if security_data.get(&self.names.security_error).is_some() {
             trace!(ticker = ticker, "Security has error, skipping");
             return;
         }
 
         // Get fieldData array
-        let Some(field_data) = security_data.get_by_str("fieldData") else {
+        let Some(field_data) = security_data.get(&self.names.field_data) else {
             trace!(ticker = ticker, "No fieldData for security");
             return;
         };
 
         // Iterate through each row (each date)
-        let n = field_data.len();
-        for i in 0..n {
-            let Some(row) = field_data.get_element(i) else {
-                continue;
-            };
-
+        for row in field_data.values() {
             // Get date value for this row
-            let date_value = row.get_by_str("date").and_then(|e| e.get_value(0));
+            let date_value = row
+                .get(&self.names.date)
+                .and_then(|element| get_value_cached_datatype(&element, &mut self.date_datatype));
 
             match self.format {
                 OutputFormat::Long => {
@@ -207,14 +259,29 @@ impl HistDataState {
         date_value: &Option<Value>,
         row: &xbbg_core::Element,
     ) {
+        if let Some(long_columns) = self.long_columns.as_mut() {
+            for ((field_name, field_lookup_name), field_datatype) in self
+                .field_names
+                .iter()
+                .zip(&self.field_lookup_names)
+                .zip(self.field_value_datatypes.iter_mut())
+            {
+                let value = row
+                    .get(field_lookup_name)
+                    .and_then(|element| get_value_cached_datatype(&element, field_datatype));
+                long_columns.append_histdata_row(ticker, date_value.clone(), field_name, value);
+            }
+            return;
+        }
         let long_mode = self.long_mode;
         let field_names = &self.field_names;
+        let field_lookup_names = &self.field_lookup_names;
         let field_types = &self.field_types;
         let columns = &mut self.columns;
 
-        for field_name in field_names {
+        for (field_name, field_lookup_name) in field_names.iter().zip(field_lookup_names) {
             // Get the field value
-            let value = row.get_by_str(field_name).and_then(|e| e.get_value(0));
+            let value = row.get(field_lookup_name).and_then(|e| e.get_value(0));
             let dtype = value
                 .as_ref()
                 .map(|v| dtype_from_hints(field_types, field_name, v));
@@ -237,20 +304,18 @@ impl HistDataState {
         date_value: &Option<Value>,
         row: &xbbg_core::Element,
     ) {
-        let field_names = &self.field_names;
-        append_wide_row(
-            &mut self.columns,
-            field_names,
-            |columns| {
-                columns.append_str("ticker", ticker);
-                if let Some(date_value) = date_value {
-                    columns.append("date", date_value.clone());
-                } else {
-                    columns.append_null("date");
-                }
-            },
-            |field_name| row.get_by_str(field_name).and_then(|e| e.get_value(0)),
-        );
+        if let Some(wide_columns) = self.wide_columns.as_mut() {
+            wide_columns.append_histdata_row(
+                ticker,
+                date_value.clone(),
+                &self.field_lookup_names,
+                &mut self.field_value_datatypes,
+                |field_lookup_name, field_datatype| {
+                    row.get(field_lookup_name)
+                        .and_then(|element| get_value_cached_datatype(&element, field_datatype))
+                },
+            );
+        }
     }
 }
 

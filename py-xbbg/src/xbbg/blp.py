@@ -1650,12 +1650,10 @@ class Subscription:
         return self
 
     async def __anext__(self) -> pa.RecordBatch | nw.DataFrame | dict[str, Any]:
-        """Get next batch of data."""
-        batch = await self._sub.__anext__()
-
-        # Tick mode: convert RecordBatch to dict
         if self._tick_mode:
-            return {field.name: batch.column(i)[0].as_py() for i, field in enumerate(batch.schema)}
+            return await self._sub.__anext_tick_dict__()
+
+        batch = await self._sub.__anext__()
 
         if self._raw:
             return batch
@@ -1826,6 +1824,7 @@ async def asubscribe(
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
     overflow_policy: str | None = None,
+    output: str | None = None,
 ) -> Subscription:
     """Create an async subscription to real-time market data.
 
@@ -1845,7 +1844,7 @@ async def asubscribe(
         backend: DataFrame backend for batch conversion (ignored if raw=True)
         service: Bloomberg service (e.g., '//blp/mktdata'). If provided, uses subscribe_with_options
         options: List of subscription options. If provided, uses subscribe_with_options
-        tick_mode: If True, convert batches to dicts (implies raw=True)
+        tick_mode: If True, return native dict ticks without building Arrow (implies raw=True)
         flush_threshold: Batch flush threshold (validation only in Wave 1)
         stream_capacity: Stream channel capacity (validation only in Wave 1)
         overflow_policy: Overflow policy for stream (validation only in Wave 1)
@@ -1883,6 +1882,18 @@ async def asubscribe(
         async for tick_dict in sub:
             print(tick_dict)  # {'ticker': 'AAPL US Equity', 'LAST_PRICE': 150.25, ...}
     """
+    if output is not None:
+        normalized_output = output.lower()
+        if normalized_output not in ("record_batch", "backend", "dict", "tick"):
+            raise ValueError(
+                "output must be one of 'record_batch', 'backend', 'dict', 'tick', "
+                f"got {output!r}"
+            )
+        if normalized_output in ("dict", "tick"):
+            tick_mode = True
+        elif normalized_output == "record_batch":
+            raw = True
+
     # Validate config parameters
     if flush_threshold is not None and flush_threshold < 1:
         raise ValueError("flush_threshold must be >= 1")

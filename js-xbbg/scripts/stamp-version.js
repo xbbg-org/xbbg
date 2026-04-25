@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   platformPackages: corePlatformPackages,
-} = require('../lib/platform-map');
+} = require('./platform-map.cjs');
 const {
   platformPackages: bridgePlatformPackages,
 } = require('../../packages/xbbg-bridge/lib/platform-map');

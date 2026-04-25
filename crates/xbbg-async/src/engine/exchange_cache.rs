@@ -98,6 +98,12 @@ impl ExchangeCache {
             .map_err(|e| format!("write exchange cache JSON failed: {e}"))
     }
 
+    /// Eagerly load the on-disk cache (idempotent).
+    pub fn preload(&self) -> Result<(), String> {
+        self.ensure_loaded();
+        Ok(())
+    }
+
     fn ensure_loaded(&self) {
         self.loaded.get_or_init(|| {
             let _ = self.load_from_disk();

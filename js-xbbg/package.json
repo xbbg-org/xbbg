@@ -2,24 +2,29 @@
   "name": "@xbbg/core",
   "version": "0.0.0",
   "description": "Bloomberg data API for Node.js powered by Rust xbbg engine",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
-    "errors.js",
-    "index.d.ts",
-    "index.js",
-    "lib",
-    "README.md"
+    "dist/**",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "node ./scripts/build-native.js",
+    "build:native": "node ./scripts/build-native.js",
+    "build:ts": "tsup",
+    "build": "npm run build:native && npm run build:ts",
+    "prepack": "npm run build:ts",
     "stage:native-package": "node ./scripts/stage-native-package.js",
     "stamp:version": "node ./scripts/stamp-version.js",
-    "smoke:packaged-install": "node ./scripts/smoke-packaged-install.js",
-    "lint": "biome check .",
-    "format": "biome check --write .",
-    "test": "node ./test.js",
-    "test:live": "node --test --test-timeout=120000 ./test-live.js"
+    "smoke:packaged-install": "node ./scripts/smoke-packaged-install.js --packed",
+    "bench:subscription-replay": "node ./scripts/bench-subscription-replay.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "format": "eslint --fix .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/smoke.test.ts",
+    "test:watch": "vitest test/smoke.test.ts",
+    "test:live": "vitest run test/live.test.ts --testTimeout=120000"
   },
   "keywords": [
     "bloomberg",
@@ -32,12 +37,21 @@
     "apache-arrow": "^21.1.0"
   },
   "optionalDependencies": {
-    "@xbbg/core-darwin-arm64": "file:../packages/xbbg-core-darwin-arm64",
-    "@xbbg/core-linux-x64": "file:../packages/xbbg-core-linux-x64",
-    "@xbbg/core-win32-x64": "file:../packages/xbbg-core-win32-x64"
+    "@xbbg/core-darwin-arm64": "0.0.0",
+    "@xbbg/core-linux-x64": "0.0.0",
+    "@xbbg/core-win32-x64": "0.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.2.4"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.6.0",
+    "eslint": "^10.2.1",
+    "eslint-plugin-n": "^17.24.0",
+    "globals": "^17.5.0",
+    "jiti": "^2.6.1",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.58.2",
+    "vitest": "^4.1.4"
   },
   "peerDependencies": {
     "nodejs-polars": ">=0.10.0"
@@ -53,6 +67,6 @@
     "directory": "js-xbbg"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }

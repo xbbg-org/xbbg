@@ -55,3 +55,37 @@ def test_engine_exchange_resolution_live():
         assert "+" in timing_utc
 
     asyncio.run(run_live_checks())
+
+
+def test_treasury_futures_exchange_resolution_live_issue_198():
+    """Regression for #198: futures/commodities resolve exchange metadata dynamically."""
+    from xbbg._core import PyEngine
+
+    async def run_live_checks() -> None:
+        engine = PyEngine()
+        exchange = await asyncio.wait_for(engine.resolve_exchange("TY1 Comdty"), timeout=45)
+
+        assert exchange["timezone"]
+        assert exchange["day"] is not None
+        assert exchange["source"] != "fallback"
+
+        market_info = await asyncio.wait_for(engine.fetch_market_info("TY1 Comdty"), timeout=45)
+        assert market_info["exch"] or market_info["tz"]
+
+    asyncio.run(run_live_checks())
+
+
+def test_japan_equity_close_live_issue_160():
+    """Regression for #160: Japan equity EOD resolves to 15:30 Asia/Tokyo."""
+    from xbbg._core import PyEngine
+
+    async def run_live_checks() -> None:
+        engine = PyEngine()
+        timing_utc = await asyncio.wait_for(
+            engine.market_timing("7203 JP Equity", "2026-02-24", "EOD", "UTC"),
+            timeout=45,
+        )
+
+        assert "06:30:00+00:00" in timing_utc
+
+    asyncio.run(run_live_checks())

@@ -578,6 +578,10 @@ jobs:
           name: core-package-darwin-arm64
           path: packages/xbbg-core-darwin-arm64
 
+      - name: Install js-xbbg dependencies
+        working-directory: js-xbbg
+        run: npm ci
+
       - name: Build offline bundles
         run: |
           mkdir -p dist-offline

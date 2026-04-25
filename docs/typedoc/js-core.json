@@ -12,5 +12,5 @@
       "apache-arrow": ["./node_modules/apache-arrow"]
     }
   },
-  "include": ["../../js-xbbg/index.d.ts"]
+  "include": ["../../js-xbbg/src/index.ts"]
 }

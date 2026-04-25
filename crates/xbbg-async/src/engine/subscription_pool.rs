@@ -8,7 +8,6 @@ use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
-use arrow::record_batch::RecordBatch;
 use parking_lot::Mutex;
 use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
@@ -25,7 +24,7 @@ const SERVICE_OPEN_CID_TAG: i64 = 1_i64 << 62;
 const SERVICE_OPEN_TIMEOUT_MS: u64 = 10_000;
 
 use super::dispatch::DispatchKey;
-use super::state::{SubscriptionMetrics, SubscriptionState};
+use super::state::{SubscriptionMetrics, SubscriptionState, SubscriptionUpdate};
 use super::{
     start_configured_session, BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState,
     SharedSubscriptionStatus, SlabKey, SubscriptionEventLevel, SubscriptionFailureKind,
@@ -48,7 +47,7 @@ pub enum SubscriptionCommand {
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        stream: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
         status: SharedSubscriptionStatus,
         /// Reply with slab keys for later unsubscribe.
         reply: oneshot::Sender<SubscriptionReply>,
@@ -64,7 +63,7 @@ pub enum SubscriptionCommand {
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        stream: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
         status: SharedSubscriptionStatus,
         /// Reply with new slab keys.
         reply: oneshot::Sender<SubscriptionReply>,
@@ -354,7 +353,7 @@ impl SubscriptionWorker {
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        stream: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpError> {
         let mut sub_list = SubscriptionList::new();
 
@@ -376,6 +375,9 @@ impl SubscriptionWorker {
             );
             let metrics_arc = state.metrics.clone();
             let key = self.subs.insert(state);
+            if let Some(state) = self.subs.get_mut(key) {
+                state.set_topic_id(key as u32);
+            }
 
             let cid = DispatchKey::from_slab_key(key).to_correlation_id();
             if let Err(e) = sub_list.add(topic, &field_refs, &options_str, &cid) {
@@ -1347,7 +1349,7 @@ impl SubscriptionCommandHandle {
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        stream: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
         status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -1385,7 +1387,7 @@ impl SubscriptionCommandHandle {
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        stream: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
         status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -1420,6 +1422,15 @@ impl SubscriptionCommandHandle {
             .map_err(|_| BlpAsyncError::ChannelClosed)?;
 
         Ok(())
+    }
+
+    /// Best-effort unsubscribe for non-async drop paths.
+    fn try_unsubscribe(
+        &self,
+        keys: Vec<SlabKey>,
+    ) -> Result<(), mpsc::error::TrySendError<SubscriptionCommand>> {
+        self.cmd_tx
+            .try_send(SubscriptionCommand::Unsubscribe { keys })
     }
 
     /// Get the worker ID behind this command path.
@@ -1616,6 +1627,7 @@ impl SubscriptionSessionPool {
         Ok(SessionClaim {
             handle: Some(handle),
             pool: Arc::clone(self),
+            cleanup_status: None,
         })
     }
 
@@ -1686,6 +1698,7 @@ impl Drop for SubscriptionSessionPool {
 pub struct SessionClaim {
     handle: Option<SubscriptionWorkerHandle>,
     pool: Arc<SubscriptionSessionPool>,
+    cleanup_status: Option<SharedSubscriptionStatus>,
 }
 
 impl SessionClaim {
@@ -1720,7 +1733,7 @@ impl SessionClaim {
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        stream: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
         status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         self.command_handle()?
@@ -1749,7 +1762,7 @@ impl SessionClaim {
         options: Vec<String>,
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
+        stream: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
         status: SharedSubscriptionStatus,
     ) -> Result<(Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>), BlpAsyncError> {
         self.command_handle()?
@@ -1772,6 +1785,34 @@ impl SessionClaim {
         self.command_handle()?.unsubscribe(keys).await
     }
 
+    /// Attach active-topic status so dropping a raw claim can clean up safely.
+    pub fn set_cleanup_status(&mut self, status: SharedSubscriptionStatus) {
+        self.cleanup_status = Some(status);
+    }
+
+    /// Best-effort cleanup for non-async stream drop/close paths.
+    ///
+    /// Because Drop cannot await Bloomberg's termination confirmations, a claim
+    /// released through this path must not return its worker to the reusable pool.
+    pub fn close_without_reuse(mut self, keys: Vec<SlabKey>) {
+        if let Some(handle) = self.handle.take() {
+            if !keys.is_empty() {
+                match handle.command.try_unsubscribe(keys) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        xbbg_log::warn!(
+                            worker_id = handle.id(),
+                            "subscription cleanup command queue full; discarding worker"
+                        );
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {}
+                }
+            }
+            handle.signal_shutdown();
+            drop(handle);
+        }
+    }
+
     /// Get the worker ID.
     pub fn worker_id(&self) -> Option<usize> {
         self.handle.as_ref().map(SubscriptionWorkerHandle::id)
@@ -1780,8 +1821,39 @@ impl SessionClaim {
 
 impl Drop for SessionClaim {
     fn drop(&mut self) {
-        if let Some(handle) = self.handle.take() {
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+
+        let active_keys = self
+            .cleanup_status
+            .as_ref()
+            .map(|status| status.load().keys().to_vec())
+            .unwrap_or_default();
+
+        if active_keys.is_empty() {
             self.pool.release(handle);
+            return;
         }
+
+        match handle.command.try_unsubscribe(active_keys) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                xbbg_log::warn!(
+                    worker_id = handle.id(),
+                    "subscription cleanup command queue full; discarding worker"
+                );
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {}
+        }
+        if let Some(status) = &self.cleanup_status {
+            status.rcu(|current| {
+                let mut next = (**current).clone();
+                next.clear_active();
+                Arc::new(next)
+            });
+        }
+        handle.signal_shutdown();
+        drop(handle);
     }
 }
