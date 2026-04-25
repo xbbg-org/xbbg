@@ -15,6 +15,10 @@ pub struct MarketRule {
     #[serde(default)]
     pub lunch_end_min: Option<i32>,
     #[serde(default)]
+    pub day_start: Option<String>,
+    #[serde(default)]
+    pub day_end: Option<String>,
+    #[serde(default)]
     pub is_continuous: bool,
 }
 
@@ -81,12 +85,22 @@ pub fn derive_sessions(
     mic: Option<&str>,
     exch_code: Option<&str>,
 ) -> SessionWindows {
-    let Some(day_start_tm) = parse_time(day_start) else {
+    let Some(input_day_start_tm) = parse_time(day_start) else {
         return SessionWindows::default();
     };
-    let Some(day_end_tm) = parse_time(day_end) else {
+    let Some(input_day_end_tm) = parse_time(day_end) else {
         return SessionWindows::default();
     };
+
+    let rule = get_market_rule(mic, exch_code);
+    let day_start_tm = rule
+        .and_then(|rule| rule.day_start.as_deref())
+        .and_then(parse_time)
+        .unwrap_or(input_day_start_tm);
+    let day_end_tm = rule
+        .and_then(|rule| rule.day_end.as_deref())
+        .and_then(parse_time)
+        .unwrap_or(input_day_end_tm);
 
     let day_start_str = format_time(day_start_tm.0, day_start_tm.1);
     let day_end_str = format_time(day_end_tm.0, day_end_tm.1);
@@ -96,7 +110,7 @@ pub fn derive_sessions(
         ..SessionWindows::default()
     };
 
-    if let Some(rule) = get_market_rule(mic, exch_code) {
+    if let Some(rule) = rule {
         if rule.is_continuous {
             windows.allday = windows.day.clone();
             return windows;
@@ -200,10 +214,11 @@ mod tests {
     #[test]
     fn test_derive_sessions_japan() {
         let sw = derive_sessions("09:00", "15:00", Some("XTKS"), Some("JT"));
+        assert_eq!(sw.day, Some(("09:00".to_string(), "15:30".to_string())));
         assert_eq!(sw.am, Some(("09:00".to_string(), "11:30".to_string())));
-        assert_eq!(sw.pm, Some(("12:30".to_string(), "15:00".to_string())));
+        assert_eq!(sw.pm, Some(("12:30".to_string(), "15:30".to_string())));
         assert_eq!(sw.pre, Some(("08:00".to_string(), "09:00".to_string())));
-        assert_eq!(sw.post, Some(("15:01".to_string(), "15:30".to_string())));
+        assert_eq!(sw.post, Some(("15:31".to_string(), "16:00".to_string())));
     }
 
     #[test]
