@@ -545,10 +545,7 @@ impl SubscriptionWorker {
                     let first_message = state.on_message(msg);
                     if first_message {
                         let topic = if let Some(status) = &self.status {
-                            let topic = status
-                                .load()
-                                .topic_for_key(key)
-                                .map(str::to_string);
+                            let topic = status.load().topic_for_key(key).map(str::to_string);
                             status.rcu(|current| {
                                 let mut next = (**current).clone();
                                 next.mark_topic_streaming(key);
@@ -772,8 +769,7 @@ impl SubscriptionWorker {
                         if self.subs.contains(key) {
                             if let Some(status) = &self.status {
                                 let snapshot = status.load();
-                                let topic =
-                                    snapshot.topic_for_key(key).map(|t| t.to_string());
+                                let topic = snapshot.topic_for_key(key).map(|t| t.to_string());
                                 let prev = topic.as_ref().and_then(|t| {
                                     snapshot
                                         .topic_statuses()
@@ -814,8 +810,7 @@ impl SubscriptionWorker {
                         if self.subs.contains(key) {
                             if let Some(status) = &self.status {
                                 let snapshot = status.load();
-                                let topic =
-                                    snapshot.topic_for_key(key).map(|t| t.to_string());
+                                let topic = snapshot.topic_for_key(key).map(|t| t.to_string());
                                 let prev = topic.as_ref().and_then(|t| {
                                     snapshot
                                         .topic_statuses()
@@ -1112,12 +1107,7 @@ impl SubscriptionWorker {
                     let has_active = !self.subs.is_empty();
                     status.rcu(|current| {
                         let mut next = (**current).clone();
-                        next.record_service_state(
-                            service_name.clone(),
-                            false,
-                            msg_type,
-                            None,
-                        );
+                        next.record_service_state(service_name.clone(), false, msg_type, None);
                         // Emit a subscription-category warning if we have active subs so
                         // callers polling subscription status (not just service status) see
                         // that their streams may be affected. The SDK will auto-recover
@@ -1148,12 +1138,7 @@ impl SubscriptionWorker {
                     let service_name = service.unwrap_or_else(|| "unknown".to_string());
                     status.rcu(|current| {
                         let mut next = (**current).clone();
-                        next.record_service_state(
-                            service_name.clone(),
-                            true,
-                            msg_type,
-                            None,
-                        );
+                        next.record_service_state(service_name.clone(), true, msg_type, None);
                         Arc::new(next)
                     });
                 }

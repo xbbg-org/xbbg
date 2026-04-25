@@ -1,4 +1,7 @@
-use arrow::array::{Array, BooleanArray, Float64Array, Int32Array, Int64Array, StringArray};
+use arrow::array::{
+    Array, BooleanArray, Float64Array, Int32Array, Int64Array, StringArray, Time32MillisecondArray,
+    Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
+};
 use chrono::NaiveDate;
 
 use xbbg_ext::markets::overrides;
@@ -12,7 +15,7 @@ use crate::services::{ExtractorType, Operation, Service};
 
 use super::{Engine, RequestParams};
 
-const EXCHANGE_FIELDS: [&str; 8] = [
+const EXCHANGE_FIELDS: [&str; 7] = [
     "IANA_TIME_ZONE",
     "TIME_ZONE_NUM",
     "ID_MIC_PRIM_EXCH",
@@ -20,15 +23,13 @@ const EXCHANGE_FIELDS: [&str; 8] = [
     "COUNTRY_ISO",
     "TRADING_DAY_START_TIME_EOD",
     "TRADING_DAY_END_TIME_EOD",
-    "FUT_TRADING_HRS",
 ];
 
-const MARKET_FIELDS: [&str; 4] = [
-    "EXCH_CODE",
-    "ID_MIC_PRIM_EXCH",
-    "IANA_TIME_ZONE",
-    "FUT_GEN_MONTH",
-];
+const FUTURES_HOURS_FIELDS: [&str; 1] = ["FUT_TRADING_HRS"];
+
+const MARKET_FIELDS: [&str; 3] = ["EXCH_CODE", "ID_MIC_PRIM_EXCH", "IANA_TIME_ZONE"];
+
+const FUT_GEN_MONTH_FIELDS: [&str; 1] = ["FUT_GEN_MONTH"];
 
 impl Engine {
     /// Query Bloomberg exchange metadata and derive sessions.
@@ -40,19 +41,45 @@ impl Engine {
             });
         }
 
+        let batch = self
+            .fetch_exchange_fields(trimmed, &EXCHANGE_FIELDS)
+            .await?;
+        let mut info = parse_exchange_info(trimmed, &batch);
+
+        if info.sessions.day.is_none() {
+            match self
+                .fetch_exchange_fields(trimmed, &FUTURES_HOURS_FIELDS)
+                .await
+            {
+                Ok(futures_batch) => apply_futures_hours(&mut info, &futures_batch),
+                Err(e) => xbbg_log::warn!(
+                    ticker = trimmed,
+                    error = %e,
+                    "futures-hours exchange fallback failed"
+                ),
+            }
+        }
+
+        Ok(info)
+    }
+
+    async fn fetch_exchange_fields(
+        &self,
+        ticker: &str,
+        fields: &[&str],
+    ) -> Result<arrow::record_batch::RecordBatch, BlpAsyncError> {
         let params = RequestParams {
             service: Service::RefData.to_string(),
             operation: Operation::ReferenceData.to_string(),
             extractor: ExtractorType::RefData,
             extractor_set: true,
-            securities: Some(vec![trimmed.to_string()]),
-            fields: Some(EXCHANGE_FIELDS.iter().map(|s| s.to_string()).collect()),
+            securities: Some(vec![ticker.to_string()]),
+            fields: Some(fields.iter().map(|s| s.to_string()).collect()),
             format: Some("wide".to_string()),
             ..Default::default()
         };
 
-        let batch = self.request_without_intraday_transform(params).await?;
-        Ok(parse_exchange_info(trimmed, &batch))
+        self.request_without_intraday_transform(params).await
     }
 
     /// Query lightweight market metadata used by higher-level APIs.
@@ -64,24 +91,31 @@ impl Engine {
             });
         }
 
-        let params = RequestParams {
-            service: Service::RefData.to_string(),
-            operation: Operation::ReferenceData.to_string(),
-            extractor: ExtractorType::RefData,
-            extractor_set: true,
-            securities: Some(vec![trimmed.to_string()]),
-            fields: Some(MARKET_FIELDS.iter().map(|s| s.to_string()).collect()),
-            format: Some("wide".to_string()),
-            ..Default::default()
-        };
-
-        let batch = self.request_without_intraday_transform(params).await?;
+        let batch = self.fetch_exchange_fields(trimmed, &MARKET_FIELDS).await?;
 
         let exch =
             get_string(&batch, "EXCH_CODE").or_else(|| get_string(&batch, "ID_MIC_PRIM_EXCH"));
         let tz = get_string(&batch, "IANA_TIME_ZONE");
-        let freq = get_string(&batch, "FUT_GEN_MONTH");
-        let is_fut = freq.as_ref().is_some_and(|s| !s.trim().is_empty());
+        let freq = if should_query_fut_gen_month(trimmed) {
+            match self
+                .fetch_exchange_fields(trimmed, &FUT_GEN_MONTH_FIELDS)
+                .await
+            {
+                Ok(batch) => get_string(&batch, "FUT_GEN_MONTH"),
+                Err(e) => {
+                    xbbg_log::warn!(
+                        ticker = trimmed,
+                        error = %e,
+                        "futures cycle metadata lookup failed"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let is_fut = freq.as_ref().is_some_and(|s| !s.trim().is_empty())
+            || should_query_fut_gen_month(trimmed);
 
         Ok(MarketInfo {
             exch,
@@ -196,6 +230,35 @@ fn parse_exchange_info(ticker: &str, batch: &arrow::record_batch::RecordBatch) -
     }
 }
 
+fn apply_futures_hours(info: &mut ExchangeInfo, batch: &arrow::record_batch::RecordBatch) {
+    let Some((day_start, day_end)) =
+        get_string(batch, "FUT_TRADING_HRS").and_then(|v| parse_futures_hours(&v))
+    else {
+        return;
+    };
+
+    info.sessions = derive_sessions(
+        &day_start,
+        &day_end,
+        info.mic.as_deref(),
+        info.exch_code.as_deref(),
+    );
+}
+
+fn should_query_fut_gen_month(ticker: &str) -> bool {
+    let mut parts = ticker.split_whitespace();
+    let Some(root) = parts.next() else {
+        return false;
+    };
+    let asset_class = ticker.split_whitespace().last().unwrap_or_default();
+
+    match asset_class {
+        "Comdty" => true,
+        "Index" | "Curncy" => root.chars().any(|c| c.is_ascii_digit()),
+        _ => false,
+    }
+}
+
 fn parse_futures_hours(raw: &str) -> Option<(String, String)> {
     let trimmed = raw.trim();
     let (start, end) = trimmed.split_once('-')?;
@@ -295,10 +358,32 @@ fn value_as_string(arr: &dyn Array, row: usize) -> Option<String> {
     if let Some(v) = arr.as_any().downcast_ref::<Float64Array>() {
         return (!v.is_null(row)).then(|| v.value(row).to_string());
     }
+    if let Some(v) = arr.as_any().downcast_ref::<Time32SecondArray>() {
+        return (!v.is_null(row)).then(|| format_seconds(v.value(row) as i64));
+    }
+    if let Some(v) = arr.as_any().downcast_ref::<Time32MillisecondArray>() {
+        return (!v.is_null(row)).then(|| format_seconds((v.value(row) as i64) / 1_000));
+    }
+    if let Some(v) = arr.as_any().downcast_ref::<Time64MicrosecondArray>() {
+        return (!v.is_null(row)).then(|| format_seconds(v.value(row) / 1_000_000));
+    }
+    if let Some(v) = arr.as_any().downcast_ref::<Time64NanosecondArray>() {
+        return (!v.is_null(row)).then(|| format_seconds(v.value(row) / 1_000_000_000));
+    }
     if let Some(v) = arr.as_any().downcast_ref::<BooleanArray>() {
         return (!v.is_null(row)).then(|| v.value(row).to_string());
     }
     None
+}
+
+fn format_seconds(seconds: i64) -> String {
+    let seconds = seconds.rem_euclid(24 * 60 * 60);
+    format!(
+        "{:02}:{:02}:{:02}",
+        seconds / 3600,
+        (seconds % 3600) / 60,
+        seconds % 60
+    )
 }
 
 fn clean_value(raw: String) -> Option<String> {
@@ -321,11 +406,14 @@ fn parse_f64(raw: &str) -> Option<f64> {
 mod tests {
     use std::sync::Arc;
 
-    use arrow::array::{ArrayRef, Float64Array, StringArray};
+    use arrow::array::{
+        ArrayRef, Float64Array, StringArray, Time32MillisecondArray, Time32SecondArray,
+        Time64MicrosecondArray, Time64NanosecondArray,
+    };
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
 
-    use super::parse_exchange_info;
+    use super::{apply_futures_hours, parse_exchange_info, should_query_fut_gen_month};
     use xbbg_ext::ExchangeInfoSource;
 
     fn single_row_batch(columns: Vec<(&str, ArrayRef)>) -> RecordBatch {
@@ -452,6 +540,56 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_futures_hours_populates_missing_sessions() {
+        let mut info = parse_exchange_info(
+            "TY1 Comdty",
+            &single_row_batch(vec![
+                (
+                    "IANA_TIME_ZONE",
+                    Arc::new(StringArray::from(vec![Some("America/Chicago")])) as ArrayRef,
+                ),
+                (
+                    "TIME_ZONE_NUM",
+                    Arc::new(Float64Array::from(vec![Some(-6.0)])) as ArrayRef,
+                ),
+                (
+                    "ID_MIC_PRIM_EXCH",
+                    Arc::new(StringArray::from(vec![Some("XCBT")])) as ArrayRef,
+                ),
+                (
+                    "EXCH_CODE",
+                    Arc::new(StringArray::from(vec![Some("CBT")])) as ArrayRef,
+                ),
+                (
+                    "COUNTRY_ISO",
+                    Arc::new(StringArray::from(vec![Some("US")])) as ArrayRef,
+                ),
+                (
+                    "TRADING_DAY_START_TIME_EOD",
+                    Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+                ),
+                (
+                    "TRADING_DAY_END_TIME_EOD",
+                    Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+                ),
+            ]),
+        );
+        assert_eq!(info.sessions.day, None);
+
+        let futures_batch = single_row_batch(vec![(
+            "FUT_TRADING_HRS",
+            Arc::new(StringArray::from(vec![Some("18:00-17:00")])) as ArrayRef,
+        )]);
+        apply_futures_hours(&mut info, &futures_batch);
+
+        assert_eq!(
+            info.sessions.day,
+            Some(("18:00".to_string(), "17:00".to_string()))
+        );
+        assert_eq!(info.sessions.allday, info.sessions.day);
+    }
+
+    #[test]
     fn test_parse_exchange_info_falls_back_to_utc_without_iana_or_country() {
         let batch = single_row_batch(vec![
             (
@@ -520,6 +658,168 @@ mod tests {
             info.sessions.day,
             Some(("09:30".to_string(), "16:30".to_string()))
         );
+    }
+
+    #[test]
+    fn test_parse_exchange_info_handles_time_valued_session_fields() {
+        let batch = single_row_batch(vec![
+            (
+                "IANA_TIME_ZONE",
+                Arc::new(StringArray::from(vec![Some("America/New_York")])) as ArrayRef,
+            ),
+            (
+                "TIME_ZONE_NUM",
+                Arc::new(Float64Array::from(vec![Some(-5.0)])) as ArrayRef,
+            ),
+            (
+                "ID_MIC_PRIM_EXCH",
+                Arc::new(StringArray::from(vec![Some("XNGS")])) as ArrayRef,
+            ),
+            (
+                "EXCH_CODE",
+                Arc::new(StringArray::from(vec![Some("US")])) as ArrayRef,
+            ),
+            (
+                "COUNTRY_ISO",
+                Arc::new(StringArray::from(vec![Some("US")])) as ArrayRef,
+            ),
+            (
+                "TRADING_DAY_START_TIME_EOD",
+                Arc::new(Time64MicrosecondArray::from(vec![Some(
+                    (9_i64 * 60 * 60 + 30 * 60) * 1_000_000,
+                )])) as ArrayRef,
+            ),
+            (
+                "TRADING_DAY_END_TIME_EOD",
+                Arc::new(Time64MicrosecondArray::from(vec![Some(
+                    (16_i64 * 60 * 60 + 30 * 60) * 1_000_000,
+                )])) as ArrayRef,
+            ),
+            (
+                "FUT_TRADING_HRS",
+                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+            ),
+        ]);
+
+        let info = parse_exchange_info("AAPL US Equity", &batch);
+        assert_eq!(
+            info.sessions.day,
+            Some(("09:30".to_string(), "16:30".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_exchange_info_uses_japan_market_rule_close() {
+        let batch = single_row_batch(vec![
+            (
+                "IANA_TIME_ZONE",
+                Arc::new(StringArray::from(vec![Some("Asia/Tokyo")])) as ArrayRef,
+            ),
+            (
+                "TIME_ZONE_NUM",
+                Arc::new(Float64Array::from(vec![Some(9.0)])) as ArrayRef,
+            ),
+            (
+                "ID_MIC_PRIM_EXCH",
+                Arc::new(StringArray::from(vec![Some("XTKS")])) as ArrayRef,
+            ),
+            (
+                "EXCH_CODE",
+                Arc::new(StringArray::from(vec![Some("JP")])) as ArrayRef,
+            ),
+            (
+                "COUNTRY_ISO",
+                Arc::new(StringArray::from(vec![Some("JP")])) as ArrayRef,
+            ),
+            (
+                "TRADING_DAY_START_TIME_EOD",
+                Arc::new(Time64MicrosecondArray::from(vec![Some(
+                    (20_i64 * 60 * 60) * 1_000_000,
+                )])) as ArrayRef,
+            ),
+            (
+                "TRADING_DAY_END_TIME_EOD",
+                Arc::new(Time64MicrosecondArray::from(vec![Some(
+                    (2_i64 * 60 * 60 + 45 * 60) * 1_000_000,
+                )])) as ArrayRef,
+            ),
+            (
+                "FUT_TRADING_HRS",
+                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+            ),
+        ]);
+
+        let info = parse_exchange_info("7203 JP Equity", &batch);
+        assert_eq!(info.timezone, "Asia/Tokyo");
+        assert_eq!(
+            info.sessions.day,
+            Some(("09:00".to_string(), "15:30".to_string()))
+        );
+        assert_eq!(
+            info.sessions.pm,
+            Some(("12:30".to_string(), "15:30".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_exchange_info_supports_arrow_time_units() {
+        let second =
+            Arc::new(Time32SecondArray::from(vec![Some(9 * 60 * 60 + 30 * 60)])) as ArrayRef;
+        let millisecond = Arc::new(Time32MillisecondArray::from(vec![Some(
+            (16 * 60 * 60 + 30 * 60) * 1_000,
+        )])) as ArrayRef;
+        let microsecond = Arc::new(Time64MicrosecondArray::from(vec![Some(
+            (9_i64 * 60 * 60 + 30 * 60) * 1_000_000,
+        )])) as ArrayRef;
+        let nanosecond = Arc::new(Time64NanosecondArray::from(vec![Some(
+            (16_i64 * 60 * 60 + 30 * 60) * 1_000_000_000,
+        )])) as ArrayRef;
+
+        for (start, end) in [(second, millisecond), (microsecond, nanosecond)] {
+            let batch = single_row_batch(vec![
+                (
+                    "IANA_TIME_ZONE",
+                    Arc::new(StringArray::from(vec![Some("America/New_York")])) as ArrayRef,
+                ),
+                (
+                    "TIME_ZONE_NUM",
+                    Arc::new(Float64Array::from(vec![Some(-5.0)])) as ArrayRef,
+                ),
+                (
+                    "ID_MIC_PRIM_EXCH",
+                    Arc::new(StringArray::from(vec![Some("XNGS")])) as ArrayRef,
+                ),
+                (
+                    "EXCH_CODE",
+                    Arc::new(StringArray::from(vec![Some("US")])) as ArrayRef,
+                ),
+                (
+                    "COUNTRY_ISO",
+                    Arc::new(StringArray::from(vec![Some("US")])) as ArrayRef,
+                ),
+                ("TRADING_DAY_START_TIME_EOD", start),
+                ("TRADING_DAY_END_TIME_EOD", end),
+                (
+                    "FUT_TRADING_HRS",
+                    Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+                ),
+            ]);
+
+            let info = parse_exchange_info("AAPL US Equity", &batch);
+            assert_eq!(
+                info.sessions.day,
+                Some(("09:30".to_string(), "16:30".to_string()))
+            );
+        }
+    }
+
+    #[test]
+    fn test_should_query_fut_gen_month_only_for_futures_like_tickers() {
+        assert!(should_query_fut_gen_month("TY1 Comdty"));
+        assert!(should_query_fut_gen_month("ES1 Index"));
+        assert!(!should_query_fut_gen_month("AAPL US Equity"));
+        assert!(!should_query_fut_gen_month("7203 JP Equity"));
+        assert!(!should_query_fut_gen_month("SPX Index"));
     }
 
     #[test]

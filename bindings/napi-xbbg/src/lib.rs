@@ -1528,8 +1528,7 @@ impl JsSubscription {
                 tickers
                     .into_iter()
                     .filter(|ticker| {
-                        seen.insert(ticker.clone())
-                            && !snapshot.topic_to_key().contains_key(ticker)
+                        seen.insert(ticker.clone()) && !snapshot.topic_to_key().contains_key(ticker)
                     })
                     .collect()
             };

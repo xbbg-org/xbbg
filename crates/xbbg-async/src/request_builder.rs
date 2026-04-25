@@ -43,13 +43,18 @@ impl RequestBuilder {
 
         let mut routed = RoutedParams::default();
 
-        // Handle explicit overrides first (matches Python behavior).
+        // Handle explicit overrides first. Entries that are actually request-element
+        // aliases (for example Points -> maxDataPoints) are routed as elements, matching Python.
         if let Some(raw_overrides) = kwargs.remove("overrides") {
-            routed.overrides.extend(parse_raw_overrides(&raw_overrides));
+            for (key, value) in parse_raw_overrides(&raw_overrides) {
+                route_candidate(&valid_elements, operation, &mut routed, key, value);
+            }
         }
 
         if let Some(overrides) = explicit_overrides {
-            routed.overrides.extend(overrides);
+            for (key, value) in overrides {
+                route_candidate(&valid_elements, operation, &mut routed, key, value);
+            }
         }
 
         // HashMap iteration order is not stable. Sort keys for deterministic routing.
@@ -60,22 +65,141 @@ impl RequestBuilder {
             let Some(value) = kwargs.remove(&key) else {
                 continue;
             };
-
-            if valid_elements.contains(&key) {
-                routed.elements.push((key, value));
-            } else if is_field_override_name(&key) {
-                routed.overrides.push((key, value));
-            } else if !valid_elements.is_empty() {
-                let warning = format_unknown_parameter_warning(&key, operation, &valid_elements);
-                routed.warnings.push(warning);
-                routed.elements.push((key, value));
-            } else {
-                routed.elements.push((key, value));
-            }
+            route_candidate(&valid_elements, operation, &mut routed, key, value);
         }
 
         routed
     }
+}
+
+fn route_candidate(
+    valid_elements: &HashSet<String>,
+    operation: &str,
+    routed: &mut RoutedParams,
+    key: String,
+    value: String,
+) {
+    if is_presentation_alias_key(&key) {
+        routed.warnings.push(format!(
+            "Presentation alias '{}' controls Excel-style output shape and is not a Bloomberg request element in xbbg 1.x; use format/post-processing instead",
+            key
+        ));
+        return;
+    }
+
+    let canonical_key = canonical_element_key(&key);
+    let routed_value = normalize_element_value(canonical_key, &value);
+
+    if valid_elements.contains(canonical_key) || is_alias_element_key(&key, canonical_key) {
+        routed
+            .elements
+            .push((canonical_key.to_string(), routed_value));
+    } else if is_field_override_name(&key) {
+        routed.overrides.push((key, value));
+    } else if !valid_elements.is_empty() {
+        let warning = format_unknown_parameter_warning(&key, operation, valid_elements);
+        routed.warnings.push(warning);
+        routed
+            .elements
+            .push((canonical_key.to_string(), routed_value));
+    } else {
+        routed
+            .elements
+            .push((canonical_key.to_string(), routed_value));
+    }
+}
+
+fn canonical_element_key(key: &str) -> &str {
+    match key {
+        "PeriodAdj" | "PerAdj" => "periodicityAdjustment",
+        "Period" | "Per" => "periodicitySelection",
+        "Currency" | "Curr" | "FX" => "currency",
+        "Days" => "nonTradingDayFillOption",
+        "Fill" => "nonTradingDayFillMethod",
+        "Points" => "maxDataPoints",
+        "Quote" => "overrideOption",
+        "QuoteType" | "QtTyp" => "pricingOption",
+        "CshAdjNormal" => "adjustmentNormal",
+        "CshAdjAbnormal" => "adjustmentAbnormal",
+        "CapChg" => "adjustmentSplit",
+        "UseDPDF" => "adjustmentFollowDPDF",
+        "Calendar" => "calendarCodeOverride",
+        "BarSz" | "BarSize" => "interval",
+        "BarTp" | "BarType" => "eventType",
+        "IncludeExchangeCodes" => "includeExchangeCodes",
+        _ => key,
+    }
+}
+
+fn normalize_element_value(element: &str, value: &str) -> String {
+    match (element, value) {
+        ("periodicityAdjustment", "A") => "ACTUAL".to_string(),
+        ("periodicityAdjustment", "C") => "CALENDAR".to_string(),
+        ("periodicityAdjustment", "F") => "FISCAL".to_string(),
+        ("periodicitySelection", "D") => "DAILY".to_string(),
+        ("periodicitySelection", "W") => "WEEKLY".to_string(),
+        ("periodicitySelection", "M") => "MONTHLY".to_string(),
+        ("periodicitySelection", "Q") => "QUARTERLY".to_string(),
+        ("periodicitySelection", "S") => "SEMI_ANNUALLY".to_string(),
+        ("periodicitySelection", "Y") => "YEARLY".to_string(),
+        ("nonTradingDayFillOption", "N" | "W" | "Weekdays") => "NON_TRADING_WEEKDAYS".to_string(),
+        ("nonTradingDayFillOption", "C" | "A" | "All") => "ALL_CALENDAR_DAYS".to_string(),
+        ("nonTradingDayFillOption", "T" | "Trading") => "ACTIVE_DAYS_ONLY".to_string(),
+        ("nonTradingDayFillMethod", "C" | "P" | "Previous") => "PREVIOUS_VALUE".to_string(),
+        ("nonTradingDayFillMethod", "B" | "Blank" | "NA") => "NIL_VALUE".to_string(),
+        ("overrideOption", "A" | "G" | "Average") => "OVERRIDE_OPTION_GPA".to_string(),
+        ("overrideOption", "C" | "Close") => "OVERRIDE_OPTION_CLOSE".to_string(),
+        ("pricingOption", "P" | "Price") => "PRICING_OPTION_PRICE".to_string(),
+        ("pricingOption", "Y" | "Yield") => "PRICING_OPTION_YIELD".to_string(),
+        ("eventType", "B" | "Bid") => "BID".to_string(),
+        ("eventType", "A" | "Ask") => "ASK".to_string(),
+        ("eventType", "T" | "Trade") => "TRADE".to_string(),
+        _ => value.to_string(),
+    }
+}
+
+fn is_alias_element_key(original_key: &str, canonical_key: &str) -> bool {
+    original_key != canonical_key || is_known_canonical_element_key(canonical_key)
+}
+
+fn is_known_canonical_element_key(key: &str) -> bool {
+    matches!(
+        key,
+        "periodicityAdjustment"
+            | "periodicitySelection"
+            | "currency"
+            | "nonTradingDayFillOption"
+            | "nonTradingDayFillMethod"
+            | "maxDataPoints"
+            | "overrideOption"
+            | "pricingOption"
+            | "adjustmentNormal"
+            | "adjustmentAbnormal"
+            | "adjustmentSplit"
+            | "adjustmentFollowDPDF"
+            | "calendarCodeOverride"
+            | "interval"
+            | "eventType"
+            | "includeExchangeCodes"
+    )
+}
+
+fn is_presentation_alias_key(key: &str) -> bool {
+    matches!(
+        key,
+        "Dts"
+            | "Dates"
+            | "show_date"
+            | "DtFmt"
+            | "DateFormat"
+            | "date_format"
+            | "Sort"
+            | "sort"
+            | "Orientation"
+            | "Direction"
+            | "Dir"
+            | "orientation"
+    )
 }
 
 fn valid_elements_from_cache(
@@ -228,6 +352,154 @@ mod tests {
         SchemaCache::with_cache_dir(temp_dir.path().to_path_buf())
     }
 
+    fn alias_valid_elements() -> [&'static str; 16] {
+        [
+            "periodicityAdjustment",
+            "periodicitySelection",
+            "currency",
+            "nonTradingDayFillOption",
+            "nonTradingDayFillMethod",
+            "maxDataPoints",
+            "overrideOption",
+            "pricingOption",
+            "adjustmentNormal",
+            "adjustmentAbnormal",
+            "adjustmentSplit",
+            "adjustmentFollowDPDF",
+            "calendarCodeOverride",
+            "interval",
+            "eventType",
+            "includeExchangeCodes",
+        ]
+    }
+
+    #[test]
+    fn route_kwargs_normalizes_every_element_key_alias() {
+        let valid_elements = alias_valid_elements();
+        let cache =
+            test_cache_with_operation("//blp/refdata", "HistoricalDataRequest", &valid_elements);
+        let cases = [
+            ("PeriodAdj", "periodicityAdjustment", "A", "ACTUAL"),
+            ("PerAdj", "periodicityAdjustment", "A", "ACTUAL"),
+            ("Period", "periodicitySelection", "W", "WEEKLY"),
+            ("Per", "periodicitySelection", "W", "WEEKLY"),
+            ("Currency", "currency", "USD", "USD"),
+            ("Curr", "currency", "USD", "USD"),
+            ("FX", "currency", "USD", "USD"),
+            ("Days", "nonTradingDayFillOption", "A", "ALL_CALENDAR_DAYS"),
+            ("Fill", "nonTradingDayFillMethod", "B", "NIL_VALUE"),
+            ("Points", "maxDataPoints", "1", "1"),
+            ("Quote", "overrideOption", "Average", "OVERRIDE_OPTION_GPA"),
+            ("QuoteType", "pricingOption", "Y", "PRICING_OPTION_YIELD"),
+            ("QtTyp", "pricingOption", "Y", "PRICING_OPTION_YIELD"),
+            ("CshAdjNormal", "adjustmentNormal", "true", "true"),
+            ("CshAdjAbnormal", "adjustmentAbnormal", "true", "true"),
+            ("CapChg", "adjustmentSplit", "true", "true"),
+            ("UseDPDF", "adjustmentFollowDPDF", "true", "true"),
+            ("Calendar", "calendarCodeOverride", "NYSE", "NYSE"),
+            ("BarSz", "interval", "5", "5"),
+            ("BarSize", "interval", "5", "5"),
+            ("BarTp", "eventType", "Bid", "BID"),
+            ("BarType", "eventType", "Ask", "ASK"),
+            (
+                "IncludeExchangeCodes",
+                "includeExchangeCodes",
+                "true",
+                "true",
+            ),
+        ];
+
+        for (alias, canonical, value, expected) in cases {
+            let routed = RequestBuilder::route_kwargs(
+                &cache,
+                "//blp/refdata",
+                "HistoricalDataRequest",
+                collect_kwargs(&[(alias, value)]),
+                None,
+            );
+
+            assert_eq!(
+                routed.elements,
+                vec![(canonical.to_string(), expected.to_string())],
+                "alias {alias} should route to {canonical}",
+            );
+            assert!(
+                routed.overrides.is_empty(),
+                "alias {alias} became an override"
+            );
+            assert!(routed.warnings.is_empty(), "alias {alias} emitted warnings");
+        }
+    }
+
+    #[test]
+    fn route_kwargs_normalizes_every_value_alias() {
+        let valid_elements = alias_valid_elements();
+        let cache =
+            test_cache_with_operation("//blp/refdata", "HistoricalDataRequest", &valid_elements);
+        let cases = [
+            ("periodicityAdjustment", "A", "ACTUAL"),
+            ("periodicityAdjustment", "C", "CALENDAR"),
+            ("periodicityAdjustment", "F", "FISCAL"),
+            ("periodicitySelection", "D", "DAILY"),
+            ("periodicitySelection", "W", "WEEKLY"),
+            ("periodicitySelection", "M", "MONTHLY"),
+            ("periodicitySelection", "Q", "QUARTERLY"),
+            ("periodicitySelection", "S", "SEMI_ANNUALLY"),
+            ("periodicitySelection", "Y", "YEARLY"),
+            ("nonTradingDayFillOption", "N", "NON_TRADING_WEEKDAYS"),
+            ("nonTradingDayFillOption", "W", "NON_TRADING_WEEKDAYS"),
+            (
+                "nonTradingDayFillOption",
+                "Weekdays",
+                "NON_TRADING_WEEKDAYS",
+            ),
+            ("nonTradingDayFillOption", "C", "ALL_CALENDAR_DAYS"),
+            ("nonTradingDayFillOption", "A", "ALL_CALENDAR_DAYS"),
+            ("nonTradingDayFillOption", "All", "ALL_CALENDAR_DAYS"),
+            ("nonTradingDayFillOption", "T", "ACTIVE_DAYS_ONLY"),
+            ("nonTradingDayFillOption", "Trading", "ACTIVE_DAYS_ONLY"),
+            ("nonTradingDayFillMethod", "C", "PREVIOUS_VALUE"),
+            ("nonTradingDayFillMethod", "P", "PREVIOUS_VALUE"),
+            ("nonTradingDayFillMethod", "Previous", "PREVIOUS_VALUE"),
+            ("nonTradingDayFillMethod", "B", "NIL_VALUE"),
+            ("nonTradingDayFillMethod", "Blank", "NIL_VALUE"),
+            ("nonTradingDayFillMethod", "NA", "NIL_VALUE"),
+            ("overrideOption", "A", "OVERRIDE_OPTION_GPA"),
+            ("overrideOption", "G", "OVERRIDE_OPTION_GPA"),
+            ("overrideOption", "Average", "OVERRIDE_OPTION_GPA"),
+            ("overrideOption", "C", "OVERRIDE_OPTION_CLOSE"),
+            ("overrideOption", "Close", "OVERRIDE_OPTION_CLOSE"),
+            ("pricingOption", "P", "PRICING_OPTION_PRICE"),
+            ("pricingOption", "Price", "PRICING_OPTION_PRICE"),
+            ("pricingOption", "Y", "PRICING_OPTION_YIELD"),
+            ("pricingOption", "Yield", "PRICING_OPTION_YIELD"),
+            ("eventType", "B", "BID"),
+            ("eventType", "Bid", "BID"),
+            ("eventType", "A", "ASK"),
+            ("eventType", "Ask", "ASK"),
+            ("eventType", "T", "TRADE"),
+            ("eventType", "Trade", "TRADE"),
+        ];
+
+        for (canonical, alias, expected) in cases {
+            let routed = RequestBuilder::route_kwargs(
+                &cache,
+                "//blp/refdata",
+                "HistoricalDataRequest",
+                collect_kwargs(&[(canonical, alias)]),
+                None,
+            );
+
+            assert_eq!(
+                routed.elements,
+                vec![(canonical.to_string(), expected.to_string())],
+                "value alias {alias} should resolve for {canonical}",
+            );
+            assert!(routed.overrides.is_empty());
+            assert!(routed.warnings.is_empty());
+        }
+    }
+
     #[test]
     fn route_kwargs_splits_elements_and_overrides() {
         let cache = test_cache_with_operation(
@@ -314,6 +586,154 @@ mod tests {
         assert!(routed
             .overrides
             .contains(&("BEST_FPERIOD_OVERRIDE".to_string(), "1FY".to_string())));
+    }
+
+    #[test]
+    fn route_kwargs_normalizes_element_key_and_value_aliases() {
+        let cache = test_cache_with_operation(
+            "//blp/refdata",
+            "HistoricalDataRequest",
+            &[
+                "periodicitySelection",
+                "currency",
+                "maxDataPoints",
+                "eventType",
+            ],
+        );
+
+        let kwargs = collect_kwargs(&[
+            ("Per", "W"),
+            ("FX", "USD"),
+            ("Points", "1"),
+            ("BarTp", "Bid"),
+        ]);
+
+        let routed = RequestBuilder::route_kwargs(
+            &cache,
+            "//blp/refdata",
+            "HistoricalDataRequest",
+            kwargs,
+            None,
+        );
+
+        assert!(routed
+            .elements
+            .contains(&("periodicitySelection".to_string(), "WEEKLY".to_string())));
+        assert!(routed
+            .elements
+            .contains(&("currency".to_string(), "USD".to_string())));
+        assert!(routed
+            .elements
+            .contains(&("maxDataPoints".to_string(), "1".to_string())));
+        assert!(routed
+            .elements
+            .contains(&("eventType".to_string(), "BID".to_string())));
+        assert!(routed.overrides.is_empty());
+        assert!(routed.warnings.is_empty());
+    }
+
+    #[test]
+    fn route_kwargs_routes_explicit_override_aliases_as_elements() {
+        let cache = test_cache_with_operation(
+            "//blp/refdata",
+            "IntradayTickRequest",
+            &["maxDataPoints", "includeExchangeCodes"],
+        );
+
+        let explicit_overrides = vec![
+            ("Points".to_string(), "1".to_string()),
+            ("IncludeExchangeCodes".to_string(), "true".to_string()),
+            ("EQY_FUND_CRNCY".to_string(), "EUR".to_string()),
+        ];
+
+        let routed = RequestBuilder::route_kwargs(
+            &cache,
+            "//blp/refdata",
+            "IntradayTickRequest",
+            HashMap::new(),
+            Some(explicit_overrides),
+        );
+
+        assert!(routed
+            .elements
+            .contains(&("maxDataPoints".to_string(), "1".to_string())));
+        assert!(routed
+            .elements
+            .contains(&("includeExchangeCodes".to_string(), "true".to_string())));
+        assert!(routed
+            .overrides
+            .contains(&("EQY_FUND_CRNCY".to_string(), "EUR".to_string())));
+    }
+
+    #[test]
+    fn route_kwargs_resolves_value_aliases_by_element_context() {
+        let cache = test_cache_with_operation(
+            "//blp/refdata",
+            "HistoricalDataRequest",
+            &["overrideOption", "nonTradingDayFillMethod"],
+        );
+
+        let kwargs = collect_kwargs(&[("Quote", "C"), ("Fill", "C")]);
+
+        let routed = RequestBuilder::route_kwargs(
+            &cache,
+            "//blp/refdata",
+            "HistoricalDataRequest",
+            kwargs,
+            None,
+        );
+
+        assert!(routed.elements.contains(&(
+            "overrideOption".to_string(),
+            "OVERRIDE_OPTION_CLOSE".to_string()
+        )));
+        assert!(routed.elements.contains(&(
+            "nonTradingDayFillMethod".to_string(),
+            "PREVIOUS_VALUE".to_string()
+        )));
+    }
+
+    #[test]
+    fn route_kwargs_warns_and_skips_presentation_aliases() {
+        let cache = test_cache_with_operation(
+            "//blp/refdata",
+            "HistoricalDataRequest",
+            &["periodicitySelection"],
+        );
+        let aliases = [
+            "Dts",
+            "Dates",
+            "show_date",
+            "DtFmt",
+            "DateFormat",
+            "date_format",
+            "Sort",
+            "sort",
+            "Orientation",
+            "Direction",
+            "Dir",
+            "orientation",
+        ];
+
+        for alias in aliases {
+            let routed = RequestBuilder::route_kwargs(
+                &cache,
+                "//blp/refdata",
+                "HistoricalDataRequest",
+                collect_kwargs(&[(alias, "ignored"), ("Per", "W")]),
+                None,
+            );
+
+            assert!(routed
+                .elements
+                .contains(&("periodicitySelection".to_string(), "WEEKLY".to_string())));
+            assert!(
+                !routed.elements.iter().any(|(key, _)| key == alias),
+                "presentation alias {alias} should not be routed to Bloomberg",
+            );
+            assert_eq!(routed.warnings.len(), 1);
+            assert!(routed.warnings[0].contains(&format!("Presentation alias '{alias}'")));
+        }
     }
 
     #[test]

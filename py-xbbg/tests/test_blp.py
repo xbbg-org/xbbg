@@ -5,8 +5,109 @@ These tests verify the Python API without requiring a Bloomberg connection.
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import inspect
 from pathlib import Path
+import threading
+
+import pytest
+
+
+class TestNotebookSyncBridge:
+    """Tests for sync wrappers called from running event loops."""
+
+    def test_generic_async_context_still_raises(self, monkeypatch):
+        """Non-notebook async callers should be directed to the async API."""
+        from xbbg import blp
+
+        async def fake_request():
+            return "ok"
+
+        wrapper = blp._build_sync_wrapper("bdp", fake_request, allow_notebook_bridge=True)
+        monkeypatch.setattr(blp, "_is_notebook_context", lambda: False)
+
+        async def call_wrapper():
+            wrapper()
+
+        with pytest.raises(RuntimeError, match="await abdp"):
+            asyncio.run(call_wrapper())
+
+    def test_notebook_context_uses_background_loop_and_preserves_contextvars(self, monkeypatch):
+        """Notebook callers should block on a background loop without losing context."""
+        from xbbg import blp
+
+        scoped_value = contextvars.ContextVar("scoped_value", default="missing")
+
+        async def fake_request():
+            return scoped_value.get(), threading.current_thread().name
+
+        wrapper = blp._build_sync_wrapper("bdp", fake_request, allow_notebook_bridge=True)
+        monkeypatch.setattr(blp, "_is_notebook_context", lambda: True)
+        token = scoped_value.set("active-engine")
+
+        async def call_wrapper():
+            return wrapper()
+
+        try:
+            value, thread_name = asyncio.run(call_wrapper())
+        finally:
+            scoped_value.reset(token)
+            blp._stop_notebook_sync_loop()
+
+        assert value == "active-engine"
+        assert thread_name == "xbbg-notebook-sync-bridge"
+
+    def test_notebook_context_propagates_async_exceptions(self, monkeypatch):
+        """Async failures should surface unchanged to the sync caller."""
+        from xbbg import blp
+
+        class ExpectedError(Exception):
+            pass
+
+        async def fake_request():
+            raise ExpectedError("boom")
+
+        wrapper = blp._build_sync_wrapper("bdh", fake_request, allow_notebook_bridge=True)
+        monkeypatch.setattr(blp, "_is_notebook_context", lambda: True)
+
+        async def call_wrapper():
+            wrapper()
+
+        try:
+            with pytest.raises(ExpectedError, match="boom"):
+                asyncio.run(call_wrapper())
+        finally:
+            blp._stop_notebook_sync_loop()
+
+    def test_public_bridge_scope_is_one_shot_only(self, monkeypatch):
+        """Installed public wrappers should bridge one-shot APIs, not streams."""
+        from xbbg import blp
+
+        def fake_bridge(async_func, args, kwargs):
+            return async_func.__name__, args, kwargs
+
+        monkeypatch.setattr(blp, "_is_notebook_context", lambda: True)
+        monkeypatch.setattr(blp, "_run_in_notebook_sync_bridge", fake_bridge)
+
+        async def call_bdp():
+            return blp.bdp("AAPL US Equity", "PX_LAST")
+
+        async def call_request():
+            return blp.request(service="//blp/refdata", operation="ReferenceDataRequest")
+
+        async def call_subscribe():
+            blp.subscribe(["AAPL US Equity"], ["LAST_PRICE"])
+
+        bdp_name, bdp_args, _ = asyncio.run(call_bdp())
+        request_name, _, request_kwargs = asyncio.run(call_request())
+
+        assert bdp_name == "abdp"
+        assert bdp_args == ("AAPL US Equity", "PX_LAST")
+        assert request_name == "arequest"
+        assert request_kwargs["service"] == "//blp/refdata"
+        with pytest.raises(RuntimeError, match="await asubscribe"):
+            asyncio.run(call_subscribe())
 
 
 class TestBdp:

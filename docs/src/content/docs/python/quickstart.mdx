@@ -60,6 +60,24 @@ df = xbbg.bdh(
 | AAPL US Equity | 2024-01-03 | PX_LAST | 186.20 |
 | ... | ... | ... | ... |
 
+Use Bloomberg Excel-style aliases when you want shorter historical request options:
+
+```python
+weekly = xbbg.bdh(
+    'AAPL US Equity',
+    'PX_LAST',
+    start_date='2024-01-01',
+    end_date='2024-03-31',
+    Per='W',        # periodicitySelection='WEEKLY'
+    Fill='P',       # nonTradingDayFillMethod='PREVIOUS_VALUE'
+    Points=12,      # maxDataPoints=12
+    Dts='Show',     # keep date output
+    DtFmt='Both',   # include period labels next to dates
+    Sort='Reverse', # newest rows first
+    Direction='V',  # vertical/long output shape
+)
+```
+
 ## Bulk Data (BDS)
 
 Get multi-row data like dividends or index members:
