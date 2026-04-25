@@ -5,9 +5,6 @@ const path = require('node:path');
 const {
   platformPackages: corePlatformPackages,
 } = require('./platform-map.cjs');
-const {
-  platformPackages: bridgePlatformPackages,
-} = require('../../packages/xbbg-bridge/lib/platform-map');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 
@@ -69,11 +66,6 @@ if (!version) {
 stampPackageFamily(
   path.join(repoRoot, 'js-xbbg', 'package.json'),
   corePlatformPackages,
-  version,
-);
-stampPackageFamily(
-  path.join(repoRoot, 'packages', 'xbbg-bridge', 'package.json'),
-  bridgePlatformPackages,
   version,
 );
 

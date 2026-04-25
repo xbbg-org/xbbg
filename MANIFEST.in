@@ -36,7 +36,6 @@ recursive-include crates/xbbg-bench *.rs *.toml
 # workspace even though only pyo3-xbbg is compiled for the Python wheel.
 recursive-include bindings/pyo3-xbbg *.rs *.toml
 recursive-include bindings/napi-xbbg *.rs *.toml
-recursive-include apps/xbbg-server *.rs *.toml
 recursive-include apps/xbbg-mcp *.rs *.toml
 
 # Codegen (needed for workspace compilation)

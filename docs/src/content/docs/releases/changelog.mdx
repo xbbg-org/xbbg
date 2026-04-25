@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Removed
+
+- **`xbbg-browser`, `xbbg-bridge`, and `xbbg-server` retired**: The `apps/xbbg-server` Rust HTTP server, its `@xbbg/bridge` npm launcher and 5 platform-specific bridge binaries, and the `@xbbg/browser` HTTP client are removed. `js-xbbg`, `napi-xbbg`, and `pyo3-xbbg` remain the supported bindings.
+
 ### Changed
 
 - **Rust Bloomberg SDK handle ownership hardened**: `xbbg-core` now models session-owned SDK views with Rust lifetimes instead of unsupported `Send`/`Sync` marker impls. `Service`, schema operations/definitions, and constants are tied to their owning session/service, pointer correlation IDs are explicit unsafe values, and async request workers reopen short-lived service handles rather than caching session-owned handles across worker state.

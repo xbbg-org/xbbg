@@ -37,7 +37,6 @@ Logs/
 **/node_modules/
 js-xbbg/*.node
 packages/xbbg-core-*/napi_xbbg.node
-packages/xbbg-bridge-*/bin/xbbg-server*
 
 # Ignore local PMC mapping and cache files
 xbbg/markets/pmc_map.json
@@ -60,10 +59,6 @@ eggs/
 .eggs/
 lib/
 lib64/
-!packages/xbbg-bridge/lib/
-!packages/xbbg-bridge/lib/platform-map.js
-!packages/xbbg-bridge/lib/resolve-binary.js
-!packages/xbbg-bridge/lib/runtime-env.js
 !js-xbbg/lib/
 !js-xbbg/lib/platform-map.js
 !js-xbbg/lib/resolve-native.js
