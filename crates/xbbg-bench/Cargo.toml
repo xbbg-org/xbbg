@@ -14,7 +14,7 @@ name = "xbbg_bench"
 [dependencies]
 # Crates under test
 xbbg_core = { path = "../xbbg-core" }
-xbbg-async = { path = "../xbbg-async" }
+xbbg-async = { path = "../xbbg-async", features = ["bench-internals"] }
 
 # Benchmark runner/runtime
 arrow = "57.1.0"
