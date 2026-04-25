@@ -93,6 +93,8 @@ This profiling is implemented only in the benchmark executable. It does not add 
 
 Use `BENCH_ONLY=<substring>` to profile a single scenario or suite without running unrelated live probes. For example, `BENCH_ONLY=synthetic` runs only synthetic workloads, and `BENCH_ONLY=synthetic_subscriptions` runs only the synthetic subscription workload.
 
+For subscription-path diagnosis, run `BENCH_ONLY=subscription_components BENCH_PROFILE_MODE=detail`. This benchmark-only suite emits `subscription_components / requested_fields` and `subscription_components / all_fields` records with component phases for message iteration, element access, requested-field lookup, allFields child traversal, datatype filtering, name-key caching, value getters, Arrow append/null padding, flush schema/arrays, and channel send overhead.
+
 ### Environment variables
 
 | Variable | Default | Purpose |
