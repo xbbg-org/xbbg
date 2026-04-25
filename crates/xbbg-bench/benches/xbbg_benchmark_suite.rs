@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use arrow::array::{ArrayRef, Float64Array, Int64Array, StringArray, TimestampMicrosecondArray};
+use arrow::array::{
+    ArrayRef, Float64Array, Float64Builder, Int64Array, StringArray, StringBuilder,
+    TimestampMicrosecondArray, TimestampMicrosecondBuilder,
+};
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use chrono::{Datelike, Duration as ChronoDuration, Local, NaiveDate, Weekday};
@@ -26,7 +29,7 @@ use xbbg_async::engine::{
 };
 use xbbg_async::BlpAsyncError;
 use xbbg_bench::{open_service, setup_session};
-use xbbg_core::{BlpError, CorrelationId, Event, EventType, Name, SubscriptionList};
+use xbbg_core::{BlpError, CorrelationId, DataType as BlpDataType, Event, EventType, Name, SubscriptionList};
 struct TrackingAllocator;
 
 static TRACK_ALLOCATIONS: AtomicBool = AtomicBool::new(false);
@@ -500,6 +503,8 @@ fn should_run_replay(config: &SuiteConfig) -> bool {
         || config.should_run("replay", "bds_bulk_late_fields")
         || config.should_run("replay", "bdtick_optional_fields")
         || config.should_run("replay", "bql_response")
+        || config.should_run("subscription_components", "requested_fields")
+        || config.should_run("subscription_components", "all_fields")
         || config.should_run("subscription_replay", "requested_fields")
         || config.should_run("subscription_replay", "all_fields")
         || config.should_run("subscription_replay", "high_message_count")
@@ -572,6 +577,16 @@ fn run_replay_suite(config: &SuiteConfig) -> Vec<BenchRecord> {
         let collect_ms = config.profile.subscription_collect_ms();
         match fetch_subscription_events(&sess, collect_ms) {
             Ok(events) => {
+                if config.should_run("subscription_components", "requested_fields") {
+                    records.push(profile_record(config, "subscription_components", "requested_fields", |_| {
+                        profile_subscription_components("requested_fields", &events, config.profile.subscription_replay_messages().min(100_000), false, &["LAST_PRICE", "BID", "ASK"])
+                    }));
+                }
+                if config.should_run("subscription_components", "all_fields") {
+                    records.push(profile_record(config, "subscription_components", "all_fields", |_| {
+                        profile_subscription_components("all_fields", &events, config.profile.subscription_replay_messages().min(100_000), true, &["LAST_PRICE", "BID", "ASK"])
+                    }));
+                }
                 if config.should_run("subscription_replay", "requested_fields") {
                     records.push(profile_record(config, "subscription_replay", "requested_fields", |_| {
                         replay_subscription_events("requested_fields", &events, config.profile.subscription_replay_messages().min(100_000), 1, false, &["LAST_PRICE", "BID", "ASK"])
@@ -602,7 +617,9 @@ fn run_replay_suite(config: &SuiteConfig) -> Vec<BenchRecord> {
 }
 
 fn should_run_subscription_replay(config: &SuiteConfig) -> bool {
-    config.should_run("subscription_replay", "requested_fields")
+    config.should_run("subscription_components", "requested_fields")
+        || config.should_run("subscription_components", "all_fields")
+        || config.should_run("subscription_replay", "requested_fields")
         || config.should_run("subscription_replay", "all_fields")
         || config.should_run("subscription_replay", "high_message_count")
         || config.should_run("subscription_replay", "high_topic_count")
@@ -877,6 +894,357 @@ fn fetch_subscription_events(sess: &xbbg_core::Session, collect_ms: u64) -> Resu
     } else {
         Ok(events)
     }
+}
+
+fn subscription_cached_message_count(events: &[Event]) -> usize {
+    events
+        .iter()
+        .map(|event| event.messages().count())
+        .sum::<usize>()
+        .max(1)
+}
+
+fn subscription_repeats_per_message(events: &[Event], target_messages: usize) -> usize {
+    (target_messages / subscription_cached_message_count(events)).max(1)
+}
+
+fn for_each_subscription_component_message<F>(
+    events: &[Event],
+    target_messages: usize,
+    mut f: F,
+) -> usize
+where
+    F: for<'a> FnMut(&xbbg_core::Message<'a>),
+{
+    let repeats_per_message = subscription_repeats_per_message(events, target_messages);
+    let mut processed = 0usize;
+    while processed < target_messages {
+        for event in events {
+            for msg in event.messages() {
+                for _ in 0..repeats_per_message {
+                    f(&msg);
+                    processed += 1;
+                    if processed >= target_messages {
+                        break;
+                    }
+                }
+            }
+            if processed >= target_messages {
+                break;
+            }
+        }
+    }
+    processed
+}
+
+fn component_should_capture_datatype(datatype: BlpDataType) -> bool {
+    !matches!(
+        datatype,
+        BlpDataType::Sequence
+            | BlpDataType::Choice
+            | BlpDataType::ByteArray
+            | BlpDataType::CorrelationId
+    )
+}
+
+fn estimate_all_field_count(events: &[Event]) -> usize {
+    events
+        .iter()
+        .flat_map(|event| event.messages())
+        .find_map(|msg| {
+            let elem = msg.elements();
+            let mut count = 0usize;
+            for child_idx in 0..elem.num_children() {
+                let Some(child) = elem.get_at(child_idx) else {
+                    continue;
+                };
+                if component_should_capture_datatype(child.datatype()) {
+                    count += 1;
+                }
+            }
+            (count > 0).then_some(count)
+        })
+        .unwrap_or(1)
+}
+
+fn component_schema(field_count: usize) -> Arc<Schema> {
+    let mut fields = Vec::with_capacity(field_count + 2);
+    fields.push(Field::new(
+        "timestamp",
+        DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+        false,
+    ));
+    fields.push(Field::new("topic", DataType::Utf8, false));
+    for idx in 0..field_count {
+        fields.push(Field::new(format!("field_{idx}"), DataType::Float64, true));
+    }
+    Arc::new(Schema::new(fields))
+}
+
+fn component_record_batch(rows: usize, field_count: usize) -> RecordBatch {
+    let schema = component_schema(field_count);
+    let mut timestamp_builder = TimestampMicrosecondBuilder::new();
+    let mut topic_builder = StringBuilder::new();
+    for row in 0..rows {
+        timestamp_builder.append_value(row as i64);
+        topic_builder.append_value("SYN00000 US Equity");
+    }
+    let mut columns: Vec<ArrayRef> = vec![
+        Arc::new(timestamp_builder.finish().with_timezone("UTC")),
+        Arc::new(topic_builder.finish()),
+    ];
+    for field_idx in 0..field_count {
+        let mut builder = Float64Builder::new();
+        for row in 0..rows {
+            builder.append_value((row + field_idx) as f64);
+        }
+        columns.push(Arc::new(builder.finish()) as ArrayRef);
+    }
+    RecordBatch::try_new(schema, columns).expect("component profile batch")
+}
+
+fn profile_subscription_components(
+    scenario: &'static str,
+    events: &[Event],
+    target_messages: usize,
+    all_fields: bool,
+    fields: &[&str],
+) -> BenchRecord {
+    let start = Instant::now();
+    if events.is_empty() {
+        return BenchRecord::error(
+            "subscription_components",
+            scenario,
+            Duration::ZERO,
+            "no cached subscription events",
+        );
+    }
+
+    let field_count = if all_fields {
+        estimate_all_field_count(events)
+    } else {
+        fields.len()
+    };
+    let names = fields
+        .iter()
+        .map(|field| Name::get_or_intern(field))
+        .collect::<Vec<_>>();
+    let invalid_dateortime_key = Name::get_or_intern("LAST_UPDATE_ALL_SESSIONS_RT").as_ptr() as usize;
+
+    let repeats_per_message = subscription_repeats_per_message(events, target_messages);
+    let message_iteration_start = Instant::now();
+    let mut iterated = 0usize;
+    while iterated < target_messages {
+        for event in events {
+            for _msg in event.messages() {
+                for _ in 0..repeats_per_message {
+                    iterated += 1;
+                    if iterated >= target_messages {
+                        break;
+                    }
+                }
+            }
+            if iterated >= target_messages {
+                break;
+            }
+        }
+    }
+    let message_iteration_elapsed = message_iteration_start.elapsed();
+
+    let msg_elements_start = Instant::now();
+    for_each_subscription_component_message(events, target_messages, |msg| {
+        black_box(msg.elements());
+    });
+    let msg_elements_elapsed = msg_elements_start.elapsed();
+
+    let timestamp_topic_start = Instant::now();
+    let mut timestamp_builder = TimestampMicrosecondBuilder::new();
+    let mut topic_builder = StringBuilder::new();
+    for_each_subscription_component_message(events, target_messages, |msg| {
+        timestamp_builder.append_value(msg.time_received_us().unwrap_or_default());
+        topic_builder.append_value("SYN00000 US Equity");
+    });
+    black_box(timestamp_builder.finish());
+    black_box(topic_builder.finish());
+    let timestamp_topic_elapsed = timestamp_topic_start.elapsed();
+
+    let requested_lookup_start = Instant::now();
+    if !all_fields {
+        for_each_subscription_component_message(events, target_messages, |msg| {
+            let elem = msg.elements();
+            for name in &names {
+                black_box(elem.get(name));
+            }
+        });
+    }
+    let requested_lookup_elapsed = requested_lookup_start.elapsed();
+
+    let all_fields_get_at_start = Instant::now();
+    if all_fields {
+        for_each_subscription_component_message(events, target_messages, |msg| {
+            let elem = msg.elements();
+            for child_idx in 0..elem.num_children() {
+                black_box(elem.get_at(child_idx));
+            }
+        });
+    }
+    let all_fields_get_at_elapsed = all_fields_get_at_start.elapsed();
+
+    let all_fields_datatype_start = Instant::now();
+    if all_fields {
+        for_each_subscription_component_message(events, target_messages, |msg| {
+            let elem = msg.elements();
+            for child_idx in 0..elem.num_children() {
+                let Some(child) = elem.get_at(child_idx) else {
+                    continue;
+                };
+                black_box(component_should_capture_datatype(child.datatype()));
+            }
+        });
+    }
+    let all_fields_datatype_elapsed = all_fields_datatype_start.elapsed();
+
+    let all_fields_name_cache_start = Instant::now();
+    if all_fields {
+        let mut slots: Vec<Option<(usize, bool)>> = Vec::new();
+        for_each_subscription_component_message(events, target_messages, |msg| {
+            let elem = msg.elements();
+            for child_idx in 0..elem.num_children() {
+                let Some(child) = elem.get_at(child_idx) else {
+                    continue;
+                };
+                let key = child.name_key();
+                if let Some(Some((cached_key, captured))) = slots.get(child_idx).copied() {
+                    if cached_key == key {
+                        black_box(captured);
+                        continue;
+                    }
+                }
+                let captured = component_should_capture_datatype(child.datatype());
+                if child_idx >= slots.len() {
+                    slots.resize(child_idx + 1, None);
+                }
+                slots[child_idx] = Some((key, captured));
+                black_box(captured);
+            }
+        });
+    }
+    let all_fields_name_cache_elapsed = all_fields_name_cache_start.elapsed();
+
+    let value_getter_start = Instant::now();
+    if all_fields {
+        for_each_subscription_component_message(events, target_messages, |msg| {
+            let elem = msg.elements();
+            for child_idx in 0..elem.num_children() {
+                let Some(child) = elem.get_at(child_idx) else {
+                    continue;
+                };
+                let datatype = child.datatype();
+                if !component_should_capture_datatype(datatype)
+                    || child.name_key() == invalid_dateortime_key
+                {
+                    continue;
+                }
+                black_box(child.get_value_fast_with_datatype(0, datatype));
+            }
+        });
+    } else {
+        for_each_subscription_component_message(events, target_messages, |msg| {
+            let elem = msg.elements();
+            for name in &names {
+                if let Some(field) = elem.get(name) {
+                    black_box(field.get_value_fast(0));
+                }
+            }
+        });
+    }
+    let value_getter_elapsed = value_getter_start.elapsed();
+
+    let arrow_append_start = Instant::now();
+    let mut arrow_builders = (0..field_count)
+        .map(|_| Float64Builder::new())
+        .collect::<Vec<_>>();
+    for row in 0..target_messages {
+        for (field_idx, builder) in arrow_builders.iter_mut().enumerate() {
+            builder.append_value((row + field_idx) as f64);
+        }
+    }
+    black_box(
+        arrow_builders
+            .iter_mut()
+            .map(|builder| builder.finish())
+            .collect::<Vec<_>>(),
+    );
+    let arrow_append_elapsed = arrow_append_start.elapsed();
+
+    let null_padding_start = Instant::now();
+    let mut null_builders = (0..field_count)
+        .map(|_| Float64Builder::new())
+        .collect::<Vec<_>>();
+    for _ in 0..target_messages {
+        for builder in &mut null_builders {
+            builder.append_null();
+        }
+    }
+    black_box(
+        null_builders
+            .iter_mut()
+            .map(|builder| builder.finish())
+            .collect::<Vec<_>>(),
+    );
+    let null_padding_elapsed = null_padding_start.elapsed();
+
+    let flush_schema_start = Instant::now();
+    black_box(component_schema(field_count));
+    let flush_schema_elapsed = flush_schema_start.elapsed();
+
+    let flush_rows = target_messages.min(100_000);
+    let flush_start = Instant::now();
+    black_box(component_record_batch(flush_rows, field_count));
+    let flush_arrays_elapsed = flush_start.elapsed();
+
+    let channel_start = Instant::now();
+    let send_count = target_messages.min(1_000);
+    let batch = component_record_batch(1, field_count.min(8).max(1));
+    let (tx, mut rx) = mpsc::channel::<Result<RecordBatch, BlpError>>(send_count + 1);
+    for _ in 0..send_count {
+        tx.try_send(Ok(batch.clone())).expect("component channel send");
+    }
+    while let Ok(item) = rx.try_recv() {
+        let _ = black_box(item);
+    }
+    let channel_elapsed = channel_start.elapsed();
+
+    let mut record = BenchRecord::ok(
+        "subscription_components",
+        scenario,
+        start.elapsed(),
+        target_messages,
+        field_count + 2,
+        target_messages * field_count,
+        "field_ops",
+        format!(
+            "target_messages={target_messages}, all_fields={all_fields}, field_count={field_count}, cached_events={}, component phases are independent microbenchmarks",
+            events.len()
+        ),
+    );
+    record.phases = vec![
+        phase("message_iteration", message_iteration_elapsed),
+        phase("msg_elements", msg_elements_elapsed),
+        phase("timestamp_topic_append", timestamp_topic_elapsed),
+        phase("requested_field_lookup", requested_lookup_elapsed),
+        phase("all_fields_get_at", all_fields_get_at_elapsed),
+        phase("all_fields_datatype_filter", all_fields_datatype_elapsed),
+        phase("all_fields_name_key_cache", all_fields_name_cache_elapsed),
+        phase("value_getter", value_getter_elapsed),
+        phase("arrow_append", arrow_append_elapsed),
+        phase("null_padding", null_padding_elapsed),
+        phase("flush_schema", flush_schema_elapsed),
+        phase("flush_arrays", flush_arrays_elapsed),
+        phase("channel_send", channel_elapsed),
+        phase("total", Duration::from_micros(record.elapsed_us as u64)),
+    ];
+    record
 }
 
 fn replay_subscription_events(
