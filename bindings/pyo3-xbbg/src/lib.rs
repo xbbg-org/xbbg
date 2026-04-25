@@ -48,7 +48,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Datelike, NaiveDate, Timelike};
 use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDate, PyDateTime, PyDict, PyTime};
+use pyo3::types::{PyDate, PyDateTime, PyDict, PyTime, PyTzInfo};
 use pyo3_async_runtimes::tokio::future_into_py;
 use pyo3_stub_gen::{define_stub_info_gatherer, derive::*};
 use tokio::sync::{watch, Mutex};
@@ -2488,6 +2488,7 @@ fn timestamp_micros_to_py(py: Python<'_>, micros: i64) -> PyResult<Py<PyAny>> {
     let Some(dt) = DateTime::from_timestamp_micros(micros) else {
         return Ok(py.None());
     };
+    let utc = PyTzInfo::utc(py)?;
     Ok(PyDateTime::new(
         py,
         dt.year(),
@@ -2497,7 +2498,7 @@ fn timestamp_micros_to_py(py: Python<'_>, micros: i64) -> PyResult<Py<PyAny>> {
         dt.minute() as u8,
         dt.second() as u8,
         dt.timestamp_subsec_micros(),
-        None,
+        Some(&utc),
     )?
     .into_any()
     .unbind())
@@ -2816,6 +2817,19 @@ mod tests {
 
             let params = dict_to_request_params(&dict).expect("request params");
             assert_eq!(params.request_id.as_deref(), Some("req-123"));
+        });
+    }
+
+    #[test]
+    fn timestamp_micros_to_py_returns_utc_aware_datetime() {
+        Python::initialize();
+        Python::attach(|py| {
+            let value = timestamp_micros_to_py(py, 1_704_067_200_123_456).expect("timestamp");
+            let dt = value.bind(py);
+            let tzinfo = dt.getattr("tzinfo").expect("tzinfo");
+            assert!(tzinfo
+                .eq(PyTzInfo::utc(py).expect("utc"))
+                .expect("tz equality"));
         });
     }
 }
