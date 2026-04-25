@@ -3,6 +3,7 @@
 //! Runs tiny live Bloomberg probes plus large synthetic workloads in one report.
 //! Live probes intentionally keep Bloomberg data usage low; synthetic workloads
 //! provide scale without additional Bloomberg requests.
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -2849,7 +2850,7 @@ fn profile_subscription_components(
 
     let channel_start = Instant::now();
     let send_count = target_messages.min(1_000);
-    let batch = component_record_batch(1, field_count.min(8).max(1));
+    let batch = component_record_batch(1, field_count.clamp(1, 8));
     let (tx, mut rx) = mpsc::channel::<Result<RecordBatch, BlpError>>(send_count + 1);
     for _ in 0..send_count {
         tx.try_send(Ok(batch.clone()))
@@ -3006,19 +3007,19 @@ async fn run_live_suite(engine: &Engine, config: &SuiteConfig) -> Vec<BenchRecor
     let mut records = Vec::new();
 
     if config.should_run("live_requests", "bdp_smoke") {
-        records.push(live_request(&engine, "bdp_smoke", bdp_params()).await);
+        records.push(live_request(engine, "bdp_smoke", bdp_params()).await);
     }
     if config.should_run("live_requests", "bdh_smoke") {
-        records.push(live_request(&engine, "bdh_smoke", bdh_params()).await);
+        records.push(live_request(engine, "bdh_smoke", bdh_params()).await);
     }
     if config.should_run("live_requests", "bdtick_smoke") {
-        records.push(live_request(&engine, "bdtick_smoke", bdtick_params()).await);
+        records.push(live_request(engine, "bdtick_smoke", bdtick_params()).await);
     }
     if config.should_run("live_requests", "bql_smoke") {
-        records.push(live_request(&engine, "bql_smoke", bql_params()).await);
+        records.push(live_request(engine, "bql_smoke", bql_params()).await);
     }
     if config.should_run("live_subscriptions", "sub_3_topics_3_fields") {
-        records.push(live_subscription(&engine, config.profile.subscription_collect_ms()).await);
+        records.push(live_subscription(engine, config.profile.subscription_collect_ms()).await);
     }
 
     records
