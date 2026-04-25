@@ -73,8 +73,10 @@ xbbg runs a Rust async engine with pre-warmed worker pools:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `host` | `'localhost'` | Bloomberg server host |
-| `port` | `8194` | Bloomberg server port |
+| `host` | `'localhost'` | Bloomberg server host for direct Terminal/B-PIPE TCP connections |
+| `port` | `8194` | Bloomberg server port for direct Terminal/B-PIPE TCP connections |
+| `servers` | `[]` | Ordered `(host, port)` failover list for direct TCP connections; do not combine with `zfp_remote` |
+| `zfp_remote` | `None` | Bloomberg ZFP leased-line remote, either `'8194'` or `'8196'`; mutually exclusive with `host`/`port`/`servers`/SOCKS5 and requires TLS credentials |
 | `num_start_attempts` | `3` | Retries before giving up on session start |
 | `auto_restart_on_disconnection` | `True` | Auto-reconnect on session disconnect |
 
@@ -205,17 +207,39 @@ Bloomberg will attempt servers in order and fall back on failure.
 
 ## ZFP over Leased Lines
 
-For Bloomberg Zero-Footprint (ZFP) connectivity over leased lines, set `zfp_remote` to the remote port string. Accepted values are `"8194"` and `"8196"`. TLS credentials are required.
+For Bloomberg Zero-Footprint (ZFP) connectivity over private leased lines, set `zfp_remote` to the remote string Bloomberg assigned for the leased-line path. Accepted values are `'8194'` and `'8196'`. xbbg delegates endpoint discovery to Bloomberg's `ZfpUtil::getOptionsForLeasedLines`, so you must not pass direct endpoint settings in the same configuration.
+
+ZFP mode requires both TLS files: `tls_client_credentials` (client PKCS#12 file) and `tls_trust_material` (trust material file). The password is optional only if your client credentials file is not password-protected.
 
 ```python
 from xbbg import blp
 
 blp.configure(
     zfp_remote='8194',
-    tls_client_credentials='/path/to/client.p12',
+    tls_client_credentials='/secure/client.p12',
     tls_client_credentials_password='secret',
-    tls_trust_material='/path/to/trust.p12',
+    tls_trust_material='/secure/trust.p7',
 )
+```
+
+Do not combine `zfp_remote` with `host`, `port`, `servers`, `socks5_host`, or `socks5_port`. In ZFP mode those endpoint addresses are supplied by Bloomberg; passing direct endpoints now raises `ValueError` instead of silently trying `localhost:8194`.
+
+To verify the session start path, enable SDK tracing before `configure()` and confirm the first transport lines contain Bloomberg infrastructure endpoints, not `localhost` or `127.0.0.1`:
+
+```python
+import xbbg
+from xbbg import blp
+
+xbbg.set_log_level('trace')
+xbbg.enable_sdk_logging('trace')
+
+blp.configure(
+    zfp_remote='8194',
+    tls_client_credentials='/secure/client.p12',
+    tls_client_credentials_password='secret',
+    tls_trust_material='/secure/trust.p7',
+)
+print(xbbg.is_connected())
 ```
 
 ---
