@@ -357,7 +357,7 @@ impl SubscriptionState {
     }
 
     fn append_value_at(&mut self, idx: usize, value: Option<Value<'_>>) {
-        if value.as_ref().map_or(true, |v| matches!(v, Value::Null)) {
+        if value.as_ref().is_none_or(|v| matches!(v, Value::Null)) {
             return;
         }
 
