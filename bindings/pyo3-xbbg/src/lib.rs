@@ -1674,9 +1674,7 @@ impl SubscriptionStreamHandle {
         let snapshot = self.status.load();
         let new_topics: Vec<String> = tickers
             .into_iter()
-            .filter(|t| {
-                !snapshot.topic_to_key().contains_key(t) && seen_topics.insert(t.clone())
-            })
+            .filter(|t| !snapshot.topic_to_key().contains_key(t) && seen_topics.insert(t.clone()))
             .collect();
 
         if new_topics.is_empty() {
@@ -1806,8 +1804,7 @@ impl PySubscription {
                     topics: snapshot.topics().to_vec(),
                     fields: handle.fields.clone(),
                     is_active: snapshot.has_active_topics() && handle.claim.is_some(),
-                    all_failed: !snapshot.has_active_topics()
-                        && !snapshot.failures().is_empty(),
+                    all_failed: !snapshot.has_active_topics() && !snapshot.failures().is_empty(),
                     messages_received,
                     dropped_batches,
                     batches_sent,

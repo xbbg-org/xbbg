@@ -711,6 +711,10 @@ class PySubscription:
         Raises a Python exception (BlpRequestError, BlpInternalError, etc.) on error.
         Raises StopAsyncIteration when the subscription is closed.
         """
+    def __anext_tick_dict__(self) -> typing.Any:
+        r"""
+        Get next update as a Python dict without building Arrow.
+        """
     def add(self, tickers: typing.Sequence[builtins.str]) -> typing.Any:
         r"""
         Add tickers to the subscription dynamically.

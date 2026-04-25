@@ -17,10 +17,10 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
+use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::engine::{
     SharedSubscriptionStatus, SlabKey, SubscriptionEventLevel, SubscriptionStatusState,
 };
-use xbbg_async::engine::state::SubscriptionMetrics;
 use xbbg_async::field_cache::{FieldInfo, FieldTypeResolver};
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,9 @@ fn make_metrics() -> Arc<SubscriptionMetrics> {
 }
 
 fn make_status_state(n_topics: usize) -> SubscriptionStatusState {
-    let topics: Vec<String> = (0..n_topics).map(|i| format!("TOPIC{i} US Equity")).collect();
+    let topics: Vec<String> = (0..n_topics)
+        .map(|i| format!("TOPIC{i} US Equity"))
+        .collect();
     let keys: Vec<SlabKey> = (0..n_topics).collect();
     let metrics: HashMap<SlabKey, Arc<SubscriptionMetrics>> =
         keys.iter().map(|&k| (k, make_metrics())).collect();
@@ -149,9 +151,7 @@ fn bench_field_cache_resolve_types(c: &mut Criterion) {
     // 50 fields, all present in the 1000-entry cache.
     let fields: Vec<String> = (0..50).map(|i| format!("F{}", i * 10)).collect();
     group.bench_function("50_fields_on_1000_entry_cache", |b| {
-        b.iter(|| {
-            black_box(resolver.resolve_types(black_box(&fields), None, "float64"))
-        });
+        b.iter(|| black_box(resolver.resolve_types(black_box(&fields), None, "float64")));
     });
     group.finish();
 }
@@ -165,13 +165,17 @@ fn bench_status_load_topic_for_key(c: &mut Criterion) {
     for n_topics in [10, 50, 100] {
         let shared = make_shared_status(n_topics);
         let key: SlabKey = n_topics / 2;
-        group.bench_with_input(BenchmarkId::new("load_topic_for_key", n_topics), &n_topics, |b, _| {
-            b.iter(|| {
-                let snap = shared.load();
-                // Map to owned String to avoid returning a ref tied to the guard.
-                black_box(snap.topic_for_key(black_box(key)).map(str::to_string))
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("load_topic_for_key", n_topics),
+            &n_topics,
+            |b, _| {
+                b.iter(|| {
+                    let snap = shared.load();
+                    // Map to owned String to avoid returning a ref tied to the guard.
+                    black_box(snap.topic_for_key(black_box(key)).map(str::to_string))
+                });
+            },
+        );
     }
     group.finish();
 }

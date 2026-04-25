@@ -18,6 +18,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use xbbg_async::engine::state::{subscription_update_to_record_batch, SubscriptionUpdate};
 use xbbg_async::engine::{
     Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, ServerAddr, Transport,
 };
@@ -667,8 +668,8 @@ async fn handle_subscription_socket(mut socket: WebSocket, state: AppState) {
             }
             maybe_batch = stream.next() => {
                 match maybe_batch {
-                    Some(Ok(batch)) => {
-                        match record_batch_to_json(&batch) {
+                    Some(Ok(update)) => {
+                        match subscription_update_to_json(&update) {
                             Ok(rows) => {
                                 if send_subscription_message(&mut socket, &SubscriptionServerMessage::Tick {
                                     subscription_id: subscription_id.clone(),
@@ -791,6 +792,11 @@ fn record_batch_to_json(batch: &RecordBatch) -> Result<Value, String> {
         .map_err(|error| format!("failed to finish Arrow JSON writer: {error}"))?;
     serde_json::from_slice(&buffer)
         .map_err(|error| format!("failed to decode Arrow JSON buffer: {error}"))
+}
+
+fn subscription_update_to_json(update: &SubscriptionUpdate) -> Result<Value, String> {
+    let batch = subscription_update_to_record_batch(update).map_err(core_error_to_string)?;
+    record_batch_to_json(&batch)
 }
 
 fn async_error_to_string(error: BlpAsyncError) -> String {

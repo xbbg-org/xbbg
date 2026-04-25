@@ -5,7 +5,7 @@ with support for multiple DataFrame backends via narwhals.
 
 API Design:
 - Async-first: Core implementation uses async/await (abdp, abdh, etc.)
-- Sync wrappers: Convenience functions (bdp, bdh, etc.) wrap async with asyncio.run()
+- Sync wrappers: Convenience functions wrap async with asyncio.run(), with a notebook bridge for one-shot requests
 - Generic API: arequest() and request() for power users and arbitrary Bloomberg requests
 - Users can use either style based on their needs
 """
@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 from collections.abc import Awaitable, Callable, Sequence
+import concurrent.futures
 import contextvars
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -280,6 +281,11 @@ _engine_lock = threading.Lock()
 # Scoped engine for multi-engine routing (async-safe via contextvars)
 _active_engine: contextvars.ContextVar[Engine | None] = contextvars.ContextVar("_active_engine", default=None)
 
+_NOTEBOOK_SYNC_BRIDGE_NAMES = frozenset({"bdp", "bdh", "bds", "bdib", "bdtick", "request"})
+_notebook_sync_loop: asyncio.AbstractEventLoop | None = None
+_notebook_sync_loop_thread: threading.Thread | None = None
+_notebook_sync_loop_lock = threading.Lock()
+
 
 class Engine:
     """Non-global Bloomberg engine for multi-source routing.
@@ -451,6 +457,12 @@ def _atexit_cleanup() -> None:
         except Exception:
             logger.debug("Exception during atexit cleanup (ignored)", exc_info=True)
         _engine = None
+    stop_bridge = globals().get("_stop_notebook_sync_loop")
+    if stop_bridge is not None:
+        try:
+            stop_bridge()
+        except Exception:
+            logger.debug("Exception stopping notebook sync bridge (ignored)", exc_info=True)
 
 
 # Register cleanup handler
@@ -1822,11 +1834,132 @@ def _strip_signature_annotations(func: Callable[..., Any]) -> str:
     return str(stripped)
 
 
+def _is_notebook_context() -> bool:
+    """Return True when running in an IPykernel-backed notebook shell."""
+    try:
+        from IPython import get_ipython
+    except Exception:
+        return False
+
+    shell = get_ipython()
+    if shell is None:
+        return False
+
+    shell_module = shell.__class__.__module__
+    if shell_module.startswith("ipykernel."):
+        return True
+
+    config = getattr(shell, "config", None)
+    return bool(config is not None and "IPKernelApp" in config)
+
+
+def _ensure_notebook_sync_loop() -> asyncio.AbstractEventLoop:
+    global _notebook_sync_loop, _notebook_sync_loop_thread
+
+    with _notebook_sync_loop_lock:
+        if (
+            _notebook_sync_loop is not None
+            and not _notebook_sync_loop.is_closed()
+            and _notebook_sync_loop.is_running()
+            and _notebook_sync_loop_thread is not None
+            and _notebook_sync_loop_thread.is_alive()
+        ):
+            return _notebook_sync_loop
+
+        ready = threading.Event()
+        loop_holder: dict[str, asyncio.AbstractEventLoop] = {}
+        error_holder: list[Exception] = []
+
+        def run_loop() -> None:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop_holder["loop"] = loop
+                loop.call_soon(ready.set)
+                loop.run_forever()
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.run_until_complete(loop.shutdown_asyncgens())
+                loop.close()
+            except Exception as exc:
+                error_holder.append(exc)
+                ready.set()
+
+        thread = threading.Thread(
+            target=run_loop,
+            name="xbbg-notebook-sync-bridge",
+            daemon=True,
+        )
+        thread.start()
+        ready.wait()
+
+        if error_holder:
+            raise RuntimeError("Failed to start xbbg notebook sync bridge") from error_holder[0]
+
+        _notebook_sync_loop = loop_holder["loop"]
+        _notebook_sync_loop_thread = thread
+        return _notebook_sync_loop
+
+
+def _stop_notebook_sync_loop() -> None:
+    global _notebook_sync_loop, _notebook_sync_loop_thread
+
+    with _notebook_sync_loop_lock:
+        loop = _notebook_sync_loop
+        thread = _notebook_sync_loop_thread
+        _notebook_sync_loop = None
+        _notebook_sync_loop_thread = None
+
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(loop.stop)
+    if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+        thread.join(timeout=1.0)
+
+
+def _run_in_notebook_sync_bridge(
+    async_func: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Any:
+    if _notebook_sync_loop_thread is threading.current_thread():
+        raise RuntimeError("xbbg notebook sync bridge cannot be re-entered from its own event-loop thread")
+
+    loop = _ensure_notebook_sync_loop()
+    caller_context = contextvars.copy_context()
+    result: concurrent.futures.Future = concurrent.futures.Future()
+
+    def schedule() -> None:
+        try:
+            task = asyncio.ensure_future(async_func(*args, **kwargs))
+        except Exception as exc:
+            result.set_exception(exc)
+            return
+
+        def complete(task: asyncio.Future) -> None:
+            if result.cancelled():
+                return
+            try:
+                result.set_result(task.result())
+            except asyncio.CancelledError as exc:
+                result.set_exception(exc)
+            except Exception as exc:
+                result.set_exception(exc)
+
+        task.add_done_callback(complete)
+
+    loop.call_soon_threadsafe(schedule, context=caller_context)
+    return result.result()
+
+
 def _build_sync_wrapper(
     sync_name: str,
     async_func: Callable[..., Any],
     *,
     template: Callable[..., Any] | None = None,
+    allow_notebook_bridge: bool = False,
 ) -> Callable[..., Any]:
     template_func = template if template is not None else async_func
 
@@ -1835,15 +1968,16 @@ def _build_sync_wrapper(
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            pass  # No running loop — asyncio.run() is safe
-        else:
-            raise RuntimeError(
-                f"{sync_name}() cannot be used inside an async context "
-                f"(FastAPI, Jupyter, etc.). "
-                f"Use 'await a{sync_name}()' instead, "
-                f"or use xbbg.Engine(...) for scoped async engines."
-            )
-        return asyncio.run(async_func(*args, **kwargs))
+            return asyncio.run(async_func(*args, **kwargs))
+
+        if allow_notebook_bridge and _is_notebook_context():
+            return _run_in_notebook_sync_bridge(async_func, args, kwargs)
+
+        raise RuntimeError(
+            f"{sync_name}() cannot be used inside an async context. "
+            f"Use 'await a{sync_name}()' instead, "
+            f"or use xbbg.Engine(...) for scoped async engines."
+        )
 
     wrapped.__name__ = sync_name
     wrapped.__qualname__ = sync_name
@@ -1903,7 +2037,12 @@ def _install_generated_endpoint(spec: _GeneratedEndpointSpec) -> None:
     generated_async = _build_generated_async(spec, async_template)
     globals()[spec.async_name] = generated_async
 
-    globals()[spec.sync_name] = _build_sync_wrapper(spec.sync_name, generated_async, template=async_template)
+    globals()[spec.sync_name] = _build_sync_wrapper(
+        spec.sync_name,
+        generated_async,
+        template=async_template,
+        allow_notebook_bridge=spec.sync_name in _NOTEBOOK_SYNC_BRIDGE_NAMES,
+    )
 
 
 def _install_generated_endpoints() -> None:
@@ -2216,10 +2355,7 @@ async def asubscribe(
     if output is not None:
         normalized_output = output.lower()
         if normalized_output not in ("record_batch", "backend", "dict", "tick"):
-            raise ValueError(
-                "output must be one of 'record_batch', 'backend', 'dict', 'tick', "
-                f"got {output!r}"
-            )
+            raise ValueError(f"output must be one of 'record_batch', 'backend', 'dict', 'tick', got {output!r}")
         if normalized_output in ("dict", "tick"):
             tick_mode = True
         elif normalized_output == "record_batch":
@@ -4381,7 +4517,11 @@ def _install_manual_sync_wrappers() -> None:
         ("bops", abops),
         ("bschema", abschema),
     ):
-        globals()[sync_name] = _build_sync_wrapper(sync_name, async_func)
+        globals()[sync_name] = _build_sync_wrapper(
+            sync_name,
+            async_func,
+            allow_notebook_bridge=sync_name in _NOTEBOOK_SYNC_BRIDGE_NAMES,
+        )
 
 
 _install_manual_sync_wrappers()
