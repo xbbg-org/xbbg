@@ -59,8 +59,8 @@ prune apps/xbbg-cli
 prune .github
 prune docker
 prune docs
-prune benchmarks
-prune examples
+prune py-xbbg/benchmarks
+prune py-xbbg/examples
 prune scripts
 prune vendor
 prune js-xbbg

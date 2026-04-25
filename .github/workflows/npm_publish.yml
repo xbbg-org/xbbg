@@ -81,13 +81,13 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-x64
-            package_dir: packages/xbbg-core-linux-x64
+            package_dir: js-xbbg/packages/xbbg-core-linux-x64
           - os: windows-latest
             label: win32-x64
-            package_dir: packages/xbbg-core-win32-x64
+            package_dir: js-xbbg/packages/xbbg-core-win32-x64
           - os: macos-15
             label: darwin-arm64
-            package_dir: packages/xbbg-core-darwin-arm64
+            package_dir: js-xbbg/packages/xbbg-core-darwin-arm64
 
     runs-on: ${{ matrix.os }}
     env:
@@ -216,19 +216,19 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: core-package-linux-x64
-          path: packages/xbbg-core-linux-x64
+          path: js-xbbg/packages/xbbg-core-linux-x64
 
       - name: Download windows package artifact
         uses: actions/download-artifact@v8
         with:
           name: core-package-win32-x64
-          path: packages/xbbg-core-win32-x64
+          path: js-xbbg/packages/xbbg-core-win32-x64
 
       - name: Download macOS package artifact
         uses: actions/download-artifact@v8
         with:
           name: core-package-darwin-arm64
-          path: packages/xbbg-core-darwin-arm64
+          path: js-xbbg/packages/xbbg-core-darwin-arm64
 
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ inputs.version != '' && inputs.version || github.ref_name }}"
@@ -256,9 +256,9 @@ jobs:
 
       - name: Publish platform packages
         run: |
-          npm publish packages/xbbg-core-linux-x64 --access public
-          npm publish packages/xbbg-core-win32-x64 --access public
-          npm publish packages/xbbg-core-darwin-arm64 --access public
+          npm publish js-xbbg/packages/xbbg-core-linux-x64 --access public
+          npm publish js-xbbg/packages/xbbg-core-win32-x64 --access public
+          npm publish js-xbbg/packages/xbbg-core-darwin-arm64 --access public
 
       - name: Publish @xbbg/core
         run: npm publish js-xbbg --access public

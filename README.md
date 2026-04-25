@@ -134,7 +134,7 @@ hist = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31')
 intraday = blp.bdib('TSLA US Equity', dt='2024-01-15', interval=10, intervalHasSeconds=True)
 ```
 
-See [`examples/xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipynb) for comprehensive tutorials and examples.
+See [`py-xbbg/examples/xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb) for comprehensive tutorials and examples.
 
 ## Why Choose xbbg?
 
@@ -1964,7 +1964,7 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 - 💬 **Discord**: [Join our community](https://discord.gg/P34uMwgCjC) - Usually get answers within hours
 - 🐛 **GitHub Issues**: [Report bugs](https://github.com/alpha-xone/xbbg/issues) - Include error messages & code
 - 📚 **Documentation**: [Docs](https://alpha-xone.github.io/xbbg/) - Comprehensive guides
-- 📓 **Examples**: [`xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipynb) - 100+ working examples
+- 📓 **Examples**: [`xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb) - 100+ working examples
 
 **When reporting issues, include:**
 1. xbbg version: `import xbbg; print(xbbg.__version__)`
@@ -2069,7 +2069,7 @@ pixi run ci
 ### Resources
 
 - **Documentation**: [alpha-xone.github.io/xbbg](https://alpha-xone.github.io/xbbg/)
-- **Examples**: [`examples/xbbg_jupyter_examples.ipynb`](examples/xbbg_jupyter_examples.ipynb)
+- **Examples**: [`py-xbbg/examples/xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Security**: [SECURITY.md](SECURITY.md)
 

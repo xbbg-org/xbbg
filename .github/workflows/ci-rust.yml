@@ -364,13 +364,13 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-x64
-            core_package_dir: packages/xbbg-core-linux-x64
+            core_package_dir: js-xbbg/packages/xbbg-core-linux-x64
           - os: windows-latest
             label: win32-x64
-            core_package_dir: packages/xbbg-core-win32-x64
+            core_package_dir: js-xbbg/packages/xbbg-core-win32-x64
           - os: macos-15
             label: darwin-arm64
-            core_package_dir: packages/xbbg-core-darwin-arm64
+            core_package_dir: js-xbbg/packages/xbbg-core-darwin-arm64
 
     runs-on: ${{ matrix.os }}
     env:
@@ -543,19 +543,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: core-package-linux-x64
-          path: packages/xbbg-core-linux-x64
+          path: js-xbbg/packages/xbbg-core-linux-x64
 
       - name: Download windows core package artifact
         uses: actions/download-artifact@v4
         with:
           name: core-package-win32-x64
-          path: packages/xbbg-core-win32-x64
+          path: js-xbbg/packages/xbbg-core-win32-x64
 
       - name: Download macOS core package artifact
         uses: actions/download-artifact@v4
         with:
           name: core-package-darwin-arm64
-          path: packages/xbbg-core-darwin-arm64
+          path: js-xbbg/packages/xbbg-core-darwin-arm64
 
       - name: Install js-xbbg dependencies
         working-directory: js-xbbg
