@@ -3457,6 +3457,7 @@ dependencies = [
 name = "xbbg-bench"
 version = "0.0.0"
 dependencies = [
+ "arc-swap",
  "arrow",
  "chrono",
  "criterion",

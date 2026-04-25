@@ -275,6 +275,23 @@ impl FieldTypeResolver {
         });
     }
 
+    /// Extend the cache with multiple (uppercase_key, FieldInfo) pairs in a single RCU.
+    ///
+    /// This is the same single-swap pattern used by `insert_from_response` internally.
+    /// Exposed only for benchmarks so callers can measure the batched-RCU cost directly.
+    #[cfg(feature = "bench-internals")]
+    pub fn cache_rcu_extend(&self, entries: Vec<(String, FieldInfo)>) {
+        self.ensure_loaded();
+        if entries.is_empty() {
+            return;
+        }
+        self.cache.rcu(|current| {
+            let mut next = (**current).clone();
+            next.extend(entries.iter().cloned());
+            Arc::new(next)
+        });
+    }
+
     /// Insert multiple field infos from a FieldInfoRequest response.
     ///
     /// Expects columns from the FieldInfo extractor:
