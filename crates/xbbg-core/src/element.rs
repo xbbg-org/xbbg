@@ -14,7 +14,8 @@
 //! | `get_f64()` | ~7ns | Fast once you have the element |
 //! | `datatype()` | ~1ns | Nearly free |
 //! | `name_eq(&name)` | ~5ns | Pointer comparison |
-//! | `name()` | ~30ns | Allocates (use `name_eq` in hot paths) |
+//! | `name_str()` | ~30ns | Borrowed field name, no `Name` duplicate or String allocation |
+//! | `name()` | ~30ns | Duplicates Bloomberg `Name` (avoid in hot paths) |
 //!
 //! **Throughput**: ~1.5M fields/sec per core.
 //!
@@ -163,6 +164,22 @@ impl<'a> Element<'a> {
         let ptr = unsafe { ffi::blpapi_Element_name(self.ptr) };
         // SAFETY: blpapi_Name_duplicate returns a valid pointer
         unsafe { Name::from_raw(NonNull::new(ffi::blpapi_Name_duplicate(ptr)).unwrap()) }
+    }
+
+    /// Element name as a borrowed string without duplicating the Bloomberg `Name`.
+    ///
+    /// Use this while iterating dynamic fields in hot paths. The returned string
+    /// is borrowed from Bloomberg's interned name storage and must not be stored
+    /// beyond the parent message/event lifetime.
+    #[inline(always)]
+    pub fn name_str(&self) -> &'a str {
+        // SAFETY: blpapi_Element_name returns a valid interned Name pointer for
+        // this element; blpapi_Name_string returns a null-terminated field name.
+        let name = unsafe { ffi::blpapi_Element_name(self.ptr) };
+        let ptr = unsafe { ffi::blpapi_Name_string(name) };
+        unsafe { CStr::from_ptr(ptr) }
+            .to_str()
+            .expect("Bloomberg Element name contained invalid UTF-8")
     }
 
     /// Check if element name matches (O(1) pointer comparison, no allocation).

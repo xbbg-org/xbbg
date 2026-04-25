@@ -223,15 +223,15 @@ impl SubscriptionState {
                 continue;
             }
 
-            let field_name = child.name().as_str().to_string();
-            let idx = self.ensure_field(&field_name);
+            let field_name = child.name_str();
+            let idx = self.ensure_field(field_name);
             if idx >= seen.len() {
                 seen.resize(self.field_strings.len(), false);
             }
             seen[idx] = true;
             self.append_field_value_at(
                 idx,
-                Self::is_invalid_dateortime_field(&field_name),
+                Self::is_invalid_dateortime_field(field_name),
                 &child,
             );
         }
