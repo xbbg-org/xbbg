@@ -14,51 +14,65 @@ All performance tests, allocation profiling, and live Bloomberg benchmarks live 
 | `env_iterations(var, default)` | Read iteration count from env var |
 | `write_json(path, json)` | Write results file, creating parent dirs |
 
-## Benchmarks
+## Supported benchmark suite
 
-### Pure Rust (no Bloomberg connection)
+`xbbg-bench` now has one supported entrypoint:
 
 ```bash
-cargo bench --package xbbg-bench --bench datetime
-cargo bench --package xbbg-bench --bench alloc_criterion
+cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 ```
 
-### Require Bloomberg DLL
+The suite runs together in one report:
+
+1. Tiny live Bloomberg probes for BDP, BDH, BDTICK, and BQL.
+2. A bounded live subscription throughput window.
+3. Synthetic massive BDP, BDH, BDTICK, BQL, and subscription workloads.
+
+Live probes intentionally keep Bloomberg data usage low. Scale comes from the synthetic workloads, which use deterministic generated data and do not issue Bloomberg requests.
+
+### Profiles
+
+| Profile | Use | Live Bloomberg usage | Synthetic scale |
+|---------|-----|----------------------|-----------------|
+| `smoke` | quick validation | tiny live probes + 2s subscription | small |
+| `standard` | default one-command benchmark | tiny live probes + 5s subscription | large |
+| `stress` | manual capacity run | tiny live probes + 10s subscription by default | massive |
+
+Examples:
 
 ```bash
-cargo bench --package xbbg-bench --bench name
+BENCH_PROFILE=smoke cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
+BENCH_PROFILE=standard cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
+BENCH_PROFILE=stress cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 ```
 
-### Require live Bloomberg connection
+Override the live subscription collection window without increasing reference-data usage:
 
 ```bash
-cargo bench --package xbbg-bench --bench live_bdp
-cargo bench --package xbbg-bench --bench live_bdp_profiled
-cargo bench --package xbbg-bench --bench live_subscription
-cargo bench --package xbbg-bench --bench parse_cached
-cargo bench --package xbbg-bench --bench alloc_profile
+BENCH_PROFILE=stress BENCH_SUB_COLLECT_MS=30000 \
+  cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 ```
 
 ### Environment variables
 
-| Variable | Default | Used by |
+| Variable | Default | Purpose |
 |----------|---------|---------|
-| `BLP_HOST` | `127.0.0.1` | All live benchmarks |
-| `BLP_PORT` | `8194` | All live benchmarks |
-| `BENCH_ITERATIONS` | varies | `parse_cached`, `live_bdp`, `live_bdp_profiled` |
-| `BENCH_WARMUP` | `2` | `live_bdp` |
-| `BENCH_COLLECT_MS` | `5000` | `live_subscription` |
-| `ALLOC_ITERATIONS` | `100` | `alloc_profile` |
+| `BLP_HOST` | `127.0.0.1` | Bloomberg host for live probes |
+| `BLP_PORT` | `8194` | Bloomberg port for live probes |
+| `BENCH_PROFILE` | `standard` | `smoke`, `standard`, or `stress` |
+| `BENCH_SUB_COLLECT_MS` | profile-dependent | live subscription collection window |
 
-## Benchmark inventory
+### Results
 
-| Benchmark | Framework | What it measures |
-|-----------|-----------|------------------|
-| `datetime` | Criterion | `HighPrecisionDatetime::to_micros/to_nanos` conversion |
-| `name` | Criterion | `Name` comparison and `as_str()` |
-| `alloc_criterion` | Criterion + custom allocator | Allocation counts for datetime, name, field operations |
-| `live_bdp` | Manual timing | End-to-end BDP round-trip (cold/warm, min/max/std) |
-| `live_bdp_profiled` | Manual timing | Per-phase BDP breakdown (get_service → parse_response) |
-| `live_subscription` | Manual timing | Subscription setup, time-to-first-tick, throughput |
-| `parse_cached` | Manual timing | 6 parsing strategies compared (baseline → minimal FFI) |
-| `alloc_profile` | dhat | Heap allocation profiling per operation phase |
+The suite writes both timestamped and `latest` reports under the crate directory (`crates/xbbg-bench/benchmarks/results`), independent of the shell's current working directory:
+
+```text
+crates/xbbg-bench/benchmarks/results/xbbg_benchmark_suite_<timestamp>.json
+crates/xbbg-bench/benchmarks/results/xbbg_benchmark_suite_latest.json
+crates/xbbg-bench/benchmarks/results/xbbg_benchmark_suite_<timestamp>.md
+crates/xbbg-bench/benchmarks/results/xbbg_benchmark_suite_latest.md
+```
+
+## Removed legacy benchmarks
+
+The old standalone micro/experimental benchmark entrypoints were removed from `benches/` in favor of the single supported workflow suite. Use `xbbg_benchmark_suite` for all benchmark runs so live Bloomberg usage remains bounded and synthetic scale is reported consistently.

@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 description = "Benchmarks for xbbg — performance, allocation profiling, and live Bloomberg tests"
 publish = false
+autobenches = false
 
 [lib]
 name = "xbbg_bench"
@@ -13,68 +14,24 @@ name = "xbbg_bench"
 [dependencies]
 # Crates under test
 xbbg_core = { path = "../xbbg-core" }
+xbbg-async = { path = "../xbbg-async" }
 
-[dev-dependencies]
+# Benchmark runner/runtime
+arrow = "57.1.0"
+chrono = "0.4"
+tokio = { version = "1.48", features = ["rt-multi-thread", "time"] }
+
+# Existing experimental benchmark dependencies kept for unregistered local benches.
 criterion = "0.5"
 dhat = "0.3"
 hdrhistogram = "7.5"
 tempfile = "3.15"
-xbbg-async = { path = "../xbbg-async" }
 
 # =============================================================================
-# Benchmarks — Pure Rust (no Bloomberg connection required)
+# Supported benchmark suite
 # =============================================================================
+# Run with: cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 
-# Pure Rust datetime conversion
 [[bench]]
-name = "datetime"
-harness = false
-
-# Name interning and comparison
-[[bench]]
-name = "name"
-harness = false
-
-# Allocation tracking with Criterion
-[[bench]]
-name = "alloc_criterion"
-harness = false
-
-# =============================================================================
-# Benchmarks — Live (require Bloomberg connection)
-# =============================================================================
-# Run with: cargo bench --package xbbg-bench --bench <name>
-
-# Simple BDP round-trip
-[[bench]]
-name = "live_bdp"
-harness = false
-
-# Profiled BDP with per-phase breakdown
-[[bench]]
-name = "live_bdp_profiled"
-harness = false
-
-# Subscription latency and throughput
-[[bench]]
-name = "live_subscription"
-harness = false
-
-# Cached message parsing (network only for setup)
-[[bench]]
-name = "parse_cached"
-harness = false
-
-# Heap allocation profiling with dhat
-[[bench]]
-name = "alloc_profile"
-harness = false
-
-# =============================================================================
-# Benchmarks — Cache contention (pure Rust, no Bloomberg connection)
-# =============================================================================
-
-# Reader/writer latency percentiles on SchemaCache + FieldTypeResolver
-[[bench]]
-name = "cache_contention"
+name = "xbbg_benchmark_suite"
 harness = false
