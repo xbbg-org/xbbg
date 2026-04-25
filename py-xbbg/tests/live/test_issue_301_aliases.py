@@ -356,9 +356,7 @@ def test_bdh_live_applies_excel_presentation_aliases_locally() -> None:
         ("polars_lazy", "polars"),
     ],
 )
-def test_bdh_live_presentation_aliases_shape_representative_backends(
-    backend: str, required_module: str | None
-) -> None:
+def test_bdh_live_presentation_aliases_shape_representative_backends(backend: str, required_module: str | None) -> None:
     """A capped live smoke matrix proves presentation shaping survives backend conversion."""
     if required_module is not None:
         pytest.importorskip(required_module)

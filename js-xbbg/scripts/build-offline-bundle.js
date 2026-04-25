@@ -47,12 +47,12 @@ function run(cmd, cmdArgs, opts = {}) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const { label } = args;
-  const repoRoot = path.resolve(__dirname, '..');
+  const jsPackageDir = path.resolve(__dirname, '..');
+  const repoRoot = path.resolve(jsPackageDir, '..');
   const outDir = path.resolve(args['out-dir']);
-  const corePkgDir = path.join(repoRoot, 'packages', `xbbg-core-${label}`);
-  const jsXbbgDir = path.join(repoRoot, 'js-xbbg');
+  const corePkgDir = path.join(jsPackageDir, 'packages', `xbbg-core-${label}`);
 
-  const corePkg = JSON.parse(fs.readFileSync(path.join(jsXbbgDir, 'package.json'), 'utf8'));
+  const corePkg = JSON.parse(fs.readFileSync(path.join(jsPackageDir, 'package.json'), 'utf8'));
   const platPkg = JSON.parse(fs.readFileSync(path.join(corePkgDir, 'package.json'), 'utf8'));
   if (corePkg.version !== platPkg.version) {
     throw new Error(
@@ -68,7 +68,7 @@ function main() {
   fs.mkdirSync(tarballs, { recursive: true });
   fs.mkdirSync(bundle, { recursive: true });
 
-  run('npm', ['pack', jsXbbgDir, '--pack-destination', tarballs]);
+  run('npm', ['pack', jsPackageDir, '--pack-destination', tarballs]);
   run('npm', ['pack', corePkgDir, '--pack-destination', tarballs]);
 
   const coreTgz = `xbbg-core-${version}.tgz`;

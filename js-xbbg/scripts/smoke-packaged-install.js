@@ -165,7 +165,7 @@ function main() {
 
   const jsPackageDir = path.join(repoRoot, 'js-xbbg');
   const platformPackageDir = path.join(
-    repoRoot,
+    jsPackageDir,
     'packages',
     packageDirName(currentPackageName),
   );

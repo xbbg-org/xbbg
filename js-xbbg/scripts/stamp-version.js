@@ -7,6 +7,7 @@ const {
 } = require('./platform-map.cjs');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
+const packageDir = path.join(repoRoot, 'js-xbbg');
 
 function fail(message) {
   console.error(`js package version stamp failed: ${message}`);
@@ -42,7 +43,7 @@ function stampPackageFamily(wrapperPackageJsonPath, platformPackages, version) {
 
   for (const packageName of Object.values(platformPackages)) {
     const platformPackageJsonPath = path.join(
-      repoRoot,
+      packageDir,
       'packages',
       packageDirName(packageName),
       'package.json',
@@ -64,7 +65,7 @@ if (!version) {
 }
 
 stampPackageFamily(
-  path.join(repoRoot, 'js-xbbg', 'package.json'),
+  path.join(packageDir, 'package.json'),
   corePlatformPackages,
   version,
 );

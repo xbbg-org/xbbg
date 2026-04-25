@@ -44,7 +44,7 @@ function stagePackage(version = null) {
   }
 
   const localPackageDir = path.join(
-    repoRoot,
+    packageDir,
     'packages',
     packageName.replace('@xbbg/', 'xbbg-'),
   );
