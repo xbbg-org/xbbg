@@ -45,16 +45,18 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, Datelike, NaiveDate, Timelike};
 use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDate, PyDateTime, PyDict, PyTime};
 use pyo3_async_runtimes::tokio::future_into_py;
 use pyo3_stub_gen::{define_stub_info_gatherer, derive::*};
 use tokio::sync::{watch, Mutex};
 use xbbg_log::{debug, info, warn};
 
-use xbbg_async::engine::state::SubscriptionMetrics;
+use xbbg_async::engine::state::{
+    subscription_update_to_record_batch, SubscriptionMetrics, SubscriptionUpdate, UpdateValue,
+};
 use xbbg_async::engine::{
     AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy, ServerAddr,
     ServiceStatusInfo, SessionStatusInfo, Socks5Proxy, SubscriptionCommandHandle,
@@ -68,7 +70,7 @@ mod ext;
 mod markets;
 mod recipes;
 
-type StreamBatchResult = Result<arrow::record_batch::RecordBatch, BlpError>;
+type StreamBatchResult = Result<SubscriptionUpdate, BlpError>;
 type StreamSender = tokio::sync::mpsc::Sender<StreamBatchResult>;
 type StreamReceiver = tokio::sync::mpsc::Receiver<StreamBatchResult>;
 type SharedStreamReceiver = Arc<Mutex<Option<StreamReceiver>>>;
@@ -1864,8 +1866,39 @@ impl PySubscription {
             };
 
             match item {
-                Ok(Some(Ok(batch))) => {
-                    try_attach_or_suspend(|py| record_batch_to_pyarrow(py, batch)).await
+                Ok(Some(Ok(update))) => {
+                    try_attach_or_suspend(|py| subscription_update_to_pyarrow(py, update)).await
+                }
+                Ok(Some(Err(blp_err))) => Err(blp_error_to_pyerr(blp_err)),
+                Ok(None) => Err(PyStopAsyncIteration::new_err("subscription ended")),
+                Err(()) => Err(PyStopAsyncIteration::new_err("subscription closed")),
+            }
+        })
+    }
+
+    /// Get next update as a Python dict without building Arrow.
+    fn __anext_tick_dict__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let rx = self.rx.clone();
+        let close_signal = self.close_signal.clone();
+        let mut engine_shutdown_rx = self.engine_shutdown.clone();
+
+        future_into_py(py, async move {
+            let mut close_rx = close_signal.subscribe();
+            let item = {
+                let mut guard = rx.lock().await;
+                let rx_ref = guard
+                    .as_mut()
+                    .ok_or_else(|| PyStopAsyncIteration::new_err("subscription closed"))?;
+                tokio::select! {
+                    item = rx_ref.recv() => Ok(item),
+                    _ = wait_for_subscription_close(&mut close_rx) => Err(()),
+                    _ = engine_shutdown_rx.changed() => Err(()),
+                }
+            };
+
+            match item {
+                Ok(Some(Ok(update))) => {
+                    try_attach_or_suspend(|py| subscription_update_to_pydict(py, update)).await
                 }
                 Ok(Some(Err(blp_err))) => Err(blp_error_to_pyerr(blp_err)),
                 Ok(None) => Err(PyStopAsyncIteration::new_err("subscription ended")),
@@ -2136,7 +2169,7 @@ impl PySubscription {
 
             let mut remaining = Vec::new();
 
-            // Drain remaining batches if requested (skip errors)
+            // Drain remaining updates if requested (skip errors)
             if drain {
                 let rx = {
                     let mut guard = rx_arc.lock().await;
@@ -2144,8 +2177,8 @@ impl PySubscription {
                 };
                 if let Some(mut rx) = rx {
                     while let Ok(item) = rx.try_recv() {
-                        if let Ok(batch) = item {
-                            remaining.push(batch);
+                        if let Ok(update) = item {
+                            remaining.push(update);
                         }
                     }
                 }
@@ -2170,8 +2203,8 @@ impl PySubscription {
             if !remaining.is_empty() {
                 try_attach_or_suspend(|py| {
                     let list = pyo3::types::PyList::empty(py);
-                    for batch in remaining {
-                        let py_batch = record_batch_to_pyarrow(py, batch)?;
+                    for update in remaining {
+                        let py_batch = subscription_update_to_pyarrow(py, update)?;
                         list.append(py_batch)?;
                     }
                     Ok(list.into_any().unbind())
@@ -2403,6 +2436,94 @@ fn market_info_to_pydict(py: Python<'_>, info: &MarketInfo) -> PyResult<Py<PyAny
     dict.set_item("tz", info.tz.clone())?;
     dict.set_item("freq", info.freq.clone())?;
     dict.set_item("is_fut", info.is_fut)?;
+    Ok(dict.into_any().unbind())
+}
+
+fn subscription_update_to_pyarrow(
+    py: Python<'_>,
+    update: SubscriptionUpdate,
+) -> PyResult<Py<PyAny>> {
+    let batch = subscription_update_to_record_batch(&update).map_err(blp_error_to_pyerr)?;
+    record_batch_to_pyarrow(py, batch)
+}
+
+fn date32_to_py(py: Python<'_>, days: i32) -> PyResult<Py<PyAny>> {
+    let Some(epoch) = NaiveDate::from_ymd_opt(1970, 1, 1) else {
+        return Ok(py.None());
+    };
+    let Some(date) = epoch.checked_add_signed(chrono::Duration::days(days as i64)) else {
+        return Ok(py.None());
+    };
+    Ok(
+        PyDate::new(py, date.year(), date.month() as u8, date.day() as u8)?
+            .into_any()
+            .unbind(),
+    )
+}
+
+fn time64_micros_to_py(py: Python<'_>, micros: i64) -> PyResult<Py<PyAny>> {
+    if !(0..86_400_000_000).contains(&micros) {
+        return Ok(py.None());
+    }
+    let seconds = micros / 1_000_000;
+    let microsecond = (micros % 1_000_000) as u32;
+    let hour = (seconds / 3_600) as u8;
+    let minute = ((seconds % 3_600) / 60) as u8;
+    let second = (seconds % 60) as u8;
+    Ok(PyTime::new(py, hour, minute, second, microsecond, None)?
+        .into_any()
+        .unbind())
+}
+
+fn timestamp_micros_to_py(py: Python<'_>, micros: i64) -> PyResult<Py<PyAny>> {
+    let Some(dt) = DateTime::from_timestamp_micros(micros) else {
+        return Ok(py.None());
+    };
+    Ok(PyDateTime::new(
+        py,
+        dt.year(),
+        dt.month() as u8,
+        dt.day() as u8,
+        dt.hour() as u8,
+        dt.minute() as u8,
+        dt.second() as u8,
+        dt.timestamp_subsec_micros(),
+        None,
+    )?
+    .into_any()
+    .unbind())
+}
+
+fn subscription_update_to_pydict(
+    py: Python<'_>,
+    update: SubscriptionUpdate,
+) -> PyResult<Py<PyAny>> {
+    let dict = PyDict::new(py);
+    dict.set_item(
+        "timestamp",
+        timestamp_micros_to_py(py, update.timestamp_us)?,
+    )?;
+    dict.set_item("topic", update.topic.as_ref())?;
+    for field in update.values.iter() {
+        let Some(meta) = update.layout.fields.get(field.index as usize) else {
+            continue;
+        };
+        match &field.value {
+            UpdateValue::Null => dict.set_item(meta.name.as_ref(), py.None())?,
+            UpdateValue::Bool(v) => dict.set_item(meta.name.as_ref(), *v)?,
+            UpdateValue::I32(v) => dict.set_item(meta.name.as_ref(), *v)?,
+            UpdateValue::I64(v) => dict.set_item(meta.name.as_ref(), *v)?,
+            UpdateValue::F64(v) => dict.set_item(meta.name.as_ref(), *v)?,
+            UpdateValue::Str(v) => dict.set_item(meta.name.as_ref(), v.as_ref())?,
+            UpdateValue::Date32(v) => dict.set_item(meta.name.as_ref(), date32_to_py(py, *v)?)?,
+            UpdateValue::Time64Micros(v) => {
+                dict.set_item(meta.name.as_ref(), time64_micros_to_py(py, *v)?)?
+            }
+            UpdateValue::TimestampMicros(v) => {
+                dict.set_item(meta.name.as_ref(), timestamp_micros_to_py(py, *v)?)?
+            }
+        }
+    }
     Ok(dict.into_any().unbind())
 }
 

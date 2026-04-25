@@ -61,10 +61,25 @@ export interface NativeArrowZeroCopyBatch {
   readonly columns: NativeArrowColumn[];
 }
 
+export type NativeUpdateValue = null | boolean | number | string;
+
+export interface NativeSubscriptionUpdate {
+  readonly kind: 'update';
+  readonly topic: string;
+  readonly topicId: number;
+  readonly timestampUs: number;
+  readonly layoutVersion: number;
+  readonly fields: readonly string[];
+  readonly values: readonly NativeUpdateValue[];
+  readonly valueKinds: readonly string[];
+}
+
 export interface NativeSubscription {
+  nextUpdate(): Promise<NativeSubscriptionUpdate | null>;
   nextArrow(): Promise<NativeArrowZeroCopyBatch | null>;
   add(tickers: readonly string[]): Promise<void>;
   remove(tickers: readonly string[]): Promise<void>;
+  unsubscribe(drain: boolean): Promise<NativeSubscriptionUpdate[] | null>;
   unsubscribeArrow(drain: boolean): Promise<NativeArrowZeroCopyBatch[] | null>;
   readonly tickers: string[];
   readonly fields: string[];
