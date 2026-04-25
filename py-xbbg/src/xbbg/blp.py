@@ -3495,6 +3495,73 @@ def _reshape_bqr_generic(table: pa.Table, ticker: str) -> nw.DataFrame:
     return nw.from_native(result)
 
 
+_BQR_RENAME_MAP: dict[str, str] = {
+    "type": "event_type",
+    "value": "price",
+    "brokerBuyCode": "broker_buy",
+    "brokerSellCode": "broker_sell",
+    "spreadPrice": "spread_price",
+    "conditionCodes": "condition_codes",
+    "exchangeCode": "exchange",
+}
+_BQR_BROKER_COLUMNS = ("brokerBuyCode", "brokerSellCode", "broker_buy", "broker_sell")
+_BQR_DEALER_INPUT_EXAMPLE = "/isin/US037833FB15@MSG1 Corp"
+
+
+def _looks_like_bqr_dealer_input(ticker: str) -> bool:
+    normalized = " ".join(ticker.strip().casefold().split())
+    return normalized.startswith("/isin/") and "@msg1 corp" in normalized
+
+
+def _warn_bqr_dealer_input(ticker: str, *, stacklevel: int = 3) -> None:
+    if _looks_like_bqr_dealer_input(ticker):
+        return
+    warnings.warn(
+        "BQR broker attribution is intended for fixed-income ISIN inputs with an @MSG1 Corp "
+        f"dealer quote source, for example '{_BQR_DEALER_INPUT_EXAMPLE}'. Other inputs may "
+        "return quote rows without broker_buy/broker_sell and will raise unless "
+        "include_broker_codes=False is passed explicitly.",
+        UserWarning,
+        stacklevel=stacklevel,
+    )
+
+
+def _bqr_has_broker_code_value(table: pa.Table) -> bool:
+    for column in _BQR_BROKER_COLUMNS:
+        if column not in table.column_names:
+            continue
+        if any(value not in (None, "") for value in table[column].to_pylist()):
+            return True
+    return False
+
+
+def _postprocess_bqr_result(
+    result: Any,
+    *,
+    ticker: str,
+    backend: Backend | str | None,
+    enforce_broker_codes: bool,
+) -> DataFrameResult:
+    table = result if isinstance(result, pa.Table) else nw.from_native(result).to_arrow()
+
+    if "path" in table.column_names:
+        table = _reshape_bqr_generic(table, ticker).to_arrow()
+
+    if enforce_broker_codes and table.num_rows > 0 and not _bqr_has_broker_code_value(table):
+        raise RuntimeError(
+            "BQR returned quote rows without broker attribution. "
+            "Use a fixed-income ticker with a dealer quote pricing source such as '@MSG1 Corp', "
+            "or pass include_broker_codes=False if raw quote ticks without dealer codes are intentional."
+        )
+
+    if table.num_rows > 0 and "time" in table.column_names:
+        table = table.sort_by([("time", "ascending")])
+
+    renamed_columns = [_BQR_RENAME_MAP.get(column, column) for column in table.column_names]
+    table = table.rename_columns(renamed_columns)
+    return _convert_backend(table, backend)
+
+
 async def abqr(
     ticker: str,
     date_offset: str | None = None,
@@ -3502,7 +3569,7 @@ async def abqr(
     end_date: str | None = None,
     *,
     event_types: Sequence[str] | None = None,
-    include_broker_codes: bool = False,
+    include_broker_codes: bool = True,
     include_spread_price: bool = False,
     include_yield: bool = False,
     include_condition_codes: bool = False,
@@ -3523,7 +3590,7 @@ async def abqr(
         start_date: Start date (e.g., '2024-01-15'). Defaults to 2 days ago.
         end_date: End date (e.g., '2024-01-17'). Defaults to today.
         event_types: Event types to retrieve. Defaults to ['BID', 'ASK'].
-        include_broker_codes: Include broker/dealer codes (default False).
+        include_broker_codes: Include broker/dealer codes (default True).
         include_spread_price: Include spread price for bonds (default False).
         include_yield: Include yield data for bonds (default False).
         include_condition_codes: Include trade condition codes (default False).
@@ -3532,8 +3599,8 @@ async def abqr(
         **kwargs: Additional options.
 
     Returns:
-        DataFrame with columns: ticker, time, type, value, size,
-        plus optional brokerBuyCode, brokerSellCode, spreadPrice, etc.
+        DataFrame with columns: ticker, time, event_type, price, size,
+        plus optional broker_buy, broker_sell, spread_price, etc.
 
     Example::
 
@@ -4032,7 +4099,8 @@ def _build_abql_plan(args: dict[str, Any]) -> _EndpointPlan:
     )
 
 
-def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
+async def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
+    kwargs = dict(args.get("kwargs", {}))
     event_types = args.get("event_types")
     if event_types is None:
         event_types = ["BID", "ASK"]
@@ -4040,7 +4108,15 @@ def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
     now = datetime.now()
     time_fmt = "%Y-%m-%dT%H:%M:%S"
 
+    def fmt_bqr_datetime(value: Any, default_time: str) -> str:
+        text = str(value).replace(" ", "T")
+        if "T" in text:
+            return datetime.fromisoformat(text).strftime(time_fmt)
+        return _fmt_date(value, "%Y-%m-%d") + default_time
+
     date_offset = args.get("date_offset")
+    start_datetime = kwargs.pop("start_datetime", None)
+    end_datetime = kwargs.pop("end_datetime", None)
     start_date = args.get("start_date")
     end_date = args.get("end_date")
 
@@ -4049,32 +4125,42 @@ def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
         start_dt = _parse_date_offset(date_offset, now)
         s_dt = start_dt.strftime(time_fmt)
         e_dt = end_dt.strftime(time_fmt)
+    elif start_datetime is not None:
+        s_dt = fmt_bqr_datetime(start_datetime, "T00:00:00")
+        e_dt = fmt_bqr_datetime(end_datetime, "T23:59:59") if end_datetime is not None else now.strftime(time_fmt)
     elif start_date is not None:
-        s_dt = _fmt_date(start_date, "%Y-%m-%d") + "T00:00:00"
-        if end_date is not None:
-            e_dt = _fmt_date(end_date, "%Y-%m-%d") + "T23:59:59"
-        else:
-            e_dt = now.strftime(time_fmt)
+        s_dt = fmt_bqr_datetime(start_date, "T00:00:00")
+        e_dt = fmt_bqr_datetime(end_date, "T23:59:59") if end_date is not None else now.strftime(time_fmt)
     else:
         start_dt = now - timedelta(days=2)
         s_dt = start_dt.strftime(time_fmt)
         e_dt = now.strftime(time_fmt)
 
-    elements: list[tuple[str, Any]] = []
-    if args.get("include_broker_codes"):
-        elements.append(("includeBrokerCodes", "true"))
-    if args.get("include_spread_price"):
-        elements.append(("includeSpreadPrice", "true"))
-    if args.get("include_yield"):
-        elements.append(("includeYield", "true"))
-    if args.get("include_condition_codes"):
-        elements.append(("includeConditionCodes", "true"))
-    if args.get("include_exchange_codes"):
-        elements.append(("includeExchangeCodes", "true"))
+    elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.INTRADAY_TICK, kwargs)
 
-    has_extras = bool(elements)
+    def upsert_element(name: str, value: Any) -> None:
+        for idx, (existing_name, _) in enumerate(elements):
+            if existing_name == name:
+                elements[idx] = (name, value)
+                return
+        elements.append((name, value))
+
+    include_broker_codes = bool(args.get("include_broker_codes"))
+    if include_broker_codes:
+        upsert_element("includeBrokerCodes", "true")
+    if args.get("include_spread_price"):
+        upsert_element("includeSpreadPrice", "true")
+    if args.get("include_yield"):
+        upsert_element("includeYield", "true")
+    if args.get("include_condition_codes"):
+        upsert_element("includeConditionCodes", "true")
+    if args.get("include_exchange_codes"):
+        upsert_element("includeExchangeCodes", "true")
+
     ticker = args["ticker"]
     backend = args.get("backend")
+    if include_broker_codes:
+        _warn_bqr_dealer_input(ticker, stacklevel=4)
 
     logger.debug(
         "abqr: ticker=%s start=%s end=%s events=%s",
@@ -4086,12 +4172,12 @@ def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
 
     def postprocess(nw_df: Any) -> DataFrameResult:
         logger.debug("abqr: received %d rows", len(nw_df))
-        result = nw_df
-        if has_extras:
-            table = result.to_arrow()
-            if "path" in table.column_names:
-                result = _reshape_bqr_generic(table, ticker)
-        return _convert_backend(result, backend)
+        return _postprocess_bqr_result(
+            nw_df,
+            ticker=ticker,
+            backend=backend,
+            enforce_broker_codes=include_broker_codes,
+        )
 
     return _EndpointPlan(
         request_kwargs={
@@ -4100,6 +4186,7 @@ def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
             "end_datetime": e_dt,
             "event_types": list(event_types),
             "elements": elements if elements else None,
+            "overrides": overrides if overrides else None,
         },
         backend=backend,
         postprocess=postprocess,

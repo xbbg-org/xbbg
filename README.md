@@ -1752,17 +1752,16 @@ Out[17]:
 # Bloomberg Quote Request (BQR) - Dealer quotes with broker codes
 # Emulates Excel =BQR() function for fixed income dealer quotes
 
-# Get quotes from last 2 days
+# Get fixed-income dealer quotes from last 2 days; BQR requests broker codes by default
 # blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', date_offset='-2d')  # doctest: +SKIP
 
-# Using ISIN with MSG1 pricing source
-# blp.bqr('/isin/US123456789@MSG1', date_offset='-2d')  # doctest: +SKIP
+# Using ISIN with MSG1 pricing source (recommended for dealer attribution)
+# blp.bqr('/isin/US123456789@MSG1 Corp', date_offset='-2d')  # doctest: +SKIP
 
-# With broker codes and spread data
+# With spread data
 # blp.bqr(  # doctest: +SKIP
 #     'XYZ 4.5 01/15/30@MSG1 Corp',
 #     date_offset='-2d',
-#     include_broker_codes=True,
 #     include_spread_price=True,
 # )
 
@@ -1780,7 +1779,7 @@ Out[18]:
 2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE   98.85   2500000          NaN       DLRC        DLRC
 ```
 
-**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula. Use the `@MSG1` pricing source suffix to get dealer-level quote attribution. Optional parameters include `include_broker_codes`, `include_spread_price`, `include_yield`, `include_condition_codes`, and `include_exchange_codes`.
+**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula for fixed-income dealer quotes. It requests broker attribution by default and returns 0.x-compatible BQR columns such as `event_type`, `price`, `broker_buy`, and `broker_sell`. Prefer an ISIN input with `@MSG1 Corp`, e.g. `/isin/US037833FB15@MSG1 Corp`, for broker-level attribution. `bqr()` warns when an attributed request does not use that shape; if Bloomberg still returns quote rows without broker codes, `bqr()` raises instead of silently returning unattributed ticks. Pass `include_broker_codes=False` only when raw quote ticks without dealer attribution are intentional. Optional parameters include `include_spread_price`, `include_yield`, `include_condition_codes`, and `include_exchange_codes`.
 
 ### 📡 Real-time
 

@@ -56,7 +56,8 @@ class LiveTestConfig:
 
     # Bond for fixed income tests
     bond_ticker: str = "GT10 Govt"
-
+    # Use an @MSG1 fixed-income source so BQR exposes dealer attribution fields.
+    bqr_quote_ticker: str = "/isin/US037833FB15@MSG1 Corp"
     # ETF for holdings tests
     etf_ticker: str = "SPY US Equity"
 
@@ -104,6 +105,28 @@ def get_recent_utc_market_window(minutes: int = 5) -> tuple[str, str]:
     start = datetime.fromisoformat(f"{trading_day}T14:30:00")
     end = start + timedelta(minutes=minutes)
     return start.isoformat(), end.isoformat()
+
+
+def get_recent_bqr_quote_window() -> tuple[str, str]:
+    """Get a bounded full-day UTC window for sparse bond quote ticks."""
+    trading_day = get_recent_trading_day()
+    return f"{trading_day}T00:00:00", f"{trading_day}T23:59:59"
+
+
+def assert_bqr_quote_rows(table, ticker: str) -> None:
+    """Assert BQR rows are bounded fixed-income BID/ASK quotes with dealer codes."""
+    rows = table.to_pylist()
+    assert 1 <= len(rows) <= 5
+    broker_columns = {"broker_buy", "broker_sell"} & set(table.column_names)
+    assert broker_columns, f"Expected broker code column in {table.column_names}"
+    assert any(row.get(column) for row in rows for column in broker_columns), "Expected at least one broker code value"
+
+    for row in rows:
+        assert row["ticker"] == ticker
+        assert row["time"] is not None
+        assert row["event_type"] in {"BID", "ASK"}
+        assert isinstance(row["price"], int | float)
+        assert row["size"] is None or row["size"] >= 0
 
 
 # =============================================================================
@@ -772,6 +795,33 @@ class TestAbdtick:
 
 
 # =============================================================================
+# BQR Tests - Fixed-income dealer quote attribution
+# =============================================================================
+
+
+class TestBqr:
+    """Tests for bqr() - Bloomberg Quote Request dealer quotes."""
+
+    def test_bqr_fixed_income_msg1_broker_codes(self):
+        """BQR: bounded @MSG1 fixed-income quote request includes broker attribution."""
+        from xbbg import bqr
+
+        start, end = get_recent_bqr_quote_window()
+        try:
+            table = bqr(
+                CONFIG.bqr_quote_ticker,
+                start_datetime=start,
+                end_datetime=end,
+                maxDataPoints=5,
+                backend="pyarrow",
+            )
+            assert_bqr_quote_rows(table, CONFIG.bqr_quote_ticker)
+            logger.info(f"  BQR fixed-income broker rows: {len(table)}")
+        except RuntimeError as e:
+            pytest.skip(f"BQR Bloomberg request failed: {e}")
+
+
+# =============================================================================
 # Backend Conversion Tests
 # =============================================================================
 
@@ -1112,13 +1162,20 @@ class TestExtensions:
             pytest.skip(f"Corporate bonds Bloomberg request failed: {e}")
 
     def test_ext_bqr(self):
-        """Ext: BQR query."""
+        """Ext: BQR returns bounded BID/ASK quote rows by default."""
         from xbbg import ext
 
+        start, end = get_recent_bqr_quote_window()
         try:
-            df = ext.bqr("IBM US Equity")
-            assert len(df) >= 1, "IBM should have BQR results"
-            logger.info(f"  Got {len(df)} BQR results")
+            table = ext.bqr(
+                CONFIG.bqr_quote_ticker,
+                start_datetime=start,
+                end_datetime=end,
+                maxDataPoints=5,
+                backend="pyarrow",
+            )
+            assert_bqr_quote_rows(table, CONFIG.bqr_quote_ticker)
+            logger.info(f"  Got {len(table)} BQR quote rows")
         except RuntimeError as e:
             pytest.skip(f"BQR Bloomberg request failed: {e}")
 
@@ -1241,13 +1298,20 @@ class TestExtensionsAsync:
 
     @pytest.mark.asyncio
     async def test_ext_abqr(self):
-        """Ext: async BQR."""
+        """Ext: async BQR returns bounded BID/ASK quote rows by default."""
         from xbbg import ext
 
+        start, end = get_recent_bqr_quote_window()
         try:
-            df = await ext.abqr("IBM US Equity")
-            assert len(df) >= 1, "IBM should have BQR results"
-            logger.info(f"  Async BQR: {len(df)} results")
+            table = await ext.abqr(
+                CONFIG.bqr_quote_ticker,
+                start_datetime=start,
+                end_datetime=end,
+                maxDataPoints=5,
+                backend="pyarrow",
+            )
+            assert_bqr_quote_rows(table, CONFIG.bqr_quote_ticker)
+            logger.info(f"  Async BQR: {len(table)} quote rows")
         except RuntimeError as e:
             pytest.skip(f"BQR Bloomberg request failed: {e}")
 
