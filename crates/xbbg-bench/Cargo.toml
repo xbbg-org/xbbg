@@ -27,6 +27,9 @@ dhat = "0.3"
 hdrhistogram = "7.5"
 tempfile = "3.15"
 
+[package.metadata.cargo-udeps.ignore]
+normal = ["criterion", "dhat", "hdrhistogram", "tempfile"]
+
 # =============================================================================
 # Supported benchmark suite
 # =============================================================================

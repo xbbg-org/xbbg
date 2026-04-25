@@ -4,6 +4,7 @@
 //! without JSON intermediate serialization.
 
 use arrow::record_batch::RecordBatch;
+use std::collections::HashSet;
 use tokio::sync::oneshot;
 use xbbg_log::trace;
 
@@ -19,6 +20,8 @@ pub struct BulkDataState {
     columns: ColumnSet,
     /// Discovered scalar sub-field names, in first-seen order across all rows.
     subfield_names: Vec<String>,
+    /// Membership set for O(1) duplicate checks while preserving `subfield_names` order.
+    subfield_name_set: HashSet<String>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -30,6 +33,7 @@ impl BulkDataState {
             field_name: field,
             columns: ColumnSet::new(),
             subfield_names: Vec::new(),
+            subfield_name_set: HashSet::new(),
             reply,
         }
     }
@@ -147,7 +151,7 @@ impl BulkDataState {
             }
 
             let name = child.name().as_str().to_string();
-            if self.subfield_names.iter().any(|existing| existing == &name) {
+            if !self.subfield_name_set.insert(name.clone()) {
                 continue;
             }
 

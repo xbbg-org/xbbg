@@ -44,7 +44,7 @@ enum AllFieldSlot {
 pub struct SubscriptionState {
     /// Topic string (e.g., "IBM US Equity")
     pub topic: Arc<str>,
-    /// Field names as strings (for schema and lookup)
+    /// Field names as strings for schema, logs, and user-visible column names.
     pub field_strings: Vec<String>,
     /// Pre-interned field names for requested-field hot-path lookup.
     field_names: Vec<Name>,
@@ -83,6 +83,8 @@ pub struct SubscriptionState {
     suppress_closed_warning: bool,
     /// Whether to append all top-level scalar fields Bloomberg exposes.
     capture_all_fields: bool,
+    /// Logs the first post-lock conversion miss per field without changing payload semantics.
+    conversion_miss_logged: Vec<bool>,
 }
 
 impl SubscriptionState {
@@ -149,6 +151,7 @@ impl SubscriptionState {
             }
         }
         let field_builders = field_strings.iter().map(|_| None).collect();
+        let field_count = field_strings.len();
         let metrics = Arc::new(SubscriptionMetrics {
             messages_received: Arc::new(AtomicU64::new(0)),
             dropped_batches: Arc::new(AtomicU64::new(0)),
@@ -180,6 +183,7 @@ impl SubscriptionState {
             has_received_data: false,
             suppress_closed_warning: false,
             capture_all_fields,
+            conversion_miss_logged: vec![false; field_count],
         }
     }
 
@@ -321,6 +325,7 @@ impl SubscriptionState {
         self.field_name_keys.insert(field_key, idx);
         self.invalid_dateortime_fields
             .push(Self::is_invalid_dateortime_field(field_name));
+        self.conversion_miss_logged.push(false);
         self.cached_schema = None;
         idx
     }
@@ -357,13 +362,25 @@ impl SubscriptionState {
     }
 
     fn append_value_at(&mut self, idx: usize, value: Option<Value<'_>>) {
-        if value.as_ref().map_or(true, |v| matches!(v, Value::Null)) {
+        if value.as_ref().is_none_or(|v| matches!(v, Value::Null)) {
             return;
         }
 
         if let Some(builder) = &mut self.field_builders[idx] {
+            let incoming_type = value.as_ref().map(ArrowType::from_value);
             Self::pad_builder_to_len(builder, self.pending_count);
-            builder.append_value(value);
+            let locked_type = builder.arrow_type();
+            let missed = builder.append_value_report_miss(value);
+            if missed && !self.conversion_miss_logged[idx] {
+                self.conversion_miss_logged[idx] = true;
+                xbbg_log::warn!(
+                    topic = %self.topic,
+                    field = %self.field_strings[idx],
+                    locked_type = locked_type.type_name(),
+                    incoming_type = incoming_type.map(|t| t.type_name()).unwrap_or("unknown"),
+                    "subscription field value could not be converted to locked Arrow type; appending null"
+                );
+            }
             return;
         }
 
@@ -415,8 +432,16 @@ impl SubscriptionState {
 
     /// Flush pending rows as a RecordBatch.
     pub fn flush(&mut self) {
-        if self.pending_count == 0 {
+        let Some(batch) = self.finish_pending_batch() else {
             return;
+        };
+
+        self.send_batch(batch);
+    }
+
+    fn finish_pending_batch(&mut self) -> Option<RecordBatch> {
+        if self.pending_count == 0 {
+            return None;
         }
 
         // Build fixed arrays
@@ -451,17 +476,16 @@ impl SubscriptionState {
             vec![Arc::new(timestamp_array), Arc::new(topic_array)];
         columns.extend(field_arrays);
 
-        // Create RecordBatch
-        match RecordBatch::try_new(schema, columns) {
-            Ok(batch) => {
-                self.send_batch(batch);
-            }
+        let batch = match RecordBatch::try_new(schema, columns) {
+            Ok(batch) => Some(batch),
             Err(e) => {
                 xbbg_log::error!(topic = %self.topic, error = %e, "failed to create RecordBatch");
+                None
             }
-        }
+        };
 
         self.pending_count = 0;
+        batch
     }
 
     /// Get or build the Arrow schema, caching it for reuse.
@@ -545,11 +569,66 @@ impl SubscriptionState {
             }
         }
     }
+
+    fn send_batch_best_effort(&mut self, batch: RecordBatch) {
+        match self.stream.try_send(Ok(batch)) {
+            Ok(()) => {
+                self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.dropped_batches += 1;
+                self.metrics.dropped_batches.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {}
+        }
+    }
 }
 
 impl Drop for SubscriptionState {
     fn drop(&mut self) {
-        // Flush any remaining rows
-        self.flush();
+        let Some(batch) = self.finish_pending_batch() else {
+            return;
+        };
+
+        self.send_batch_best_effort(batch);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_names_stay_aligned_with_requested_fields() {
+        let (tx, _rx) = mpsc::channel(1);
+        let state = SubscriptionState::new(
+            "AAPL US Equity".to_string(),
+            vec!["LAST_PRICE".to_string(), "LAST_PRICE".to_string()],
+            tx,
+            10,
+            false,
+        );
+
+        assert_eq!(
+            state.field_strings,
+            vec![
+                "LAST_PRICE".to_string(),
+                "MKTDATA_EVENT_TYPE".to_string(),
+                "MKTDATA_EVENT_SUBTYPE".to_string(),
+            ]
+        );
+        assert_eq!(state.field_names.len(), state.field_strings.len());
+        assert_eq!(state.field_builders.len(), state.field_strings.len());
+        assert_eq!(
+            state.invalid_dateortime_fields.len(),
+            state.field_strings.len()
+        );
+        assert_eq!(
+            state.conversion_miss_logged.len(),
+            state.field_strings.len()
+        );
+        for (field, name) in state.field_strings.iter().zip(state.field_names.iter()) {
+            assert_eq!(name.as_str(), field);
+        }
     }
 }

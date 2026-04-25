@@ -2151,14 +2151,19 @@ impl PySubscription {
                 }
             }
 
-            // Unsubscribe from Bloomberg
+            // Unsubscribe from Bloomberg. Only clear status after Bloomberg accepts
+            // termination so SessionClaim::Drop can safely return the worker to the pool.
             if let Some(mut h) = handle {
                 if let Some(claim) = h.claim.take() {
                     let keys = h.status.lock().keys().to_vec();
                     if !keys.is_empty() {
-                        let _ = claim.unsubscribe(keys).await;
+                        claim
+                            .unsubscribe(keys)
+                            .await
+                            .map_err(blp_async_error_to_pyerr)?;
+                        h.status.lock().clear_active();
                     }
-                    // claim is dropped here, returning session to pool
+                    // claim drops here; cleared status means a clean worker lease can be reused.
                 }
             }
 
