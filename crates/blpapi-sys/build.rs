@@ -2,7 +2,6 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[path = "../../build-support/libclang.rs"]
 mod libclang;
 
 fn main() {

@@ -1,22 +1,23 @@
 # CI Container Images
 
-This directory contains container images used by CI:
+This directory contains the Rust CI container image:
 
 - `docker/ci/Dockerfile`: Rust CI image with toolchain + `libclang`
-- `docker/manylinux/Dockerfile`: manylinux wheel image with `clang-devel`
+
+The manylinux wheel image lives next to the Python distribution at
+`py-xbbg/docker/manylinux/Dockerfile`.
 
 Bloomberg SDK files are intentionally **not** baked into container images.
 CI downloads the SDK at runtime to avoid redistributing the SDK in a public image registry.
 
 ## Local usage with Podman
 
-The Dockerfiles are OCI-compatible, so you can build and run them with Podman.
+The Dockerfile is OCI-compatible, so you can build and run it with Podman.
 
-### Build both images
+### Build the image
 
 ```bash
 podman build -f docker/ci/Dockerfile -t xbbg-ci:local .
-podman build -f docker/manylinux/Dockerfile -t xbbg-manylinux:local .
 ```
 
 ### Generate `blpapi-sys` bindings artifact locally
@@ -32,8 +33,8 @@ podman run --rm \
   bash -lc '
     BLPAPI_VERSION=${BLPAPI_VERSION:-3.26.2.1}
     bash ./scripts/sdktool.sh --version "$BLPAPI_VERSION" --no-set-active
-    export BLPAPI_ROOT=/work/vendor/blpapi-sdk/$BLPAPI_VERSION
-    export LD_LIBRARY_PATH=/work/vendor/blpapi-sdk/$BLPAPI_VERSION/Linux:$LD_LIBRARY_PATH
+    export BLPAPI_ROOT=/work/crates/blpapi-sys/vendor/blpapi-sdk/$BLPAPI_VERSION
+    export LD_LIBRARY_PATH=/work/crates/blpapi-sys/vendor/blpapi-sdk/$BLPAPI_VERSION/Linux:$LD_LIBRARY_PATH
     cargo build -p blpapi-sys
   '
 ```
@@ -48,8 +49,8 @@ podman run --rm \
   bash -lc '
     BLPAPI_VERSION=${BLPAPI_VERSION:-3.26.2.1}
     bash ./scripts/sdktool.sh --version "$BLPAPI_VERSION" --no-set-active
-    export BLPAPI_ROOT=/work/vendor/blpapi-sdk/$BLPAPI_VERSION
-    export LD_LIBRARY_PATH=/work/vendor/blpapi-sdk/$BLPAPI_VERSION/Linux:$LD_LIBRARY_PATH
+    export BLPAPI_ROOT=/work/crates/blpapi-sys/vendor/blpapi-sdk/$BLPAPI_VERSION
+    export LD_LIBRARY_PATH=/work/crates/blpapi-sys/vendor/blpapi-sdk/$BLPAPI_VERSION/Linux:$LD_LIBRARY_PATH
     cargo clippy --workspace --all-targets -- -D warnings
   '
 ```
