@@ -132,9 +132,9 @@ venv.bak/
 
 # Bloomberg BLPAPI SDK (local development only; do not commit)
 # README.md is tracked for setup instructions; everything else is ignored.
-vendor/blpapi-sdk/*
-!vendor/blpapi-sdk/README.md
-vendor/*.zip
+crates/blpapi-sys/vendor/blpapi-sdk/*
+!crates/blpapi-sys/vendor/blpapi-sdk/README.md
+crates/blpapi-sys/vendor/*.zip
 
 # Bloomberg DLL files (local development only)
 **/blpapi3_64.dll
