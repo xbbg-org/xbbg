@@ -45,7 +45,7 @@ xbbg.configure({
 });
 ```
 
-For B-PIPE, leased-line, or advanced auth scenarios, `connect()` and `configure()` accept the structured `EngineConfig` object exposed by the package.
+For B-PIPE, leased-line, or advanced auth scenarios, `connect()` and `configure()` accept the structured `EngineConfig` object exposed by the package. Direct B-PIPE hosts use `host`/`port` or `servers`; ZFP over leased lines uses `zfpRemote: '8194' | '8196'` plus `tls` credentials and must not be combined with direct hosts or SOCKS5.
 
 ## Unsupported platforms or source builds
 

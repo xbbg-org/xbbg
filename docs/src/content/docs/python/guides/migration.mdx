@@ -424,18 +424,29 @@ xbbg.configure(
 )
 ```
 
-### TLS for ZFP / leased line
+### ZFP over leased lines
 
-For ZFP (Zero Footprint) connections, `EngineConfig` exposes the full TLS surface:
+For ZFP (Zero Footprint) leased-line connections, pass `zfp_remote='8194'` or `zfp_remote='8196'` plus TLS credentials before the first request. xbbg uses Bloomberg's ZFP utility to populate the leased-line endpoints, so `zfp_remote` is mutually exclusive with `host`, `port`, `servers`, `socks5_host`, and `socks5_port`.
+
+```python
+import xbbg
+
+xbbg.configure(
+    zfp_remote='8194',
+    tls_client_credentials='/secure/client.p12',
+    tls_client_credentials_password='secret',
+    tls_trust_material='/secure/trust.p7',
+)
+```
 
 | Field | Type | Purpose |
 |-------|------|---------|
+| `zfp_remote` | `str` | ZFP leased-line remote, either `'8194'` or `'8196'` |
 | `tls_client_credentials` | `str` | Path to client credentials file |
-| `tls_client_credentials_password` | `str` | Password for the credentials file |
+| `tls_client_credentials_password` | `str` | Password for the credentials file, if required |
 | `tls_trust_material` | `str` | Path to the trusted-CA bundle |
-| `tls_handshake_timeout_ms` | `int` | TLS handshake timeout |
-| `tls_crl_fetch_timeout_ms` | `int` | CRL fetch timeout |
-| `zfp_remote` | `str` | ZFP remote endpoint identifier |
+| `tls_handshake_timeout_ms` | `int` | Optional TLS handshake timeout |
+| `tls_crl_fetch_timeout_ms` | `int` | Optional CRL fetch timeout |
 
 ## Renamed and replaced functions
 

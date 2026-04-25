@@ -76,8 +76,8 @@ xbbg.configure({
   port: 8194,
 });
 
-// BPIPE / leased-line capable session config
-const engine = await xbbg.connect({
+// Direct B-PIPE / leased-line hosts with ordered failover
+const bpipeEngine = await xbbg.connect({
   servers: [
     { host: 'bpipe-primary.example.com', port: 8194 },
     { host: 'bpipe-secondary.example.com', port: 8196 },
@@ -88,7 +88,16 @@ const engine = await xbbg.connect({
     clientCredentialsPassword: process.env.BPIPE_TLS_PASSWORD,
     trustMaterial: '/secure/trust.p7',
   },
+});
+
+// ZFP over leased lines: Bloomberg supplies endpoints via zfpRemote
+const zfpEngine = await xbbg.connect({
   zfpRemote: '8194',
+  tls: {
+    clientCredentials: '/secure/client.p12',
+    clientCredentialsPassword: process.env.BPIPE_TLS_PASSWORD,
+    trustMaterial: '/secure/trust.p7',
+  },
 });
 
 // Python-style blp namespace
@@ -154,14 +163,15 @@ const px = await engine.currencyConversion('700 HK Equity', 'USD', '20240101', '
 
 `connect()` and `configure()` accept a structured `EngineConfig` object. The most important connection controls are:
 
-- `host` / `port` for a single Bloomberg session endpoint
-- `servers` for ordered failover across multiple Bloomberg hosts
+- `host` / `port` for a single Bloomberg Terminal or direct B-PIPE endpoint
+- `servers` for ordered failover across multiple direct Bloomberg hosts
 - `auth` for Bloomberg session identity auth: `user`, `app`, `userapp`, `dir`, `manual`, or `token`
-- `tls` plus `zfpRemote` for leased-line / BPIPE-style sessions
-- `socks5` for proxied Bloomberg connectivity
+- `tls` for encrypted B-PIPE/direct sessions and as a required input for ZFP
+- `zfpRemote` (`'8194'` or `'8196'`) for Bloomberg ZFP over leased lines; do not combine it with `host`/`port`/`servers`/`socks5` because Bloomberg supplies the endpoints
+- `socks5` for proxied direct Bloomberg connectivity
 - `retryPolicy`, `numStartAttempts`, and recovery settings for reconnect behavior
 
-The JS binding now forwards these fields directly to the Rust engine, so Node can configure the same auth and transport features already available in the core runtime.
+The JS binding forwards these fields directly to the Rust engine, so Node can configure the same auth and transport features already available in the core runtime. Invalid transport combinations such as `zfpRemote` plus direct hosts fail during configuration instead of silently connecting to `localhost:8194`.
 
 ## Features (planned)
 

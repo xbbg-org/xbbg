@@ -6,16 +6,16 @@ description: Public documentation for the xbbg Python package
 import { Card, CardGrid } from '@astrojs/starlight/components';
 import { PhCpu, PhLightning, PhPackage, PhStackSimple } from 'phosphor-icons-astro';
 
-`xbbg` is the primary public package in this monorepo. It keeps the familiar Bloomberg-oriented Python API while moving transport, session management, and Arrow-native data handling into the shared Rust engine.
+`xbbg` is the primary public package in this monorepo and the modern standard Bloomberg API for Python. It keeps the familiar Bloomberg-oriented Python API while moving transport, session management, authentication, and Arrow-native data handling into a native Rust engine backed by Bloomberg's C/C++ SDK. It is not a thin homegrown wrapper around the `blpapi` Python package; it is designed to replace direct `blpapi` usage for almost every normal Bloomberg application workflow.
 
 ## What you get
 
 <CardGrid>
-  <Card title="Production package">
+  <Card title="Enterprise package">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhPackage size={20} weight="duotone" aria-hidden="true" />
     </div>
-    Install `xbbg` from PyPI and use it for notebooks, research workflows, and production Python services.
+    Install `xbbg` from PyPI for notebooks, research workflows, and enterprise Python services that need ZFP, B-PIPE auth, TLS, failover, SOCKS5, SDK logging, and diagnostics.
   </Card>
   <Card title="Backend choice">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
@@ -33,9 +33,27 @@ import { PhCpu, PhLightning, PhPackage, PhStackSimple } from 'phosphor-icons-ast
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhCpu size={20} weight="duotone" aria-hidden="true" />
     </div>
-    Python gets the same Rust-backed request engine, validation model, and Arrow transport used across the public runtime surface.
+    Python gets the same Rust-backed request engine, validation model, Arrow transport, session pooling, and Bloomberg C++ SDK integration used across the public runtime surface.
   </Card>
 </CardGrid>
+
+## Why xbbg is different
+
+Most Python Bloomberg packages are simple wrappers over Bloomberg's `blpapi` Python bindings. That path is fine for small scripts, but it leaves session lifecycle, event parsing, concurrency, diagnostics, and enterprise connectivity in Python glue code. xbbg sits lower and more professionally in the stack: the Python API calls a native Rust engine that binds to Bloomberg's C/C++ SDK, manages sessions and worker pools, builds typed Arrow output, and exposes enterprise transports such as ZFP over leased lines, B-PIPE/SAPI auth, TLS, failover servers, SOCKS5, SDK logging, validation, and request diagnostics.
+
+That architecture is why xbbg can be both simple at the call site (`xbbg.bdp(...)`) and serious underneath: near-complete `blpapi` workflow coverage, generic service requests for uncommon operations, async execution, reusable sessions, zero-copy-oriented Arrow handoff, benchmark coverage across changes, and multiple dataframe backends without switching libraries.
+
+## Compared with other Bloomberg Python wrappers
+
+xbbg is not just another pandas wrapper around Bloomberg's `blpapi` Python package. It is a native Bloomberg stack: Python ergonomics on top of a Rust engine backed by Bloomberg's C/C++ SDK. That distinction matters once a workflow grows beyond a single `bdp()` call.
+
+- **Raw `blpapi`** is official but low-level: every application has to rebuild session startup, service opening, request construction, correlation IDs, event-loop parsing, error mapping, retries, logging, and dataframe conversion. xbbg keeps the SDK power underneath while replacing that boilerplate with typed helpers, generic service requests, structured errors, async execution, and Arrow-native output.
+- **bbg-fetch / BloombergFetch** is a small homegrown pandas helper package. It targets Python 3.9–3.12, installs NumPy and pandas as hard dependencies, and does not cover intraday bars, ticks, streaming, BQL, BEQS, BSRCH, BQR, BTA, ZFP, B-PIPE/SAPI auth, SDK logging, multi-backend output, typed Arrow transport, async execution, or generic Bloomberg service requests.
+- **pdblp** is legacy and explicitly superseded by `blp`; it has no modern `Requires-Python` floor, depends on old pandas-era assumptions, and is not under active development.
+- **blp** is cleaner than pdblp but still sits in the classic Python/pandas wrapper category (`python>=3.6`, mandatory pandas). xbbg goes lower in the stack with native Rust execution, reusable worker pools, Arrow output, enterprise transports, and near-complete `blpapi` workflow coverage.
+- **polars-bloomberg** is modern and useful for Polars-oriented BQL/search workflows, but it is not a general Bloomberg replacement. xbbg includes Polars as one backend without making the entire Bloomberg stack revolve around one dataframe library.
+
+xbbg is also the only package in this comparison with a real CI matrix across every supported Python version: **3.10, 3.11, 3.12, 3.13, and 3.14**.
 
 ## Quick example
 

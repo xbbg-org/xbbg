@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, asdict
 from datetime import date, datetime, timezone
@@ -320,43 +321,50 @@ def measure(package: str, operation: str, call: Callable[[], Any], normalize: Ca
         )
 
 
+def run_async(coro: Any) -> Any:
+    """Run xbbg async endpoints so the benchmark uses the native async path."""
+    return asyncio.run(coro)
+
+
 def xbbg_calls() -> dict[str, tuple[Callable[[], Any], Callable[[Any], list[dict[str, Any]]]]]:
     return {
         "bdp_single": (
-            lambda: blp.bdp(TICKERS_SINGLE[0], FIELDS_SINGLE[0], backend="Pandas"),
+            lambda: run_async(blp.abdp(TICKERS_SINGLE[0], FIELDS_SINGLE[0], backend="Pandas")),
             lambda obj: normalize_bdp(obj, TICKERS_SINGLE, FIELDS_SINGLE),
         ),
         "bdp_multi": (
-            lambda: blp.bdp(TICKERS_MULTI, FIELDS_MULTI, backend="Pandas"),
+            lambda: run_async(blp.abdp(TICKERS_MULTI, FIELDS_MULTI, backend="Pandas")),
             lambda obj: normalize_bdp(obj, TICKERS_MULTI, FIELDS_MULTI),
         ),
         "bdh_single": (
-            lambda: blp.bdh(TICKERS_SINGLE[0], FIELDS_SINGLE[0], BDH_START, BDH_END, backend="Pandas"),
+            lambda: run_async(blp.abdh(TICKERS_SINGLE[0], FIELDS_SINGLE[0], BDH_START, BDH_END, backend="Pandas")),
             lambda obj: normalize_bdh(obj, TICKERS_SINGLE, FIELDS_SINGLE),
         ),
         "bdh_multi": (
-            lambda: blp.bdh(TICKERS_MULTI, FIELDS_MULTI, BDH_START, BDH_END, backend="Pandas"),
+            lambda: run_async(blp.abdh(TICKERS_MULTI, FIELDS_MULTI, BDH_START, BDH_END, backend="Pandas")),
             lambda obj: normalize_bdh(obj, TICKERS_MULTI, FIELDS_MULTI),
         ),
         "bdib": (
-            lambda: blp.bdib(
-                BDIB_SECURITY,
-                typ=BDIB_EVENT,
-                start_datetime=BDIB_START_NY,
-                end_datetime=BDIB_END_NY,
-                interval=BDIB_INTERVAL,
-                request_tz="America/New_York",
-                output_tz="UTC",
-                backend="Pandas",
+            lambda: run_async(
+                blp.abdib(
+                    BDIB_SECURITY,
+                    typ=BDIB_EVENT,
+                    start_datetime=BDIB_START_NY,
+                    end_datetime=BDIB_END_NY,
+                    interval=BDIB_INTERVAL,
+                    request_tz="America/New_York",
+                    output_tz="UTC",
+                    backend="Pandas",
+                )
             ),
             normalize_bdib,
         ),
         "bql_simple": (
-            lambda: blp.bql(BQL_SIMPLE, backend="Pandas"),
+            lambda: run_async(blp.abql(BQL_SIMPLE, backend="Pandas")),
             normalize_bql,
         ),
         "bql_multi": (
-            lambda: blp.bql(BQL_MULTI, backend="Pandas"),
+            lambda: run_async(blp.abql(BQL_MULTI, backend="Pandas")),
             normalize_bql,
         ),
     }

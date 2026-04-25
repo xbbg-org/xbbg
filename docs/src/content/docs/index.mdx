@@ -3,7 +3,7 @@ title: xbbg
 description: Public documentation for the xbbg Python package and @xbbg/core Node.js package
 template: splash
 hero:
-  tagline: Python-first Bloomberg APIs powered by a shared Rust engine
+  tagline: Enterprise-grade Bloomberg APIs backed by the C++ SDK and a shared Rust engine
   image:
     file: ../../assets/xbbg-logo.png
   actions:
@@ -34,14 +34,14 @@ import {
 
 ## Public packages
 
-This site documents the public surfaces of the xbbg monorepo: the production Python package, `xbbg`, and the published Node.js package, `@xbbg/core`. Internal Rust crates, private browser packages, and platform-specific packaging artifacts stay out of the public navigation on purpose.
+This site documents the public surfaces of the xbbg monorepo: the enterprise-grade Python package, `xbbg`, and the published Node.js package, `@xbbg/core`. xbbg is a native wrapper around Bloomberg's C/C++ SDK through the shared Rust engine, not a thin Python convenience layer over the `blpapi` Python package. Internal Rust crates, private browser packages, and platform-specific packaging artifacts stay out of the public navigation on purpose.
 
 <CardGrid stagger>
   <Card title="xbbg (Python)">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhPackage size={20} weight="duotone" aria-hidden="true" />
     </div>
-    The primary public package: Bloomberg requests, streaming, async support, and backend selection for pandas, Polars, PyArrow, and more.
+The primary public package: Bloomberg requests, streaming, async support, enterprise transports, and backend selection for pandas, Polars, PyArrow, and more.
   </Card>
   <Card title="@xbbg/core (Node.js)">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
@@ -53,7 +53,7 @@ This site documents the public surfaces of the xbbg monorepo: the production Pyt
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhCpu size={20} weight="duotone" aria-hidden="true" />
     </div>
-    Python and Node.js both ride on the same Rust core for transport, Arrow-native data handling, and Bloomberg session management.
+Python and Node.js both ride on the same Rust core for Bloomberg C++ SDK transport, Arrow-native data handling, session pooling, authentication, and enterprise connectivity.
   </Card>
   <Card title="Monorepo-aware docs">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
