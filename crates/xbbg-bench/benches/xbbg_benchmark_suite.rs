@@ -897,6 +897,13 @@ fn replay_subscription_events(
         );
     }
 
+    let cached_messages = events
+        .iter()
+        .map(|event| event.messages().count())
+        .sum::<usize>()
+        .max(1);
+    let repeats_per_message = (target_messages / cached_messages).max(1);
+
     let topic_count = topic_count.max(1);
     let (tx, mut rx) = mpsc::channel(topic_count.saturating_mul(4).max(16));
     let field_vec = fields.iter().map(|field| (*field).to_string()).collect::<Vec<_>>();
@@ -918,11 +925,13 @@ fn replay_subscription_events(
     while processed < target_messages {
         for event in events {
             for msg in event.messages() {
-                let idx = processed % topic_count;
-                states[idx].on_message(&msg);
-                processed += 1;
-                if processed >= target_messages {
-                    break;
+                for _ in 0..repeats_per_message {
+                    let idx = processed % topic_count;
+                    states[idx].on_message(&msg);
+                    processed += 1;
+                    if processed >= target_messages {
+                        break;
+                    }
                 }
             }
             if processed >= target_messages {
@@ -961,7 +970,7 @@ fn replay_subscription_events(
         processed,
         "messages",
         format!(
-            "target_messages={target_messages}, topics={topic_count}, batches={batches}, all_fields={all_fields}, cached_events={}",
+            "target_messages={target_messages}, topics={topic_count}, batches={batches}, all_fields={all_fields}, cached_events={}, cached_messages={cached_messages}, repeats_per_message={repeats_per_message}",
             events.len()
         ),
     );

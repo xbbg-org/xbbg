@@ -65,7 +65,7 @@ The suite includes cached SDK event replay benchmarks so performance changes in 
 - `replay / bdtick_optional_fields`: one BDTICK seed request with condition/exchange code options, then repeated `IntradayTickState` extraction
 - `replay / bql_response`: one BQL seed query, then repeated `BqlState` extraction
 
-Subscription replay captures a short real subscription window once, then replays cached messages through `SubscriptionState` cases: requested fields, `allFields`, high message count, and high topic count.
+Subscription replay captures a short real subscription window once, then replays cached messages through `SubscriptionState` cases: requested fields, `allFields`, high message count, and high topic count. Each cached SDK message is replayed multiple times when necessary so the measurement emphasizes `SubscriptionState -> Arrow RecordBatch` throughput rather than repeatedly constructing Bloomberg `MessageIterator`s.
 
 Examples:
 
