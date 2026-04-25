@@ -319,6 +319,59 @@ class TestAbdh:
 
 
 # =============================================================================
+# Notebook Sync Bridge Regression Tests
+# =============================================================================
+
+
+class TestNotebookSyncBridge:
+    """Live regression coverage for issue #281 notebook sync wrappers."""
+
+    @staticmethod
+    def _enable_fake_ipykernel(IPython):
+        class FakeKernelShell:
+            __module__ = "ipykernel.zmqshell"
+
+            config = {"IPKernelApp": {}}
+
+        original_get_ipython = IPython.get_ipython
+        IPython.get_ipython = lambda: FakeKernelShell()
+        return original_get_ipython
+
+    @pytest.mark.asyncio
+    async def test_bdp_bdh_sync_wrappers_work_in_ipykernel_loop(self):
+        """bdp/bdh should work from a running IPykernel event loop."""
+        IPython = pytest.importorskip("IPython")
+        from xbbg import bdh, bdp, blp
+
+        original_get_ipython = self._enable_fake_ipykernel(IPython)
+        try:
+            bdp_df = bdp(CONFIG.equity_single, CONFIG.price_field)
+            start, end = get_date_range(5)
+            bdh_df = bdh(CONFIG.equity_single, CONFIG.price_field, start_date=start, end_date=end)
+        finally:
+            IPython.get_ipython = original_get_ipython
+            blp._stop_notebook_sync_loop()
+
+        assert len(bdp_df) == 1
+        assert len(bdh_df) >= 1
+        logger.info(f"  Notebook bridge bdp rows: {len(bdp_df)}, bdh rows: {len(bdh_df)}")
+
+    @pytest.mark.asyncio
+    async def test_streaming_sync_wrapper_still_raises_in_notebook_loop(self):
+        """Streaming sync wrappers stay async-aware and do not use the notebook bridge."""
+        IPython = pytest.importorskip("IPython")
+        from xbbg import blp, subscribe
+
+        original_get_ipython = self._enable_fake_ipykernel(IPython)
+        try:
+            with pytest.raises(RuntimeError, match="await asubscribe"):
+                subscribe([CONFIG.streaming_ticker], [CONFIG.price_field])
+        finally:
+            IPython.get_ipython = original_get_ipython
+            blp._stop_notebook_sync_loop()
+
+
+# =============================================================================
 # Output Format Tests - regression coverage for bdp/bdh format= variants
 # =============================================================================
 
@@ -2024,6 +2077,7 @@ _register_class_tests(TestBdp, "bdp")
 _register_class_tests(TestAbdp, "abdp")
 _register_class_tests(TestBdh, "bdh")
 _register_class_tests(TestAbdh, "abdh")
+_register_class_tests(TestNotebookSyncBridge, "notebook_bridge")
 _register_class_tests(TestBds, "bds")
 _register_class_tests(TestAbds, "abds")
 _register_class_tests(TestBdib, "bdib")
@@ -2101,6 +2155,7 @@ def run_tests(test_names: list[str]) -> bool:
                     "abdib",
                     "abdtick",
                     "ext_async",
+                    "notebook_bridge",
                     "stream",
                     "abql",
                     "absrch",

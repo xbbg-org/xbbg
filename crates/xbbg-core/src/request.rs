@@ -818,6 +818,19 @@ fn parse_datetime(s: &str) -> Result<crate::ffi::blpapi_Datetime_t> {
     Ok(dt)
 }
 
+impl Drop for Request {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            // SAFETY: We own this pointer and it's valid.
+            // blpapi_Request_destroy releases the request resources.
+            unsafe {
+                crate::ffi::blpapi_Request_destroy(self.ptr);
+            }
+            self.ptr = std::ptr::null_mut();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -849,18 +862,5 @@ mod tests {
         assert_eq!(dt.seconds, 3);
         assert_eq!(dt.offset, 0);
         assert!(dt.parts & crate::ffi::BLPAPI_DATETIME_OFFSET_PART != 0);
-    }
-}
-
-impl Drop for Request {
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            // SAFETY: We own this pointer and it's valid.
-            // blpapi_Request_destroy releases the request resources.
-            unsafe {
-                crate::ffi::blpapi_Request_destroy(self.ptr);
-            }
-            self.ptr = std::ptr::null_mut();
-        }
     }
 }

@@ -294,7 +294,8 @@ async def test_schema_types():
                 {
                     field.name: batch.column(field.name)[0].as_py()
                     for field in batch.schema
-                    if field.name in {
+                    if field.name
+                    in {
                         "timestamp",
                         "topic",
                         "LAST_PRICE",
