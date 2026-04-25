@@ -1,0 +1,123 @@
+---
+title: Dates and Datetimes
+description: How xbbg accepts native date / datetime objects across every API surface
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+xbbg accepts native Python date and datetime types on every API surface that
+takes a date or datetime. You no longer need to pre-format values to strings
+before calling `bdh`, `bdib`, `bdtick`, or any of the `xbbg.ext` helpers — pass
+a `datetime.date`, `datetime.datetime`, or a `pandas.Timestamp` directly.
+
+## Accepted types
+
+For any parameter named `start_date`, `end_date`, `dt`, `start_datetime`,
+`end_datetime`, `settle_dt`, `expiry_dt`, or `asof`:
+
+| Type | Example | Notes |
+|------|---------|-------|
+| `str` (ISO 8601) | `"2023-01-17"`, `"2023-01-17T10:30:00"`, `"2023-01-17T10:30:00-05:00"` | Year-leading. Tz suffix preserved. |
+| `str` (Bloomberg-native) | `"20230117"` | Compact form, no separators. |
+| `str` ("today") | `"today"` | Case-insensitive. Resolves to today's date. |
+| `datetime.date` | `date(2023, 1, 17)` | Date portion only. |
+| `datetime.datetime` (naive) | `datetime(2023, 1, 17, 10, 30)` | For datetime params, naive values are interpreted via `request_tz`. |
+| `datetime.datetime` (aware) | `datetime(2023, 1, 17, tzinfo=ZoneInfo("America/New_York"))` | Timezone preserved end-to-end. |
+| `pandas.Timestamp` | `pd.Timestamp("2023-01-17")` | Detected via duck-typing — pandas is **not** a hard dependency. |
+
+## Rejected formats
+
+xbbg rejects ambiguous month/day strings instead of guessing:
+
+```python
+blp.bdh("AAPL US Equity", "PX_LAST", start_date="01/17/2023")
+# ValueError: Ambiguous date format '01/17/2023': month/day order cannot be inferred.
+# Use ISO 8601 (YYYY-MM-DD), Bloomberg-native (YYYYMMDD), or pass a
+# datetime.date / datetime.datetime object.
+```
+
+## Examples
+
+### Historical data
+
+```python
+from datetime import date
+
+import pandas as pd
+from xbbg import blp
+
+# String, date, datetime, and pd.Timestamp all work interchangeably.
+df = blp.bdh("AAPL US Equity", "PX_LAST", start_date="2023-01-01", end_date="today")
+df = blp.bdh("AAPL US Equity", "PX_LAST", start_date=date(2023, 1, 1))
+df = blp.bdh("AAPL US Equity", "PX_LAST", start_date=pd.Timestamp("2023-01-01"))
+```
+
+### Intraday bars and ticks
+
+```python
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# Naive datetimes are interpreted using request_tz (default UTC).
+df = blp.bdtick(
+    "AAPL US Equity",
+    start_datetime=datetime(2024, 12, 1, 9, 30),
+    end_datetime=datetime(2024, 12, 1, 16, 0),
+    request_tz="exchange",
+)
+
+# Tz-aware datetimes preserve their own zone — request_tz is ignored.
+df = blp.bdtick(
+    "AAPL US Equity",
+    start_datetime=datetime(2024, 12, 1, 9, 30, tzinfo=ZoneInfo("America/New_York")),
+    end_datetime=datetime(2024, 12, 1, 16, 0, tzinfo=ZoneInfo("America/New_York")),
+)
+```
+
+### Override-path date values
+
+Bloomberg field overrides (passed as `**kwargs`) also accept native types.
+Date-typed values are normalized to `YYYYMMDD` automatically:
+
+```python
+from datetime import date
+
+# USER_LOCAL_TRADE_DATE is a Bloomberg date-typed override.
+df = blp.bdp(
+    "AAPL US Equity",
+    "PX_LAST",
+    USER_LOCAL_TRADE_DATE=date(2023, 1, 17),  # -> "20230117"
+)
+```
+
+### Bond and option settlement / expiry
+
+```python
+from datetime import date
+
+from xbbg.ext.bonds import bond_risk
+from xbbg.ext.fixed_income import yas
+from xbbg.ext.options import option_chain
+
+bond_risk("T 4.5 05/15/38 Govt", settle_dt=date(2024, 6, 15))
+yas("US912810TM69 Govt", "YAS_BOND_YLD", settle_dt=date(2024, 6, 15))
+option_chain("AAPL US Equity", expiry_dt=date(2025, 1, 17))
+```
+
+## Timezone semantics for intraday requests
+
+| Input shape | Interpretation |
+|-------------|----------------|
+| `datetime` naive + `request_tz=None` (default) | Treated as UTC. |
+| `datetime` naive + `request_tz="exchange"` | Treated as the security's exchange timezone. |
+| `datetime` naive + `request_tz="America/New_York"` (any IANA zone) | Treated in that zone. |
+| `datetime` aware | Tz preserved; `request_tz` is ignored. |
+| `pd.Timestamp` (with `tz`) | Same as aware datetime. |
+| `pd.Timestamp` (without `tz`) | Same as naive datetime. |
+
+<Aside type="note">
+The same acceptance set applies to the JS / Node binding (`@xbbg/core`).
+JavaScript callers can pass `Date`, ISO 8601 strings, epoch milliseconds, or
+duck-typed Luxon `DateTime` (anything with `toJSDate(): Date`). See the
+[JS guide](../../../javascript/) for examples.
+</Aside>
