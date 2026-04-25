@@ -160,6 +160,15 @@ impl BenchProfile {
         env_usize("BENCH_REPLAY_ITERATIONS", default)
     }
 
+    fn bql_json_iterations(self) -> usize {
+        let default = match self {
+            Self::Smoke => 10_000,
+            Self::Standard => 50_000,
+            Self::Stress => 200_000,
+        };
+        env_usize("BENCH_BQL_JSON_ITERATIONS", default)
+    }
+
     fn subscription_replay_messages(self) -> usize {
         let default = match self {
             Self::Smoke => 10_000,
@@ -453,7 +462,8 @@ fn main() {
         println!("\n[2/4] Cached Bloomberg event replay skipped by BENCH_ONLY");
     }
 
-    println!("\n[3/4] Synthetic massive workloads");
+    println!("\n[3/4] Synthetic massive workloads and offline extractor replays");
+    records.extend(run_bql_json_suite(&config));
     if config.should_run("synthetic_bdp", &format!("bdp_{}s_{}f", shape.bdp_securities, shape.bdp_fields)) {
         records.push(profile_record(&config, "synthetic_bdp", "synthetic_bdp", |_| synthetic_bdp(shape, config.profile_mode.is_detail())));
     }
@@ -1001,6 +1011,114 @@ fn component_record_batch(rows: usize, field_count: usize) -> RecordBatch {
         columns.push(Arc::new(builder.finish()) as ArrayRef);
     }
     RecordBatch::try_new(schema, columns).expect("component profile batch")
+}
+
+fn run_bql_json_suite(config: &SuiteConfig) -> Vec<BenchRecord> {
+    let base_iterations = config.profile.bql_json_iterations();
+    let cases: [(&'static str, usize, &'static [&'static str]); 3] = [
+        ("json_simple_1x1", 1, &["px_last"]),
+        (
+            "json_wide_1x5",
+            1,
+            &["px_last", "px_open", "px_high", "px_low", "px_volume"],
+        ),
+        ("json_rows_1000x2", 1_000, &["px_last", "px_volume"]),
+    ];
+    let mut records = Vec::new();
+    for (scenario, rows, fields) in cases {
+        if !config.should_run("bql_json", scenario) {
+            continue;
+        }
+        let iterations = if rows > 1 {
+            (base_iterations / 20).max(10)
+        } else {
+            base_iterations
+        };
+        let json = bql_json_fixture(rows, fields);
+        records.push(profile_record(config, "bql_json", scenario, move |_| {
+            replay_bql_json_fixture(scenario, &json, rows, fields.len(), iterations)
+        }));
+    }
+    records
+}
+
+fn bql_json_fixture(rows: usize, fields: &[&str]) -> String {
+    let ids = (0..rows)
+        .map(|i| format!("\"TICKER{i} US Equity\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    let dates = (0..rows)
+        .map(|i| format!("\"2026-04-{:02}\"", (i % 28) + 1))
+        .collect::<Vec<_>>()
+        .join(",");
+    let currencies = (0..rows).map(|_| "\"USD\"").collect::<Vec<_>>().join(",");
+
+    let field_json = fields
+        .iter()
+        .enumerate()
+        .map(|(field_idx, field)| {
+            let values = (0..rows)
+                .map(|i| format!("{}", 100.0 + field_idx as f64 + i as f64 / 100.0))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                r#""{field}":{{"idColumn":{{"name":"ID","type":"STRING","values":[{ids}]}} ,"valuesColumn":{{"name":"VALUE","type":"DOUBLE","values":[{values}]}} ,"secondaryColumns":[{{"name":"DATE","type":"DATE","values":[{dates}]}},{{"name":"CURRENCY","type":"STRING","values":[{currencies}]}}],"responseExceptions":[],"partialErrorMap":{{"errorIterator":null}}}}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    format!(
+        r#"{{"clientContext":{{"clientRequestId":"offline-bql-benchmark"}},"responseExceptions":null,"results":{{{field_json}}}}}"#
+    )
+}
+
+fn replay_bql_json_fixture(
+    scenario: &'static str,
+    json: &str,
+    rows_per_iteration: usize,
+    field_count: usize,
+    iterations: usize,
+ ) -> BenchRecord {
+    let (tx, _rx) = oneshot::channel();
+    let state = BqlState::new(tx);
+    let start = Instant::now();
+    let mut total_rows = 0usize;
+    let mut columns = 0usize;
+
+    for _ in 0..iterations {
+        match state.parse_bql_json_for_bench(json) {
+            Ok(batch) => {
+                total_rows += batch.num_rows();
+                columns = batch.num_columns();
+                black_box(batch);
+            }
+            Err(err) => {
+                return BenchRecord::error("bql_json", scenario, start.elapsed(), err.to_string());
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+    let values = total_rows.saturating_mul(columns);
+    let mut record = BenchRecord::ok(
+        "bql_json",
+        scenario,
+        elapsed,
+        total_rows,
+        columns,
+        values,
+        "cells",
+        format!(
+            "iterations={iterations}, rows_per_iteration={rows_per_iteration}, fields={field_count}, fixture_bytes={}",
+            json.len()
+        ),
+    );
+    record.phases = vec![
+        phase("parse_bql_json_to_arrow", elapsed),
+        phase("total", Duration::from_micros(record.elapsed_us as u64)),
+    ];
+    record
 }
 
 fn profile_subscription_components(
@@ -1791,6 +1909,7 @@ fn print_usage(profile: BenchProfile, shape: SyntheticShape) {
     println!("  Request event replay iterations: {}", profile.replay_iterations());
     println!("  Subscription replay messages: {}", profile.subscription_replay_messages());
     println!("  Subscription replay topics: {}", profile.subscription_replay_topics());
+    println!("  BQL JSON extraction iterations: {}", profile.bql_json_iterations());
     println!("Synthetic scale:");
     println!("  BDP:    {} securities × {} fields", shape.bdp_securities, shape.bdp_fields);
     println!("  BDH:    {} securities × {} dates × {} fields", shape.bdh_securities, shape.bdh_dates, shape.bdh_fields);

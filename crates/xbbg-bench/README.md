@@ -28,9 +28,10 @@ The suite runs together in one report:
 2. Cached Bloomberg request-event replay through the real extractor states: BDP, BDH, BDS, BDTICK, and BQL.
 3. A bounded live subscription throughput window.
 4. Cached subscription-event replay through the real `SubscriptionState -> Arrow RecordBatch` path.
-5. Synthetic massive BDP, BDH, BDTICK, BQL, and subscription workloads.
+5. Offline generated BQL JSON extraction replay through `BqlState` for stable parser/Arrow benchmarks without Bloomberg usage.
+6. Synthetic massive BDP, BDH, BDTICK, BQL, and subscription workloads.
 
-Live probes and replay seed captures intentionally keep Bloomberg data usage low. Replay and synthetic scale reuse cached SDK events or deterministic generated data instead of issuing repeated Bloomberg requests.
+Live probes and replay seed captures intentionally keep Bloomberg data usage low. Replay, offline BQL JSON extraction, and synthetic scale reuse cached SDK events or deterministic generated data instead of issuing repeated Bloomberg requests.
 
 ### Profiles
 
@@ -65,6 +66,12 @@ The suite includes cached SDK event replay benchmarks so performance changes in 
 - `replay / bdtick_optional_fields`: one BDTICK seed request with condition/exchange code options, then repeated `IntradayTickState` extraction
 - `replay / bql_response`: one BQL seed query, then repeated `BqlState` extraction
 
+
+Offline BQL JSON extraction benchmarks are generated fixtures that run through the real `BqlState` JSON parser and Arrow materialization path, so parser/extractor changes move the benchmark without requiring repeated Bloomberg BQL requests:
+- `bql_json / json_simple_1x1`: one row, one requested value field plus ticker/date/currency columns
+- `bql_json / json_wide_1x5`: one row, five requested value fields plus shared secondary columns
+- `bql_json / json_rows_1000x2`: 1,000 rows, two requested value fields plus shared secondary columns
+
 Subscription replay captures a short real subscription window once, then replays cached messages through `SubscriptionState` cases: requested fields, `allFields`, high message count, and high topic count. Each cached SDK message is replayed multiple times when necessary so the measurement emphasizes `SubscriptionState -> Arrow RecordBatch` throughput rather than repeatedly constructing Bloomberg `MessageIterator`s.
 
 Examples:
@@ -72,6 +79,7 @@ Examples:
 ```bash
 BENCH_ONLY=bdp_refdata cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 BENCH_ONLY=subscription_replay cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
+BENCH_ONLY=bql_json BENCH_PROFILE_MODE=detail cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 ```
 
 ### Detail profiling
@@ -89,7 +97,7 @@ BENCH_PROFILE_MODE=detail BENCH_ONLY=synthetic_bdh \
 - benchmark-local allocation counters
 - allocation bytes and allocation counts per row/value
 
-This profiling is implemented only in the benchmark executable. It does not add instrumentation, feature flags, allocators, or runtime branches to production crates such as `xbbg-core`, `xbbg-async`, bindings, or apps.
+This profiling is implemented in the benchmark executable. The only production-crate surface used by these offline extractor benchmarks is the `xbbg-async/bench-internals` feature, which `xbbg-bench` enables explicitly and normal production builds do not enable.
 
 Use `BENCH_ONLY=<substring>` to profile a single scenario or suite without running unrelated live probes. For example, `BENCH_ONLY=synthetic` runs only synthetic workloads, and `BENCH_ONLY=synthetic_subscriptions` runs only the synthetic subscription workload.
 
@@ -106,6 +114,7 @@ For subscription-path diagnosis, run `BENCH_ONLY=subscription_components BENCH_P
 | `BENCH_ONLY` | unset | Run scenarios whose suite or scenario name contains this substring |
 | `BENCH_SUB_COLLECT_MS` | profile-dependent | live subscription collection window |
 | `BENCH_REPLAY_ITERATIONS` | profile-dependent | request-event replay iterations per seeded response |
+| `BENCH_BQL_JSON_ITERATIONS` | profile-dependent | offline BQL JSON extraction iterations for one-row cases; row-heavy cases use a scaled-down count |
 | `BENCH_SUB_REPLAY_MESSAGES` | profile-dependent | cached subscription messages processed in replay benchmarks |
 | `BENCH_SUB_REPLAY_TOPICS` | profile-dependent | synthetic topic count for high-topic subscription replay |
 
