@@ -118,7 +118,7 @@ jobs:
           python-version: '3.12'
 
       - name: Check generated files are up to date
-        run: python codegen/generate.py --check
+        run: python defs/codegen/generate.py --check
 
   # ════════════════════════════════════════════════════════════════════════════
   # Python Lint (fast, no SDK needed)

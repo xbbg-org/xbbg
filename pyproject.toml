@@ -139,7 +139,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "py-xbbg/benchmarks/**" = ["E402", "D", "I001", "F841", "B007"]
-"codegen/**" = ["D103"]
+"defs/codegen/**" = ["D103"]
 "py-xbbg/src/xbbg/__init__.py" = ["F401", "E402"]
 "py-xbbg/src/xbbg/**/__init__.py" = ["F401"]
 "py-xbbg/tests/live/**" = ["D", "B007", "B905", "F841", "B023", "RUF001"]
