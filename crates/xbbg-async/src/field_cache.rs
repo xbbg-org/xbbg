@@ -245,6 +245,11 @@ impl FieldTypeResolver {
         Ok(())
     }
 
+    /// Preload the cache from disk now instead of on first async resolution.
+    pub fn preload(&self) {
+        self.ensure_loaded();
+    }
+
     /// Get field info from cache.
     pub fn get(&self, field_id: &str) -> Option<FieldInfo> {
         self.ensure_loaded();

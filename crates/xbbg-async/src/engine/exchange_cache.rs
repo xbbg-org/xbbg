@@ -94,12 +94,11 @@ impl ExchangeCache {
     pub fn save_to_disk(&self) -> Result<(), String> {
         self.ensure_loaded()?;
 
+        let entries: Vec<ExchangeInfo> = self.cache_read()?.values().cloned().collect();
+
         if let Some(parent) = self.cache_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create cache dir failed: {e}"))?;
         }
-
-        let guard = self.cache_read()?;
-        let entries: Vec<&ExchangeInfo> = guard.values().collect();
 
         let file = fs::File::create(&self.cache_path)
             .map_err(|e| format!("create exchange cache file failed: {e}"))?;
@@ -108,13 +107,22 @@ impl ExchangeCache {
             .map_err(|e| format!("write exchange cache JSON failed: {e}"))
     }
 
+    pub fn preload(&self) -> Result<(), String> {
+        self.ensure_loaded()
+    }
+
     fn ensure_loaded(&self) -> Result<(), String> {
-        let loaded = *self.loaded_read()?;
-        if loaded {
+        if *self.loaded_read()? {
             return Ok(());
         }
+
+        let mut loaded = self.loaded_write()?;
+        if *loaded {
+            return Ok(());
+        }
+
         self.load_from_disk()?;
-        *self.loaded_write()? = true;
+        *loaded = true;
         Ok(())
     }
 

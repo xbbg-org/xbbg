@@ -4,6 +4,7 @@
 //! without JSON intermediate serialization.
 
 use arrow::record_batch::RecordBatch;
+use std::collections::HashSet;
 use tokio::sync::oneshot;
 use xbbg_log::trace;
 
@@ -20,6 +21,8 @@ pub struct IntradayTickState {
     ticker: String,
     /// Output columns in stable order. Starts with core columns, then first-seen tick fields.
     column_order: Vec<String>,
+    /// Membership set for O(1) duplicate checks while preserving `column_order`.
+    column_name_set: HashSet<String>,
     /// Column set for building the output.
     columns: ColumnSet,
     /// Reply channel.
@@ -39,6 +42,10 @@ impl IntradayTickState {
         Self {
             ticker,
             column_order: CORE_OUTPUT_COLUMNS
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
+            column_name_set: CORE_OUTPUT_COLUMNS
                 .iter()
                 .map(|name| (*name).to_string())
                 .collect(),
@@ -125,7 +132,7 @@ impl IntradayTickState {
             }
 
             let name = child.name().as_str().to_string();
-            if name == TICKER_COLUMN || self.column_order.iter().any(|existing| existing == &name) {
+            if name == TICKER_COLUMN || !self.column_name_set.insert(name.clone()) {
                 continue;
             }
 

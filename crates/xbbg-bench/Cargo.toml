@@ -15,11 +15,13 @@ name = "xbbg_bench"
 xbbg_core = { path = "../xbbg-core" }
 
 [dev-dependencies]
+arrow = "57.1.0"
 criterion = "0.5"
 dhat = "0.3"
 hdrhistogram = "7.5"
 tempfile = "3.15"
 xbbg-async = { path = "../xbbg-async" }
+tokio = { version = "1.48", features = ["sync"] }
 
 # =============================================================================
 # Benchmarks — Pure Rust (no Bloomberg connection required)
@@ -40,6 +42,21 @@ harness = false
 name = "alloc_criterion"
 harness = false
 
+
+# Offline Arrow builder append/finalize replay
+[[bench]]
+name = "arrow_builder_append"
+harness = false
+
+# Offline synthetic xbbg-async subscription replay
+[[bench]]
+name = "async_subscription_replay"
+harness = false
+
+# Cached real Bloomberg subscription messages replayed through xbbg-async Arrow path
+[[bench]]
+name = "cached_subscription_arrow"
+harness = false
 # =============================================================================
 # Benchmarks — Live (require Bloomberg connection)
 # =============================================================================

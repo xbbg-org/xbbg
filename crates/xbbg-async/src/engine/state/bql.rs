@@ -10,7 +10,7 @@ use arrow::array::{ArrayRef, Float64Builder, StringArray, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use serde_json::Value as JsonValue;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use tokio::sync::oneshot;
 
 use super::typed_builder::ColumnSet;
@@ -190,8 +190,9 @@ impl BqlState {
         // Collect field names and determine row count from first field
         let field_names: Vec<&String> = results_obj.keys().collect();
         let mut id_values: Vec<String> = Vec::new();
-        type FieldCol<'a> = (String, Vec<Option<JsonValue>>, Option<&'a str>);
+        type FieldCol<'a> = (String, Vec<Option<&'a JsonValue>>, Option<&'a str>);
         let mut field_columns: Vec<FieldCol<'_>> = Vec::new();
+        let mut emitted_column_names = HashSet::new();
 
         for field_name in &field_names {
             let field_data = &results_obj[*field_name];
@@ -227,12 +228,12 @@ impl BqlState {
                         continue;
                     };
                     let col_name_lower = col_name.to_lowercase();
-                    if field_columns.iter().any(|(n, _, _)| n == &col_name_lower) {
+                    if !emitted_column_names.insert(col_name_lower.clone()) {
                         continue;
                     }
-                    let mut sec_values: Vec<Option<JsonValue>> = col_vals
+                    let mut sec_values: Vec<Option<&JsonValue>> = col_vals
                         .iter()
-                        .map(|v| if v.is_null() { None } else { Some(v.clone()) })
+                        .map(|v| if v.is_null() { None } else { Some(v) })
                         .collect();
                     sec_values.resize(id_values.len(), None);
                     let sec_type = sec_col.get("type").and_then(|t| t.as_str());
@@ -241,7 +242,7 @@ impl BqlState {
             }
 
             // Extract valuesColumn values and type hint
-            let mut values: Vec<Option<JsonValue>> = Vec::new();
+            let mut values: Vec<Option<&JsonValue>> = Vec::new();
             let mut val_type: Option<&str> = None;
             if let Some(val_col) = field_data.get("valuesColumn") {
                 val_type = val_col.get("type").and_then(|t| t.as_str());
@@ -249,7 +250,7 @@ impl BqlState {
                     if let Some(arr) = vals.as_array() {
                         values = arr
                             .iter()
-                            .map(|v| if v.is_null() { None } else { Some(v.clone()) })
+                            .map(|v| if v.is_null() { None } else { Some(v) })
                             .collect();
                     }
                 }
@@ -267,6 +268,7 @@ impl BqlState {
                 );
             }
 
+            emitted_column_names.insert(field_name.to_string());
             field_columns.push((field_name.to_string(), values, val_type));
         }
 
@@ -281,9 +283,23 @@ impl BqlState {
         let mut arrays: Vec<ArrayRef> = vec![Arc::new(id_builder.finish())];
 
         for (name, values, type_hint) in &field_columns {
-            let is_numeric = match type_hint.map(|t| t.to_uppercase()).as_deref() {
-                Some("DOUBLE" | "FLOAT" | "INT32" | "INT64" | "INTEGER") => true,
-                Some("STRING" | "DATE" | "DATETIME") => false,
+            let is_numeric = match type_hint {
+                Some(t)
+                    if t.eq_ignore_ascii_case("DOUBLE")
+                        || t.eq_ignore_ascii_case("FLOAT")
+                        || t.eq_ignore_ascii_case("INT32")
+                        || t.eq_ignore_ascii_case("INT64")
+                        || t.eq_ignore_ascii_case("INTEGER") =>
+                {
+                    true
+                }
+                Some(t)
+                    if t.eq_ignore_ascii_case("STRING")
+                        || t.eq_ignore_ascii_case("DATE")
+                        || t.eq_ignore_ascii_case("DATETIME") =>
+                {
+                    false
+                }
                 _ => values
                     .iter()
                     .filter_map(|v| v.as_ref())

@@ -139,23 +139,45 @@ impl SchemaCache {
         });
     }
 
+    /// Get a cached schema from memory only.
+    ///
+    /// This is safe for request hot paths because it never performs disk I/O.
+    pub fn get_memory(&self, service: &str) -> Option<Arc<ServiceSchema>> {
+        self.cache.load().get(service).map(Arc::clone)
+    }
+
     /// Get a cached schema.
     ///
     /// First checks in-memory cache (lock-free), then disk cache.
     /// Returns None if not cached anywhere.
     pub fn get(&self, service: &str) -> Option<Arc<ServiceSchema>> {
-        if let Some(schema) = self.cache.load().get(service) {
-            return Some(Arc::clone(schema));
+        if let Some(schema) = self.get_memory(service) {
+            return Some(schema);
         }
 
         // Try loading from disk
         if let Some(schema) = self.load_from_disk(service) {
-            let schema = Arc::new(schema);
-            self.upsert(service, Arc::clone(&schema));
-            return Some(schema);
+            return Some(self.insert_memory(service, schema));
         }
 
         None
+    }
+
+    /// Insert a schema into the in-memory cache without disk persistence.
+    pub fn insert_memory(&self, service: &str, schema: ServiceSchema) -> Arc<ServiceSchema> {
+        let schema = Arc::new(schema);
+        self.upsert(service, Arc::clone(&schema));
+        schema
+    }
+
+    /// Persist a schema to the disk cache without updating memory.
+    pub fn persist(&self, service: &str, schema: &ServiceSchema) -> Result<(), String> {
+        self.save_to_disk(service, schema)
+    }
+
+    /// Return the cache directory used for disk-backed operations.
+    pub fn cache_dir(&self) -> PathBuf {
+        self.cache_dir.clone()
     }
 
     /// Insert a schema into the cache.
@@ -167,9 +189,7 @@ impl SchemaCache {
             warn!(service, error = %e, "Failed to persist schema to disk");
         }
 
-        let schema = Arc::new(schema);
-        self.upsert(service, Arc::clone(&schema));
-        schema
+        self.insert_memory(service, schema)
     }
 
     /// Invalidate a cached schema (removes from memory and disk).
@@ -345,6 +365,22 @@ mod tests {
             let schema = cache.get("//blp/refdata").unwrap();
             assert_eq!(schema.service, "//blp/refdata");
         }
+    }
+
+    #[test]
+    fn test_get_memory_does_not_load_disk() {
+        let temp_dir = TempDir::new().unwrap();
+        {
+            let cache = SchemaCache::with_cache_dir(temp_dir.path().to_path_buf());
+            cache.insert("//blp/refdata", create_test_schema("//blp/refdata"));
+        }
+
+        let cache = SchemaCache::with_cache_dir(temp_dir.path().to_path_buf());
+        assert!(cache.get_memory("//blp/refdata").is_none());
+
+        let schema = cache.get("//blp/refdata").unwrap();
+        assert_eq!(schema.service, "//blp/refdata");
+        assert!(cache.get_memory("//blp/refdata").is_some());
     }
 
     #[test]

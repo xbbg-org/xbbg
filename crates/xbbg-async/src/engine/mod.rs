@@ -1309,7 +1309,9 @@ impl Engine {
 
         let config = Arc::new(config);
 
-        crate::field_cache::init_global_resolver(config.field_cache_path.clone());
+        let field_resolver =
+            crate::field_cache::init_global_resolver(config.field_cache_path.clone());
+        field_resolver.preload();
 
         let rt = Arc::new(
             tokio::runtime::Builder::new_multi_thread()
@@ -1344,13 +1346,18 @@ impl Engine {
 
         let (shutdown_signal, _) = watch::channel(false);
 
+        let exchange_cache = ExchangeCache::new();
+        if let Err(e) = exchange_cache.preload() {
+            xbbg_log::warn!(error = %e, "failed to preload exchange cache");
+        }
+
         Ok(Self {
             request_pool,
             subscription_pool,
             rt,
             config,
             schema_cache: crate::schema::SchemaCache::new(),
-            exchange_cache: ExchangeCache::new(),
+            exchange_cache,
             shutdown_signal,
         })
     }
@@ -1643,8 +1650,16 @@ impl Engine {
 
                     let resolver_clone = resolver.clone();
                     self.rt.spawn(async move {
-                        if let Err(e) = resolver_clone.save_to_disk() {
-                            xbbg_log::warn!(error = %e, "Failed to save field cache");
+                        match tokio::task::spawn_blocking(move || resolver_clone.save_to_disk())
+                            .await
+                        {
+                            Ok(Ok(())) => {}
+                            Ok(Err(e)) => {
+                                xbbg_log::warn!(error = %e, "Failed to save field cache");
+                            }
+                            Err(e) => {
+                                xbbg_log::warn!(error = %e, "field cache save task failed");
+                            }
                         }
                     });
                 }
@@ -1753,9 +1768,26 @@ impl Engine {
         &self,
         service: &str,
     ) -> Result<Arc<crate::schema::ServiceSchema>, BlpAsyncError> {
-        // Check cache first
-        if let Some(schema) = self.schema_cache.get(service) {
+        if let Some(schema) = self.schema_cache.get_memory(service) {
             return Ok(schema);
+        }
+
+        let cache_dir = self.schema_cache.cache_dir();
+        let service_for_load = service.to_string();
+        match self
+            .rt
+            .spawn_blocking(move || {
+                crate::schema::SchemaCache::with_cache_dir(cache_dir).get(&service_for_load)
+            })
+            .await
+        {
+            Ok(Some(schema)) => {
+                return Ok(self.schema_cache.insert_memory(service, (*schema).clone()));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                xbbg_log::warn!(service, error = %e, "schema cache load task failed");
+            }
         }
 
         // Introspect via worker
@@ -1764,8 +1796,28 @@ impl Engine {
             .introspect_schema(service.to_string())
             .await?;
 
-        // Cache and return
-        Ok(self.schema_cache.insert(service, schema))
+        let schema = self.schema_cache.insert_memory(service, schema);
+        let cache_dir = self.schema_cache.cache_dir();
+        let service_for_disk = service.to_string();
+        let service_for_log = service_for_disk.clone();
+        let schema_for_disk = schema.clone();
+        self.rt.spawn(async move {
+            match tokio::task::spawn_blocking(move || {
+                let cache = crate::schema::SchemaCache::with_cache_dir(cache_dir);
+                cache.persist(&service_for_disk, &schema_for_disk)
+            })
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    xbbg_log::warn!(service = %service_for_log, error = %e, "Failed to persist schema to disk");
+                }
+                Err(e) => {
+                    xbbg_log::warn!(service = %service_for_log, error = %e, "schema cache persist task failed");
+                }
+            }
+        });
+        Ok(schema)
     }
 
     /// Get a specific operation's schema from a service.
@@ -1796,11 +1848,11 @@ impl Engine {
         Ok(schema.operation_names())
     }
 
-    /// Get cached schema without triggering introspection.
+    /// Get a schema already loaded in memory without triggering introspection or disk I/O.
     ///
-    /// Returns None if the schema is not in the cache.
+    /// Returns None if the schema has not been loaded into the in-memory cache.
     pub fn get_cached_schema(&self, service: &str) -> Option<Arc<crate::schema::ServiceSchema>> {
-        self.schema_cache.get(service)
+        self.schema_cache.get_memory(service)
     }
 
     /// Invalidate a cached schema (removes from memory and disk).
@@ -2092,9 +2144,10 @@ impl SubscriptionStream {
             if !keys.is_empty() {
                 claim.unsubscribe(keys).await?;
             }
+            self.status.lock().clear_active();
+        } else {
+            self.status.lock().clear_active();
         }
-
-        self.status.lock().clear_active();
 
         Ok(remaining)
     }

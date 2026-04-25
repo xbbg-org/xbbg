@@ -13,7 +13,7 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
 
-use xbbg_core::{BlpError, DataType as BlpDataType, Message, Value};
+use xbbg_core::{BlpError, DataType as BlpDataType, Element, Message, Name, Value};
 
 use super::super::OverflowPolicy;
 use super::typed_builder::{ArrowType, TypedBuilder};
@@ -32,8 +32,10 @@ pub struct SubscriptionMetrics {
 pub struct SubscriptionState {
     /// Topic string (e.g., "IBM US Equity")
     pub topic: Arc<str>,
-    /// Field names as strings (for schema and lookup)
+    /// Field names as strings for schema, logs, and user-visible column names.
     pub field_strings: Vec<String>,
+    /// Pre-interned Bloomberg Names aligned with `field_strings` for hot-path lookups.
+    field_names: Vec<Name>,
     /// Fast lookup from field name to column index.
     field_indices: HashMap<String, usize>,
     /// Timestamp builder (event time)
@@ -122,6 +124,10 @@ impl SubscriptionState {
                 field_strings.push(field_name);
             }
         }
+        let field_names = field_strings
+            .iter()
+            .map(|field| Name::get_or_intern(field))
+            .collect();
         let field_builders = field_strings.iter().map(|_| None).collect();
         let field_count = field_strings.len();
         let metrics = Arc::new(SubscriptionMetrics {
@@ -137,6 +143,7 @@ impl SubscriptionState {
         Self {
             topic: topic.into(),
             field_strings,
+            field_names,
             field_indices,
             timestamp_builder: TimestampMicrosecondBuilder::new(),
             topic_builder: StringBuilder::new(),
@@ -206,18 +213,18 @@ impl SubscriptionState {
         first_message
     }
 
-    fn append_requested_fields(&mut self, elem: &xbbg_core::Element<'_>) {
-        for idx in 0..self.field_strings.len() {
-            let field_name = &self.field_strings[idx];
-            if let Some(field_elem) = elem.get_by_str(field_name) {
-                self.append_value_at(idx, field_elem.get_value(0));
+    fn append_requested_fields(&mut self, elem: &Element<'_>) {
+        for idx in 0..self.field_names.len() {
+            let field_name = &self.field_names[idx];
+            if let Some(field_elem) = elem.get(field_name) {
+                self.append_element_at(idx, &field_elem);
             } else {
                 self.append_missing_at(idx);
             }
         }
     }
 
-    fn append_all_fields(&mut self, elem: &xbbg_core::Element<'_>) {
+    fn append_all_fields(&mut self, elem: &Element<'_>) {
         self.current_presence_epoch = self.current_presence_epoch.wrapping_add(1);
         if self.current_presence_epoch == 0 {
             self.field_presence_epochs.fill(0);
@@ -236,7 +243,7 @@ impl SubscriptionState {
             let field_name = child.name();
             let idx = self.ensure_field(field_name.as_str());
             self.field_presence_epochs[idx] = epoch;
-            self.append_value_at(idx, child.get_value(0));
+            self.append_element_at(idx, &child);
         }
 
         for idx in 0..self.field_strings.len() {
@@ -246,7 +253,7 @@ impl SubscriptionState {
         }
     }
 
-    fn should_capture_field(field: &xbbg_core::Element<'_>) -> bool {
+    fn should_capture_field(field: &Element<'_>) -> bool {
         !matches!(
             field.datatype(),
             BlpDataType::Sequence
@@ -263,12 +270,94 @@ impl SubscriptionState {
 
         let idx = self.field_strings.len();
         self.field_strings.push(field_name.to_string());
+        self.field_names.push(Name::get_or_intern(field_name));
         self.field_builders.push(None);
         self.field_presence_epochs.push(0);
         self.conversion_miss_logged.push(false);
         self.field_indices.insert(field_name.to_string(), idx);
         self.cached_schema = None;
         idx
+    }
+
+    fn append_element_at(&mut self, idx: usize, field_elem: &Element<'_>) {
+        if self.try_append_direct_at(idx, field_elem) {
+            return;
+        }
+
+        self.append_value_at(idx, field_elem.get_value(0));
+    }
+
+    fn try_append_direct_at(&mut self, idx: usize, field_elem: &Element<'_>) -> bool {
+        let Some(builder) = self.field_builders[idx].as_mut() else {
+            return false;
+        };
+
+        match builder {
+            TypedBuilder::Float64(builder) => {
+                if let Some(value) = field_elem.get_f64(0) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+            TypedBuilder::Int64(builder) => {
+                if let Some(value) = field_elem.get_i64(0) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+            TypedBuilder::Int32(builder) => {
+                if let Some(value) = field_elem.get_i32(0) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+            TypedBuilder::String(builder) => {
+                if let Some(value) = field_elem.get_str(0) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+            TypedBuilder::Bool(builder) => {
+                if let Some(value) = field_elem.get_bool(0) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+            TypedBuilder::Date32(builder) => {
+                if let Some(value) = field_elem.get_date32(0) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+            TypedBuilder::TimestampMicros(builder) => {
+                if let Some(value) = field_elem.get_timestamp_us(0) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+            TypedBuilder::Time64Micros(builder) => {
+                if let Some(value) = field_elem.get_datetime(0).map(|dt| dt.to_time_micros()) {
+                    builder.append_value(value);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     fn append_value_at(&mut self, idx: usize, value: Option<Value<'_>>) {
@@ -341,8 +430,16 @@ impl SubscriptionState {
 
     /// Flush pending rows as a RecordBatch.
     pub fn flush(&mut self) {
-        if self.pending_count == 0 {
+        let Some(batch) = self.finish_pending_batch() else {
             return;
+        };
+
+        self.send_batch(batch);
+    }
+
+    fn finish_pending_batch(&mut self) -> Option<RecordBatch> {
+        if self.pending_count == 0 {
+            return None;
         }
 
         // Build fixed arrays
@@ -375,17 +472,16 @@ impl SubscriptionState {
             vec![Arc::new(timestamp_array), Arc::new(topic_array)];
         columns.extend(field_arrays);
 
-        // Create RecordBatch
-        match RecordBatch::try_new(schema, columns) {
-            Ok(batch) => {
-                self.send_batch(batch);
-            }
+        let batch = match RecordBatch::try_new(schema, columns) {
+            Ok(batch) => Some(batch),
             Err(e) => {
                 xbbg_log::error!(topic = %self.topic, error = %e, "failed to create RecordBatch");
+                None
             }
-        }
+        };
 
         self.pending_count = 0;
+        batch
     }
 
     /// Get or build the Arrow schema, caching it for reuse.
@@ -469,11 +565,69 @@ impl SubscriptionState {
             }
         }
     }
+
+    fn send_batch_best_effort(&mut self, batch: RecordBatch) {
+        match self.stream.try_send(Ok(batch)) {
+            Ok(()) => {
+                self.metrics.batches_sent.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.dropped_batches += 1;
+                self.metrics.dropped_batches.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {}
+        }
+    }
 }
 
 impl Drop for SubscriptionState {
     fn drop(&mut self) {
-        // Flush any remaining rows
-        self.flush();
+        let Some(batch) = self.finish_pending_batch() else {
+            return;
+        };
+
+        self.send_batch_best_effort(batch);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_names_stay_aligned_with_dynamic_fields() {
+        let (tx, _rx) = mpsc::channel(1);
+        let mut state = SubscriptionState::new(
+            "AAPL US Equity".to_string(),
+            vec!["LAST_PRICE".to_string(), "LAST_PRICE".to_string()],
+            tx,
+            10,
+            false,
+        );
+
+        assert_eq!(
+            state.field_strings,
+            vec![
+                "LAST_PRICE".to_string(),
+                "MKTDATA_EVENT_TYPE".to_string(),
+                "MKTDATA_EVENT_SUBTYPE".to_string(),
+            ]
+        );
+        assert_eq!(state.field_names.len(), state.field_strings.len());
+        for (field, name) in state.field_strings.iter().zip(state.field_names.iter()) {
+            assert_eq!(name.as_str(), field);
+        }
+
+        let bid_idx = state.ensure_field("BID");
+        assert_eq!(state.ensure_field("BID"), bid_idx);
+        assert_eq!(state.field_strings[bid_idx], "BID");
+        assert_eq!(state.field_names[bid_idx].as_str(), "BID");
+        assert_eq!(state.field_names.len(), state.field_strings.len());
+        assert_eq!(state.field_builders.len(), state.field_strings.len());
+        assert_eq!(state.field_presence_epochs.len(), state.field_strings.len());
+        assert_eq!(
+            state.conversion_miss_logged.len(),
+            state.field_strings.len()
+        );
     }
 }

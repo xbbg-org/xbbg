@@ -3495,10 +3495,12 @@ dependencies = [
 name = "xbbg-bench"
 version = "0.0.0"
 dependencies = [
+ "arrow",
  "criterion",
  "dhat",
  "hdrhistogram",
  "tempfile",
+ "tokio",
  "xbbg-async",
  "xbbg_core",
 ]

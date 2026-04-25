@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Added
 
 - **`@xbbg/core` subscription replay benchmark**: Added a JS-only `npm run bench:subscription-replay` harness for one-update-at-a-time synthetic replay, JSONL fixture replay, live `XBTUSD Curncy` capture, and path-specific timing (`legacy`, `arrow-decode-only`, `subscription-wrapper`). Replay now supports `--consume rows|vector|schema|none` and `--warmup-iterations`; row materialization remains the default. Live capture reports existing `sub.stats` slow-consumer telemetry without changing the production streaming API.
+- **`xbbg-bench` offline Rust replay benchmarks**: Added benchmark-controlled, non-Bloomberg, non-datamock harnesses for Arrow/`TypedBuilder` append/finalize paths and synthetic `xbbg-async` subscription-shaped replay. These live entirely under `crates/xbbg-bench`, emit JSON artifacts, and use env knobs for row counts, flush size, and iterations so production crates do not carry benchmark-only hot-path changes.
+- **`xbbg-bench` cached subscription-to-Arrow bridge benchmark**: Added a bounded live Bloomberg subscription capture that replays cached real SDK `Event`/`Message` objects through `xbbg-async` `SubscriptionState` into Arrow batches. This connects core SDK traversal with the subscription Arrow path while keeping Bloomberg usage to a small initial capture and avoiding datamock.
 
 ### Changed
 
@@ -29,6 +31,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **`@xbbg/core` TypeScript package metadata repaired**: Native optional dependencies now use package versions instead of local `file:` links, release scripts use a checked-in CJS platform map helper, packaged-install smoke checks the published `dist` entrypoint, and the npm package includes the Apache license.
 - **`@xbbg/core` local Windows runtime loading fixed**: The Node binding now adds the vendored Bloomberg SDK runtime DLL directory from `vendor/blpapi-sdk/<version>` (or `XBBG_DEV_SDK_ROOT`) to `PATH` before loading `napi_xbbg.node`, so local tests do not require a manually exported `BLPAPI_ROOT`.
 - **Python subscription unsubscribe keeps reusable workers clean**: `PySubscription.unsubscribe()` now propagates Bloomberg unsubscribe failures instead of suppressing them and only clears active subscription status after termination succeeds, so clean explicit unsubscribes return the subscription worker to the pool while failed/implicit cleanup keeps the conservative discard path.
+- **`xbbg-async` async boundaries no longer perform cache disk I/O on hot Tokio paths**: Request kwarg routing now uses memory-only schema metadata, explicit schema loads/persists are offloaded to blocking workers, field and exchange caches preload during engine startup, and exchange cache persistence snapshots entries before filesystem writes instead of holding cache locks across I/O.
+- **Rust subscription cleanup preserves clean worker reuse and avoids blocking drop flushes**: `SubscriptionStream::unsubscribe()` now clears active status after successful termination before the claim drops, matching the Python/NAPI clean-close path, while `SubscriptionState::Drop` uses best-effort `try_send` so `OverflowPolicy::Block` cannot block the subscription worker during cleanup.
+- **Dynamic extractor hot paths avoid repeated linear duplicate scans and JSON clones**: `bds` bulk rows and `bdtick` dynamic columns now track discovered fields with membership sets while preserving output order, and BQL JSON parsing stores borrowed intermediate values where safe before building owned Arrow arrays.
 
 ## [1.1.2] - 2026-04-20
 
