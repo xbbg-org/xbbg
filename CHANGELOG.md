@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **Live reference-data tests and benchmarks used the wrong Bloomberg array accessor**: `securityData` value arrays now use `get_element(0)` rather than child-element lookup, matching the SDK response shape.
 - **`@xbbg/core` TypeScript package metadata repaired**: Native optional dependencies now use package versions instead of local `file:` links, release scripts use a checked-in CJS platform map helper, packaged-install smoke checks the published `dist` entrypoint, and the npm package includes the Apache license.
 - **`@xbbg/core` local Windows runtime loading fixed**: The Node binding now adds the vendored Bloomberg SDK runtime DLL directory from `vendor/blpapi-sdk/<version>` (or `XBBG_DEV_SDK_ROOT`) to `PATH` before loading `napi_xbbg.node`, so local tests do not require a manually exported `BLPAPI_ROOT`.
+- **Python subscription unsubscribe keeps reusable workers clean**: `PySubscription.unsubscribe()` now propagates Bloomberg unsubscribe failures instead of suppressing them and only clears active subscription status after termination succeeds, so clean explicit unsubscribes return the subscription worker to the pool while failed/implicit cleanup keeps the conservative discard path.
 
 ## [1.1.2] - 2026-04-20
 
