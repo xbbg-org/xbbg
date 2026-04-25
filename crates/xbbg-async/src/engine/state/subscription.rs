@@ -261,10 +261,18 @@ impl SubscriptionState {
         for idx in 0..self.field_names.len() {
             let value = if self.invalid_dateortime_fields[idx] {
                 UpdateValue::Null
+            } else if let Some(field) = elem.get(&self.field_names[idx]) {
+                let datatype = field.datatype();
+                let value = UpdateValue::from_blp(field.get_value_fast_with_datatype(0, datatype));
+                if matches!(value, UpdateValue::Null) {
+                    self.observe_field_kind(
+                        idx as FieldIndex,
+                        FieldKind::from_blp_datatype(datatype),
+                    );
+                }
+                value
             } else {
-                elem.get(&self.field_names[idx])
-                    .map(|field| UpdateValue::from_blp(field.get_value_fast(0)))
-                    .unwrap_or(UpdateValue::Null)
+                UpdateValue::Null
             };
             self.observe_kind(idx as FieldIndex, &value);
             values.push(UpdateField {
@@ -329,8 +337,11 @@ impl SubscriptionState {
     }
 
     fn observe_kind(&mut self, idx: FieldIndex, value: &UpdateValue) {
+        self.observe_field_kind(idx, FieldKind::from_value(value));
+    }
+
+    fn observe_field_kind(&mut self, idx: FieldIndex, observed: FieldKind) {
         let idx = idx as usize;
-        let observed = FieldKind::from_value(value);
         let merged = self.field_kinds[idx].merge_observed(observed);
         if merged != self.field_kinds[idx] {
             self.field_kinds[idx] = merged;
