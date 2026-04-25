@@ -6,9 +6,8 @@
 //! 3. API Query (//blp/apiflds service)
 //! 4. Defaults (bdp=String, bdh=Float64)
 //!
-//! In-memory storage uses `DashMap` — sharded internal locking so concurrent
-//! `get()` calls on different keys do not contend, and a `get()` only blocks
-//! on an `insert()` targeting the same shard (~1/64 probability).
+//! In-memory storage uses `ArcSwap` — lock-free reads via atomic pointer load.
+//! Writers publish a new snapshot via RCU so readers never block.
 
 use std::collections::HashMap;
 use std::fs;
@@ -16,9 +15,9 @@ use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
+use arc_swap::ArcSwap;
 use arrow::array::{Array, RecordBatch, StringArray};
 use arrow::datatypes::DataType;
-use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use xbbg_log::{debug, info, warn};
 
@@ -110,8 +109,8 @@ pub struct FieldInfo {
 
 /// Field type resolver with caching.
 pub struct FieldTypeResolver {
-    /// In-memory cache (uppercased field_id -> FieldInfo). Sharded locking.
-    cache: DashMap<String, FieldInfo>,
+    /// In-memory cache (uppercased field_id -> FieldInfo). Lock-free reads via ArcSwap.
+    cache: ArcSwap<HashMap<String, FieldInfo>>,
     /// Path to cache file
     cache_path: PathBuf,
     /// Disk load happens at most once (lazy).
@@ -122,7 +121,7 @@ impl FieldTypeResolver {
     /// Create a new resolver with default cache path (~/.xbbg/field_cache.json).
     pub fn new() -> Self {
         Self {
-            cache: DashMap::new(),
+            cache: ArcSwap::from_pointee(HashMap::new()),
             cache_path: Self::default_cache_path(),
             loaded: OnceLock::new(),
         }
@@ -131,7 +130,7 @@ impl FieldTypeResolver {
     /// Create a resolver with a custom cache path.
     pub fn with_cache_path(path: PathBuf) -> Self {
         Self {
-            cache: DashMap::new(),
+            cache: ArcSwap::from_pointee(HashMap::new()),
             cache_path: path,
             loaded: OnceLock::new(),
         }
@@ -197,12 +196,21 @@ impl FieldTypeResolver {
                 return;
             }
         };
-        for info in entries {
-            let key = info.field_id.to_uppercase();
-            self.cache.insert(key, info);
+
+        let pairs: Vec<(String, FieldInfo)> = entries
+            .into_iter()
+            .map(|info| (info.field_id.to_uppercase(), info))
+            .collect();
+
+        if !pairs.is_empty() {
+            self.cache.rcu(|current| {
+                let mut next = (**current).clone();
+                next.extend(pairs.iter().cloned());
+                Arc::new(next)
+            });
         }
 
-        info!(count = self.cache.len(), path = %self.cache_path.display(), "Loaded field cache");
+        info!(count = self.cache.load().len(), path = %self.cache_path.display(), "Loaded field cache");
     }
 
     /// Save cache to JSON file.
@@ -220,14 +228,14 @@ impl FieldTypeResolver {
             }
         }
 
-        if self.cache.is_empty() {
+        // Snapshot via ArcSwap load — no locks held during serialization.
+        let snapshot = self.cache.load();
+        if snapshot.is_empty() {
             debug!("Cache is empty, nothing to save");
             return Ok(());
         }
 
-        // Snapshot entries. Clone into an owned Vec so we do not hold shard
-        // locks while we serialize (serde_json calls arbitrary Write impls).
-        let entries: Vec<FieldInfo> = self.cache.iter().map(|r| r.value().clone()).collect();
+        let entries: Vec<FieldInfo> = snapshot.values().cloned().collect();
 
         let file = fs::File::create(&self.cache_path).map_err(|e| {
             format!(
@@ -253,7 +261,7 @@ impl FieldTypeResolver {
     /// Get field info from cache.
     pub fn get(&self, field_id: &str) -> Option<FieldInfo> {
         self.ensure_loaded();
-        self.cache.get(&field_id.to_uppercase()).map(|r| r.clone())
+        self.cache.load().get(&field_id.to_uppercase()).cloned()
     }
 
     /// Get Arrow type string for a field.
@@ -264,7 +272,29 @@ impl FieldTypeResolver {
     /// Insert field info into cache.
     pub fn insert(&self, info: FieldInfo) {
         self.ensure_loaded();
-        self.cache.insert(info.field_id.to_uppercase(), info);
+        let key = info.field_id.to_uppercase();
+        self.cache.rcu(|current| {
+            let mut next = (**current).clone();
+            next.insert(key.clone(), info.clone());
+            Arc::new(next)
+        });
+    }
+
+    /// Extend the cache with multiple (uppercase_key, FieldInfo) pairs in a single RCU.
+    ///
+    /// This is the same single-swap pattern used by `insert_from_response` internally.
+    /// Exposed only for benchmarks so callers can measure the batched-RCU cost directly.
+    #[cfg(feature = "bench-internals")]
+    pub fn cache_rcu_extend(&self, entries: Vec<(String, FieldInfo)>) {
+        self.ensure_loaded();
+        if entries.is_empty() {
+            return;
+        }
+        self.cache.rcu(|current| {
+            let mut next = (**current).clone();
+            next.extend(entries.iter().cloned());
+            Arc::new(next)
+        });
     }
 
     /// Insert multiple field infos from a FieldInfoRequest response.
@@ -295,6 +325,8 @@ impl FieldTypeResolver {
             return;
         };
 
+        // Collect all entries first, then do a single RCU — avoids O(n²) clone cost.
+        let mut entries: Vec<(String, FieldInfo)> = Vec::with_capacity(batch.num_rows());
         for i in 0..batch.num_rows() {
             if fields.is_null(i) || types.is_null(i) {
                 continue;
@@ -311,7 +343,7 @@ impl FieldTypeResolver {
                 .to_string();
 
             debug!(field = %field_id, arrow_type = %arrow_type, "Cached field type");
-            self.cache.insert(
+            entries.push((
                 field_id.clone(),
                 FieldInfo {
                     field_id,
@@ -319,7 +351,15 @@ impl FieldTypeResolver {
                     description,
                     category,
                 },
-            );
+            ));
+        }
+
+        if !entries.is_empty() {
+            self.cache.rcu(|current| {
+                let mut next = (**current).clone();
+                next.extend(entries.iter().cloned());
+                Arc::new(next)
+            });
         }
     }
 
@@ -335,6 +375,7 @@ impl FieldTypeResolver {
     ) -> HashMap<String, String> {
         self.ensure_loaded();
 
+        let snapshot = self.cache.load();
         let mut result = HashMap::new();
 
         for field in fields {
@@ -349,7 +390,7 @@ impl FieldTypeResolver {
             }
 
             // 2. Check cache
-            if let Some(info) = self.cache.get(&field_upper) {
+            if let Some(info) = snapshot.get(&field_upper) {
                 result.insert(field.clone(), info.arrow_type.clone());
                 continue;
             }
@@ -375,13 +416,14 @@ impl FieldTypeResolver {
         self.ensure_loaded();
         let mut result = manual_overrides.cloned().unwrap_or_default();
 
+        let snapshot = self.cache.load();
         for field in fields {
             let field_upper = field.to_uppercase();
             if result.contains_key(field) || result.contains_key(&field_upper) {
                 continue;
             }
 
-            if let Some(info) = self.cache.get(&field_upper) {
+            if let Some(info) = snapshot.get(&field_upper) {
                 result.insert(field.clone(), info.arrow_type.clone());
             }
         }
@@ -393,23 +435,24 @@ impl FieldTypeResolver {
     pub fn get_uncached_fields(&self, fields: &[String]) -> Vec<String> {
         self.ensure_loaded();
 
+        let snapshot = self.cache.load();
         fields
             .iter()
-            .filter(|f| !self.cache.contains_key(&f.to_uppercase()))
+            .filter(|f| !snapshot.contains_key(&f.to_uppercase()))
             .cloned()
             .collect()
     }
 
     /// Clear all cached field info.
     pub fn clear(&self) {
-        self.cache.clear();
+        self.cache.store(Arc::new(HashMap::new()));
         info!("Cleared field cache");
     }
 
     /// Get cache statistics.
     pub fn stats(&self) -> (usize, PathBuf) {
         self.ensure_loaded();
-        (self.cache.len(), self.cache_path.clone())
+        (self.cache.load().len(), self.cache_path.clone())
     }
 }
 

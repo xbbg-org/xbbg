@@ -107,20 +107,14 @@ impl Engine {
             }
         }
 
-        match self.exchange_cache.get(trimmed) {
-            Ok(Some(info)) => return info,
-            Ok(None) => {}
-            Err(e) => {
-                xbbg_log::warn!(ticker = trimmed, error = %e, "resolve_exchange cache lookup failed")
-            }
+        if let Some(info) = self.exchange_cache.get(trimmed) {
+            return info;
         }
 
         match self.fetch_exchange_info(trimmed).await {
             Ok(info) => {
                 if info.source != ExchangeInfoSource::Fallback {
-                    if let Err(e) = self.exchange_cache.put(trimmed, info.clone()) {
-                        xbbg_log::warn!(ticker = trimmed, error = %e, "resolve_exchange cache store failed");
-                    }
+                    self.exchange_cache.put(trimmed, info.clone());
                 }
                 info
             }
@@ -132,7 +126,8 @@ impl Engine {
     }
 
     pub fn invalidate_exchange_cache(&self, ticker: Option<&str>) -> Result<(), String> {
-        self.exchange_cache.invalidate(ticker)
+        self.exchange_cache.invalidate(ticker);
+        Ok(())
     }
 
     pub fn save_exchange_cache(&self) -> Result<(), String> {

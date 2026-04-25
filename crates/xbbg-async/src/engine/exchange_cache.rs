@@ -2,103 +2,94 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, OnceLock};
 
+use arc_swap::ArcSwap;
 use chrono::Utc;
 
 use xbbg_ext::{ExchangeInfo, ExchangeInfoSource};
 
 /// In-memory + disk cache for exchange metadata.
+///
+/// In-memory reads are lock-free (atomic pointer load) via `ArcSwap`; writers
+/// publish a new snapshot via RCU. Disk is loaded lazily at most once via
+/// `OnceLock`.
 pub struct ExchangeCache {
-    cache: RwLock<HashMap<String, ExchangeInfo>>,
+    cache: ArcSwap<HashMap<String, ExchangeInfo>>,
     cache_path: PathBuf,
-    loaded: RwLock<bool>,
+    loaded: OnceLock<()>,
 }
 
 impl ExchangeCache {
-    fn cache_read(&self) -> Result<RwLockReadGuard<'_, HashMap<String, ExchangeInfo>>, String> {
-        self.cache
-            .read()
-            .map_err(|_| "exchange cache lock poisoned".to_string())
-    }
-
-    fn cache_write(&self) -> Result<RwLockWriteGuard<'_, HashMap<String, ExchangeInfo>>, String> {
-        self.cache
-            .write()
-            .map_err(|_| "exchange cache lock poisoned".to_string())
-    }
-
-    fn loaded_read(&self) -> Result<RwLockReadGuard<'_, bool>, String> {
-        self.loaded
-            .read()
-            .map_err(|_| "exchange cache lock poisoned".to_string())
-    }
-
-    fn loaded_write(&self) -> Result<RwLockWriteGuard<'_, bool>, String> {
-        self.loaded
-            .write()
-            .map_err(|_| "exchange cache lock poisoned".to_string())
-    }
-
     pub fn new() -> Self {
         Self::with_cache_path(Self::default_cache_path())
     }
 
     pub fn with_cache_path(path: PathBuf) -> Self {
         Self {
-            cache: RwLock::new(HashMap::new()),
+            cache: ArcSwap::from_pointee(HashMap::new()),
             cache_path: path,
-            loaded: RwLock::new(false),
+            loaded: OnceLock::new(),
         }
     }
 
-    pub fn get(&self, ticker: &str) -> Result<Option<ExchangeInfo>, String> {
-        self.ensure_loaded()?;
+    pub fn get(&self, ticker: &str) -> Option<ExchangeInfo> {
+        self.ensure_loaded();
         let key = ticker.trim();
         if key.is_empty() {
-            return Ok(None);
+            return None;
         }
-        Ok(self
-            .cache_read()?
+        self.cache
+            .load()
             .get(key)
             .cloned()
-            .map(ExchangeInfo::as_cache_hit))
+            .map(ExchangeInfo::as_cache_hit)
     }
 
-    pub fn put(&self, ticker: &str, mut info: ExchangeInfo) -> Result<(), String> {
-        self.ensure_loaded()?;
+    pub fn put(&self, ticker: &str, mut info: ExchangeInfo) {
+        self.ensure_loaded();
         let key = ticker.trim();
         if key.is_empty() {
-            return Ok(());
+            return;
         }
         info.cached_at = Some(Utc::now());
         if info.source == ExchangeInfoSource::Fallback {
             info.source = ExchangeInfoSource::Bloomberg;
         }
-        self.cache_write()?.insert(key.to_string(), info);
-        Ok(())
+        let key = key.to_string();
+        self.cache.rcu(|current| {
+            let mut next = (**current).clone();
+            next.insert(key.clone(), info.clone());
+            Arc::new(next)
+        });
     }
 
-    pub fn invalidate(&self, ticker: Option<&str>) -> Result<(), String> {
-        self.ensure_loaded()?;
-        let mut guard = self.cache_write()?;
+    pub fn invalidate(&self, ticker: Option<&str>) {
+        self.ensure_loaded();
         match ticker {
             Some(t) if !t.trim().is_empty() => {
-                guard.remove(t.trim());
+                let key = t.trim().to_string();
+                self.cache.rcu(|current| {
+                    let mut next = (**current).clone();
+                    next.remove(&key);
+                    Arc::new(next)
+                });
             }
-            _ => guard.clear(),
+            _ => {
+                self.cache.store(Arc::new(HashMap::new()));
+            }
         }
-        Ok(())
     }
 
     pub fn save_to_disk(&self) -> Result<(), String> {
-        self.ensure_loaded()?;
-
-        let entries: Vec<ExchangeInfo> = self.cache_read()?.values().cloned().collect();
+        self.ensure_loaded();
 
         if let Some(parent) = self.cache_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create cache dir failed: {e}"))?;
         }
+
+        let snapshot = self.cache.load();
+        let entries: Vec<&ExchangeInfo> = snapshot.values().collect();
 
         let file = fs::File::create(&self.cache_path)
             .map_err(|e| format!("create exchange cache file failed: {e}"))?;
@@ -107,23 +98,16 @@ impl ExchangeCache {
             .map_err(|e| format!("write exchange cache JSON failed: {e}"))
     }
 
+    /// Eagerly load the on-disk cache (idempotent).
     pub fn preload(&self) -> Result<(), String> {
-        self.ensure_loaded()
+        self.ensure_loaded();
+        Ok(())
     }
 
-    fn ensure_loaded(&self) -> Result<(), String> {
-        if *self.loaded_read()? {
-            return Ok(());
-        }
-
-        let mut loaded = self.loaded_write()?;
-        if *loaded {
-            return Ok(());
-        }
-
-        self.load_from_disk()?;
-        *loaded = true;
-        Ok(())
+    fn ensure_loaded(&self) {
+        self.loaded.get_or_init(|| {
+            let _ = self.load_from_disk();
+        });
     }
 
     fn load_from_disk(&self) -> Result<(), String> {
@@ -146,11 +130,20 @@ impl ExchangeCache {
             }
         };
 
-        let mut guard = self.cache_write()?;
-        for mut entry in entries {
-            entry.source = ExchangeInfoSource::Cache;
-            guard.insert(entry.ticker.clone(), entry);
-        }
+        let pairs: Vec<(String, ExchangeInfo)> = entries
+            .into_iter()
+            .map(|mut entry| {
+                entry.source = ExchangeInfoSource::Cache;
+                (entry.ticker.clone(), entry)
+            })
+            .collect();
+
+        self.cache.rcu(|current| {
+            let mut next = (**current).clone();
+            next.extend(pairs.iter().cloned());
+            Arc::new(next)
+        });
+
         Ok(())
     }
 

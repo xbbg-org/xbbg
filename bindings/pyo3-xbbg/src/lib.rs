@@ -1671,10 +1671,12 @@ impl SubscriptionStreamHandle {
         let command = claim.command_handle().map_err(blp_async_error_to_pyerr)?;
 
         let mut seen_topics = HashSet::new();
-        let status = self.status.lock();
+        let snapshot = self.status.load();
         let new_topics: Vec<String> = tickers
             .into_iter()
-            .filter(|t| !status.topic_to_key().contains_key(t) && seen_topics.insert(t.clone()))
+            .filter(|t| {
+                !snapshot.topic_to_key().contains_key(t) && seen_topics.insert(t.clone())
+            })
             .collect();
 
         if new_topics.is_empty() {
@@ -1701,9 +1703,11 @@ impl SubscriptionStreamHandle {
         new_keys: Vec<usize>,
         new_metrics: Vec<Arc<SubscriptionMetrics>>,
     ) {
-        self.status
-            .lock()
-            .add_active(topics, &new_keys, new_metrics);
+        self.status.rcu(|current| {
+            let mut next = (**current).clone();
+            next.add_active(topics, &new_keys, new_metrics.clone());
+            Arc::new(next)
+        });
     }
 
     fn prepare_remove(&self, tickers: Vec<String>) -> PyResult<Option<PendingRemove>> {
@@ -1716,10 +1720,10 @@ impl SubscriptionStreamHandle {
         let mut seen_keys = HashSet::new();
         let mut topics = Vec::new();
         let mut keys = Vec::new();
-        let status = self.status.lock();
+        let snapshot = self.status.load();
 
         for ticker in tickers {
-            if let Some(&key) = status.topic_to_key().get(&ticker) {
+            if let Some(&key) = snapshot.topic_to_key().get(&ticker) {
                 if seen_keys.insert(key) {
                     topics.push(ticker);
                     keys.push(key);
@@ -1739,10 +1743,13 @@ impl SubscriptionStreamHandle {
     }
 
     fn apply_remove(&mut self, topics: &[String]) {
-        let mut status = self.status.lock();
-        for topic in topics {
-            status.remove_topic(topic);
-        }
+        self.status.rcu(|current| {
+            let mut next = (**current).clone();
+            for topic in topics {
+                next.remove_topic(topic);
+            }
+            Arc::new(next)
+        });
     }
 }
 
@@ -1776,7 +1783,7 @@ impl PySubscription {
         let guard = stream.blocking_lock();
         match guard.as_ref() {
             Some(handle) => {
-                let status = handle.status.lock();
+                let snapshot = handle.status.load();
                 let (
                     messages_received,
                     dropped_batches,
@@ -1785,21 +1792,22 @@ impl PySubscription {
                     data_loss_events,
                     last_message_us,
                     last_data_loss_us,
-                ) = subscription_metrics_totals(status.fields_metrics());
+                ) = subscription_metrics_totals(snapshot.fields_metrics());
                 let mut topic_states: Vec<TopicStatusInfo> =
-                    status.topic_statuses().values().cloned().collect();
+                    snapshot.topic_statuses().values().cloned().collect();
                 topic_states.sort_by(|left, right| left.topic.cmp(&right.topic));
 
                 let mut services: Vec<ServiceStatusInfo> =
-                    status.services().values().cloned().collect();
+                    snapshot.services().values().cloned().collect();
                 services.sort_by(|left, right| left.service.cmp(&right.service));
 
                 SubscriptionSnapshot {
                     present: true,
-                    topics: status.topics().to_vec(),
+                    topics: snapshot.topics().to_vec(),
                     fields: handle.fields.clone(),
-                    is_active: status.has_active_topics() && handle.claim.is_some(),
-                    all_failed: !status.has_active_topics() && !status.failures().is_empty(),
+                    is_active: snapshot.has_active_topics() && handle.claim.is_some(),
+                    all_failed: !snapshot.has_active_topics()
+                        && !snapshot.failures().is_empty(),
                     messages_received,
                     dropped_batches,
                     batches_sent,
@@ -1807,12 +1815,12 @@ impl PySubscription {
                     data_loss_events,
                     last_message_us,
                     last_data_loss_us,
-                    failures: status.failures().to_vec(),
+                    failures: snapshot.failures().to_vec(),
                     topic_states,
-                    session: status.session().clone(),
+                    session: snapshot.session().clone(),
                     services,
-                    admin: status.admin().clone(),
-                    events: status.events().iter().cloned().collect(),
+                    admin: snapshot.admin().clone(),
+                    events: snapshot.events().iter().cloned().collect(),
                     effective_overflow_policy: match handle
                         .overflow_policy
                         .unwrap_or(OverflowPolicy::DropNewest)
@@ -2188,13 +2196,17 @@ impl PySubscription {
             // termination so SessionClaim::Drop can safely return the worker to the pool.
             if let Some(mut h) = handle {
                 if let Some(claim) = h.claim.take() {
-                    let keys = h.status.lock().keys().to_vec();
+                    let keys = h.status.load().keys().to_vec();
                     if !keys.is_empty() {
                         claim
                             .unsubscribe(keys)
                             .await
                             .map_err(blp_async_error_to_pyerr)?;
-                        h.status.lock().clear_active();
+                        h.status.rcu(|current| {
+                            let mut next = (**current).clone();
+                            next.clear_active();
+                            Arc::new(next)
+                        });
                     }
                     // claim drops here; cleared status means a clean worker lease can be reused.
                 }
