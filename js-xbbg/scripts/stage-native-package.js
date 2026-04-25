@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { platformKey, platformPackages } = require('../lib/platform-map');
+const { platformKey, platformPackages } = require('./platform-map.cjs');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const packageDir = path.resolve(repoRoot, 'js-xbbg');

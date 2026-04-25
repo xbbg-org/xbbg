@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **`@xbbg/core` subscription replay benchmark**: Added a JS-only `npm run bench:subscription-replay` harness for one-update-at-a-time synthetic replay, JSONL fixture replay, live `XBTUSD Curncy` capture, and path-specific timing (`legacy`, `arrow-decode-only`, `subscription-wrapper`). Live capture reports existing `sub.stats` slow-consumer telemetry without changing the production streaming API.
+
 ### Changed
 
+- **`@xbbg/core` subscriptions now require NAPI Arrow zero-copy transfer**: `Subscription.next()` asks the native binding for Arrow buffer descriptors and builds Apache Arrow JS tables directly from native Arrow buffers for common Bloomberg subscription types (`bool`, `date32`, `float64`, `int32`, `int64`, `time64[us]`, `timestamp[us]`, `utf8`, `null`). The JS subscription path no longer falls back to standalone IPC; unsupported or sliced schemas fail fast with column-level diagnostics while the public `Subscription.next(): Table` API remains unchanged.
+- **`@xbbg/core` exposes full Bloomberg subscription payloads**: JS streaming APIs now accept `allFields: true`, forwarding the existing Rust engine `all_fields` mode so callers can receive every top-level scalar field Bloomberg sends instead of only requested fields plus `MKTDATA_EVENT_TYPE` / `MKTDATA_EVENT_SUBTYPE`. The NAPI zero-copy bridge also supports `time64[us]` columns for dynamic all-fields schemas.
 - **Rust Bloomberg SDK handle ownership hardened**: `xbbg-core` now models session-owned SDK views with Rust lifetimes instead of unsupported `Send`/`Sync` marker impls. `Service`, schema operations/definitions, and constants are tied to their owning session/service, pointer correlation IDs are explicit unsafe values, and async request workers reopen short-lived service handles rather than caching session-owned handles across worker state.
 - **Reference data `fieldExceptions` logging aggregated**: Per-security `fieldExceptions` diagnostics now stay at `DEBUG` with field-level detail, while bulk requests emit a single summary warning with total exception count and affected tickers.
+- **`@xbbg/core` TypeScript request surface completed**: JS wrappers now forward `validateFields` on `bdp`/`bds`/`bdh`, `requestTz`/`outputTz` on `bdib`/`bdtick`, and typed `bdtick` include-code options while rejecting unknown backend strings instead of silently returning Arrow.
 
 ### Fixed
 
@@ -19,6 +26,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **`bds` manually selected bulk extraction could be overwritten by defaults**: `RequestParams::with_defaults()` now preserves an explicit non-default extractor hint, preventing bulk requests from falling back to reference-data long extraction when callers build request params manually.
 - **Pixi/libclang bindgen discovery on Windows**: Shared build support now creates an `OUT_DIR`-local `libclang.dll` alias for pixi/conda's versioned `libclang-*.dll`, so all bindgen build scripts can run without manually installing LLVM or mutating the pixi environment.
 - **Live reference-data tests and benchmarks used the wrong Bloomberg array accessor**: `securityData` value arrays now use `get_element(0)` rather than child-element lookup, matching the SDK response shape.
+- **`@xbbg/core` TypeScript package metadata repaired**: Native optional dependencies now use package versions instead of local `file:` links, release scripts use a checked-in CJS platform map helper, packaged-install smoke checks the published `dist` entrypoint, and the npm package includes the Apache license.
+- **`@xbbg/core` local Windows runtime loading fixed**: The Node binding now adds the vendored Bloomberg SDK runtime DLL directory from `vendor/blpapi-sdk/<version>` (or `XBBG_DEV_SDK_ROOT`) to `PATH` before loading `napi_xbbg.node`, so local tests do not require a manually exported `BLPAPI_ROOT`.
 
 ## [1.1.2] - 2026-04-20
 

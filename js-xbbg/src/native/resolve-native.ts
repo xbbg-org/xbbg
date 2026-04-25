@@ -43,24 +43,54 @@ function requireLocalPackage(repoRoot: string, packageName: string): NativePacka
   return isResolution(resolved) ? resolved : null;
 }
 
+function isOptionalPackageMissing(err: unknown, packageName: string): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  const code = 'code' in err ? (err as { readonly code?: unknown }).code : undefined;
+  if (code !== 'MODULE_NOT_FOUND') {
+    return false;
+  }
+  return (
+    err.message.includes(`Cannot find module '${packageName}'`) ||
+    err.message.includes(`Cannot find module "${packageName}"`) ||
+    err.message.includes(`Cannot find package '${packageName}'`) ||
+    err.message.includes(`Cannot find package "${packageName}"`)
+  );
+}
+
 function requireOptionalPackage(packageName: string): NativePackageResolution | null {
   try {
     const resolved = nodeRequire(packageName) as unknown;
-    return isResolution(resolved) ? resolved : null;
-  } catch {
-    return null;
+    if (!isResolution(resolved)) {
+      throw new Error(`Invalid native package ${packageName}: expected an object with binaryPath`);
+    }
+    return resolved;
+  } catch (err) {
+    if (isOptionalPackageMissing(err, packageName)) {
+      return null;
+    }
+    throw err;
   }
 }
 
 export function resolveNativeAddon(repoRoot: string): NativeAddonResolution {
   const key = platformKey();
-  const packageName = platformPackages[key as keyof typeof platformPackages] ?? null;
+  const packageName = (platformPackages as Readonly<Record<string, string>>)[key] ?? null;
   if (packageName === null) {
     return { key, packageName: null, binaryPath: null };
   }
 
   const installed = requireOptionalPackage(packageName);
-  if (installed?.binaryPath !== undefined && exists(installed.binaryPath)) {
+  if (installed !== null) {
+    if (installed.binaryPath === undefined) {
+      throw new Error(`Invalid native package ${packageName}: missing binaryPath`);
+    }
+    if (!exists(installed.binaryPath)) {
+      throw new Error(
+        `Invalid native package ${packageName}: binaryPath does not exist: ${installed.binaryPath}`,
+      );
+    }
     return { key, packageName, binaryPath: installed.binaryPath };
   }
 

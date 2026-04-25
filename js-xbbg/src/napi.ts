@@ -15,11 +15,40 @@ import type {
   TimeRange,
 } from './types';
 
+export type NativeArrowColumnType =
+  | 'bool'
+  | 'date32'
+  | 'float64'
+  | 'int32'
+  | 'int64'
+  | 'null'
+  | 'time64_us'
+  | 'timestamp_us'
+  | 'utf8';
+
+export interface NativeArrowColumn {
+  readonly name: string;
+  readonly type: NativeArrowColumnType;
+  readonly nullable: boolean;
+  readonly length: number;
+  readonly nullCount: number;
+  readonly timezone?: string;
+  readonly data?: Buffer;
+  readonly offsets?: Buffer;
+  readonly nullBitmap?: Buffer;
+}
+
+export interface NativeArrowZeroCopyBatch {
+  readonly kind: 'zeroCopy';
+  readonly numRows: number;
+  readonly columns: NativeArrowColumn[];
+}
+
 export interface NativeSubscription {
-  next(): Promise<Buffer | null>;
+  nextArrow(): Promise<NativeArrowZeroCopyBatch | null>;
   add(tickers: readonly string[]): Promise<void>;
   remove(tickers: readonly string[]): Promise<void>;
-  unsubscribe(drain: boolean): Promise<Buffer[] | null>;
+  unsubscribeArrow(drain: boolean): Promise<NativeArrowZeroCopyBatch[] | null>;
   readonly tickers: string[];
   readonly fields: string[];
   readonly isActive: boolean;
@@ -57,6 +86,7 @@ export interface NativeEngine {
   subscribe(
     tickers: readonly string[],
     fields: readonly string[],
+    allFields: boolean | undefined,
   ): Promise<NativeSubscription>;
   subscribeWithOptions(
     service: string,
@@ -66,6 +96,7 @@ export interface NativeEngine {
     flushThreshold: number | undefined,
     overflowPolicy: string | undefined,
     streamCapacity: number | undefined,
+    allFields: boolean | undefined,
   ): Promise<NativeSubscription>;
   signalShutdown(): void;
   isAvailable(): boolean;

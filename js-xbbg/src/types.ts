@@ -103,7 +103,7 @@ export interface RequestInput {
   searchSpec?: string;
   fieldIds?: readonly string[];
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface SubscriptionStats {
@@ -127,8 +127,9 @@ export interface BdpOptions {
   overrides?: OverridesMap;
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
   includeSecurityErrors?: boolean;
+  validateFields?: boolean;
 }
 
 export interface BdhOptions {
@@ -137,24 +138,36 @@ export interface BdhOptions {
   overrides?: OverridesMap;
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
+  validateFields?: boolean;
 }
 
 export interface BdibOptions {
   start?: string;
   end?: string;
+  requestTz?: string;
+  outputTz?: string;
   eventType?: string;
   interval?: number;
   kwargs?: OverridesMap;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface BdtickOptions {
   start?: string;
   end?: string;
+  requestTz?: string;
+  outputTz?: string;
   eventTypes?: readonly string[];
+  includeConditionCodes?: boolean;
+  includeExchangeCodes?: boolean;
+  includeBrokerCodes?: boolean;
+  includeRpsCodes?: boolean;
+  includeBicMicCodes?: boolean;
+  includeNonPlottableEvents?: boolean;
+  includeBloombergStandardConditionCodes?: boolean;
   kwargs?: OverridesMap;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface CdxOptions extends BdpOptions {
@@ -165,7 +178,7 @@ export interface CdxOptions extends BdpOptions {
 export interface BqlOptions {
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface BeqsOptions {
@@ -175,14 +188,14 @@ export interface BeqsOptions {
   overrides?: OverridesMap;
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface BsrchOptions {
   overrides?: OverridesMap;
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface BtaOptions {
@@ -195,7 +208,7 @@ export interface BtaOptions {
   periodicity?: string;
   interval?: number;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface BfldsOptions {
@@ -203,20 +216,20 @@ export interface BfldsOptions {
   searchSpec?: string;
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface BlkpOptions {
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface RequestOptions {
   overrides?: OverridesMap;
   kwargs?: OverridesMap;
   format?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface StreamOptions {
@@ -224,6 +237,7 @@ export interface StreamOptions {
   flushThreshold?: number;
   overflowPolicy?: string;
   streamCapacity?: number;
+  allFields?: boolean;
   fields?: readonly string[];
 }
 
@@ -232,7 +246,7 @@ export interface BqrOptions {
   endDatetime?: string;
   eventTypes?: readonly string[];
   includeBrokerCodes?: boolean;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface YasOptions {
@@ -242,49 +256,49 @@ export interface YasOptions {
   yieldVal?: number;
   price?: number;
   benchmark?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface PreferredsOptions {
   fields?: readonly string[];
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface CorporateBondsOptions {
   ccy?: string;
   fields?: readonly string[];
   activeOnly?: boolean;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface FuturesResolveOptions {
   freq?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface ActiveCdxOptions {
   lookbackDays?: number;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface DividendOptions {
   dvdType?: string;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface TurnoverOptions {
   ccy?: string;
   factor?: number;
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface EtfHoldingsOptions {
   fields?: readonly string[];
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface RecipeBackendOptions {
-  backend?: string;
+  backend?: BackendKind;
 }
 
 export interface TimeRange {

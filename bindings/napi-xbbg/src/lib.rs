@@ -1,3 +1,4 @@
+mod arrow_zero_copy;
 mod ext;
 pub use ext::*;
 
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
+use arrow_zero_copy::NativeArrowBatch;
 use napi::bindgen_prelude::{Buffer, Error, Status};
 use napi_derive::napi;
 use tokio::sync::Mutex;
@@ -653,6 +655,10 @@ fn to_ipc_buffer(batch: RecordBatch) -> napi::Result<Buffer> {
     Ok(Buffer::from(cursor.into_inner()))
 }
 
+fn to_native_arrow(batch: RecordBatch) -> napi::Result<NativeArrowBatch> {
+    NativeArrowBatch::from_record_batch(batch)
+}
+
 fn blp_error_to_napi(e: BlpError) -> Error {
     match e {
         BlpError::SessionStart { source, label } => {
@@ -1028,14 +1034,16 @@ impl JsEngine {
         &self,
         tickers: Vec<String>,
         fields: Vec<String>,
+        all_fields: Option<bool>,
     ) -> napi::Result<JsSubscription> {
+        let all_fields = all_fields.unwrap_or(false);
         let stream = self
             .engine
             .subscribe_with_options(
                 "//blp/mktdata".to_string(),
                 tickers.clone(),
                 fields.clone(),
-                false,
+                all_fields,
                 vec![],
                 None,
                 None,
@@ -1058,6 +1066,7 @@ impl JsEngine {
         flush_threshold: Option<u32>,
         overflow_policy: Option<String>,
         stream_capacity: Option<u32>,
+        all_fields: Option<bool>,
     ) -> napi::Result<JsSubscription> {
         let overflow = match overflow_policy {
             Some(policy) => Some(
@@ -1066,6 +1075,7 @@ impl JsEngine {
             ),
             None => None,
         };
+        let all_fields = all_fields.unwrap_or(false);
 
         let stream = self
             .engine
@@ -1073,7 +1083,7 @@ impl JsEngine {
                 service,
                 tickers.clone(),
                 fields.clone(),
-                false,
+                all_fields,
                 options.unwrap_or_default(),
                 stream_capacity.map(|v| v as usize),
                 flush_threshold.map(|v| v as usize),
@@ -1335,7 +1345,7 @@ impl JsSubscription {
     }
 
     #[napi]
-    pub async fn next(&self) -> napi::Result<Option<Buffer>> {
+    pub async fn next_arrow(&self) -> napi::Result<Option<NativeArrowBatch>> {
         let item = {
             let mut guard = self.rx.lock().await;
             let rx = guard
@@ -1345,7 +1355,7 @@ impl JsSubscription {
         };
 
         match item {
-            Some(Ok(batch)) => Ok(Some(to_ipc_buffer(batch)?)),
+            Some(Ok(batch)) => Ok(Some(to_native_arrow(batch)?)),
             Some(Err(e)) => Err(blp_error_to_napi(e)),
             None => Ok(None),
         }
@@ -1504,7 +1514,10 @@ impl JsSubscription {
     }
 
     #[napi]
-    pub async fn unsubscribe(&self, drain: Option<bool>) -> napi::Result<Option<Vec<Buffer>>> {
+    pub async fn unsubscribe_arrow(
+        &self,
+        drain: Option<bool>,
+    ) -> napi::Result<Option<Vec<NativeArrowBatch>>> {
         let drain = drain.unwrap_or(false);
         let handle = {
             let mut guard = self.stream.lock().await;
@@ -1520,7 +1533,7 @@ impl JsSubscription {
             if let Some(mut rx) = rx {
                 while let Ok(item) = rx.try_recv() {
                     if let Ok(batch) = item {
-                        remaining.push(to_ipc_buffer(batch)?);
+                        remaining.push(to_native_arrow(batch)?);
                     }
                 }
             }

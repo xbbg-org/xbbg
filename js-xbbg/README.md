@@ -39,6 +39,33 @@ npm test
 
 The JS package automatically loads a local `js-xbbg/napi_xbbg.node` addon first, then falls back to packaged optional native dependencies for supported platforms.
 
+`bdp()` / `bds()` / `bdh()` forward `validateFields` for per-request field validation. `bdib()` and `bdtick()` forward `requestTz` / `outputTz`; `bdtick()` also exposes common include-code request flags such as `includeConditionCodes` and `includeExchangeCodes` as typed options while still accepting raw Bloomberg request kwargs.
+
+Subscriptions use a NAPI Arrow zero-copy transfer path for supported primitive/string/time/timestamp columns, constructing Apache Arrow JS tables directly from native Arrow buffers instead of serializing every update through Arrow IPC. Unsupported or sliced Arrow subscription schemas now fail fast with a column-level diagnostic so schema gaps are visible instead of silently switching transport paths.
+Pass `{ allFields: true }` to `stream()` / `subscribe()` / service stream helpers to expose every top-level scalar field Bloomberg sends, matching Python's `all_fields=True`. The default remains filtered mode: requested fields plus `MKTDATA_EVENT_TYPE` and `MKTDATA_EVENT_SUBTYPE`.
+
+### Subscription replay benchmark
+
+`npm run bench:subscription-replay` is a JS-only benchmark for one-update-at-a-time subscription processing. It does not change the production streaming API and does not batch updates by default. Use `--path legacy` for the original encode+decode measurement, `--path arrow-decode-only` to exclude benchmark-only IPC encoding from timed results, and `--path subscription-wrapper` to time the current JS `Subscription.next()` wrapper with fake native zero-copy descriptors. Live capture exercises the default native subscription path, including zero-copy Arrow transfer and unsupported-schema diagnostics from the returned schema.
+
+```bash
+# Synthetic one-update replay, no Bloomberg connection needed
+npm run bench:subscription-replay -- --rows 100000 --iterations 3
+
+# Time JS Arrow decode only, with IPC buffers precomputed outside the timed loop
+npm run bench:subscription-replay -- --path arrow-decode-only --rows 100000 --iterations 3
+
+# Time the current JS Subscription wrapper around fake native zero-copy descriptors
+npm run build:ts
+npm run bench:subscription-replay -- --path subscription-wrapper --rows 100000 --iterations 3
+
+# Capture real XBTUSD ticks to JSONL, printing existing sub.stats telemetry
+npm run bench:subscription-replay -- --capture-live "XBTUSD Curncy" --capture-ms 10000 --out tmp/xbtusd-ticks.jsonl
+
+# Replay captured ticks one update at a time
+npm run bench:subscription-replay -- --fixture tmp/xbtusd-ticks.jsonl --iterations 10
+```
+
 ## Planned Usage
 
 ```typescript

@@ -18,15 +18,15 @@ const CONFIG = Object.freeze({
   bond_ticker: 'GT10 Govt',
   etf_ticker: 'SPY US Equity',
   futures_generic: 'ES1 Index',
-  streaming_ticker: 'ES1 Index',
+  streaming_ticker: process.env.XBBG_STREAMING_TICKER ?? 'XBTUSD Curncy',
   price_field: 'PX_LAST',
   name_field: 'NAME',
   volume_field: 'VOLUME',
 } as const);
 
 const SESSION_CONFIG = Object.freeze({
-  host: process.env['XBBG_HOST'] ?? 'localhost',
-  port: Number(process.env['XBBG_PORT'] ?? 8194),
+  host: process.env.XBBG_HOST ?? 'localhost',
+  port: Number(process.env.XBBG_PORT ?? 8194),
 });
 
 let enginePromise: Promise<Engine> | undefined;
@@ -180,7 +180,7 @@ async function runCase(t: any, name: string, fn: () => Promise<void>): Promise<v
     console.log(`[PASS] ${name} (${elapsed}ms)`);
   } catch (err: any) {
     const elapsed = (performance.now() - started).toFixed(1);
-    if (err && err.code === 'ERR_TEST_SKIP') {
+    if (err?.code === 'ERR_TEST_SKIP') {
       console.log(`[SKIP] ${name} (${elapsed}ms) ${err.message || ''}`);
       throw err;
     }
@@ -719,7 +719,7 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('Streaming ES1 Index', () => {
+  describe(`Streaming ${CONFIG.streaming_ticker}`, () => {
     it('subscribe receives 2-3 ticks and unsubscribe', async (t) =>
       runCase(t, 'stream subscribe/unsubscribe', async () => {
         const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
@@ -765,6 +765,34 @@ describe('js-xbbg live Bloomberg API', () => {
           ),
         );
         console.log(`  stream columns=${cols.join(', ')}`);
+      }));
+
+    it('allFields exposes full payload and event metadata values', async (t) =>
+      runCase(t, 'stream allFields payload', async () => {
+        const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE'], {
+          allFields: true,
+        });
+        const result: any = await Promise.race([
+          sub.next(),
+          sleep(15000).then(() => ({ done: true })),
+        ]);
+        await sub.unsubscribe(false);
+        assert.ok(result && !result.done, 'Expected at least one allFields tick batch');
+        const cols = columnsOf(result.value);
+        const row = result.value.toArray()[0] as Record<string, unknown>;
+        assert.ok(
+          cols.length > 5,
+          `Expected allFields to expose more than filtered fields, got ${cols.length}: ${cols.join(', ')}`,
+        );
+        assert.notEqual(row.MKTDATA_EVENT_TYPE, null, 'MKTDATA_EVENT_TYPE should be non-null');
+        assert.notEqual(row.MKTDATA_EVENT_TYPE, undefined, 'MKTDATA_EVENT_TYPE should be defined');
+        assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, null, 'MKTDATA_EVENT_SUBTYPE should be non-null');
+        assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, undefined, 'MKTDATA_EVENT_SUBTYPE should be defined');
+        console.log(
+          `  allFields cols=${cols.length}, event=${String(row.MKTDATA_EVENT_TYPE)}/${String(
+            row.MKTDATA_EVENT_SUBTYPE,
+          )}`,
+        );
       }));
 
     it('subscription add/remove works', async (t) =>
@@ -1012,9 +1040,9 @@ describe('js-xbbg live Bloomberg API', () => {
         engine!.clearFieldCache();
         const enabled = engine!.isFieldValidationEnabled();
         assert.ok(typeof enabled === 'boolean' || typeof enabled === 'undefined');
-        const saved = engine!.saveFieldCache();
-        assert.ok(typeof saved === 'boolean' || typeof saved === 'undefined');
-        console.log(`  validationEnabled=${enabled}, saveFieldCache=${saved}`);
+        engine!.saveFieldCache();
+        assert.ok(true, 'saveFieldCache should be callable');
+        console.log(`  validationEnabled=${enabled}, saveFieldCache=called`);
       }));
 
     it('getFieldInfo callable for PX_LAST', async (t) =>

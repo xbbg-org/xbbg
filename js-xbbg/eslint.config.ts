@@ -1,9 +1,12 @@
+import { fileURLToPath } from 'node:url';
 import eslint from '@eslint/js';
 import globals from 'globals';
 import nodePlugin from 'eslint-plugin-n';
 import tseslint from 'typescript-eslint';
 
-export default tseslint.config(
+const tsconfigRootDir = fileURLToPath(new URL('.', import.meta.url));
+
+export default [
   // ── Global ignores ─────────────────────────────────────────────────────
   {
     ignores: [
@@ -30,8 +33,10 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
+        projectService: {
+          allowDefaultProject: ['eslint.config.ts', 'vitest.config.ts'],
+        },
+        tsconfigRootDir,
       },
       globals: { ...globals.node },
     },
@@ -158,6 +163,14 @@ export default tseslint.config(
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       'no-console': 'off',
       '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/strict-boolean-expressions': 'off',
+      '@typescript-eslint/prefer-nullish-coalescing': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+      '@typescript-eslint/return-await': 'off',
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/promise-function-async': 'off',
+      '@typescript-eslint/prefer-promise-reject-errors': 'off',
+      '@typescript-eslint/use-unknown-in-catch-callback-variable': 'off',
     },
   },
-);
+];

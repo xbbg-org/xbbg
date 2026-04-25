@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import type { NativeArrowZeroCopyBatch } from '../src/napi';
+import { tableFromNativeArrowBatch } from '../src/arrow-zero-copy';
+import type { RequestInput } from '../src/types';
 import * as api from '../src/index';
 
-const SESSION_HOST = process.env['XBBG_HOST'] ?? 'localhost';
-const SESSION_PORT = Number(process.env['XBBG_PORT'] ?? 8194);
+const SESSION_HOST = process.env.XBBG_HOST ?? 'localhost';
+const SESSION_PORT = Number(process.env.XBBG_PORT ?? 8194);
 
 function nativeUnavailable(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
@@ -188,6 +191,270 @@ describe('@xbbg/core surface', () => {
     for (const m of ['acdx_info', 'acdx_pricing', 'acdx_risk'] as const) {
       expect(typeof (api.ext.cdx as any)[m]).toBe('function');
     }
+  });
+});
+
+describe('native Arrow zero-copy table construction', () => {
+  function typedBuffer(view: ArrayBufferView): Buffer {
+    return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+  }
+
+  it('constructs an Arrow table from native buffer descriptors', () => {
+    const prices = new Float64Array([50000.5, 0]);
+    const sizes = new Int32Array([10, 20]);
+    const offsets = new Int32Array([0, 13, 26]);
+    const text = Buffer.from('XBTUSD CurncyIBM US Equity');
+    const updateTime = new BigInt64Array([45_000_000_000n, 45_000_001_000n]);
+    const batch: NativeArrowZeroCopyBatch = {
+      kind: 'zeroCopy',
+      numRows: 2,
+      columns: [
+        {
+          name: 'topic',
+          type: 'utf8',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          offsets: typedBuffer(offsets),
+          data: text,
+        },
+        {
+          name: 'LAST_PRICE',
+          type: 'float64',
+          nullable: true,
+          length: 2,
+          nullCount: 1,
+          nullBitmap: Buffer.from([0b00000001]),
+          data: typedBuffer(prices),
+        },
+        {
+          name: 'SIZE',
+          type: 'int32',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          data: typedBuffer(sizes),
+        },
+        {
+          name: 'UPDATE_TIME',
+          type: 'time64_us',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          data: typedBuffer(updateTime),
+        },
+      ],
+    };
+
+    const table = tableFromNativeArrowBatch(batch);
+
+    expect(table.numRows).toBe(2);
+    expect(table.getChild('topic')?.get(0)).toBe('XBTUSD Curncy');
+    expect(table.getChild('topic')?.get(1)).toBe('IBM US Equity');
+    expect(table.getChild('LAST_PRICE')?.get(0)).toBe(50000.5);
+    expect(table.getChild('LAST_PRICE')?.get(1)).toBeNull();
+    expect(table.getChild('SIZE')?.get(1)).toBe(20);
+    expect(table.getChild('UPDATE_TIME')?.get(0)).toBe(45_000_000_000n);
+  });
+
+  it('Subscription.next uses native zero-copy batches', async () => {
+    const values = new Int32Array([42]);
+    const batch: NativeArrowZeroCopyBatch = {
+      kind: 'zeroCopy',
+      numRows: 1,
+      columns: [
+        {
+          name: 'answer',
+          type: 'int32',
+          nullable: false,
+          length: 1,
+          nullCount: 0,
+          data: typedBuffer(values),
+        },
+      ],
+    };
+    const sub = new api.Subscription({
+      nextArrow: async () => await Promise.resolve(batch),
+      add: async () => {},
+      remove: async () => {},
+      unsubscribeArrow: async () => await Promise.resolve(null),
+      tickers: [],
+      fields: [],
+      isActive: true,
+      stats: { messagesReceived: 0, droppedBatches: 0, batchesSent: 0, slowConsumer: false },
+    });
+
+    const result = await sub.next();
+
+    expect(result.done).toBe(false);
+    expect(result.value.getChild('answer')?.get(0)).toBe(42);
+  });
+
+  it('Subscription.unsubscribe drains native zero-copy batches', async () => {
+    const values = new Int32Array([7]);
+    const batch: NativeArrowZeroCopyBatch = {
+      kind: 'zeroCopy',
+      numRows: 1,
+      columns: [
+        {
+          name: 'answer',
+          type: 'int32',
+          nullable: false,
+          length: 1,
+          nullCount: 0,
+          data: typedBuffer(values),
+        },
+      ],
+    };
+    const sub = new api.Subscription({
+      nextArrow: async () => await Promise.resolve(null),
+      add: async () => {},
+      remove: async () => {},
+      unsubscribeArrow: async (drain) => await Promise.resolve(drain ? [batch] : null),
+      tickers: [],
+      fields: [],
+      isActive: true,
+      stats: { messagesReceived: 0, droppedBatches: 0, batchesSent: 0, slowConsumer: false },
+    });
+
+    const drained = await sub.unsubscribe(true);
+
+    expect(drained).toHaveLength(1);
+    expect(drained[0]?.getChild('answer')?.get(0)).toBe(7);
+  });
+});
+
+describe('Engine wrapper request plumbing', () => {
+  function captureRequests(): api.Engine & { readonly calls: RequestInput[] } {
+    const calls: RequestInput[] = [];
+    const engine = Object.create(api.Engine.prototype) as api.Engine & {
+      calls: RequestInput[];
+      request(params: RequestInput): Promise<unknown>;
+    };
+    engine.calls = calls;
+    engine.request = async (params: RequestInput): Promise<unknown> => {
+      calls.push(params);
+      return await Promise.resolve(params);
+    };
+    return engine;
+  }
+
+  it('forwards allFields to native subscriptions', async () => {
+    const calls: { method: string; args: unknown[] }[] = [];
+    const nativeSub = {
+      nextArrow: async () => await Promise.resolve(null),
+      add: async () => {},
+      remove: async () => {},
+      unsubscribeArrow: async () => await Promise.resolve(null),
+      tickers: [],
+      fields: [],
+      isActive: true,
+      stats: { messagesReceived: 0, droppedBatches: 0, batchesSent: 0, slowConsumer: false },
+    };
+    const engine = Object.create(api.Engine.prototype) as api.Engine;
+    (engine as unknown as { _inner: unknown })._inner = {
+      subscribe: async (...args: unknown[]) => {
+        calls.push({ method: 'subscribe', args });
+        return await Promise.resolve(nativeSub);
+      },
+      subscribeWithOptions: async (...args: unknown[]) => {
+        calls.push({ method: 'subscribeWithOptions', args });
+        return await Promise.resolve(nativeSub);
+      },
+    };
+
+    await engine.subscribe(['XETUSD Curncy'], ['LAST_PRICE'], { allFields: true });
+    await engine.stream(['XETUSD Curncy'], ['LAST_PRICE'], { allFields: true });
+    await engine.vwap(['XETUSD Curncy'], ['LAST_PRICE'], { allFields: false });
+
+    expect(calls[0]).toEqual({
+      method: 'subscribe',
+      args: [['XETUSD Curncy'], ['LAST_PRICE'], true],
+    });
+    expect(calls[1]).toEqual({
+      method: 'subscribeWithOptions',
+      args: [
+        '//blp/mktdata',
+        ['XETUSD Curncy'],
+        ['LAST_PRICE'],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      ],
+    });
+    expect(calls[2]?.args.at(-1)).toBe(false);
+  });
+
+  it('forwards per-request validation toggles for reference and history wrappers', async () => {
+    const engine = captureRequests();
+
+    await engine.bdp(['IBM US Equity'], ['PX_LAST'], { validateFields: true });
+    await engine.bds(['IBM US Equity'], ['DVD_HIST'], { validateFields: false });
+    await engine.bdh(['IBM US Equity'], ['PX_LAST'], {
+      start: '2024-01-01',
+      end: '2024-01-02',
+      validateFields: true,
+    });
+
+    expect(engine.calls[0]?.validateFields).toBe(true);
+    expect(engine.calls[1]?.validateFields).toBe(false);
+    expect(engine.calls[2]?.validateFields).toBe(true);
+  });
+
+  it('forwards intraday timezone controls and typed tick include options', async () => {
+    const engine = captureRequests();
+
+    await engine.bdib('IBM US Equity', {
+      start: '2024-01-02T09:30:00',
+      end: '2024-01-02T10:00:00',
+      requestTz: 'NY',
+      outputTz: 'exchange',
+    });
+    await engine.bdtick('IBM US Equity', {
+      start: '2024-01-02T09:30:00',
+      end: '2024-01-02T10:00:00',
+      requestTz: 'NY',
+      outputTz: 'NY',
+      includeConditionCodes: true,
+      includeExchangeCodes: true,
+      kwargs: { customOption: 'customValue' },
+    });
+
+    expect(engine.calls[0]?.requestTz).toBe('NY');
+    expect(engine.calls[0]?.outputTz).toBe('exchange');
+    expect(engine.calls[1]?.requestTz).toBe('NY');
+    expect(engine.calls[1]?.outputTz).toBe('NY');
+    expect(engine.calls[1]?.kwargs).toEqual(
+      expect.arrayContaining([
+        { key: 'customOption', value: 'customValue' },
+        { key: 'includeConditionCodes', value: 'true' },
+        { key: 'includeExchangeCodes', value: 'true' },
+      ]),
+    );
+
+    await engine.bdtick('IBM US Equity', {
+      start: '2024-01-02T09:30:00',
+      end: '2024-01-02T10:00:00',
+      includeConditionCodes: false,
+      kwargs: { includeConditionCodes: true },
+    });
+    expect(engine.calls[2]?.kwargs).toContainEqual({
+      key: 'includeConditionCodes',
+      value: 'false',
+    });
+  });
+
+  it('rejects unknown backend strings instead of silently returning Arrow', async () => {
+    const engine = Object.create(api.Engine.prototype);
+    engine._inner = {
+      request: async () => await Promise.resolve(Buffer.alloc(0)),
+    };
+
+    await expect(
+      engine.request({ service: '//blp/refdata', operation: 'ReferenceDataRequest', backend: 'bogus' }),
+    ).rejects.toThrow('Unsupported @xbbg/core backend');
   });
 });
 

@@ -12,6 +12,7 @@ import {
   BlpValidationError,
   wrapError,
 } from './errors';
+import { tableFromNativeArrowBatch } from './arrow-zero-copy';
 import { resolveNativeAddon } from './native/resolve-native';
 import type {
   ActiveCdxOptions,
@@ -60,7 +61,12 @@ import type {
   TurnoverOptions,
   YasOptions,
 } from './types';
-import type { NativeAddon, NativeEngine, NativeSubscription } from './napi';
+import type {
+  NativeAddon,
+  NativeArrowZeroCopyBatch,
+  NativeEngine,
+  NativeSubscription,
+} from './napi';
 
 const nodeRequire = createRequire(__filename);
 
@@ -87,30 +93,87 @@ function containsBlpapiRuntime(dir: string): boolean {
   ].some((name) => fs.existsSync(path.join(dir, name)));
 }
 
+function parseVersionParts(name: string): number[] | null {
+  const parts = name.split('.').map((part) => Number(part));
+  return parts.every((part) => Number.isInteger(part) && part >= 0) ? parts : null;
+}
+
+function compareSdkRoots(left: string, right: string): number {
+  const leftParts = parseVersionParts(path.basename(left));
+  const rightParts = parseVersionParts(path.basename(right));
+  if (leftParts !== null && rightParts !== null) {
+    const length = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < length; index += 1) {
+      const leftPart = leftParts[index] ?? 0;
+      const rightPart = rightParts[index] ?? 0;
+      if (leftPart !== rightPart) {
+        return rightPart - leftPart;
+      }
+    }
+  }
+  if (leftParts !== null) return -1;
+  if (rightParts !== null) return 1;
+  return right.localeCompare(left);
+}
+
+function pushSdkRuntimeCandidates(candidates: string[], sdkRoot: string): void {
+  const resolved = path.resolve(sdkRoot);
+  candidates.push(resolved, path.join(resolved, 'bin'), path.join(resolved, 'lib'));
+}
+
+function resolveVendorSdkRoot(repoRoot: string): string | null {
+  const vendorDir = path.join(repoRoot, 'vendor', 'blpapi-sdk');
+  if (!fs.existsSync(vendorDir)) {
+    return null;
+  }
+  const candidates = [vendorDir];
+  for (const entry of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      candidates.push(path.join(vendorDir, entry.name));
+    }
+  }
+  candidates.sort(compareSdkRoots);
+  return candidates.find((candidate) => {
+    const dirs = [candidate, path.join(candidate, 'bin'), path.join(candidate, 'lib')];
+    return dirs.some(containsBlpapiRuntime);
+  }) ?? null;
+}
+
 function configureRuntimeSearchPath(): void {
   if (process.platform !== 'win32') {
     return;
   }
 
   const candidates: string[] = [];
-  const libDir = process.env['BLPAPI_LIB_DIR'];
+  const libDir = process.env.BLPAPI_LIB_DIR;
   if (libDir !== undefined && libDir.length > 0) {
     candidates.push(path.resolve(libDir));
   }
-  const root = process.env['BLPAPI_ROOT'];
+  const root = process.env.BLPAPI_ROOT;
   if (root !== undefined && root.length > 0) {
-    const resolved = path.resolve(root);
-    candidates.push(resolved, path.join(resolved, 'bin'), path.join(resolved, 'lib'));
+    pushSdkRuntimeCandidates(candidates, root);
+  }
+  const repoRoot = path.resolve(__dirname, '..', '..');
+  const devRoot = process.env.XBBG_DEV_SDK_ROOT;
+  if (devRoot !== undefined && devRoot.length > 0) {
+    pushSdkRuntimeCandidates(
+      candidates,
+      path.isAbsolute(devRoot) ? devRoot : path.resolve(repoRoot, devRoot),
+    );
+  }
+  const vendorRoot = resolveVendorSdkRoot(repoRoot);
+  if (vendorRoot !== null) {
+    pushSdkRuntimeCandidates(candidates, vendorRoot);
   }
 
   for (const candidate of candidates) {
     if (!containsBlpapiRuntime(candidate)) {
       continue;
     }
-    const currentPath = process.env['PATH'] ?? '';
+    const currentPath = process.env.PATH ?? '';
     const parts = currentPath.split(';').filter((part) => part.length > 0);
     if (!parts.includes(candidate)) {
-      process.env['PATH'] =
+      process.env.PATH =
         currentPath.length > 0 ? `${candidate};${currentPath}` : candidate;
     }
     break;
@@ -256,7 +319,7 @@ const TA_STUDIES: Readonly<Record<string, string>> = Object.freeze({
   bs: 'bsStudyAttributes',
 });
 
-type StudyParams = Record<string, PrimitiveValue>;
+type StudyParams = Record<string, PrimitiveValue | undefined>;
 
 const TA_DEFAULTS: Readonly<Record<string, Readonly<StudyParams>>> = Object.freeze({
   smavgStudyAttributes: Object.freeze({ period: 20, priceSourceClose: 'PX_LAST' }),
@@ -303,12 +366,16 @@ const TA_DEFAULTS: Readonly<Record<string, Readonly<StudyParams>>> = Object.free
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-function toArrowTable(ipcBuffer: Buffer): Table {
-  return tableFromIPC(ipcBuffer);
+function toArrowTableFromNative(batch: NativeArrowZeroCopyBatch): Table {
+  return tableFromNativeArrowBatch(batch);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toRequestString(value: unknown): string {
+  return String(value);
 }
 
 function mapObjectToPairs(
@@ -318,26 +385,65 @@ function mapObjectToPairs(
     return undefined;
   }
   return Object.entries(obj).map(([key, value]) => ({
-    key: String(key),
-    value: String(value),
+    key: toRequestString(key),
+    value: toRequestString(value),
   }));
+}
+
+type BdtickBooleanOption =
+  | 'includeConditionCodes'
+  | 'includeExchangeCodes'
+  | 'includeBrokerCodes'
+  | 'includeRpsCodes'
+  | 'includeBicMicCodes'
+  | 'includeNonPlottableEvents'
+  | 'includeBloombergStandardConditionCodes';
+
+const BDTICK_BOOLEAN_KWARGS: readonly [BdtickBooleanOption, string][] = Object.freeze([
+  ['includeConditionCodes', 'includeConditionCodes'],
+  ['includeExchangeCodes', 'includeExchangeCodes'],
+  ['includeBrokerCodes', 'includeBrokerCodes'],
+  ['includeRpsCodes', 'includeRpsCodes'],
+  ['includeBicMicCodes', 'includeBicMicCodes'],
+  ['includeNonPlottableEvents', 'includeNonPlottableEvents'],
+  ['includeBloombergStandardConditionCodes', 'includeBloombergStandardConditionCodes'],
+]);
+
+function upsertStringPair(pairs: StringPair[], key: string, value: string): void {
+  const existing = pairs.find((pair) => pair.key === key);
+  if (existing === undefined) {
+    pairs.push({ key, value });
+    return;
+  }
+  existing.value = value;
+}
+
+function buildBdtickKwargs(options: BdtickOptions): StringPair[] | undefined {
+  const pairs = mapObjectToPairs(options.kwargs) ?? [];
+  for (const [optionName, requestName] of BDTICK_BOOLEAN_KWARGS) {
+    const typedValue = options[optionName];
+    if (typedValue !== undefined) {
+      upsertStringPair(pairs, requestName, typedValue ? 'true' : 'false');
+    }
+  }
+  return pairs.length > 0 ? pairs : undefined;
 }
 
 function toStringArray(value: string | readonly string[] | null | undefined): string[] {
   if (Array.isArray(value)) {
-    return value.map((item) => String(item));
+    return value.map((item) => toRequestString(item));
   }
   if (value === null || value === undefined) {
     return [];
   }
-  return [String(value)];
+  return [toRequestString(value)];
 }
 
 function normalizeConfigureArgs(
   configOrHost?: EngineConfig | string,
   port?: number,
 ): EngineConfig | undefined {
-  if (configOrHost === undefined || configOrHost === null) {
+  if (configOrHost === undefined) {
     return undefined;
   }
   if (typeof configOrHost === 'string' || port !== undefined) {
@@ -345,8 +451,8 @@ function normalizeConfigureArgs(
     if (typeof configOrHost === 'string') {
       config.host = configOrHost;
     }
-    if (port !== undefined && port !== null) {
-      config.port = Number(port);
+    if (port !== undefined) {
+      config.port = port;
     }
     return config;
   }
@@ -363,17 +469,17 @@ function normalizeRecoveryOptions(options: CdxOptions = {}): BdpOptions {
   const recoveryRate = normalized.recoveryRate ?? normalized.recovery_rate;
   delete normalized.recoveryRate;
   delete normalized.recovery_rate;
-  if (recoveryRate !== undefined && recoveryRate !== null) {
+  if (recoveryRate !== undefined) {
     normalized.overrides = {
       ...(normalized.overrides ?? {}),
-      CDS_RR: String(recoveryRate),
+      CDS_RR: toRequestString(recoveryRate),
     };
   }
   return normalized;
 }
 
 function fullDayRange(dt: string): TimeRange {
-  const normalized = String(dt).trim().replace(' ', 'T');
+  const normalized = toRequestString(dt).trim().replace(' ', 'T');
   const day = normalized.split('T')[0];
   if (day === undefined || day.length === 0) {
     throw new TypeError('dt must be a non-empty ISO date string');
@@ -385,7 +491,7 @@ function fullDayRange(dt: string): TimeRange {
 }
 
 function normalizeDate(value: string | undefined): string | undefined {
-  return value === undefined ? undefined : String(value).replace(/[-/]/g, '');
+  return value === undefined ? undefined : toRequestString(value).replace(/[-/]/g, '');
 }
 
 function getStudyAttrName(study: string): string {
@@ -418,37 +524,35 @@ function buildTaRequest(
   const rawStudy: RawStudy =
     typeof study === 'string' ? { studyType: study } : { ...study };
   const studyType = rawStudy.studyType ?? rawStudy.study ?? (typeof study === 'string' ? study : '');
-  const attrName = getStudyAttrName(String(studyType));
+  const attrName = getStudyAttrName(toRequestString(studyType));
 
   const kwargs: Record<string, PrimitiveValue> = { ...(options.kwargs ?? {}) };
   const startDate = normalizeDate(
-    stringOrUndef(kwargs['startDate']) ??
-      stringOrUndef(kwargs['start_date']) ??
+    stringOrUndef(kwargs.startDate) ??
+      stringOrUndef(kwargs.start_date) ??
       options.startDate ??
       options.start_date,
   );
   const endDate = normalizeDate(
-    stringOrUndef(kwargs['endDate']) ??
-      stringOrUndef(kwargs['end_date']) ??
+    stringOrUndef(kwargs.endDate) ??
+      stringOrUndef(kwargs.end_date) ??
       options.endDate ??
       options.end_date,
   );
-  const periodicity = String(
-    stringOrUndef(kwargs['periodicitySelection']) ??
-      stringOrUndef(kwargs['periodicity']) ??
-      rawStudy.calcInterval ??
-      options.periodicity ??
-      'DAILY',
-  ).toUpperCase();
+  const periodicity = toRequestString(stringOrUndef(kwargs.periodicitySelection) ??
+    stringOrUndef(kwargs.periodicity) ??
+    rawStudy.calcInterval ??
+    options.periodicity ??
+    'DAILY').toUpperCase();
   const interval =
-    kwargs['interval'] ?? rawStudy.interval ?? options.interval;
+    kwargs.interval ?? rawStudy.interval ?? options.interval;
 
-  delete kwargs['startDate'];
-  delete kwargs['start_date'];
-  delete kwargs['endDate'];
-  delete kwargs['end_date'];
-  delete kwargs['periodicitySelection'];
-  delete kwargs['periodicity'];
+  delete kwargs.startDate;
+  delete kwargs.start_date;
+  delete kwargs.endDate;
+  delete kwargs.end_date;
+  delete kwargs.periodicitySelection;
+  delete kwargs.periodicity;
   delete rawStudy.studyType;
   delete rawStudy.study;
   delete rawStudy.calcInterval;
@@ -464,14 +568,14 @@ function buildTaRequest(
     ...(rawStudy as StudyParams),
   };
 
-  if (params['length'] !== undefined && params['period'] === undefined) {
-    params['period'] = params['length'];
+  if (params.length !== undefined && params.period === undefined) {
+    params.period = params.length;
   }
-  delete params['length'];
-  delete params['calcInterval'];
+  delete params.length;
+  delete params.calcInterval;
 
   const elements: StringPair[] = [
-    { key: 'priceSource.securityName', value: String(ticker) },
+    { key: 'priceSource.securityName', value: toRequestString(ticker) },
   ];
 
   if (periodicity === 'INTRADAY') {
@@ -483,8 +587,8 @@ function buildTaRequest(
       elements.push({ key: `${prefix}.endDate`, value: endDate });
     }
     elements.push({ key: `${prefix}.eventType`, value: 'TRADE' });
-    if (interval !== undefined && interval !== null) {
-      elements.push({ key: `${prefix}.interval`, value: String(interval) });
+    if (interval !== undefined) {
+      elements.push({ key: `${prefix}.interval`, value: toRequestString(interval) });
     }
   } else {
     const prefix = 'priceSource.dataRange.historical';
@@ -498,20 +602,17 @@ function buildTaRequest(
   }
 
   for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null) {
+    if (value === undefined) {
       continue;
     }
     elements.push({
       key: `studyAttributes.${attrName}.${key}`,
-      value: String(value),
+      value: toRequestString(value),
     });
   }
 
   for (const [key, value] of Object.entries(kwargs)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-    elements.push({ key: String(key), value: String(value) });
+    elements.push({ key: toRequestString(key), value: toRequestString(value) });
   }
 
   return elements;
@@ -521,21 +622,51 @@ function stringOrUndef(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+let polarsModule: PolarsModule | undefined;
+let polarsLoadError: Error | undefined;
+
+function cachePolarsLoadError(err: unknown): Error {
+  const error = new Error(
+    'nodejs-polars is required for Polars backend. Install: npm install nodejs-polars',
+  );
+  Object.defineProperty(error, 'cause', { value: err, configurable: true });
+  polarsLoadError = error;
+  return error;
+}
+
 function loadPolars(): PolarsModule {
+  if (polarsModule !== undefined) {
+    return polarsModule;
+  }
+  if (polarsLoadError !== undefined) {
+    throw polarsLoadError;
+  }
   try {
-    return nodeRequire('nodejs-polars') as PolarsModule;
-  } catch {
-    throw new Error(
-      'nodejs-polars is required for Polars backend. Install: npm install nodejs-polars',
-    );
+    polarsModule = nodeRequire('nodejs-polars') as PolarsModule;
+    return polarsModule;
+  } catch (err) {
+    throw cachePolarsLoadError(err);
   }
 }
 
-function ipcToBackend(buffer: Buffer, backend: string): unknown {
-  if (backend === Backend.JSON) {
+function normalizeBackend(backend: BackendKind | undefined): BackendKind {
+  const selected: unknown = backend ?? Backend.ARROW;
+  if (selected === Backend.ARROW || selected === Backend.JSON || selected === Backend.POLARS) {
+    return selected;
+  }
+  throw new TypeError(
+    `Unsupported @xbbg/core backend "${toRequestString(selected)}". Expected one of: ${Object.values(
+      Backend,
+    ).join(', ')}`,
+  );
+}
+
+function ipcToBackend(buffer: Buffer, backend: BackendKind | undefined): unknown {
+  const selected = normalizeBackend(backend);
+  if (selected === Backend.JSON) {
     return Array.from(tableFromIPC(buffer));
   }
-  if (backend === Backend.POLARS) {
+  if (selected === Backend.POLARS) {
     return loadPolars().readIPC(buffer);
   }
   return tableFromIPC(buffer);
@@ -584,11 +715,11 @@ export class Subscription implements AsyncIterator<Table>, AsyncIterable<Table> 
 
   public async next(): Promise<IteratorResult<Table>> {
     try {
-      const batch = await this._inner.next();
+      const batch = await this._inner.nextArrow();
       if (batch === null) {
         return { done: true, value: undefined };
       }
-      return { done: false, value: toArrowTable(batch) };
+      return { done: false, value: toArrowTableFromNative(batch) };
     } catch (err) {
       throw wrapError(err);
     }
@@ -611,11 +742,15 @@ export class Subscription implements AsyncIterator<Table>, AsyncIterable<Table> 
   }
 
   public async unsubscribe(drain = false): Promise<Table[]> {
-    const drained = await this._inner.unsubscribe(Boolean(drain));
-    if (drained === null) {
-      return [];
+    try {
+      const drained = await this._inner.unsubscribeArrow(drain);
+      if (drained === null) {
+        return [];
+      }
+      return drained.map(toArrowTableFromNative);
+    } catch (err) {
+      throw wrapError(err);
     }
-    return drained.map(toArrowTable);
   }
 
   public get tickers(): string[] {
@@ -664,7 +799,7 @@ export class Engine {
   }
 
   public async request(params: RequestInput): Promise<unknown> {
-    const backend = params.backend ?? Backend.ARROW;
+    const backend = normalizeBackend(params.backend);
     const { backend: _discarded, ...nativeParams } = params;
     try {
       const buffer = await this._inner.request(nativeParams);
@@ -697,6 +832,7 @@ export class Engine {
       format: options.format,
       backend: options.backend,
       includeSecurityErrors: Boolean(options.includeSecurityErrors),
+      validateFields: options.validateFields,
       extractor: 'refdata',
     });
   }
@@ -715,6 +851,7 @@ export class Engine {
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
       backend: options.backend,
+      validateFields: options.validateFields,
       extractor: 'bulk',
     });
   }
@@ -735,6 +872,7 @@ export class Engine {
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
       backend: options.backend,
+      validateFields: options.validateFields,
       extractor: 'histdata',
     });
   }
@@ -748,6 +886,8 @@ export class Engine {
       interval: options.interval ?? 1,
       startDatetime: options.start,
       endDatetime: options.end,
+      requestTz: options.requestTz,
+      outputTz: options.outputTz,
       kwargs: mapObjectToPairs(options.kwargs),
       backend: options.backend,
       extractor: 'intraday_bar',
@@ -762,7 +902,9 @@ export class Engine {
       eventTypes: options.eventTypes ?? ['TRADE'],
       startDatetime: options.start,
       endDatetime: options.end,
-      kwargs: mapObjectToPairs(options.kwargs),
+      requestTz: options.requestTz,
+      outputTz: options.outputTz,
+      kwargs: buildBdtickKwargs(options),
       backend: options.backend,
       extractor: 'intraday_tick',
     });
@@ -772,7 +914,7 @@ export class Engine {
     return await this.request({
       service: '//blp/bqlsvc',
       operation: 'sendQuery',
-      elements: [{ key: 'expression', value: String(query) }],
+      elements: [{ key: 'expression', value: toRequestString(query) }],
       backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -782,12 +924,12 @@ export class Engine {
 
   public async beqs(screen: string, options: BeqsOptions = {}): Promise<unknown> {
     const elements: StringPair[] = [
-      { key: 'screenName', value: String(screen) },
-      { key: 'screenType', value: String(options.screenType ?? 'PRIVATE') },
-      { key: 'Group', value: String(options.group ?? 'General') },
+      { key: 'screenName', value: toRequestString(screen) },
+      { key: 'screenType', value: toRequestString(options.screenType ?? 'PRIVATE') },
+      { key: 'Group', value: toRequestString(options.group ?? 'General') },
     ];
     if (options.asof !== undefined) {
-      elements.push({ key: 'asOfDate', value: String(options.asof) });
+      elements.push({ key: 'asOfDate', value: toRequestString(options.asof) });
     }
     const overrides: OverridesMap = { ...(options.overrides ?? {}) };
     return await this.request({
@@ -804,7 +946,7 @@ export class Engine {
 
   public async bsrch(searchSpec: string, options: BsrchOptions = {}): Promise<unknown> {
     const elements: OverridesMap = {
-      Domain: String(searchSpec),
+      Domain: toRequestString(searchSpec),
       ...(options.overrides ?? {}),
       ...(options.kwargs ?? {}),
     };
@@ -838,7 +980,7 @@ export class Engine {
       return await this.request({
         service: '//blp/apiflds',
         operation: 'FieldSearchRequest',
-        searchSpec: String(options.searchSpec),
+        searchSpec: toRequestString(options.searchSpec),
         backend: options.backend,
         kwargs: mapObjectToPairs(options.kwargs),
         format: options.format,
@@ -863,7 +1005,7 @@ export class Engine {
     return await this.request({
       service: '//blp/instruments',
       operation: 'instrumentListRequest',
-      elements: [{ key: 'query', value: String(query) }],
+      elements: [{ key: 'query', value: toRequestString(query) }],
       backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -878,8 +1020,8 @@ export class Engine {
     return await this.request({
       service: '//blp/refdata',
       operation: 'PortfolioDataRequest',
-      security: String(portfolio),
-      fields: Array.isArray(fields) ? fields : [String(fields)],
+      security: toRequestString(portfolio),
+      fields: Array.isArray(fields) ? fields : [toRequestString(fields)],
       backend: options.backend,
       overrides: mapObjectToPairs(options.overrides),
       kwargs: mapObjectToPairs(options.kwargs),
@@ -891,7 +1033,7 @@ export class Engine {
     return await this.request({
       service: '//blp/instruments',
       operation: 'curveListRequest',
-      elements: [{ key: 'query', value: String(ticker) }],
+      elements: [{ key: 'query', value: toRequestString(ticker) }],
       backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -902,7 +1044,7 @@ export class Engine {
     return await this.request({
       service: '//blp/instruments',
       operation: 'govtListRequest',
-      elements: [{ key: 'query', value: String(ticker) }],
+      elements: [{ key: 'query', value: toRequestString(ticker) }],
       backend: options.backend,
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -911,7 +1053,7 @@ export class Engine {
 
   public async resolveFieldTypes(
     fields: readonly string[],
-    overrides: OverridesMap | undefined = undefined,
+    overrides?: OverridesMap  ,
     defaultType = 'string',
   ): Promise<Record<string, string>> {
     const items = await this._inner.resolveFieldTypes(
@@ -956,7 +1098,7 @@ export class Engine {
     return await this._inner.listOperations(service);
   }
 
-  public getCachedSchema(service: string): unknown | null {
+  public getCachedSchema(service: string): unknown {
     const json = this._inner.getCachedSchema(service);
     return json === null ? null : (JSON.parse(json) as unknown);
   }
@@ -991,9 +1133,10 @@ export class Engine {
   public async subscribe(
     tickers: readonly string[],
     fields: readonly string[],
+    options: Pick<StreamOptions, 'allFields'> = {},
   ): Promise<Subscription> {
     try {
-      const stream = await this._inner.subscribe(tickers, fields);
+      const stream = await this._inner.subscribe(tickers, fields, options.allFields);
       return new Subscription(stream);
     } catch (err) {
       throw wrapError(err);
@@ -1004,10 +1147,11 @@ export class Engine {
     service: string,
     tickers: readonly string[],
     fields: readonly string[],
-    options: readonly string[] | undefined = undefined,
-    flushThreshold: number | undefined = undefined,
-    overflowPolicy: string | undefined = undefined,
-    streamCapacity: number | undefined = undefined,
+    options?: readonly string[],
+    flushThreshold?: number,
+    overflowPolicy?: string,
+    streamCapacity?: number,
+    allFields?: boolean,
   ): Promise<Subscription> {
     try {
       const stream = await this._inner.subscribeWithOptions(
@@ -1018,6 +1162,7 @@ export class Engine {
         flushThreshold,
         overflowPolicy,
         streamCapacity,
+        allFields,
       );
       return new Subscription(stream);
     } catch (err) {
@@ -1046,6 +1191,7 @@ export class Engine {
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
+      options.allFields,
     );
   }
 
@@ -1062,6 +1208,7 @@ export class Engine {
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
+      options.allFields,
     );
   }
 
@@ -1074,6 +1221,7 @@ export class Engine {
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
+      options.allFields,
     );
   }
 
@@ -1086,6 +1234,7 @@ export class Engine {
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
+      options.allFields,
     );
   }
 
@@ -1098,6 +1247,7 @@ export class Engine {
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
+      options.allFields,
     );
   }
 
@@ -1119,7 +1269,7 @@ export class Engine {
     options: BfldsOptions = {},
   ): Promise<unknown> {
     return await this.bflds({
-      fields: Array.isArray(fields) ? (fields as string[]) : [String(fields)],
+      fields: Array.isArray(fields) ? (fields as string[]) : [toRequestString(fields)],
       ...options,
     });
   }
@@ -1128,21 +1278,22 @@ export class Engine {
     searchSpec: string,
     options: BfldsOptions = {},
   ): Promise<unknown> {
-    return await this.bflds({ searchSpec: String(searchSpec), ...options });
+    return await this.bflds({ searchSpec: toRequestString(searchSpec), ...options });
   }
 
   // ── Recipes ─────────────────────────────────────────────────────────
 
   public async bqr(ticker: string, options: BqrOptions = {}): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeBqr(
-        String(ticker),
+        toRequestString(ticker),
         options.startDatetime ?? undefined,
         options.endDatetime ?? undefined,
         options.eventTypes ?? null,
         options.includeBrokerCodes !== false,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1153,6 +1304,7 @@ export class Engine {
     fields: string | readonly string[],
     options: YasOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeYas(
         toStringArray(tickers),
@@ -1164,7 +1316,7 @@ export class Engine {
         options.price ?? undefined,
         options.benchmark ?? undefined,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1174,12 +1326,13 @@ export class Engine {
     equityTicker: string,
     options: PreferredsOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipePreferreds(
-        String(equityTicker),
+        toRequestString(equityTicker),
         options.fields !== undefined ? toStringArray(options.fields) : null,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1189,14 +1342,15 @@ export class Engine {
     ticker: string,
     options: CorporateBondsOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeCorporateBonds(
-        String(ticker),
+        toRequestString(ticker),
         options.ccy ?? undefined,
         options.fields !== undefined ? toStringArray(options.fields) : null,
         options.activeOnly !== false,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1207,13 +1361,14 @@ export class Engine {
     dt: string,
     options: FuturesResolveOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeFutTicker(
-        String(genTicker),
-        String(dt),
+        toRequestString(genTicker),
+        toRequestString(dt),
         options.freq ?? undefined,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1224,13 +1379,14 @@ export class Engine {
     dt: string,
     options: FuturesResolveOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeActiveFutures(
-        String(genTicker),
-        String(dt),
+        toRequestString(genTicker),
+        toRequestString(dt),
         options.freq ?? undefined,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1241,12 +1397,13 @@ export class Engine {
     dt: string,
     options: RecipeBackendOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeCdxTicker(
-        String(genTicker),
-        String(dt),
+        toRequestString(genTicker),
+        toRequestString(dt),
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1257,13 +1414,14 @@ export class Engine {
     dt: string,
     options: ActiveCdxOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeActiveCdx(
-        String(genTicker),
-        String(dt),
+        toRequestString(genTicker),
+        toRequestString(dt),
         options.lookbackDays ?? undefined,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1275,14 +1433,15 @@ export class Engine {
     endDate: string,
     options: DividendOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeDividend(
         toStringArray(tickers),
-        String(startDate),
-        String(endDate),
+        toRequestString(startDate),
+        toRequestString(endDate),
         options.dvdType ?? undefined,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1294,15 +1453,16 @@ export class Engine {
     endDate: string,
     options: TurnoverOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeTurnover(
         toStringArray(tickers),
-        String(startDate),
-        String(endDate),
+        toRequestString(startDate),
+        toRequestString(endDate),
         options.ccy ?? undefined,
         options.factor ?? undefined,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1312,12 +1472,13 @@ export class Engine {
     etfTicker: string,
     options: EtfHoldingsOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeEtfHoldings(
-        String(etfTicker),
+        toRequestString(etfTicker),
         options.fields !== undefined ? toStringArray(options.fields) : null,
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1330,14 +1491,15 @@ export class Engine {
     endDate: string,
     options: RecipeBackendOptions = {},
   ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeCurrencyConversion(
-        String(ticker),
-        String(targetCcy),
-        String(startDate),
-        String(endDate),
+        toRequestString(ticker),
+        toRequestString(targetCcy),
+        toRequestString(startDate),
+        toRequestString(endDate),
       );
-      return ipcToBackend(buffer, options.backend ?? Backend.ARROW);
+      return ipcToBackend(buffer, backend);
     } catch (err) {
       throw wrapError(err);
     }
@@ -1347,10 +1509,9 @@ export class Engine {
 // ── Top-level wrappers ──────────────────────────────────────────────────
 
 export async function connect(config?: EngineConfig): Promise<Engine> {
-  if (config === undefined) {
-    return new Engine();
-  }
-  return Engine.withConfig(config);
+  return await Promise.resolve(
+    config === undefined ? new Engine() : Engine.withConfig(config),
+  );
 }
 
 export function configure(config?: EngineConfig): EngineConfig | undefined;
@@ -1393,7 +1554,7 @@ export async function abdh(
     return await engine.bdh(
       toStringArray(tickers),
       toStringArray(fields),
-      start as BdhOptions,
+      start,
     );
   }
   return await engine.bdh(toStringArray(tickers), toStringArray(fields), {
@@ -1414,7 +1575,7 @@ export async function bdh(
 export async function abds(
   tickers: string | readonly string[],
   fields: string | readonly string[],
-  overrides: OverridesMap | undefined = undefined,
+  overrides?: OverridesMap  ,
   options: BdpOptions = {},
 ): Promise<unknown> {
   const engine = await getConfiguredEngine();
@@ -1448,7 +1609,7 @@ export async function abdib(
     interval === 1 &&
     Object.keys(options).length === 0
   ) {
-    return await engine.bdib(String(ticker), dt as BdibOptions);
+    return await engine.bdib(toRequestString(ticker), dt);
   }
   const normalizedOptions: BdibOptions = isPlainObject(interval)
     ? { ...(interval as BdibOptions) }
@@ -1457,14 +1618,14 @@ export async function abdib(
     normalizedOptions.start === undefined &&
     normalizedOptions.end === undefined
   ) {
-    if (dt === undefined || dt === null) {
+    if (dt === undefined) {
       throw new TypeError('abdib requires dt or explicit start/end options');
     }
     const range = fullDayRange(typeof dt === 'string' ? dt : '');
     normalizedOptions.start = range.start;
     normalizedOptions.end = range.end;
   }
-  return await engine.bdib(String(ticker), normalizedOptions);
+  return await engine.bdib(toRequestString(ticker), normalizedOptions);
 }
 
 export async function bdib(ticker: string, options: BdibOptions = {}): Promise<unknown> {
@@ -1473,46 +1634,48 @@ export async function bdib(ticker: string, options: BdibOptions = {}): Promise<u
 
 export async function abdtick(
   ticker: string,
-  start: string,
-  end: string,
+  start: string | null | undefined,
+  end: string | null | undefined,
   options: BdtickOptions = {},
 ): Promise<unknown> {
   if (start === undefined || start === null || end === undefined || end === null) {
     throw new TypeError('abdtick requires both start and end datetimes');
   }
   const engine = await getConfiguredEngine();
-  return await engine.bdtick(String(ticker), { ...options, start, end });
+  return await engine.bdtick(toRequestString(ticker), { ...options, start, end });
 }
 
 export async function bdtick(ticker: string, options: BdtickOptions = {}): Promise<unknown> {
   const engine = await getConfiguredEngine();
-  return await engine.bdtick(String(ticker), options);
+  return await engine.bdtick(toRequestString(ticker), options);
 }
 
 export async function asubscribe(
   tickers: string | readonly string[],
   fields: string | readonly string[],
+  options: Pick<StreamOptions, 'allFields'> = {},
 ): Promise<Subscription> {
   const engine = await getConfiguredEngine();
-  return await engine.subscribe(toStringArray(tickers), toStringArray(fields));
+  return await engine.subscribe(toStringArray(tickers), toStringArray(fields), options);
 }
 
 export async function subscribe(
   tickers: string | readonly string[],
   fields: string | readonly string[],
+  options: Pick<StreamOptions, 'allFields'> = {},
 ): Promise<Subscription> {
-  return await asubscribe(tickers, fields);
+  return await asubscribe(tickers, fields, options);
 }
 
 async function acdxInfo(ticker: string, options: BdpOptions = {}): Promise<unknown> {
   const engine = await getConfiguredEngine();
-  return await engine.bdp([String(ticker)], [...CDX_INFO_FIELDS], options);
+  return await engine.bdp([toRequestString(ticker)], [...CDX_INFO_FIELDS], options);
 }
 
 async function acdxPricing(ticker: string, options: CdxOptions = {}): Promise<unknown> {
   const engine = await getConfiguredEngine();
   return await engine.bdp(
-    [String(ticker)],
+    [toRequestString(ticker)],
     [...CDX_PRICING_FIELDS],
     normalizeRecoveryOptions(options),
   );
@@ -1521,7 +1684,7 @@ async function acdxPricing(ticker: string, options: CdxOptions = {}): Promise<un
 async function acdxRisk(ticker: string, options: CdxOptions = {}): Promise<unknown> {
   const engine = await getConfiguredEngine();
   return await engine.bdp(
-    [String(ticker)],
+    [toRequestString(ticker)],
     [...CDX_RISK_FIELDS],
     normalizeRecoveryOptions(options),
   );
