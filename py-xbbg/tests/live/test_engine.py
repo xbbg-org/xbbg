@@ -18,6 +18,8 @@ from datetime import date, timedelta
 import logging
 import sys
 
+import pytest
+
 logger = logging.getLogger(__name__)
 
 # Ensure UTF-8 output on Windows
@@ -30,6 +32,12 @@ def get_engine():
     from xbbg._core import PyEngine
 
     return PyEngine()
+
+
+@pytest.fixture(scope="module")
+def engine():
+    """Shared Bloomberg engine fixture for pytest collection."""
+    return get_engine()
 
 
 async def test_bdp(engine):
@@ -91,15 +99,20 @@ async def test_bdh(engine):
     logger.info(f"  Rows: {result.num_rows}")
     logger.debug("")
 
-    # Display as table
+    # HistData defaults to long shape: ticker/date/field/value.
     dates = result["date"].to_pylist()
-    px_last = result["PX_LAST"].to_pylist()
-    volume = result["VOLUME"].to_pylist()
+    fields = result["field"].to_pylist()
+    values = result["value"].to_pylist()
+
+    volumes_by_date = {d: v for d, f, v in zip(dates, fields, values) if f == "VOLUME"}
 
     logger.info("  Date        | PX_LAST  | Volume")
     logger.info("  " + "-" * 35)
-    for d, p, v in zip(dates, px_last, volume):
-        vol_str = f"{v / 1e6:.1f}M" if v else "N/A"
+    for d, f, p in zip(dates, fields, values):
+        if f != "PX_LAST":
+            continue
+        volume = volumes_by_date.get(d)
+        vol_str = f"{volume / 1e6:.1f}M" if volume else "N/A"
         logger.debug(f"  {d}  | {p:8.2f} | {vol_str}")
 
     logger.debug("")
@@ -130,10 +143,13 @@ async def test_bdh_multi(engine):
 
     tickers = result["ticker"].to_pylist()
     dates = result["date"].to_pylist()
-    prices = result["PX_LAST"].to_pylist()
+    fields = result["field"].to_pylist()
+    values = result["value"].to_pylist()
 
     current_ticker = None
-    for t, d, p in zip(tickers, dates, prices):
+    for t, d, f, p in zip(tickers, dates, fields, values):
+        if f != "PX_LAST":
+            continue
         if t != current_ticker:
             logger.debug(f"\n  {t}:")
             current_ticker = t
