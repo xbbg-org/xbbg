@@ -199,6 +199,16 @@ impl<'a> Element<'a> {
         ptr == other.as_ptr()
     }
 
+    /// Find this element's name in a pre-interned name list.
+    ///
+    /// This reads the Bloomberg name pointer once and compares it against the
+    /// provided interned names without duplicating or allocating a [`Name`].
+    #[inline(always)]
+    pub fn name_index(&self, names: &[Name]) -> Option<usize> {
+        let ptr = unsafe { ffi::blpapi_Element_name(self.ptr) };
+        names.iter().position(|name| ptr == name.as_ptr())
+    }
+
     /// Data type.
     #[inline(always)]
     pub fn datatype(&self) -> DataType {

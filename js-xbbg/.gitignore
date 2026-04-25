@@ -1,0 +1,5 @@
+dist/
+napi_xbbg.node
+napi-xbbg.node
+node_modules/
+*.tsbuildinfo

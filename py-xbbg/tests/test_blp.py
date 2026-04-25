@@ -79,7 +79,9 @@ class TestBdtick:
 
     def test_top_level_stub_reexports_bdtick(self):
         """Generated top-level stub preserves IDE help for xbbg.bdtick."""
-        stub = Path(__file__).parents[1] / "src" / "xbbg" / "__init__.pyi"
+        import xbbg
+
+        stub = Path(xbbg.__file__).with_name("__init__.pyi")
         text = stub.read_text()
 
         assert "bdtick as bdtick" in text

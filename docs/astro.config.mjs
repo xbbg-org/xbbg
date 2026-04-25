@@ -25,7 +25,7 @@ export default defineConfig({
 			plugins: [
 				starlightLlmsTxt(),
 				coreTypeDoc({
-					entryPoints: ['../js-xbbg/index.d.ts'],
+					entryPoints: ['../js-xbbg/src/index.ts'],
 					output: 'javascript/api/core',
 					sidebar: { label: '@xbbg/core API', collapsed: true },
 					tsconfig: './typedoc/js-core.json',

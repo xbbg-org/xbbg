@@ -10,8 +10,11 @@ use tokio::sync::oneshot;
 use xbbg_log::trace;
 
 use super::typed_builder::{ArrowType, ColumnSet};
-use super::value_utils::{append_long_value_row, append_wide_row};
-use xbbg_core::{BlpError, Element, Message, Value};
+use super::value_utils::{
+    append_long_value_row, common_value_type, get_value_cached_datatype, LongStringColumns,
+    WideColumns,
+};
+use xbbg_core::{BlpError, DataType as BlpDataType, Element, Message, Name, Value};
 
 /// Output format for reference data.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -35,10 +38,48 @@ pub enum LongMode {
     Typed,
 }
 
+struct RefDataElementNames {
+    security_data: Name,
+    security: Name,
+    security_error: Name,
+    field_exceptions: Name,
+    field_data: Name,
+    category: Name,
+    code: Name,
+    message: Name,
+    subcategory: Name,
+    field_id: Name,
+    error_info: Name,
+}
+
+impl RefDataElementNames {
+    fn new() -> Self {
+        Self {
+            security_data: Name::get_or_intern("securityData"),
+            security: Name::get_or_intern("security"),
+            security_error: Name::get_or_intern("securityError"),
+            field_exceptions: Name::get_or_intern("fieldExceptions"),
+            field_data: Name::get_or_intern("fieldData"),
+            category: Name::get_or_intern("category"),
+            code: Name::get_or_intern("code"),
+            message: Name::get_or_intern("message"),
+            subcategory: Name::get_or_intern("subcategory"),
+            field_id: Name::get_or_intern("fieldId"),
+            error_info: Name::get_or_intern("errorInfo"),
+        }
+    }
+}
+
 /// State for a reference data request (bdp).
 pub struct RefDataState {
     /// Field names as strings
     field_names: Vec<String>,
+    /// Pre-interned Bloomberg field names for hot lookups
+    field_lookup_names: Vec<Name>,
+    /// Observed Bloomberg data types for requested fields, learned from returned Elements
+    field_value_datatypes: Vec<Option<BlpDataType>>,
+    /// Pre-interned structural names for response traversal
+    names: RefDataElementNames,
     /// Field type hints (field name -> arrow type)
     field_types: HashMap<String, ArrowType>,
     /// Output format
@@ -55,6 +96,10 @@ pub struct RefDataState {
     field_exception_count: usize,
     /// Column set for building the output
     columns: ColumnSet,
+    /// Fixed long-format builders for the common string-value output path
+    long_columns: Option<LongStringColumns>,
+    /// Fixed wide-format builders for requested field columns
+    wide_columns: Option<WideColumns>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -87,24 +132,30 @@ impl RefDataState {
             .into_iter()
             .map(|(k, v)| (k, ArrowType::parse(&v)))
             .collect();
+        let field_lookup_names: Vec<Name> = fields
+            .iter()
+            .map(|field| Name::get_or_intern(field))
+            .collect();
+        let field_value_datatypes = vec![None; field_lookup_names.len()];
 
-        // Create column set with type hints
+        // Fixed long-string output bypasses ColumnSet entirely; keep ColumnSet hints only
+        // for wide/metadata/typed paths that actually append through ColumnSet.
+        let long_value_type = (format == OutputFormat::Long && long_mode == LongMode::String)
+            .then(|| common_value_type(&arrow_types));
+        let wide_columns =
+            (format == OutputFormat::Wide).then(|| WideColumns::refdata(&fields, &arrow_types));
         let mut columns = ColumnSet::new();
-        for (name, arrow_type) in &arrow_types {
-            columns.set_type_hint(name, *arrow_type);
-        }
-
-        // Set type hint for the "value" column based on common field type.
-        // If all fields are numeric, the value column will be Float64 instead
-        // of Utf8, preserving native types from the Bloomberg response.
-        if long_mode == LongMode::String {
-            use super::value_utils::common_value_type;
-            let common_type = common_value_type(&arrow_types);
-            columns.set_type_hint("value", common_type);
+        if long_value_type.is_none() && wide_columns.is_none() {
+            for (name, arrow_type) in &arrow_types {
+                columns.set_type_hint(name, *arrow_type);
+            }
         }
 
         Self {
             field_names: fields,
+            field_lookup_names,
+            field_value_datatypes,
+            names: RefDataElementNames::new(),
             field_types: arrow_types,
             format,
             long_mode,
@@ -113,6 +164,8 @@ impl RefDataState {
             field_exception_securities: BTreeSet::new(),
             field_exception_count: 0,
             columns,
+            long_columns: long_value_type.map(LongStringColumns::refdata),
+            wide_columns,
             reply,
         }
     }
@@ -143,7 +196,11 @@ impl RefDataState {
             );
         }
 
-        if self.columns.row_count() == 0 && !self.failed_securities.is_empty() {
+        let row_count = self
+            .long_columns
+            .as_ref()
+            .map_or_else(|| self.columns.row_count(), LongStringColumns::row_count);
+        if row_count == 0 && !self.failed_securities.is_empty() {
             let detail = format!(
                 "All securities failed: {}",
                 self.failed_securities.join(", ")
@@ -162,9 +219,14 @@ impl RefDataState {
         let reply = self.reply;
         let result = match self.format {
             OutputFormat::Long => match self.long_mode {
-                LongMode::String => self
-                    .columns
-                    .finish_with_order(&["ticker", "field", "value"]),
+                LongMode::String => {
+                    if let Some(long_columns) = self.long_columns.take() {
+                        long_columns.finish_refdata()
+                    } else {
+                        self.columns
+                            .finish_with_order(&["ticker", "field", "value"])
+                    }
+                }
                 LongMode::WithMetadata => self
                     .columns
                     .finish_with_order(&["ticker", "field", "value", "dtype"]),
@@ -180,9 +242,13 @@ impl RefDataState {
                 ]),
             },
             OutputFormat::Wide => {
-                let mut order = vec!["ticker"];
-                order.extend(self.field_names.iter().map(|s| s.as_str()));
-                self.columns.finish_with_order(&order)
+                if let Some(wide_columns) = self.wide_columns.take() {
+                    wide_columns.finish_refdata()
+                } else {
+                    let mut order = vec!["ticker"];
+                    order.extend(self.field_names.iter().map(|s| s.as_str()));
+                    self.columns.finish_with_order(&order)
+                }
             }
         };
         if let Ok(ref batch) = result {
@@ -216,36 +282,31 @@ impl RefDataState {
         let root = msg.elements();
 
         // Get securityData array
-        let Some(security_data) = root.get_by_str("securityData") else {
+        let Some(security_data) = root.get(&self.names.security_data) else {
             trace!("No securityData in message");
             return;
         };
 
         // Iterate through each security
-        let n = security_data.len();
-        for i in 0..n {
-            let Some(sec) = security_data.get_element(i) else {
-                continue;
-            };
-
+        for sec in security_data.values() {
             // Get ticker
             let ticker = sec
-                .get_by_str("security")
+                .get(&self.names.security)
                 .and_then(|e| e.get_str(0))
                 .unwrap_or("");
 
             // Check for security error
-            if let Some(security_error) = sec.get_by_str("securityError") {
+            if let Some(security_error) = sec.get(&self.names.security_error) {
                 let category = security_error
-                    .get_by_str("category")
+                    .get(&self.names.category)
                     .and_then(|e| e.get_str(0))
                     .unwrap_or("");
                 let code = security_error
-                    .get_by_str("code")
+                    .get(&self.names.code)
                     .and_then(|e| e.get_i32(0))
                     .unwrap_or_default();
                 let message = security_error
-                    .get_by_str("message")
+                    .get(&self.names.message)
                     .and_then(|e| e.get_str(0))
                     .unwrap_or("");
 
@@ -261,7 +322,7 @@ impl RefDataState {
 
                 if self.include_security_errors {
                     let subcategory = security_error
-                        .get_by_str("subcategory")
+                        .get(&self.names.subcategory)
                         .and_then(|e| e.get_str(0))
                         .unwrap_or("");
                     self.append_security_error_row(ticker, code, category, subcategory, message);
@@ -269,25 +330,23 @@ impl RefDataState {
                 continue;
             }
 
-            if let Some(field_exceptions) = sec.get_by_str("fieldExceptions") {
+            if let Some(field_exceptions) = sec.get(&self.names.field_exceptions) {
                 let n = field_exceptions.len();
                 if n > 0 {
                     // Collect field names and error messages for diagnostics
                     let mut details: Vec<String> = Vec::with_capacity(n);
-                    for j in 0..n {
-                        if let Some(exc) = field_exceptions.get_element(j) {
-                            let field_id = exc
-                                .get_by_str("fieldId")
-                                .and_then(|e| e.get_str(0))
-                                .unwrap_or("?");
-                            let err_info = exc.get_by_str("errorInfo");
-                            let message = err_info
-                                .as_ref()
-                                .and_then(|e| e.get_by_str("message"))
-                                .and_then(|e| e.get_str(0))
-                                .unwrap_or("");
-                            details.push(format!("{field_id}: {message}"));
-                        }
+                    for exc in field_exceptions.values() {
+                        let field_id = exc
+                            .get(&self.names.field_id)
+                            .and_then(|e| e.get_str(0))
+                            .unwrap_or("?");
+                        let err_info = exc.get(&self.names.error_info);
+                        let message = err_info
+                            .as_ref()
+                            .and_then(|e| e.get(&self.names.message))
+                            .and_then(|e| e.get_str(0))
+                            .unwrap_or("");
+                        details.push(format!("{field_id}: {message}"));
                     }
                     self.field_exception_securities.insert(ticker.to_string());
                     self.field_exception_count += n;
@@ -301,7 +360,7 @@ impl RefDataState {
             }
 
             // Get fieldData
-            let Some(field_data) = sec.get_by_str("fieldData") else {
+            let Some(field_data) = sec.get(&self.names.field_data) else {
                 trace!(ticker = ticker, "No fieldData for security");
                 continue;
             };
@@ -325,6 +384,17 @@ impl RefDataState {
         subcategory: &str,
         message: &str,
     ) {
+        if let Some(long_columns) = self.long_columns.as_mut() {
+            let detail = format!(
+                "code={code} category={category} subcategory={subcategory} message={message}"
+            );
+            long_columns.append_refdata_row(
+                ticker,
+                "__SECURITY_ERROR__",
+                Some(Value::String(detail.as_str())),
+            );
+            return;
+        }
         let detail =
             format!("code={code} category={category} subcategory={subcategory} message={message}");
         let value = Some(Value::String(detail.as_str()));
@@ -340,15 +410,30 @@ impl RefDataState {
 
     /// Process security in long format (one row per field).
     fn process_long_format(&mut self, ticker: &str, field_data: &Element) {
+        if let Some(long_columns) = self.long_columns.as_mut() {
+            for ((field_name, field_lookup_name), field_datatype) in self
+                .field_names
+                .iter()
+                .zip(&self.field_lookup_names)
+                .zip(self.field_value_datatypes.iter_mut())
+            {
+                let value = field_data
+                    .get(field_lookup_name)
+                    .and_then(|element| get_value_cached_datatype(&element, field_datatype));
+                long_columns.append_refdata_row(ticker, field_name, value);
+            }
+            return;
+        }
         let long_mode = self.long_mode;
         let field_names = &self.field_names;
+        let field_lookup_names = &self.field_lookup_names;
         let field_types = &self.field_types;
         let columns = &mut self.columns;
 
-        for field_name in field_names {
+        for (field_name, field_lookup_name) in field_names.iter().zip(field_lookup_names) {
             // Get the field element
             let value = field_data
-                .get_by_str(field_name)
+                .get(field_lookup_name)
                 .and_then(|e| e.get_value(0));
             let dtype = value
                 .as_ref()
@@ -362,17 +447,18 @@ impl RefDataState {
 
     /// Process security in wide format (one row per ticker).
     fn process_wide_format(&mut self, ticker: &str, field_data: &Element) {
-        let field_names = &self.field_names;
-        append_wide_row(
-            &mut self.columns,
-            field_names,
-            |columns| columns.append_str("ticker", ticker),
-            |field_name| {
-                field_data
-                    .get_by_str(field_name)
-                    .and_then(|e| e.get_value(0))
-            },
-        );
+        if let Some(wide_columns) = self.wide_columns.as_mut() {
+            wide_columns.append_refdata_row(
+                ticker,
+                &self.field_lookup_names,
+                &mut self.field_value_datatypes,
+                |field_lookup_name, field_datatype| {
+                    field_data
+                        .get(field_lookup_name)
+                        .and_then(|element| get_value_cached_datatype(&element, field_datatype))
+                },
+            );
+        }
     }
 }
 

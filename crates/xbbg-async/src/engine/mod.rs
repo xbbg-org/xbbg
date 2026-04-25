@@ -45,7 +45,7 @@ pub use request_pool::RequestWorkerPool;
 use state::SubscriptionMetrics;
 pub use state::{
     BqlState, BulkDataState, HistDataState, IntradayTickState, LongMode, OutputFormat,
-    RefDataState, SubscriptionState,
+    RefDataState, SubscriptionState, SubscriptionUpdate,
 };
 pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
@@ -1237,6 +1237,17 @@ pub struct EngineConfig {
     /// `slow_consumer_hi_water_mark`.
     pub slow_consumer_lo_water_mark: Option<f32>,
 }
+impl EngineConfig {
+    pub fn validate(&self) -> Result<(), BlpAsyncError> {
+        if self.subscription_stream_capacity == 0 {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "subscription_stream_capacity must be greater than zero".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
@@ -1297,10 +1308,13 @@ impl Engine {
     /// Create and start a new Engine with worker pools.
     pub fn start(config: EngineConfig) -> Result<Self, BlpAsyncError> {
         crate::sdk_logging::register_sdk_logging(config.sdk_log_level);
+        config.validate()?;
 
         let config = Arc::new(config);
 
-        crate::field_cache::init_global_resolver(config.field_cache_path.clone());
+        let field_resolver =
+            crate::field_cache::init_global_resolver(config.field_cache_path.clone());
+        field_resolver.preload();
 
         let rt = Arc::new(
             tokio::runtime::Builder::new_multi_thread()
@@ -1335,13 +1349,18 @@ impl Engine {
 
         let (shutdown_signal, _) = watch::channel(false);
 
+        let exchange_cache = ExchangeCache::new();
+        if let Err(e) = exchange_cache.preload() {
+            xbbg_log::warn!(error = %e, "failed to preload exchange cache");
+        }
+
         Ok(Self {
             request_pool,
             subscription_pool,
             rt,
             config,
             schema_cache: crate::schema::SchemaCache::new(),
-            exchange_cache: ExchangeCache::new(),
+            exchange_cache,
             shutdown_signal,
         })
     }
@@ -1431,7 +1450,37 @@ impl Engine {
             );
         }
 
+        self.apply_cached_field_types(&mut params);
+
         Ok(params)
+    }
+
+    fn apply_cached_field_types(&self, params: &mut RequestParams) {
+        if !matches!(
+            params.extractor,
+            ExtractorType::RefData | ExtractorType::HistData
+        ) {
+            return;
+        }
+
+        let Some(fields) = params.fields.as_ref().filter(|fields| !fields.is_empty()) else {
+            return;
+        };
+
+        let resolved = crate::field_cache::global_resolver()
+            .resolve_cached_types(fields, params.field_types.as_ref());
+        if !resolved.is_empty() {
+            let added = params
+                .field_types
+                .as_ref()
+                .map_or(resolved.len(), |existing| {
+                    resolved.len().saturating_sub(existing.len())
+                });
+            if added > 0 {
+                xbbg_log::debug!(field_count = added, "using cached field type hints");
+            }
+            params.field_types = Some(resolved);
+        }
     }
 
     /// Validate request fields against Bloomberg field metadata when enabled.
@@ -1539,12 +1588,17 @@ impl Engine {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
-        let (tx, rx) =
-            mpsc::channel(stream_capacity.unwrap_or(self.config.subscription_stream_capacity));
+        let capacity = stream_capacity.unwrap_or(self.config.subscription_stream_capacity);
+        if capacity == 0 {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "subscription stream capacity must be greater than zero".to_string(),
+            });
+        }
+        let (tx, rx) = mpsc::channel(capacity);
         let status = Arc::new(ArcSwap::from_pointee(SubscriptionStatusState::default()));
 
         // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
-        let claim = self.subscription_pool.claim()?;
+        let mut claim = self.subscription_pool.claim()?;
 
         // Start the subscription
         let (keys, raw_metrics) = claim
@@ -1567,6 +1621,7 @@ impl Engine {
             keys,
             metrics,
         )));
+        claim.set_cleanup_status(status.clone());
 
         let stream = SubscriptionStream {
             rx,
@@ -1631,9 +1686,17 @@ impl Engine {
                     resolver.insert_from_response(&batch);
 
                     let resolver_clone = resolver.clone();
-                    tokio::task::spawn_blocking(move || {
-                        if let Err(e) = resolver_clone.save_to_disk() {
-                            xbbg_log::warn!(error = %e, "Failed to save field cache");
+                    self.rt.spawn(async move {
+                        match tokio::task::spawn_blocking(move || resolver_clone.save_to_disk())
+                            .await
+                        {
+                            Ok(Ok(())) => {}
+                            Ok(Err(e)) => {
+                                xbbg_log::warn!(error = %e, "Failed to save field cache");
+                            }
+                            Err(e) => {
+                                xbbg_log::warn!(error = %e, "field cache save task failed");
+                            }
                         }
                     });
                 }
@@ -1742,9 +1805,26 @@ impl Engine {
         &self,
         service: &str,
     ) -> Result<Arc<crate::schema::ServiceSchema>, BlpAsyncError> {
-        // Check cache first
-        if let Some(schema) = self.schema_cache.get(service) {
+        if let Some(schema) = self.schema_cache.get_memory(service) {
             return Ok(schema);
+        }
+
+        let cache_dir = self.schema_cache.cache_dir();
+        let service_for_load = service.to_string();
+        match self
+            .rt
+            .spawn_blocking(move || {
+                crate::schema::SchemaCache::with_cache_dir(cache_dir).get(&service_for_load)
+            })
+            .await
+        {
+            Ok(Some(schema)) => {
+                return Ok(self.schema_cache.insert_memory(service, (*schema).clone()));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                xbbg_log::warn!(service, error = %e, "schema cache load task failed");
+            }
         }
 
         // Introspect via worker
@@ -1753,8 +1833,28 @@ impl Engine {
             .introspect_schema(service.to_string())
             .await?;
 
-        // Cache and return
-        Ok(self.schema_cache.insert(service, schema))
+        let schema = self.schema_cache.insert_memory(service, schema);
+        let cache_dir = self.schema_cache.cache_dir();
+        let service_for_disk = service.to_string();
+        let service_for_log = service_for_disk.clone();
+        let schema_for_disk = schema.clone();
+        self.rt.spawn(async move {
+            match tokio::task::spawn_blocking(move || {
+                let cache = crate::schema::SchemaCache::with_cache_dir(cache_dir);
+                cache.persist(&service_for_disk, &schema_for_disk)
+            })
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    xbbg_log::warn!(service = %service_for_log, error = %e, "Failed to persist schema to disk");
+                }
+                Err(e) => {
+                    xbbg_log::warn!(service = %service_for_log, error = %e, "schema cache persist task failed");
+                }
+            }
+        });
+        Ok(schema)
     }
 
     /// Get a specific operation's schema from a service.
@@ -1785,11 +1885,11 @@ impl Engine {
         Ok(schema.operation_names())
     }
 
-    /// Get cached schema without triggering introspection.
+    /// Get a schema already loaded in memory without triggering introspection or disk I/O.
     ///
-    /// Returns None if the schema is not in the cache.
+    /// Returns None if the schema has not been loaded into the in-memory cache.
     pub fn get_cached_schema(&self, service: &str) -> Option<Arc<crate::schema::ServiceSchema>> {
-        self.schema_cache.get(service)
+        self.schema_cache.get_memory(service)
     }
 
     /// Invalidate a cached schema (removes from memory and disk).
@@ -1899,16 +1999,16 @@ impl Drop for Engine {
 /// Provides async iteration over incoming data and methods to dynamically
 /// add/remove tickers while the subscription is active.
 ///
-/// Data arrives as `Result<RecordBatch, BlpError>`:
-/// - `Ok(batch)` — normal data
+/// Data arrives as `Result<SubscriptionUpdate, BlpError>`:
+/// - `Ok(update)` — normal data
 /// - `Err(error)` — subscription failure, session death, etc.
 ///
 /// The underlying session is released back to the pool on drop.
 pub struct SubscriptionStream {
     /// Receiver for incoming data batches (or errors).
-    rx: mpsc::Receiver<Result<RecordBatch, BlpError>>,
+    rx: mpsc::Receiver<Result<SubscriptionUpdate, BlpError>>,
     /// Sender for adding new topics (shares channel with existing subs).
-    tx: mpsc::Sender<Result<RecordBatch, BlpError>>,
+    tx: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
     /// Session claim (released on drop).
     claim: Option<SessionClaim>,
     /// Subscribed fields.
@@ -1937,18 +2037,33 @@ impl SubscriptionStream {
             .command_handle()
     }
 
+    fn cleanup_without_reuse_if_active(&mut self) {
+        let keys = self.status.load().keys().to_vec();
+        if keys.is_empty() {
+            return;
+        }
+        if let Some(claim) = self.claim.take() {
+            claim.close_without_reuse(keys);
+        }
+        self.status.rcu(|current| {
+            let mut next = (**current).clone();
+            next.clear_active();
+            Arc::new(next)
+        });
+    }
+
     /// Receive the next batch of data or an error.
     ///
     /// Returns:
-    /// - `Some(Ok(batch))` — normal data
+    /// - `Some(Ok(update))` — normal data
     /// - `Some(Err(error))` — subscription failure, session death, etc.
     /// - `None` — subscription is closed
-    pub async fn next(&mut self) -> Option<Result<RecordBatch, BlpError>> {
+    pub async fn next(&mut self) -> Option<Result<SubscriptionUpdate, BlpError>> {
         self.rx.recv().await
     }
 
     /// Try to receive data without blocking.
-    pub fn try_next(&mut self) -> Option<Result<RecordBatch, BlpError>> {
+    pub fn try_next(&mut self) -> Option<Result<SubscriptionUpdate, BlpError>> {
         self.rx.try_recv().ok()
     }
 
@@ -2058,9 +2173,12 @@ impl SubscriptionStream {
 
     /// Unsubscribe from all topics and close the stream.
     ///
-    /// If `drain` is true, returns remaining buffered batches before closing.
-    /// Errors in the drain are silently discarded — only successful batches are returned.
-    pub async fn unsubscribe(mut self, drain: bool) -> Result<Vec<RecordBatch>, BlpAsyncError> {
+    /// If `drain` is true, returns remaining buffered updates before closing.
+    /// Errors in the drain are silently discarded — only successful updates are returned.
+    pub async fn unsubscribe(
+        mut self,
+        drain: bool,
+    ) -> Result<Vec<SubscriptionUpdate>, BlpAsyncError> {
         let mut remaining = Vec::new();
 
         if drain {
@@ -2088,9 +2206,13 @@ impl SubscriptionStream {
         Ok(remaining)
     }
 
-    /// Close the stream without explicit unsubscribe (drop handles cleanup).
+    /// Close the stream with best-effort cleanup.
+    ///
+    /// Drop cannot await Bloomberg termination confirmations. If active topics remain,
+    /// cleanup sends an unsubscribe command and discards the worker instead of
+    /// returning a potentially dirty session to the reusable pool.
     pub fn close(mut self) {
-        self.claim.take(); // Session returns to pool on drop
+        self.cleanup_without_reuse_if_active();
     }
 
     /// Destructure the stream into its component parts.
@@ -2106,8 +2228,8 @@ impl SubscriptionStream {
         self,
     ) -> Result<
         (
-            mpsc::Receiver<Result<RecordBatch, BlpError>>,
-            mpsc::Sender<Result<RecordBatch, BlpError>>,
+            mpsc::Receiver<Result<SubscriptionUpdate, BlpError>>,
+            mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
             SessionClaim,
             SharedSubscriptionStatus,
             Option<usize>,          // flush_threshold
@@ -2161,7 +2283,8 @@ impl SubscriptionStream {
 
 impl Drop for SubscriptionStream {
     fn drop(&mut self) {
-        // Session is automatically released when claim is dropped
+        self.cleanup_without_reuse_if_active();
+        // If no active topics remain, SessionClaim drops normally and returns the worker to the pool.
     }
 }
 
@@ -2204,6 +2327,17 @@ mod tests {
         assert_eq!(config.auth, None);
         assert_eq!(config.num_start_attempts, 3);
         assert!(config.auto_restart_on_disconnection);
+    }
+
+    #[test]
+    fn engine_config_rejects_zero_subscription_stream_capacity() {
+        let config = EngineConfig {
+            subscription_stream_capacity: 0,
+            ..Default::default()
+        };
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("subscription_stream_capacity must be greater than zero"));
     }
 
     #[test]
