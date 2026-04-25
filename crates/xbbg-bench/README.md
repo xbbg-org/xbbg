@@ -25,10 +25,12 @@ cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 The suite runs together in one report:
 
 1. Tiny live Bloomberg probes for BDP, BDH, BDTICK, and BQL.
-2. A bounded live subscription throughput window.
-3. Synthetic massive BDP, BDH, BDTICK, BQL, and subscription workloads.
+2. Cached Bloomberg request-event replay through the real extractor states: BDP, BDH, BDS, BDTICK, and BQL.
+3. A bounded live subscription throughput window.
+4. Cached subscription-event replay through the real `SubscriptionState -> Arrow RecordBatch` path.
+5. Synthetic massive BDP, BDH, BDTICK, BQL, and subscription workloads.
 
-Live probes intentionally keep Bloomberg data usage low. Scale comes from the synthetic workloads, which use deterministic generated data and do not issue Bloomberg requests.
+Live probes and replay seed captures intentionally keep Bloomberg data usage low. Replay and synthetic scale reuse cached SDK events or deterministic generated data instead of issuing repeated Bloomberg requests.
 
 ### Profiles
 
@@ -53,6 +55,44 @@ BENCH_PROFILE=stress BENCH_SUB_COLLECT_MS=30000 \
   cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
 ```
 
+### Cached replay benchmarks
+
+The suite includes cached SDK event replay benchmarks so performance changes in xbbg extraction code show up without hammering Bloomberg:
+
+- `replay / bdp_refdata`: one BDP seed request, then repeated `RefDataState` extraction
+- `replay / bdh_historical`: one BDH seed request, then repeated `HistDataState` extraction
+- `replay / bds_bulk_late_fields`: one BDS-style bulk seed request, then repeated `BulkDataState` extraction with dynamic sub-field discovery
+- `replay / bdtick_optional_fields`: one BDTICK seed request with condition/exchange code options, then repeated `IntradayTickState` extraction
+- `replay / bql_response`: one BQL seed query, then repeated `BqlState` extraction
+
+Subscription replay captures a short real subscription window once, then replays cached messages through `SubscriptionState` cases: requested fields, `allFields`, high message count, and high topic count.
+
+Examples:
+
+```bash
+BENCH_ONLY=bdp_refdata cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
+BENCH_ONLY=subscription_replay cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
+```
+
+### Detail profiling
+
+Use the single benchmark-local profiling approach when you need optimization data over time:
+
+```bash
+BENCH_PROFILE_MODE=detail BENCH_ONLY=synthetic_bdh \
+  cargo bench --package xbbg-bench --bench xbbg_benchmark_suite
+```
+
+`BENCH_PROFILE_MODE=detail` records structured profiling data in the normal JSON/Markdown reports:
+
+- phase timings per scenario, such as generation, Arrow batch construction, and total time
+- benchmark-local allocation counters
+- allocation bytes and allocation counts per row/value
+
+This profiling is implemented only in the benchmark executable. It does not add instrumentation, feature flags, allocators, or runtime branches to production crates such as `xbbg-core`, `xbbg-async`, bindings, or apps.
+
+Use `BENCH_ONLY=<substring>` to profile a single scenario or suite without running unrelated live probes. For example, `BENCH_ONLY=synthetic` runs only synthetic workloads, and `BENCH_ONLY=synthetic_subscriptions` runs only the synthetic subscription workload.
+
 ### Environment variables
 
 | Variable | Default | Purpose |
@@ -60,7 +100,12 @@ BENCH_PROFILE=stress BENCH_SUB_COLLECT_MS=30000 \
 | `BLP_HOST` | `127.0.0.1` | Bloomberg host for live probes |
 | `BLP_PORT` | `8194` | Bloomberg port for live probes |
 | `BENCH_PROFILE` | `standard` | `smoke`, `standard`, or `stress` |
+| `BENCH_PROFILE_MODE` | `none` | Set to `detail` for phase timings and benchmark-local allocation counters |
+| `BENCH_ONLY` | unset | Run scenarios whose suite or scenario name contains this substring |
 | `BENCH_SUB_COLLECT_MS` | profile-dependent | live subscription collection window |
+| `BENCH_REPLAY_ITERATIONS` | profile-dependent | request-event replay iterations per seeded response |
+| `BENCH_SUB_REPLAY_MESSAGES` | profile-dependent | cached subscription messages processed in replay benchmarks |
+| `BENCH_SUB_REPLAY_TOPICS` | profile-dependent | synthetic topic count for high-topic subscription replay |
 
 ### Results
 
