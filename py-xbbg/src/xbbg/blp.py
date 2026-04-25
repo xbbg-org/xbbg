@@ -1266,25 +1266,7 @@ async def _aroute_kwargs(
     return elements, overrides
 
 
-def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
-    """Format date to string."""
-    if dt is None:
-        return datetime.now().strftime(fmt)
-    if isinstance(dt, str):
-        if dt.lower() == "today":
-            return datetime.now().strftime(fmt)
-        # Try to parse and reformat
-        try:
-            return datetime.fromisoformat(dt).strftime(fmt)
-        except (ValueError, TypeError):
-            # Try common formats
-            for parse_fmt in ("%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"):
-                try:
-                    return datetime.strptime(dt, parse_fmt).strftime(fmt)
-                except ValueError:
-                    continue
-            return dt
-    return dt.strftime(fmt)
+from xbbg.ext._utils import _fmt_date  # noqa: E402  (must follow services imports)
 
 
 def _convert_backend(
@@ -3925,7 +3907,10 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
     end_value = args.get("end_date", "today")
     start_value = args.get("start_date")
 
-    e_dt = _fmt_date(end_value, "%Y%m%d")
+    # ``end_date`` defaults to "today" via the public signature, but callers may
+    # explicitly pass ``end_date=None``; preserve the legacy "today" fallback in
+    # that case so default ``bdh()`` calls remain unchanged.
+    e_dt = _fmt_date(end_value, "%Y%m%d", default_today_on_none=True)
     if start_value is None:
         end_dt_parsed = datetime.strptime(e_dt, "%Y%m%d")
         s_dt = (end_dt_parsed - timedelta(weeks=8)).strftime("%Y%m%d")
