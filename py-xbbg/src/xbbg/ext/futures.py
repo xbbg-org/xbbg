@@ -633,7 +633,6 @@ async def aactive_cdx(
         if "field" in nw_px.columns and "value" in nw_px.columns:
             px_rows = nw_px.filter(nw.col("field").str.to_uppercase() == "PX_LAST")
             px_rows = px_rows.filter(~nw.col("value").is_null())
-            px_rows = px_rows.filter(nw.col("value") != "")
 
             if len(px_rows) == 0 or "date" not in px_rows.columns:
                 return cur

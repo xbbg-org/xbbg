@@ -692,10 +692,60 @@ impl Request {
 /// - "2024-01-15T09:30:00" (full datetime)
 /// - "2024-01-15T09:30" (no seconds)
 /// - "2024-01-15" (date only)
+fn split_datetime_offset(time_str: &str) -> Result<(&str, Option<i16>)> {
+    if let Some(stripped) = time_str
+        .strip_suffix('Z')
+        .or_else(|| time_str.strip_suffix('z'))
+    {
+        return Ok((stripped, Some(0)));
+    }
+
+    if let Some((idx, sign)) = time_str
+        .char_indices()
+        .rev()
+        .find(|(idx, ch)| *idx > 0 && (*ch == '+' || *ch == '-'))
+    {
+        let offset = parse_datetime_offset(sign, &time_str[idx + 1..])?;
+        return Ok((&time_str[..idx], Some(offset)));
+    }
+
+    Ok((time_str, None))
+}
+
+fn parse_datetime_offset(sign: char, offset: &str) -> Result<i16> {
+    let (hours_raw, minutes_raw) = if let Some((hours, minutes)) = offset.split_once(':') {
+        (hours, minutes)
+    } else if offset.len() == 4 {
+        offset.split_at(2)
+    } else {
+        (offset, "0")
+    };
+
+    let hours: i16 = hours_raw.parse().map_err(|_| BlpError::InvalidArgument {
+        detail: format!("invalid timezone offset hours: {}", hours_raw),
+    })?;
+    let minutes: i16 = minutes_raw.parse().map_err(|_| BlpError::InvalidArgument {
+        detail: format!("invalid timezone offset minutes: {}", minutes_raw),
+    })?;
+
+    if hours > 23 || minutes > 59 {
+        return Err(BlpError::InvalidArgument {
+            detail: format!("invalid timezone offset: {}{}", sign, offset),
+        });
+    }
+
+    let offset_minutes = hours * 60 + minutes;
+    Ok(if sign == '-' {
+        -offset_minutes
+    } else {
+        offset_minutes
+    })
+}
+
 fn parse_datetime(s: &str) -> Result<crate::ffi::blpapi_Datetime_t> {
     use crate::ffi::{
         blpapi_Datetime_t, BLPAPI_DATETIME_DATE_PART, BLPAPI_DATETIME_HOURS_PART,
-        BLPAPI_DATETIME_MINUTES_PART, BLPAPI_DATETIME_SECONDS_PART,
+        BLPAPI_DATETIME_MINUTES_PART, BLPAPI_DATETIME_OFFSET_PART, BLPAPI_DATETIME_SECONDS_PART,
     };
 
     let mut dt = blpapi_Datetime_t::default();
@@ -732,8 +782,9 @@ fn parse_datetime(s: &str) -> Result<crate::ffi::blpapi_Datetime_t> {
         })?;
     dt.parts = BLPAPI_DATETIME_DATE_PART;
 
-    // Parse time if present: "09:30:00" or "09:30"
-    if let Some(time_str) = time_part {
+    // Parse time if present: "09:30:00", "09:30", or with an ISO timezone suffix.
+    if let Some(raw_time_str) = time_part {
+        let (time_str, offset_minutes) = split_datetime_offset(raw_time_str)?;
         let time_parts: Vec<&str> = time_str.split(':').collect();
         if time_parts.len() >= 2 {
             dt.hours = time_parts[0]
@@ -749,17 +800,56 @@ fn parse_datetime(s: &str) -> Result<crate::ffi::blpapi_Datetime_t> {
             dt.parts |= BLPAPI_DATETIME_HOURS_PART | BLPAPI_DATETIME_MINUTES_PART;
 
             if time_parts.len() >= 3 {
-                // Handle seconds, possibly with fractional part
+                // Handle seconds, possibly with fractional part.
                 let sec_str = time_parts[2].split('.').next().unwrap_or("0");
                 dt.seconds = sec_str.parse().map_err(|_| BlpError::InvalidArgument {
                     detail: format!("invalid seconds: {}", sec_str),
                 })?;
                 dt.parts |= BLPAPI_DATETIME_SECONDS_PART;
             }
+
+            if let Some(offset) = offset_minutes {
+                dt.offset = offset;
+                dt.parts |= BLPAPI_DATETIME_OFFSET_PART;
+            }
         }
     }
 
     Ok(dt)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_datetime_accepts_zero_offset_suffix() {
+        let dt = parse_datetime("2026-04-24T14:30:00+00:00").unwrap();
+
+        assert_eq!(dt.hours, 14);
+        assert_eq!(dt.minutes, 30);
+        assert_eq!(dt.seconds, 0);
+        assert_eq!(dt.offset, 0);
+        assert!(dt.parts & crate::ffi::BLPAPI_DATETIME_OFFSET_PART != 0);
+    }
+
+    #[test]
+    fn parse_datetime_accepts_nonzero_offset_suffix() {
+        let dt = parse_datetime("2026-04-24T14:30:03+02:00").unwrap();
+
+        assert_eq!(dt.seconds, 3);
+        assert_eq!(dt.offset, 120);
+        assert!(dt.parts & crate::ffi::BLPAPI_DATETIME_OFFSET_PART != 0);
+    }
+
+    #[test]
+    fn parse_datetime_accepts_z_suffix() {
+        let dt = parse_datetime("2026-04-24T14:30:03Z").unwrap();
+
+        assert_eq!(dt.seconds, 3);
+        assert_eq!(dt.offset, 0);
+        assert!(dt.parts & crate::ffi::BLPAPI_DATETIME_OFFSET_PART != 0);
+    }
 }
 
 impl Drop for Request {

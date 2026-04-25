@@ -98,6 +98,14 @@ def get_date_range(days: int = 7) -> tuple[str, str]:
     return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
 
+def get_recent_utc_market_window(minutes: int = 5) -> tuple[str, str]:
+    """Get a small UTC intraday window on a recent weekday."""
+    trading_day = get_recent_trading_day()
+    start = datetime.fromisoformat(f"{trading_day}T14:30:00")
+    end = start + timedelta(minutes=minutes)
+    return start.isoformat(), end.isoformat()
+
+
 # =============================================================================
 # BDP Tests - Reference Data
 # =============================================================================
@@ -295,6 +303,20 @@ class TestAbdh:
         assert len(df) >= 1
         logger.info(f"  Async result: {len(df)} rows")
 
+    @pytest.mark.asyncio
+    async def test_abdh_pyarrow_keeps_ticker_column_issue_225(self):
+        """Regression for #225: pyarrow BDH default output keeps ticker identity."""
+        import pyarrow as pa
+
+        from xbbg import abdh
+
+        start, end = get_date_range(5)
+        table = await abdh(CONFIG.equity_multi, CONFIG.price_field, start_date=start, end_date=end, backend="pyarrow")
+
+        assert isinstance(table, pa.Table)
+        assert "ticker" in table.column_names
+        assert len(table) >= len(CONFIG.equity_multi)
+
 
 # =============================================================================
 # Output Format Tests - regression coverage for bdp/bdh format= variants
@@ -354,6 +376,31 @@ class TestOutputFormats:
         assert list(df.columns) == ["ticker", "field", "value", "dtype"]
         pdf = df.to_pandas()
         assert set(pdf["dtype"].unique()) == {"float64"}
+
+    def test_bdp_long_numeric_value_is_float_issue_280(self):
+        """Regression for #280: numeric BDP long values stay numeric."""
+        import pyarrow as pa
+
+        from xbbg import bdp
+
+        table = bdp(CONFIG.equity_single, CONFIG.price_field, format="long", backend="pyarrow")
+
+        assert len(table) == 1
+        assert pa.types.is_floating(table.schema.field("value").type)
+
+    def test_bdh_long_numeric_value_is_float_issue_280(self):
+        """Regression for #280: numeric BDH long values stay numeric."""
+        import pyarrow as pa
+
+        from xbbg import bdh
+
+        start, end = get_date_range(5)
+        table = bdh(
+            CONFIG.equity_single, CONFIG.price_field, start_date=start, end_date=end, format="long", backend="pyarrow"
+        )
+
+        assert len(table) >= 1
+        assert pa.types.is_floating(table.schema.field("value").type)
 
     def test_bdh_long(self):
         from xbbg import bdh
@@ -455,6 +502,21 @@ class TestBds:
         assert "ticker" in df.columns
 
         logger.info(f"  Got {len(df)} index members")
+
+    def test_bds_futures_chain_preserves_raw_headers_issue_274(self):
+        """Regression for #274: generic BDS preserves raw Bloomberg bulk labels."""
+        from xbbg import bds
+
+        df = bds(
+            CONFIG.futures_generic,
+            "FUT_CHAIN_LAST_TRADE_DATES",
+            overrides={"CHAIN_DATE": "20260330"},
+            backend="pandas",
+        )
+
+        assert len(df) >= 1
+        for column in ("ticker", "field", "Future's Ticker", "Last Trade Date"):
+            assert column in df.columns
 
     def test_bds_dividend_history(self):
         """BDS: dividend history."""
@@ -572,6 +634,41 @@ class TestBdtick:
         assert len(df) >= 1, f"Expected tick data for {trading_day} 14:30-15:30 UTC, got 0"
         logger.info(f"  Got {len(df)} ticks for {trading_day} (1-hour at open, UTC)")
 
+    def test_bdtick_include_condition_codes_issue_309(self):
+        """Regression for #309: optional BDTICK scalar fields stay in typed output."""
+        from xbbg import bdtick
+
+        start, end = get_recent_utc_market_window(minutes=5)
+        df = bdtick(
+            CONFIG.streaming_ticker,
+            start_datetime=start,
+            end_datetime=end,
+            event_types=["TRADE"],
+            includeConditionCodes=True,
+            includeExchangeCodes=True,
+            maxDataPoints=1,
+            backend="pandas",
+        )
+
+        assert len(df) >= 1
+        for column in ("ticker", "time", "type", "value", "size", "conditionCodes", "exchangeCode"):
+            assert column in df.columns
+
+    def test_bdtick_accepts_tz_aware_iso_inputs_issue_305(self):
+        """Open issue #305: tz-aware ISO strings should be accepted by BDTICK."""
+        from xbbg import bdtick
+
+        start, end = get_recent_utc_market_window(minutes=5)
+        df = bdtick(
+            CONFIG.streaming_ticker,
+            start_datetime=f"{start}+00:00",
+            end_datetime=f"{end}+00:00",
+            event_types=["TRADE"],
+            maxDataPoints=1,
+        )
+
+        assert len(df) >= 1
+
 
 class TestAbdtick:
     """Tests for abdtick() - async BDTICK.
@@ -597,6 +694,28 @@ class TestAbdtick:
 
         assert len(df) >= 1, f"Expected async tick data for {trading_day} 14:30-15:30 UTC, got 0"
         logger.info(f"  Async result: {len(df)} ticks for {trading_day} (UTC)")
+
+    @pytest.mark.asyncio
+    async def test_abdtick_pyarrow_mixed_fields_issue_224(self):
+        """Regression for #224: pyarrow BDTICK handles mixed typed tick columns."""
+        import pyarrow as pa
+
+        from xbbg import abdtick
+
+        start, end = get_recent_utc_market_window(minutes=5)
+        table = await abdtick(
+            CONFIG.equity_single,
+            start_datetime=start,
+            end_datetime=end,
+            event_types=["TRADE"],
+            includeConditionCodes=True,
+            maxDataPoints=1,
+            backend="pyarrow",
+        )
+
+        assert isinstance(table, pa.Table)
+        assert len(table) >= 1
+        assert {"ticker", "time", "type", "value", "size"}.issubset(table.column_names)
 
 
 # =============================================================================
@@ -651,6 +770,34 @@ class TestBackendConversion:
 
         assert isinstance(table, pa.Table)
         logger.info(f"  PyArrow Table: {type(table)}")
+
+    def test_backend_polars_bdh_uppercase_issue_190_221(self):
+        """Regressions for #190/#221: BDH honors polars backend case-insensitively."""
+        pytest.importorskip("polars")
+        import polars as pl
+
+        from xbbg import bdh
+
+        start, end = get_date_range(5)
+        df = bdh(CONFIG.equity_single, CONFIG.price_field, start_date=start, end_date=end, backend="POLARS")
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) >= 1
+
+    def test_global_backend_polars_issue_287(self):
+        """Regression for #287: global polars backend is not converted twice."""
+        pytest.importorskip("polars")
+        import polars as pl
+
+        from xbbg import bdp, get_backend, set_backend
+
+        original = get_backend()
+        try:
+            set_backend("polars")
+            df = bdp(CONFIG.equity_single, CONFIG.price_field)
+            assert isinstance(df, pl.DataFrame)
+        finally:
+            set_backend(original)
 
     def test_global_backend_setting(self):
         """Backend: global setting."""
@@ -1160,6 +1307,17 @@ class TestBql:
         df = bql("get(px_last) for('IBM US Equity')")
         assert len(df) >= 1
         logger.info(f"  Got {len(df)} BQL rows")
+
+    def test_bql_eco_calendar_multiple_rows_issue_150_189(self):
+        """Regressions for #150/#189: BQL eco_calendar keeps multiple non-null events."""
+        from xbbg import bql
+
+        df = bql("get(eco_calendar) for ('US Country')", backend="pandas")
+        columns_by_lower = {str(column).lower(): column for column in df.columns}
+
+        assert len(df) > 1
+        assert "eco_calendar" in columns_by_lower
+        assert df[columns_by_lower["eco_calendar"]].notna().sum() > 1
 
 
 class TestAbql:
