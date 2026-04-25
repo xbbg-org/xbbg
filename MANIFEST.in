@@ -39,7 +39,7 @@ recursive-include bindings/napi-xbbg *.rs *.toml
 recursive-include apps/xbbg-mcp *.rs *.toml
 
 # Codegen (needed for workspace compilation)
-recursive-include codegen *.py
+recursive-include defs/codegen *.py
 
 # Definition files (schema defs used by crates)
 recursive-include defs *
