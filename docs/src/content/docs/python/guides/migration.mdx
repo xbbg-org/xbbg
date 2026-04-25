@@ -459,6 +459,42 @@ For ZFP (Zero Footprint) connections, `EngineConfig` exposes the full TLS surfac
 |----------|---------------|---------------|
 | `blp.beqs` | `typ` | `screen_type` |
 
+### Request element aliases
+
+xbbg 1.x accepts the 0.x Bloomberg request-element aliases before a request is sent to Bloomberg.
+Aliases are normalized to canonical Bloomberg element names, and enum-like shorthand values are resolved using
+the target element context (for example `Quote="C"` means `OVERRIDE_OPTION_CLOSE`, while `Fill="C"`
+means `PREVIOUS_VALUE`).
+
+| Aliases | Canonical request element | Value aliases |
+|---------|---------------------------|---------------|
+| `PeriodAdj`, `PerAdj` | `periodicityAdjustment` | `A` → `ACTUAL`, `C` → `CALENDAR`, `F` → `FISCAL` |
+| `Period`, `Per` | `periodicitySelection` | `D`/`W`/`M`/`Q`/`S`/`Y` → `DAILY`/`WEEKLY`/`MONTHLY`/`QUARTERLY`/`SEMI_ANNUALLY`/`YEARLY` |
+| `Currency`, `Curr`, `FX` | `currency` | — |
+| `Days` | `nonTradingDayFillOption` | `N`, `W`, `Weekdays` → `NON_TRADING_WEEKDAYS`; `C`, `A`, `All` → `ALL_CALENDAR_DAYS`; `T`, `Trading` → `ACTIVE_DAYS_ONLY` |
+| `Fill` | `nonTradingDayFillMethod` | `C`, `P`, `Previous` → `PREVIOUS_VALUE`; `B`, `Blank`, `NA` → `NIL_VALUE` |
+| `Points` | `maxDataPoints` | — |
+| `Quote` | `overrideOption` | `A`, `G`, `Average` → `OVERRIDE_OPTION_GPA`; `C`, `Close` → `OVERRIDE_OPTION_CLOSE` |
+| `QuoteType`, `QtTyp` | `pricingOption` | `P`, `Price` → `PRICING_OPTION_PRICE`; `Y`, `Yield` → `PRICING_OPTION_YIELD` |
+| `CshAdjNormal` | `adjustmentNormal` | — |
+| `CshAdjAbnormal` | `adjustmentAbnormal` | — |
+| `CapChg` | `adjustmentSplit` | — |
+| `UseDPDF` | `adjustmentFollowDPDF` | — |
+| `Calendar` | `calendarCodeOverride` | — |
+| `BarSz`, `BarSize` | `interval` | integer minutes |
+| `BarTp`, `BarType` | `eventType` / `event_types` | `B`, `Bid` → `BID`; `A`, `Ask` → `ASK`; `T`, `Trade` → `TRADE` |
+| `IncludeExchangeCodes` | `includeExchangeCodes` | — |
+
+The Excel-only presentation aliases do not have Bloomberg request-element equivalents. For `bdh()`,
+xbbg consumes them locally and applies the output shaping after Bloomberg returns raw data:
+
+| Aliases | Local option | Value aliases | Effect |
+|---------|--------------|---------------|--------|
+| `Dts`, `Dates` | `show_date` | `Show`, `S`, `True` → show; `Hide`, `H`, `False` → hide | Keep or remove the `date`/`period` columns |
+| `DtFmt`, `DateFormat` | `date_format` | `D`, `Date` → `DATE`; `P`, `Periodic` → `PERIODIC`; `B`, `Both` → `BOTH` | Keep dates, replace dates with period labels, or include both |
+| `Sort` | `sort` | `C`, `A`, `Ascend`, `Chronological`, `False` → ascending; `R`, `D`, `Descend`, `Reverse`, `True` → descending | Sort historical rows by date within ticker |
+| `Orientation`, `Direction`, `Dir` | `orientation` | `V`, `Vertical` → vertical; `H`, `Horizontal` → horizontal | Select `format='long'` or `format='semi_long'` when no explicit `format` is passed |
+
 ## Functions moved to `xbbg.ext`
 
 These helpers used to live on the top-level `xbbg.blp` module in 0.x. They have **moved** to

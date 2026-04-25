@@ -179,6 +179,32 @@ SEMI_LONG retains the `ticker` column as an identifier rather than pivoting tick
 
 **Best for:** quick visual inspection, passing to charting libraries, situations where you want named field columns but not a fully pivoted multi-ticker layout.
 
+## Excel presentation aliases for `bdh()`
+
+`bdh()` also accepts the Excel-style presentation aliases from the Bloomberg add-in. These are not sent to Bloomberg; xbbg applies them locally after the raw historical response returns.
+
+| Alias family | Values | Effect |
+|--------------|--------|--------|
+| `Dts`, `Dates`, `show_date` | `Show`/`S`/`True`, `Hide`/`H`/`False` | Keep or remove date-style columns |
+| `DtFmt`, `DateFormat`, `date_format` | `D`/`Date`, `P`/`Periodic`, `B`/`Both` | Use date labels, period labels, or both |
+| `Sort`, `sort` | `A`/`Ascend`/`Chronological`, `R`/`Reverse`/`Descend` | Sort historical rows by date |
+| `Orientation`, `Direction`, `Dir`, `orientation` | `V`/`Vertical`, `H`/`Horizontal` | Select long or semi-long output when `format=` is not explicit |
+
+```python
+hist = blp.bdh(
+    'SPX Index',
+    'PX_LAST',
+    '2024-01-01',
+    '2024-12-31',
+    Per='M',
+    DtFmt='Both',
+    Sort='Reverse',
+    Direction='H',
+)
+```
+
+Explicit `format=` still wins over `Direction`/`Orientation`; use the alias only when you want Excel-like call sites to choose the default shape.
+
 ---
 
 ---
