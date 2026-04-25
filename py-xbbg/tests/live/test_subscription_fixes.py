@@ -53,7 +53,7 @@ async def test_multitype_fields():
         "RT_PX_CHG_PCT_1D",
     ]
 
-    tickers = ["ES1 Index", "UX1 Index", "NQ1 Index"]
+    tickers = ["XBTUSD Curncy"]
 
     print(f"\n{'=' * 60}")
     print("TEST: Multi-type field preservation (Fix #1)")
@@ -68,10 +68,12 @@ async def test_multitype_fields():
     print()
 
     batches_received = 0
-    max_batches = 15  # Collect enough to see INITPAINT + a few updates
+    max_batches = 10  # 24/7 XBTUSD should provide INITPAINT + live quote/trade updates
+    timeout_seconds = 20.0
 
     try:
-        async for batch in sub:
+        for _ in range(max_batches):
+            batch = await asyncio.wait_for(sub.__anext__(), timeout=timeout_seconds)
             batches_received += 1
 
             # Print schema on first batch
