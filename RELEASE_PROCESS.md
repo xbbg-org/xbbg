@@ -27,7 +27,7 @@ Dev builds (untagged commits) automatically get versions like `0.12.1.dev268+g84
 | Build backend | `setuptools` | Python packaging |
 | Rust extension | `setuptools-rust` | Compiles PyO3 extension (`xbbg._core`) |
 | Version | `setuptools_scm` | Derives Python package versions from git tags |
-| JS package version | `js-xbbg/scripts/stamp-version.js` | Stamps `@xbbg/core` and `@xbbg/bridge` wrapper/platform package versions for JS release workflows |
+| JS package version | `js-xbbg/scripts/stamp-version.js` | Stamps `@xbbg/core` wrapper/platform package versions for JS release workflows |
 | Build tool | `uv` | Fast package manager and build frontend |
 
 ## Release Workflow
@@ -115,7 +115,7 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | Workflow | File | Purpose |
 |----------|------|---------|
 | Bump Version | `semantic_version.yml` | Calculate version, update CHANGELOG and README release marker, create tag + GitHub release |
-| JS GitHub Release | `js_github_release.yml` | Build, validate, and attach GitHub-only JS tarballs for `@xbbg/core` and `@xbbg/bridge` on `js-vX.Y.Z` |
+| JS GitHub Release | `js_github_release.yml` | Build, validate, and attach GitHub-only JS tarballs for `@xbbg/core` on `js-vX.Y.Z` |
 
 ### JS GitHub-only package release
 
@@ -142,14 +142,6 @@ Go to **GitHub Actions** > **JS GitHub Release** > **Run workflow**
 **Attached artifacts (currently supported):**
 
 - `@xbbg/core` wrapper + `darwin-arm64`, `linux-x64`, `win32-x64` platform tarballs
-- `@xbbg/bridge` wrapper + `darwin-arm64`, `linux-x64`, `win32-x64` platform tarballs
-
-**Intentionally excluded today:**
-
-- `@xbbg/bridge-darwin-x64`
-- `@xbbg/bridge-linux-arm64`
-
-Those two bridge package stubs exist in-tree, but Bloomberg SDK archive support is not available for them in the current release tooling.
 
 Docker images are not part of this release. CI images stay in GHCR and do not bundle Bloomberg SDK files.
 
@@ -242,7 +234,7 @@ When asked to create a release:
    - Bug fixes only → `patch`
    - Pre-release → add `alpha`/`beta`/`rc`
 4. **Guide user to GitHub Actions** to trigger the `semantic_version.yml` workflow for the canonical `vX.Y.Z` release
-5. **For GitHub-only JS package assets**, guide the user to `js_github_release.yml` with an explicit version; it builds the 8 supported JS tarballs and tags `js-vX.Y.Z`
+5. **For GitHub-only JS package assets**, guide the user to `js_github_release.yml` with an explicit version; it builds the supported `@xbbg/core` JS tarballs and tags `js-vX.Y.Z`
 
 **Do NOT manually:**
 - Edit version numbers in code for Python releases (managed by `setuptools_scm` from git tags)
