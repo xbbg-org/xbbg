@@ -302,8 +302,8 @@ async def abqr(
     Retrieves intraday tick data with broker/dealer codes for a security.
     This is useful for analyzing dealer activity and market making.
 
-    Note: Broker code data availability depends on your Bloomberg entitlements
-    and the security type. Not all securities have broker attribution.
+    Note: For broker attribution, prefer fixed-income ISIN inputs with a dealer
+    quote source, e.g. ``/isin/US037833FB15@MSG1 Corp``.
 
     Args:
         ticker: Security ticker (e.g., "US912810TM69 Govt").
@@ -317,8 +317,8 @@ async def abqr(
         **kwargs: Additional options passed to abdtick.
 
     Returns:
-        DataFrame with quote data including broker codes (if available).
-        Columns typically include: time, type, value, size, and broker codes.
+        DataFrame with fixed-income dealer quote data. Columns typically include
+        ticker, time, event_type, price, size, broker_buy, and broker_sell.
 
     Example::
 
@@ -327,12 +327,12 @@ async def abqr(
 
 
         async def main():
-            # Get dealer quotes for a government bond
-            df = await abqr("US912810TM69 Govt")
+            # Get dealer quotes for a bond using an ISIN and MSG1 dealer source
+            df = await abqr("/isin/US037833FB15@MSG1 Corp")
 
             # Get quotes for specific time range
             df = await abqr(
-                "US912810TM69 Govt",
+                "/isin/US037833FB15@MSG1 Corp",
                 start_datetime="2024-01-15 09:00",
                 end_datetime="2024-01-15 10:00",
             )
@@ -342,6 +342,9 @@ async def abqr(
     """
     from xbbg import abdtick
     from xbbg._core import ext_default_bqr_datetimes
+    from xbbg.blp import _postprocess_bqr_result, _warn_bqr_dealer_input
+
+    backend = kwargs.pop("backend", None)
 
     # Compute default datetime range using Rust (handles normalization + defaults)
     start_datetime, end_datetime = ext_default_bqr_datetimes(start_datetime, end_datetime)
@@ -353,13 +356,23 @@ async def abqr(
     # Add broker code request to kwargs if desired
     if include_broker_codes:
         kwargs["includeBrokerCodes"] = True
+        _warn_bqr_dealer_input(ticker, stacklevel=3)
 
-    # Use abdtick to get the data
-    return await abdtick(
+    # Use abdtick to get the data. Keep BID/ASK as the default BQR contract;
+    # otherwise abdtick defaults to TRADE ticks and returns transaction rows.
+    table = await abdtick(
         ticker=ticker,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
+        event_types=event_types,
+        backend="pyarrow",
         **kwargs,
+    )
+    return _postprocess_bqr_result(
+        table,
+        ticker=ticker,
+        backend=backend,
+        enforce_broker_codes=include_broker_codes,
     )
 
 
