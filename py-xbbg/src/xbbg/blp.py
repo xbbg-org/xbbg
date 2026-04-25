@@ -1441,10 +1441,16 @@ async def arequest(
         overrides: Field overrides as dict or list of (name, value) tuples.
         elements: Additional request elements as list of (name, value) tuples.
             Used for schema-driven parameters like intervalHasSeconds, periodicitySelection.
-        start_date: Start date for historical requests (YYYYMMDD format).
-        end_date: End date for historical requests (YYYYMMDD format).
-        start_datetime: Start datetime for intraday requests (ISO format).
-        end_datetime: End datetime for intraday requests (ISO format).
+        start_date: Start date for historical requests. Accepts ISO 8601 string,
+            ``YYYYMMDD`` string, ``"today"``, ``datetime.date``,
+            ``datetime.datetime``, or duck-typed ``pd.Timestamp``.
+        end_date: End date for historical requests. Same accepted shapes as
+            ``start_date``.
+        start_datetime: Start datetime for intraday requests. Accepts ISO 8601
+            string (with or without tz), ``datetime.datetime`` (naive or
+            tz-aware), or ``pd.Timestamp``. Naive values use ``request_tz``.
+        end_datetime: End datetime for intraday requests. Same accepted shapes
+            as ``start_datetime``.
         request_tz: For intraday requests, how naive datetimes are interpreted before
             sending to Bloomberg (``UTC``, ``local``, ``exchange``, aliases, or IANA).
             Resolved and converted to UTC in the Rust engine.
@@ -3095,8 +3101,9 @@ async def abta(
     Args:
         tickers: Security or list of securities
         study: Study type (e.g., 'sma', 'rsi', 'macd', 'boll', 'atr')
-        start_date: Start date (YYYYMMDD format)
-        end_date: End date (YYYYMMDD format)
+        start_date: Start date. Accepts ISO 8601 / ``YYYYMMDD`` string,
+            ``datetime.date``, ``datetime.datetime``, or ``pd.Timestamp``.
+        end_date: End date. Same accepted shapes as ``start_date``.
         periodicity: Data periodicity ('DAILY', 'WEEKLY', 'MONTHLY', 'INTRADAY')
         interval: Intraday interval in minutes (only for periodicity='INTRADAY')
         **study_params: Study-specific parameters (e.g., period=20 for SMA period)
@@ -3725,7 +3732,9 @@ async def abeqs(
 
     Args:
         screen: Screen name as saved in Bloomberg.
-        asof: As-of date for the screen (YYYYMMDD format).
+        asof: As-of date for the screen. Accepts ISO 8601 / ``YYYYMMDD``
+            string, ``datetime.date``, ``datetime.datetime``, or
+            ``pd.Timestamp``.
         screen_type: Screen type - "PRIVATE" (custom) or "GLOBAL" (Bloomberg).
         group: Group name if screen is organized into groups.
         backend: DataFrame backend to return. If None, uses global default.
