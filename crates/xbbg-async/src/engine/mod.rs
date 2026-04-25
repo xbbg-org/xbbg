@@ -1627,7 +1627,7 @@ impl Engine {
                     resolver.insert_from_response(&batch);
 
                     let resolver_clone = resolver.clone();
-                    self.rt.spawn(async move {
+                    tokio::task::spawn_blocking(move || {
                         if let Err(e) = resolver_clone.save_to_disk() {
                             xbbg_log::warn!(error = %e, "Failed to save field cache");
                         }
