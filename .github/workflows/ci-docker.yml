@@ -23,7 +23,7 @@ jobs:
           - image_name: xbbg-ci
             dockerfile: docker/ci/Dockerfile
           - image_name: xbbg-manylinux
-            dockerfile: docker/manylinux/Dockerfile
+            dockerfile: py-xbbg/docker/manylinux/Dockerfile
     steps:
       - uses: actions/checkout@v6
 
