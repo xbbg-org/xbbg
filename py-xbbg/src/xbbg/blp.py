@@ -1186,7 +1186,10 @@ async def abds(
         **kwargs: Bloomberg overrides and infrastructure options.
 
     Returns:
-        DataFrame with bulk data, multiple rows per ticker.
+        DataFrame with one row per Bloomberg bulk row. The only xbbg-added
+        columns are ``ticker`` and ``field``; bulk subfield columns preserve
+        Bloomberg's labels exactly as emitted, including spaces, punctuation,
+        and case. Higher-level helpers must rename their own semantic outputs.
 
     Example::
 

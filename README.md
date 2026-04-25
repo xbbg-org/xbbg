@@ -371,7 +371,7 @@ Options helper enums exported by `xbbg.ext`:
 - **Scoped engines**: `Engine(...)` lets you route a block of requests to a dedicated connection without mutating global state
 - **Configurable Logging**: Debug mode for troubleshooting
 - **Batch Processing**: Efficient multi-ticker queries
-- **Standardized Output**: Consistent DataFrame column naming
+- **Explicit output contracts**: Core metadata columns are stable; generic BDS preserves Bloomberg bulk subfield labels exactly
 - **Non-live test helpers**: `xbbg.testing` exposes `mock_engine()` and TestUtil-backed helpers for unit testing Bloomberg flows without a live terminal
 
 ## Requirements
@@ -1179,12 +1179,11 @@ MSFT US Equity   Company C  Information Technology  180.45
 blp.bds('AAPL US Equity', 'DVD_Hist_All', DVD_Start_Dt='20180101', DVD_End_Dt='20180531')
 ```
 
-```pydocstring
-Out[8]:
-               declared_date     ex_date record_date payable_date  dividend_amount dividend_frequency dividend_type
-AAPL US Equity    2018-05-01  2018-05-11  2018-05-14   2018-05-17             0.73            Quarter  Regular Cash
-AAPL US Equity    2018-02-01  2018-02-09  2018-02-12   2018-02-15             0.63            Quarter  Regular Cash
-```
+`bds()` and `abds()` preserve Bloomberg bulk subfield labels exactly as emitted.
+The only xbbg-added columns are `ticker` and `field`; field-specific columns may
+contain spaces, punctuation, and Bloomberg casing such as `Future's Ticker` or
+`Last Trade Date`. Normalize or rename these columns in your own code when you
+need a stable application schema.
 
 #### Fixed Income Securities
 
@@ -1206,13 +1205,9 @@ Out[9]:
 blp.bds(tickers='/isin/US1234567890', flds='DES_CASH_FLOW')
 ```
 
-```pydocstring
-Out[10]:
-                   payment_date  coupon_amount  principal_amount
-/isin/US1234567890   2026-05-15        21250.0               0.0
-/isin/US1234567890   2026-11-15        21250.0               0.0
-/isin/US1234567890   2027-05-15        21250.0               0.0
-```
+The cash-flow output follows the same BDS contract: `ticker` and `field` are
+xbbg metadata columns, and Bloomberg cash-flow subfield labels are preserved
+verbatim.
 
 **Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to blpapi.
 

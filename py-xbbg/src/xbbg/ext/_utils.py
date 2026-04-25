@@ -15,12 +15,21 @@ import asyncio
 from collections.abc import Callable, Coroutine, Sequence
 from datetime import date
 import functools
+import re
 from typing import Any, ParamSpec, TypeVar
 
 import narwhals.stable.v1 as nw
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+
+
+_NON_WORD_RE = re.compile(r"[^0-9a-zA-Z]+")
+
+
+def _canonical_column_name(name: str) -> str:
+    """Return a wrapper-internal key for matching raw Bloomberg labels."""
+    return _NON_WORD_RE.sub("_", name.strip().casefold()).strip("_")
 
 
 def _syncify(async_func: Callable[_P, Coroutine[Any, Any, _T]]) -> Callable[_P, _T]:
