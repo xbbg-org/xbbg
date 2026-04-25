@@ -1234,6 +1234,17 @@ pub struct EngineConfig {
     /// `slow_consumer_hi_water_mark`.
     pub slow_consumer_lo_water_mark: Option<f32>,
 }
+impl EngineConfig {
+    pub fn validate(&self) -> Result<(), BlpAsyncError> {
+        if self.subscription_stream_capacity == 0 {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "subscription_stream_capacity must be greater than zero".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
@@ -1294,6 +1305,7 @@ impl Engine {
     /// Create and start a new Engine with worker pools.
     pub fn start(config: EngineConfig) -> Result<Self, BlpAsyncError> {
         crate::sdk_logging::register_sdk_logging(config.sdk_log_level);
+        config.validate()?;
 
         let config = Arc::new(config);
 
@@ -1536,12 +1548,17 @@ impl Engine {
         flush_threshold: Option<usize>,
         overflow_policy: Option<OverflowPolicy>,
     ) -> Result<SubscriptionStream, BlpAsyncError> {
-        let (tx, rx) =
-            mpsc::channel(stream_capacity.unwrap_or(self.config.subscription_stream_capacity));
+        let capacity = stream_capacity.unwrap_or(self.config.subscription_stream_capacity);
+        if capacity == 0 {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "subscription stream capacity must be greater than zero".to_string(),
+            });
+        }
+        let (tx, rx) = mpsc::channel(capacity);
         let status = Arc::new(Mutex::new(SubscriptionStatusState::default()));
 
         // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
-        let claim = self.subscription_pool.claim()?;
+        let mut claim = self.subscription_pool.claim()?;
 
         // Start the subscription
         let (keys, raw_metrics) = claim
@@ -1560,6 +1577,7 @@ impl Engine {
 
         let metrics = keys.iter().cloned().zip(raw_metrics).collect();
         *status.lock() = SubscriptionStatusState::from_active(topics.clone(), keys, metrics);
+        claim.set_cleanup_status(status.clone());
 
         let stream = SubscriptionStream {
             rx,
@@ -1930,6 +1948,17 @@ impl SubscriptionStream {
             .command_handle()
     }
 
+    fn cleanup_without_reuse_if_active(&mut self) {
+        let keys = self.status.lock().keys().to_vec();
+        if keys.is_empty() {
+            return;
+        }
+        if let Some(claim) = self.claim.take() {
+            claim.close_without_reuse(keys);
+        }
+        self.status.lock().clear_active();
+    }
+
     /// Receive the next batch of data or an error.
     ///
     /// Returns:
@@ -2070,9 +2099,13 @@ impl SubscriptionStream {
         Ok(remaining)
     }
 
-    /// Close the stream without explicit unsubscribe (drop handles cleanup).
+    /// Close the stream with best-effort cleanup.
+    ///
+    /// Drop cannot await Bloomberg termination confirmations. If active topics remain,
+    /// cleanup sends an unsubscribe command and discards the worker instead of
+    /// returning a potentially dirty session to the reusable pool.
     pub fn close(mut self) {
-        self.claim.take(); // Session returns to pool on drop
+        self.cleanup_without_reuse_if_active();
     }
 
     /// Destructure the stream into its component parts.
@@ -2143,7 +2176,8 @@ impl SubscriptionStream {
 
 impl Drop for SubscriptionStream {
     fn drop(&mut self) {
-        // Session is automatically released when claim is dropped
+        self.cleanup_without_reuse_if_active();
+        // If no active topics remain, SessionClaim drops normally and returns the worker to the pool.
     }
 }
 
@@ -2186,6 +2220,17 @@ mod tests {
         assert_eq!(config.auth, None);
         assert_eq!(config.num_start_attempts, 3);
         assert!(config.auto_restart_on_disconnection);
+    }
+
+    #[test]
+    fn engine_config_rejects_zero_subscription_stream_capacity() {
+        let config = EngineConfig {
+            subscription_stream_capacity: 0,
+            ..Default::default()
+        };
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("subscription_stream_capacity must be greater than zero"));
     }
 
     #[test]

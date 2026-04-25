@@ -15,11 +15,12 @@ const DEFAULT_CAPTURE_MS = 10_000;
 const DEFAULT_STATS_INTERVAL_MS = 1_000;
 const DEFAULT_PATH = 'legacy';
 const REPLAY_PATHS = new Set(['legacy', 'arrow-decode-only', 'subscription-wrapper']);
+const CONSUME_MODES = new Set(['rows', 'vector', 'schema', 'none']);
 
 function usage() {
   return `Usage:
-  node scripts/bench-subscription-replay.js [--rows N] [--iterations N]
-  node scripts/bench-subscription-replay.js --fixture tmp/xbtusd-ticks.jsonl [--iterations N]
+  node scripts/bench-subscription-replay.js [--rows N] [--iterations N] [--consume rows|vector|schema|none]
+  node scripts/bench-subscription-replay.js --fixture tmp/xbtusd-ticks.jsonl [--iterations N] [--warmup-iterations N]
   node scripts/bench-subscription-replay.js --capture-live "XBTUSD Curncy" --capture-ms 10000 --out tmp/xbtusd-ticks.jsonl
 
 Modes:
@@ -31,6 +32,7 @@ Modes:
 Options:
   --rows N                 Synthetic rows per iteration. Default ${DEFAULT_ROWS}
   --iterations N           Replay iterations. Default ${DEFAULT_ITERATIONS}
+  --warmup-iterations N    Untimed replay iterations before measurement. Default 0
   --fixture PATH           JSONL fixture to replay.
   --path NAME              Replay path: legacy, arrow-decode-only, subscription-wrapper. Default ${DEFAULT_PATH}
   --capture-live TICKER    Capture live subscription rows for TICKER.
@@ -38,6 +40,7 @@ Options:
   --out PATH               Output JSONL path for live capture.
   --fields A,B,C           Fields for synthetic/capture. Default ${DEFAULT_FIELDS.join(',')}
   --topic TICKER           Synthetic topic. Default ${DEFAULT_TOPIC}
+  --consume MODE           Consume decoded tables as rows, vector, schema, or none. Default rows
   --consumer-delay-ms N    Artificial per-update consumer delay after processing.
   --stats-interval-ms N    Live capture stats print interval. Default ${DEFAULT_STATS_INTERVAL_MS}
   --json                   Print only the final JSON result.
@@ -49,12 +52,14 @@ function parseArgs(argv) {
   const args = {
     rows: DEFAULT_ROWS,
     iterations: DEFAULT_ITERATIONS,
+    warmupIterations: 0,
     fields: DEFAULT_FIELDS,
     topic: DEFAULT_TOPIC,
     captureMs: DEFAULT_CAPTURE_MS,
     statsIntervalMs: DEFAULT_STATS_INTERVAL_MS,
     consumerDelayMs: 0,
     path: DEFAULT_PATH,
+    consume: 'rows',
     json: false,
   };
 
@@ -75,11 +80,17 @@ function parseArgs(argv) {
       case '--iterations':
         args.iterations = parsePositiveInteger(next(), '--iterations');
         break;
+      case '--warmup-iterations':
+        args.warmupIterations = parseNonNegativeInteger(next(), '--warmup-iterations');
+        break;
       case '--fixture':
         args.fixture = next();
         break;
       case '--path':
         args.path = parseReplayPath(next());
+        break;
+      case '--consume':
+        args.consume = parseConsumeMode(next());
         break;
       case '--capture-live':
         args.captureLive = next();
@@ -120,6 +131,13 @@ function parseArgs(argv) {
 function parseReplayPath(value) {
   if (!REPLAY_PATHS.has(value)) {
     throw new Error(`--path must be one of: ${Array.from(REPLAY_PATHS).join(', ')}`);
+  }
+  return value;
+}
+
+function parseConsumeMode(value) {
+  if (!CONSUME_MODES.has(value)) {
+    throw new Error(`--consume must be one of: ${Array.from(CONSUME_MODES).join(', ')}`);
   }
   return value;
 }
@@ -344,13 +362,30 @@ function loadSubscriptionClass() {
   }
 }
 
-function consumeDecodedTable(table) {
-  // Force materialization so tableFromIPC work cannot be optimized away.
-  const rows = table.toArray();
-  if (rows.length === 0) {
-    return 0;
+function consumeDecodedTable(table, mode) {
+  switch (mode) {
+    case 'rows': {
+      // Default: force full row materialization for continuity with prior benchmark results.
+      const rows = table.toArray();
+      if (rows.length === 0) {
+        return 0;
+      }
+      return Object.keys(rows[0]).length;
+    }
+    case 'vector': {
+      let checksum = 0;
+      for (const field of table.schema.fields) {
+        checksum += table.getChild(field.name)?.length ?? 0;
+      }
+      return checksum;
+    }
+    case 'schema':
+      return table.schema.fields.length;
+    case 'none':
+      return table.numRows;
+    default:
+      throw new Error(`unknown consume mode: ${mode}`);
   }
-  return Object.keys(rows[0]).length;
 }
 
 function percentile(sorted, p) {
@@ -400,11 +435,23 @@ async function runReplay(args) {
 
   const durations = [];
   const startMemory = memoryMb();
-  const started = performance.now();
+  let started = performance.now();
   let processed = 0;
   let checksum = 0;
 
-  for (let iteration = 0; iteration < args.iterations; iteration += 1) {
+  const totalIterations = args.warmupIterations + args.iterations;
+  for (let iteration = 0; iteration < totalIterations; iteration += 1) {
+    const isWarmup = iteration < args.warmupIterations;
+    if (isWarmup && iteration === 0) {
+      started = performance.now();
+    }
+    if (!isWarmup && iteration === args.warmupIterations) {
+      durations.length = 0;
+      processed = 0;
+      checksum = 0;
+      started = performance.now();
+    }
+
     if (args.path === 'subscription-wrapper') {
       const Subscription = loadSubscriptionClass();
       const sub = new Subscription(createFakeNativeSubscription(replayNativeBatches, args));
@@ -414,9 +461,12 @@ async function runReplay(args) {
         if (result.done) {
           throw new Error('fake subscription ended before replay rows were exhausted');
         }
-        checksum += consumeDecodedTable(result.value);
-        durations.push(performance.now() - before);
-        processed += 1;
+        const consumed = consumeDecodedTable(result.value, args.consume);
+        if (!isWarmup) {
+          checksum += consumed;
+          durations.push(performance.now() - before);
+          processed += 1;
+        }
         if (args.consumerDelayMs > 0) {
           await sleep(args.consumerDelayMs);
         }
@@ -428,9 +478,12 @@ async function runReplay(args) {
     for (const item of buffers) {
       const before = performance.now();
       const table = args.path === 'legacy' ? tableFromIPC(rowToIpc(item)) : tableFromIPC(item);
-      checksum += consumeDecodedTable(table);
-      durations.push(performance.now() - before);
-      processed += 1;
+      const consumed = consumeDecodedTable(table, args.consume);
+      if (!isWarmup) {
+        checksum += consumed;
+        durations.push(performance.now() - before);
+        processed += 1;
+      }
       if (args.consumerDelayMs > 0) {
         await sleep(args.consumerDelayMs);
       }
@@ -445,6 +498,8 @@ async function runReplay(args) {
     updateModel: 'one-row-per-update',
     rowsPerIteration: rows.length,
     iterations: args.iterations,
+    warmupIterations: args.warmupIterations,
+    consume: args.consume,
     updates: processed,
     setupMs,
     elapsedMs,
@@ -522,6 +577,8 @@ async function runCapture(args) {
     rows,
     batches,
     updateModel: 'captured-live-stream-rows',
+    warmupIterations: args.warmupIterations,
+    consume: args.consume,
     stats: finalStats,
   };
 }

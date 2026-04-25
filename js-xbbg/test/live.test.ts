@@ -97,6 +97,31 @@ function tableSummary(table: any): string {
   return `rows=${table.numRows}, cols=${table.numCols}, fields=[${columnsOf(table).join(', ')}]`;
 }
 
+async function nextWithTimeout(sub: any, ms: number): Promise<any> {
+  return Promise.race([sub.next(), sleep(ms).then(() => null)]);
+}
+
+async function collectStreamBatches(
+  sub: any,
+  minBatches: number,
+  maxWaitMs: number,
+): Promise<any[]> {
+  const batches: any[] = [];
+  const started = Date.now();
+  while (batches.length < minBatches) {
+    const remainingMs = maxWaitMs - (Date.now() - started);
+    if (remainingMs <= 0) break;
+    const next = await nextWithTimeout(sub, remainingMs);
+    if (!next || next.done) break;
+    batches.push(next.value);
+  }
+  return batches;
+}
+
+function columnSet(table: any): Set<string> {
+  return new Set(columnsOf(table));
+}
+
 function assertArrowTable(table: any, requiredColumns: string[], minRows = 1): void {
   assert.ok(table, 'Expected table');
   assert.ok(Number.isInteger(table.numRows), 'Expected table.numRows');
@@ -723,18 +748,9 @@ describe('js-xbbg live Bloomberg API', () => {
     it('subscribe receives 2-3 ticks and unsubscribe', async (t) =>
       runCase(t, 'stream subscribe/unsubscribe', async () => {
         const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
-        const rows: any[] = [];
-        const maxWaitMs = 15000;
-        const started = Date.now();
-
-        while (rows.length < 3 && Date.now() - started < maxWaitMs) {
-          const next: any = await Promise.race([
-            sub.next(),
-            sleep(5000).then(() => null),
-          ]);
-          if (!next || next.done) continue;
-          rows.push(next.value);
-          console.log(`  tick batch ${rows.length}: ${tableSummary(next.value)}`);
+        const rows = await collectStreamBatches(sub, 3, 15_000);
+        for (const [index, table] of rows.entries()) {
+          console.log(`  tick batch ${index + 1}: ${tableSummary(table)}`);
         }
 
         const drained = await sub.unsubscribe(true);
@@ -749,10 +765,7 @@ describe('js-xbbg live Bloomberg API', () => {
           [CONFIG.streaming_ticker],
           ['LAST_PRICE', 'BID', 'ASK'],
         );
-        const result: any = await Promise.race([
-          sub.next(),
-          sleep(12000).then(() => ({ done: true })),
-        ]);
+        const result: any = await nextWithTimeout(sub, 12_000);
         await sub.unsubscribe(true);
         assert.ok(result && !result.done, 'Expected at least one streamed tick batch');
         const cols = columnsOf(result.value);
@@ -767,43 +780,124 @@ describe('js-xbbg live Bloomberg API', () => {
         console.log(`  stream columns=${cols.join(', ')}`);
       }));
 
-    it('allFields exposes full payload and event metadata values', async (t) =>
-      runCase(t, 'stream allFields payload', async () => {
-        const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE'], {
-          allFields: true,
-        });
-        const result: any = await Promise.race([
-          sub.next(),
-          sleep(15000).then(() => ({ done: true })),
-        ]);
-        await sub.unsubscribe(false);
-        assert.ok(result && !result.done, 'Expected at least one allFields tick batch');
-        const cols = columnsOf(result.value);
-        const row = result.value.toArray()[0] as Record<string, unknown>;
-        assert.ok(
-          cols.length > 5,
-          `Expected allFields to expose more than filtered fields, got ${cols.length}: ${cols.join(', ')}`,
-        );
-        assert.notEqual(row.MKTDATA_EVENT_TYPE, null, 'MKTDATA_EVENT_TYPE should be non-null');
-        assert.notEqual(row.MKTDATA_EVENT_TYPE, undefined, 'MKTDATA_EVENT_TYPE should be defined');
-        assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, null, 'MKTDATA_EVENT_SUBTYPE should be non-null');
-        assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, undefined, 'MKTDATA_EVENT_SUBTYPE should be defined');
+    it('stream continues while BDP and BDH requests run concurrently', async (t) =>
+      runCase(t, 'stream concurrent with reference requests', async () => {
+        const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
+        let batches: any[];
+        let bdpTable: any;
+        let bdhTable: any;
+        try {
+          const range = getDateRange(5);
+          const requests = Promise.all([
+            withTimeout(
+              engine!.bdp([CONFIG.equity_single], [CONFIG.price_field]),
+              20_000,
+              'concurrent BDP',
+            ),
+            withTimeout(
+              engine!.bdh([CONFIG.equity_single], [CONFIG.price_field], range),
+              25_000,
+              'concurrent BDH',
+            ),
+          ]);
+
+          batches = await collectStreamBatches(sub, 1, 20_000);
+          [bdpTable, bdhTable] = (await requests) as [any, any];
+        } finally {
+          await sub.unsubscribe(true).catch(() => []);
+        }
+
+        assertArrowTable(bdpTable, ['ticker', 'field', 'value']);
+        assertArrowTable(bdhTable, ['ticker', 'date', 'field', 'value']);
+        assert.ok(batches.length >= 1, 'Expected stream to remain alive during requests');
         console.log(
-          `  allFields cols=${cols.length}, event=${String(row.MKTDATA_EVENT_TYPE)}/${String(
-            row.MKTDATA_EVENT_SUBTYPE,
-          )}`,
+          `  concurrent stream batches=${batches.length}, bdp=${bdpTable.numRows}, bdh=${bdhTable.numRows}`,
         );
       }));
 
-    it('subscription add/remove works', async (t) =>
+    it('allFields is a strict superset of filtered fields when full payload is present', async (t) =>
+      runCase(t, 'stream allFields vs filtered payload', async () => {
+        let filtered: any;
+        let allFields: any;
+        let filteredResult: any;
+        let allFieldsResult: any;
+        try {
+          filtered = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
+          allFields = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE'], {
+            allFields: true,
+          });
+
+          [filteredResult, allFieldsResult] = await Promise.all([
+            nextWithTimeout(filtered, 15_000),
+            nextWithTimeout(allFields, 15_000),
+          ]);
+
+          assert.ok(filteredResult && !filteredResult.done, 'Expected filtered tick batch');
+          assert.ok(allFieldsResult && !allFieldsResult.done, 'Expected allFields tick batch');
+          const filteredCols = columnSet(filteredResult.value);
+          const allCols = columnSet(allFieldsResult.value);
+          for (const col of filteredCols) {
+            assert.ok(allCols.has(col), `allFields payload missing filtered column: ${col}`);
+          }
+
+          const extraCols = [...allCols].filter((col) => !filteredCols.has(col));
+          if (allCols.size <= filteredCols.size) {
+            t.skip(
+              `Bloomberg did not provide a wider allFields payload in this window: filtered=${[...filteredCols].join(', ')} all=${[...allCols].join(', ')}`,
+            );
+            return;
+          }
+          assert.ok(extraCols.length > 0, 'Expected allFields to contain columns beyond filtered mode');
+
+          const row = allFieldsResult.value.toArray()[0] as Record<string, unknown>;
+          assert.notEqual(row.MKTDATA_EVENT_TYPE, null, 'MKTDATA_EVENT_TYPE should be non-null');
+          assert.notEqual(row.MKTDATA_EVENT_TYPE, undefined, 'MKTDATA_EVENT_TYPE should be defined');
+          assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, null, 'MKTDATA_EVENT_SUBTYPE should be non-null');
+          assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, undefined, 'MKTDATA_EVENT_SUBTYPE should be defined');
+          console.log(
+            `  filtered cols=${filteredCols.size}, allFields cols=${allCols.size}, extra=${extraCols.slice(0, 8).join(', ')}`,
+          );
+        } finally {
+          await filtered?.unsubscribe(false).catch(() => []);
+          await allFields?.unsubscribe(false).catch(() => []);
+        }
+      }));
+
+    it('subscription add/remove updates metadata without killing stream', async (t) =>
       runCase(t, 'stream add/remove tickers', async () => {
+        const addedTicker = 'IBM US Equity';
         const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
-        await sub.add(['IBM US Equity']);
-        await sub.remove(['IBM US Equity']);
-        const next: any = await Promise.race([sub.next(), sleep(10000).then(() => null)]);
-        await sub.unsubscribe(false);
-        assert.ok(next && !next.done, 'Expected data after add/remove');
-        console.log(`  stats=${JSON.stringify(sub.stats)}`);
+        try {
+          assert.deepEqual(sub.tickers, [CONFIG.streaming_ticker]);
+          await sub.add([addedTicker]);
+          assert.ok(sub.tickers.includes(addedTicker), `Expected metadata to include ${addedTicker}`);
+          await sub.remove([addedTicker]);
+          assert.ok(
+            !sub.tickers.includes(addedTicker),
+            `Expected metadata to remove ${addedTicker}: ${sub.tickers.join(', ')}`,
+          );
+
+          const next: any = await nextWithTimeout(sub, 12_000);
+          assert.ok(next && !next.done, 'Expected primary stream data after add/remove');
+          const topics = new Set(
+            next.value
+              .toArray()
+              .map((row: Record<string, unknown>) => {
+                const topic = row.topic ?? row.TICKER;
+                return typeof topic === 'string' ? topic : '';
+              })
+              .filter((topic: string) => topic.length > 0),
+          );
+          if (topics.size > 0) {
+            assert.ok(
+              topics.has(CONFIG.streaming_ticker),
+              `Expected post-remove batch to include primary ticker; got ${[...topics].join(', ')}`,
+            );
+          }
+          console.log(`  tickers=${sub.tickers.join(', ')}, stats=${JSON.stringify(sub.stats)}`);
+        } finally {
+          await sub.unsubscribe(false).catch(() => []);
+        }
       }));
 
     it('subscription metadata is populated', async (t) =>

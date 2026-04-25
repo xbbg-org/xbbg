@@ -65,6 +65,11 @@ pub struct SubscriptionState {
     suppress_closed_warning: bool,
     /// Whether to append all top-level scalar fields Bloomberg exposes.
     capture_all_fields: bool,
+    /// Reusable per-row presence epochs for all-fields capture (avoids per-message allocation).
+    field_presence_epochs: Vec<u64>,
+    current_presence_epoch: u64,
+    /// Logs the first post-lock conversion miss per field without changing payload semantics.
+    conversion_miss_logged: Vec<bool>,
 }
 
 impl SubscriptionState {
@@ -118,6 +123,7 @@ impl SubscriptionState {
             }
         }
         let field_builders = field_strings.iter().map(|_| None).collect();
+        let field_count = field_strings.len();
         let metrics = Arc::new(SubscriptionMetrics {
             messages_received: Arc::new(AtomicU64::new(0)),
             dropped_batches: Arc::new(AtomicU64::new(0)),
@@ -146,6 +152,9 @@ impl SubscriptionState {
             has_received_data: false,
             suppress_closed_warning: false,
             capture_all_fields,
+            field_presence_epochs: vec![0; field_count],
+            current_presence_epoch: 0,
+            conversion_miss_logged: vec![false; field_count],
         }
     }
 
@@ -209,7 +218,12 @@ impl SubscriptionState {
     }
 
     fn append_all_fields(&mut self, elem: &xbbg_core::Element<'_>) {
-        let mut seen = vec![false; self.field_strings.len()];
+        self.current_presence_epoch = self.current_presence_epoch.wrapping_add(1);
+        if self.current_presence_epoch == 0 {
+            self.field_presence_epochs.fill(0);
+            self.current_presence_epoch = 1;
+        }
+        let epoch = self.current_presence_epoch;
 
         for child_idx in 0..elem.num_children() {
             let Some(child) = elem.get_at(child_idx) else {
@@ -219,17 +233,14 @@ impl SubscriptionState {
                 continue;
             }
 
-            let field_name = child.name().as_str().to_string();
-            let idx = self.ensure_field(&field_name);
-            if idx >= seen.len() {
-                seen.resize(self.field_strings.len(), false);
-            }
-            seen[idx] = true;
+            let field_name = child.name();
+            let idx = self.ensure_field(field_name.as_str());
+            self.field_presence_epochs[idx] = epoch;
             self.append_value_at(idx, child.get_value(0));
         }
 
-        for (idx, was_seen) in seen.iter().enumerate() {
-            if !*was_seen {
+        for idx in 0..self.field_strings.len() {
+            if self.field_presence_epochs[idx] != epoch {
                 self.append_missing_at(idx);
             }
         }
@@ -253,14 +264,35 @@ impl SubscriptionState {
         let idx = self.field_strings.len();
         self.field_strings.push(field_name.to_string());
         self.field_builders.push(None);
+        self.field_presence_epochs.push(0);
+        self.conversion_miss_logged.push(false);
         self.field_indices.insert(field_name.to_string(), idx);
         self.cached_schema = None;
         idx
     }
 
     fn append_value_at(&mut self, idx: usize, value: Option<Value<'_>>) {
-        if let Some(builder) = &mut self.field_builders[idx] {
-            builder.append_value(value);
+        if self.field_builders[idx].is_some() {
+            let incoming_type = value
+                .as_ref()
+                .filter(|v| !matches!(v, Value::Null))
+                .map(ArrowType::from_value);
+            let (missed, locked_type) = {
+                let builder = self.field_builders[idx].as_mut().expect("checked above");
+                let locked_type = builder.arrow_type();
+                let missed = builder.append_value_report_miss(value);
+                (missed, locked_type)
+            };
+            if missed && !self.conversion_miss_logged[idx] {
+                self.conversion_miss_logged[idx] = true;
+                xbbg_log::warn!(
+                    topic = %self.topic,
+                    field = %self.field_strings[idx],
+                    locked_type = locked_type.type_name(),
+                    incoming_type = incoming_type.map(|t| t.type_name()).unwrap_or("unknown"),
+                    "subscription field value could not be converted to locked Arrow type; appending null"
+                );
+            }
             return;
         }
 

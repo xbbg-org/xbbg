@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
-- **`@xbbg/core` subscription replay benchmark**: Added a JS-only `npm run bench:subscription-replay` harness for one-update-at-a-time synthetic replay, JSONL fixture replay, live `XBTUSD Curncy` capture, and path-specific timing (`legacy`, `arrow-decode-only`, `subscription-wrapper`). Live capture reports existing `sub.stats` slow-consumer telemetry without changing the production streaming API.
+- **`@xbbg/core` subscription replay benchmark**: Added a JS-only `npm run bench:subscription-replay` harness for one-update-at-a-time synthetic replay, JSONL fixture replay, live `XBTUSD Curncy` capture, and path-specific timing (`legacy`, `arrow-decode-only`, `subscription-wrapper`). Replay now supports `--consume rows|vector|schema|none` and `--warmup-iterations`; row materialization remains the default. Live capture reports existing `sub.stats` slow-consumer telemetry without changing the production streaming API.
 
 ### Changed
 

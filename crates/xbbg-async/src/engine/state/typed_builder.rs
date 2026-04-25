@@ -130,126 +130,190 @@ impl TypedBuilder {
 
     /// Append a value from xbbg_core::Value, converting as needed.
     pub fn append_value(&mut self, value: Option<Value<'_>>) {
+        let _ = self.append_value_report_miss(value);
+    }
+
+    /// Append a value and report whether a non-null value could not be converted.
+    pub fn append_value_report_miss(&mut self, value: Option<Value<'_>>) -> bool {
         match self {
-            TypedBuilder::Float64(b) => {
-                if let Some(v) = value.and_then(|v| v.as_f64()) {
-                    b.append_value(v);
-                } else {
+            TypedBuilder::Float64(b) => match value {
+                Some(Value::Null) | None => {
                     b.append_null();
+                    false
                 }
-            }
-            TypedBuilder::Int64(b) => {
-                if let Some(v) = value.and_then(|v| v.as_i64()) {
-                    b.append_value(v);
-                } else {
-                    b.append_null();
-                }
-            }
-            TypedBuilder::Int32(b) => {
-                if let Some(v) = value.and_then(|v| match v {
-                    Value::Int32(i) => Some(i),
-                    Value::Int64(i) => Some(i as i32),
-                    Value::Byte(i) => Some(i as i32),
-                    Value::Bool(b) => Some(if b { 1 } else { 0 }),
-                    Value::Float64(f)
-                        if f.is_finite()
-                            && f.fract() == 0.0
-                            && f >= i32::MIN as f64
-                            && f <= i32::MAX as f64 =>
-                    {
-                        Some(f as i32)
+                Some(v) => {
+                    if let Some(v) = v.as_f64() {
+                        b.append_value(v);
+                        false
+                    } else {
+                        b.append_null();
+                        true
                     }
-                    _ => None,
-                }) {
-                    b.append_value(v);
-                } else {
-                    b.append_null();
                 }
-            }
-            TypedBuilder::String(b) => match value {
-                Some(Value::String(s)) | Some(Value::Enum(s)) => b.append_value(s),
-                Some(Value::Float64(f)) => {
-                    let s = f.to_string();
-                    b.append_value(&s);
-                }
-                Some(Value::Int64(i)) => {
-                    let s = i.to_string();
-                    b.append_value(&s);
-                }
-                Some(Value::Int32(i)) => {
-                    let s = i.to_string();
-                    b.append_value(&s);
-                }
-                Some(Value::Bool(v)) => {
-                    let s = v.to_string();
-                    b.append_value(&s);
-                }
-                Some(Value::Date32(d)) => {
-                    let s = format_date32(d);
-                    b.append_value(&s);
-                }
-                Some(Value::TimestampMicros(ts)) => {
-                    let s = format_timestamp_micros(ts);
-                    b.append_value(&s);
-                }
-                Some(Value::Datetime(dt)) => {
-                    let s = format_timestamp_micros(dt.to_micros());
-                    b.append_value(&s);
-                }
-                Some(Value::Time64Micros(t)) => {
-                    let s = format_time64_micros(t);
-                    b.append_value(&s);
-                }
-                Some(Value::Byte(v)) => {
-                    let s = v.to_string();
-                    b.append_value(&s);
-                }
-                Some(Value::Null) | None => b.append_null(),
             },
-            TypedBuilder::Bool(b) => {
-                if let Some(v) = value.and_then(|v| v.as_bool()) {
-                    b.append_value(v);
-                } else {
+            TypedBuilder::Int64(b) => match value {
+                Some(Value::Null) | None => {
                     b.append_null();
+                    false
                 }
-            }
-            TypedBuilder::Date32(b) => {
-                if let Some(days) = value.and_then(|v| match v {
-                    Value::Date32(d) => Some(d),
-                    Value::TimestampMicros(ts) => Some((ts / 86_400_000_000) as i32),
-                    _ => None,
-                }) {
-                    b.append_value(days);
-                } else {
-                    b.append_null();
-                }
-            }
-            TypedBuilder::TimestampMicros(b) => {
-                if let Some(micros) = value.and_then(|v| match v {
-                    Value::TimestampMicros(ts) => Some(ts),
-                    Value::Datetime(dt) => Some(dt.to_micros()),
-                    Value::Date32(d) => Some(d as i64 * 86_400_000_000),
-                    _ => None,
-                }) {
-                    b.append_value(micros);
-                } else {
-                    b.append_null();
-                }
-            }
-            TypedBuilder::Time64Micros(b) => {
-                if let Some(micros) = value.and_then(|v| match v {
-                    Value::Time64Micros(ts) => Some(ts),
-                    Value::TimestampMicros(ts) => {
-                        // Extract time-of-day from full timestamp
-                        Some(ts.rem_euclid(86_400_000_000))
+                Some(v) => {
+                    if let Some(v) = v.as_i64() {
+                        b.append_value(v);
+                        false
+                    } else {
+                        b.append_null();
+                        true
                     }
-                    _ => None,
-                }) {
-                    b.append_value(micros);
-                } else {
-                    b.append_null();
                 }
+            },
+            TypedBuilder::Int32(b) => match value {
+                Some(Value::Null) | None => {
+                    b.append_null();
+                    false
+                }
+                Some(v) => {
+                    if let Some(v) = match v {
+                        Value::Int32(i) => Some(i),
+                        Value::Int64(i) => Some(i as i32),
+                        Value::Byte(i) => Some(i as i32),
+                        Value::Bool(b) => Some(if b { 1 } else { 0 }),
+                        Value::Float64(f)
+                            if f.is_finite()
+                                && f.fract() == 0.0
+                                && f >= i32::MIN as f64
+                                && f <= i32::MAX as f64 =>
+                        {
+                            Some(f as i32)
+                        }
+                        _ => None,
+                    } {
+                        b.append_value(v);
+                        false
+                    } else {
+                        b.append_null();
+                        true
+                    }
+                }
+            },
+            TypedBuilder::String(b) => {
+                match value {
+                    Some(Value::String(s)) | Some(Value::Enum(s)) => b.append_value(s),
+                    Some(Value::Float64(f)) => {
+                        let s = f.to_string();
+                        b.append_value(&s);
+                    }
+                    Some(Value::Int64(i)) => {
+                        let s = i.to_string();
+                        b.append_value(&s);
+                    }
+                    Some(Value::Int32(i)) => {
+                        let s = i.to_string();
+                        b.append_value(&s);
+                    }
+                    Some(Value::Bool(v)) => {
+                        let s = v.to_string();
+                        b.append_value(&s);
+                    }
+                    Some(Value::Date32(d)) => {
+                        let s = format_date32(d);
+                        b.append_value(&s);
+                    }
+                    Some(Value::TimestampMicros(ts)) => {
+                        let s = format_timestamp_micros(ts);
+                        b.append_value(&s);
+                    }
+                    Some(Value::Datetime(dt)) => {
+                        let s = format_timestamp_micros(dt.to_micros());
+                        b.append_value(&s);
+                    }
+                    Some(Value::Time64Micros(t)) => {
+                        let s = format_time64_micros(t);
+                        b.append_value(&s);
+                    }
+                    Some(Value::Byte(v)) => {
+                        let s = v.to_string();
+                        b.append_value(&s);
+                    }
+                    Some(Value::Null) | None => b.append_null(),
+                }
+                false
             }
+            TypedBuilder::Bool(b) => match value {
+                Some(Value::Null) | None => {
+                    b.append_null();
+                    false
+                }
+                Some(v) => {
+                    if let Some(v) = v.as_bool() {
+                        b.append_value(v);
+                        false
+                    } else {
+                        b.append_null();
+                        true
+                    }
+                }
+            },
+            TypedBuilder::Date32(b) => match value {
+                Some(Value::Null) | None => {
+                    b.append_null();
+                    false
+                }
+                Some(v) => {
+                    if let Some(days) = match v {
+                        Value::Date32(d) => Some(d),
+                        Value::TimestampMicros(ts) => Some((ts / 86_400_000_000) as i32),
+                        _ => None,
+                    } {
+                        b.append_value(days);
+                        false
+                    } else {
+                        b.append_null();
+                        true
+                    }
+                }
+            },
+            TypedBuilder::TimestampMicros(b) => match value {
+                Some(Value::Null) | None => {
+                    b.append_null();
+                    false
+                }
+                Some(v) => {
+                    if let Some(micros) = match v {
+                        Value::TimestampMicros(ts) => Some(ts),
+                        Value::Datetime(dt) => Some(dt.to_micros()),
+                        Value::Date32(d) => Some(d as i64 * 86_400_000_000),
+                        _ => None,
+                    } {
+                        b.append_value(micros);
+                        false
+                    } else {
+                        b.append_null();
+                        true
+                    }
+                }
+            },
+            TypedBuilder::Time64Micros(b) => match value {
+                Some(Value::Null) | None => {
+                    b.append_null();
+                    false
+                }
+                Some(v) => {
+                    if let Some(micros) = match v {
+                        Value::Time64Micros(ts) => Some(ts),
+                        Value::TimestampMicros(ts) => {
+                            // Extract time-of-day from full timestamp
+                            Some(ts.rem_euclid(86_400_000_000))
+                        }
+                        _ => None,
+                    } {
+                        b.append_value(micros);
+                        false
+                    } else {
+                        b.append_null();
+                        true
+                    }
+                }
+            },
         }
     }
 

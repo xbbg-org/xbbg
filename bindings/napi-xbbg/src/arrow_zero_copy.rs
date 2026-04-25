@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
 use arrow::array::{
-    Array, BooleanArray, Date32Array, Float64Array, Int32Array, Int64Array, NullArray, StringArray,
-    Time64MicrosecondArray, TimestampMicrosecondArray,
+    Array, BinaryArray, BooleanArray, Date32Array, Date64Array, Float32Array, Float64Array,
+    Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray, LargeStringArray, NullArray,
+    StringArray, Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray,
+    Time64NanosecondArray, TimestampMicrosecondArray, TimestampMillisecondArray,
+    TimestampNanosecondArray, TimestampSecondArray, UInt16Array, UInt32Array, UInt64Array,
+    UInt8Array,
 };
 use arrow::buffer::Buffer as ArrowBuffer;
 use arrow::datatypes::{DataType, TimeUnit};
@@ -32,13 +36,30 @@ struct NativeArrowColumn {
 #[derive(Clone)]
 enum NativeArrowType {
     Bool,
+    Binary,
     Date32,
+    Date64,
+    Float32,
     Float64,
+    Int8,
+    Int16,
     Int32,
     Int64,
+    LargeBinary,
+    LargeUtf8,
     Null,
+    Time32Millisecond,
+    Time32Second,
     Time64Microsecond,
+    Time64Nanosecond,
     TimestampMicrosecond { timezone: Option<String> },
+    TimestampMillisecond { timezone: Option<String> },
+    TimestampNanosecond { timezone: Option<String> },
+    TimestampSecond { timezone: Option<String> },
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
     Utf8,
 }
 
@@ -56,7 +77,9 @@ impl NativeArrowBatch {
                 format!(
                     "zero-copy subscription transfer does not support this Arrow schema. \
                      Unsupported columns: {}. Supported subscription column types are: \
-                     bool, date32, float64, int32, int64, null, time64[us], timestamp[us], utf8. \
+                     bool, binary, date32, date64, float32, float64, int8, int16, int32, int64, \
+                     large_binary, large_utf8, null, time32[s], time32[ms], time64[us], time64[ns], \
+                     timestamp[s], timestamp[ms], timestamp[us], timestamp[ns], uint8, uint16, uint32, uint64, utf8. \
                      Sliced Arrow arrays are not supported.",
                     unsupported.join("; ")
                 ),
@@ -98,6 +121,46 @@ impl NativeArrowColumn {
         let null_count = array.null_count();
         let length = array.len();
 
+        macro_rules! primitive_column {
+            ($array_ty:ty, $arrow_type:expr, $expect:literal) => {{
+                let values = array
+                    .as_any()
+                    .downcast_ref::<$array_ty>()
+                    .expect($expect)
+                    .values()
+                    .inner()
+                    .clone();
+                Self {
+                    batch,
+                    name,
+                    arrow_type: $arrow_type,
+                    nullable,
+                    length,
+                    null_count,
+                    data: Some(values),
+                    offsets: None,
+                    null_bitmap,
+                }
+            }};
+        }
+
+        macro_rules! variable_width_column {
+            ($array_ty:ty, $arrow_type:expr, $expect:literal) => {{
+                let array = array.as_any().downcast_ref::<$array_ty>().expect($expect);
+                Self {
+                    batch,
+                    name,
+                    arrow_type: $arrow_type,
+                    nullable,
+                    length,
+                    null_count,
+                    data: Some(array.values().clone()),
+                    offsets: Some(array.offsets().inner().inner().clone()),
+                    null_bitmap,
+                }
+            }};
+        }
+
         match array.data_type() {
             DataType::Boolean => {
                 let values = array
@@ -119,86 +182,53 @@ impl NativeArrowColumn {
                     null_bitmap,
                 }
             }
-            DataType::Date32 => {
-                let values = array
-                    .as_any()
-                    .downcast_ref::<Date32Array>()
-                    .expect("supported date32 array")
-                    .values()
-                    .inner()
-                    .clone();
-                Self {
-                    batch,
-                    name,
-                    arrow_type: NativeArrowType::Date32,
-                    nullable,
-                    length,
-                    null_count,
-                    data: Some(values),
-                    offsets: None,
-                    null_bitmap,
-                }
+            DataType::Binary => variable_width_column!(
+                BinaryArray,
+                NativeArrowType::Binary,
+                "supported binary array"
+            ),
+            DataType::Date32 => primitive_column!(
+                Date32Array,
+                NativeArrowType::Date32,
+                "supported date32 array"
+            ),
+            DataType::Date64 => primitive_column!(
+                Date64Array,
+                NativeArrowType::Date64,
+                "supported date64 array"
+            ),
+            DataType::Float32 => primitive_column!(
+                Float32Array,
+                NativeArrowType::Float32,
+                "supported float32 array"
+            ),
+            DataType::Float64 => primitive_column!(
+                Float64Array,
+                NativeArrowType::Float64,
+                "supported float64 array"
+            ),
+            DataType::Int8 => {
+                primitive_column!(Int8Array, NativeArrowType::Int8, "supported int8 array")
             }
-            DataType::Float64 => {
-                let values = array
-                    .as_any()
-                    .downcast_ref::<Float64Array>()
-                    .expect("supported float64 array")
-                    .values()
-                    .inner()
-                    .clone();
-                Self {
-                    batch,
-                    name,
-                    arrow_type: NativeArrowType::Float64,
-                    nullable,
-                    length,
-                    null_count,
-                    data: Some(values),
-                    offsets: None,
-                    null_bitmap,
-                }
+            DataType::Int16 => {
+                primitive_column!(Int16Array, NativeArrowType::Int16, "supported int16 array")
             }
             DataType::Int32 => {
-                let values = array
-                    .as_any()
-                    .downcast_ref::<Int32Array>()
-                    .expect("supported int32 array")
-                    .values()
-                    .inner()
-                    .clone();
-                Self {
-                    batch,
-                    name,
-                    arrow_type: NativeArrowType::Int32,
-                    nullable,
-                    length,
-                    null_count,
-                    data: Some(values),
-                    offsets: None,
-                    null_bitmap,
-                }
+                primitive_column!(Int32Array, NativeArrowType::Int32, "supported int32 array")
             }
             DataType::Int64 => {
-                let values = array
-                    .as_any()
-                    .downcast_ref::<Int64Array>()
-                    .expect("supported int64 array")
-                    .values()
-                    .inner()
-                    .clone();
-                Self {
-                    batch,
-                    name,
-                    arrow_type: NativeArrowType::Int64,
-                    nullable,
-                    length,
-                    null_count,
-                    data: Some(values),
-                    offsets: None,
-                    null_bitmap,
-                }
+                primitive_column!(Int64Array, NativeArrowType::Int64, "supported int64 array")
             }
+            DataType::LargeBinary => variable_width_column!(
+                LargeBinaryArray,
+                NativeArrowType::LargeBinary,
+                "supported large_binary array"
+            ),
+            DataType::LargeUtf8 => variable_width_column!(
+                LargeStringArray,
+                NativeArrowType::LargeUtf8,
+                "supported large_utf8 array"
+            ),
             DataType::Null => {
                 let _ = array
                     .as_any()
@@ -216,64 +246,74 @@ impl NativeArrowColumn {
                     null_bitmap,
                 }
             }
-            DataType::Time64(TimeUnit::Microsecond) => {
-                let values = array
-                    .as_any()
-                    .downcast_ref::<Time64MicrosecondArray>()
-                    .expect("supported time64[us] array")
-                    .values()
-                    .inner()
-                    .clone();
-                Self {
-                    batch,
-                    name,
-                    arrow_type: NativeArrowType::Time64Microsecond,
-                    nullable,
-                    length,
-                    null_count,
-                    data: Some(values),
-                    offsets: None,
-                    null_bitmap,
-                }
+            DataType::Time32(TimeUnit::Second) => primitive_column!(
+                Time32SecondArray,
+                NativeArrowType::Time32Second,
+                "supported time32[s] array"
+            ),
+            DataType::Time32(TimeUnit::Millisecond) => primitive_column!(
+                Time32MillisecondArray,
+                NativeArrowType::Time32Millisecond,
+                "supported time32[ms] array"
+            ),
+            DataType::Time64(TimeUnit::Microsecond) => primitive_column!(
+                Time64MicrosecondArray,
+                NativeArrowType::Time64Microsecond,
+                "supported time64[us] array"
+            ),
+            DataType::Time64(TimeUnit::Nanosecond) => primitive_column!(
+                Time64NanosecondArray,
+                NativeArrowType::Time64Nanosecond,
+                "supported time64[ns] array"
+            ),
+            DataType::Timestamp(TimeUnit::Second, timezone) => primitive_column!(
+                TimestampSecondArray,
+                NativeArrowType::TimestampSecond {
+                    timezone: timezone.as_ref().map(|tz| tz.to_string()),
+                },
+                "supported timestamp[s] array"
+            ),
+            DataType::Timestamp(TimeUnit::Millisecond, timezone) => primitive_column!(
+                TimestampMillisecondArray,
+                NativeArrowType::TimestampMillisecond {
+                    timezone: timezone.as_ref().map(|tz| tz.to_string()),
+                },
+                "supported timestamp[ms] array"
+            ),
+            DataType::Timestamp(TimeUnit::Microsecond, timezone) => primitive_column!(
+                TimestampMicrosecondArray,
+                NativeArrowType::TimestampMicrosecond {
+                    timezone: timezone.as_ref().map(|tz| tz.to_string()),
+                },
+                "supported timestamp[us] array"
+            ),
+            DataType::Timestamp(TimeUnit::Nanosecond, timezone) => primitive_column!(
+                TimestampNanosecondArray,
+                NativeArrowType::TimestampNanosecond {
+                    timezone: timezone.as_ref().map(|tz| tz.to_string()),
+                },
+                "supported timestamp[ns] array"
+            ),
+            DataType::UInt8 => {
+                primitive_column!(UInt8Array, NativeArrowType::UInt8, "supported uint8 array")
             }
-            DataType::Timestamp(TimeUnit::Microsecond, timezone) => {
-                let values = array
-                    .as_any()
-                    .downcast_ref::<TimestampMicrosecondArray>()
-                    .expect("supported timestamp[us] array")
-                    .values()
-                    .inner()
-                    .clone();
-                Self {
-                    batch,
-                    name,
-                    arrow_type: NativeArrowType::TimestampMicrosecond {
-                        timezone: timezone.as_ref().map(|tz| tz.to_string()),
-                    },
-                    nullable,
-                    length,
-                    null_count,
-                    data: Some(values),
-                    offsets: None,
-                    null_bitmap,
-                }
-            }
+            DataType::UInt16 => primitive_column!(
+                UInt16Array,
+                NativeArrowType::UInt16,
+                "supported uint16 array"
+            ),
+            DataType::UInt32 => primitive_column!(
+                UInt32Array,
+                NativeArrowType::UInt32,
+                "supported uint32 array"
+            ),
+            DataType::UInt64 => primitive_column!(
+                UInt64Array,
+                NativeArrowType::UInt64,
+                "supported uint64 array"
+            ),
             DataType::Utf8 => {
-                let array = array
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .expect("supported utf8 array");
-                Self {
-                    batch,
-                    name,
-                    arrow_type: NativeArrowType::Utf8,
-                    nullable,
-                    length,
-                    null_count,
-                    data: Some(array.values().clone()),
-                    offsets: Some(array.offsets().inner().inner().clone()),
-                    null_bitmap,
-                }
+                variable_width_column!(StringArray, NativeArrowType::Utf8, "supported utf8 array")
             }
             _ => unreachable!("unsupported array checked before conversion"),
         }
@@ -284,20 +324,40 @@ impl NativeArrowType {
     fn label(&self) -> &'static str {
         match self {
             Self::Bool => "bool",
+            Self::Binary => "binary",
             Self::Date32 => "date32",
+            Self::Date64 => "date64",
+            Self::Float32 => "float32",
             Self::Float64 => "float64",
+            Self::Int8 => "int8",
+            Self::Int16 => "int16",
             Self::Int32 => "int32",
             Self::Int64 => "int64",
+            Self::LargeBinary => "large_binary",
+            Self::LargeUtf8 => "large_utf8",
             Self::Null => "null",
+            Self::Time32Millisecond => "time32_ms",
+            Self::Time32Second => "time32_s",
             Self::Time64Microsecond => "time64_us",
+            Self::Time64Nanosecond => "time64_ns",
             Self::TimestampMicrosecond { .. } => "timestamp_us",
+            Self::TimestampMillisecond { .. } => "timestamp_ms",
+            Self::TimestampNanosecond { .. } => "timestamp_ns",
+            Self::TimestampSecond { .. } => "timestamp_s",
+            Self::UInt8 => "uint8",
+            Self::UInt16 => "uint16",
+            Self::UInt32 => "uint32",
+            Self::UInt64 => "uint64",
             Self::Utf8 => "utf8",
         }
     }
 
     fn timezone(&self) -> Option<&str> {
         match self {
-            Self::TimestampMicrosecond { timezone } => timezone.as_deref(),
+            Self::TimestampMicrosecond { timezone }
+            | Self::TimestampMillisecond { timezone }
+            | Self::TimestampNanosecond { timezone }
+            | Self::TimestampSecond { timezone } => timezone.as_deref(),
             _ => None,
         }
     }
@@ -329,13 +389,30 @@ fn unsupported_array_reason(array: &dyn Array) -> Option<String> {
 
     match array.data_type() {
         DataType::Boolean
+        | DataType::Binary
         | DataType::Date32
+        | DataType::Date64
+        | DataType::Float32
         | DataType::Float64
+        | DataType::Int8
+        | DataType::Int16
         | DataType::Int32
         | DataType::Int64
+        | DataType::LargeBinary
+        | DataType::LargeUtf8
         | DataType::Null
+        | DataType::Time32(TimeUnit::Second)
+        | DataType::Time32(TimeUnit::Millisecond)
         | DataType::Time64(TimeUnit::Microsecond)
+        | DataType::Time64(TimeUnit::Nanosecond)
+        | DataType::Timestamp(TimeUnit::Second, _)
+        | DataType::Timestamp(TimeUnit::Millisecond, _)
         | DataType::Timestamp(TimeUnit::Microsecond, _)
+        | DataType::Timestamp(TimeUnit::Nanosecond, _)
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64
         | DataType::Utf8 => None,
         data_type => Some(format!("unsupported type={data_type:?}")),
     }

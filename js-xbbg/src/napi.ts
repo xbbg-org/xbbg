@@ -17,13 +17,30 @@ import type {
 
 export type NativeArrowColumnType =
   | 'bool'
+  | 'binary'
   | 'date32'
+  | 'date64'
+  | 'float32'
   | 'float64'
+  | 'int8'
+  | 'int16'
   | 'int32'
   | 'int64'
+  | 'large_binary'
+  | 'large_utf8'
   | 'null'
+  | 'time32_ms'
+  | 'time32_s'
   | 'time64_us'
+  | 'time64_ns'
+  | 'timestamp_ms'
+  | 'timestamp_ns'
+  | 'timestamp_s'
   | 'timestamp_us'
+  | 'uint8'
+  | 'uint16'
+  | 'uint32'
+  | 'uint64'
   | 'utf8';
 
 export interface NativeArrowColumn {

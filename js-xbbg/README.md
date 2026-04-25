@@ -46,10 +46,10 @@ Pass `{ allFields: true }` to `stream()` / `subscribe()` / service stream helper
 
 ### Subscription replay benchmark
 
-`npm run bench:subscription-replay` is a JS-only benchmark for one-update-at-a-time subscription processing. It does not change the production streaming API and does not batch updates by default. Use `--path legacy` for the original encode+decode measurement, `--path arrow-decode-only` to exclude benchmark-only IPC encoding from timed results, and `--path subscription-wrapper` to time the current JS `Subscription.next()` wrapper with fake native zero-copy descriptors. Live capture exercises the default native subscription path, including zero-copy Arrow transfer and unsupported-schema diagnostics from the returned schema.
+`npm run bench:subscription-replay` is a JS-only benchmark for one-update-at-a-time subscription processing. It does not change the production streaming API and does not batch updates by default. Use `--path legacy` for the original encode+decode measurement, `--path arrow-decode-only` to exclude benchmark-only IPC encoding from timed results, and `--path subscription-wrapper` to time the current JS `Subscription.next()` wrapper with fake native zero-copy descriptors. `--consume rows|vector|schema|none` controls how much decoded output is touched; `rows` remains the default for continuity with prior results. Use `--warmup-iterations N` for untimed replay warmup. Live capture exercises the default native subscription path and prints `sub.stats` telemetry; unsupported-schema diagnostics are surfaced when the native stream returns a schema the zero-copy bridge cannot describe.
 
 ```bash
-# Synthetic one-update replay, no Bloomberg connection needed
+# Synthetic one-update replay, no Bloomberg connection needed; row materialization is the default
 npm run bench:subscription-replay -- --rows 100000 --iterations 3
 
 # Time JS Arrow decode only, with IPC buffers precomputed outside the timed loop
@@ -62,8 +62,8 @@ npm run bench:subscription-replay -- --path subscription-wrapper --rows 100000 -
 # Capture real XBTUSD ticks to JSONL, printing existing sub.stats telemetry
 npm run bench:subscription-replay -- --capture-live "XBTUSD Curncy" --capture-ms 10000 --out tmp/xbtusd-ticks.jsonl
 
-# Replay captured ticks one update at a time
-npm run bench:subscription-replay -- --fixture tmp/xbtusd-ticks.jsonl --iterations 10
+# Replay captured ticks one update at a time with schema-only consumption after one warmup iteration
+npm run bench:subscription-replay -- --fixture tmp/xbtusd-ticks.jsonl --iterations 10 --warmup-iterations 1 --consume schema
 ```
 
 ## Planned Usage

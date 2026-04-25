@@ -205,6 +205,11 @@ describe('native Arrow zero-copy table construction', () => {
     const offsets = new Int32Array([0, 13, 26]);
     const text = Buffer.from('XBTUSD CurncyIBM US Equity');
     const updateTime = new BigInt64Array([45_000_000_000n, 45_000_001_000n]);
+    const quantities = new Uint32Array([1, 4_000_000_000]);
+    const yields = new Float32Array([1.25, 2.5]);
+    const tradeDates = new BigInt64Array([1_700_000_000_000n, 1_700_086_400_000n]);
+    const binaryOffsets = new Int32Array([0, 2, 5]);
+    const binaryValues = Buffer.from([0xde, 0xad, 0xbe, 0xef, 0x01]);
     const batch: NativeArrowZeroCopyBatch = {
       kind: 'zeroCopy',
       numRows: 2,
@@ -243,6 +248,39 @@ describe('native Arrow zero-copy table construction', () => {
           nullCount: 0,
           data: typedBuffer(updateTime),
         },
+        {
+          name: 'QUANTITY',
+          type: 'uint32',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          data: typedBuffer(quantities),
+        },
+        {
+          name: 'YIELD',
+          type: 'float32',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          data: typedBuffer(yields),
+        },
+        {
+          name: 'TRADE_DATE',
+          type: 'date64',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          data: typedBuffer(tradeDates),
+        },
+        {
+          name: 'PAYLOAD',
+          type: 'binary',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          offsets: typedBuffer(binaryOffsets),
+          data: binaryValues,
+        },
       ],
     };
 
@@ -255,6 +293,10 @@ describe('native Arrow zero-copy table construction', () => {
     expect(table.getChild('LAST_PRICE')?.get(1)).toBeNull();
     expect(table.getChild('SIZE')?.get(1)).toBe(20);
     expect(table.getChild('UPDATE_TIME')?.get(0)).toBe(45_000_000_000n);
+    expect(table.getChild('QUANTITY')?.get(1)).toBe(4_000_000_000);
+    expect(table.getChild('YIELD')?.get(0)).toBeCloseTo(1.25);
+    expect(table.getChild('TRADE_DATE')?.get(0)).toBe(1_700_000_000_000);
+    expect(Array.from(table.getChild('PAYLOAD')?.get(1) ?? [])).toEqual([0xbe, 0xef, 0x01]);
   });
 
   it('Subscription.next uses native zero-copy batches', async () => {
