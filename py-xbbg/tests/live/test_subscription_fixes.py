@@ -131,7 +131,7 @@ async def test_timestamp_source():
     print("TEST: Bloomberg event timestamps (Fix #6)")
     print(f"{'=' * 60}")
 
-    sub = await engine.subscribe(["ES1 Index"], ["LAST_PRICE", "BID", "ASK"])
+    sub = await engine.subscribe(["XBTUSD Curncy"], ["LAST_PRICE", "BID", "ASK"])
 
     batch_count = 0
     timestamps = []
@@ -146,7 +146,8 @@ async def test_timestamp_source():
             now = datetime.now(timezone.utc)
             # Bloomberg SDK receive time should be within a few seconds of wall clock
             if ts_val is not None and hasattr(ts_val, "timestamp"):
-                assert ts_val.tzinfo == timezone.utc, f"Expected UTC-aware timestamp, got {ts_val!r}"
+                assert ts_val.tzinfo is not None, f"Expected timezone-aware timestamp, got {ts_val!r}"
+                assert ts_val.utcoffset() == timezone.utc.utcoffset(ts_val), f"Expected UTC timestamp, got {ts_val!r}"
                 diff_seconds = abs((now - ts_val).total_seconds())
                 print(f"  Batch {batch_count}: ts={ts_val}  wall_diff={diff_seconds:.3f}s")
             else:
@@ -157,6 +158,7 @@ async def test_timestamp_source():
 
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
+        raise
 
     await sub.unsubscribe()
 
@@ -178,7 +180,7 @@ async def test_tick_mode_timestamp_timezone_issue_273():
     print("TEST: tick_mode timestamp timezone (#273)")
     print(f"{'=' * 60}")
 
-    sub = await asubscribe(["ES1 Index"], ["LAST_PRICE"], tick_mode=True)
+    sub = await asubscribe(["XBTUSD Curncy"], ["LAST_PRICE"], tick_mode=True)
     try:
         tick = await asyncio.wait_for(sub.__anext__(), timeout=20.0)
     finally:
