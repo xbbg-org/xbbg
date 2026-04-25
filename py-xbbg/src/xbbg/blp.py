@@ -22,6 +22,7 @@ from datetime import date, datetime, timedelta
 import functools
 import inspect
 import logging
+import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
@@ -1190,6 +1191,51 @@ async def _aget_valid_elements(service: str, operation: str) -> set[str]:
         return set()
 
 
+# ISO date pattern for the override-path value-based normalizer. Matches the
+# canonical wire formats Bloomberg accepts on date-typed override fields:
+# ``YYYY-MM-DD`` and ``YYYYMMDD``. Anything else (US ``MM/DD/YYYY`` etc.) is
+# left untouched here; dedicated typed parameters reject ambiguous strings.
+_OVERRIDE_DATE_VALUE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}|\d{8})$")
+
+
+def _normalize_override_value(value: Any) -> str:
+    """Normalize a Bloomberg override value with date-aware duck typing.
+
+    The override path passes user kwargs through to Bloomberg without per-field
+    type metadata, so we inspect the *value* shape:
+
+    - ``datetime.date`` / ``datetime.datetime`` -> formatted as ``YYYYMMDD``.
+    - duck-typed ``pd.Timestamp`` (``hasattr(value, "to_pydatetime")``)
+      -> coerced and formatted.
+    - ``str`` matching ISO date or Bloomberg-native: normalized to
+      ``YYYYMMDD`` so callers can pass either form interchangeably.
+    - anything else: ``str(value)`` (existing behaviour).
+
+    Bool is intentionally short-circuited so that ``True``/``False`` survive as
+    ``"True"`` / ``"False"`` (some Bloomberg overrides expect those literals).
+    """
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (date, datetime)):
+        formatted = _fmt_date(value)
+        return formatted if formatted is not None else str(value)
+    if hasattr(value, "to_pydatetime"):
+        try:
+            formatted = _fmt_date(value)
+        except (TypeError, ValueError):
+            return str(value)
+        if formatted is not None:
+            return formatted
+    if isinstance(value, str) and _OVERRIDE_DATE_VALUE_RE.match(value.strip()):
+        try:
+            formatted = _fmt_date(value)
+        except (TypeError, ValueError):
+            return value
+        if formatted is not None:
+            return formatted
+    return str(value)
+
+
 async def _aroute_kwargs(
     service: str | Service,
     operation: str | Operation,
@@ -1237,8 +1283,10 @@ async def _aroute_kwargs(
         if canonical_key in valid_elements or _is_alias_element_key(original_key, canonical_key):
             elements.append((canonical_key, routed_value))
         elif original_key.isupper() or (len(original_key) > 2 and original_key[0].isupper() and "_" in original_key):
-            # Looks like a Bloomberg field override (UPPERCASE or Mixed_Case_Field)
-            overrides.append((original_key, str(value)))
+            # Looks like a Bloomberg field override (UPPERCASE or Mixed_Case_Field).
+            # Normalize date-typed values to Bloomberg-native YYYYMMDD via duck-typing
+            # so callers can pass e.g. ``USER_LOCAL_TRADE_DATE=date(2023, 1, 17)``.
+            overrides.append((original_key, _normalize_override_value(value)))
         elif valid_elements:
             # Schema available but key not recognized - warn and pass as element
             warnings.warn(
