@@ -45,7 +45,7 @@ pub use request_pool::RequestWorkerPool;
 use state::SubscriptionMetrics;
 pub use state::{
     BqlState, BulkDataState, HistDataState, IntradayTickState, LongMode, OutputFormat,
-    RefDataState, SubscriptionState,
+    RefDataState, SubscriptionState, SubscriptionUpdate,
 };
 pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, SubscriptionSessionPool};
 pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
@@ -1995,16 +1995,16 @@ impl Drop for Engine {
 /// Provides async iteration over incoming data and methods to dynamically
 /// add/remove tickers while the subscription is active.
 ///
-/// Data arrives as `Result<RecordBatch, BlpError>`:
-/// - `Ok(batch)` — normal data
+/// Data arrives as `Result<SubscriptionUpdate, BlpError>`:
+/// - `Ok(update)` — normal data
 /// - `Err(error)` — subscription failure, session death, etc.
 ///
 /// The underlying session is released back to the pool on drop.
 pub struct SubscriptionStream {
     /// Receiver for incoming data batches (or errors).
-    rx: mpsc::Receiver<Result<RecordBatch, BlpError>>,
+    rx: mpsc::Receiver<Result<SubscriptionUpdate, BlpError>>,
     /// Sender for adding new topics (shares channel with existing subs).
-    tx: mpsc::Sender<Result<RecordBatch, BlpError>>,
+    tx: mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
     /// Session claim (released on drop).
     claim: Option<SessionClaim>,
     /// Subscribed fields.
@@ -2047,15 +2047,15 @@ impl SubscriptionStream {
     /// Receive the next batch of data or an error.
     ///
     /// Returns:
-    /// - `Some(Ok(batch))` — normal data
+    /// - `Some(Ok(update))` — normal data
     /// - `Some(Err(error))` — subscription failure, session death, etc.
     /// - `None` — subscription is closed
-    pub async fn next(&mut self) -> Option<Result<RecordBatch, BlpError>> {
+    pub async fn next(&mut self) -> Option<Result<SubscriptionUpdate, BlpError>> {
         self.rx.recv().await
     }
 
     /// Try to receive data without blocking.
-    pub fn try_next(&mut self) -> Option<Result<RecordBatch, BlpError>> {
+    pub fn try_next(&mut self) -> Option<Result<SubscriptionUpdate, BlpError>> {
         self.rx.try_recv().ok()
     }
 
@@ -2158,9 +2158,12 @@ impl SubscriptionStream {
 
     /// Unsubscribe from all topics and close the stream.
     ///
-    /// If `drain` is true, returns remaining buffered batches before closing.
-    /// Errors in the drain are silently discarded — only successful batches are returned.
-    pub async fn unsubscribe(mut self, drain: bool) -> Result<Vec<RecordBatch>, BlpAsyncError> {
+    /// If `drain` is true, returns remaining buffered updates before closing.
+    /// Errors in the drain are silently discarded — only successful updates are returned.
+    pub async fn unsubscribe(
+        mut self,
+        drain: bool,
+    ) -> Result<Vec<SubscriptionUpdate>, BlpAsyncError> {
         let mut remaining = Vec::new();
 
         if drain {
@@ -2207,8 +2210,8 @@ impl SubscriptionStream {
         self,
     ) -> Result<
         (
-            mpsc::Receiver<Result<RecordBatch, BlpError>>,
-            mpsc::Sender<Result<RecordBatch, BlpError>>,
+            mpsc::Receiver<Result<SubscriptionUpdate, BlpError>>,
+            mpsc::Sender<Result<SubscriptionUpdate, BlpError>>,
             SessionClaim,
             SharedSubscriptionStatus,
             Option<usize>,          // flush_threshold

@@ -299,26 +299,23 @@ describe('native Arrow zero-copy table construction', () => {
     expect(Array.from(table.getChild('PAYLOAD')?.get(1) ?? [])).toEqual([0xbe, 0xef, 0x01]);
   });
 
-  it('Subscription.next uses native zero-copy batches', async () => {
-    const values = new Int32Array([42]);
-    const batch: NativeArrowZeroCopyBatch = {
-      kind: 'zeroCopy',
-      numRows: 1,
-      columns: [
-        {
-          name: 'answer',
-          type: 'int32',
-          nullable: false,
-          length: 1,
-          nullCount: 0,
-          data: typedBuffer(values),
-        },
-      ],
-    };
+  it('Subscription.next uses native updates', async () => {
     const sub = new api.Subscription({
-      nextArrow: async () => await Promise.resolve(batch),
+      nextUpdate: async () =>
+        await Promise.resolve({
+          kind: 'update',
+          topic: 'XBTUSD Curncy',
+          topicId: 1,
+          timestampUs: 123,
+          layoutVersion: 1,
+          fields: ['answer'],
+          values: [42],
+          valueKinds: ['i32'],
+        }),
+      nextArrow: async () => await Promise.resolve(null),
       add: async () => {},
       remove: async () => {},
+      unsubscribe: async () => await Promise.resolve(null),
       unsubscribeArrow: async () => await Promise.resolve(null),
       tickers: [],
       fields: [],
@@ -329,10 +326,11 @@ describe('native Arrow zero-copy table construction', () => {
     const result = await sub.next();
 
     expect(result.done).toBe(false);
-    expect(result.value.getChild('answer')?.get(0)).toBe(42);
+    expect(result.value?.topic).toBe('XBTUSD Curncy');
+    expect(result.value?.f64('answer')).toBe(42);
   });
 
-  it('Subscription.unsubscribe drains native zero-copy batches', async () => {
+  it('Subscription.arrow drains native zero-copy batches', async () => {
     const values = new Int32Array([7]);
     const batch: NativeArrowZeroCopyBatch = {
       kind: 'zeroCopy',
@@ -349,9 +347,11 @@ describe('native Arrow zero-copy table construction', () => {
       ],
     };
     const sub = new api.Subscription({
+      nextUpdate: async () => await Promise.resolve(null),
       nextArrow: async () => await Promise.resolve(null),
       add: async () => {},
       remove: async () => {},
+      unsubscribe: async () => await Promise.resolve(null),
       unsubscribeArrow: async (drain) => await Promise.resolve(drain ? [batch] : null),
       tickers: [],
       fields: [],
@@ -359,7 +359,7 @@ describe('native Arrow zero-copy table construction', () => {
       stats: { messagesReceived: 0, droppedBatches: 0, batchesSent: 0, slowConsumer: false },
     });
 
-    const drained = await sub.unsubscribe(true);
+    const drained = await sub.arrow().unsubscribe(true);
 
     expect(drained).toHaveLength(1);
     expect(drained[0]?.getChild('answer')?.get(0)).toBe(7);

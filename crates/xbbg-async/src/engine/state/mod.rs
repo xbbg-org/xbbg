@@ -14,6 +14,8 @@ mod intradaytick_stream;
 mod refdata;
 mod subscription;
 pub mod typed_builder;
+mod update;
+mod update_arrow;
 mod value_utils;
 
 pub use bql::BqlState;
@@ -29,3 +31,8 @@ pub use intradaytick::IntradayTickState;
 pub use intradaytick_stream::IntradayTickStreamState;
 pub use refdata::{LongMode, OutputFormat, RefDataState};
 pub use subscription::{SubscriptionMetrics, SubscriptionState};
+pub use update::{
+    FieldIndex, FieldKind, FieldLayout, FieldMeta, SubscriptionUpdate, TopicId, UpdateField,
+    UpdateValue,
+};
+pub use update_arrow::subscription_update_to_record_batch;
