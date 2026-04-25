@@ -87,22 +87,182 @@ def __getattr__(name: str):
 
 
 # Generated sync wrappers are installed dynamically by _install_generated_endpoints().
-# Define placeholders so static analysis recognizes these exported names.
 if TYPE_CHECKING:
-    bdp: Callable[..., Any]
-    bdh: Callable[..., Any]
-    bds: Callable[..., Any]
-    bdib: Callable[..., Any]
-    bdtick: Callable[..., Any]
-    bql: Callable[..., Any]
-    bsrch: Callable[..., Any]
-    bqr: Callable[..., Any]
-    bflds: Callable[..., Any]
-    beqs: Callable[..., Any]
-    blkp: Callable[..., Any]
-    bport: Callable[..., Any]
-    bcurves: Callable[..., Any]
-    bgovts: Callable[..., Any]
+
+    def bdp(
+        tickers: str | Sequence[str],
+        flds: str | Sequence[str] | None = None,
+        *,
+        backend: Backend | str | None = None,
+        format: Format | str | None = None,
+        field_types: dict[str, str] | None = None,
+        include_security_errors: bool = False,
+        validate_fields: bool | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg reference data (BDP). See ``abdp`` for details."""
+        ...
+
+    def bdh(
+        tickers: str | Sequence[str],
+        flds: str | Sequence[str] | None = None,
+        start_date: str | None = None,
+        end_date: str = "today",
+        *,
+        backend: Backend | str | None = None,
+        format: Format | str | None = None,
+        field_types: dict[str, str] | None = None,
+        validate_fields: bool | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg historical data (BDH). See ``abdh`` for details."""
+        ...
+
+    def bds(
+        tickers: str | Sequence[str],
+        flds: str,
+        *,
+        backend: Backend | str | None = None,
+        validate_fields: bool | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg bulk data (BDS). See ``abds`` for details."""
+        ...
+
+    def bdib(
+        ticker: str,
+        dt: str | None = None,
+        session: str = "allday",
+        typ: str = "TRADE",
+        *,
+        start_datetime: str | None = None,
+        end_datetime: str | None = None,
+        interval: int = 1,
+        backend: Backend | str | None = None,
+        request_tz: str | None = None,
+        output_tz: str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg intraday bar data (BDIB). See ``abdib`` for details."""
+        ...
+
+    def bdtick(
+        ticker: str,
+        start_datetime: str,
+        end_datetime: str,
+        *,
+        event_types: Sequence[str] | None = None,
+        backend: Backend | str | None = None,
+        request_tz: str | None = None,
+        output_tz: str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg tick data (BDTICK). See ``abdtick`` for details."""
+        ...
+
+    def bql(
+        expression: str,
+        *,
+        backend: Backend | str | None = None,
+    ) -> DataFrameResult:
+        """Sync Bloomberg Query Language (BQL) request. See ``abql`` for details."""
+        ...
+
+    def bsrch(
+        domain: str,
+        *,
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg Search (BSRCH) request. See ``absrch`` for details."""
+        ...
+
+    def bqr(
+        ticker: str,
+        date_offset: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        *,
+        event_types: Sequence[str] | None = None,
+        include_broker_codes: bool = False,
+        include_spread_price: bool = False,
+        include_yield: bool = False,
+        include_condition_codes: bool = False,
+        include_exchange_codes: bool = False,
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg Quote Request (BQR). See ``abqr`` for details."""
+        ...
+
+    def bflds(
+        fields: str | list[str] | None = None,
+        *,
+        search_spec: str | None = None,
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg field metadata lookup (BFLDS). See ``abflds`` for details."""
+        ...
+
+    def beqs(
+        screen: str,
+        *,
+        asof: str | None = None,
+        screen_type: str = "PRIVATE",
+        group: str = "General",
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg Equity Screening (BEQS) request. See ``abeqs`` for details."""
+        ...
+
+    def blkp(
+        query: str,
+        *,
+        yellowkey: str = "YK_FILTER_NONE",
+        language: str = "LANG_OVERRIDE_NONE",
+        max_results: int = 20,
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg security lookup (BLKP) request. See ``ablkp`` for details."""
+        ...
+
+    def bport(
+        portfolio: str,
+        fields: str | Sequence[str],
+        *,
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg portfolio data (BPORT) request. See ``abport`` for details."""
+        ...
+
+    def bcurves(
+        *,
+        country: str | None = None,
+        currency: str | None = None,
+        curve_type: str | None = None,
+        subtype: str | None = None,
+        curveid: str | None = None,
+        bbgid: str | None = None,
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg yield curve list (BCURVES) request. See ``abcurves`` for details."""
+        ...
+
+    def bgovts(
+        query: str | None = None,
+        *,
+        partial_match: bool = True,
+        backend: Backend | str | None = None,
+        **kwargs: Any,
+    ) -> DataFrameResult:
+        """Sync Bloomberg government securities list (BGOVTS) request. See ``abgovts`` for details."""
+        ...
+
 else:
     (bdp, bdh, bds, bdib, bdtick, bql, bsrch, bqr, bflds, beqs, blkp, bport, bcurves, bgovts) = (None,) * 14
 

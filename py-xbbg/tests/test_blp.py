@@ -5,6 +5,8 @@ These tests verify the Python API without requiring a Bloomberg connection.
 
 from __future__ import annotations
 
+import inspect
+
 
 class TestBdp:
     """Tests for bdp (reference data) function."""
@@ -60,10 +62,19 @@ class TestBdib:
 class TestBdtick:
     """Tests for bdtick (tick data) function."""
 
-    def test_bdtick_placeholder(self):
-        """Placeholder: Test bdtick function signature."""
-        # TODO: Implement actual bdtick tests
-        assert True, "Placeholder - implement bdtick tests"
+    def test_bdtick_sync_signature_matches_async(self):
+        """bdtick exposes the generated sync signature for IDE/runtime help."""
+        import xbbg
+        from xbbg import blp
+
+        sync_sig = inspect.signature(blp.bdtick)
+        async_sig = inspect.signature(blp.abdtick)
+
+        assert sync_sig == async_sig
+        assert inspect.signature(xbbg.bdtick) == async_sig
+        assert "request_tz" in sync_sig.parameters
+        assert "output_tz" in sync_sig.parameters
+        assert "event_types" in sync_sig.parameters
 
 
 class TestBcurves:

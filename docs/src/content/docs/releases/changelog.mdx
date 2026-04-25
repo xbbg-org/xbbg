@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **Rust Bloomberg SDK handle ownership hardened**: `xbbg-core` now models session-owned SDK views with Rust lifetimes instead of unsupported `Send`/`Sync` marker impls. `Service`, schema operations/definitions, and constants are tied to their owning session/service, pointer correlation IDs are explicit unsafe values, and async request workers reopen short-lived service handles rather than caching session-owned handles across worker state.
 - **Reference data `fieldExceptions` logging aggregated**: Per-security `fieldExceptions` diagnostics now stay at `DEBUG` with field-level detail, while bulk requests emit a single summary warning with total exception count and affected tickers.
 - **Generic `bds()` / `abds()` bulk-header contract documented (#274)**: xbbg preserves Bloomberg bulk subfield labels exactly in the generic BDS path; only `ticker` and `field` are xbbg-added metadata columns. Higher-level helpers that need stable semantic names must rename their own outputs explicitly.
+- **Generated sync wrappers now resolve in IDEs (#307)**: `bdp`, `bdh`, `bds`, `bdib`, `bdtick`, `bql`, `bsrch`, `bqr`, `bflds`, `beqs`, `blkp`, `bport`, `bcurves`, and `bgovts` now expose static signatures for parameter hints, hover docs, and go-to-definition. Top-level `xbbg` exports were also completed for `abqr` / `bqr` and the generated endpoint stubs.
 
 ### Fixed
 
