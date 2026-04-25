@@ -255,7 +255,7 @@ jobs:
           rustflags: ""
 
       - name: Cargo clippy
-        run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   check-windows:
     name: Check (Windows)
@@ -305,7 +305,7 @@ jobs:
 
       - name: Cargo clippy
         shell: bash
-        run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   check-macos:
     name: Check (macOS)
@@ -350,7 +350,7 @@ jobs:
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Cargo clippy
-        run: cargo clippy --workspace --all-targets --exclude datamock --exclude datamock-sys -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   # ════════════════════════════════════════════════════════════════════════════
   # Bridge/browser packaging validation

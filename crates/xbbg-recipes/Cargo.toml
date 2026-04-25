@@ -17,5 +17,4 @@ tokio = { version = "1.48", features = ["rt"] }
 
 [features]
 default = ["live"]
-mock = ["xbbg-async/mock"]
 live = ["xbbg-async/live"]

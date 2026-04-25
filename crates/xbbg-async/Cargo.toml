@@ -28,7 +28,6 @@ serde_json = "1.0"
 
 [features]
 default = ["live"]
-mock = ["xbbg_core/mock"]
 live = ["xbbg_core/live"]
 
 # cargo-udeps false positives (xbbg-log re-exports tracing macros)

@@ -45,15 +45,6 @@ recursive-include codegen *.py
 # Definition files (schema defs used by crates)
 recursive-include defs *
 
-# datamock workspace members — Cargo needs Cargo.toml + src/lib.rs to resolve
-# the workspace, but we exclude the massive C++ source tree (not needed for
-# release builds — the mock feature is off by default).
-recursive-include crates/datamock *.rs *.toml
-recursive-include crates/datamock-sys *.rs *.toml
-
-# ── Exclude dev-only crate content ───────────────────────────────────────────
-# datamock C++ source (100+ files, ~500KB, not needed for live builds)
-prune crates/datamock/cpp
 
 # Examples/tests are not needed to build the wheel. xbbg-bench benches stay in
 # the sdist because Cargo.toml declares them as explicit bench targets.
