@@ -1450,7 +1450,37 @@ impl Engine {
             );
         }
 
+        self.apply_cached_field_types(&mut params);
+
         Ok(params)
+    }
+
+    fn apply_cached_field_types(&self, params: &mut RequestParams) {
+        if !matches!(
+            params.extractor,
+            ExtractorType::RefData | ExtractorType::HistData
+        ) {
+            return;
+        }
+
+        let Some(fields) = params.fields.as_ref().filter(|fields| !fields.is_empty()) else {
+            return;
+        };
+
+        let resolved = crate::field_cache::global_resolver()
+            .resolve_cached_types(fields, params.field_types.as_ref());
+        if !resolved.is_empty() {
+            let added = params
+                .field_types
+                .as_ref()
+                .map_or(resolved.len(), |existing| {
+                    resolved.len().saturating_sub(existing.len())
+                });
+            if added > 0 {
+                xbbg_log::debug!(field_count = added, "using cached field type hints");
+            }
+            params.field_types = Some(resolved);
+        }
     }
 
     /// Validate request fields against Bloomberg field metadata when enabled.

@@ -361,6 +361,34 @@ impl FieldTypeResolver {
         result
     }
 
+    /// Resolve only manual overrides and already-cached field types.
+    ///
+    /// Unlike [`Self::resolve_types`], this does not apply defaults. It lets
+    /// request paths opportunistically use metadata that has already been
+    /// resolved without changing behavior for unknown fields or issuing extra
+    /// Bloomberg metadata requests.
+    pub fn resolve_cached_types(
+        &self,
+        fields: &[String],
+        manual_overrides: Option<&HashMap<String, String>>,
+    ) -> HashMap<String, String> {
+        self.ensure_loaded();
+        let mut result = manual_overrides.cloned().unwrap_or_default();
+
+        for field in fields {
+            let field_upper = field.to_uppercase();
+            if result.contains_key(field) || result.contains_key(&field_upper) {
+                continue;
+            }
+
+            if let Some(info) = self.cache.get(&field_upper) {
+                result.insert(field.clone(), info.arrow_type.clone());
+            }
+        }
+
+        result
+    }
+
     /// Get list of fields that are not in cache.
     pub fn get_uncached_fields(&self, fields: &[String]) -> Vec<String> {
         self.ensure_loaded();
@@ -456,5 +484,31 @@ mod tests {
 
         assert_eq!(resolved.get("PX_LAST"), Some(&"float64".to_string()));
         assert_eq!(resolved.get("VOLUME"), Some(&"int64".to_string()));
+    }
+
+    #[test]
+    fn resolve_cached_types_preserves_overrides_and_skips_unknowns() {
+        let dir = tempfile::tempdir().unwrap();
+        let resolver = FieldTypeResolver::with_cache_path(dir.path().join("field_cache.json"));
+        resolver.insert(FieldInfo {
+            field_id: "PX_LAST".to_string(),
+            arrow_type: "float64".to_string(),
+            description: String::new(),
+            category: String::new(),
+        });
+
+        let fields = vec![
+            "PX_LAST".to_string(),
+            "VOLUME".to_string(),
+            "NAME".to_string(),
+        ];
+        let mut overrides = HashMap::new();
+        overrides.insert("VOLUME".to_string(), "int64".to_string());
+
+        let resolved = resolver.resolve_cached_types(&fields, Some(&overrides));
+
+        assert_eq!(resolved.get("PX_LAST"), Some(&"float64".to_string()));
+        assert_eq!(resolved.get("VOLUME"), Some(&"int64".to_string()));
+        assert!(!resolved.contains_key("NAME"));
     }
 }

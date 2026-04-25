@@ -198,22 +198,23 @@ impl TypedBuilder {
             TypedBuilder::String(b) => {
                 match value {
                     Some(Value::String(s)) | Some(Value::Enum(s)) => b.append_value(s),
+                    Some(Value::Float64(f)) if f.is_finite() => {
+                        let mut buffer = ryu::Buffer::new();
+                        b.append_value(buffer.format_finite(f));
+                    }
                     Some(Value::Float64(f)) => {
                         let s = f.to_string();
                         b.append_value(&s);
                     }
                     Some(Value::Int64(i)) => {
-                        let s = i.to_string();
-                        b.append_value(&s);
+                        let mut buffer = itoa::Buffer::new();
+                        b.append_value(buffer.format(i));
                     }
                     Some(Value::Int32(i)) => {
-                        let s = i.to_string();
-                        b.append_value(&s);
+                        let mut buffer = itoa::Buffer::new();
+                        b.append_value(buffer.format(i));
                     }
-                    Some(Value::Bool(v)) => {
-                        let s = v.to_string();
-                        b.append_value(&s);
-                    }
+                    Some(Value::Bool(v)) => b.append_value(if v { "true" } else { "false" }),
                     Some(Value::Date32(d)) => {
                         let s = format_date32(d);
                         b.append_value(&s);
@@ -231,8 +232,8 @@ impl TypedBuilder {
                         b.append_value(&s);
                     }
                     Some(Value::Byte(v)) => {
-                        let s = v.to_string();
-                        b.append_value(&s);
+                        let mut buffer = itoa::Buffer::new();
+                        b.append_value(buffer.format(v));
                     }
                     Some(Value::Null) | None => b.append_null(),
                 }
@@ -774,6 +775,28 @@ mod tests {
         assert_eq!(batch.schema().field(0).name(), "ticker");
         assert_eq!(batch.schema().field(1).name(), "field");
         assert_eq!(batch.schema().field(2).name(), "value");
+    }
+
+    #[test]
+    fn typed_builder_string_formats_scalar_values() {
+        use arrow::array::StringArray;
+
+        let mut builder = TypedBuilder::new(ArrowType::String);
+        builder.append_value(Some(Value::Float64(123.45)));
+        builder.append_value(Some(Value::Int64(-42)));
+        builder.append_value(Some(Value::Int32(7)));
+        builder.append_value(Some(Value::Bool(true)));
+        builder.append_value(Some(Value::Bool(false)));
+        builder.append_value(Some(Value::Byte(255)));
+
+        let array = builder.finish();
+        let strings = array.as_any().downcast_ref::<StringArray>().unwrap();
+        assert_eq!(strings.value(0), "123.45");
+        assert_eq!(strings.value(1), "-42");
+        assert_eq!(strings.value(2), "7");
+        assert_eq!(strings.value(3), "true");
+        assert_eq!(strings.value(4), "false");
+        assert_eq!(strings.value(5), "255");
     }
 
     #[test]
