@@ -2024,10 +2024,7 @@ async def asubscribe(
     if output is not None:
         normalized_output = output.lower()
         if normalized_output not in ("record_batch", "backend", "dict", "tick"):
-            raise ValueError(
-                "output must be one of 'record_batch', 'backend', 'dict', 'tick', "
-                f"got {output!r}"
-            )
+            raise ValueError(f"output must be one of 'record_batch', 'backend', 'dict', 'tick', got {output!r}")
         if normalized_output in ("dict", "tick"):
             tick_mode = True
         elif normalized_output == "record_batch":
