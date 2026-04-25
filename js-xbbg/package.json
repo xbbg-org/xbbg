@@ -17,7 +17,7 @@
     "stage:native-package": "node ./scripts/stage-native-package.js",
     "stamp:version": "node ./scripts/stamp-version.js",
     "smoke:packaged-install": "node ./scripts/smoke-packaged-install.js --packed",
-    "bench:subscription-replay": "node ./scripts/bench-subscription-replay.js",
+    "bench:subscription-replay": "node ./benchmarks/bench-subscription-replay.js",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
     "format": "eslint --fix .",
