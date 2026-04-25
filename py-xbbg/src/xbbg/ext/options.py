@@ -26,7 +26,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Any
 
-from xbbg.ext._utils import _abdp_fields, _abds_field, _fmt_date, _syncify
+from xbbg.ext._utils import DateLike, _abdp_fields, _abds_field, _fmt_date, _syncify
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -289,7 +289,7 @@ async def aoption_chain(
     underlying: str,
     *,
     put_call: PutCall | str | None = None,
-    expiry_dt: str | None = None,
+    expiry_dt: DateLike = None,
     strike: StrikeRef | str | float | None = None,
     points: float | None = None,
     periodicity: ChainPeriodicity | str | None = None,

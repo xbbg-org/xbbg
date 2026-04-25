@@ -26,7 +26,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from xbbg.ext._utils import _abdp_fields, _abds_field, _apply_settle_override, _syncify
+from xbbg.ext._utils import (
+    DateLike,
+    _abdp_fields,
+    _abds_field,
+    _apply_settle_override,
+    _syncify,
+)
 
 if TYPE_CHECKING:
     from narwhals.typing import IntoDataFrame
@@ -187,7 +193,7 @@ async def abond_info(ticker: str, **kwargs) -> IntoDataFrame:
 async def abond_risk(
     ticker: str,
     *,
-    settle_dt: str | None = None,
+    settle_dt: DateLike = None,
     **kwargs,
 ) -> IntoDataFrame:
     """Async bond duration and risk metrics.
@@ -235,7 +241,7 @@ async def abond_risk(
 async def abond_spreads(
     ticker: str,
     *,
-    settle_dt: str | None = None,
+    settle_dt: DateLike = None,
     benchmark: str | None = None,
     **kwargs,
 ) -> IntoDataFrame:
@@ -287,7 +293,7 @@ async def abond_spreads(
 async def abond_cashflows(
     ticker: str,
     *,
-    settle_dt: str | None = None,
+    settle_dt: DateLike = None,
     **kwargs,
 ) -> IntoDataFrame:
     """Async bond cash flow schedule.
@@ -327,7 +333,7 @@ async def abond_cashflows(
 async def abond_key_rates(
     ticker: str,
     *,
-    settle_dt: str | None = None,
+    settle_dt: DateLike = None,
     **kwargs,
 ) -> IntoDataFrame:
     """Async bond key rate durations.
@@ -387,7 +393,7 @@ async def abond_curve(
     tickers: list[str],
     flds: list[str] | None = None,
     *,
-    settle_dt: str | None = None,
+    settle_dt: DateLike = None,
     **kwargs,
 ) -> IntoDataFrame:
     """Async bond curve and relative value comparison.
