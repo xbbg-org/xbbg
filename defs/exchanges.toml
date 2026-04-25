@@ -47,37 +47,46 @@ post_minutes = 240
 pre_minutes = 330
 post_minutes = 240
 
-# --- Japanese Equities (1h pre, 30m post, lunch 11:30–12:30) ---
-# Day: 09:00–15:00, AM: 09:00–11:30, PM: 12:30–15:00
+# --- Japanese Equities (1h pre, 30m post, lunch 11:30-12:30) ---
+# Day: 09:00-15:30, AM: 09:00-11:30, PM: 12:30-15:30
 [mic.XTKS]
 pre_minutes = 60
 post_minutes = 30
 lunch_start_min = 150
 lunch_end_min = 210
-
+day_start = "09:00"
+day_end = "15:30"
 [mic.XOSE]
 pre_minutes = 60
 post_minutes = 30
 lunch_start_min = 150
 lunch_end_min = 210
+day_start = "09:00"
+day_end = "15:30"
 
 [mic.XNGO]
 pre_minutes = 60
 post_minutes = 30
 lunch_start_min = 150
 lunch_end_min = 210
+day_start = "09:00"
+day_end = "15:30"
 
 [mic.XFKA]
 pre_minutes = 60
 post_minutes = 30
 lunch_start_min = 150
 lunch_end_min = 210
+day_start = "09:00"
+day_end = "15:30"
 
 [mic.XSAP]
 pre_minutes = 60
 post_minutes = 30
 lunch_start_min = 150
 lunch_end_min = 210
+day_start = "09:00"
+day_end = "15:30"
 
 # --- Hong Kong (45m pre, 15m post, lunch 12:00–13:00) ---
 # Day: 09:30–16:00, AM: 09:30–12:00, PM: 13:00–16:00
@@ -201,12 +210,16 @@ pre_minutes = 60
 post_minutes = 30
 lunch_start_min = 150
 lunch_end_min = 210
+day_start = "09:00"
+day_end = "15:30"
 
 [exch_code.JP]
 pre_minutes = 60
 post_minutes = 30
 lunch_start_min = 150
 lunch_end_min = 210
+day_start = "09:00"
+day_end = "15:30"
 
 # --- Hong Kong ---
 [exch_code.HK]
