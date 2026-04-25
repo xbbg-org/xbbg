@@ -49,12 +49,12 @@ uv pip install pdblp
 
 ```bash
 # Run all benchmarks
-python benchmarks/run_all.py
+python py-xbbg/benchmarks/run_all.py
 
 # Run specific benchmark
-python benchmarks/bench_bdp.py
-python benchmarks/bench_bdh.py
-python benchmarks/bench_bdib.py
+python py-xbbg/benchmarks/bench_bdp.py
+python py-xbbg/benchmarks/bench_bdh.py
+python py-xbbg/benchmarks/bench_bdib.py
 ```
 
 ---

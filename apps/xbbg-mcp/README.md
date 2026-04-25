@@ -45,7 +45,7 @@ The wrapper locates the Bloomberg runtime in this order:
 1. `XBBG_MCP_LIB_DIR`
 2. `BLPAPI_LIB_DIR`
 3. `BLPAPI_ROOT`
-4. vendored SDK under `vendor/blpapi-sdk/`
+4. vendored SDK under `crates/blpapi-sys/vendor/blpapi-sdk/`
 5. the official Python `blpapi` package
 
 If you install Bloomberg's Python package, the wrapper can usually run without any extra shell configuration:

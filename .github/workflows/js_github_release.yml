@@ -136,13 +136,13 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-x64
-            package_dir: packages/xbbg-core-linux-x64
+            package_dir: js-xbbg/packages/xbbg-core-linux-x64
           - os: windows-latest
             label: win32-x64
-            package_dir: packages/xbbg-core-win32-x64
+            package_dir: js-xbbg/packages/xbbg-core-win32-x64
           - os: macos-15
             label: darwin-arm64
-            package_dir: packages/xbbg-core-darwin-arm64
+            package_dir: js-xbbg/packages/xbbg-core-darwin-arm64
 
     runs-on: ${{ matrix.os }}
     env:
@@ -253,132 +253,6 @@ jobs:
           path: ${{ matrix.package_dir }}
           retention-days: 7
 
-  build-bridge-native:
-    name: Build @xbbg/bridge native package (${{ matrix.label }})
-    needs: [prepare, sdk-version, generate-bindings]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            label: linux-x64
-            package_dir: packages/xbbg-bridge-linux-x64
-          - os: windows-latest
-            label: win32-x64
-            package_dir: packages/xbbg-bridge-win32-x64
-          - os: macos-15
-            label: darwin-arm64
-            package_dir: packages/xbbg-bridge-darwin-arm64
-
-    runs-on: ${{ matrix.os }}
-    env:
-      BLPAPI_VERSION: ${{ needs.sdk-version.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - name: Download pre-generated bindings
-        uses: actions/download-artifact@v4
-        with:
-          name: blpapi-bindings
-          path: ci-bindings
-
-      - name: Configure pre-generated bindings path (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
-          test -s "$BINDINGS_PATH"
-          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
-
-      - name: Configure pre-generated bindings path (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $bindingsPath = Join-Path $env:GITHUB_WORKSPACE "ci-bindings\bindings.rs"
-          if (-not (Test-Path $bindingsPath)) {
-            throw "Bindings artifact not found at $bindingsPath"
-          }
-          "BLPAPI_PREGENERATED_BINDINGS=$bindingsPath" >> $env:GITHUB_ENV
-
-      - name: Configure pre-generated bindings path (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          BINDINGS_PATH="$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
-          test -s "$BINDINGS_PATH"
-          echo "BLPAPI_PREGENERATED_BINDINGS=$BINDINGS_PATH" >> "$GITHUB_ENV"
-
-      - name: Setup Bloomberg SDK (Linux)
-        if: runner.os == 'Linux'
-        id: sdk-linux
-        uses: ./.github/actions/setup-blpapi-sdk
-        with:
-          version: ${{ env.BLPAPI_VERSION }}
-          os: Linux
-
-      - name: Export Bloomberg SDK env (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.sdk-rel-root }}"
-          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-linux.outputs.lib-rel-dir }}"
-          {
-            echo "BLPAPI_ROOT=$SDK_ROOT"
-            echo "LIBRARY_PATH=$LIB_DIR:$LIBRARY_PATH"
-            echo "LD_LIBRARY_PATH=$LIB_DIR:$LD_LIBRARY_PATH"
-          } >> "$GITHUB_ENV"
-
-      - name: Setup Bloomberg SDK (Windows)
-        if: runner.os == 'Windows'
-        id: sdk-windows
-        uses: ./.github/actions/setup-blpapi-sdk
-        with:
-          version: ${{ env.BLPAPI_VERSION }}
-          os: Windows
-
-      - name: Export Bloomberg SDK env (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $sdkPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.sdk-rel-root }}'
-          $binPath = Join-Path $env:GITHUB_WORKSPACE '${{ steps.sdk-windows.outputs.bin-rel-dir }}'
-          "BLPAPI_ROOT=$sdkPath" >> $env:GITHUB_ENV
-          "PATH=$binPath;$env:PATH" >> $env:GITHUB_ENV
-
-      - name: Setup Bloomberg SDK (macOS)
-        if: runner.os == 'macOS'
-        id: sdk-macos
-        uses: ./.github/actions/setup-blpapi-sdk
-        with:
-          version: ${{ env.BLPAPI_VERSION }}
-          os: macOS
-
-      - name: Export Bloomberg SDK env (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          SDK_ROOT="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.sdk-rel-root }}"
-          LIB_DIR="$GITHUB_WORKSPACE/${{ steps.sdk-macos.outputs.lib-rel-dir }}"
-          echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
-
-      - name: Stage @xbbg/bridge native package
-        run: npm --prefix packages/xbbg-bridge run build:binary
-
-      - name: Upload staged bridge package artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bridge-package-${{ matrix.label }}
-          path: ${{ matrix.package_dir }}
-          retention-days: 7
-
   pack-offline-bundles:
     name: Pack offline bundles
     needs: [prepare, build-core-native]
@@ -395,19 +269,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: core-package-linux-x64
-          path: packages/xbbg-core-linux-x64
+          path: js-xbbg/packages/xbbg-core-linux-x64
 
       - name: Download windows core package artifact
         uses: actions/download-artifact@v4
         with:
           name: core-package-win32-x64
-          path: packages/xbbg-core-win32-x64
+          path: js-xbbg/packages/xbbg-core-win32-x64
 
       - name: Download macOS core package artifact
         uses: actions/download-artifact@v4
         with:
           name: core-package-darwin-arm64
-          path: packages/xbbg-core-darwin-arm64
+          path: js-xbbg/packages/xbbg-core-darwin-arm64
 
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
@@ -416,7 +290,7 @@ jobs:
         run: |
           mkdir -p dist-offline
           for label in linux-x64 win32-x64 darwin-arm64; do
-            node scripts/build-offline-bundle.js --label "$label" --out-dir dist-offline
+            node js-xbbg/scripts/build-offline-bundle.js --label "$label" --out-dir dist-offline
           done
           ls -1 dist-offline
 
@@ -429,7 +303,7 @@ jobs:
 
   pack-assets:
     name: Pack JS release assets
-    needs: [prepare, sdk-version, build-core-native, build-bridge-native]
+    needs: [prepare, sdk-version, build-core-native]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -443,37 +317,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: core-package-linux-x64
-          path: packages/xbbg-core-linux-x64
+          path: js-xbbg/packages/xbbg-core-linux-x64
 
       - name: Download windows core package artifact
         uses: actions/download-artifact@v4
         with:
           name: core-package-win32-x64
-          path: packages/xbbg-core-win32-x64
+          path: js-xbbg/packages/xbbg-core-win32-x64
 
       - name: Download macOS core package artifact
         uses: actions/download-artifact@v4
         with:
           name: core-package-darwin-arm64
-          path: packages/xbbg-core-darwin-arm64
-
-      - name: Download linux bridge package artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: bridge-package-linux-x64
-          path: packages/xbbg-bridge-linux-x64
-
-      - name: Download windows bridge package artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: bridge-package-win32-x64
-          path: packages/xbbg-bridge-win32-x64
-
-      - name: Download macOS bridge package artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: bridge-package-darwin-arm64
-          path: packages/xbbg-bridge-darwin-arm64
+          path: js-xbbg/packages/xbbg-core-darwin-arm64
 
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
@@ -504,55 +360,11 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           mkdir -p dist
-          npm pack ./packages/xbbg-core-darwin-arm64 --pack-destination dist
-          npm pack ./packages/xbbg-core-linux-x64 --pack-destination dist
-          npm pack ./packages/xbbg-core-win32-x64 --pack-destination dist
+          npm pack ./js-xbbg/packages/xbbg-core-darwin-arm64 --pack-destination dist
+          npm pack ./js-xbbg/packages/xbbg-core-linux-x64 --pack-destination dist
+          npm pack ./js-xbbg/packages/xbbg-core-win32-x64 --pack-destination dist
           npm pack ./js-xbbg --pack-destination dist
-          npm pack ./packages/xbbg-bridge-darwin-arm64 --pack-destination dist
-          npm pack ./packages/xbbg-bridge-linux-x64 --pack-destination dist
-          npm pack ./packages/xbbg-bridge-win32-x64 --pack-destination dist
-          npm pack ./packages/xbbg-bridge --pack-destination dist
           ls -1 dist
-
-      - name: Smoke test packed @xbbg/bridge install
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const os = require('node:os');
-          const path = require('node:path');
-          const { spawnSync } = require('node:child_process');
-
-          const repoRoot = process.cwd();
-          const version = process.env.VERSION;
-          const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-          const platformTarball = path.join(repoRoot, 'dist', `xbbg-bridge-linux-x64-${version}.tgz`);
-          const wrapperTarball = path.join(repoRoot, 'dist', `xbbg-bridge-${version}.tgz`);
-          const appDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xbbg-bridge-packed-install-'));
-
-          function run(command, args, options = {}) {
-            const result = spawnSync(command, args, {
-              cwd: options.cwd,
-              env: options.env,
-              stdio: 'inherit',
-              shell: false,
-              windowsHide: true,
-            });
-            if (result.error) throw result.error;
-            if (result.status !== 0) process.exit(result.status || 1);
-          }
-
-          run(npmCmd, ['init', '-y'], { cwd: appDir, env: process.env });
-          run(npmCmd, ['install', platformTarball, wrapperTarball], {
-            cwd: appDir,
-            env: process.env,
-          });
-          run(process.execPath, ['-e', "const fs = require('node:fs'); const { resolveBinary } = require('@xbbg/bridge/lib/resolve-binary'); const resolved = resolveBinary(process.cwd()); if (!fs.existsSync(resolved.binaryPath)) throw new Error(`Missing bridge binary: ${resolved.binaryPath}`); console.log(resolved.packageName, resolved.binaryPath);"], {
-            cwd: appDir,
-            env: process.env,
-          });
-          NODE
 
       - name: Upload JS release artifacts
         uses: actions/upload-artifact@v4
@@ -688,14 +500,6 @@ jobs:
               '- `@xbbg/core-darwin-arm64`',
               '- `@xbbg/core-linux-x64`',
               '- `@xbbg/core-win32-x64`',
-              '- `@xbbg/bridge`',
-              '- `@xbbg/bridge-darwin-arm64`',
-              '- `@xbbg/bridge-linux-x64`',
-              '- `@xbbg/bridge-win32-x64`',
-              '',
-              '### Unsupported prebuilt targets',
-              '- `@xbbg/bridge-darwin-x64`',
-              '- `@xbbg/bridge-linux-arm64`',
               '',
               '### Offline bundles',
               'Preinstalled `bundle/node_modules` zips for air-gapped installs:',

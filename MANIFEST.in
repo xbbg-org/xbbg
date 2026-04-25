@@ -36,11 +36,10 @@ recursive-include crates/xbbg-bench *.rs *.toml
 # workspace even though only pyo3-xbbg is compiled for the Python wheel.
 recursive-include bindings/pyo3-xbbg *.rs *.toml
 recursive-include bindings/napi-xbbg *.rs *.toml
-recursive-include apps/xbbg-server *.rs *.toml
 recursive-include apps/xbbg-mcp *.rs *.toml
 
 # Codegen (needed for workspace compilation)
-recursive-include codegen *.py
+recursive-include defs/codegen *.py
 
 # Definition files (schema defs used by crates)
 recursive-include defs *
@@ -60,10 +59,11 @@ prune apps/xbbg-cli
 prune .github
 prune docker
 prune docs
-prune benchmarks
-prune examples
+prune py-xbbg/benchmarks
+prune py-xbbg/docker
+prune py-xbbg/examples
 prune scripts
-prune vendor
+prune crates/blpapi-sys/vendor
 prune js-xbbg
 prune py-xbbg/tests
 
