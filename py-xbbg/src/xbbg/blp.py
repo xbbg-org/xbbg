@@ -89,6 +89,9 @@ def __getattr__(name: str):
 
 # Generated sync wrappers are installed dynamically by _install_generated_endpoints().
 if TYPE_CHECKING:
+    # ``DateLike`` is also imported lazily below alongside ``_fmt_date``; the
+    # second copy here keeps the static stubs visible to type-checkers / IDEs.
+    from xbbg.ext._utils import DateLike
 
     def bdp(
         tickers: str | Sequence[str],
@@ -107,8 +110,8 @@ if TYPE_CHECKING:
     def bdh(
         tickers: str | Sequence[str],
         flds: str | Sequence[str] | None = None,
-        start_date: str | None = None,
-        end_date: str = "today",
+        start_date: DateLike = None,
+        end_date: DateLike = "today",
         *,
         backend: Backend | str | None = None,
         format: Format | str | None = None,
@@ -132,12 +135,12 @@ if TYPE_CHECKING:
 
     def bdib(
         ticker: str,
-        dt: str | None = None,
+        dt: DateLike = None,
         session: str = "allday",
         typ: str = "TRADE",
         *,
-        start_datetime: str | None = None,
-        end_datetime: str | None = None,
+        start_datetime: DateLike = None,
+        end_datetime: DateLike = None,
         interval: int = 1,
         backend: Backend | str | None = None,
         request_tz: str | None = None,
@@ -149,8 +152,8 @@ if TYPE_CHECKING:
 
     def bdtick(
         ticker: str,
-        start_datetime: str,
-        end_datetime: str,
+        start_datetime: DateLike,
+        end_datetime: DateLike,
         *,
         event_types: Sequence[str] | None = None,
         backend: Backend | str | None = None,
@@ -181,8 +184,8 @@ if TYPE_CHECKING:
     def bqr(
         ticker: str,
         date_offset: str | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
+        start_date: DateLike = None,
+        end_date: DateLike = None,
         *,
         event_types: Sequence[str] | None = None,
         include_broker_codes: bool = False,
@@ -1266,7 +1269,11 @@ async def _aroute_kwargs(
     return elements, overrides
 
 
-from xbbg.ext._utils import _fmt_date  # noqa: E402  (must follow services imports)
+from xbbg.ext._utils import (  # noqa: E402  (must follow services imports)
+    DateLike,
+    _fmt_date,
+    _fmt_datetime,
+)
 
 
 def _convert_backend(
@@ -1347,10 +1354,10 @@ async def arequest(
     fields: str | Sequence[str] | None = None,
     overrides: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
     elements: Sequence[tuple[str, Any]] | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
+    start_date: DateLike = None,
+    end_date: DateLike = None,
+    start_datetime: DateLike = None,
+    end_datetime: DateLike = None,
     event_type: str | None = None,
     event_types: Sequence[str] | None = None,
     interval: int | None = None,
@@ -1500,10 +1507,10 @@ async def arequest(
         fields=fields_list,
         overrides=overrides_list,
         elements=elements_list,
-        start_date=start_date,
-        end_date=end_date,
-        start_datetime=start_datetime,
-        end_datetime=end_datetime,
+        start_date=_fmt_date(start_date),
+        end_date=_fmt_date(end_date),
+        start_datetime=_fmt_datetime(start_datetime, default_tz=None),
+        end_datetime=_fmt_datetime(end_datetime, default_tz=None),
         event_type=event_type,
         event_types=list(event_types) if event_types else None,
         interval=interval,
@@ -1603,8 +1610,8 @@ async def abdp(
 async def abdh(
     tickers: str | Sequence[str],
     flds: str | Sequence[str] | None = None,
-    start_date: str | None = None,
-    end_date: str = "today",
+    start_date: DateLike = None,
+    end_date: DateLike = "today",
     *,
     backend: Backend | str | None = None,
     format: Format | str | None = None,
@@ -1686,12 +1693,12 @@ async def abds(
 
 async def abdib(
     ticker: str,
-    dt: str | None = None,
+    dt: DateLike = None,
     session: str = "allday",
     typ: str = "TRADE",
     *,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
+    start_datetime: DateLike = None,
+    end_datetime: DateLike = None,
     interval: int = 1,
     backend: Backend | str | None = None,
     request_tz: str | None = None,
@@ -1742,8 +1749,8 @@ async def abdib(
 
 async def abdtick(
     ticker: str,
-    start_datetime: str,
-    end_datetime: str,
+    start_datetime: DateLike,
+    end_datetime: DateLike,
     *,
     event_types: Sequence[str] | None = None,
     backend: Backend | str | None = None,
@@ -3547,8 +3554,8 @@ def _postprocess_bqr_result(
 async def abqr(
     ticker: str,
     date_offset: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    start_date: DateLike = None,
+    end_date: DateLike = None,
     *,
     event_types: Sequence[str] | None = None,
     include_broker_codes: bool = True,
@@ -4004,10 +4011,12 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
     dt_value = args.get("dt")
 
     if start_dt is not None and end_dt is not None:
-        s_dt = datetime.fromisoformat(start_dt.replace(" ", "T")).isoformat()
-        e_dt = datetime.fromisoformat(end_dt.replace(" ", "T")).isoformat()
+        # Preserve any tz info the caller supplied; let the Rust engine
+        # handle naive strings according to ``request_tz``.
+        s_dt = _fmt_datetime(start_dt, default_tz=None)
+        e_dt = _fmt_datetime(end_dt, default_tz=None)
     elif dt_value is not None:
-        cur_dt = datetime.fromisoformat(dt_value.replace(" ", "T")).strftime("%Y-%m-%d")
+        cur_dt = _fmt_date(dt_value, "%Y-%m-%d")
         s_dt = f"{cur_dt}T00:00:00"
         e_dt = f"{cur_dt}T23:59:59"
     else:
@@ -4048,8 +4057,11 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
 async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
     kwargs = dict(args.get("kwargs", {}))
 
-    s_dt = datetime.fromisoformat(args["start_datetime"].replace(" ", "T")).isoformat()
-    e_dt = datetime.fromisoformat(args["end_datetime"].replace(" ", "T")).isoformat()
+    # Accept native datetime/date plus duck-typed pd.Timestamp; preserve any
+    # tz info the caller supplied so naive strings keep being interpreted by
+    # the Rust engine according to ``request_tz``.
+    s_dt = _fmt_datetime(args["start_datetime"], default_tz=None)
+    e_dt = _fmt_datetime(args["end_datetime"], default_tz=None)
 
     alias_event_type = _pop_element_alias(kwargs, "eventType")
     event_types = args.get("event_types")
@@ -4094,6 +4106,18 @@ async def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
     time_fmt = "%Y-%m-%dT%H:%M:%S"
 
     def fmt_bqr_datetime(value: Any, default_time: str) -> str:
+        # Native types (datetime / date / pd.Timestamp).
+        if not isinstance(value, str):
+            if isinstance(value, datetime):
+                return value.strftime(time_fmt)
+            if isinstance(value, date):
+                return _fmt_date(value, "%Y-%m-%d") + default_time
+            if hasattr(value, "to_pydatetime"):
+                coerced = value.to_pydatetime()
+                if isinstance(coerced, datetime):
+                    return coerced.strftime(time_fmt)
+                if isinstance(coerced, date):
+                    return _fmt_date(coerced, "%Y-%m-%d") + default_time
         text = str(value).replace(" ", "T")
         if "T" in text:
             return datetime.fromisoformat(text).strftime(time_fmt)
