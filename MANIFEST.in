@@ -60,9 +60,10 @@ prune .github
 prune docker
 prune docs
 prune py-xbbg/benchmarks
+prune py-xbbg/docker
 prune py-xbbg/examples
 prune scripts
-prune vendor
+prune crates/blpapi-sys/vendor
 prune js-xbbg
 prune py-xbbg/tests
 

@@ -3,7 +3,7 @@
  * Build an offline bundle zip for one @xbbg/core platform.
  *
  * Assumes the repo is checked out, `js-xbbg/` has been stamped (version
- * matches `packages/xbbg-core-<label>/package.json`), and the platform
+ * matches `js-xbbg/packages/xbbg-core-<label>/package.json`), and the platform
  * package has been staged with its prebuilt `napi_xbbg.node`.
  *
  * Output: <out-dir>/xbbg-offline-<label>-<version>.zip containing:
