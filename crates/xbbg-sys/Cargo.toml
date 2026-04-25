@@ -4,17 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Unified FFI abstraction over blpapi-sys (real) and datamock (mock)"
+description = "FFI abstraction over blpapi-sys"
 publish = false
 
 [features]
 default = ["live"]
-mock = ["datamock", "bindgen"]
 live = ["blpapi-sys"]
 
 [dependencies]
-datamock = { path = "../datamock", optional = true }
 blpapi-sys = { path = "../blpapi-sys", optional = true }
-
-[build-dependencies]
-bindgen = { version = "0.72.1", default-features = false, features = ["runtime"], optional = true }

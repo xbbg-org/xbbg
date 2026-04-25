@@ -9,8 +9,6 @@ members = [
     "crates/xbbg-recipes",
     "crates/xbbg-log",
     "crates/xbbg-bench",
-    "crates/datamock",
-    "crates/datamock-sys",
     # Language bindings
     "bindings/pyo3-xbbg",
     "bindings/napi-xbbg",
@@ -20,10 +18,6 @@ members = [
     "apps/xbbg-server",
     "apps/xbbg-mcp",
 ]
-# Omit datamock / datamock-sys so plain `cargo build` / `cargo test` at the repo
-# root does not compile the mock stack; use `cargo test -p datamock` or
-# `cargo build --workspace` when working on it. The `mock` Cargo feature stays
-# optional on xbbg-sys and downstream crates.
 default-members = [
     "crates/xbbg-core",
     "crates/blpapi-sys",

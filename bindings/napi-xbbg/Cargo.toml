@@ -25,7 +25,6 @@ xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 
 [features]
 default = ["live"]
-mock = ["xbbg_core/mock", "xbbg-async/mock", "xbbg-recipes/mock"]
 live = ["xbbg_core/live", "xbbg-async/live", "xbbg-recipes/live"]
 
 [build-dependencies]

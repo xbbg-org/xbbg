@@ -35,6 +35,5 @@ xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 default = ["live", "extension-module", "mimalloc"]
 extension-module = ["pyo3/extension-module"]
 mimalloc = ["dep:mimalloc"]
-mock = ["xbbg-async/mock", "xbbg-recipes/mock"]
 live = ["xbbg-async/live", "xbbg-recipes/live"]
 
