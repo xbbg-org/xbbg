@@ -1523,13 +1523,13 @@ impl JsSubscription {
                 .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
 
             let new_topics: Vec<String> = {
-                let status_guard = handle.status.lock();
+                let snapshot = handle.status.load();
                 let mut seen = std::collections::HashSet::new();
                 tickers
                     .into_iter()
                     .filter(|ticker| {
                         seen.insert(ticker.clone())
-                            && !status_guard.topic_to_key().contains_key(ticker)
+                            && !snapshot.topic_to_key().contains_key(ticker)
                     })
                     .collect()
             };
@@ -1574,9 +1574,11 @@ impl JsSubscription {
             .map_err(blp_async_error_to_napi)?;
 
         if self.stream.lock().await.is_some() {
-            status
-                .lock()
-                .add_active(&new_topics, &new_keys, new_metrics);
+            status.rcu(|current| {
+                let mut next = (**current).clone();
+                next.add_active(&new_topics, &new_keys, new_metrics.clone());
+                Arc::new(next)
+            });
         } else if !new_keys.is_empty() {
             command
                 .unsubscribe(new_keys)
@@ -1607,11 +1609,11 @@ impl JsSubscription {
         };
 
         let (keys_to_remove, topics_to_remove) = {
-            let status_guard = status.lock();
+            let snapshot = status.load();
             let mut keys_to_remove = Vec::new();
             let mut topics_to_remove = Vec::new();
             for ticker in &tickers {
-                if let Some(&key) = status_guard.topic_to_key().get(ticker) {
+                if let Some(&key) = snapshot.topic_to_key().get(ticker) {
                     keys_to_remove.push(key);
                     topics_to_remove.push(ticker.clone());
                 }
@@ -1628,10 +1630,13 @@ impl JsSubscription {
             .map_err(blp_async_error_to_napi)?;
 
         if self.stream.lock().await.is_some() {
-            let mut status_guard = status.lock();
-            for ticker in topics_to_remove {
-                status_guard.remove_topic(&ticker);
-            }
+            status.rcu(|current| {
+                let mut next = (**current).clone();
+                for ticker in &topics_to_remove {
+                    next.remove_topic(ticker);
+                }
+                Arc::new(next)
+            });
         }
 
         Ok(())
@@ -1641,7 +1646,7 @@ impl JsSubscription {
     pub fn tickers(&self) -> Vec<String> {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
-            Some(handle) => handle.status.lock().topics().to_vec(),
+            Some(handle) => handle.status.load().topics().to_vec(),
             None => Vec::new(),
         }
     }
@@ -1659,7 +1664,7 @@ impl JsSubscription {
     pub fn is_active(&self) -> bool {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
-            Some(handle) => handle.claim.is_some() && handle.status.lock().has_active_topics(),
+            Some(handle) => handle.claim.is_some() && handle.status.load().has_active_topics(),
             None => false,
         }
     }
@@ -1669,8 +1674,8 @@ impl JsSubscription {
         let guard = self.stream.blocking_lock();
         match guard.as_ref() {
             Some(handle) => {
-                let status = handle.status.lock();
-                let metrics: Vec<_> = status.fields_metrics().values().cloned().collect();
+                let snapshot = handle.status.load();
+                let metrics: Vec<_> = snapshot.fields_metrics().values().cloned().collect();
                 SubscriptionStats {
                     messages_received: to_i64_saturating(
                         metrics
@@ -1723,9 +1728,17 @@ impl JsSubscription {
         let had_handle = handle.is_some();
         if let Some(mut handle) = handle {
             let status = handle.status.clone();
-            let keys = status.lock().keys().to_vec();
+            let keys = status.load().keys().to_vec();
             let claim = handle.claim.take();
             drop(handle);
+
+            let clear_active = || {
+                status.rcu(|current| {
+                    let mut next = (**current).clone();
+                    next.clear_active();
+                    Arc::new(next)
+                });
+            };
 
             if let Some(claim) = claim {
                 if !keys.is_empty() {
@@ -1734,12 +1747,14 @@ impl JsSubscription {
                         .await
                         .map_err(blp_async_error_to_napi)
                     {
-                        Ok(()) => status.lock().clear_active(),
+                        Ok(()) => clear_active(),
                         Err(err) => unsubscribe_result = Err(err),
                     }
                 } else {
-                    status.lock().clear_active();
+                    clear_active();
                 }
+            } else {
+                clear_active();
             }
         }
 
@@ -1796,9 +1811,17 @@ impl JsSubscription {
         let had_handle = handle.is_some();
         if let Some(mut handle) = handle {
             let status = handle.status.clone();
-            let keys = status.lock().keys().to_vec();
+            let keys = status.load().keys().to_vec();
             let claim = handle.claim.take();
             drop(handle);
+
+            let clear_active = || {
+                status.rcu(|current| {
+                    let mut next = (**current).clone();
+                    next.clear_active();
+                    Arc::new(next)
+                });
+            };
 
             if let Some(claim) = claim {
                 if !keys.is_empty() {
@@ -1807,12 +1830,14 @@ impl JsSubscription {
                         .await
                         .map_err(blp_async_error_to_napi)
                     {
-                        Ok(()) => status.lock().clear_active(),
+                        Ok(()) => clear_active(),
                         Err(err) => unsubscribe_result = Err(err),
                     }
                 } else {
-                    status.lock().clear_active();
+                    clear_active();
                 }
+            } else {
+                clear_active();
             }
         }
 
