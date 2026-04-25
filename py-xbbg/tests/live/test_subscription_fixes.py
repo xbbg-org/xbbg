@@ -168,6 +168,26 @@ async def test_timestamp_source():
     print("PASSED: Timestamps look reasonable\n")
 
 
+async def test_tick_mode_timestamp_timezone_issue_273():
+    """Regression for #273: tick_mode dict timestamps are UTC-aware."""
+    from xbbg import asubscribe
+
+    print(f"\n{'=' * 60}")
+    print("TEST: tick_mode timestamp timezone (#273)")
+    print(f"{'=' * 60}")
+
+    sub = await asubscribe(["ES1 Index"], ["LAST_PRICE"], tick_mode=True)
+    try:
+        tick = await asyncio.wait_for(sub.__anext__(), timeout=20.0)
+    finally:
+        await sub.unsubscribe()
+
+    ts = tick["timestamp"]
+    assert ts.tzinfo is not None, f"Expected timezone-aware timestamp, got {ts!r}"
+    assert ts.utcoffset() == timezone.utc.utcoffset(ts), f"Expected UTC timestamp, got {ts!r}"
+    print(f"PASSED: tick_mode timestamp is UTC-aware: {ts!r}\n")
+
+
 async def test_error_propagation():
     """Test Fix #2: Error propagation for invalid subscriptions.
 
@@ -416,6 +436,7 @@ async def main():
 
     await test_multitype_fields()
     await test_timestamp_source()
+    await test_tick_mode_timestamp_timezone_issue_273()
     await test_schema_types()
     await test_field_exposure_modes()
     await test_error_propagation()

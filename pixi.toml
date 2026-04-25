@@ -69,6 +69,10 @@ pytest = ">=8.4"
 pytest-asyncio = ">=0.24"
 pytest-cov = "*"
 
+[feature.test.dependencies]
+pandas = ">=2.3.3,<4"
+polars = ">=0.20.26,<2"
+
 [feature.lint.dependencies]
 python = ">=3.10"
 

@@ -242,6 +242,7 @@ pub struct blpapi_Datetime_t {
 pub const BLPAPI_DATETIME_YEAR_PART: u8 = 0x01;
 pub const BLPAPI_DATETIME_MONTH_PART: u8 = 0x02;
 pub const BLPAPI_DATETIME_DAY_PART: u8 = 0x04;
+pub const BLPAPI_DATETIME_OFFSET_PART: u8 = 0x08;
 pub const BLPAPI_DATETIME_HOURS_PART: u8 = 0x10;
 pub const BLPAPI_DATETIME_MINUTES_PART: u8 = 0x20;
 pub const BLPAPI_DATETIME_SECONDS_PART: u8 = 0x40;

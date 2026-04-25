@@ -1,10 +1,10 @@
-"""Live verification for issue #295: overrides support in bdtick / bdib.
+"""Live verification for bounded bdtick / bdib responses.
 
 Requires an active Bloomberg Terminal or B-PIPE connection. Run with:
 
     pytest py-xbbg/tests/live/test_issue_295_overrides.py -s -v
 
-These tests hit Bloomberg — they're marked ``live`` so CI skips them.
+These tests use schema-supported ``maxDataPoints`` while Excel alias support is pending.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def _recent_trading_window() -> tuple[str, str]:
 
 
 @pytest.mark.live
-def test_bdtick_respects_points_override():
+def test_bdtick_respects_max_data_points():
     start, end = _recent_trading_window()
 
     # No override: however many ticks Bloomberg returns in the window.
@@ -39,25 +39,25 @@ def test_bdtick_respects_points_override():
         event_types=["TRADE"],
     )
 
-    # With Points=1, Bloomberg should cap the response.
+    # With maxDataPoints=1, Bloomberg should cap the response.
     limited = blp.bdtick(
         ticker="ES1 Index",
         start_datetime=start,
         end_datetime=end,
         event_types=["TRADE"],
-        overrides={"Points": 1},
+        maxDataPoints=1,
     )
 
     print(f"\nfull rows:    {len(full)}")
     print(f"limited rows: {len(limited)}")
 
     assert len(limited) < len(full), (
-        "Points=1 override did not reduce the response — fix may not be wired through to Bloomberg."
+        "maxDataPoints=1 did not reduce the response — fix may not be wired through to Bloomberg."
     )
 
 
 @pytest.mark.live
-def test_bdib_respects_points_override():
+def test_bdib_respects_max_data_points():
     start, end = _recent_trading_window()
 
     full = blp.bdib(
@@ -74,12 +74,12 @@ def test_bdib_respects_points_override():
         end_datetime=end,
         typ="TRADE",
         interval=1,
-        overrides={"Points": 1},
+        maxDataPoints=1,
     )
 
     print(f"\nfull rows:    {len(full)}")
     print(f"limited rows: {len(limited)}")
 
     assert len(limited) < len(full), (
-        "Points=1 override did not reduce the response — fix may not be wired through to Bloomberg."
+        "maxDataPoints=1 did not reduce the response — fix may not be wired through to Bloomberg."
     )
