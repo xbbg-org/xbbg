@@ -13,7 +13,7 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
 
-use xbbg_core::{BlpError, DataType as BlpDataType, Message, Value};
+use xbbg_core::{BlpError, DataType as BlpDataType, Message, Name, Value};
 
 use super::super::OverflowPolicy;
 use super::typed_builder::{ArrowType, TypedBuilder};
@@ -28,14 +28,32 @@ pub struct SubscriptionMetrics {
     pub last_data_loss_us: Arc<AtomicU64>,
 }
 
+#[derive(Clone, Copy)]
+enum AllFieldSlot {
+    Captured {
+        key: usize,
+        idx: usize,
+        datatype: BlpDataType,
+    },
+    Skipped {
+        key: usize,
+    },
+}
+
 /// State for a single subscription, owned by PumpA.
 pub struct SubscriptionState {
     /// Topic string (e.g., "IBM US Equity")
     pub topic: Arc<str>,
     /// Field names as strings (for schema and lookup)
     pub field_strings: Vec<String>,
-    /// Fast lookup from field name to column index.
-    field_indices: HashMap<String, usize>,
+    /// Pre-interned field names for requested-field hot-path lookup.
+    field_names: Vec<Name>,
+    /// Fast dynamic-field lookup keyed by Bloomberg's interned Name pointer.
+    field_name_keys: HashMap<usize, usize>,
+    /// Per-field flag for Bloomberg date-or-time fields that cannot be read safely.
+    invalid_dateortime_fields: Vec<bool>,
+    /// Per-position allFields cache for stable Bloomberg subscription schemas.
+    all_field_slots: Vec<Option<AllFieldSlot>>,
     /// Timestamp builder (event time)
     pub timestamp_builder: TimestampMicrosecondBuilder,
     /// Topic builder (repeated for each row)
@@ -103,21 +121,31 @@ impl SubscriptionState {
     ) -> Self {
         let mut field_strings =
             Vec::with_capacity(fields.len() + Self::EVENT_METADATA_FIELDS.len());
-        let mut field_indices =
+        let mut field_names = Vec::with_capacity(fields.len() + Self::EVENT_METADATA_FIELDS.len());
+        let mut field_name_keys =
             HashMap::with_capacity(fields.len() + Self::EVENT_METADATA_FIELDS.len());
+        let mut invalid_dateortime_fields =
+            Vec::with_capacity(fields.len() + Self::EVENT_METADATA_FIELDS.len());
         for field in fields {
-            if !field_indices.contains_key(&field) {
+            let name = Name::get_or_intern(&field);
+            let key = name.as_ptr() as usize;
+            if let std::collections::hash_map::Entry::Vacant(entry) = field_name_keys.entry(key) {
                 let idx = field_strings.len();
-                field_indices.insert(field.clone(), idx);
+                entry.insert(idx);
+                invalid_dateortime_fields.push(Self::is_invalid_dateortime_field(&field));
+                field_names.push(name);
                 field_strings.push(field);
             }
         }
         for field in Self::EVENT_METADATA_FIELDS {
-            if !field_indices.contains_key(field) {
+            let name = Name::get_or_intern(field);
+            let key = name.as_ptr() as usize;
+            if let std::collections::hash_map::Entry::Vacant(entry) = field_name_keys.entry(key) {
                 let idx = field_strings.len();
-                let field_name = field.to_string();
-                field_indices.insert(field_name.clone(), idx);
-                field_strings.push(field_name);
+                entry.insert(idx);
+                invalid_dateortime_fields.push(Self::is_invalid_dateortime_field(field));
+                field_strings.push(field.to_string());
+                field_names.push(name);
             }
         }
         let field_builders = field_strings.iter().map(|_| None).collect();
@@ -134,7 +162,10 @@ impl SubscriptionState {
         Self {
             topic: topic.into(),
             field_strings,
-            field_indices,
+            field_names,
+            field_name_keys,
+            invalid_dateortime_fields,
+            all_field_slots: Vec::new(),
             timestamp_builder: TimestampMicrosecondBuilder::new(),
             topic_builder: StringBuilder::new(),
             field_builders,
@@ -202,9 +233,8 @@ impl SubscriptionState {
 
     fn append_requested_fields(&mut self, elem: &xbbg_core::Element<'_>) {
         for idx in 0..self.field_strings.len() {
-            let field_name = &self.field_strings[idx];
-            let invalid_dateortime = Self::is_invalid_dateortime_field(field_name);
-            if let Some(field_elem) = elem.get_by_str(field_name) {
+            let invalid_dateortime = self.invalid_dateortime_fields[idx];
+            if let Some(field_elem) = elem.get(&self.field_names[idx]) {
                 self.append_field_value_at(idx, invalid_dateortime, &field_elem);
             } else {
                 self.append_missing_at(idx);
@@ -213,39 +243,52 @@ impl SubscriptionState {
     }
 
     fn append_all_fields(&mut self, elem: &xbbg_core::Element<'_>) {
-        let mut seen = vec![false; self.field_strings.len()];
-
         for child_idx in 0..elem.num_children() {
             let Some(child) = elem.get_at(child_idx) else {
                 continue;
             };
-            if !Self::should_capture_field(&child) {
+
+            let key = child.name_key();
+            if let Some(Some(slot)) = self.all_field_slots.get(child_idx).copied() {
+                match slot {
+                    AllFieldSlot::Captured {
+                        key: cached_key,
+                        idx,
+                        datatype,
+                    } if cached_key == key => {
+                        self.append_field_value_with_datatype_at(
+                            idx,
+                            self.invalid_dateortime_fields[idx],
+                            &child,
+                            datatype,
+                        );
+                        continue;
+                    }
+                    AllFieldSlot::Skipped { key: cached_key } if cached_key == key => continue,
+                    _ => {}
+                }
+            }
+
+            let datatype = child.datatype();
+            if !Self::should_capture_datatype(datatype) {
+                self.cache_all_field_slot(child_idx, AllFieldSlot::Skipped { key });
                 continue;
             }
 
-            let field_name = child.name_str();
-            let idx = self.ensure_field(field_name);
-            if idx >= seen.len() {
-                seen.resize(self.field_strings.len(), false);
-            }
-            seen[idx] = true;
-            self.append_field_value_at(
+            let idx = self.ensure_field_for_child(&child, key);
+            self.cache_all_field_slot(child_idx, AllFieldSlot::Captured { key, idx, datatype });
+            self.append_field_value_with_datatype_at(
                 idx,
-                Self::is_invalid_dateortime_field(field_name),
+                self.invalid_dateortime_fields[idx],
                 &child,
+                datatype,
             );
-        }
-
-        for (idx, was_seen) in seen.iter().enumerate() {
-            if !*was_seen {
-                self.append_missing_at(idx);
-            }
         }
     }
 
-    fn should_capture_field(field: &xbbg_core::Element<'_>) -> bool {
+    fn should_capture_datatype(datatype: BlpDataType) -> bool {
         !matches!(
-            field.datatype(),
+            datatype,
             BlpDataType::Sequence
                 | BlpDataType::Choice
                 | BlpDataType::ByteArray
@@ -253,15 +296,31 @@ impl SubscriptionState {
         )
     }
 
-    fn ensure_field(&mut self, field_name: &str) -> usize {
-        if let Some(&idx) = self.field_indices.get(field_name) {
+    fn cache_all_field_slot(&mut self, child_idx: usize, slot: AllFieldSlot) {
+        if child_idx >= self.all_field_slots.len() {
+            self.all_field_slots.resize(child_idx + 1, None);
+        }
+        self.all_field_slots[child_idx] = Some(slot);
+    }
+
+    fn ensure_field_for_child(
+        &mut self,
+        field: &xbbg_core::Element<'_>,
+        field_key: usize,
+    ) -> usize {
+        if let Some(&idx) = self.field_name_keys.get(&field_key) {
             return idx;
         }
 
+        let field_name = field.name_str();
         let idx = self.field_strings.len();
+        let name = Name::get_or_intern(field_name);
         self.field_strings.push(field_name.to_string());
         self.field_builders.push(None);
-        self.field_indices.insert(field_name.to_string(), idx);
+        self.field_names.push(name);
+        self.field_name_keys.insert(field_key, idx);
+        self.invalid_dateortime_fields
+            .push(Self::is_invalid_dateortime_field(field_name));
         self.cached_schema = None;
         idx
     }
@@ -279,27 +338,47 @@ impl SubscriptionState {
         if invalid_dateortime {
             self.append_invalid_dateortime_fallback_at(idx);
         } else {
-            self.append_value_at(idx, field.get_value(0));
+            self.append_value_at(idx, field.get_value_fast(0));
+        }
+    }
+
+    fn append_field_value_with_datatype_at(
+        &mut self,
+        idx: usize,
+        invalid_dateortime: bool,
+        field: &xbbg_core::Element<'_>,
+        datatype: BlpDataType,
+    ) {
+        if invalid_dateortime {
+            self.append_invalid_dateortime_fallback_at(idx);
+        } else {
+            self.append_value_at(idx, field.get_value_fast_with_datatype(0, datatype));
         }
     }
 
     fn append_value_at(&mut self, idx: usize, value: Option<Value<'_>>) {
+        if value.as_ref().map_or(true, |v| matches!(v, Value::Null)) {
+            return;
+        }
+
         if let Some(builder) = &mut self.field_builders[idx] {
+            Self::pad_builder_to_len(builder, self.pending_count);
             builder.append_value(value);
             return;
         }
 
-        if let Some(ref v) = value {
-            if !matches!(v, Value::Null) {
-                let arrow_type = ArrowType::from_value(v);
-                let mut builder = TypedBuilder::new(arrow_type);
-                for _ in 0..self.pending_count {
-                    builder.append_null();
-                }
-                builder.append_value(value);
-                self.field_builders[idx] = Some(builder);
-                self.cached_schema = None;
-            }
+        let v = value.as_ref().expect("non-null value checked above");
+        let arrow_type = ArrowType::from_value(v);
+        let mut builder = TypedBuilder::new(arrow_type);
+        Self::pad_builder_to_len(&mut builder, self.pending_count);
+        builder.append_value(value);
+        self.field_builders[idx] = Some(builder);
+        self.cached_schema = None;
+    }
+
+    fn pad_builder_to_len(builder: &mut TypedBuilder, len: usize) {
+        while builder.len() < len {
+            builder.append_null();
         }
     }
 
@@ -307,10 +386,8 @@ impl SubscriptionState {
         self.append_missing_at(idx);
     }
 
-    fn append_missing_at(&mut self, idx: usize) {
-        if let Some(builder) = &mut self.field_builders[idx] {
-            builder.append_null();
-        }
+    fn append_missing_at(&mut self, _idx: usize) {
+        // Missing values are padded lazily before the next present value and at flush.
     }
 
     /// Handle DATALOSS indicator.
@@ -347,11 +424,13 @@ impl SubscriptionState {
         let topic_array = self.topic_builder.finish();
 
         // Build field arrays — use TypedBuilder where available, String nulls otherwise
+        let pending_count = self.pending_count;
         let field_arrays: Vec<ArrayRef> = self
             .field_builders
             .iter_mut()
             .map(|builder_opt| {
                 if let Some(builder) = builder_opt {
+                    Self::pad_builder_to_len(builder, pending_count);
                     builder.finish()
                 } else {
                     // Field was never non-null in this batch — produce Utf8 column of all nulls

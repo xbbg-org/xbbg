@@ -182,6 +182,16 @@ impl<'a> Element<'a> {
             .expect("Bloomberg Element name contained invalid UTF-8")
     }
 
+    /// Element name intern key for allocation-free dynamic-field lookup.
+    ///
+    /// Bloomberg names are interned; existing hot-path `name_eq` already relies
+    /// on pointer equality. Use this as a transient key while processing the
+    /// current message/event, not as a serialized identifier.
+    #[inline(always)]
+    pub fn name_key(&self) -> usize {
+        unsafe { ffi::blpapi_Element_name(self.ptr) as usize }
+    }
+
     /// Check if element name matches (O(1) pointer comparison, no allocation).
     #[inline(always)]
     pub fn name_eq(&self, other: &Name) -> bool {
@@ -589,13 +599,24 @@ impl<'a> Element<'a> {
     /// ~2 fewer FFI calls per extraction compared to `get_value()`.
     #[inline(always)]
     pub fn get_value_fast(&self, i: usize) -> Option<crate::Value<'a>> {
+        self.get_value_fast_with_datatype(i, self.datatype())
+    }
+
+    /// Fast value extraction when the caller already has `datatype()`.
+    ///
+    /// This avoids a duplicate Bloomberg datatype FFI call in loops that must
+    /// inspect the datatype for filtering before extracting the value.
+    #[inline(always)]
+    pub fn get_value_fast_with_datatype(
+        &self,
+        i: usize,
+        datatype: crate::DataType,
+    ) -> Option<crate::Value<'a>> {
         use crate::{DataType, Value};
 
-        // Single datatype() call + one typed getter (no is_null/len checks)
-        match self.datatype() {
+        match datatype {
             DataType::Bool => self.get_bool(i).map(Value::Bool),
             DataType::Char | DataType::Byte => {
-                // Bloomberg often stores boolean fields as Char ('Y'/'N').
                 if let Some(b) = self.get_bool(i) {
                     return Some(Value::Bool(b));
                 }
