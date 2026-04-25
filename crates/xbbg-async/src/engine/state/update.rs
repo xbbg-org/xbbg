@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use xbbg_core::Value;
+use xbbg_core::{DataType as BlpDataType, Value};
 
 pub type FieldIndex = u16;
 pub type TopicId = u32;
@@ -93,6 +93,23 @@ impl FieldKind {
         }
     }
 
+    pub fn from_blp_datatype(datatype: BlpDataType) -> Self {
+        match datatype {
+            BlpDataType::Bool => Self::Bool,
+            BlpDataType::Char | BlpDataType::Byte | BlpDataType::Int32 => Self::I32,
+            BlpDataType::Int64 => Self::I64,
+            BlpDataType::Float32 | BlpDataType::Float64 | BlpDataType::Decimal => Self::F64,
+            BlpDataType::String | BlpDataType::Enumeration => Self::Str,
+            BlpDataType::Date => Self::Date32,
+            BlpDataType::Time => Self::Time64Micros,
+            BlpDataType::Datetime => Self::TimestampMicros,
+            BlpDataType::Sequence
+            | BlpDataType::Choice
+            | BlpDataType::ByteArray
+            | BlpDataType::CorrelationId => Self::Unknown,
+        }
+    }
+
     pub fn merge_observed(self, observed: FieldKind) -> FieldKind {
         match (self, observed) {
             (FieldKind::Unknown, kind) => kind,
@@ -134,5 +151,38 @@ impl UpdateValue {
             Self::Time64Micros(v) => Some(v.to_string()),
             Self::TimestampMicros(v) => Some(v.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_kind_uses_bloomberg_datatype_for_null_fields() {
+        assert_eq!(
+            FieldKind::from_blp_datatype(BlpDataType::Float64),
+            FieldKind::F64
+        );
+        assert_eq!(
+            FieldKind::from_blp_datatype(BlpDataType::Decimal),
+            FieldKind::F64
+        );
+        assert_eq!(
+            FieldKind::from_blp_datatype(BlpDataType::Int32),
+            FieldKind::I32
+        );
+        assert_eq!(
+            FieldKind::from_blp_datatype(BlpDataType::Int64),
+            FieldKind::I64
+        );
+        assert_eq!(
+            FieldKind::from_blp_datatype(BlpDataType::Date),
+            FieldKind::Date32
+        );
+        assert_eq!(
+            FieldKind::from_blp_datatype(BlpDataType::Datetime),
+            FieldKind::TimestampMicros
+        );
     }
 }
