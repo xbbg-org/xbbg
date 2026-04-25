@@ -72,6 +72,12 @@ df = xbbg.bds('AAPL US Equity', 'DVD_Hist_All')
 df = xbbg.bds('SPX Index', 'INDX_MEMBERS')
 ```
 
+`bds()` and `abds()` preserve Bloomberg bulk subfield labels exactly as emitted.
+The only xbbg-added columns are `ticker` and `field`; field-specific columns may
+contain spaces, punctuation, and Bloomberg casing such as `Future's Ticker` or
+`Last Trade Date`. Normalize or rename these columns in your own code when you
+need a stable application schema.
+
 ## Choose Your Backend
 
 Return data in your preferred DataFrame format:

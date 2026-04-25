@@ -27,7 +27,7 @@ import narwhals.stable.v1 as nw
 
 # Import Rust date parser (shared with other ext modules)
 from xbbg._core import ext_get_futures_months, ext_parse_date
-from xbbg.ext._utils import _syncify
+from xbbg.ext._utils import _canonical_column_name, _syncify
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +78,19 @@ def _parse_generic_ticker(gen_ticker: str) -> tuple[str, int, str]:
 
 
 def _find_col(columns: list[str], candidates: list[str]) -> str | None:
-    """Find first matching column name (case-insensitive)."""
-    lowered = {col.lower(): col for col in columns}
+    """Find a column by raw label or wrapper-internal canonical alias."""
+    by_exact_lower = {col.casefold(): col for col in columns}
+    by_canonical = {_canonical_column_name(col): col for col in columns}
+
     for candidate in candidates:
-        match = lowered.get(candidate.lower())
+        match = by_exact_lower.get(candidate.casefold())
         if match is not None:
             return match
+
+        match = by_canonical.get(_canonical_column_name(candidate))
+        if match is not None:
+            return match
+
     return None
 
 

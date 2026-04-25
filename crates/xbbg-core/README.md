@@ -44,7 +44,6 @@ src/
 | Feature | Description |
 |---------|-------------|
 | `live` (default) | Real Bloomberg SDK via `blpapi-sys` |
-| `mock` | Datamock backend via `xbbg-sys/mock` (not yet ready) |
 
 ## Design principles
 
