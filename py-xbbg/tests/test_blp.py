@@ -6,6 +6,7 @@ These tests verify the Python API without requiring a Bloomberg connection.
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 
 class TestBdp:
@@ -75,6 +76,15 @@ class TestBdtick:
         assert "request_tz" in sync_sig.parameters
         assert "output_tz" in sync_sig.parameters
         assert "event_types" in sync_sig.parameters
+
+    def test_top_level_stub_reexports_bdtick(self):
+        """Generated top-level stub preserves IDE help for xbbg.bdtick."""
+        stub = Path(__file__).parents[1] / "src" / "xbbg" / "__init__.pyi"
+        text = stub.read_text()
+
+        assert "bdtick as bdtick" in text
+        assert '"bdtick"' in text
+        assert "__all__ = []" not in text
 
 
 class TestBcurves:
