@@ -1,17 +1,19 @@
+mod arrow_zero_copy;
 mod ext;
 pub use ext::*;
 
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::str::FromStr;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
+use arrow_zero_copy::NativeArrowBatch;
 use napi::bindgen_prelude::{Buffer, Error, Status};
 use napi_derive::napi;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use xbbg_async::engine::{
     Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, ServerAddr,
     SharedSubscriptionStatus, Socks5Proxy, TlsConfig, Transport,
@@ -377,6 +379,12 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
             config.command_queue_size = size as usize;
         }
         if let Some(size) = input.subscription_stream_capacity {
+            if size == 0 {
+                return Err(Error::new(
+                    Status::InvalidArg,
+                    "subscriptionStreamCapacity must be greater than zero",
+                ));
+            }
             config.subscription_stream_capacity = size as usize;
         }
         if let Some(services) = input.warmup_services {
@@ -651,6 +659,10 @@ fn to_ipc_buffer(batch: RecordBatch) -> napi::Result<Buffer> {
     }
 
     Ok(Buffer::from(cursor.into_inner()))
+}
+
+fn to_native_arrow(batch: RecordBatch) -> napi::Result<NativeArrowBatch> {
+    NativeArrowBatch::from_record_batch(batch)
 }
 
 fn blp_error_to_napi(e: BlpError) -> Error {
@@ -1028,14 +1040,16 @@ impl JsEngine {
         &self,
         tickers: Vec<String>,
         fields: Vec<String>,
+        all_fields: Option<bool>,
     ) -> napi::Result<JsSubscription> {
+        let all_fields = all_fields.unwrap_or(false);
         let stream = self
             .engine
             .subscribe_with_options(
                 "//blp/mktdata".to_string(),
                 tickers.clone(),
                 fields.clone(),
-                false,
+                all_fields,
                 vec![],
                 None,
                 None,
@@ -1058,6 +1072,7 @@ impl JsEngine {
         flush_threshold: Option<u32>,
         overflow_policy: Option<String>,
         stream_capacity: Option<u32>,
+        all_fields: Option<bool>,
     ) -> napi::Result<JsSubscription> {
         let overflow = match overflow_policy {
             Some(policy) => Some(
@@ -1066,6 +1081,14 @@ impl JsEngine {
             ),
             None => None,
         };
+        let all_fields = all_fields.unwrap_or(false);
+
+        if stream_capacity == Some(0) {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "streamCapacity must be greater than zero",
+            ));
+        }
 
         let stream = self
             .engine
@@ -1073,7 +1096,7 @@ impl JsEngine {
                 service,
                 tickers.clone(),
                 fields.clone(),
-                false,
+                all_fields,
                 options.unwrap_or_default(),
                 stream_capacity.map(|v| v as usize),
                 flush_threshold.map(|v| v as usize),
@@ -1304,6 +1327,10 @@ impl JsEngine {
 #[napi]
 pub struct JsSubscription {
     rx: SharedStreamReceiver,
+    rx_available: Arc<Notify>,
+    close_notify: Arc<Notify>,
+    closed: Arc<AtomicBool>,
+    mutation: Arc<Mutex<()>>,
     stream: Arc<Mutex<Option<SubscriptionStreamHandle>>>,
 }
 
@@ -1330,22 +1357,41 @@ impl JsSubscription {
         };
         Ok(Self {
             rx: Arc::new(Mutex::new(Some(rx))),
+            rx_available: Arc::new(Notify::new()),
+            close_notify: Arc::new(Notify::new()),
+            closed: Arc::new(AtomicBool::new(false)),
+            mutation: Arc::new(Mutex::new(())),
             stream: Arc::new(Mutex::new(Some(handle))),
         })
     }
 
     #[napi]
-    pub async fn next(&self) -> napi::Result<Option<Buffer>> {
-        let item = {
+    pub async fn next_arrow(&self) -> napi::Result<Option<NativeArrowBatch>> {
+        if self.closed.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        let mut rx = {
             let mut guard = self.rx.lock().await;
-            let rx = guard
-                .as_mut()
-                .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
-            rx.recv().await
+            guard
+                .take()
+                .ok_or_else(|| Error::new(Status::GenericFailure, "subscription receiver busy"))?
         };
 
+        let item = tokio::select! {
+            item = rx.recv() => item,
+            _ = self.close_notify.notified() => None,
+        };
+
+        {
+            let mut guard = self.rx.lock().await;
+            if guard.is_none() {
+                *guard = Some(rx);
+                self.rx_available.notify_waiters();
+            }
+        }
+
         match item {
-            Some(Ok(batch)) => Ok(Some(to_ipc_buffer(batch)?)),
+            Some(Ok(batch)) => Ok(Some(to_native_arrow(batch)?)),
             Some(Err(e)) => Err(blp_error_to_napi(e)),
             None => Ok(None),
         }
@@ -1353,31 +1399,53 @@ impl JsSubscription {
 
     #[napi]
     pub async fn add(&self, tickers: Vec<String>) -> napi::Result<()> {
-        let mut guard = self.stream.lock().await;
-        let handle = guard
-            .as_mut()
-            .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
-
-        let new_topics: Vec<String> = {
-            let status = handle.status.lock();
-            tickers
-                .into_iter()
-                .filter(|ticker| !status.topic_to_key().contains_key(ticker))
-                .collect()
-        };
-        if new_topics.is_empty() {
-            return Ok(());
+        let _mutation = self.mutation.lock().await;
+        if self.closed.load(Ordering::Acquire) {
+            return Err(Error::new(Status::GenericFailure, "subscription closed"));
         }
+        let (
+            command,
+            new_topics,
+            service,
+            fields,
+            all_fields,
+            options,
+            flush_threshold,
+            overflow_policy,
+            tx,
+            status,
+        ) = {
+            let guard = self.stream.lock().await;
+            let handle = guard
+                .as_ref()
+                .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
 
-        let claim = handle
-            .claim
-            .as_ref()
-            .ok_or_else(|| Error::new(Status::GenericFailure, "subscription already closed"))?;
+            let new_topics: Vec<String> = {
+                let status_guard = handle.status.lock();
+                let mut seen = std::collections::HashSet::new();
+                tickers
+                    .into_iter()
+                    .filter(|ticker| {
+                        seen.insert(ticker.clone())
+                            && !status_guard.topic_to_key().contains_key(ticker)
+                    })
+                    .collect()
+            };
+            if new_topics.is_empty() {
+                return Ok(());
+            }
 
-        let (new_keys, new_metrics) = claim
-            .add_topics(
+            let command = handle
+                .claim
+                .as_ref()
+                .ok_or_else(|| Error::new(Status::GenericFailure, "subscription already closed"))?
+                .command_handle()
+                .map_err(blp_async_error_to_napi)?;
+
+            (
+                command,
+                new_topics,
                 handle.service.clone(),
-                new_topics.clone(),
                 handle.fields.clone(),
                 handle.all_fields,
                 handle.options.clone(),
@@ -1386,29 +1454,62 @@ impl JsSubscription {
                 handle.tx.clone(),
                 handle.status.clone(),
             )
+        };
+
+        let (new_keys, new_metrics) = command
+            .add_topics(
+                service,
+                new_topics.clone(),
+                fields,
+                all_fields,
+                options,
+                flush_threshold,
+                overflow_policy,
+                tx,
+                status.clone(),
+            )
             .await
             .map_err(blp_async_error_to_napi)?;
 
-        handle
-            .status
-            .lock()
-            .add_active(&new_topics, &new_keys, new_metrics);
+        if self.stream.lock().await.is_some() {
+            status
+                .lock()
+                .add_active(&new_topics, &new_keys, new_metrics);
+        } else if !new_keys.is_empty() {
+            command
+                .unsubscribe(new_keys)
+                .await
+                .map_err(blp_async_error_to_napi)?;
+        }
         Ok(())
     }
 
     #[napi]
     pub async fn remove(&self, tickers: Vec<String>) -> napi::Result<()> {
-        let mut guard = self.stream.lock().await;
-        let handle = guard
-            .as_mut()
-            .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
+        let _mutation = self.mutation.lock().await;
+        if self.closed.load(Ordering::Acquire) {
+            return Err(Error::new(Status::GenericFailure, "subscription closed"));
+        }
+        let (command, status) = {
+            let guard = self.stream.lock().await;
+            let handle = guard
+                .as_ref()
+                .ok_or_else(|| Error::new(Status::GenericFailure, "subscription closed"))?;
+            let command = handle
+                .claim
+                .as_ref()
+                .ok_or_else(|| Error::new(Status::GenericFailure, "subscription already closed"))?
+                .command_handle()
+                .map_err(blp_async_error_to_napi)?;
+            (command, handle.status.clone())
+        };
 
         let (keys_to_remove, topics_to_remove) = {
-            let status = handle.status.lock();
+            let status_guard = status.lock();
             let mut keys_to_remove = Vec::new();
             let mut topics_to_remove = Vec::new();
             for ticker in &tickers {
-                if let Some(&key) = status.topic_to_key().get(ticker) {
+                if let Some(&key) = status_guard.topic_to_key().get(ticker) {
                     keys_to_remove.push(key);
                     topics_to_remove.push(ticker.clone());
                 }
@@ -1419,18 +1520,16 @@ impl JsSubscription {
             return Ok(());
         }
 
-        let claim = handle
-            .claim
-            .as_ref()
-            .ok_or_else(|| Error::new(Status::GenericFailure, "subscription already closed"))?;
-        claim
+        command
             .unsubscribe(keys_to_remove)
             .await
             .map_err(blp_async_error_to_napi)?;
 
-        let mut status = handle.status.lock();
-        for ticker in topics_to_remove {
-            status.remove_topic(&ticker);
+        if self.stream.lock().await.is_some() {
+            let mut status_guard = status.lock();
+            for ticker in topics_to_remove {
+                status_guard.remove_topic(&ticker);
+            }
         }
 
         Ok(())
@@ -1504,37 +1603,65 @@ impl JsSubscription {
     }
 
     #[napi]
-    pub async fn unsubscribe(&self, drain: Option<bool>) -> napi::Result<Option<Vec<Buffer>>> {
+    pub async fn unsubscribe_arrow(
+        &self,
+        drain: Option<bool>,
+    ) -> napi::Result<Option<Vec<NativeArrowBatch>>> {
+        let _mutation = self.mutation.lock().await;
+        self.closed.store(true, Ordering::Release);
         let drain = drain.unwrap_or(false);
         let handle = {
             let mut guard = self.stream.lock().await;
             guard.take()
         };
-        let rx = {
-            let mut guard = self.rx.lock().await;
-            guard.take()
+
+        self.close_notify.notify_waiters();
+
+        let mut unsubscribe_result = Ok(());
+        let had_handle = handle.is_some();
+        if let Some(mut handle) = handle {
+            let status = handle.status.clone();
+            let keys = status.lock().keys().to_vec();
+            let claim = handle.claim.take();
+            drop(handle);
+
+            if let Some(claim) = claim {
+                if !keys.is_empty() {
+                    unsubscribe_result = claim
+                        .unsubscribe(keys)
+                        .await
+                        .map_err(blp_async_error_to_napi);
+                }
+            }
+            status.lock().clear_active();
+        }
+
+        let rx = loop {
+            let notified = self.rx_available.notified();
+            if let Some(rx) = {
+                let mut guard = self.rx.lock().await;
+                guard.take()
+            } {
+                break Some(rx);
+            }
+            if !had_handle {
+                break None;
+            }
+            notified.await;
         };
 
         let mut remaining = Vec::new();
-        if drain {
-            if let Some(mut rx) = rx {
+        if let Some(mut rx) = rx {
+            if drain {
                 while let Ok(item) = rx.try_recv() {
                     if let Ok(batch) = item {
-                        remaining.push(to_ipc_buffer(batch)?);
+                        remaining.push(to_native_arrow(batch)?);
                     }
                 }
             }
         }
 
-        if let Some(mut handle) = handle {
-            if let Some(claim) = handle.claim.take() {
-                let keys = handle.status.lock().keys().to_vec();
-                if !keys.is_empty() {
-                    let _ = claim.unsubscribe(keys).await;
-                }
-            }
-            handle.status.lock().clear_active();
-        }
+        unsubscribe_result?;
 
         if remaining.is_empty() {
             Ok(None)
@@ -1599,6 +1726,21 @@ mod tests {
         assert_eq!(servers[0].host, "localhost");
         assert_eq!(servers[0].port, 8194);
         assert!(servers[0].proxy.is_none());
+    }
+
+    #[test]
+    fn engine_config_input_rejects_zero_subscription_stream_capacity() {
+        let err = EngineConfig::try_from(EngineConfigInput {
+            subscription_stream_capacity: Some(0),
+            ..minimal_input()
+        })
+        .err()
+        .expect("zero subscription stream capacity should fail");
+
+        assert!(
+            err.to_string().contains("subscriptionStreamCapacity"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

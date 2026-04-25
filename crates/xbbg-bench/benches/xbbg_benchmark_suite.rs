@@ -3,8 +3,10 @@
 //! Runs tiny live Bloomberg probes plus large synthetic workloads in one report.
 //! Live probes intentionally keep Bloomberg data usage low; synthetic workloads
 //! provide scale without additional Bloomberg requests.
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -22,14 +24,17 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
+use xbbg_async::engine::state::typed_builder::{ArrowType, TypedBuilder};
 use xbbg_async::engine::{
-    BqlState, BulkDataState, Engine, EngineConfig, ExtractorType, HistDataState,
-    IntradayTickState, LongMode, OutputFormat, RefDataState, RequestParams, ServerAddr,
-    SubscriptionState, Transport,
+    BqlState, BulkDataState, Engine, EngineConfig, ExtractorType, HistDataState, IntradayTickState,
+    LongMode, OutputFormat, RefDataState, RequestParams, ServerAddr, SubscriptionState, Transport,
 };
 use xbbg_async::BlpAsyncError;
 use xbbg_bench::{open_service, setup_session};
-use xbbg_core::{BlpError, CorrelationId, DataType as BlpDataType, Event, EventType, Name, SubscriptionList};
+use xbbg_core::{
+    BlpError, CorrelationId, DataType as BlpDataType, Element, Event, EventType, Message, Name,
+    SubscriptionList,
+};
 struct TrackingAllocator;
 
 static TRACK_ALLOCATIONS: AtomicBool = AtomicBool::new(false);
@@ -68,7 +73,6 @@ unsafe impl GlobalAlloc for TrackingAllocator {
         System.realloc(ptr, layout, new_size)
     }
 }
-
 
 #[derive(Clone, Copy, Debug)]
 enum BenchProfile {
@@ -243,6 +247,10 @@ impl SuiteConfig {
         };
         suite.to_ascii_lowercase().contains(only) || scenario.to_ascii_lowercase().contains(only)
     }
+
+    fn should_run_explicit(&self, scenario: &str) -> bool {
+        self.only.as_deref() == Some(&scenario.to_ascii_lowercase())
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -332,7 +340,12 @@ impl BenchRecord {
         }
     }
 
-    fn error(suite: &'static str, scenario: impl Into<String>, elapsed: Duration, detail: impl Into<String>) -> Self {
+    fn error(
+        suite: &'static str,
+        scenario: impl Into<String>,
+        elapsed: Duration,
+        detail: impl Into<String>,
+    ) -> Self {
         Self {
             suite,
             scenario: scenario.into(),
@@ -359,7 +372,12 @@ fn alloc_snapshot() -> AllocSnapshot {
     }
 }
 
-fn alloc_delta(before: AllocSnapshot, after: AllocSnapshot, rows: usize, values: usize) -> AllocDelta {
+fn alloc_delta(
+    before: AllocSnapshot,
+    after: AllocSnapshot,
+    rows: usize,
+    values: usize,
+) -> AllocDelta {
     let alloc_count = after.alloc_count.saturating_sub(before.alloc_count);
     let alloc_bytes = after.alloc_bytes.saturating_sub(before.alloc_bytes);
     let dealloc_count = after.dealloc_count.saturating_sub(before.dealloc_count);
@@ -379,7 +397,12 @@ fn alloc_delta(before: AllocSnapshot, after: AllocSnapshot, rows: usize, values:
     }
 }
 
-fn profile_record<F>(config: &SuiteConfig, suite: &'static str, _scenario: &str, run: F) -> BenchRecord
+fn profile_record<F>(
+    config: &SuiteConfig,
+    suite: &'static str,
+    _scenario: &str,
+    run: F,
+) -> BenchRecord
 where
     F: FnOnce(bool) -> BenchRecord,
 {
@@ -443,11 +466,23 @@ fn main() {
             }
             Err(err) => {
                 let detail = format!("failed to start engine: {err}");
-                ["bdp_smoke", "bdh_smoke", "bdtick_smoke", "bql_smoke", "subscription_live"]
-                    .into_iter()
-                    .filter(|scenario| config.should_run("live", scenario) || config.should_run("live_requests", scenario) || config.should_run("live_subscriptions", scenario))
-                    .map(|scenario| BenchRecord::error("live", scenario, Duration::ZERO, detail.clone()))
-                    .collect()
+                [
+                    "bdp_smoke",
+                    "bdh_smoke",
+                    "bdtick_smoke",
+                    "bql_smoke",
+                    "subscription_live",
+                ]
+                .into_iter()
+                .filter(|scenario| {
+                    config.should_run("live", scenario)
+                        || config.should_run("live_requests", scenario)
+                        || config.should_run("live_subscriptions", scenario)
+                })
+                .map(|scenario| {
+                    BenchRecord::error("live", scenario, Duration::ZERO, detail.clone())
+                })
+                .collect()
             }
         };
         records.extend(live_records);
@@ -464,20 +499,66 @@ fn main() {
 
     println!("\n[3/4] Synthetic massive workloads and offline extractor replays");
     records.extend(run_bql_json_suite(&config));
-    if config.should_run("synthetic_bdp", &format!("bdp_{}s_{}f", shape.bdp_securities, shape.bdp_fields)) {
-        records.push(profile_record(&config, "synthetic_bdp", "synthetic_bdp", |_| synthetic_bdp(shape, config.profile_mode.is_detail())));
+    if config.should_run(
+        "synthetic_bdp",
+        &format!("bdp_{}s_{}f", shape.bdp_securities, shape.bdp_fields),
+    ) {
+        records.push(profile_record(
+            &config,
+            "synthetic_bdp",
+            "synthetic_bdp",
+            |_| synthetic_bdp(shape, config.profile_mode.is_detail()),
+        ));
     }
-    if config.should_run("synthetic_bdh", &format!("bdh_{}s_{}d_{}f", shape.bdh_securities, shape.bdh_dates, shape.bdh_fields)) {
-        records.push(profile_record(&config, "synthetic_bdh", "synthetic_bdh", |_| synthetic_bdh(shape, config.profile_mode.is_detail())));
+    if config.should_run(
+        "synthetic_bdh",
+        &format!(
+            "bdh_{}s_{}d_{}f",
+            shape.bdh_securities, shape.bdh_dates, shape.bdh_fields
+        ),
+    ) {
+        records.push(profile_record(
+            &config,
+            "synthetic_bdh",
+            "synthetic_bdh",
+            |_| synthetic_bdh(shape, config.profile_mode.is_detail()),
+        ));
     }
-    if config.should_run("synthetic_bdtick", &format!("bdtick_{}ticks", shape.bdtick_ticks)) {
-        records.push(profile_record(&config, "synthetic_bdtick", "synthetic_bdtick", |_| synthetic_bdtick(shape, config.profile_mode.is_detail())));
+    if config.should_run(
+        "synthetic_bdtick",
+        &format!("bdtick_{}ticks", shape.bdtick_ticks),
+    ) {
+        records.push(profile_record(
+            &config,
+            "synthetic_bdtick",
+            "synthetic_bdtick",
+            |_| synthetic_bdtick(shape, config.profile_mode.is_detail()),
+        ));
     }
-    if config.should_run("synthetic_bql", &format!("bql_{}r_{}c", shape.bql_rows, shape.bql_columns)) {
-        records.push(profile_record(&config, "synthetic_bql", "synthetic_bql", |_| synthetic_bql(shape, config.profile_mode.is_detail())));
+    if config.should_run(
+        "synthetic_bql",
+        &format!("bql_{}r_{}c", shape.bql_rows, shape.bql_columns),
+    ) {
+        records.push(profile_record(
+            &config,
+            "synthetic_bql",
+            "synthetic_bql",
+            |_| synthetic_bql(shape, config.profile_mode.is_detail()),
+        ));
     }
-    if config.should_run("synthetic_subscriptions", &format!("sub_{}topics_{}messages_{}fields", shape.sub_topics, shape.sub_messages, shape.sub_fields)) {
-        records.push(profile_record(&config, "synthetic_subscriptions", "synthetic_subscriptions", |_| synthetic_subscriptions(shape, config.profile_mode.is_detail())));
+    if config.should_run(
+        "synthetic_subscriptions",
+        &format!(
+            "sub_{}topics_{}messages_{}fields",
+            shape.sub_topics, shape.sub_messages, shape.sub_fields
+        ),
+    ) {
+        records.push(profile_record(
+            &config,
+            "synthetic_subscriptions",
+            "synthetic_subscriptions",
+            |_| synthetic_subscriptions(shape, config.profile_mode.is_detail()),
+        ));
     }
 
     println!("\n[4/4] Summary");
@@ -509,9 +590,19 @@ fn should_run_live(config: &SuiteConfig) -> bool {
 
 fn should_run_replay(config: &SuiteConfig) -> bool {
     config.should_run("replay", "bdp_refdata")
+        || config.should_run("replay", "bdp_refdata_typed_hints")
+        || config.should_run_explicit("bdp_refdata_wide")
+        || config.should_run_explicit("bdp_refdata_wide_typed_hints")
+        || config.should_run_explicit("bdp_refdata_output_wide")
+        || config.should_run_explicit("bdp_refdata_output_wide_typed_hints")
         || config.should_run("replay", "bdh_historical")
+        || config.should_run("replay", "bdh_historical_typed_hints")
+        || config.should_run_explicit("bdh_historical_wide")
+        || config.should_run_explicit("bdh_historical_wide_typed_hints")
+        || config.should_run_explicit("bdh_historical_output_wide")
+        || config.should_run_explicit("bdh_historical_output_wide_typed_hints")
         || config.should_run("replay", "bds_bulk_late_fields")
-        || config.should_run("replay", "bdtick_optional_fields")
+        || should_run_bdtick_replay(config)
         || config.should_run("replay", "bql_response")
         || config.should_run("subscription_components", "requested_fields")
         || config.should_run("subscription_components", "all_fields")
@@ -521,6 +612,19 @@ fn should_run_replay(config: &SuiteConfig) -> bool {
         || config.should_run("subscription_replay", "high_topic_count")
 }
 
+const BDTICK_REPLAY_SCENARIOS: [&str; 4] = [
+    "bdtick_optional_fields_prod",
+    "bdtick_optional_fields_core_prefix",
+    "bdtick_optional_fields_layout_cache",
+    "bdtick_optional_fields_unsafe_observed_layout",
+];
+
+fn should_run_bdtick_replay(config: &SuiteConfig) -> bool {
+    BDTICK_REPLAY_SCENARIOS
+        .iter()
+        .any(|scenario| config.should_run("replay", scenario))
+}
+
 fn run_replay_suite(config: &SuiteConfig) -> Vec<BenchRecord> {
     let mut records = Vec::new();
     let iterations = config.profile.replay_iterations();
@@ -528,26 +632,354 @@ fn run_replay_suite(config: &SuiteConfig) -> Vec<BenchRecord> {
     let sess = setup_session();
     open_service(&sess, "//blp/refdata");
 
-    if config.should_run("replay", "bdp_refdata") {
-        records.push(match fetch_bdp_events(&sess) {
-            Ok(events) => profile_record(config, "replay", "bdp_refdata", |_| {
-                replay_request_events("bdp_refdata", &events, iterations, || {
-                    make_refdata_state(vec!["PX_LAST".to_string(), "VOLUME".to_string()])
-                })
-            }),
-            Err(err) => BenchRecord::error("replay", "bdp_refdata", Duration::ZERO, err),
-        });
+    let run_bdp_refdata = config.should_run("replay", "bdp_refdata");
+    let run_bdp_typed_hints = config.should_run("replay", "bdp_refdata_typed_hints");
+    if run_bdp_refdata || run_bdp_typed_hints {
+        match fetch_bdp_events(&sess) {
+            Ok(events) => {
+                if run_bdp_refdata {
+                    records.push(profile_record(config, "replay", "bdp_refdata", |_| {
+                        replay_request_events("bdp_refdata", &events, iterations, || {
+                            make_refdata_state(vec!["PX_LAST".to_string(), "VOLUME".to_string()])
+                        })
+                    }));
+                }
+                if run_bdp_typed_hints {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdp_refdata_typed_hints",
+                        |_| {
+                            replay_request_events(
+                                "bdp_refdata_typed_hints",
+                                &events,
+                                iterations,
+                                || {
+                                    make_refdata_state_with_types(
+                                        vec!["PX_LAST".to_string(), "VOLUME".to_string()],
+                                        numeric_field_types(["PX_LAST", "VOLUME"]),
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+            }
+            Err(err) => {
+                if run_bdp_refdata {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdp_refdata",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdp_typed_hints {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdp_refdata_typed_hints",
+                        Duration::ZERO,
+                        err,
+                    ));
+                }
+            }
+        }
     }
 
-    if config.should_run("replay", "bdh_historical") {
-        records.push(match fetch_bdh_events(&sess) {
-            Ok(events) => profile_record(config, "replay", "bdh_historical", |_| {
-                replay_request_events("bdh_historical", &events, iterations, || {
-                    make_histdata_state(vec!["PX_LAST".to_string(), "VOLUME".to_string()])
-                })
-            }),
-            Err(err) => BenchRecord::error("replay", "bdh_historical", Duration::ZERO, err),
-        });
+    let run_bdp_wide = config.should_run_explicit("bdp_refdata_wide");
+    let run_bdp_wide_typed_hints = config.should_run_explicit("bdp_refdata_wide_typed_hints");
+    let run_bdp_output_wide = config.should_run_explicit("bdp_refdata_output_wide");
+    let run_bdp_output_wide_typed_hints =
+        config.should_run_explicit("bdp_refdata_output_wide_typed_hints");
+    if run_bdp_wide
+        || run_bdp_wide_typed_hints
+        || run_bdp_output_wide
+        || run_bdp_output_wide_typed_hints
+    {
+        match fetch_bdp_wide_events(&sess) {
+            Ok(events) => {
+                if run_bdp_wide {
+                    records.push(profile_record(config, "replay", "bdp_refdata_wide", |_| {
+                        replay_request_events("bdp_refdata_wide", &events, iterations, || {
+                            make_refdata_state(field_vec(&WIDE_BDP_FIELDS))
+                        })
+                    }));
+                }
+                if run_bdp_wide_typed_hints {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdp_refdata_wide_typed_hints",
+                        |_| {
+                            replay_request_events(
+                                "bdp_refdata_wide_typed_hints",
+                                &events,
+                                iterations,
+                                || {
+                                    make_refdata_state_with_types(
+                                        field_vec(&WIDE_BDP_FIELDS),
+                                        numeric_field_types(WIDE_BDP_FIELDS),
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+                if run_bdp_output_wide {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdp_refdata_output_wide",
+                        |_| {
+                            replay_request_events(
+                                "bdp_refdata_output_wide",
+                                &events,
+                                iterations,
+                                || {
+                                    make_refdata_output_wide_state(
+                                        field_vec(&WIDE_BDP_FIELDS),
+                                        None,
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+                if run_bdp_output_wide_typed_hints {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdp_refdata_output_wide_typed_hints",
+                        |_| {
+                            replay_request_events(
+                                "bdp_refdata_output_wide_typed_hints",
+                                &events,
+                                iterations,
+                                || {
+                                    make_refdata_output_wide_state(
+                                        field_vec(&WIDE_BDP_FIELDS),
+                                        numeric_field_types(WIDE_BDP_FIELDS),
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+            }
+            Err(err) => {
+                if run_bdp_wide {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdp_refdata_wide",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdp_wide_typed_hints {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdp_refdata_wide_typed_hints",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdp_output_wide {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdp_refdata_output_wide",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdp_output_wide_typed_hints {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdp_refdata_output_wide_typed_hints",
+                        Duration::ZERO,
+                        err,
+                    ));
+                }
+            }
+        }
+    }
+
+    let run_bdh_historical = config.should_run("replay", "bdh_historical");
+    let run_bdh_typed_hints = config.should_run("replay", "bdh_historical_typed_hints");
+    if run_bdh_historical || run_bdh_typed_hints {
+        match fetch_bdh_events(&sess) {
+            Ok(events) => {
+                if run_bdh_historical {
+                    records.push(profile_record(config, "replay", "bdh_historical", |_| {
+                        replay_request_events("bdh_historical", &events, iterations, || {
+                            make_histdata_state(vec!["PX_LAST".to_string(), "VOLUME".to_string()])
+                        })
+                    }));
+                }
+                if run_bdh_typed_hints {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdh_historical_typed_hints",
+                        |_| {
+                            replay_request_events(
+                                "bdh_historical_typed_hints",
+                                &events,
+                                iterations,
+                                || {
+                                    make_histdata_state_with_types(
+                                        vec!["PX_LAST".to_string(), "VOLUME".to_string()],
+                                        numeric_field_types(["PX_LAST", "VOLUME"]),
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+            }
+            Err(err) => {
+                if run_bdh_historical {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdh_historical",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdh_typed_hints {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdh_historical_typed_hints",
+                        Duration::ZERO,
+                        err,
+                    ));
+                }
+            }
+        }
+    }
+
+    let run_bdh_wide = config.should_run_explicit("bdh_historical_wide");
+    let run_bdh_wide_typed_hints = config.should_run_explicit("bdh_historical_wide_typed_hints");
+    let run_bdh_output_wide = config.should_run_explicit("bdh_historical_output_wide");
+    let run_bdh_output_wide_typed_hints =
+        config.should_run_explicit("bdh_historical_output_wide_typed_hints");
+    if run_bdh_wide
+        || run_bdh_wide_typed_hints
+        || run_bdh_output_wide
+        || run_bdh_output_wide_typed_hints
+    {
+        match fetch_bdh_wide_events(&sess) {
+            Ok(events) => {
+                if run_bdh_wide {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdh_historical_wide",
+                        |_| {
+                            replay_request_events(
+                                "bdh_historical_wide",
+                                &events,
+                                iterations,
+                                || make_histdata_state(field_vec(&WIDE_BDH_FIELDS)),
+                            )
+                        },
+                    ));
+                }
+                if run_bdh_wide_typed_hints {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdh_historical_wide_typed_hints",
+                        |_| {
+                            replay_request_events(
+                                "bdh_historical_wide_typed_hints",
+                                &events,
+                                iterations,
+                                || {
+                                    make_histdata_state_with_types(
+                                        field_vec(&WIDE_BDH_FIELDS),
+                                        numeric_field_types(WIDE_BDH_FIELDS),
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+                if run_bdh_output_wide {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdh_historical_output_wide",
+                        |_| {
+                            replay_request_events(
+                                "bdh_historical_output_wide",
+                                &events,
+                                iterations,
+                                || {
+                                    make_histdata_output_wide_state(
+                                        field_vec(&WIDE_BDH_FIELDS),
+                                        None,
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+                if run_bdh_output_wide_typed_hints {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdh_historical_output_wide_typed_hints",
+                        |_| {
+                            replay_request_events(
+                                "bdh_historical_output_wide_typed_hints",
+                                &events,
+                                iterations,
+                                || {
+                                    make_histdata_output_wide_state(
+                                        field_vec(&WIDE_BDH_FIELDS),
+                                        numeric_field_types(WIDE_BDH_FIELDS),
+                                    )
+                                },
+                            )
+                        },
+                    ));
+                }
+            }
+            Err(err) => {
+                if run_bdh_wide {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdh_historical_wide",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdh_wide_typed_hints {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdh_historical_wide_typed_hints",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdh_output_wide {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdh_historical_output_wide",
+                        Duration::ZERO,
+                        err.clone(),
+                    ));
+                }
+                if run_bdh_output_wide_typed_hints {
+                    records.push(BenchRecord::error(
+                        "replay",
+                        "bdh_historical_output_wide_typed_hints",
+                        Duration::ZERO,
+                        err,
+                    ));
+                }
+            }
+        }
     }
 
     if config.should_run("replay", "bds_bulk_late_fields") {
@@ -561,15 +993,39 @@ fn run_replay_suite(config: &SuiteConfig) -> Vec<BenchRecord> {
         });
     }
 
-    if config.should_run("replay", "bdtick_optional_fields") {
-        records.push(match fetch_bdtick_events(&sess) {
-            Ok(events) => profile_record(config, "replay", "bdtick_optional_fields", |_| {
-                replay_request_events("bdtick_optional_fields", &events, iterations, || {
-                    make_intradaytick_state("IBM US Equity".to_string())
-                })
-            }),
-            Err(err) => BenchRecord::error("replay", "bdtick_optional_fields", Duration::ZERO, err),
-        });
+    if should_run_bdtick_replay(config) {
+        match fetch_bdtick_events(&sess) {
+            Ok(events) => {
+                let diagnostics = analyze_bdtick_events(&events);
+                if config.should_run("replay", "bdtick_optional_fields_prod") {
+                    records.push(profile_record(
+                        config,
+                        "replay",
+                        "bdtick_optional_fields_prod",
+                        |_| replay_bdtick_prod_events(&events, iterations, &diagnostics),
+                    ));
+                }
+                for variant in BdtickBenchVariant::all() {
+                    if config.should_run("replay", variant.scenario()) {
+                        records.push(profile_record(config, "replay", variant.scenario(), |_| {
+                            replay_bdtick_variant_events(&events, iterations, variant, &diagnostics)
+                        }));
+                    }
+                }
+            }
+            Err(err) => {
+                for scenario in BDTICK_REPLAY_SCENARIOS {
+                    if config.should_run("replay", scenario) {
+                        records.push(BenchRecord::error(
+                            "replay",
+                            scenario,
+                            Duration::ZERO,
+                            err.clone(),
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     if config.should_run("replay", "bql_response") {
@@ -588,37 +1044,112 @@ fn run_replay_suite(config: &SuiteConfig) -> Vec<BenchRecord> {
         match fetch_subscription_events(&sess, collect_ms) {
             Ok(events) => {
                 if config.should_run("subscription_components", "requested_fields") {
-                    records.push(profile_record(config, "subscription_components", "requested_fields", |_| {
-                        profile_subscription_components("requested_fields", &events, config.profile.subscription_replay_messages().min(100_000), false, &["LAST_PRICE", "BID", "ASK"])
-                    }));
+                    records.push(profile_record(
+                        config,
+                        "subscription_components",
+                        "requested_fields",
+                        |_| {
+                            profile_subscription_components(
+                                "requested_fields",
+                                &events,
+                                config.profile.subscription_replay_messages().min(100_000),
+                                false,
+                                &["LAST_PRICE", "BID", "ASK"],
+                            )
+                        },
+                    ));
                 }
                 if config.should_run("subscription_components", "all_fields") {
-                    records.push(profile_record(config, "subscription_components", "all_fields", |_| {
-                        profile_subscription_components("all_fields", &events, config.profile.subscription_replay_messages().min(100_000), true, &["LAST_PRICE", "BID", "ASK"])
-                    }));
+                    records.push(profile_record(
+                        config,
+                        "subscription_components",
+                        "all_fields",
+                        |_| {
+                            profile_subscription_components(
+                                "all_fields",
+                                &events,
+                                config.profile.subscription_replay_messages().min(100_000),
+                                true,
+                                &["LAST_PRICE", "BID", "ASK"],
+                            )
+                        },
+                    ));
                 }
                 if config.should_run("subscription_replay", "requested_fields") {
-                    records.push(profile_record(config, "subscription_replay", "requested_fields", |_| {
-                        replay_subscription_events("requested_fields", &events, config.profile.subscription_replay_messages().min(100_000), 1, false, &["LAST_PRICE", "BID", "ASK"])
-                    }));
+                    records.push(profile_record(
+                        config,
+                        "subscription_replay",
+                        "requested_fields",
+                        |_| {
+                            replay_subscription_events(
+                                "requested_fields",
+                                &events,
+                                config.profile.subscription_replay_messages().min(100_000),
+                                1,
+                                false,
+                                &["LAST_PRICE", "BID", "ASK"],
+                            )
+                        },
+                    ));
                 }
                 if config.should_run("subscription_replay", "all_fields") {
-                    records.push(profile_record(config, "subscription_replay", "all_fields", |_| {
-                        replay_subscription_events("all_fields", &events, config.profile.subscription_replay_messages().min(100_000), 1, true, &["LAST_PRICE", "BID", "ASK"])
-                    }));
+                    records.push(profile_record(
+                        config,
+                        "subscription_replay",
+                        "all_fields",
+                        |_| {
+                            replay_subscription_events(
+                                "all_fields",
+                                &events,
+                                config.profile.subscription_replay_messages().min(100_000),
+                                1,
+                                true,
+                                &["LAST_PRICE", "BID", "ASK"],
+                            )
+                        },
+                    ));
                 }
                 if config.should_run("subscription_replay", "high_message_count") {
-                    records.push(profile_record(config, "subscription_replay", "high_message_count", |_| {
-                        replay_subscription_events("high_message_count", &events, config.profile.subscription_replay_messages(), 1, false, &["LAST_PRICE", "BID", "ASK"])
-                    }));
+                    records.push(profile_record(
+                        config,
+                        "subscription_replay",
+                        "high_message_count",
+                        |_| {
+                            replay_subscription_events(
+                                "high_message_count",
+                                &events,
+                                config.profile.subscription_replay_messages(),
+                                1,
+                                false,
+                                &["LAST_PRICE", "BID", "ASK"],
+                            )
+                        },
+                    ));
                 }
                 if config.should_run("subscription_replay", "high_topic_count") {
-                    records.push(profile_record(config, "subscription_replay", "high_topic_count", |_| {
-                        replay_subscription_events("high_topic_count", &events, config.profile.subscription_replay_messages().min(100_000), config.profile.subscription_replay_topics(), false, &["LAST_PRICE", "BID", "ASK"])
-                    }));
+                    records.push(profile_record(
+                        config,
+                        "subscription_replay",
+                        "high_topic_count",
+                        |_| {
+                            replay_subscription_events(
+                                "high_topic_count",
+                                &events,
+                                config.profile.subscription_replay_messages().min(100_000),
+                                config.profile.subscription_replay_topics(),
+                                false,
+                                &["LAST_PRICE", "BID", "ASK"],
+                            )
+                        },
+                    ));
                 }
             }
-            Err(err) => records.push(BenchRecord::error("subscription_replay", "capture", Duration::ZERO, err)),
+            Err(err) => records.push(BenchRecord::error(
+                "subscription_replay",
+                "capture",
+                Duration::ZERO,
+                err,
+            )),
         }
     }
 
@@ -665,14 +1196,29 @@ impl ReplayState {
     }
 }
 
-fn make_refdata_state(fields: Vec<String>) -> (ReplayState, oneshot::Receiver<Result<RecordBatch, BlpError>>) {
+fn make_refdata_state(
+    fields: Vec<String>,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
+    make_refdata_state_with_types(fields, None)
+}
+
+fn make_refdata_state_with_types(
+    fields: Vec<String>,
+    field_types: Option<HashMap<String, String>>,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
     let (tx, rx) = oneshot::channel();
     (
         ReplayState::RefData(RefDataState::with_format(
             fields,
             OutputFormat::Long,
             LongMode::String,
-            None,
+            field_types,
             false,
             tx,
         )),
@@ -680,33 +1226,968 @@ fn make_refdata_state(fields: Vec<String>) -> (ReplayState, oneshot::Receiver<Re
     )
 }
 
-fn make_histdata_state(fields: Vec<String>) -> (ReplayState, oneshot::Receiver<Result<RecordBatch, BlpError>>) {
+fn make_refdata_output_wide_state(
+    fields: Vec<String>,
+    field_types: Option<HashMap<String, String>>,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
     let (tx, rx) = oneshot::channel();
     (
-        ReplayState::HistData(HistDataState::with_format(
+        ReplayState::RefData(RefDataState::with_format(
             fields,
-            OutputFormat::Long,
+            OutputFormat::Wide,
             LongMode::String,
-            None,
+            field_types,
+            false,
             tx,
         )),
         rx,
     )
 }
 
-fn make_bulkdata_state(field: String) -> (ReplayState, oneshot::Receiver<Result<RecordBatch, BlpError>>) {
+fn make_histdata_state(
+    fields: Vec<String>,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
+    make_histdata_state_with_types(fields, None)
+}
+
+fn make_histdata_state_with_types(
+    fields: Vec<String>,
+    field_types: Option<HashMap<String, String>>,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
+    let (tx, rx) = oneshot::channel();
+    (
+        ReplayState::HistData(HistDataState::with_format(
+            fields,
+            OutputFormat::Long,
+            LongMode::String,
+            field_types,
+            tx,
+        )),
+        rx,
+    )
+}
+
+fn make_histdata_output_wide_state(
+    fields: Vec<String>,
+    field_types: Option<HashMap<String, String>>,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
+    let (tx, rx) = oneshot::channel();
+    (
+        ReplayState::HistData(HistDataState::with_format(
+            fields,
+            OutputFormat::Wide,
+            LongMode::String,
+            field_types,
+            tx,
+        )),
+        rx,
+    )
+}
+
+const WIDE_BDP_SECURITIES: [&str; 10] = [
+    "IBM US Equity",
+    "MSFT US Equity",
+    "AAPL US Equity",
+    "AMZN US Equity",
+    "GOOGL US Equity",
+    "META US Equity",
+    "NVDA US Equity",
+    "TSLA US Equity",
+    "JPM US Equity",
+    "XOM US Equity",
+];
+
+const WIDE_BDP_FIELDS: [&str; 10] = [
+    "PX_LAST",
+    "VOLUME",
+    "BID",
+    "ASK",
+    "PX_OPEN",
+    "PX_HIGH",
+    "PX_LOW",
+    "CHG_PCT_1D",
+    "EQY_SH_OUT",
+    "CUR_MKT_CAP",
+];
+
+const WIDE_BDH_SECURITIES: [&str; 3] = ["IBM US Equity", "MSFT US Equity", "AAPL US Equity"];
+const WIDE_BDH_FIELDS: [&str; 5] = ["PX_LAST", "VOLUME", "PX_OPEN", "PX_HIGH", "PX_LOW"];
+
+fn field_vec(fields: &[&str]) -> Vec<String> {
+    fields.iter().map(|field| (*field).to_string()).collect()
+}
+
+fn numeric_field_types(
+    fields: impl IntoIterator<Item = &'static str>,
+) -> Option<HashMap<String, String>> {
+    Some(
+        fields
+            .into_iter()
+            .map(|field| (field.to_string(), "float64".to_string()))
+            .collect(),
+    )
+}
+
+fn make_bulkdata_state(
+    field: String,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
     let (tx, rx) = oneshot::channel();
     (ReplayState::BulkData(BulkDataState::new(field, tx)), rx)
 }
 
-fn make_intradaytick_state(ticker: String) -> (ReplayState, oneshot::Receiver<Result<RecordBatch, BlpError>>) {
+fn make_intradaytick_state(
+    ticker: String,
+) -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
     let (tx, rx) = oneshot::channel();
-    (ReplayState::IntradayTick(IntradayTickState::new(ticker, tx)), rx)
+    (
+        ReplayState::IntradayTick(IntradayTickState::new(ticker, tx)),
+        rx,
+    )
 }
 
-fn make_bql_state() -> (ReplayState, oneshot::Receiver<Result<RecordBatch, BlpError>>) {
+fn make_bql_state() -> (
+    ReplayState,
+    oneshot::Receiver<Result<RecordBatch, BlpError>>,
+) {
     let (tx, rx) = oneshot::channel();
     (ReplayState::Bql(BqlState::new(tx)), rx)
+}
+
+const BDTICK_TICKER_COLUMN: &str = "ticker";
+const BDTICK_CORE_NAMES: [&str; 4] = ["time", "type", "value", "size"];
+const BDTICK_CORE_FIELDS: [(&str, ArrowType); 4] = [
+    ("time", ArrowType::TimestampMicros),
+    ("type", ArrowType::String),
+    ("value", ArrowType::Float64),
+    ("size", ArrowType::Int64),
+];
+const BDTICK_UNSAFE_OPTIONAL_FIELDS: [(&str, ArrowType); 2] = [
+    ("conditionCodes", ArrowType::String),
+    ("exchangeCode", ArrowType::String),
+];
+
+#[derive(Clone, Debug)]
+struct BdtickReplayDiagnostics {
+    rows: usize,
+    child_elements: usize,
+    unique_layouts: usize,
+    layout_counts: Vec<(String, usize)>,
+    optional_fields: Vec<String>,
+    missing_optional_appends: usize,
+    core_prefix_matches: usize,
+    core_prefix_mismatches: usize,
+}
+
+impl BdtickReplayDiagnostics {
+    fn describe(&self) -> String {
+        let layouts = self
+            .layout_counts
+            .iter()
+            .take(4)
+            .map(|(layout, count)| format!("{count}x[{layout}]"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        let optional_fields = if self.optional_fields.is_empty() {
+            "none".to_string()
+        } else {
+            self.optional_fields.join(",")
+        };
+        format!(
+            "source_rows={}, child_elements={}, unique_layouts={}, layouts={}, optional_fields={}, missing_optional_appends={}, core_prefix_matches={}, core_prefix_mismatches={}",
+            self.rows,
+            self.child_elements,
+            self.unique_layouts,
+            layouts,
+            optional_fields,
+            self.missing_optional_appends,
+            self.core_prefix_matches,
+            self.core_prefix_mismatches,
+        )
+    }
+}
+
+fn analyze_bdtick_events(events: &[Event]) -> BdtickReplayDiagnostics {
+    let mut rows = 0usize;
+    let mut child_elements = 0usize;
+    let mut core_prefix_matches = 0usize;
+    let mut core_prefix_mismatches = 0usize;
+    let mut layout_counts = BTreeMap::<String, usize>::new();
+    let mut optional_fields = BTreeSet::<String>::new();
+    let mut row_field_sets = Vec::<BTreeSet<String>>::new();
+
+    for event in events {
+        if !matches!(
+            event.event_type(),
+            EventType::PartialResponse | EventType::Response
+        ) {
+            continue;
+        }
+
+        for msg in event.messages() {
+            for_each_bdtick_row(&msg, |tick| {
+                rows += 1;
+                let mut names = Vec::with_capacity(tick.num_children());
+                let mut row_fields = BTreeSet::new();
+
+                for child in tick.children() {
+                    child_elements += 1;
+                    let name = child.name().as_str().to_string();
+                    if !BDTICK_CORE_NAMES.contains(&name.as_str()) {
+                        optional_fields.insert(name.clone());
+                    }
+                    row_fields.insert(name.clone());
+                    names.push(name);
+                }
+
+                if names.len() >= BDTICK_CORE_NAMES.len()
+                    && BDTICK_CORE_NAMES
+                        .iter()
+                        .enumerate()
+                        .all(|(idx, expected)| names[idx].as_str() == *expected)
+                {
+                    core_prefix_matches += 1;
+                } else {
+                    core_prefix_mismatches += 1;
+                }
+
+                *layout_counts.entry(names.join(",")).or_default() += 1;
+                row_field_sets.push(row_fields);
+            });
+        }
+    }
+
+    let optional_fields: Vec<_> = optional_fields.into_iter().collect();
+    let missing_optional_appends = row_field_sets
+        .iter()
+        .map(|fields| {
+            optional_fields
+                .iter()
+                .filter(|field| !fields.contains(field.as_str()))
+                .count()
+        })
+        .sum();
+    let layout_counts: Vec<_> = layout_counts.into_iter().collect();
+
+    BdtickReplayDiagnostics {
+        rows,
+        child_elements,
+        unique_layouts: layout_counts.len(),
+        layout_counts,
+        optional_fields,
+        missing_optional_appends,
+        core_prefix_matches,
+        core_prefix_mismatches,
+    }
+}
+
+fn for_each_bdtick_row<F>(msg: &Message, mut visit: F)
+where
+    F: FnMut(Element<'_>),
+{
+    let root = msg.elements();
+    let Some(tick_data_outer) = root.get_by_str("tickData") else {
+        return;
+    };
+    let Some(tick_data) = tick_data_outer.get_by_str("tickData") else {
+        return;
+    };
+
+    for i in 0..tick_data.len() {
+        if let Some(tick) = tick_data.get_element(i) {
+            visit(tick);
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BdtickBenchVariant {
+    CorePrefix,
+    LayoutCache,
+    UnsafeObservedLayout,
+}
+
+impl BdtickBenchVariant {
+    fn all() -> [Self; 3] {
+        [
+            Self::CorePrefix,
+            Self::LayoutCache,
+            Self::UnsafeObservedLayout,
+        ]
+    }
+
+    fn scenario(self) -> &'static str {
+        match self {
+            Self::CorePrefix => "bdtick_optional_fields_core_prefix",
+            Self::LayoutCache => "bdtick_optional_fields_layout_cache",
+            Self::UnsafeObservedLayout => "bdtick_optional_fields_unsafe_observed_layout",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::CorePrefix => "core_prefix",
+            Self::LayoutCache => "layout_cache",
+            Self::UnsafeObservedLayout => "unsafe_observed_layout",
+        }
+    }
+}
+
+#[derive(Default)]
+struct BdtickReplayPhaseTotals {
+    create_state: Duration,
+    partial_process: Duration,
+    response_process_or_finish: Duration,
+    finish_batch: Duration,
+    receive_batch: Duration,
+}
+
+impl BdtickReplayPhaseTotals {
+    fn as_metrics(&self, total: Duration) -> Vec<PhaseMetric> {
+        vec![
+            phase("create_state", self.create_state),
+            phase("partial_process", self.partial_process),
+            phase(
+                "response_process_or_finish",
+                self.response_process_or_finish,
+            ),
+            phase("finish_batch", self.finish_batch),
+            phase("receive_batch", self.receive_batch),
+            phase("total", total),
+        ]
+    }
+}
+
+fn replay_bdtick_prod_events(
+    events: &[Event],
+    iterations: usize,
+    diagnostics: &BdtickReplayDiagnostics,
+) -> BenchRecord {
+    let start = Instant::now();
+    let mut phases = BdtickReplayPhaseTotals::default();
+    let mut rows = 0usize;
+    let mut columns = 0usize;
+    let mut ok_iterations = 0usize;
+    let mut last_error: Option<String> = None;
+
+    for _ in 0..iterations {
+        let create_start = Instant::now();
+        let (mut state, rx) = make_intradaytick_state("IBM US Equity".to_string());
+        phases.create_state += create_start.elapsed();
+
+        let mut finished = false;
+        'events: for event in events {
+            match event.event_type() {
+                EventType::PartialResponse => {
+                    let phase_start = Instant::now();
+                    for msg in event.messages() {
+                        state.on_partial(&msg);
+                    }
+                    phases.partial_process += phase_start.elapsed();
+                }
+                EventType::Response => {
+                    let phase_start = Instant::now();
+                    if let Some(msg) = event.messages().next() {
+                        state.finish(&msg);
+                        finished = true;
+                    }
+                    phases.response_process_or_finish += phase_start.elapsed();
+                    break 'events;
+                }
+                _ => {}
+            }
+        }
+
+        if !finished {
+            last_error = Some("no response message in cached BDTICK events".to_string());
+            continue;
+        }
+
+        let receive_start = Instant::now();
+        match rx.blocking_recv() {
+            Ok(Ok(batch)) => {
+                phases.receive_batch += receive_start.elapsed();
+                rows += batch.num_rows();
+                columns = batch.num_columns();
+                ok_iterations += 1;
+                black_box(batch);
+            }
+            Ok(Err(err)) => {
+                phases.receive_batch += receive_start.elapsed();
+                last_error = Some(err.to_string());
+            }
+            Err(err) => {
+                phases.receive_batch += receive_start.elapsed();
+                last_error = Some(err.to_string());
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+    if ok_iterations == 0 {
+        return BenchRecord::error(
+            "replay",
+            "bdtick_optional_fields_prod",
+            elapsed,
+            last_error.unwrap_or_else(|| "no successful iterations".to_string()),
+        );
+    }
+
+    let mut record = BenchRecord::ok(
+        "replay",
+        "bdtick_optional_fields_prod",
+        elapsed,
+        rows,
+        columns,
+        rows,
+        "rows",
+        format!(
+            "iterations={ok_iterations}, cached_events={}, variant=prod, {}",
+            events.len(),
+            diagnostics.describe(),
+        ),
+    );
+    record.phases = phases.as_metrics(elapsed);
+    record
+}
+
+struct BenchTickField {
+    output_name: String,
+    lookup_name: Name,
+    builder: TypedBuilder,
+}
+
+impl BenchTickField {
+    fn new(name: &str, arrow_type: ArrowType) -> Self {
+        Self {
+            output_name: name.to_string(),
+            lookup_name: Name::get_or_intern(name),
+            builder: TypedBuilder::new(arrow_type),
+        }
+    }
+}
+
+struct BenchTickLayout {
+    names: Vec<Name>,
+    field_indexes: Vec<Option<usize>>,
+}
+
+struct BenchBdtickState {
+    ticker: String,
+    mode: BdtickBenchVariant,
+    column_name_set: HashSet<String>,
+    ticker_builder: TypedBuilder,
+    tick_fields: Vec<BenchTickField>,
+    lookup_names: Vec<Name>,
+    seen_fields: Vec<bool>,
+    row_count: usize,
+    layout_cache: Vec<BenchTickLayout>,
+    layout_hits: usize,
+    layout_misses: usize,
+    core_prefix_hits: usize,
+    core_prefix_fallbacks: usize,
+    unsafe_rows: usize,
+    unsafe_unhandled_layouts: usize,
+}
+
+impl BenchBdtickState {
+    fn new(ticker: String, mode: BdtickBenchVariant) -> Self {
+        let mut state = Self {
+            ticker,
+            mode,
+            column_name_set: std::iter::once(BDTICK_TICKER_COLUMN.to_string()).collect(),
+            ticker_builder: TypedBuilder::new(ArrowType::String),
+            tick_fields: Vec::new(),
+            lookup_names: Vec::new(),
+            seen_fields: Vec::new(),
+            row_count: 0,
+            layout_cache: Vec::new(),
+            layout_hits: 0,
+            layout_misses: 0,
+            core_prefix_hits: 0,
+            core_prefix_fallbacks: 0,
+            unsafe_rows: 0,
+            unsafe_unhandled_layouts: 0,
+        };
+
+        for (name, arrow_type) in BDTICK_CORE_FIELDS {
+            state.add_static_field(name, arrow_type);
+        }
+        if mode == BdtickBenchVariant::UnsafeObservedLayout {
+            for (name, arrow_type) in BDTICK_UNSAFE_OPTIONAL_FIELDS {
+                state.add_static_field(name, arrow_type);
+            }
+        }
+        state
+    }
+
+    fn add_static_field(&mut self, name: &str, arrow_type: ArrowType) {
+        if self.column_name_set.insert(name.to_string()) {
+            let field = BenchTickField::new(name, arrow_type);
+            self.lookup_names.push(field.lookup_name.clone());
+            self.tick_fields.push(field);
+            self.seen_fields.push(false);
+        }
+    }
+
+    fn process_message(&mut self, msg: &Message) {
+        let root = msg.elements();
+        let Some(tick_data_outer) = root.get_by_str("tickData") else {
+            return;
+        };
+        let Some(tick_data) = tick_data_outer.get_by_str("tickData") else {
+            return;
+        };
+
+        for i in 0..tick_data.len() {
+            let Some(tick) = tick_data.get_element(i) else {
+                continue;
+            };
+            self.append_tick(&tick);
+        }
+    }
+
+    fn append_tick(&mut self, tick: &Element<'_>) {
+        self.ticker_builder.append_str(&self.ticker);
+        self.seen_fields.clear();
+        self.seen_fields.resize(self.tick_fields.len(), false);
+
+        match self.mode {
+            BdtickBenchVariant::CorePrefix => self.append_tick_core_prefix(tick),
+            BdtickBenchVariant::LayoutCache => self.append_tick_layout_cache(tick),
+            BdtickBenchVariant::UnsafeObservedLayout => self.append_tick_unsafe_observed(tick),
+        }
+
+        for (idx, field) in self.tick_fields.iter_mut().enumerate() {
+            if !self.seen_fields[idx] {
+                field.builder.append_null();
+            }
+        }
+        self.row_count += 1;
+    }
+
+    fn append_tick_core_prefix(&mut self, tick: &Element<'_>) {
+        if self.try_append_core_prefix(tick) {
+            self.core_prefix_hits += 1;
+            self.append_tick_child_scan_from(tick, BDTICK_CORE_FIELDS.len());
+        } else {
+            self.core_prefix_fallbacks += 1;
+            self.append_tick_child_scan_from(tick, 0);
+        }
+    }
+
+    fn try_append_core_prefix(&mut self, tick: &Element<'_>) -> bool {
+        if tick.num_children() < BDTICK_CORE_FIELDS.len() {
+            return false;
+        }
+
+        let time = unsafe { tick.get_at_unchecked(0) };
+        let event_type = unsafe { tick.get_at_unchecked(1) };
+        let value = unsafe { tick.get_at_unchecked(2) };
+        let size = unsafe { tick.get_at_unchecked(3) };
+        if !time.name_eq(&self.lookup_names[0])
+            || !event_type.name_eq(&self.lookup_names[1])
+            || !value.name_eq(&self.lookup_names[2])
+            || !size.name_eq(&self.lookup_names[3])
+        {
+            return false;
+        }
+
+        self.append_child_at_field_index(0, &time);
+        self.append_child_at_field_index(1, &event_type);
+        self.append_child_at_field_index(2, &value);
+        self.append_child_at_field_index(3, &size);
+        true
+    }
+
+    fn append_tick_layout_cache(&mut self, tick: &Element<'_>) {
+        if let Some(layout_index) = self.find_matching_layout(tick) {
+            self.layout_hits += 1;
+            self.append_cached_layout(tick, layout_index);
+        } else {
+            self.layout_misses += 1;
+            self.append_and_cache_layout(tick);
+        }
+    }
+
+    fn find_matching_layout(&self, tick: &Element<'_>) -> Option<usize> {
+        self.layout_cache
+            .iter()
+            .position(|layout| self.layout_matches(tick, layout))
+    }
+
+    fn layout_matches(&self, tick: &Element<'_>, layout: &BenchTickLayout) -> bool {
+        if tick.num_children() != layout.names.len() {
+            return false;
+        }
+        for (idx, expected_name) in layout.names.iter().enumerate() {
+            let child = unsafe { tick.get_at_unchecked(idx) };
+            if !child.name_eq(expected_name) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn append_cached_layout(&mut self, tick: &Element<'_>, layout_index: usize) {
+        let len = self.layout_cache[layout_index].field_indexes.len();
+        for child_pos in 0..len {
+            let Some(field_index) = self.layout_cache[layout_index].field_indexes[child_pos] else {
+                continue;
+            };
+            let child = unsafe { tick.get_at_unchecked(child_pos) };
+            self.append_child_at_field_index(field_index, &child);
+        }
+    }
+
+    fn append_and_cache_layout(&mut self, tick: &Element<'_>) {
+        let mut names = Vec::with_capacity(tick.num_children());
+        let mut field_indexes = Vec::with_capacity(tick.num_children());
+        for child in tick.children() {
+            names.push(child.name());
+            field_indexes.push(self.append_child_by_name(&child));
+        }
+        self.layout_cache.push(BenchTickLayout {
+            names,
+            field_indexes,
+        });
+    }
+
+    fn append_tick_unsafe_observed(&mut self, tick: &Element<'_>) {
+        if tick.num_children() < BDTICK_CORE_FIELDS.len() {
+            self.unsafe_unhandled_layouts += 1;
+            self.append_tick_child_scan_from(tick, 0);
+            return;
+        }
+
+        self.unsafe_rows += 1;
+        let time = unsafe { tick.get_at_unchecked(0) };
+        let event_type = unsafe { tick.get_at_unchecked(1) };
+        let value = unsafe { tick.get_at_unchecked(2) };
+        let size = unsafe { tick.get_at_unchecked(3) };
+        self.append_child_at_field_index(0, &time);
+        self.append_child_at_field_index(1, &event_type);
+        self.append_child_at_field_index(2, &value);
+        self.append_child_at_field_index(3, &size);
+
+        match tick.num_children() {
+            5 => {
+                let exchange = unsafe { tick.get_at_unchecked(4) };
+                self.append_child_at_field_index(5, &exchange);
+            }
+            n if n >= 6 => {
+                let condition = unsafe { tick.get_at_unchecked(4) };
+                let exchange = unsafe { tick.get_at_unchecked(5) };
+                self.append_child_at_field_index(4, &condition);
+                self.append_child_at_field_index(5, &exchange);
+                if n > 6 {
+                    self.unsafe_unhandled_layouts += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn append_tick_child_scan_from(&mut self, tick: &Element<'_>, start_index: usize) {
+        for child_pos in start_index..tick.num_children() {
+            let child = unsafe { tick.get_at_unchecked(child_pos) };
+            self.append_child_by_name(&child);
+        }
+    }
+
+    fn append_child_by_name(&mut self, child: &Element<'_>) -> Option<usize> {
+        let field_index = match self.find_tick_field(child) {
+            Some(idx) => idx,
+            None => {
+                if !should_emit_bdtick_scalar_field(child) {
+                    return None;
+                }
+                self.discover_tick_field(child)?
+            }
+        };
+        self.append_child_at_field_index(field_index, child);
+        Some(field_index)
+    }
+
+    fn append_child_at_field_index(&mut self, field_index: usize, child: &Element<'_>) {
+        if field_index >= self.seen_fields.len() {
+            self.seen_fields.resize(self.tick_fields.len(), false);
+        }
+        if self.seen_fields[field_index] {
+            return;
+        }
+        self.seen_fields[field_index] = true;
+        let field = &mut self.tick_fields[field_index];
+        append_bdtick_child_value(&mut field.builder, child);
+    }
+
+    fn find_tick_field(&self, child: &Element<'_>) -> Option<usize> {
+        child.name_index(&self.lookup_names)
+    }
+
+    fn discover_tick_field(&mut self, child: &Element<'_>) -> Option<usize> {
+        let lookup_name = child.name();
+        let name = lookup_name.as_str();
+        if name == BDTICK_TICKER_COLUMN || self.column_name_set.contains(name) {
+            return None;
+        }
+
+        let output_name = name.to_string();
+        self.column_name_set.insert(output_name.clone());
+
+        let mut builder = TypedBuilder::new(arrow_type_for_bdtick_element(child));
+        for _ in 0..self.row_count {
+            builder.append_null();
+        }
+
+        self.tick_fields.push(BenchTickField {
+            output_name,
+            lookup_name: lookup_name.clone(),
+            builder,
+        });
+        self.lookup_names.push(lookup_name);
+        Some(self.tick_fields.len() - 1)
+    }
+
+    fn finish_batch(&mut self) -> Result<RecordBatch, BlpError> {
+        let mut fields = Vec::with_capacity(1 + self.tick_fields.len());
+        let mut arrays: Vec<ArrayRef> = Vec::with_capacity(1 + self.tick_fields.len());
+
+        fields.push(Field::new(
+            BDTICK_TICKER_COLUMN,
+            self.ticker_builder.data_type(),
+            true,
+        ));
+        arrays.push(self.ticker_builder.finish());
+
+        for field in &mut self.tick_fields {
+            fields.push(Field::new(
+                field.output_name.as_str(),
+                field.builder.data_type(),
+                true,
+            ));
+            arrays.push(field.builder.finish());
+        }
+
+        RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).map_err(|e| {
+            BlpError::Internal {
+                detail: format!("build benchmark BDTICK RecordBatch: {e}"),
+            }
+        })
+    }
+
+    fn describe_variant_stats(&self) -> String {
+        format!(
+            "variant={}, core_prefix_hits={}, core_prefix_fallbacks={}, layout_hits={}, layout_misses={}, layout_cache_size={}, unsafe_rows={}, unsafe_unhandled_layouts={}",
+            self.mode.label(),
+            self.core_prefix_hits,
+            self.core_prefix_fallbacks,
+            self.layout_hits,
+            self.layout_misses,
+            self.layout_cache.len(),
+            self.unsafe_rows,
+            self.unsafe_unhandled_layouts,
+        )
+    }
+}
+
+fn replay_bdtick_variant_events(
+    events: &[Event],
+    iterations: usize,
+    variant: BdtickBenchVariant,
+    diagnostics: &BdtickReplayDiagnostics,
+) -> BenchRecord {
+    let start = Instant::now();
+    let mut phases = BdtickReplayPhaseTotals::default();
+    let mut rows = 0usize;
+    let mut columns = 0usize;
+    let mut ok_iterations = 0usize;
+    let mut last_error: Option<String> = None;
+    let mut last_variant_stats = String::new();
+
+    for _ in 0..iterations {
+        let create_start = Instant::now();
+        let mut state = BenchBdtickState::new("IBM US Equity".to_string(), variant);
+        phases.create_state += create_start.elapsed();
+
+        let mut finished = false;
+        'events: for event in events {
+            match event.event_type() {
+                EventType::PartialResponse => {
+                    let phase_start = Instant::now();
+                    for msg in event.messages() {
+                        state.process_message(&msg);
+                    }
+                    phases.partial_process += phase_start.elapsed();
+                }
+                EventType::Response => {
+                    let phase_start = Instant::now();
+                    for msg in event.messages() {
+                        state.process_message(&msg);
+                        finished = true;
+                    }
+                    phases.response_process_or_finish += phase_start.elapsed();
+                    break 'events;
+                }
+                _ => {}
+            }
+        }
+
+        if !finished {
+            last_error = Some("no response message in cached BDTICK events".to_string());
+            continue;
+        }
+
+        let finish_start = Instant::now();
+        match state.finish_batch() {
+            Ok(batch) => {
+                phases.finish_batch += finish_start.elapsed();
+                rows += batch.num_rows();
+                columns = batch.num_columns();
+                ok_iterations += 1;
+                last_variant_stats = state.describe_variant_stats();
+                black_box(batch);
+            }
+            Err(err) => {
+                phases.finish_batch += finish_start.elapsed();
+                last_error = Some(err.to_string());
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+    if ok_iterations == 0 {
+        return BenchRecord::error(
+            "replay",
+            variant.scenario(),
+            elapsed,
+            last_error.unwrap_or_else(|| "no successful iterations".to_string()),
+        );
+    }
+
+    let mut record = BenchRecord::ok(
+        "replay",
+        variant.scenario(),
+        elapsed,
+        rows,
+        columns,
+        rows,
+        "rows",
+        format!(
+            "iterations={ok_iterations}, cached_events={}, {}, {}",
+            events.len(),
+            last_variant_stats,
+            diagnostics.describe(),
+        ),
+    );
+    record.phases = phases.as_metrics(elapsed);
+    record
+}
+
+fn should_emit_bdtick_scalar_field(element: &Element<'_>) -> bool {
+    !element.is_array()
+        && !matches!(
+            element.datatype(),
+            BlpDataType::Sequence
+                | BlpDataType::Choice
+                | BlpDataType::ByteArray
+                | BlpDataType::CorrelationId,
+        )
+}
+
+fn arrow_type_for_bdtick_element(element: &Element<'_>) -> ArrowType {
+    match element.datatype() {
+        BlpDataType::Bool => ArrowType::Bool,
+        BlpDataType::Char | BlpDataType::Byte | BlpDataType::Int32 => ArrowType::Int32,
+        BlpDataType::Int64 => ArrowType::Int64,
+        BlpDataType::Float32 | BlpDataType::Float64 | BlpDataType::Decimal => ArrowType::Float64,
+        BlpDataType::String | BlpDataType::Enumeration => ArrowType::String,
+        BlpDataType::Date => ArrowType::Date32,
+        BlpDataType::Time => ArrowType::Time64Micros,
+        BlpDataType::Datetime => ArrowType::TimestampMicros,
+        BlpDataType::Sequence
+        | BlpDataType::Choice
+        | BlpDataType::ByteArray
+        | BlpDataType::CorrelationId => ArrowType::String,
+    }
+}
+
+fn append_bdtick_child_value(builder: &mut TypedBuilder, child: &Element<'_>) {
+    match builder {
+        TypedBuilder::Float64(builder) => {
+            if let Some(value) = child.get_f64(0) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+        TypedBuilder::Int64(builder) => {
+            if let Some(value) = child.get_i64(0) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+        TypedBuilder::Int32(builder) => {
+            if let Some(value) = child.get_i32(0) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+        TypedBuilder::String(builder) => {
+            if let Some(value) = child.get_str(0) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+        TypedBuilder::Bool(builder) => {
+            if let Some(value) = child.get_bool(0) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+        TypedBuilder::Date32(builder) => {
+            if let Some(value) = child.get_date32(0) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+        TypedBuilder::TimestampMicros(builder) => {
+            if let Some(value) = child.get_timestamp_us(0) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+        TypedBuilder::Time64Micros(builder) => {
+            if let Some(value) = child.get_datetime(0).map(|dt| dt.to_time_micros()) {
+                builder.append_value(value);
+            } else {
+                builder.append_null();
+            }
+        }
+    }
 }
 
 fn replay_request_events<F>(
@@ -714,32 +2195,43 @@ fn replay_request_events<F>(
     events: &[Event],
     iterations: usize,
     mut make_state: F,
- ) -> BenchRecord
+) -> BenchRecord
 where
-    F: FnMut() -> (ReplayState, oneshot::Receiver<Result<RecordBatch, BlpError>>),
+    F: FnMut() -> (
+        ReplayState,
+        oneshot::Receiver<Result<RecordBatch, BlpError>>,
+    ),
 {
     let start = Instant::now();
+    let mut phases = BdtickReplayPhaseTotals::default();
     let mut rows = 0usize;
     let mut columns = 0usize;
     let mut ok_iterations = 0usize;
     let mut last_error: Option<String> = None;
 
     for _ in 0..iterations {
+        let create_start = Instant::now();
         let (mut state, rx) = make_state();
+        phases.create_state += create_start.elapsed();
+
         let mut finished = false;
         'events: for event in events {
             match event.event_type() {
                 EventType::PartialResponse => {
+                    let phase_start = Instant::now();
                     for msg in event.messages() {
                         state.on_partial(&msg);
                     }
+                    phases.partial_process += phase_start.elapsed();
                 }
                 EventType::Response => {
+                    let phase_start = Instant::now();
                     if let Some(msg) = event.messages().next() {
                         state.finish(&msg);
                         finished = true;
-                        break 'events;
                     }
+                    phases.response_process_or_finish += phase_start.elapsed();
+                    break 'events;
                 }
                 _ => {}
             }
@@ -750,15 +2242,23 @@ where
             continue;
         }
 
+        let receive_start = Instant::now();
         match rx.blocking_recv() {
             Ok(Ok(batch)) => {
+                phases.receive_batch += receive_start.elapsed();
                 rows += batch.num_rows();
                 columns = batch.num_columns();
                 ok_iterations += 1;
                 black_box(batch);
             }
-            Ok(Err(err)) => last_error = Some(err.to_string()),
-            Err(err) => last_error = Some(err.to_string()),
+            Ok(Err(err)) => {
+                phases.receive_batch += receive_start.elapsed();
+                last_error = Some(err.to_string());
+            }
+            Err(err) => {
+                phases.receive_batch += receive_start.elapsed();
+                last_error = Some(err.to_string());
+            }
         }
     }
 
@@ -772,7 +2272,7 @@ where
         );
     }
 
-    BenchRecord::ok(
+    let mut record = BenchRecord::ok(
         "replay",
         scenario,
         elapsed,
@@ -781,7 +2281,9 @@ where
         rows,
         "rows",
         format!("iterations={ok_iterations}, cached_events={}", events.len()),
-    )
+    );
+    record.phases = phases.as_metrics(elapsed);
+    record
 }
 
 fn collect_response_events<F>(
@@ -789,7 +2291,7 @@ fn collect_response_events<F>(
     service: &str,
     operation: &str,
     build: F,
- ) -> Result<Vec<Event>, String>
+) -> Result<Vec<Event>, String>
 where
     F: FnOnce(&mut xbbg_core::Request) -> Result<(), BlpError>,
 {
@@ -842,6 +2344,32 @@ fn fetch_bdh_events(sess: &xbbg_core::Session) -> Result<Vec<Event>, String> {
     })
 }
 
+fn fetch_bdp_wide_events(sess: &xbbg_core::Session) -> Result<Vec<Event>, String> {
+    collect_response_events(sess, "//blp/refdata", "ReferenceDataRequest", |req| {
+        for security in WIDE_BDP_SECURITIES {
+            req.append_str("securities", security)?;
+        }
+        for field in WIDE_BDP_FIELDS {
+            req.append_str("fields", field)?;
+        }
+        Ok(())
+    })
+}
+
+fn fetch_bdh_wide_events(sess: &xbbg_core::Session) -> Result<Vec<Event>, String> {
+    collect_response_events(sess, "//blp/refdata", "HistoricalDataRequest", |req| {
+        for security in WIDE_BDH_SECURITIES {
+            req.append_str("securities", security)?;
+        }
+        for field in WIDE_BDH_FIELDS {
+            req.append_str("fields", field)?;
+        }
+        req.set_str("startDate", "20240401")?;
+        req.set_str("endDate", "20240430")?;
+        Ok(())
+    })
+}
+
 fn fetch_bds_events(sess: &xbbg_core::Session) -> Result<Vec<Event>, String> {
     collect_response_events(sess, "//blp/refdata", "ReferenceDataRequest", |req| {
         req.append_str("securities", "INDU Index")?;
@@ -870,16 +2398,14 @@ fn fetch_bql_events(sess: &xbbg_core::Session) -> Result<Vec<Event>, String> {
     })
 }
 
-fn fetch_subscription_events(sess: &xbbg_core::Session, collect_ms: u64) -> Result<Vec<Event>, String> {
+fn fetch_subscription_events(
+    sess: &xbbg_core::Session,
+    collect_ms: u64,
+) -> Result<Vec<Event>, String> {
     let mut sub_list = SubscriptionList::new();
     let cid = CorrelationId::new_int(10_001);
     sub_list
-        .add(
-            "IBM US Equity",
-            &["LAST_PRICE", "BID", "ASK"],
-            "",
-            &cid,
-        )
+        .add("IBM US Equity", &["LAST_PRICE", "BID", "ASK"], "", &cid)
         .map_err(|err| format!("add subscription: {err}"))?;
     sess.subscribe(&sub_list, None)
         .map_err(|err| format!("subscribe: {err}"))?;
@@ -1079,7 +2605,7 @@ fn replay_bql_json_fixture(
     rows_per_iteration: usize,
     field_count: usize,
     iterations: usize,
- ) -> BenchRecord {
+) -> BenchRecord {
     let (tx, _rx) = oneshot::channel();
     let state = BqlState::new(tx);
     let start = Instant::now();
@@ -1147,7 +2673,8 @@ fn profile_subscription_components(
         .iter()
         .map(|field| Name::get_or_intern(field))
         .collect::<Vec<_>>();
-    let invalid_dateortime_key = Name::get_or_intern("LAST_UPDATE_ALL_SESSIONS_RT").as_ptr() as usize;
+    let invalid_dateortime_key =
+        Name::get_or_intern("LAST_UPDATE_ALL_SESSIONS_RT").as_ptr() as usize;
 
     let repeats_per_message = subscription_repeats_per_message(events, target_messages);
     let message_iteration_start = Instant::now();
@@ -1323,10 +2850,11 @@ fn profile_subscription_components(
 
     let channel_start = Instant::now();
     let send_count = target_messages.min(1_000);
-    let batch = component_record_batch(1, field_count.min(8).max(1));
+    let batch = component_record_batch(1, field_count.clamp(1, 8));
     let (tx, mut rx) = mpsc::channel::<Result<RecordBatch, BlpError>>(send_count + 1);
     for _ in 0..send_count {
-        tx.try_send(Ok(batch.clone())).expect("component channel send");
+        tx.try_send(Ok(batch.clone()))
+            .expect("component channel send");
     }
     while let Ok(item) = rx.try_recv() {
         let _ = black_box(item);
@@ -1372,7 +2900,7 @@ fn replay_subscription_events(
     topic_count: usize,
     all_fields: bool,
     fields: &[&str],
- ) -> BenchRecord {
+) -> BenchRecord {
     let start = Instant::now();
     if events.is_empty() {
         return BenchRecord::error(
@@ -1392,7 +2920,10 @@ fn replay_subscription_events(
 
     let topic_count = topic_count.max(1);
     let (tx, mut rx) = mpsc::channel(topic_count.saturating_mul(4).max(16));
-    let field_vec = fields.iter().map(|field| (*field).to_string()).collect::<Vec<_>>();
+    let field_vec = fields
+        .iter()
+        .map(|field| (*field).to_string())
+        .collect::<Vec<_>>();
     let mut states = (0..topic_count)
         .map(|idx| {
             SubscriptionState::new(
@@ -1461,7 +2992,10 @@ fn replay_subscription_events(
         ),
     );
     record.phases = vec![
-        phase("process_messages_through_subscription_state", process_elapsed),
+        phase(
+            "process_messages_through_subscription_state",
+            process_elapsed,
+        ),
         phase("flush_arrow_batches", flush_elapsed),
         phase("drain_batches", drain_elapsed),
         phase("total", Duration::from_micros(record.elapsed_us as u64)),
@@ -1473,19 +3007,19 @@ async fn run_live_suite(engine: &Engine, config: &SuiteConfig) -> Vec<BenchRecor
     let mut records = Vec::new();
 
     if config.should_run("live_requests", "bdp_smoke") {
-        records.push(live_request(&engine, "bdp_smoke", bdp_params()).await);
+        records.push(live_request(engine, "bdp_smoke", bdp_params()).await);
     }
     if config.should_run("live_requests", "bdh_smoke") {
-        records.push(live_request(&engine, "bdh_smoke", bdh_params()).await);
+        records.push(live_request(engine, "bdh_smoke", bdh_params()).await);
     }
     if config.should_run("live_requests", "bdtick_smoke") {
-        records.push(live_request(&engine, "bdtick_smoke", bdtick_params()).await);
+        records.push(live_request(engine, "bdtick_smoke", bdtick_params()).await);
     }
     if config.should_run("live_requests", "bql_smoke") {
-        records.push(live_request(&engine, "bql_smoke", bql_params()).await);
+        records.push(live_request(engine, "bql_smoke", bql_params()).await);
     }
     if config.should_run("live_subscriptions", "sub_3_topics_3_fields") {
-        records.push(live_subscription(&engine, config.profile.subscription_collect_ms()).await);
+        records.push(live_subscription(engine, config.profile.subscription_collect_ms()).await);
     }
 
     records
@@ -1499,7 +3033,11 @@ fn create_engine() -> Result<Engine, BlpAsyncError> {
     Engine::start(config)
 }
 
-async fn live_request(engine: &Engine, scenario: &'static str, params: RequestParams) -> BenchRecord {
+async fn live_request(
+    engine: &Engine,
+    scenario: &'static str,
+    params: RequestParams,
+) -> BenchRecord {
     let start = Instant::now();
     match engine.request(params).await {
         Ok(batch) => {
@@ -1522,12 +3060,30 @@ async fn live_request(engine: &Engine, scenario: &'static str, params: RequestPa
 }
 
 async fn live_subscription(engine: &Engine, collect_ms: u64) -> BenchRecord {
-    let topics = vec!["IBM US Equity".to_string(), "AAPL US Equity".to_string(), "MSFT US Equity".to_string()];
-    let fields = vec!["LAST_PRICE".to_string(), "BID".to_string(), "ASK".to_string()];
+    let topics = vec![
+        "IBM US Equity".to_string(),
+        "AAPL US Equity".to_string(),
+        "MSFT US Equity".to_string(),
+    ];
+    let fields = vec![
+        "LAST_PRICE".to_string(),
+        "BID".to_string(),
+        "ASK".to_string(),
+    ];
     let start = Instant::now();
-    let mut stream = match engine.subscribe(topics.clone(), fields.clone(), false).await {
+    let mut stream = match engine
+        .subscribe(topics.clone(), fields.clone(), false)
+        .await
+    {
         Ok(stream) => stream,
-        Err(err) => return BenchRecord::error("live_subscriptions", "sub_3_topics_3_fields", start.elapsed(), err.to_string()),
+        Err(err) => {
+            return BenchRecord::error(
+                "live_subscriptions",
+                "sub_3_topics_3_fields",
+                start.elapsed(),
+                err.to_string(),
+            )
+        }
     };
 
     let mut batches = 0usize;
@@ -1542,7 +3098,12 @@ async fn live_subscription(engine: &Engine, collect_ms: u64) -> BenchRecord {
             }
             Ok(Some(Err(err))) => {
                 let _ = stream.unsubscribe(true).await;
-                return BenchRecord::error("live_subscriptions", "sub_3_topics_3_fields", start.elapsed(), err.to_string());
+                return BenchRecord::error(
+                    "live_subscriptions",
+                    "sub_3_topics_3_fields",
+                    start.elapsed(),
+                    err.to_string(),
+                );
             }
             Ok(None) | Err(_) => break,
         }
@@ -1557,7 +3118,13 @@ async fn live_subscription(engine: &Engine, collect_ms: u64) -> BenchRecord {
         fields.len(),
         rows,
         "rows",
-        format!("topics={}, fields={}, batches={}, collect_ms={}", topics.len(), fields.len(), batches, collect_ms),
+        format!(
+            "topics={}, fields={}, batches={}, collect_ms={}",
+            topics.len(),
+            fields.len(),
+            batches,
+            collect_ms
+        ),
     )
 }
 
@@ -1606,12 +3173,10 @@ fn bql_params() -> RequestParams {
         service: "//blp/bqlsvc".to_string(),
         operation: "sendQuery".to_string(),
         extractor: ExtractorType::Bql,
-        elements: Some(vec![
-            (
-                "expression".to_string(),
-                "get(px_last) for(['IBM US Equity'])".to_string(),
-            ),
-        ]),
+        elements: Some(vec![(
+            "expression".to_string(),
+            "get(px_last) for(['IBM US Equity'])".to_string(),
+        )]),
         ..Default::default()
     }
 }
@@ -1698,7 +3263,12 @@ fn synthetic_bdh(shape: SyntheticShape, detail: bool) -> BenchRecord {
         for d in 0..shape.bdh_dates {
             tickers.push(ticker.clone());
             let date = base_date + ChronoDuration::days(d as i64);
-            dates.push(format!("{:04}{:02}{:02}", date.year(), date.month(), date.day()));
+            dates.push(format!(
+                "{:04}{:02}{:02}",
+                date.year(),
+                date.month(),
+                date.day()
+            ));
         }
     }
     let keys_elapsed = keys_start.elapsed();
@@ -1713,7 +3283,11 @@ fn synthetic_bdh(shape: SyntheticShape, detail: bool) -> BenchRecord {
         Arc::new(StringArray::from(dates)) as ArrayRef,
     ];
     for f in 0..shape.bdh_fields {
-        schema_fields.push(Field::new(format!("HIST_FIELD_{f:02}"), DataType::Float64, true));
+        schema_fields.push(Field::new(
+            format!("HIST_FIELD_{f:02}"),
+            DataType::Float64,
+            true,
+        ));
         let column: Vec<Option<f64>> = (0..output_rows)
             .map(|row| {
                 if (row + f) % 23 == 0 {
@@ -1734,7 +3308,10 @@ fn synthetic_bdh(shape: SyntheticShape, detail: bool) -> BenchRecord {
     black_box(&batch);
     let mut record = BenchRecord::ok(
         "synthetic_bdh",
-        format!("bdh_{}s_{}d_{}f", shape.bdh_securities, shape.bdh_dates, shape.bdh_fields),
+        format!(
+            "bdh_{}s_{}d_{}f",
+            shape.bdh_securities, shape.bdh_dates, shape.bdh_fields
+        ),
         start.elapsed(),
         batch.num_rows(),
         batch.num_columns(),
@@ -1777,7 +3354,11 @@ fn synthetic_bdtick(shape: SyntheticShape, detail: bool) -> BenchRecord {
     let time_array = TimestampMicrosecondArray::from(times).with_timezone("UTC");
     let batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            Field::new("time", DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())), false),
+            Field::new(
+                "time",
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+                false,
+            ),
             Field::new("event_type", DataType::Utf8, false),
             Field::new("value", DataType::Float64, false),
             Field::new("size", DataType::Int64, false),
@@ -1825,7 +3406,13 @@ fn synthetic_bql(shape: SyntheticShape, detail: bool) -> BenchRecord {
     for c in 0..columns {
         schema_fields.push(Field::new(format!("value_{c:02}"), DataType::Float64, true));
         let values: Vec<Option<f64>> = (0..rows)
-            .map(|r| if (r + c) % 29 == 0 { None } else { Some(r as f64 * 0.01 + c as f64) })
+            .map(|r| {
+                if (r + c) % 29 == 0 {
+                    None
+                } else {
+                    Some(r as f64 * 0.01 + c as f64)
+                }
+            })
             .collect();
         arrays.push(Arc::new(Float64Array::from(values)) as ArrayRef);
     }
@@ -1869,7 +3456,10 @@ fn synthetic_subscriptions(shape: SyntheticShape, detail: bool) -> BenchRecord {
     black_box(checksum);
     let mut record = BenchRecord::ok(
         "synthetic_subscriptions",
-        format!("sub_{}topics_{}messages_{}fields", shape.sub_topics, shape.sub_messages, shape.sub_fields),
+        format!(
+            "sub_{}topics_{}messages_{}fields",
+            shape.sub_topics, shape.sub_messages, shape.sub_fields
+        ),
         start.elapsed(),
         shape.sub_messages,
         shape.sub_fields,
@@ -1902,24 +3492,54 @@ fn print_usage(profile: BenchProfile, shape: SyntheticShape) {
     println!("  BDH:      1 request / ~5 data points");
     println!("  BDTICK:   1 short intraday request");
     println!("  BQL:      1 tiny query");
-    println!("  SUB:      1 live subscription window / {}ms", profile.subscription_collect_ms());
+    println!(
+        "  SUB:      1 live subscription window / {}ms",
+        profile.subscription_collect_ms()
+    );
     println!("  Synthetic: no Bloomberg data usage");
     println!("  Replay:    1 seed request per selected replay case, then cached SDK Event replay");
     println!("Replay scale:");
-    println!("  Request event replay iterations: {}", profile.replay_iterations());
-    println!("  Subscription replay messages: {}", profile.subscription_replay_messages());
-    println!("  Subscription replay topics: {}", profile.subscription_replay_topics());
-    println!("  BQL JSON extraction iterations: {}", profile.bql_json_iterations());
+    println!(
+        "  Request event replay iterations: {}",
+        profile.replay_iterations()
+    );
+    println!(
+        "  Subscription replay messages: {}",
+        profile.subscription_replay_messages()
+    );
+    println!(
+        "  Subscription replay topics: {}",
+        profile.subscription_replay_topics()
+    );
+    println!(
+        "  BQL JSON extraction iterations: {}",
+        profile.bql_json_iterations()
+    );
     println!("Synthetic scale:");
-    println!("  BDP:    {} securities × {} fields", shape.bdp_securities, shape.bdp_fields);
-    println!("  BDH:    {} securities × {} dates × {} fields", shape.bdh_securities, shape.bdh_dates, shape.bdh_fields);
+    println!(
+        "  BDP:    {} securities × {} fields",
+        shape.bdp_securities, shape.bdp_fields
+    );
+    println!(
+        "  BDH:    {} securities × {} dates × {} fields",
+        shape.bdh_securities, shape.bdh_dates, shape.bdh_fields
+    );
     println!("  BDTICK: {} ticks", shape.bdtick_ticks);
-    println!("  BQL:    {} rows × {} columns", shape.bql_rows, shape.bql_columns);
-    println!("  SUB:    {} messages × {} fields", shape.sub_messages, shape.sub_fields);
+    println!(
+        "  BQL:    {} rows × {} columns",
+        shape.bql_rows, shape.bql_columns
+    );
+    println!(
+        "  SUB:    {} messages × {} fields",
+        shape.sub_messages, shape.sub_fields
+    );
 }
 
 fn print_summary(records: &[BenchRecord]) {
-    println!("{:<28} {:<34} {:<8} {:>12} {:>12} {:>14}", "suite", "scenario", "status", "elapsed_ms", "rows", "throughput");
+    println!(
+        "{:<28} {:<34} {:<8} {:>12} {:>12} {:>14}",
+        "suite", "scenario", "status", "elapsed_ms", "rows", "throughput"
+    );
     println!("{:-<112}", "");
     for r in records {
         println!(
@@ -1977,7 +3597,13 @@ fn render_optional_string(value: Option<&str>) -> String {
         .unwrap_or_else(|| "null".to_string())
 }
 
-fn render_json(config: &SuiteConfig, timestamp: u64, git_sha: &str, shape: SyntheticShape, records: &[BenchRecord]) -> String {
+fn render_json(
+    config: &SuiteConfig,
+    timestamp: u64,
+    git_sha: &str,
+    shape: SyntheticShape,
+    records: &[BenchRecord],
+) -> String {
     let records_json = records
         .iter()
         .map(|r| {
@@ -2026,28 +3652,52 @@ fn render_json(config: &SuiteConfig, timestamp: u64, git_sha: &str, shape: Synth
     )
 }
 
-fn render_markdown(config: &SuiteConfig, timestamp: u64, git_sha: &str, shape: SyntheticShape, records: &[BenchRecord]) -> String {
+fn render_markdown(
+    config: &SuiteConfig,
+    timestamp: u64,
+    git_sha: &str,
+    shape: SyntheticShape,
+    records: &[BenchRecord],
+) -> String {
     let mut out = String::new();
     out.push_str("# xbbg Benchmark Suite\n\n");
     out.push_str(&format!("- Timestamp: `{timestamp}`\n"));
     out.push_str(&format!("- Profile: `{}`\n", config.profile.as_str()));
-    out.push_str(&format!("- Profile mode: `{}`\n", config.profile_mode.as_str()));
+    out.push_str(&format!(
+        "- Profile mode: `{}`\n",
+        config.profile_mode.as_str()
+    ));
     if let Some(only) = &config.only {
         out.push_str(&format!("- Scenario filter: `{only}`\n"));
     }
     out.push_str(&format!("- Git SHA: `{git_sha}`\n"));
     out.push_str(&format!("- Bloomberg: `{}:{}`\n\n", blp_host(), blp_port()));
     out.push_str("## Synthetic Shape\n\n");
-    out.push_str(&format!("- BDP: {} securities × {} fields\n", shape.bdp_securities, shape.bdp_fields));
-    out.push_str(&format!("- BDH: {} securities × {} dates × {} fields\n", shape.bdh_securities, shape.bdh_dates, shape.bdh_fields));
+    out.push_str(&format!(
+        "- BDP: {} securities × {} fields\n",
+        shape.bdp_securities, shape.bdp_fields
+    ));
+    out.push_str(&format!(
+        "- BDH: {} securities × {} dates × {} fields\n",
+        shape.bdh_securities, shape.bdh_dates, shape.bdh_fields
+    ));
     out.push_str(&format!("- BDTICK: {} ticks\n", shape.bdtick_ticks));
-    out.push_str(&format!("- BQL: {} rows × {} columns\n", shape.bql_rows, shape.bql_columns));
-    out.push_str(&format!("- SUB: {} messages × {} fields\n\n", shape.sub_messages, shape.sub_fields));
+    out.push_str(&format!(
+        "- BQL: {} rows × {} columns\n",
+        shape.bql_rows, shape.bql_columns
+    ));
+    out.push_str(&format!(
+        "- SUB: {} messages × {} fields\n\n",
+        shape.sub_messages, shape.sub_fields
+    ));
     out.push_str("## Results\n\n");
     out.push_str("| Suite | Scenario | Status | Elapsed ms | Rows | Throughput | Alloc bytes |\n");
     out.push_str("|---|---|---:|---:|---:|---:|---:|\n");
     for r in records {
-        let alloc_bytes = r.allocations.map(|a| a.alloc_bytes.to_string()).unwrap_or_else(|| "-".to_string());
+        let alloc_bytes = r
+            .allocations
+            .map(|a| a.alloc_bytes.to_string())
+            .unwrap_or_else(|| "-".to_string());
         out.push_str(&format!(
             "| {} | {} | {} | {:.2} | {} | {:.2} {}/s | {} |\n",
             r.suite,
@@ -2101,7 +3751,8 @@ fn write_results(timestamp: u64, json: &str, markdown: &str) {
 }
 
 fn write_file(path: &Path, content: &str) {
-    fs::write(path, content).unwrap_or_else(|err| panic!("failed to write {}: {err}", path.display()));
+    fs::write(path, content)
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", path.display()));
 }
 
 fn blp_host() -> String {
@@ -2141,7 +3792,13 @@ fn git_sha() -> String {
         .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()
-        .and_then(|out| if out.status.success() { Some(out.stdout) } else { None })
+        .and_then(|out| {
+            if out.status.success() {
+                Some(out.stdout)
+            } else {
+                None
+            }
+        })
         .and_then(|stdout| String::from_utf8(stdout).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())

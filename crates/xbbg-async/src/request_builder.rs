@@ -30,8 +30,8 @@ pub struct RequestBuilder;
 impl RequestBuilder {
     /// Route kwargs into request elements vs Bloomberg field overrides.
     ///
-    /// This mirrors Python `_aroute_kwargs()` behavior, using only a synchronous
-    /// schema cache read (no async introspection).
+    /// This mirrors Python `_aroute_kwargs()` behavior, using only an in-memory
+    /// schema cache read (no async introspection or disk I/O).
     pub fn route_kwargs(
         schema_cache: &SchemaCache,
         service: &str,
@@ -84,7 +84,7 @@ fn valid_elements_from_cache(
     operation: &str,
 ) -> HashSet<String> {
     schema_cache
-        .get(service)
+        .get_memory(service)
         .and_then(|schema| {
             schema
                 .get_operation(operation)
