@@ -66,6 +66,7 @@ import type {
   NativeArrowZeroCopyBatch,
   NativeEngine,
   NativeSubscription,
+  NativeSubscriptionUpdate,
 } from './napi';
 
 const nodeRequire = createRequire(__filename);
@@ -706,12 +707,84 @@ async function getConfiguredEngine(): Promise<Engine> {
 
 // ── Subscription class ──────────────────────────────────────────────────
 
-export class Subscription implements AsyncIterator<Table>, AsyncIterable<Table> {
-  private readonly _inner: NativeSubscription;
+export type TickValue = null | boolean | number | bigint | string | Date;
 
-  public constructor(inner: NativeSubscription) {
-    this._inner = inner;
+export class FieldHandle {
+  public constructor(public readonly name: string) {}
+}
+
+export class Tick {
+  private readonly _positions: Map<string, number>;
+
+  public constructor(private readonly _update: NativeSubscriptionUpdate) {
+    this._positions = new Map(_update.fields.map((field, index) => [field, index]));
   }
+
+  public get topic(): string {
+    return this._update.topic;
+  }
+
+  public get timestampUs(): number {
+    return this._update.timestampUs;
+  }
+
+  public get layoutVersion(): number {
+    return this._update.layoutVersion;
+  }
+
+  public get(field: string | FieldHandle): TickValue {
+    const name = typeof field === 'string' ? field : field.name;
+    const index = this._positions.get(name);
+    if (index === undefined) return null;
+    const value = this._update.values[index] ?? null;
+    const kind = this._update.valueKinds[index] ?? 'unknown';
+    if (value === null) return null;
+    if (kind === 'i64' || kind === 'time64_us' || kind === 'timestamp_us') {
+      try {
+        return BigInt(String(value));
+      } catch {
+        return null;
+      }
+    }
+    if (kind === 'date32' && typeof value === 'number') {
+      return new Date(Date.UTC(1970, 0, 1 + value));
+    }
+    return value;
+  }
+
+  public f64(field: string | FieldHandle): number | null {
+    const value = this.get(field);
+    if (value === null) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  public i64(field: string | FieldHandle): bigint | null {
+    const value = this.get(field);
+    if (value === null) return null;
+    try {
+      return BigInt(String(value));
+    } catch {
+      return null;
+    }
+  }
+
+  public str(field: string | FieldHandle): string | null {
+    const value = this.get(field);
+    return value === null ? null : String(value);
+  }
+
+  public toObject(): Record<string, unknown> {
+    const out: Record<string, unknown> = { topic: this.topic, timestampUs: this.timestampUs };
+    for (const field of this._update.fields) {
+      out[field] = this.get(field);
+    }
+    return out;
+  }
+}
+
+export class ArrowSubscription implements AsyncIterator<Table>, AsyncIterable<Table> {
+  public constructor(private readonly _inner: NativeSubscription) {}
 
   public async next(): Promise<IteratorResult<Table>> {
     try {
@@ -720,6 +793,39 @@ export class Subscription implements AsyncIterator<Table>, AsyncIterable<Table> 
         return { done: true, value: undefined };
       }
       return { done: false, value: toArrowTableFromNative(batch) };
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  public async unsubscribe(drain = false): Promise<Table[]> {
+    try {
+      const drained = await this._inner.unsubscribeArrow(drain);
+      return drained?.map(toArrowTableFromNative) ?? [];
+    } catch (err) {
+      throw wrapError(err);
+    }
+  }
+
+  public [Symbol.asyncIterator](): this {
+    return this;
+  }
+}
+
+export class Subscription implements AsyncIterator<Tick>, AsyncIterable<Tick> {
+  private readonly _inner: NativeSubscription;
+
+  public constructor(inner: NativeSubscription) {
+    this._inner = inner;
+  }
+
+  public async next(): Promise<IteratorResult<Tick>> {
+    try {
+      const update = await this._inner.nextUpdate();
+      if (update === null) {
+        return { done: true, value: undefined };
+      }
+      return { done: false, value: new Tick(update) };
     } catch (err) {
       throw wrapError(err);
     }
@@ -741,16 +847,24 @@ export class Subscription implements AsyncIterator<Table>, AsyncIterable<Table> 
     }
   }
 
-  public async unsubscribe(drain = false): Promise<Table[]> {
+  public async unsubscribe(drain = false): Promise<Tick[]> {
     try {
-      const drained = await this._inner.unsubscribeArrow(drain);
+      const drained = await this._inner.unsubscribe(drain);
       if (drained === null) {
         return [];
       }
-      return drained.map(toArrowTableFromNative);
+      return drained.map((update) => new Tick(update));
     } catch (err) {
       throw wrapError(err);
     }
+  }
+
+  public field(name: string): FieldHandle {
+    return new FieldHandle(name);
+  }
+
+  public arrow(): ArrowSubscription {
+    return new ArrowSubscription(this._inner);
   }
 
   public get tickers(): string[] {
@@ -1133,10 +1247,26 @@ export class Engine {
   public async subscribe(
     tickers: readonly string[],
     fields: readonly string[],
-    options: Pick<StreamOptions, 'allFields'> = {},
+    options: StreamOptions = {},
   ): Promise<Subscription> {
     try {
-      const stream = await this._inner.subscribe(tickers, fields, options.allFields);
+      const useOptions =
+        options.options !== undefined ||
+        options.flushThreshold !== undefined ||
+        options.overflowPolicy !== undefined ||
+        options.streamCapacity !== undefined;
+      const stream = useOptions
+        ? await this._inner.subscribeWithOptions(
+            '//blp/mktdata',
+            tickers,
+            fields,
+            options.options,
+            options.flushThreshold,
+            options.overflowPolicy,
+            options.streamCapacity,
+            options.allFields,
+          )
+        : await this._inner.subscribe(tickers, fields, options.allFields);
       return new Subscription(stream);
     } catch (err) {
       throw wrapError(err);
@@ -1653,7 +1783,7 @@ export async function bdtick(ticker: string, options: BdtickOptions = {}): Promi
 export async function asubscribe(
   tickers: string | readonly string[],
   fields: string | readonly string[],
-  options: Pick<StreamOptions, 'allFields'> = {},
+  options: StreamOptions = {},
 ): Promise<Subscription> {
   const engine = await getConfiguredEngine();
   return await engine.subscribe(toStringArray(tickers), toStringArray(fields), options);
@@ -1662,7 +1792,7 @@ export async function asubscribe(
 export async function subscribe(
   tickers: string | readonly string[],
   fields: string | readonly string[],
-  options: Pick<StreamOptions, 'allFields'> = {},
+  options: StreamOptions = {},
 ): Promise<Subscription> {
   return await asubscribe(tickers, fields, options);
 }

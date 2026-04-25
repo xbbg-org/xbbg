@@ -14,6 +14,9 @@ use arrow_zero_copy::NativeArrowBatch;
 use napi::bindgen_prelude::{Buffer, Error, Status};
 use napi_derive::napi;
 use tokio::sync::{Mutex, Notify};
+use xbbg_async::engine::state::{
+    subscription_update_to_record_batch, SubscriptionUpdate, UpdateValue,
+};
 use xbbg_async::engine::{
     Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, ServerAddr,
     SharedSubscriptionStatus, Socks5Proxy, TlsConfig, Transport,
@@ -21,7 +24,7 @@ use xbbg_async::engine::{
 use xbbg_async::{BlpAsyncError, ValidationMode};
 use xbbg_core::{AuthConfig, BlpError};
 
-type StreamBatchResult = std::result::Result<RecordBatch, BlpError>;
+type StreamBatchResult = std::result::Result<SubscriptionUpdate, BlpError>;
 type StreamReceiver = tokio::sync::mpsc::Receiver<StreamBatchResult>;
 type SharedStreamReceiver = Arc<Mutex<Option<StreamReceiver>>>;
 
@@ -160,6 +163,18 @@ pub struct SubscriptionStats {
     pub dropped_batches: i64,
     pub batches_sent: i64,
     pub slow_consumer: bool,
+}
+
+#[napi(object)]
+pub struct NativeSubscriptionUpdate {
+    pub kind: String,
+    pub topic: String,
+    pub topic_id: u32,
+    pub timestamp_us: i64,
+    pub layout_version: u32,
+    pub fields: Vec<String>,
+    pub values: Vec<serde_json::Value>,
+    pub value_kinds: Vec<String>,
 }
 
 fn to_i64_saturating(value: u64) -> i64 {
@@ -661,8 +676,63 @@ fn to_ipc_buffer(batch: RecordBatch) -> napi::Result<Buffer> {
     Ok(Buffer::from(cursor.into_inner()))
 }
 
-fn to_native_arrow(batch: RecordBatch) -> napi::Result<NativeArrowBatch> {
+fn to_native_arrow(update: SubscriptionUpdate) -> napi::Result<NativeArrowBatch> {
+    let batch = subscription_update_to_record_batch(&update).map_err(blp_error_to_napi)?;
     NativeArrowBatch::from_record_batch(batch)
+}
+
+fn to_native_update(update: SubscriptionUpdate) -> NativeSubscriptionUpdate {
+    let mut fields = Vec::with_capacity(update.values.len());
+    let mut values = Vec::with_capacity(update.values.len());
+    let mut value_kinds = Vec::with_capacity(update.values.len());
+    for field in update.values.iter() {
+        let Some(meta) = update.layout.fields.get(field.index as usize) else {
+            continue;
+        };
+        fields.push(meta.name.to_string());
+        values.push(update_value_to_json(&field.value));
+        value_kinds.push(update_value_kind(&field.value).to_string());
+    }
+    NativeSubscriptionUpdate {
+        kind: "update".to_string(),
+        topic: update.topic.to_string(),
+        topic_id: update.topic_id,
+        timestamp_us: update.timestamp_us,
+        layout_version: update.layout.version,
+        fields,
+        values,
+        value_kinds,
+    }
+}
+
+fn update_value_kind(value: &UpdateValue) -> &'static str {
+    match value {
+        UpdateValue::Null => "null",
+        UpdateValue::Bool(_) => "bool",
+        UpdateValue::I32(_) => "i32",
+        UpdateValue::I64(_) => "i64",
+        UpdateValue::F64(_) => "f64",
+        UpdateValue::Str(_) => "str",
+        UpdateValue::Date32(_) => "date32",
+        UpdateValue::Time64Micros(_) => "time64_us",
+        UpdateValue::TimestampMicros(_) => "timestamp_us",
+    }
+}
+
+fn update_value_to_json(value: &UpdateValue) -> serde_json::Value {
+    match value {
+        UpdateValue::Null => serde_json::Value::Null,
+        UpdateValue::Bool(v) => serde_json::Value::Bool(*v),
+        UpdateValue::I32(v) => serde_json::Value::Number((*v).into()),
+        UpdateValue::I64(v) => serde_json::Value::String(v.to_string()),
+        UpdateValue::F64(v) => serde_json::Number::from_f64(*v)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        UpdateValue::Str(v) => serde_json::Value::String(v.to_string()),
+        UpdateValue::Date32(v) => serde_json::Value::Number((*v).into()),
+        UpdateValue::Time64Micros(v) => serde_json::Value::String(v.to_string()),
+        UpdateValue::TimestampMicros(v) => serde_json::Value::String(v.to_string()),
+    }
 }
 
 fn blp_error_to_napi(e: BlpError) -> Error {
@@ -1366,6 +1436,38 @@ impl JsSubscription {
     }
 
     #[napi]
+    pub async fn next_update(&self) -> napi::Result<Option<NativeSubscriptionUpdate>> {
+        if self.closed.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        let mut rx = {
+            let mut guard = self.rx.lock().await;
+            guard
+                .take()
+                .ok_or_else(|| Error::new(Status::GenericFailure, "subscription receiver busy"))?
+        };
+
+        let item = tokio::select! {
+            item = rx.recv() => item,
+            _ = self.close_notify.notified() => None,
+        };
+
+        {
+            let mut guard = self.rx.lock().await;
+            if guard.is_none() {
+                *guard = Some(rx);
+                self.rx_available.notify_waiters();
+            }
+        }
+
+        match item {
+            Some(Ok(update)) => Ok(Some(to_native_update(update))),
+            Some(Err(e)) => Err(blp_error_to_napi(e)),
+            None => Ok(None),
+        }
+    }
+
+    #[napi]
     pub async fn next_arrow(&self) -> napi::Result<Option<NativeArrowBatch>> {
         if self.closed.load(Ordering::Acquire) {
             return Ok(None);
@@ -1603,6 +1705,79 @@ impl JsSubscription {
     }
 
     #[napi]
+    pub async fn unsubscribe(
+        &self,
+        drain: Option<bool>,
+    ) -> napi::Result<Option<Vec<NativeSubscriptionUpdate>>> {
+        let _mutation = self.mutation.lock().await;
+        self.closed.store(true, Ordering::Release);
+        let drain = drain.unwrap_or(false);
+        let handle = {
+            let mut guard = self.stream.lock().await;
+            guard.take()
+        };
+
+        self.close_notify.notify_waiters();
+
+        let mut unsubscribe_result = Ok(());
+        let had_handle = handle.is_some();
+        if let Some(mut handle) = handle {
+            let status = handle.status.clone();
+            let keys = status.lock().keys().to_vec();
+            let claim = handle.claim.take();
+            drop(handle);
+
+            if let Some(claim) = claim {
+                if !keys.is_empty() {
+                    match claim
+                        .unsubscribe(keys)
+                        .await
+                        .map_err(blp_async_error_to_napi)
+                    {
+                        Ok(()) => status.lock().clear_active(),
+                        Err(err) => unsubscribe_result = Err(err),
+                    }
+                } else {
+                    status.lock().clear_active();
+                }
+            }
+        }
+
+        let rx = loop {
+            let notified = self.rx_available.notified();
+            if let Some(rx) = {
+                let mut guard = self.rx.lock().await;
+                guard.take()
+            } {
+                break Some(rx);
+            }
+            if !had_handle {
+                break None;
+            }
+            notified.await;
+        };
+
+        let mut remaining = Vec::new();
+        if let Some(mut rx) = rx {
+            if drain {
+                while let Ok(item) = rx.try_recv() {
+                    if let Ok(update) = item {
+                        remaining.push(to_native_update(update));
+                    }
+                }
+            }
+        }
+
+        unsubscribe_result?;
+
+        if remaining.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(remaining))
+        }
+    }
+
+    #[napi]
     pub async fn unsubscribe_arrow(
         &self,
         drain: Option<bool>,
@@ -1627,13 +1802,18 @@ impl JsSubscription {
 
             if let Some(claim) = claim {
                 if !keys.is_empty() {
-                    unsubscribe_result = claim
+                    match claim
                         .unsubscribe(keys)
                         .await
-                        .map_err(blp_async_error_to_napi);
+                        .map_err(blp_async_error_to_napi)
+                    {
+                        Ok(()) => status.lock().clear_active(),
+                        Err(err) => unsubscribe_result = Err(err),
+                    }
+                } else {
+                    status.lock().clear_active();
                 }
             }
-            status.lock().clear_active();
         }
 
         let rx = loop {

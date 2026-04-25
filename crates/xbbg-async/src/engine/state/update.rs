@@ -1,0 +1,138 @@
+use std::sync::Arc;
+
+use xbbg_core::Value;
+
+pub type FieldIndex = u16;
+pub type TopicId = u32;
+
+#[derive(Clone, Debug)]
+pub struct FieldLayout {
+    pub version: u32,
+    pub fields: Arc<[FieldMeta]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FieldMeta {
+    pub name: Arc<str>,
+    pub index: FieldIndex,
+    pub kind: FieldKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldKind {
+    Unknown,
+    Bool,
+    I32,
+    I64,
+    F64,
+    Str,
+    Date32,
+    Time64Micros,
+    TimestampMicros,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubscriptionUpdate {
+    pub timestamp_us: i64,
+    pub topic_id: TopicId,
+    pub topic: Arc<str>,
+    pub layout: Arc<FieldLayout>,
+    pub values: Box<[UpdateField]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct UpdateField {
+    pub index: FieldIndex,
+    pub value: UpdateValue,
+}
+
+#[derive(Clone, Debug)]
+pub enum UpdateValue {
+    Null,
+    Bool(bool),
+    I32(i32),
+    I64(i64),
+    F64(f64),
+    Str(Arc<str>),
+    Date32(i32),
+    Time64Micros(i64),
+    TimestampMicros(i64),
+}
+
+impl FieldLayout {
+    pub fn new(version: u32, fields: Vec<FieldMeta>) -> Self {
+        Self {
+            version,
+            fields: Arc::from(fields.into_boxed_slice()),
+        }
+    }
+}
+
+impl FieldMeta {
+    pub fn new(name: impl Into<Arc<str>>, index: FieldIndex, kind: FieldKind) -> Self {
+        Self {
+            name: name.into(),
+            index,
+            kind,
+        }
+    }
+}
+
+impl FieldKind {
+    pub fn from_value(value: &UpdateValue) -> Self {
+        match value {
+            UpdateValue::Null => Self::Unknown,
+            UpdateValue::Bool(_) => Self::Bool,
+            UpdateValue::I32(_) => Self::I32,
+            UpdateValue::I64(_) => Self::I64,
+            UpdateValue::F64(_) => Self::F64,
+            UpdateValue::Str(_) => Self::Str,
+            UpdateValue::Date32(_) => Self::Date32,
+            UpdateValue::Time64Micros(_) => Self::Time64Micros,
+            UpdateValue::TimestampMicros(_) => Self::TimestampMicros,
+        }
+    }
+
+    pub fn merge_observed(self, observed: FieldKind) -> FieldKind {
+        match (self, observed) {
+            (FieldKind::Unknown, kind) => kind,
+            (kind, FieldKind::Unknown) => kind,
+            (kind, observed) if kind == observed => kind,
+            // Preserve existing compatibility behavior: if Bloomberg changes type
+            // mid-stream, compatibility adapters expose the field as string.
+            _ => FieldKind::Str,
+        }
+    }
+}
+
+impl UpdateValue {
+    pub fn from_blp(value: Option<Value<'_>>) -> Self {
+        match value {
+            None | Some(Value::Null) => Self::Null,
+            Some(Value::Bool(v)) => Self::Bool(v),
+            Some(Value::Int32(v)) => Self::I32(v),
+            Some(Value::Int64(v)) => Self::I64(v),
+            Some(Value::Float64(v)) => Self::F64(v),
+            Some(Value::String(v)) | Some(Value::Enum(v)) => Self::Str(Arc::from(v)),
+            Some(Value::Date32(v)) => Self::Date32(v),
+            Some(Value::TimestampMicros(v)) => Self::TimestampMicros(v),
+            Some(Value::Datetime(v)) => Self::TimestampMicros(v.to_micros()),
+            Some(Value::Time64Micros(v)) => Self::Time64Micros(v),
+            Some(Value::Byte(v)) => Self::I32(v as i32),
+        }
+    }
+
+    pub fn as_string_lossy(&self) -> Option<String> {
+        match self {
+            Self::Null => None,
+            Self::Bool(v) => Some(if *v { "true" } else { "false" }.to_string()),
+            Self::I32(v) => Some(v.to_string()),
+            Self::I64(v) => Some(v.to_string()),
+            Self::F64(v) => Some(v.to_string()),
+            Self::Str(v) => Some(v.to_string()),
+            Self::Date32(v) => Some(v.to_string()),
+            Self::Time64Micros(v) => Some(v.to_string()),
+            Self::TimestampMicros(v) => Some(v.to_string()),
+        }
+    }
+}
