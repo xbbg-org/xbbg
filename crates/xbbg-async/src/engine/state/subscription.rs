@@ -70,6 +70,9 @@ pub struct SubscriptionState {
 impl SubscriptionState {
     const EVENT_METADATA_FIELDS: [&'static str; 2] =
         ["MKTDATA_EVENT_TYPE", "MKTDATA_EVENT_SUBTYPE"];
+    // Bloomberg can publish date-or-time values here with invalid date parts;
+    // any typed/string getter makes the SDK emit warnings, so capture nulls.
+    const INVALID_DATEORTIME_FIELDS: [&'static str; 1] = ["LAST_UPDATE_ALL_SESSIONS_RT"];
 
     /// Create a new subscription state with default overflow policy.
     pub fn new(
@@ -200,8 +203,9 @@ impl SubscriptionState {
     fn append_requested_fields(&mut self, elem: &xbbg_core::Element<'_>) {
         for idx in 0..self.field_strings.len() {
             let field_name = &self.field_strings[idx];
+            let invalid_dateortime = Self::is_invalid_dateortime_field(field_name);
             if let Some(field_elem) = elem.get_by_str(field_name) {
-                self.append_value_at(idx, field_elem.get_value(0));
+                self.append_field_value_at(idx, invalid_dateortime, &field_elem);
             } else {
                 self.append_missing_at(idx);
             }
@@ -225,7 +229,11 @@ impl SubscriptionState {
                 seen.resize(self.field_strings.len(), false);
             }
             seen[idx] = true;
-            self.append_value_at(idx, child.get_value(0));
+            self.append_field_value_at(
+                idx,
+                Self::is_invalid_dateortime_field(&field_name),
+                &child,
+            );
         }
 
         for (idx, was_seen) in seen.iter().enumerate() {
@@ -258,6 +266,23 @@ impl SubscriptionState {
         idx
     }
 
+    fn is_invalid_dateortime_field(field_name: &str) -> bool {
+        Self::INVALID_DATEORTIME_FIELDS.contains(&field_name)
+    }
+
+    fn append_field_value_at(
+        &mut self,
+        idx: usize,
+        invalid_dateortime: bool,
+        field: &xbbg_core::Element<'_>,
+    ) {
+        if invalid_dateortime {
+            self.append_invalid_dateortime_fallback_at(idx);
+        } else {
+            self.append_value_at(idx, field.get_value(0));
+        }
+    }
+
     fn append_value_at(&mut self, idx: usize, value: Option<Value<'_>>) {
         if let Some(builder) = &mut self.field_builders[idx] {
             builder.append_value(value);
@@ -276,6 +301,10 @@ impl SubscriptionState {
                 self.cached_schema = None;
             }
         }
+    }
+
+    fn append_invalid_dateortime_fallback_at(&mut self, idx: usize) {
+        self.append_missing_at(idx);
     }
 
     fn append_missing_at(&mut self, idx: usize) {
