@@ -24,9 +24,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use arc_swap::ArcSwap;
 use arrow::array::Array;
 use arrow::record_batch::RecordBatch;
-use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
 
 use xbbg_core::session::Session;
@@ -402,7 +402,7 @@ pub struct SubscriptionFailureInfo {
 }
 
 /// Shared subscription status visible to worker and consumer-facing handles.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct SubscriptionStatusState {
     keys: Vec<SlabKey>,
     topics: Vec<String>,
@@ -417,7 +417,7 @@ pub struct SubscriptionStatusState {
     admin: AdminStatusInfo,
 }
 
-pub type SharedSubscriptionStatus = Arc<Mutex<SubscriptionStatusState>>;
+pub type SharedSubscriptionStatus = Arc<ArcSwap<SubscriptionStatusState>>;
 
 impl SubscriptionStatusState {
     pub fn from_active(
@@ -1541,7 +1541,7 @@ impl Engine {
     ) -> Result<SubscriptionStream, BlpAsyncError> {
         let (tx, rx) =
             mpsc::channel(stream_capacity.unwrap_or(self.config.subscription_stream_capacity));
-        let status = Arc::new(Mutex::new(SubscriptionStatusState::default()));
+        let status = Arc::new(ArcSwap::from_pointee(SubscriptionStatusState::default()));
 
         // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
         let claim = self.subscription_pool.claim()?;
@@ -1562,7 +1562,11 @@ impl Engine {
             .await?;
 
         let metrics = keys.iter().cloned().zip(raw_metrics).collect();
-        *status.lock() = SubscriptionStatusState::from_active(topics.clone(), keys, metrics);
+        status.store(Arc::new(SubscriptionStatusState::from_active(
+            topics.clone(),
+            keys,
+            metrics,
+        )));
 
         let stream = SubscriptionStream {
             rx,
@@ -1957,10 +1961,12 @@ impl SubscriptionStream {
 
         // Filter out already subscribed topics
         let new_topics: Vec<String> = {
-            let status = self.status.lock();
+            let snapshot = self.status.load();
             topics
                 .into_iter()
-                .filter(|t| !status.topic_to_key().contains_key(t) && seen_topics.insert(t.clone()))
+                .filter(|t| {
+                    !snapshot.topic_to_key().contains_key(t) && seen_topics.insert(t.clone())
+                })
                 .collect()
         };
 
@@ -1985,9 +1991,11 @@ impl SubscriptionStream {
             )
             .await?;
 
-        self.status
-            .lock()
-            .add_active(&new_topics, &new_keys, new_metrics);
+        self.status.rcu(|current| {
+            let mut next = (**current).clone();
+            next.add_active(&new_topics, &new_keys, new_metrics.clone());
+            Arc::new(next)
+        });
 
         Ok(())
     }
@@ -2003,9 +2011,9 @@ impl SubscriptionStream {
         let mut keys_to_remove = Vec::new();
         let mut topics_to_remove = Vec::new();
         {
-            let status = self.status.lock();
+            let snapshot = self.status.load();
             for topic in topics {
-                if let Some(&key) = status.topic_to_key().get(&topic) {
+                if let Some(&key) = snapshot.topic_to_key().get(&topic) {
                     if seen_keys.insert(key) {
                         keys_to_remove.push(key);
                         topics_to_remove.push(topic);
@@ -2022,17 +2030,20 @@ impl SubscriptionStream {
 
         command.unsubscribe(keys_to_remove.clone()).await?;
 
-        let mut status = self.status.lock();
-        for topic in topics_to_remove {
-            status.remove_topic(&topic);
-        }
+        self.status.rcu(|current| {
+            let mut next = (**current).clone();
+            for topic in &topics_to_remove {
+                next.remove_topic(topic);
+            }
+            Arc::new(next)
+        });
 
         Ok(())
     }
 
     /// Get the currently subscribed topics.
     pub fn topics(&self) -> Vec<String> {
-        self.status.lock().topics().to_vec()
+        self.status.load().topics().to_vec()
     }
 
     /// Get the subscribed fields.
@@ -2042,7 +2053,7 @@ impl SubscriptionStream {
 
     /// Check if any topics are still subscribed.
     pub fn is_active(&self) -> bool {
-        self.claim.is_some() && self.status.lock().has_active_topics()
+        self.claim.is_some() && self.status.load().has_active_topics()
     }
 
     /// Unsubscribe from all topics and close the stream.
@@ -2062,13 +2073,17 @@ impl SubscriptionStream {
         }
 
         if let Some(claim) = self.claim.take() {
-            let keys = self.status.lock().keys().to_vec();
+            let keys = self.status.load().keys().to_vec();
             if !keys.is_empty() {
                 claim.unsubscribe(keys).await?;
             }
         }
 
-        self.status.lock().clear_active();
+        self.status.rcu(|current| {
+            let mut next = (**current).clone();
+            next.clear_active();
+            Arc::new(next)
+        });
 
         Ok(remaining)
     }
