@@ -283,8 +283,8 @@ Options helper enums exported by `xbbg.ext`:
 
 | Function | Description | Key Features |
 |----------|-------------|--------------|
-| **`bdh()`** | End-of-day historical data | Flexible date ranges<br>Multiple frequencies<br>Dividend/split adjustments |
-| **`abdh()`** | Async historical data | Non-blocking time series<br>Batch historical queries |
+| **`bdh()`** | End-of-day historical data | Flexible date ranges<br>Excel-compatible aliases (`Per`, `Fill`, `Points`, etc.)<br>Local presentation aliases (`Dts`, `DtFmt`, `Sort`, `Direction`)<br>Dividend/split adjustments |
+| **`abdh()`** | Async historical data | Non-blocking time series<br>Batch historical queries<br>Same alias support as `bdh()` |
 | **`dividend()`** | Dividend & split history | All dividend types<br>Projected dividends<br>Date range filtering |
 | **`earnings()`** | Corporate earnings | Geographic breakdowns<br>Product segments<br>Fiscal period analysis |
 | **`turnover()`** | Trading volume & turnover | Multi-currency support<br>Automatic FX conversion |
@@ -501,6 +501,21 @@ adjusted = blp.bdh('AAPL US Equity', 'px_last', '2024-01-01', '2024-12-31', adju
 
 # Weekly data with forward fill
 weekly = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', Per='W', Fill='P')
+
+# Excel-style request aliases and presentation controls
+weekly = blp.bdh(
+    'SPX Index',
+    'PX_LAST',
+    '2024-01-01',
+    '2024-12-31',
+    Per='W',        # periodicitySelection='WEEKLY'
+    Fill='P',       # nonTradingDayFillMethod='PREVIOUS_VALUE'
+    Points=10,      # maxDataPoints=10
+    Dts='Show',     # keep date column
+    DtFmt='Both',   # add period labels alongside dates
+    Sort='Reverse', # newest rows first
+    Direction='V',  # vertical/long output shape
+)
 ```
 
 </details>
