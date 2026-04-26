@@ -27,8 +27,8 @@ use super::dispatch::DispatchKey;
 use super::state::{SubscriptionMetrics, SubscriptionState, SubscriptionUpdate};
 use super::{
     start_configured_session, BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState,
-    SharedSubscriptionStatus, SlabKey, SubscriptionEventLevel, SubscriptionFailureKind,
-    WorkerHealth,
+    SharedSubscriptionStatus, SlabKey, SubscriptionEventCategory, SubscriptionEventLevel,
+    SubscriptionFailureKind, WorkerHealth,
 };
 
 type SubscriptionReplyPayload = (Vec<SlabKey>, Vec<Arc<SubscriptionMetrics>>);
@@ -166,6 +166,51 @@ impl SubscriptionWorker {
         }
     }
 
+    fn record_service_ready_if_already_open(&self, service: &str, was_open: bool) {
+        if !was_open {
+            return;
+        }
+        if let Some(status) = &self.status {
+            status.rcu(|current| {
+                let mut next = (**current).clone();
+                next.record_service_state(
+                    service.to_string(),
+                    true,
+                    "ServiceReady",
+                    Some("service available for subscription".to_string()),
+                );
+                Arc::new(next)
+            });
+        }
+    }
+
+    fn record_service_open_error(&self, service: &str, error: &BlpError) {
+        if let Some(status) = &self.status {
+            let message_type = match error {
+                BlpError::Timeout => "ServiceOpenTimeout",
+                _ => "ServiceOpenFailure",
+            };
+            let detail = Some(error.to_string());
+            status.rcu(|current| {
+                let mut next = (**current).clone();
+                let already_recorded = next.events().back().is_some_and(|event| {
+                    event.category == SubscriptionEventCategory::Service
+                        && event.topic.as_deref() == Some(service)
+                        && event.message_type == message_type
+                });
+                if !already_recorded {
+                    next.record_service_state(
+                        service.to_string(),
+                        false,
+                        message_type,
+                        detail.clone(),
+                    );
+                }
+                Arc::new(next)
+            });
+        }
+    }
+
     /// Ensure a service is open, opening it on demand if needed.
     ///
     /// Uses `open_service_async` + a nested dispatch loop so that in-flight
@@ -245,25 +290,14 @@ impl SubscriptionWorker {
                         reply,
                     }) => {
                         self.status = Some(status);
-                        if let Some(status) = &self.status {
-                            let service_for_rcu = service.clone();
-                            status.rcu(|current| {
-                                let mut next = (**current).clone();
-                                next.record_service_state(
-                                    service_for_rcu.clone(),
-                                    true,
-                                    "ServiceReady",
-                                    Some("service available for subscription".to_string()),
-                                );
-                                Arc::new(next)
-                            });
-                        }
-                        // Ensure service is open
+                        let was_open = self.open_services.contains(&service);
                         if let Err(e) = self.ensure_service(&service) {
+                            self.record_service_open_error(&service, &e);
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
                             let _ = reply.send(Err(e));
                             continue;
                         }
+                        self.record_service_ready_if_already_open(&service, was_open);
                         let result = self.subscribe(
                             topics,
                             fields,
@@ -288,25 +322,14 @@ impl SubscriptionWorker {
                         reply,
                     }) => {
                         self.status = Some(status);
-                        if let Some(status) = &self.status {
-                            let service_for_rcu = service.clone();
-                            status.rcu(|current| {
-                                let mut next = (**current).clone();
-                                next.record_service_state(
-                                    service_for_rcu.clone(),
-                                    true,
-                                    "ServiceReady",
-                                    Some("service available for subscription".to_string()),
-                                );
-                                Arc::new(next)
-                            });
-                        }
-                        // Ensure service is open
+                        let was_open = self.open_services.contains(&service);
                         if let Err(e) = self.ensure_service(&service) {
+                            self.record_service_open_error(&service, &e);
                             xbbg_log::error!(worker_id = self.id, service = %service, error = %e, "failed to open service");
                             let _ = reply.send(Err(e));
                             continue;
                         }
+                        self.record_service_ready_if_already_open(&service, was_open);
                         // AddTopics uses the same logic as Subscribe
                         let result = self.subscribe(
                             topics,

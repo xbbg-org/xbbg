@@ -1,0 +1,283 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+
+import { describe, expect, it } from 'vitest';
+
+import packageJson from '../package.json';
+import { platformPackages } from '../src/native/platform-map';
+import { resolveNativeAddonCore } from '../src/native/resolve-native';
+
+const requireFromHere = createRequire(__filename);
+const cjsPlatformMap = requireFromHere('../scripts/platform-map.cjs') as {
+  readonly platformPackages: Readonly<Record<string, string>>;
+};
+
+const key = 'linux-x64';
+const packageName = '@xbbg/core-linux-x64';
+
+function moduleNotFound(message: string): Error {
+  const err = new Error(message) as Error & { code: string };
+  err.code = 'MODULE_NOT_FOUND';
+  return err;
+}
+
+function withTempRepo(fn: (repoRoot: string) => void): void {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xbbg-resolve-native-'));
+  try {
+    fn(repoRoot);
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+}
+
+function localIndexPath(repoRoot: string): string {
+  return path.join(repoRoot, 'packages', 'xbbg-core-linux-x64', 'index.js');
+}
+
+describe('resolveNativeAddonCore', () => {
+  it('falls back when the target optional package is absent', () => {
+    withTempRepo((repoRoot) => {
+      const resolution = resolveNativeAddonCore({
+        key,
+        packageName,
+        repoRoot,
+        requirePackage: (id) => {
+          throw moduleNotFound(`Cannot find module '${id}'`);
+        },
+        exists: () => false,
+      });
+
+      expect(resolution).toEqual({ key, packageName, binaryPath: null });
+    });
+  });
+
+  it('rethrows MODULE_NOT_FOUND from a nested dependency', () => {
+    withTempRepo((repoRoot) => {
+      const nested = moduleNotFound("Cannot find module 'nested-dependency'");
+
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: () => {
+            throw nested;
+          },
+          exists: () => false,
+        }),
+      ).toThrow(nested);
+    });
+  });
+
+  it('throws for installed packages with invalid export shapes', () => {
+    withTempRepo((repoRoot) => {
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: () => null,
+          exists: () => true,
+        }),
+      ).toThrow(`Invalid native package ${packageName}: expected an object with binaryPath`);
+    });
+  });
+
+  it('throws for installed packages missing binaryPath', () => {
+    withTempRepo((repoRoot) => {
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: () => ({}),
+          exists: () => true,
+        }),
+      ).toThrow(`Invalid native package ${packageName}: missing binaryPath`);
+    });
+  });
+
+  it('throws for installed packages with nonexistent binaryPath', () => {
+    withTempRepo((repoRoot) => {
+      const missingBinary = path.join(repoRoot, 'missing.node');
+
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: () => ({ binaryPath: missingBinary }),
+          exists: () => false,
+        }),
+      ).toThrow(`Invalid native package ${packageName}: binaryPath does not exist: ${missingBinary}`);
+    });
+  });
+
+  it('treats an absent local package index as a benign fallback', () => {
+    withTempRepo((repoRoot) => {
+      const resolution = resolveNativeAddonCore({
+        key,
+        packageName,
+        repoRoot,
+        requirePackage: (id) => {
+          throw moduleNotFound(`Cannot find module '${id}'`);
+        },
+        exists: () => false,
+      });
+
+      expect(resolution.binaryPath).toBeNull();
+    });
+  });
+
+  it('throws for malformed local package exports once local index exists', () => {
+    withTempRepo((repoRoot) => {
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: (id) => {
+            if (id === packageName) {
+              throw moduleNotFound(`Cannot find module '${id}'`);
+            }
+            return 'not an object';
+          },
+          exists: (target) => target === localIndexPath(repoRoot),
+        }),
+      ).toThrow(`Invalid native package ${packageName}: expected an object with binaryPath`);
+    });
+  });
+
+  it('throws for local package exports missing binaryPath once local index exists', () => {
+    withTempRepo((repoRoot) => {
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: (id) => {
+            if (id === packageName) {
+              throw moduleNotFound(`Cannot find module '${id}'`);
+            }
+            return {};
+          },
+          exists: (target) => target === localIndexPath(repoRoot),
+        }),
+      ).toThrow(`Invalid native package ${packageName}: missing binaryPath`);
+    });
+  });
+
+  it('throws for local package exports with non-string binaryPath once local index exists', () => {
+    withTempRepo((repoRoot) => {
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: (id) => {
+            if (id === packageName) {
+              throw moduleNotFound(`Cannot find module '${id}'`);
+            }
+            return { binaryPath: 123 };
+          },
+          exists: (target) => target === localIndexPath(repoRoot),
+        }),
+      ).toThrow(`Invalid native package ${packageName}: binaryPath must be a string`);
+    });
+  });
+
+  it('throws for local package exports with nonexistent binaryPath once local index exists', () => {
+    withTempRepo((repoRoot) => {
+      const missingBinary = path.join(repoRoot, 'missing.node');
+
+      expect(() =>
+        resolveNativeAddonCore({
+          key,
+          packageName,
+          repoRoot,
+          requirePackage: (id) => {
+            if (id === packageName) {
+              throw moduleNotFound(`Cannot find module '${id}'`);
+            }
+            return { binaryPath: missingBinary };
+          },
+          exists: (target) => target === localIndexPath(repoRoot),
+        }),
+      ).toThrow(`Invalid native package ${packageName}: binaryPath does not exist: ${missingBinary}`);
+    });
+  });
+
+  it('resolves a valid local binary after installed package fallback', () => {
+    withTempRepo((repoRoot) => {
+      const binaryPath = path.join(repoRoot, 'native.node');
+      fs.writeFileSync(binaryPath, 'fake native binary');
+
+      const resolution = resolveNativeAddonCore({
+        key,
+        packageName,
+        repoRoot,
+        requirePackage: (id) => {
+          if (id === packageName) {
+            throw moduleNotFound(`Cannot find module '${id}'`);
+          }
+          return { binaryPath };
+        },
+        exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
+      });
+
+      expect(resolution).toEqual({ key, packageName, binaryPath });
+    });
+  });
+
+  it('prefers a valid installed package over a present local package', () => {
+    withTempRepo((repoRoot) => {
+      const installedBinary = path.join(repoRoot, 'installed.node');
+      const localBinary = path.join(repoRoot, 'local.node');
+      fs.writeFileSync(installedBinary, 'fake installed native binary');
+      fs.writeFileSync(localBinary, 'fake local native binary');
+
+      const resolution = resolveNativeAddonCore({
+        key,
+        packageName,
+        repoRoot,
+        requirePackage: (id) => {
+          if (id === packageName) {
+            return { binaryPath: installedBinary };
+          }
+          throw new Error(`local package should not be required: ${id}`);
+        },
+        exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
+      });
+
+      expect(resolution).toEqual({ key, packageName, binaryPath: installedBinary });
+    });
+  });
+
+  it('returns a null package and binary for unsupported platforms', () => {
+    const resolution = resolveNativeAddonCore({
+      key: 'freebsd-x64',
+      packageName: null,
+      repoRoot: os.tmpdir(),
+      requirePackage: () => {
+        throw new Error('should not require unsupported package');
+      },
+      exists: () => false,
+    });
+
+    expect(resolution).toEqual({ key: 'freebsd-x64', packageName: null, binaryPath: null });
+  });
+});
+
+describe('platform map packaging metadata', () => {
+  it('keeps TypeScript and CommonJS platform maps in sync', () => {
+    expect(cjsPlatformMap.platformPackages).toEqual(platformPackages);
+  });
+
+  it('keeps optional dependency keys in sync with platform packages', () => {
+    expect(Object.keys(packageJson.optionalDependencies).sort()).toEqual(
+      Object.values(platformPackages).sort(),
+    );
+  });
+});

@@ -228,6 +228,10 @@ struct RequestWorker {
     next_service_open_id: i64,
 }
 
+fn send_stream_error(stream: mpsc::Sender<Result<RecordBatch, BlpError>>, error: BlpError) {
+    let _ = stream.blocking_send(Err(error));
+}
+
 impl RequestWorker {
     /// Create a new worker with a pre-warmed session.
     fn new(
@@ -522,7 +526,10 @@ impl RequestWorker {
         cancelled: Arc<AtomicBool>,
     ) -> Result<(), BlpError> {
         let t0 = std::time::Instant::now();
-        self.ensure_service(&params.service)?;
+        if let Err(error) = self.ensure_service(&params.service) {
+            let _ = reply.send(Err(error));
+            return Ok(());
+        }
         xbbg_log::debug!(
             worker_id = self.id,
             elapsed_us = t0.elapsed().as_micros(),
@@ -536,7 +543,7 @@ impl RequestWorker {
             fields = ?params.fields,
             "creating request state"
         );
-        let state = self.create_request_state(&params, reply)?;
+        let state = self.create_request_state(&params, reply);
         xbbg_log::debug!(worker_id = self.id, "request state created");
 
         let key = self.requests.insert(state);
@@ -613,7 +620,7 @@ impl RequestWorker {
         &self,
         params: &RequestParams,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
-    ) -> Result<UnifiedRequestState, BlpError> {
+    ) -> UnifiedRequestState {
         let fields = params.fields.clone().unwrap_or_default();
         let field_types = params.field_types.clone();
 
@@ -690,7 +697,7 @@ impl RequestWorker {
             }
         };
 
-        Ok(state)
+        state
     }
 
     /// Unified streaming request handler.
@@ -699,8 +706,6 @@ impl RequestWorker {
         params: RequestParams,
         stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     ) -> Result<(), BlpError> {
-        self.ensure_service(&params.service)?;
-
         let fields = params.fields.clone().unwrap_or_default();
         let ticker = params.security.clone().unwrap_or_default();
 
@@ -715,14 +720,23 @@ impl RequestWorker {
                 IntradayTickStreamState::new(ticker, stream),
             ),
             _ => {
-                return Err(BlpError::InvalidArgument {
-                    detail: format!(
-                        "Streaming not supported for extractor: {:?}",
-                        params.extractor
-                    ),
-                });
+                send_stream_error(
+                    stream,
+                    BlpError::InvalidArgument {
+                        detail: format!(
+                            "Streaming not supported for extractor: {:?}",
+                            params.extractor
+                        ),
+                    },
+                );
+                return Ok(());
             }
         };
+
+        if let Err(error) = self.ensure_service(&params.service) {
+            state.fail(error);
+            return Ok(());
+        }
 
         let key = self.requests.insert(state);
         let dispatch_key = DispatchKey::from_slab_key(key);

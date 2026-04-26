@@ -47,7 +47,6 @@ pub struct RequestWorkerPool {
     /// Round-robin counter.
     next_worker: AtomicUsize,
     /// Configuration.
-    #[allow(dead_code)]
     config: Arc<EngineConfig>,
 }
 
@@ -293,5 +292,71 @@ impl Drop for RequestWorkerPool {
     fn drop(&mut self) {
         // Non-blocking: just signal, don't wait
         self.signal_shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::RetryPolicy;
+
+    fn pool_with_retry_policy(retry_policy: RetryPolicy) -> RequestWorkerPool {
+        let config = Arc::new(EngineConfig {
+            retry_policy,
+            ..EngineConfig::default()
+        });
+
+        RequestWorkerPool {
+            workers: Vec::new(),
+            next_worker: AtomicUsize::new(0),
+            config,
+        }
+    }
+
+    #[test]
+    fn retry_delay_uses_exponential_backoff_and_max_delay() {
+        let pool = pool_with_retry_policy(RetryPolicy {
+            max_retries: 4,
+            initial_delay_ms: 100,
+            backoff_factor: 2.5,
+            max_delay_ms: 600,
+        });
+
+        assert_eq!(pool.retry_delay(0), 0);
+        assert_eq!(pool.retry_delay(1), 100);
+        assert_eq!(pool.retry_delay(2), 250);
+        assert_eq!(pool.retry_delay(3), 600);
+        assert_eq!(pool.retry_delay(4), 600);
+    }
+
+    #[test]
+    fn retry_delay_clamps_non_finite_backoff_to_max_delay() {
+        let pool = pool_with_retry_policy(RetryPolicy {
+            max_retries: 1,
+            initial_delay_ms: u64::MAX,
+            backoff_factor: f64::INFINITY,
+            max_delay_ms: 750,
+        });
+
+        assert_eq!(pool.retry_delay(2), 750);
+    }
+
+    #[test]
+    fn is_retryable_only_matches_transient_internal_errors() {
+        let pool = pool_with_retry_policy(RetryPolicy::default());
+
+        assert!(pool.is_retryable(&BlpError::Internal {
+            detail: "session connection dropped".to_string(),
+        }));
+        assert!(pool.is_retryable(&BlpError::Internal {
+            detail: "transport reset".to_string(),
+        }));
+        assert!(!pool.is_retryable(&BlpError::Internal {
+            detail: "bad request shape".to_string(),
+        }));
+        assert!(!pool.is_retryable(&BlpError::InvalidArgument {
+            detail: "invalid field".to_string(),
+        }));
+        assert!(!pool.is_retryable(&BlpError::Timeout));
     }
 }
