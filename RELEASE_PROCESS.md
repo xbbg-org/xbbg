@@ -89,7 +89,6 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 3. **README Release Sync**: Updates the `README.md` latest-release marker block to the new version/tag
 4. **Git Tag**: Creates `vX.Y.Z` tag and pushes it
 5. **GitHub Release**: Creates release with notes from CHANGELOG
-5. **GitHub Release**: Creates release with notes from CHANGELOG
 6. **PyPI Publish**: Tag push triggers `pypi_upload.yml` — builds wheels and publishes via OIDC trusted publishing
 7. **npm Publish**: Tag push triggers `npm-publish.yml` — builds platform-native `@xbbg/core-*` packages, stamps JS versions from the git tag, and publishes `@xbbg/core` to npm via trusted publishing
 8. **Release Assets**: Wheels and sdist are attached to the GitHub release
@@ -133,6 +132,7 @@ After a successful OIDC publish, set each package's npm **Publishing access** to
 |----------|------|---------|
 | Bump Version | `semantic_version.yml` | Calculate version, update CHANGELOG and README release marker, create tag + GitHub release |
 | JS GitHub Release | `js_github_release.yml` | Build, validate, and attach GitHub-only JS tarballs for `@xbbg/core` on `js-vX.Y.Z` |
+| npm Publish Retry | `npm-publish.yml` | Manual retry of trusted npm publishing for a stable `vX.Y.Z` version |
 
 ### JS GitHub-only package release
 
@@ -156,11 +156,35 @@ Go to **GitHub Actions** > **JS GitHub Release** > **Run workflow**
 5. Packs and validates the GitHub release tarballs
 6. Attaches the tarballs to a GitHub release on `js-vX.Y.Z`
 
+
 **Attached artifacts (currently supported):**
 
 - `@xbbg/core` wrapper + `darwin-arm64`, `linux-x64`, `win32-x64` platform tarballs
 
 Docker images are not part of this release. CI images stay in GHCR and do not bundle Bloomberg SDK files.
+
+### Manual npm trusted publishing retry
+
+Use this workflow only when a stable npm release needs to be retried after the canonical `vX.Y.Z` tag flow. Do not use it for GitHub-only JS assets; use `js_github_release.yml` and a `js-vX.Y.Z` tag for that case.
+
+Go to **GitHub Actions** > **Publish JS Packages** > **Run workflow**.
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `version` | Stable npm version/tag to publish, such as `v1.2.3`; pre-release forms are rejected for npm publishing |
+
+**What happens automatically:**
+
+1. Validates the stable semver version and skips non-npm pre-release tags from the `v*` trigger
+2. Builds the supported native platform packages (`linux-x64`, `win32-x64`, `darwin-arm64`)
+3. Installs JS package dependencies before stamping package versions so `package-lock.json` stays consistent
+4. Runs a packed-install smoke test before publishing
+5. Publishes missing packages in dependency order: platform packages first, then `@xbbg/core`
+6. Uses npm trusted publishing/OIDC with provenance from GitHub Actions; no npm token is required for normal releases
+
+The npm Trusted Publisher configuration must match the workflow filename exactly: `npm-publish.yml`, repository `alpha-xone/xbbg`, and blank environment unless a matching GitHub environment is intentionally added.
 
 ## Local Development
 
