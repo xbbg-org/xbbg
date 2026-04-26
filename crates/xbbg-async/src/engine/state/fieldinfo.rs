@@ -10,9 +10,9 @@
 
 use std::sync::Arc;
 
-use arrow::array::StringBuilder;
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::builder::StringBuilder;
+use arrow_array::RecordBatch;
+use arrow_schema::{DataType, Field, Schema};
 use tokio::sync::oneshot;
 use xbbg_log::trace;
 

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use arrow::array::{
-    ArrayRef, BooleanBuilder, Date32Builder, Float64Builder, Int32Builder, Int64Builder,
-    StringBuilder, Time64MicrosecondBuilder, TimestampMicrosecondBuilder,
+use arrow_array::builder::{
+    BooleanBuilder, Date32Builder, Float64Builder, Int32Builder, Int64Builder, StringBuilder,
+    Time64MicrosecondBuilder, TimestampMicrosecondBuilder,
 };
-use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
-use arrow::record_batch::RecordBatch;
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use xbbg_core::BlpError;
 
 use super::update::{FieldKind, SubscriptionUpdate, UpdateValue};

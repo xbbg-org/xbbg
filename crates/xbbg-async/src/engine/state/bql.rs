@@ -6,9 +6,10 @@
 //! Note: BQL can return complex nested structures. We flatten them into
 //! a tabular format with id column + value columns per field.
 
-use arrow::array::{ArrayRef, Float64Builder, StringArray, StringBuilder};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::builder::{Float64Builder, StringBuilder};
+use arrow_array::RecordBatch;
+use arrow_array::{ArrayRef, StringArray};
+use arrow_schema::{DataType, Field, Schema};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
@@ -743,7 +744,7 @@ impl BqlState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{Float64Array, StringArray};
+    use arrow_array::{Float64Array, StringArray};
 
     fn make_state() -> BqlState {
         let (tx, _rx) = oneshot::channel();

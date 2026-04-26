@@ -6,11 +6,11 @@
 
 use std::str::FromStr;
 
-use arrow::array::{Array, TimestampMicrosecondArray};
-use arrow::datatypes::Field;
-use arrow::datatypes::{DataType, TimeUnit};
-use arrow::error::ArrowError;
-use arrow::record_batch::RecordBatch;
+use arrow_array::RecordBatch;
+use arrow_array::{Array, TimestampMicrosecondArray};
+use arrow_schema::ArrowError;
+use arrow_schema::Field;
+use arrow_schema::{DataType, TimeUnit};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use tokio::sync::mpsc;
@@ -244,9 +244,9 @@ pub(crate) fn apply_output_timezone_batch(
     let new_field = Field::new("time", new_ts.data_type().clone(), true);
     let mut fields: Vec<_> = schema.fields().to_vec();
     fields[ti] = std::sync::Arc::new(new_field);
-    let new_schema = arrow::datatypes::Schema::new_with_metadata(fields, schema.metadata().clone());
+    let new_schema = arrow_schema::Schema::new_with_metadata(fields, schema.metadata().clone());
     let mut cols = batch.columns().to_vec();
-    cols[ti] = std::sync::Arc::new(new_ts) as arrow::array::ArrayRef;
+    cols[ti] = std::sync::Arc::new(new_ts) as arrow_array::ArrayRef;
     RecordBatch::try_new(std::sync::Arc::new(new_schema), cols)
 }
 

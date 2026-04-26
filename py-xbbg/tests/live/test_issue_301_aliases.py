@@ -173,7 +173,7 @@ def _recent_intraday_window() -> tuple[str, str]:
                 _INTRADAY_TICKER,
                 start_datetime=start_text,
                 end_datetime=end_text,
-                backend="pyarrow",
+                backend="native",
                 typ="TRADE",
                 interval=5,
                 maxDataPoints=1,
@@ -203,7 +203,7 @@ def _historical_window() -> tuple[str, str]:
                 _HISTORICAL_FIELD,
                 start_date=end_text,
                 end_date=end_text,
-                backend="pyarrow",
+                backend="native",
                 maxDataPoints=1,
             )
             rows = _raw_rows(probe)
@@ -224,7 +224,7 @@ def _materialize_frame(frame: Any) -> Any:
 
 
 def _row_count(frame: Any) -> int:
-    """Return row count for pyarrow/narwhals/pandas/polars-like live API results."""
+    """Return row count for arrow/narwhals/pandas/polars-like live API results."""
     materialized = _materialize_frame(frame)
     if hasattr(materialized, "num_rows"):
         return int(materialized.num_rows)
@@ -258,6 +258,12 @@ def _assert_raw_rows(frame: Any, expected_columns: list[str]) -> list[dict[str, 
     columns = _column_names(frame)
     missing = [column for column in expected_columns if column not in columns]
     assert not missing, f"missing raw columns {missing}; got {columns}"
+    materialized = _materialize_frame(frame)
+    if materialized.__class__.__name__ == "ArrowTable":
+        assert materialized.num_columns == len(materialized.column_names)
+        batches = materialized.to_batches()
+        assert batches
+        assert all(batch.__class__.__name__ == "ArrowRecordBatch" for batch in batches)
     rows = _raw_rows(frame)
     assert rows, f"expected at least one raw row with columns {columns}"
     assert _row_count(frame) == len(rows)
@@ -311,7 +317,7 @@ def test_bdh_live_accepts_historical_request_aliases(case_name: str, kwargs: dic
         _HISTORICAL_FIELD,
         start_date=start_date,
         end_date=end_date,
-        backend="pyarrow",
+        backend="native",
         **kwargs,
     )
 
@@ -328,7 +334,7 @@ def test_bdh_live_applies_excel_presentation_aliases_locally() -> None:
         _HISTORICAL_FIELD,
         start_date=start_date,
         end_date=end_date,
-        backend="pyarrow",
+        backend="native",
         Points=1,
         Dts="Show",
         Dates="S",
@@ -350,7 +356,7 @@ def test_bdh_live_applies_excel_presentation_aliases_locally() -> None:
 @pytest.mark.parametrize(
     ("backend", "required_module"),
     [
-        ("pyarrow", None),
+        ("native", None),
         ("pandas", "pandas"),
         ("polars", "polars"),
         ("polars_lazy", "polars"),
@@ -411,7 +417,7 @@ def test_bdib_live_accepts_bar_aliases_and_event_value_aliases(
         _INTRADAY_TICKER,
         start_datetime=start,
         end_datetime=end,
-        backend="pyarrow",
+        backend="native",
         Points=1,
         **alias_kwargs,
     )
@@ -432,7 +438,7 @@ def test_bdtick_live_accepts_bar_type_aliases_and_exchange_codes(
         _INTRADAY_TICKER,
         start_datetime=start,
         end_datetime=end,
-        backend="pyarrow",
+        backend="native",
         IncludeExchangeCodes=True,
         Points=1,
         **alias_kwargs,

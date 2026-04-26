@@ -21,7 +21,7 @@ import { PhCpu, PhLightning, PhPackage, PhStackSimple } from 'phosphor-icons-ast
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhStackSimple size={20} weight="duotone" aria-hidden="true" />
     </div>
-    Return data as pandas, Polars, PyArrow, DuckDB, or Narwhals depending on the pipeline you already have.
+    Return data as a Narwhals DataFrame by default, preferring a real PyArrow table when PyArrow is installed and falling back to xbbg's native Arrow carrier for minimal installs. Explicitly convert to native, PyArrow, pandas, Polars, DuckDB, and other supported backends when your pipeline needs them.
   </Card>
   <Card title="Async support">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">

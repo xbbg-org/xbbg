@@ -4,11 +4,11 @@ import asyncio
 import logging
 from typing import cast
 
-import pyarrow as pa
 import pytest
 
 import xbbg
 from xbbg import blp
+from xbbg._core import ArrowRecordBatch, ArrowTable
 from xbbg.services import Operation, Service
 
 
@@ -55,15 +55,12 @@ def reset_blp_state():
         blp._engine = old_engine
 
 
-def _sample_batch() -> pa.RecordBatch:
-    return pa.record_batch(
+def _sample_batch() -> ArrowRecordBatch:
+    return ArrowTable.from_pylist(
         [
-            pa.array(["IBM US Equity"]),
-            pa.array(["PX_LAST"]),
-            pa.array(["123.45"]),
-        ],
-        names=["ticker", "field", "value"],
-    )
+            {"ticker": "IBM US Equity", "field": "PX_LAST", "value": "123.45"},
+        ]
+    ).to_batches()[0]
 
 
 def test_arequest_runs_sync_and_async_middleware_in_order(monkeypatch):
@@ -100,7 +97,7 @@ def test_arequest_runs_sync_and_async_middleware_in_order(monkeypatch):
         )
     )
 
-    assert len(result) == 1
+    assert result.num_rows == 1
     assert events == [
         ("outer_pre", Operation.REFERENCE_DATA),
         ("inner_pre", "outer"),

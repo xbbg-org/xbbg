@@ -364,7 +364,7 @@ async def abqr(
         start_datetime=start_datetime,
         end_datetime=end_datetime,
         event_types=event_types,
-        backend="pyarrow",
+        backend="native",
         **kwargs,
     )
     return _postprocess_bqr_result(

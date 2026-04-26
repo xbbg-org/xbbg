@@ -3,9 +3,9 @@
 //! Extracts IntradayTickResponse messages directly from Bloomberg Elements
 //! without JSON intermediate serialization.
 
-use arrow::array::ArrayRef;
-use arrow::datatypes::{Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::ArrayRef;
+use arrow_array::RecordBatch;
+use arrow_schema::{Field, Schema};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::oneshot;

@@ -8,9 +8,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, Date32Builder, Float64Builder, StringBuilder};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::builder::{Date32Builder, Float64Builder, StringBuilder};
+use arrow_array::ArrayRef;
+use arrow_array::RecordBatch;
+use arrow_schema::{DataType, Field, Schema};
 use tokio::sync::mpsc;
 use xbbg_log::trace;
 

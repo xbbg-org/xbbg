@@ -14,11 +14,11 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::utils::array_value_as_string;
-use arrow::array::RecordBatch;
-use arrow::array::{
+use arrow_array::RecordBatch;
+use arrow_array::{
     Array, ArrayRef, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray,
 };
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow_schema::{DataType, Field, Schema};
 use xbbg_async::engine::{Engine, ExtractorType, RequestParams};
 use xbbg_async::services::{Operation, Service};
 use xbbg_ext::transforms::historical::{apply_column_renames, calculate_level_percentages};
@@ -630,8 +630,8 @@ pub async fn recipe_etf_holdings(
 mod tests {
     use std::sync::Arc;
 
-    use arrow::array::{Float64Array, Int32Array, StringArray};
-    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow_array::{Float64Array, Int32Array, StringArray};
+    use arrow_schema::{DataType, Field, Schema};
 
     use super::*;
 

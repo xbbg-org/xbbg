@@ -25,8 +25,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use arc_swap::ArcSwap;
-use arrow::array::Array;
-use arrow::record_batch::RecordBatch;
+use arrow_array::Array;
+use arrow_array::RecordBatch;
 use tokio::sync::{mpsc, watch};
 
 use xbbg_core::session::Session;
@@ -1765,7 +1765,7 @@ impl Engine {
         // Get the field column from the response
         let field_col = batch
             .column_by_name("field")
-            .and_then(|c| c.as_any().downcast_ref::<arrow::array::StringArray>());
+            .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>());
 
         let valid_fields: std::collections::HashSet<String> = match field_col {
             Some(col) => (0..col.len())

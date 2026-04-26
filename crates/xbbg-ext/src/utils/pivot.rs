@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, RecordBatch, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow_array::{Array, ArrayRef, RecordBatch, StringArray};
+use arrow_schema::{DataType, Field, Schema};
 
 use crate::error::{ExtError, Result};
 
@@ -170,7 +170,7 @@ pub fn is_long_format(batch: &RecordBatch) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::datatypes::Schema;
+    use arrow_schema::Schema;
 
     fn make_long_batch() -> RecordBatch {
         let schema = Arc::new(Schema::new(vec![

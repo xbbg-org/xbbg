@@ -29,8 +29,6 @@ from typing import TYPE_CHECKING, Any, TypeAlias, cast
 import warnings
 
 import narwhals.stable.v1 as nw
-from narwhals.typing import IntoFrame
-import pyarrow as pa
 
 from xbbg.services import (
     ExtractorHint,
@@ -42,13 +40,13 @@ from xbbg.services import (
 )
 
 from ._exports import BLP_MODULE_EXPORTS
-from .backend import Backend
+from .backend import Backend, get_default_backend
 
-# Type alias for backend conversion return types
-# Covers: nw.DataFrame, nw.LazyFrame (narwhals wrappers) + IntoFrame (all native types)
-DataFrameResult: TypeAlias = nw.DataFrame | nw.LazyFrame | IntoFrame
+# Type alias for backend conversion return types.
+DataFrameResult: TypeAlias = Any
 
 logger = logging.getLogger(__name__)
+_native_narwhals_fallback_warned = False
 
 
 __all__ = list(BLP_MODULE_EXPORTS)
@@ -368,14 +366,15 @@ class RequestContext:
     params: RequestParams
     params_dict: dict[str, Any]
     backend: Backend | str | None
+    raw: bool
     securities: list[str]
     fields: list[str]
     environment: RequestEnvironment
     metadata: dict[str, Any] = field(default_factory=dict)
     started_at: float = field(default_factory=time.perf_counter)
     elapsed_ms: float | None = None
-    batch: pa.RecordBatch | None = None
-    table: pa.Table | None = None
+    batch: Any | None = None
+    table: Any | None = None
     frame: DataFrameResult | None = None
     error: Exception | None = None
 
@@ -701,14 +700,15 @@ def set_backend(backend: Backend | str | None) -> None:
 
     Args:
         backend: The backend to use. Can be a Backend enum or string:
-            - Backend.NARWHALS / "narwhals": Return narwhals DataFrame (default)
+            - Backend.NATIVE / "native": Return xbbg native Arrow carrier object
+            - Backend.PYARROW / "pyarrow": Return pyarrow Table
+            - Backend.NARWHALS / "narwhals": Return narwhals DataFrame
             - Backend.NARWHALS_LAZY / "narwhals_lazy": Return narwhals LazyFrame
             - Backend.PANDAS / "pandas": Return pandas DataFrame
             - Backend.POLARS / "polars": Return polars DataFrame
             - Backend.POLARS_LAZY / "polars_lazy": Return polars LazyFrame
-            - Backend.PYARROW / "pyarrow": Return pyarrow Table
             - Backend.DUCKDB / "duckdb": Return DuckDB relation (lazy)
-            - None: Same as Backend.NARWHALS
+            - None: Auto-select the first available default backend
 
     Example::
 
@@ -1077,39 +1077,6 @@ def _pop_presentation_aliases(kwargs: dict[str, Any]) -> _PresentationOptions:
     )
 
 
-def _date_value_to_date(value: Any) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value[:10]).date()
-        except ValueError:
-            return None
-    return None
-
-
-def _period_label(value: Any, periodicity: str | None) -> str:
-    parsed = _date_value_to_date(value)
-    if parsed is None:
-        return str(value)
-
-    normalized = (periodicity or "DAILY").upper()
-    if normalized in {"YEARLY", "Y"}:
-        return f"{parsed.year:04d}"
-    if normalized in {"SEMI_ANNUALLY", "SEMIANNUALLY", "S"}:
-        half = 1 if parsed.month <= 6 else 2
-        return f"{parsed.year:04d}H{half}"
-    if normalized in {"QUARTERLY", "Q"}:
-        quarter = ((parsed.month - 1) // 3) + 1
-        return f"{parsed.year:04d}Q{quarter}"
-    if normalized in {"MONTHLY", "M"}:
-        return f"{parsed.year:04d}-{parsed.month:02d}"
-    if normalized in {"WEEKLY", "W"}:
-        iso_year, iso_week, _weekday = parsed.isocalendar()
-        return f"{iso_year:04d}-W{iso_week:02d}"
-    return parsed.isoformat()
 
 
 def _periodicity_selection(elements: Sequence[tuple[str, Any]]) -> str | None:
@@ -1129,45 +1096,19 @@ def _presentation_format(fmt: Format | None, presentation: _PresentationOptions)
     return fmt
 
 
-def _drop_columns(table: pa.Table, names: Sequence[str]) -> pa.Table:
-    result = table
-    for name in names:
-        if name in result.column_names:
-            result = result.remove_column(result.column_names.index(name))
-    return result
-
-
 def _apply_historical_presentation(
-    table: pa.Table,
+    table: Any,
     presentation: _PresentationOptions,
     *,
     periodicity: str | None,
-) -> pa.Table:
-    """Apply Excel-style BDH presentation options to a raw Arrow table."""
-    result = table
-
-    if presentation.sort is not None and "date" in result.column_names:
-        date_order = "descending" if presentation.sort == "DESCENDING" else "ascending"
-        sort_keys = [("date", date_order)]
-        if "ticker" in result.column_names:
-            sort_keys.insert(0, ("ticker", "ascending"))
-        if "field" in result.column_names:
-            sort_keys.append(("field", "ascending"))
-        result = result.sort_by(sort_keys)
-
-    if presentation.date_format in {"PERIODIC", "BOTH"} and "date" in result.column_names:
-        date_idx = result.column_names.index("date")
-        period_values = [_period_label(value, periodicity) for value in result.column("date").to_pylist()]
-        period_array = pa.array(period_values, type=pa.string())
-        if presentation.date_format == "PERIODIC":
-            result = result.set_column(date_idx, pa.field("period", pa.string()), period_array)
-        else:
-            result = result.add_column(date_idx + 1, pa.field("period", pa.string()), period_array)
-
-    if presentation.show_date is False:
-        result = _drop_columns(result, ("date", "period"))
-
-    return result
+) -> Any:
+    """Apply Excel-style BDH presentation options through native Arrow operations."""
+    return table.apply_historical_presentation(
+        presentation.show_date,
+        presentation.date_format,
+        presentation.sort,
+        periodicity,
+    )
 
 
 async def _aget_valid_elements(service: str, operation: str) -> set[str]:
@@ -1324,37 +1265,107 @@ from xbbg.ext._utils import (  # noqa: E402  (must follow services imports)
 )
 
 
+def _core_arrow_table_class() -> type[Any]:
+    from xbbg._core import ArrowTable
+
+    return ArrowTable
+
+
+def _is_arrow_table(value: Any) -> bool:
+    return value.__class__.__name__ == "ArrowTable" and hasattr(value, "__arrow_c_stream__")
+
+
+def _is_arrow_record_batch(value: Any) -> bool:
+    return value.__class__.__name__ == "ArrowRecordBatch" and hasattr(value, "__arrow_c_array__")
+
+
+def _ensure_arrow_table(frame: Any) -> Any:
+    if _is_arrow_table(frame):
+        return frame
+    if _is_arrow_record_batch(frame):
+        return frame.to_table()
+    raise TypeError(f"Expected xbbg ArrowTable or ArrowRecordBatch, got {type(frame).__name__}")
+
+
+def _to_pyarrow_table(table: Any) -> Any:
+    import pyarrow as pa
+
+    return pa.table(table)
+
+
+def _to_pandas_frame(table: Any) -> Any:
+    import pandas as pd
+
+    return pd.DataFrame.from_records(table.to_pylist(), columns=table.column_names)
+
+
+def _to_polars_frame(table: Any) -> Any:
+    import polars as pl
+
+    return pl.from_arrow(table)
+
+
+def _warn_native_narwhals_fallback() -> None:
+    global _native_narwhals_fallback_warned
+    if _native_narwhals_fallback_warned:
+        return
+    _native_narwhals_fallback_warned = True
+    warnings.warn(
+        "No optional dataframe backend is installed for xbbg's Narwhals output; "
+        "falling back to the limited xbbg native ArrowTable plugin. "
+        "Install `xbbg[pyarrow]`, `xbbg[pandas]`, or `xbbg[polars]` for full dataframe behavior, "
+        "or request `backend='native'` explicitly if the raw xbbg ArrowTable is intended.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+
+
+def _best_narwhals_native(table: Any) -> Any:
+    """Return the richest installed native object for Narwhals wrapping.
+
+    The Rust engine always produces the xbbg native Arrow carrier.  For the
+    public Narwhals default, prefer mature dataframe/Arrow implementations
+    when they are installed so existing Narwhals expressions keep their old
+    behavior instead of falling through to the intentionally small xbbg plugin.
+    """
+    for convert in (_to_pyarrow_table, _to_pandas_frame, _to_polars_frame):
+        try:
+            return convert(table)
+        except ImportError:
+            continue
+    _warn_native_narwhals_fallback()
+    return table
+
+
 def _convert_backend(
     frame: Any,
     backend: Backend | str | None,
 ) -> DataFrameResult:
-    """Convert a frame to the requested backend via pa.Table as canonical form.
+    """Convert an xbbg ArrowTable to the requested public backend."""
+    effective = _resolve_backend(backend) or get_default_backend()
+    table = _ensure_arrow_table(frame)
 
-    Fast path: when ``frame`` is already a ``pa.Table`` (the common case from
-    the Rust engine), dispatch directly to the target backend via a single
-    zero-copy primitive. Slow path: unwrap narwhals or other native inputs to
-    ``pa.Table`` first via ``nw.from_native(frame).to_arrow()``.
-    """
-    effective = _resolve_backend(backend)
-    table = frame if isinstance(frame, pa.Table) else nw.from_native(frame).to_arrow()
-
-    if effective == Backend.PYARROW:
+    if effective == Backend.NATIVE:
         return table
+    if effective == Backend.PYARROW:
+        return _to_pyarrow_table(table)
     if effective == Backend.PANDAS:
-        return table.to_pandas()
+        return _to_pandas_frame(table)
     if effective == Backend.POLARS:
-        import polars as pl
-
-        return pl.from_arrow(table)
+        return _to_polars_frame(table)
     if effective == Backend.POLARS_LAZY:
-        import polars as pl
-
-        return pl.from_arrow(table).lazy()
+        return _to_polars_frame(table).lazy()
+    if effective == Backend.NARWHALS:
+        return nw.from_native(_best_narwhals_native(table))
     if effective == Backend.NARWHALS_LAZY:
-        return nw.from_native(table).lazy()
+        return nw.from_native(_best_narwhals_native(table)).lazy()
     if effective == Backend.DUCKDB:
-        return nw.from_native(table).lazy(backend="duckdb")
-    return nw.from_native(table)  # NARWHALS or None default
+        import duckdb
+
+        con = duckdb.connect()
+        con.register("xbbg_arrow", table)
+        return con.sql("select * from xbbg_arrow")
+    return nw.from_native(table)
 
 
 async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
@@ -1382,7 +1393,7 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
         context.fields or None,
     )
 
-    context.table = pa.Table.from_batches([batch])
+    context.table = batch.to_table()
     context.frame = context.table
     return context.table
 
@@ -1588,6 +1599,7 @@ async def arequest(
         params=params,
         params_dict=params_dict,
         backend=backend,
+        raw=_raw,
         securities=list(securities_list or []),
         fields=list(fields_list or []),
         environment=_snapshot_request_environment(),
@@ -1598,12 +1610,16 @@ async def arequest(
     except Exception as exc:
         context.error = exc
         raise
-    # Only auto-convert the default terminal output (pa.Table). If a middleware
-    # short-circuited with any other type (e.g. a cache returning a list), the
-    # middleware owns the return contract — leave it alone.
-    if _raw or not isinstance(result, pa.Table):
+    # Low-level arequest() defaults to the raw Arrow output requested by OutputMode.ARROW.
+    # High-level generated endpoints call arequest(_raw=True) and then apply their own
+    # public backend conversion, so their default remains the Narwhals dataframe contract.
+    if _raw or not _is_arrow_table(result):
         return result
-    context.frame = _convert_backend(result, backend)
+    effective_backend = _resolve_backend(backend)
+    if effective_backend is None and params.output == OutputMode.ARROW:
+        context.frame = result
+        return result
+    context.frame = _convert_backend(result, effective_backend)
     return context.frame
 
 
@@ -2136,8 +2152,8 @@ class Subscription:
         sub = await xbbg.asubscribe(["AAPL US Equity"], ["LAST_PRICE", "BID"])
 
         async for batch in sub:
-            # batch is pyarrow.RecordBatch
-            print(batch.to_pandas())
+            # batch is xbbg.ArrowRecordBatch
+            print(batch.to_pylist())
 
             if should_add_msft:
                 await sub.add(["MSFT US Equity"])
@@ -2162,7 +2178,7 @@ class Subscription:
     def __aiter__(self):
         return self
 
-    async def __anext__(self) -> pa.RecordBatch | nw.DataFrame | dict[str, Any]:
+    async def __anext__(self) -> Any:
         if self._tick_mode:
             return await self._sub.__anext_tick_dict__()
 
@@ -2171,8 +2187,8 @@ class Subscription:
         if self._raw:
             return batch
 
-        # Dispatch pa.Table directly to the requested backend.
-        return _convert_backend(pa.Table.from_batches([batch]), self._backend)
+        # Dispatch xbbg ArrowTable directly to the requested backend.
+        return _convert_backend(batch.to_table(), self._backend)
 
     async def add(self, tickers: str | list[str]) -> None:
         """Add tickers to subscription dynamically.
@@ -2302,7 +2318,7 @@ class Subscription:
         """
         return self._sub.stats
 
-    async def unsubscribe(self, drain: bool = False) -> list[pa.RecordBatch] | None:
+    async def unsubscribe(self, drain: bool = False) -> list[Any] | None:
         """Close subscription and optionally drain remaining data.
 
         Args:
@@ -2465,7 +2481,7 @@ async def astream(
     raw: bool = False,
     all_fields: bool = False,
     backend: Backend | str | None = None,
-    callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
+    callback: Callable[[Any], None] | None = None,
     tick_mode: bool = False,
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
@@ -2531,7 +2547,7 @@ def stream(
     raw: bool = False,
     all_fields: bool = False,
     backend: Backend | str | None = None,
-    callback: Callable[[pa.RecordBatch | nw.DataFrame | dict[str, Any]], None] | None = None,
+    callback: Callable[[Any], None] | None = None,
     tick_mode: bool = False,
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
@@ -2707,7 +2723,7 @@ async def amktbar(
         interval: Bar interval in minutes (default: 1).
         start_time: Optional start time in HH:MM format.
         end_time: Optional end time in HH:MM format.
-        raw: If True, return raw pyarrow RecordBatch (default: False).
+        raw: If True, return raw xbbg ArrowRecordBatch (default: False).
         all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
@@ -2775,7 +2791,7 @@ async def adepth(
 
     Args:
         tickers: Security identifier(s).
-        raw: If True, return raw pyarrow RecordBatch (default: False).
+        raw: If True, return raw xbbg ArrowRecordBatch (default: False).
         all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
@@ -2844,7 +2860,7 @@ async def achains(
     Args:
         underlying: Underlying security identifier.
         chain_type: Type of chain - "OPTIONS" or "FUTURES" (default: "OPTIONS").
-        raw: If True, return raw pyarrow RecordBatch (default: False).
+        raw: If True, return raw xbbg ArrowRecordBatch (default: False).
         all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend to return. If None, uses global default.
 
@@ -3145,7 +3161,7 @@ async def abta(
     ticker_list = _normalize_tickers(tickers)
     engine = _get_engine()
 
-    async def fetch_single(ticker: str) -> pa.RecordBatch | Exception:
+    async def fetch_single(ticker: str) -> Any | Exception:
         """Fetch TA data for a single ticker."""
         study_elements = _build_study_request(
             ticker,
@@ -3171,7 +3187,7 @@ async def abta(
     )
 
     # Filter successful results and warn about failures
-    batches: list[pa.RecordBatch] = []
+    batches: list[Any] = []
     for ticker, result in zip(ticker_list, results, strict=True):
         if isinstance(result, Exception):
             warnings.warn(f"Failed to fetch TA data for {ticker}: {result}", stacklevel=2)
@@ -3181,8 +3197,8 @@ async def abta(
     if not batches:
         raise RuntimeError("All TA requests failed")
 
-    # Combine all batches into a single table
-    table = pa.concat_tables([pa.Table.from_batches([b]) for b in batches])
+    # Combine all batches into a single native Arrow table
+    table = _core_arrow_table_class().from_batches(batches)
     return _convert_backend(table, _default_backend)
 
 
@@ -3477,66 +3493,9 @@ def _parse_date_offset(offset: str, reference: datetime) -> datetime:
     raise ValueError(f"Unknown time unit: {unit}")
 
 
-def _reshape_bqr_generic(table: pa.Table, ticker: str) -> nw.DataFrame:
-    """Reshape generic extractor output into structured BQR rows.
-
-    Explicit generic extraction and older xbbg builds return one path/value row
-    per Bloomberg leaf. This fallback groups those flat rows back into one row
-    per tick with proper columns.
-    """
-    import re
-
-    if "path" not in table.column_names:
-        return nw.from_native(pa.table({"ticker": [], "time": [], "type": [], "value": [], "size": []}))
-
-    paths = table["path"].to_pylist()
-    value_strs = table["value_str"].to_pylist() if "value_str" in table.column_names else [None] * len(paths)
-    value_nums = table["value_num"].to_pylist() if "value_num" in table.column_names else [None] * len(paths)
-
-    pattern = re.compile(r"tickData\[(\d+)\]\.(\w+)")
-
-    tick_values: list[tuple[str, str, Any]] = []
-    all_fields: set[str] = set()
-
-    for row_idx, path in enumerate(paths):
-        if not isinstance(path, str):
-            continue
-        match = pattern.search(path)
-        if not match:
-            continue
-
-        idx, field = match.group(1), match.group(2)
-        all_fields.add(field)
-
-        value_str = value_strs[row_idx]
-        value_num = value_nums[row_idx]
-        value = value_str if value_str not in (None, "") else value_num
-        tick_values.append((idx, field, value))
-
-    if not tick_values:
-        return nw.from_native(pa.table({"ticker": [], "time": [], "type": [], "value": [], "size": []}))
-
-    records_by_idx: dict[str, dict[str, Any]] = {}
-    for idx, field, value in tick_values:
-        if idx not in records_by_idx:
-            record: dict[str, Any] = {"ticker": ticker}
-            for name in all_fields:
-                record[name] = None
-            records_by_idx[idx] = record
-        records_by_idx[idx][field] = value
-
-    records = list(records_by_idx.values())
-
-    result = pa.Table.from_pylist(records)
-
-    # Reorder: ticker first, then standard tick fields, then extras
-    cols = result.column_names
-    priority = ["ticker", "time", "type", "value", "size"]
-    ordered = [c for c in priority if c in cols]
-    ordered += [c for c in cols if c not in priority]
-    result = result.select(ordered)
-
-    return nw.from_native(result)
+def _reshape_bqr_generic(table: Any, ticker: str) -> Any:
+    """Reshape generic extractor output into structured BQR rows via native Arrow."""
+    return table.reshape_bqr_generic(ticker)
 
 
 _BQR_RENAME_MAP: dict[str, str] = {
@@ -3570,13 +3529,8 @@ def _warn_bqr_dealer_input(ticker: str, *, stacklevel: int = 3) -> None:
     )
 
 
-def _bqr_has_broker_code_value(table: pa.Table) -> bool:
-    for column in _BQR_BROKER_COLUMNS:
-        if column not in table.column_names:
-            continue
-        if any(value not in (None, "") for value in table[column].to_pylist()):
-            return True
-    return False
+def _bqr_has_broker_code_value(table: Any) -> bool:
+    return table.has_any_value(list(_BQR_BROKER_COLUMNS))
 
 
 def _postprocess_bqr_result(
@@ -3586,10 +3540,10 @@ def _postprocess_bqr_result(
     backend: Backend | str | None,
     enforce_broker_codes: bool,
 ) -> DataFrameResult:
-    table = result if isinstance(result, pa.Table) else nw.from_native(result).to_arrow()
+    table = _ensure_arrow_table(result)
 
     if "path" in table.column_names:
-        table = _reshape_bqr_generic(table, ticker).to_arrow()
+        table = _reshape_bqr_generic(table, ticker)
 
     if enforce_broker_codes and table.num_rows > 0 and not _bqr_has_broker_code_value(table):
         raise RuntimeError(
@@ -3601,8 +3555,8 @@ def _postprocess_bqr_result(
     if table.num_rows > 0 and "time" in table.column_names:
         table = table.sort_by([("time", "ascending")])
 
-    renamed_columns = [_BQR_RENAME_MAP.get(column, column) for column in table.column_names]
-    table = table.rename_columns(renamed_columns)
+    rename_map = {column: _BQR_RENAME_MAP[column] for column in table.column_names if column in _BQR_RENAME_MAP}
+    table = table.rename_columns(rename_map)
     return _convert_backend(table, backend)
 
 
@@ -4017,7 +3971,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
         or presentation.date_format in {"PERIODIC", "BOTH"}
     )
 
-    def postprocess(raw: pa.Table) -> DataFrameResult:
+    def postprocess(raw: Any) -> DataFrameResult:
         shaped = _apply_historical_presentation(
             raw,
             presentation,
@@ -4237,7 +4191,7 @@ async def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
     )
 
     def postprocess(nw_df: Any) -> DataFrameResult:
-        logger.debug("abqr: received %d rows", len(nw_df))
+        logger.debug("abqr: received %d rows", _ensure_arrow_table(nw_df).num_rows)
         return _postprocess_bqr_result(
             nw_df,
             ticker=ticker,

@@ -7,6 +7,10 @@ SDK_EXPORTS = (
 )
 
 CORE_EXPORTS = (
+    "ArrowTable",
+    "ArrowRecordBatch",
+    "ArrowSchema",
+    "ArrowField",
     "set_log_level",
     "get_log_level",
     "enable_sdk_logging",

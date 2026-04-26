@@ -3,7 +3,7 @@
 //! Extracts BulkDataResponse messages directly from Bloomberg Elements
 //! without JSON intermediate serialization.
 
-use arrow::record_batch::RecordBatch;
+use arrow_array::RecordBatch;
 use std::collections::HashSet;
 use tokio::sync::oneshot;
 use xbbg_log::trace;

@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
-use arrow::record_batch::RecordBatch;
+use arrow_array::RecordBatch;
 use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 

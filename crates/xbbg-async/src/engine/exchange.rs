@@ -1,4 +1,4 @@
-use arrow::array::{
+use arrow_array::{
     Array, BooleanArray, Float64Array, Int32Array, Int64Array, StringArray, Time32MillisecondArray,
     Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
 };
@@ -67,7 +67,7 @@ impl Engine {
         &self,
         ticker: &str,
         fields: &[&str],
-    ) -> Result<arrow::record_batch::RecordBatch, BlpAsyncError> {
+    ) -> Result<arrow_array::RecordBatch, BlpAsyncError> {
         let params = RequestParams {
             service: Service::RefData.to_string(),
             operation: Operation::ReferenceData.to_string(),
@@ -183,7 +183,7 @@ impl Engine {
     }
 }
 
-fn parse_exchange_info(ticker: &str, batch: &arrow::record_batch::RecordBatch) -> ExchangeInfo {
+fn parse_exchange_info(ticker: &str, batch: &arrow_array::RecordBatch) -> ExchangeInfo {
     if batch.num_rows() == 0 {
         return ExchangeInfo::fallback(ticker.to_string());
     }
@@ -230,7 +230,7 @@ fn parse_exchange_info(ticker: &str, batch: &arrow::record_batch::RecordBatch) -
     }
 }
 
-fn apply_futures_hours(info: &mut ExchangeInfo, batch: &arrow::record_batch::RecordBatch) {
+fn apply_futures_hours(info: &mut ExchangeInfo, batch: &arrow_array::RecordBatch) {
     let Some((day_start, day_end)) =
         get_string(batch, "FUT_TRADING_HRS").and_then(|v| parse_futures_hours(&v))
     else {
@@ -287,7 +287,7 @@ fn normalize_hhmm(value: &str) -> Option<String> {
     None
 }
 
-fn get_string(batch: &arrow::record_batch::RecordBatch, col: &str) -> Option<String> {
+fn get_string(batch: &arrow_array::RecordBatch, col: &str) -> Option<String> {
     if batch.num_rows() == 0 {
         return None;
     }
@@ -298,7 +298,7 @@ fn get_string(batch: &arrow::record_batch::RecordBatch, col: &str) -> Option<Str
     get_long_field_value(batch, col).and_then(clean_value)
 }
 
-fn get_f64(batch: &arrow::record_batch::RecordBatch, col: &str) -> Option<f64> {
+fn get_f64(batch: &arrow_array::RecordBatch, col: &str) -> Option<f64> {
     if batch.num_rows() == 0 {
         return None;
     }
@@ -323,10 +323,7 @@ fn get_f64(batch: &arrow::record_batch::RecordBatch, col: &str) -> Option<f64> {
     get_long_field_value(batch, col).and_then(|s| parse_f64(&s))
 }
 
-fn get_long_field_value(
-    batch: &arrow::record_batch::RecordBatch,
-    field_name: &str,
-) -> Option<String> {
+fn get_long_field_value(batch: &arrow_array::RecordBatch, field_name: &str) -> Option<String> {
     let fields = batch
         .column_by_name("field")?
         .as_any()
@@ -406,12 +403,12 @@ fn parse_f64(raw: &str) -> Option<f64> {
 mod tests {
     use std::sync::Arc;
 
-    use arrow::array::{
+    use arrow_array::RecordBatch;
+    use arrow_array::{
         ArrayRef, Float64Array, StringArray, Time32MillisecondArray, Time32SecondArray,
         Time64MicrosecondArray, Time64NanosecondArray,
     };
-    use arrow::datatypes::{DataType, Field, Schema};
-    use arrow::record_batch::RecordBatch;
+    use arrow_schema::{DataType, Field, Schema};
 
     use super::{apply_futures_hours, parse_exchange_info, should_query_fut_gen_month};
     use xbbg_ext::ExchangeInfoSource;

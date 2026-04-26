@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
-import pyarrow as pa
 import pytest
 
+from xbbg._core import ArrowRecordBatch, ArrowTable
 from xbbg.services import ExtractorHint, Operation, RequestParams, Service
+
+
+def _sample_batch() -> ArrowRecordBatch:
+    return ArrowTable.from_pylist(
+        [
+            {"ticker": "IBM US Equity", "field": "PX_LAST", "value": "123.45"},
+        ]
+    ).to_batches()[0]
 
 
 def test_request_params_to_dict_includes_request_operation_for_raw_request():
@@ -47,14 +55,7 @@ async def test_arequest_passes_request_operation_to_engine(monkeypatch):
     class FakeEngine:
         async def request(self, params_dict):
             captured.update(params_dict)
-            return pa.record_batch(
-                [
-                    pa.array(["IBM US Equity"]),
-                    pa.array(["PX_LAST"]),
-                    pa.array(["123.45"]),
-                ],
-                names=["ticker", "field", "value"],
-            )
+            return _sample_batch()
 
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
 
@@ -81,14 +82,7 @@ def test_request_sync_forwards_request_operation(monkeypatch):
     class FakeEngine:
         async def request(self, params_dict):
             captured.update(params_dict)
-            return pa.record_batch(
-                [
-                    pa.array(["IBM US Equity"]),
-                    pa.array(["PX_LAST"]),
-                    pa.array(["123.45"]),
-                ],
-                names=["ticker", "field", "value"],
-            )
+            return _sample_batch()
 
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
 

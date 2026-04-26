@@ -10,11 +10,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use arrow::array::{
+use arrow_arith::numeric::{div, mul};
+use arrow_array::{
     Array, ArrayRef, Date32Array, Datum, Float64Array, Int32Array, Int64Array, RecordBatch,
     StringArray,
 };
-use arrow::compute::kernels::numeric::{div, mul};
 use xbbg_async::engine::{Engine, RequestParams};
 use xbbg_async::services::{Operation, Service};
 use xbbg_ext::transforms::currency::{build_fx_pair, same_currency, FxConversionInfo};
@@ -521,7 +521,7 @@ fn array_value_as_f64(array: &ArrayRef, row: usize) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow_schema::{DataType, Field, Schema};
 
     #[test]
     fn test_extract_ticker_columns_from_schema() {

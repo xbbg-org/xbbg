@@ -32,18 +32,24 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
   "narwhals>=2.0",
-  "pyarrow>=22.0.0",
 ]
 
 [project.optional-dependencies]
 # Minimal extras for downstream consumers; dev tooling is managed by pixi.
 test = ["pytest", "pytest-cov", "pytest-asyncio"]
+pyarrow = ["pyarrow>=22.0.0"]
+pandas = ["pandas>=2.0"]
+polars = ["polars>=0.20"]
+duckdb = ["duckdb>=1.0"]
 
 [project.urls]
 Homepage = "https://github.com/alpha-xone/xbbg"
 Documentation = "https://alpha-xone.github.io/xbbg"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
+
+[project.entry-points."narwhals.plugins"]
+xbbg = "xbbg._narwhals_plugin"
 
 # ── pyo3-stub-gen configuration (reuses maturin keys for compatibility) ───────
 [tool.maturin]

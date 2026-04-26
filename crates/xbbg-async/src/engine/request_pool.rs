@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use arrow::record_batch::RecordBatch;
+use arrow_array::RecordBatch;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::BlpError;

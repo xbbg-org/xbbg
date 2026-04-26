@@ -1,26 +1,27 @@
 ---
 title: DataFrame Backends
-description: Choose between pandas, Polars, PyArrow, and more
+description: Choose between xbbg native, PyArrow, pandas, Polars, DuckDB, and more
 ---
 
-import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-xbbg is DataFrame-library agnostic. The core engine returns [Apache Arrow](https://arrow.apache.org/) data; conversion to your preferred library happens at the boundary before results are returned to you. This means you can use whichever DataFrame library fits your stack without forking or wrapping xbbg.
+xbbg is Arrow-native internally. Endpoint helpers return a Narwhals DataFrame by default. When PyArrow is installed, that Narwhals frame is backed by a real `pyarrow.Table` to preserve the legacy Narwhals/PyArrow behavior; otherwise xbbg falls back through installed dataframe libraries and finally the minimal `xbbg.ArrowTable` native carrier from `xbbg._core`.
 
-The backend abstraction is provided by [narwhals](https://github.com/narwhals-dev/narwhals), which handles the translation layer between Arrow and the supported libraries.
+Use `backend="native"` / `Backend.NATIVE` when you want the raw `xbbg.ArrowTable` carrier, or `backend="pyarrow"` / `Backend.PYARROW` for an actual `pyarrow.Table`. If default Narwhals output has to fall back to the limited native plugin because no PyArrow/pandas/Polars backend is installed, xbbg emits a one-time `RuntimeWarning` with install guidance.
 
 ## Supported Backends
 
 ### Eager Backends
 
-Eager backends return a fully materialized DataFrame immediately.
+Eager backends return a fully materialized object immediately.
 
 | Backend | Output type | Best for |
 |---------|-------------|----------|
+| default / `narwhals` | Narwhals DataFrame | Backwards-compatible dataframe ergonomics over PyArrow when installed, with a warned native fallback for minimal installs |
+| `native` | `xbbg.ArrowTable` | Explicit native carrier, PyCapsule interop, memory-conscious workflows |
+| `pyarrow` | `pyarrow.Table` | Full PyArrow table functionality and Arrow ecosystem integrations |
 | `pandas` | `pd.DataFrame` | Traditional workflows, ecosystem compatibility |
 | `polars` | `pl.DataFrame` | High performance, large datasets |
-| `pyarrow` | `pa.Table` | Zero-copy interop, memory efficiency |
-| `narwhals` | Narwhals DataFrame | Library-agnostic code |
 | `modin` | Modin DataFrame | Pandas API with parallel execution |
 | `cudf` | cuDF DataFrame | GPU-accelerated processing (requires NVIDIA) |
 
@@ -31,7 +32,7 @@ Lazy backends defer execution. The query graph is built when you call xbbg funct
 | Backend | Output type | Best for |
 |---------|-------------|----------|
 | `polars_lazy` | `pl.LazyFrame` | Deferred execution, query optimization |
-| `narwhals_lazy` | Narwhals LazyFrame | Library-agnostic lazy evaluation |
+| `narwhals_lazy` | Narwhals LazyFrame | Library-agnostic lazy evaluation through xbbg's native plugin |
 | `duckdb` | DuckDB relation | SQL analytics, OLAP queries |
 | `dask` | Dask DataFrame | Out-of-core and distributed computing |
 | `ibis` | Ibis Table | Unified interface to many backends |
@@ -46,23 +47,23 @@ Lazy backends defer execution. The query graph is built when you call xbbg funct
 
 ### Global default
 
-Set the backend once for your session. All subsequent calls use it unless overridden.
+`Backend.NARWHALS` is already the default. Set it explicitly only when you want to restore the default dataframe wrapper after using another backend.
 
 ```python
 import xbbg
-from xbbg import Backend
+from xbbg import Backend, blp
 
-xbbg.set_backend(Backend.POLARS)
+xbbg.set_backend(Backend.NARWHALS)
 
-# All calls now return pl.DataFrame
-from xbbg import blp
+# Calls now return Narwhals DataFrame
 df = blp.bdp('AAPL US Equity', 'PX_LAST')
+print(type(df))
 ```
 
 You can also pass a string:
 
 ```python
-xbbg.set_backend('polars')
+xbbg.set_backend('narwhals')
 ```
 
 ### Per-call override
@@ -72,20 +73,23 @@ Pass `backend` as a keyword argument to any data function. This overrides the gl
 ```python
 from xbbg import blp
 
-# Overrides the global default for this call
+# Native carrier result for this call
+table = blp.bdp('AAPL US Equity', 'PX_LAST', backend='native')
+
+# Explicit conversion when a library object is required
 df = blp.bdp('AAPL US Equity', 'PX_LAST', backend='pandas')
 ```
 
 ## Checking Availability
 
-Not all backends are installed in every environment. Use these utilities to inspect what is available before writing code that assumes a specific backend.
+Not all optional backends are installed in every environment. Use these utilities to inspect what is available before writing code that assumes a specific backend. The default `narwhals` backend and explicit `native` carrier are provided by xbbg and are always available.
 
 ```python
 from xbbg import get_available_backends, is_backend_available, print_backend_status
 
-# Returns a list of installed backend names
-print(get_available_backends())
-# ['pandas', 'polars', 'pyarrow', ...]
+# Print installed backend names
+print([backend.value for backend in get_available_backends()])
+# ['native', 'narwhals', 'pyarrow', 'pandas', 'polars', ...]
 
 # Check a specific backend
 if is_backend_available('polars'):
@@ -98,6 +102,35 @@ print_backend_status()
 ## Backend Examples
 
 <Tabs>
+  <TabItem label="native">
+
+```python
+from xbbg import blp, Backend
+
+table = blp.bdh(
+    'SPX Index',
+    'PX_LAST',
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    backend=Backend.NATIVE,
+)
+# Returns xbbg.ArrowTable
+print(table.column_names)
+print(table.to_pylist()[:1])
+```
+
+  </TabItem>
+  <TabItem label="pyarrow">
+
+```python
+from xbbg import blp, Backend
+
+table = blp.bdp('AAPL US Equity', 'PX_LAST', backend=Backend.PYARROW)
+# Returns pyarrow.Table
+print(type(table))
+```
+
+  </TabItem>
   <TabItem label="pandas">
 
 ```python
@@ -120,23 +153,6 @@ print(type(df))  # <class 'polars.dataframe.frame.DataFrame'>
 ```
 
   </TabItem>
-  <TabItem label="pyarrow">
-
-```python
-from xbbg import blp, Backend
-
-table = blp.bdh(
-    'SPX Index',
-    'PX_LAST',
-    start_date='2024-01-01',
-    end_date='2024-12-31',
-    backend=Backend.PYARROW,
-)
-# Returns pa.Table — no copy from the internal representation
-print(type(table))  # <class 'pyarrow.lib.Table'>
-```
-
-  </TabItem>
   <TabItem label="duckdb">
 
 ```python
@@ -156,13 +172,37 @@ result = relation.fetchdf()  # trigger execution, returns pd.DataFrame
   </TabItem>
 </Tabs>
 
+## Arrow PyCapsule Interop
+
+`xbbg.ArrowTable` implements the Arrow PyCapsule stream protocol (`__arrow_c_stream__`) and schema protocol (`__arrow_c_schema__`). `xbbg.ArrowRecordBatch` implements the Arrow PyCapsule array protocol (`__arrow_c_array__`) for raw streaming batches. Arrow-aware libraries can consume these objects directly without xbbg exposing a separate public backend for that library's Arrow table type.
+
+```python
+from xbbg import blp
+
+table = blp.bdp('AAPL US Equity', 'PX_LAST', backend='native')
+
+import polars as pl
+polars_df = pl.from_arrow(table)
+
+import duckdb
+relation = duckdb.from_arrow(table)
+```
+
+Prefer `backend='native'` when downstream code can consume xbbg's native carrier or the Arrow PyCapsule protocol directly. Request `backend='pyarrow'`, `backend='pandas'`, `backend='polars'`, `backend='duckdb'`, or another explicit backend when you want xbbg to materialize that library's object at the boundary.
+
 ## Performance Considerations
 
-**PyArrow** is the zero-copy option. Because xbbg's internal representation is Arrow, returning a `pa.Table` requires no serialization or memory copy. Use this when passing data to other Arrow-compatible systems (DuckDB, Polars, Spark via Arrow flight, etc.) or when memory pressure matters.
+**Default / Narwhals** is the compatibility path. It keeps dataframe-style behavior over xbbg's native carrier without requiring pandas or PyArrow as hard dependencies. `df.to_pandas()` imports pandas only when you call it.
+
+**Native carrier (`native`)** is the lowest-overhead explicit result. Use it when you will inspect columns, call `to_pylist()`, split into `to_batches()`, or hand data to an Arrow-aware library through the PyCapsule protocol.
+
+**PyArrow** is the full Apache Arrow Python table backend. Use `backend='pyarrow'` when code expects `pyarrow.Table` methods or PyArrow ecosystem behavior.
 
 **Polars** is the best choice for pure computation on large datasets. Its columnar engine and lazy execution model handle datasets that would be slow or impractical in pandas. The `polars_lazy` backend lets you chain additional query steps before triggering evaluation.
 
-**pandas** remains the widest-compatibility option. Use it when integrating with libraries that only accept `pd.DataFrame`, or when working with existing pandas-based pipelines. It is not required as a dependency — if your code uses the `polars` or `pyarrow` backends exclusively, pandas does not need to be installed.
+**DuckDB** is useful when your next step is SQL analytics. Use `backend='duckdb'` for a relation, or pass the native carrier to DuckDB yourself when you want to control connection scope.
+
+**pandas** remains the widest-compatibility option. Use it when integrating with libraries that only accept `pd.DataFrame`, or when working with existing pandas-based pipelines.
 
 **Lazy backends** (DuckDB, Polars lazy, Dask, etc.) are useful when you want to compose queries across multiple xbbg calls before materializing any data, or when the result set is too large to hold in memory.
 

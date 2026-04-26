@@ -2,59 +2,41 @@ from __future__ import annotations
 
 from typing import Any
 
-import pyarrow as pa
 import pytest
 
 import xbbg
 from xbbg import blp
+from xbbg._core import ArrowTable
 from xbbg.ext import fixed_income
 from xbbg.services import Operation, Service
 
 
-def _raw_bqr_table(*, broker: bool = True) -> pa.Table:
-    data: dict[str, list[Any]] = {
-        "ticker": ["/isin/US037833FB15@MSG1 Corp"],
-        "time": ["2026-04-24T19:55:58"],
-        "type": ["ASK"],
-        "value": [101.972],
-        "size": [75000],
+def _raw_bqr_table(*, broker: bool = True, condition_codes: bool = False) -> ArrowTable:
+    row: dict[str, Any] = {
+        "ticker": "/isin/US037833FB15@MSG1 Corp",
+        "time": "2026-04-24T19:55:58",
+        "type": "ASK",
+        "value": 101.972,
+        "size": 75000,
     }
     if broker:
-        data["brokerSellCode"] = ["CTSD"]
-    return pa.table(data)
+        row["brokerSellCode"] = "CTSD"
+    if condition_codes:
+        row["conditionCodes"] = "R"
+    return ArrowTable.from_pylist([row])
 
 
-def _generic_bqr_table() -> pa.Table:
-    return pa.table(
-        {
-            "path": [
-                "tickData[0].time",
-                "tickData[0].type",
-                "tickData[0].value",
-                "tickData[0].size",
-                "tickData[0].brokerBuyCode",
-                "tickData[0].spreadPrice",
-                "tickData.eidData[0]",
-            ],
-            "value_str": [
-                "2026-03-03T09:30:00",
-                "BID",
-                None,
-                None,
-                "DLRA",
-                None,
-                None,
-            ],
-            "value_num": [
-                None,
-                None,
-                123.45,
-                1000.0,
-                None,
-                29.0,
-                None,
-            ],
-        }
+def _generic_bqr_table() -> ArrowTable:
+    return ArrowTable.from_pylist(
+        [
+            {"path": "tickData[0].time", "value_str": "2026-03-03T09:30:00", "value_num": None},
+            {"path": "tickData[0].type", "value_str": "BID", "value_num": None},
+            {"path": "tickData[0].value", "value_str": None, "value_num": 123.45},
+            {"path": "tickData[0].size", "value_str": None, "value_num": 1000.0},
+            {"path": "tickData[0].brokerBuyCode", "value_str": "DLRA", "value_num": None},
+            {"path": "tickData[0].spreadPrice", "value_str": None, "value_num": 29.0},
+            {"path": "tickData.eidData[0]", "value_str": None, "value_num": None},
+        ]
     )
 
 
@@ -144,7 +126,7 @@ async def test_abqr_generated_reshapes_generic_path_output(monkeypatch):
 @pytest.mark.asyncio
 async def test_abqr_generated_keeps_typed_include_output(monkeypatch):
     captured: dict[str, Any] = {}
-    typed_table = _raw_bqr_table().append_column("conditionCodes", pa.array(["R"]))
+    typed_table = _raw_bqr_table(condition_codes=True)
 
     async def fake_arequest(*, service, operation, backend, **kwargs):
         captured["service"] = service
@@ -221,7 +203,7 @@ def test_bqr_postprocess_requires_broker_codes_for_attributed_quotes():
 
 def test_reshape_bqr_generic_uses_arrow_table_without_pandas():
     result = blp._reshape_bqr_generic(_generic_bqr_table(), "AAPL US Equity")
-    rows = result.to_arrow().to_pylist()
+    rows = result.to_pylist()
 
     assert len(rows) == 1
     assert rows[0]["ticker"] == "AAPL US Equity"
@@ -254,7 +236,7 @@ async def test_ext_abqr_defaults_to_bid_ask_and_broker_codes(monkeypatch):
     assert captured["event_types"] == ["BID", "ASK"]
     assert captured["includeBrokerCodes"] is True
     assert captured["maxDataPoints"] == 5
-    assert captured["backend"] == "pyarrow"
+    assert captured["backend"] == "native"
     assert result.column_names == ["ticker", "time", "event_type", "price", "size", "broker_sell"]
     assert result.to_pylist()[0]["broker_sell"] == "CTSD"
 
@@ -296,6 +278,6 @@ async def test_ext_abqr_preserves_explicit_event_types(monkeypatch):
     )
 
     assert captured["event_types"] == ["TRADE"]
-    assert captured["backend"] == "pyarrow"
+    assert captured["backend"] == "native"
     assert "includeBrokerCodes" not in captured
     assert result.column_names == ["ticker", "time", "event_type", "price", "size"]

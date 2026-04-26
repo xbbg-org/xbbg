@@ -36,7 +36,7 @@ pub enum ExtError {
 
     /// Arrow error during DataFrame operations.
     #[error("arrow error: {0}")]
-    Arrow(#[from] arrow::error::ArrowError),
+    Arrow(#[from] arrow_schema::ArrowError),
 
     /// Missing required column in DataFrame.
     #[error("missing required column '{0}'")]

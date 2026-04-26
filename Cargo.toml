@@ -37,19 +37,19 @@ repository = "https://github.com/alpha-xone/xbbg"
 edition = "2021"
 
 # =============================================================================
-# Release Profile Optimizations
+# Size-first Release Profile
 # =============================================================================
-# These settings significantly improve runtime performance at the cost of
-# longer compile times. For development, use `cargo build` (debug profile).
-#
-# Build with: cargo build --release
-# For maximum performance: RUSTFLAGS="-C target-cpu=native" cargo build --release
+# Python wheels ship the Rust extension to every user, so release builds optimize
+# primarily for install size while preserving LTO and single-codegen-unit output.
+# Performance-sensitive benchmarking can override opt-level with CARGO_PROFILE_* or
+# a dedicated benchmark profile.
 
 [profile.release]
 lto = "fat"           # Full link-time optimization across all crates
 codegen-units = 1     # Single codegen unit = better optimization opportunities
 panic = "abort"       # No unwinding = smaller/faster code (can't catch panics)
 strip = "symbols"     # Remove debug symbols for smaller binary
+opt-level = "z"       # Size-first wheels; keep explicit benchmark profiles for speed checks
 
 # Optimize all deps in dev builds (many are unusably slow at opt-level 0)
 [profile.dev.package."*"]
