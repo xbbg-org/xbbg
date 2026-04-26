@@ -336,7 +336,10 @@ jobs:
             fi
 
             echo "Publishing ${package_name}@${package_version} from ${package_dir}"
-            npm publish "${package_dir}" --provenance --access public --registry https://registry.npmjs.org
+            (
+              cd "${package_dir}"
+              npm publish --provenance --access public --registry https://registry.npmjs.org
+            )
           }
 
           publish_if_missing js-xbbg/packages/xbbg-core-linux-x64
