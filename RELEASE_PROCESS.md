@@ -91,7 +91,7 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 5. **GitHub Release**: Creates release with notes from CHANGELOG
 5. **GitHub Release**: Creates release with notes from CHANGELOG
 6. **PyPI Publish**: Tag push triggers `pypi_upload.yml` — builds wheels and publishes via OIDC trusted publishing
-7. **npm Publish**: Tag push triggers `npm_publish.yml` — builds platform-native `@xbbg/core-*` packages, stamps JS versions from the git tag, and publishes `@xbbg/core` to npm via trusted publishing
+7. **npm Publish**: Tag push triggers `npm-publish.yml` — builds platform-native `@xbbg/core-*` packages, stamps JS versions from the git tag, and publishes `@xbbg/core` to npm via trusted publishing
 8. **Release Assets**: Wheels and sdist are attached to the GitHub release
 
 ## CI/CD Workflows
@@ -108,24 +108,24 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | Workflow | File | Purpose |
 |----------|------|---------|
 | Release | `pypi_upload.yml` | Build wheels (Linux + Windows × Python 3.10–3.14), sdist, publish to PyPI, attach to GitHub release |
-| Release | `npm_publish.yml` | Build and publish stable `@xbbg/core` prebuilt native packages for supported platforms, then publish the `@xbbg/core` wrapper package via npm trusted publishing |
+| Release | `npm-publish.yml` | Build and publish stable `@xbbg/core` prebuilt native packages for supported platforms, then publish the `@xbbg/core` wrapper package via npm trusted publishing |
 
 ### npm trusted publishing setup
 
-`npm_publish.yml` is tokenless: the publish job uses GitHub OIDC (`id-token: write`) from GitHub-hosted runners and npm CLI `>=11.5.1`. Configure this once on npmjs.com for each published package before relying on tag-push publishing:
+`npm-publish.yml` is tokenless: the publish job uses GitHub OIDC (`id-token: write`) from GitHub-hosted runners and npm CLI `>=11.10.0`. Configure this once on npmjs.com for each published package before relying on tag-push publishing:
 
 | npm package | Publisher | GitHub org/user | Repository | Workflow filename | Environment |
 |-------------|-----------|-----------------|------------|-------------------|-------------|
-| `@xbbg/core` | GitHub Actions | `alpha-xone` | `xbbg` | `npm_publish.yml` | leave blank |
-| `@xbbg/core-linux-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm_publish.yml` | leave blank |
-| `@xbbg/core-win32-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm_publish.yml` | leave blank |
-| `@xbbg/core-darwin-arm64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm_publish.yml` | leave blank |
+| `@xbbg/core` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+| `@xbbg/core-linux-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+| `@xbbg/core-win32-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+| `@xbbg/core-darwin-arm64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
 
 GitHub environment `npm` is intentionally not required because current repository credentials cannot create it. Add an environment only if an admin wants reviewer-based release approvals; if you do, update both the workflow `environment:` and all npm trusted publisher entries to the exact same environment name.
 
 After a successful OIDC publish, set each package's npm **Publishing access** to require 2FA and disallow tokens, then revoke any temporary publish tokens.
 
-`npm_publish.yml` intentionally publishes only stable npm versions (`vX.Y.Z`). Python-style pre-release tags such as `vX.Y.Zb1` still trigger the workflow glob but are skipped because they are not valid npm semver versions for this package family.
+`npm-publish.yml` intentionally publishes only stable npm versions (`vX.Y.Z`). Python-style pre-release tags such as `vX.Y.Zb1` still trigger the workflow glob but are skipped because they are not valid npm semver versions for this package family.
 
 ### Manual Trigger
 
@@ -258,7 +258,7 @@ When asked to create a release:
 - Create `vX.Y.Z` git tags directly (the canonical release workflow handles this)
 - Reuse `vX.Y.Z` tags for JS-only GitHub assets; use `js-vX.Y.Z` instead so the PyPI/npm publish workflows do not trigger
 - Upload to PyPI manually (OIDC trusted publishing only)
-- Upload npm packages manually except for emergency recovery or first-time package seeding; normal npm releases must go through `npm_publish.yml` trusted publishing on a stable `vX.Y.Z` tag
+- Upload npm packages manually except for emergency recovery or first-time package seeding; normal npm releases must go through `npm-publish.yml` trusted publishing on a stable `vX.Y.Z` tag
 
 ## CHANGELOG.md Format
 
