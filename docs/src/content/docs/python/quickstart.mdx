@@ -53,6 +53,24 @@ df = xbbg.bdh(
 )
 ```
 
+`start_date` and `end_date` accept ISO 8601 strings, `YYYYMMDD` strings,
+`"today"`, `datetime.date`, `datetime.datetime`, or `pandas.Timestamp` —
+pass whichever your codebase already has:
+
+```python
+from datetime import date
+
+df = xbbg.bdh(
+    'AAPL US Equity',
+    'PX_LAST',
+    start_date=date(2024, 1, 1),
+    end_date=date(2024, 1, 31),
+)
+```
+
+See the [Dates and Datetimes guide](./guides/dates/) for the full accepted
+set, override-path normalization, and timezone semantics.
+
 **Output:**
 
 | ticker | date | field | value |

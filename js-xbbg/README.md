@@ -41,6 +41,25 @@ The JS package automatically loads a local `js-xbbg/napi_xbbg.node` addon first,
 
 `bdp()` / `bds()` / `bdh()` forward `validateFields` for per-request field validation. `bdib()` and `bdtick()` forward `requestTz` / `outputTz`; `bdtick()` also exposes common include-code request flags such as `includeConditionCodes` and `includeExchangeCodes` as typed options while still accepting raw Bloomberg request kwargs.
 
+### Date and datetime input (#317)
+
+Every API surface that takes a date or datetime accepts a wide input set:
+
+- `Date` (JavaScript)
+- ISO 8601 `string` (`"2023-01-17"`, `"2023-01-17T10:30:00"`, `"2023-01-17T10:30:00-05:00"`)
+- Bloomberg-native `string` (`"20230117"`)
+- Epoch milliseconds `number`
+- Duck-typed Luxon `DateTime` — anything implementing `toJSDate(): Date`
+
+Ambiguous formats like `"01/17/2023"` are rejected with a clear `TypeError`. Naive ISO datetime strings without a tz suffix are passed through to the Rust engine so `requestTz` semantics still apply; tz-aware strings are preserved end-to-end. The helpers `formatDate` and `formatDateTime` plus the `DateLike` / `DateTimeLike` types are re-exported from `@xbbg/core` if you want to apply them yourself.
+
+```ts
+import { bdh, bdtick } from '@xbbg/core';
+
+await bdh('AAPL US Equity', 'PX_LAST', { start: new Date('2024-01-01'), end: '20240630' });
+await bdtick('AAPL US Equity', new Date('2024-12-01T09:30Z'), Date.UTC(2024, 11, 1, 16, 0));
+```
+
 Subscriptions use a NAPI Arrow zero-copy transfer path for supported primitive/string/time/timestamp columns, constructing Apache Arrow JS tables directly from native Arrow buffers instead of serializing every update through Arrow IPC. Unsupported or sliced Arrow subscription schemas now fail fast with a column-level diagnostic so schema gaps are visible instead of silently switching transport paths.
 Pass `{ allFields: true }` to `stream()` / `subscribe()` / service stream helpers to expose every top-level scalar field Bloomberg sends, matching Python's `all_fields=True`. The default remains filtered mode: requested fields plus `MKTDATA_EVENT_TYPE` and `MKTDATA_EVENT_SUBTYPE`.
 

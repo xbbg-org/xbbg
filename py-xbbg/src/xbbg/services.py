@@ -59,10 +59,16 @@ class RequestParams:
         fields: List of field names to retrieve.
         overrides: List of (field, value) tuples for field overrides.
         elements: List of (name, value) tuples for generic request elements (BQL, bsrch).
-        start_date: Start date for historical requests (YYYYMMDD format).
-        end_date: End date for historical requests (YYYYMMDD format).
-        start_datetime: Start datetime for intraday requests (ISO format).
-        end_datetime: End datetime for intraday requests (ISO format).
+        start_date: Start date for historical requests. Accepts ISO 8601 /
+            ``YYYYMMDD`` string, ``"today"``, ``datetime.date``,
+            ``datetime.datetime``, or ``pd.Timestamp``.
+        end_date: End date for historical requests. Same accepted shapes as
+            ``start_date``.
+        start_datetime: Start datetime for intraday requests. Accepts ISO 8601
+            string (with or without tz), ``datetime.datetime`` (naive or
+            tz-aware), or ``pd.Timestamp``. Naive values use ``request_tz``.
+        end_datetime: End datetime for intraday requests. Same accepted shapes
+            as ``start_datetime``.
         request_tz: How naive intraday datetimes are interpreted before the API call
             (``UTC``, ``local``, ``exchange``, ``NY``/``LN``/…, reference ticker, or IANA).
         output_tz: Relabel Arrow ``time`` to this zone (same instants; handled in Rust).

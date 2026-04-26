@@ -1681,7 +1681,23 @@ ticks = await blp.abdtick(
     request_tz="exchange",
     output_tz="exchange",
 )
+
+# Native datetime objects are accepted everywhere a date or datetime is taken.
+# Tz-aware values preserve their tz; tz-naive values use request_tz.
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+bars = await blp.abdib(
+    "SPY US Equity",
+    start_datetime=datetime(2024, 1, 15, 9, 30, tzinfo=ZoneInfo("America/New_York")),
+    end_datetime=datetime(2024, 1, 15, 16, 0, tzinfo=ZoneInfo("America/New_York")),
+    interval=5,
+)
 ```
+
+See the [Dates and Datetimes guide](https://alpha-xone.github.io/xbbg/python/guides/dates/)
+for the full accepted set across `bdh` / `bdib` / `bdtick` / overrides
+and the JS / Node bindings.
 
 ```python
 # Trading volume & turnover (currency-adjusted, in millions)

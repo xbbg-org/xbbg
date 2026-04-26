@@ -22,6 +22,7 @@ from datetime import date, datetime, timedelta
 import functools
 import inspect
 import logging
+import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
@@ -89,6 +90,9 @@ def __getattr__(name: str):
 
 # Generated sync wrappers are installed dynamically by _install_generated_endpoints().
 if TYPE_CHECKING:
+    # ``DateLike`` is also imported lazily below alongside ``_fmt_date``; the
+    # second copy here keeps the static stubs visible to type-checkers / IDEs.
+    from xbbg.ext._utils import DateLike
 
     def bdp(
         tickers: str | Sequence[str],
@@ -107,8 +111,8 @@ if TYPE_CHECKING:
     def bdh(
         tickers: str | Sequence[str],
         flds: str | Sequence[str] | None = None,
-        start_date: str | None = None,
-        end_date: str = "today",
+        start_date: DateLike = None,
+        end_date: DateLike = "today",
         *,
         backend: Backend | str | None = None,
         format: Format | str | None = None,
@@ -132,12 +136,12 @@ if TYPE_CHECKING:
 
     def bdib(
         ticker: str,
-        dt: str | None = None,
+        dt: DateLike = None,
         session: str = "allday",
         typ: str = "TRADE",
         *,
-        start_datetime: str | None = None,
-        end_datetime: str | None = None,
+        start_datetime: DateLike = None,
+        end_datetime: DateLike = None,
         interval: int = 1,
         backend: Backend | str | None = None,
         request_tz: str | None = None,
@@ -149,8 +153,8 @@ if TYPE_CHECKING:
 
     def bdtick(
         ticker: str,
-        start_datetime: str,
-        end_datetime: str,
+        start_datetime: DateLike,
+        end_datetime: DateLike,
         *,
         event_types: Sequence[str] | None = None,
         backend: Backend | str | None = None,
@@ -181,8 +185,8 @@ if TYPE_CHECKING:
     def bqr(
         ticker: str,
         date_offset: str | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
+        start_date: DateLike = None,
+        end_date: DateLike = None,
         *,
         event_types: Sequence[str] | None = None,
         include_broker_codes: bool = False,
@@ -1187,6 +1191,51 @@ async def _aget_valid_elements(service: str, operation: str) -> set[str]:
         return set()
 
 
+# ISO date pattern for the override-path value-based normalizer. Matches the
+# canonical wire formats Bloomberg accepts on date-typed override fields:
+# ``YYYY-MM-DD`` and ``YYYYMMDD``. Anything else (US ``MM/DD/YYYY`` etc.) is
+# left untouched here; dedicated typed parameters reject ambiguous strings.
+_OVERRIDE_DATE_VALUE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}|\d{8})$")
+
+
+def _normalize_override_value(value: Any) -> str:
+    """Normalize a Bloomberg override value with date-aware duck typing.
+
+    The override path passes user kwargs through to Bloomberg without per-field
+    type metadata, so we inspect the *value* shape:
+
+    - ``datetime.date`` / ``datetime.datetime`` -> formatted as ``YYYYMMDD``.
+    - duck-typed ``pd.Timestamp`` (``hasattr(value, "to_pydatetime")``)
+      -> coerced and formatted.
+    - ``str`` matching ISO date or Bloomberg-native: normalized to
+      ``YYYYMMDD`` so callers can pass either form interchangeably.
+    - anything else: ``str(value)`` (existing behaviour).
+
+    Bool is intentionally short-circuited so that ``True``/``False`` survive as
+    ``"True"`` / ``"False"`` (some Bloomberg overrides expect those literals).
+    """
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (date, datetime)):
+        formatted = _fmt_date(value)
+        return formatted if formatted is not None else str(value)
+    if hasattr(value, "to_pydatetime"):
+        try:
+            formatted = _fmt_date(value)
+        except (TypeError, ValueError):
+            return str(value)
+        if formatted is not None:
+            return formatted
+    if isinstance(value, str) and _OVERRIDE_DATE_VALUE_RE.match(value.strip()):
+        try:
+            formatted = _fmt_date(value)
+        except (TypeError, ValueError):
+            return value
+        if formatted is not None:
+            return formatted
+    return str(value)
+
+
 async def _aroute_kwargs(
     service: str | Service,
     operation: str | Operation,
@@ -1234,8 +1283,10 @@ async def _aroute_kwargs(
         if canonical_key in valid_elements or _is_alias_element_key(original_key, canonical_key):
             elements.append((canonical_key, routed_value))
         elif original_key.isupper() or (len(original_key) > 2 and original_key[0].isupper() and "_" in original_key):
-            # Looks like a Bloomberg field override (UPPERCASE or Mixed_Case_Field)
-            overrides.append((original_key, str(value)))
+            # Looks like a Bloomberg field override (UPPERCASE or Mixed_Case_Field).
+            # Normalize date-typed values to Bloomberg-native YYYYMMDD via duck-typing
+            # so callers can pass e.g. ``USER_LOCAL_TRADE_DATE=date(2023, 1, 17)``.
+            overrides.append((original_key, _normalize_override_value(value)))
         elif valid_elements:
             # Schema available but key not recognized - warn and pass as element
             warnings.warn(
@@ -1266,25 +1317,11 @@ async def _aroute_kwargs(
     return elements, overrides
 
 
-def _fmt_date(dt: str | None, fmt: str = "%Y%m%d") -> str:
-    """Format date to string."""
-    if dt is None:
-        return datetime.now().strftime(fmt)
-    if isinstance(dt, str):
-        if dt.lower() == "today":
-            return datetime.now().strftime(fmt)
-        # Try to parse and reformat
-        try:
-            return datetime.fromisoformat(dt).strftime(fmt)
-        except (ValueError, TypeError):
-            # Try common formats
-            for parse_fmt in ("%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"):
-                try:
-                    return datetime.strptime(dt, parse_fmt).strftime(fmt)
-                except ValueError:
-                    continue
-            return dt
-    return dt.strftime(fmt)
+from xbbg.ext._utils import (  # noqa: E402  (must follow services imports)
+    DateLike,
+    _fmt_date,
+    _fmt_datetime,
+)
 
 
 def _convert_backend(
@@ -1365,10 +1402,10 @@ async def arequest(
     fields: str | Sequence[str] | None = None,
     overrides: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
     elements: Sequence[tuple[str, Any]] | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
+    start_date: DateLike = None,
+    end_date: DateLike = None,
+    start_datetime: DateLike = None,
+    end_datetime: DateLike = None,
     event_type: str | None = None,
     event_types: Sequence[str] | None = None,
     interval: int | None = None,
@@ -1404,10 +1441,16 @@ async def arequest(
         overrides: Field overrides as dict or list of (name, value) tuples.
         elements: Additional request elements as list of (name, value) tuples.
             Used for schema-driven parameters like intervalHasSeconds, periodicitySelection.
-        start_date: Start date for historical requests (YYYYMMDD format).
-        end_date: End date for historical requests (YYYYMMDD format).
-        start_datetime: Start datetime for intraday requests (ISO format).
-        end_datetime: End datetime for intraday requests (ISO format).
+        start_date: Start date for historical requests. Accepts ISO 8601 string,
+            ``YYYYMMDD`` string, ``"today"``, ``datetime.date``,
+            ``datetime.datetime``, or duck-typed ``pd.Timestamp``.
+        end_date: End date for historical requests. Same accepted shapes as
+            ``start_date``.
+        start_datetime: Start datetime for intraday requests. Accepts ISO 8601
+            string (with or without tz), ``datetime.datetime`` (naive or
+            tz-aware), or ``pd.Timestamp``. Naive values use ``request_tz``.
+        end_datetime: End datetime for intraday requests. Same accepted shapes
+            as ``start_datetime``.
         request_tz: For intraday requests, how naive datetimes are interpreted before
             sending to Bloomberg (``UTC``, ``local``, ``exchange``, aliases, or IANA).
             Resolved and converted to UTC in the Rust engine.
@@ -1518,10 +1561,10 @@ async def arequest(
         fields=fields_list,
         overrides=overrides_list,
         elements=elements_list,
-        start_date=start_date,
-        end_date=end_date,
-        start_datetime=start_datetime,
-        end_datetime=end_datetime,
+        start_date=_fmt_date(start_date),
+        end_date=_fmt_date(end_date),
+        start_datetime=_fmt_datetime(start_datetime, default_tz=None),
+        end_datetime=_fmt_datetime(end_datetime, default_tz=None),
         event_type=event_type,
         event_types=list(event_types) if event_types else None,
         interval=interval,
@@ -1621,8 +1664,8 @@ async def abdp(
 async def abdh(
     tickers: str | Sequence[str],
     flds: str | Sequence[str] | None = None,
-    start_date: str | None = None,
-    end_date: str = "today",
+    start_date: DateLike = None,
+    end_date: DateLike = "today",
     *,
     backend: Backend | str | None = None,
     format: Format | str | None = None,
@@ -1704,12 +1747,12 @@ async def abds(
 
 async def abdib(
     ticker: str,
-    dt: str | None = None,
+    dt: DateLike = None,
     session: str = "allday",
     typ: str = "TRADE",
     *,
-    start_datetime: str | None = None,
-    end_datetime: str | None = None,
+    start_datetime: DateLike = None,
+    end_datetime: DateLike = None,
     interval: int = 1,
     backend: Backend | str | None = None,
     request_tz: str | None = None,
@@ -1760,8 +1803,8 @@ async def abdib(
 
 async def abdtick(
     ticker: str,
-    start_datetime: str,
-    end_datetime: str,
+    start_datetime: DateLike,
+    end_datetime: DateLike,
     *,
     event_types: Sequence[str] | None = None,
     backend: Backend | str | None = None,
@@ -3058,8 +3101,9 @@ async def abta(
     Args:
         tickers: Security or list of securities
         study: Study type (e.g., 'sma', 'rsi', 'macd', 'boll', 'atr')
-        start_date: Start date (YYYYMMDD format)
-        end_date: End date (YYYYMMDD format)
+        start_date: Start date. Accepts ISO 8601 / ``YYYYMMDD`` string,
+            ``datetime.date``, ``datetime.datetime``, or ``pd.Timestamp``.
+        end_date: End date. Same accepted shapes as ``start_date``.
         periodicity: Data periodicity ('DAILY', 'WEEKLY', 'MONTHLY', 'INTRADAY')
         interval: Intraday interval in minutes (only for periodicity='INTRADAY')
         **study_params: Study-specific parameters (e.g., period=20 for SMA period)
@@ -3565,8 +3609,8 @@ def _postprocess_bqr_result(
 async def abqr(
     ticker: str,
     date_offset: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    start_date: DateLike = None,
+    end_date: DateLike = None,
     *,
     event_types: Sequence[str] | None = None,
     include_broker_codes: bool = True,
@@ -3688,7 +3732,9 @@ async def abeqs(
 
     Args:
         screen: Screen name as saved in Bloomberg.
-        asof: As-of date for the screen (YYYYMMDD format).
+        asof: As-of date for the screen. Accepts ISO 8601 / ``YYYYMMDD``
+            string, ``datetime.date``, ``datetime.datetime``, or
+            ``pd.Timestamp``.
         screen_type: Screen type - "PRIVATE" (custom) or "GLOBAL" (Bloomberg).
         group: Group name if screen is organized into groups.
         backend: DataFrame backend to return. If None, uses global default.
@@ -3925,7 +3971,10 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
     end_value = args.get("end_date", "today")
     start_value = args.get("start_date")
 
-    e_dt = _fmt_date(end_value, "%Y%m%d")
+    # ``end_date`` defaults to "today" via the public signature, but callers may
+    # explicitly pass ``end_date=None``; preserve the legacy "today" fallback in
+    # that case so default ``bdh()`` calls remain unchanged.
+    e_dt = _fmt_date(end_value, "%Y%m%d", default_today_on_none=True)
     if start_value is None:
         end_dt_parsed = datetime.strptime(e_dt, "%Y%m%d")
         s_dt = (end_dt_parsed - timedelta(weeks=8)).strftime("%Y%m%d")
@@ -4019,10 +4068,12 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
     dt_value = args.get("dt")
 
     if start_dt is not None and end_dt is not None:
-        s_dt = datetime.fromisoformat(start_dt.replace(" ", "T")).isoformat()
-        e_dt = datetime.fromisoformat(end_dt.replace(" ", "T")).isoformat()
+        # Preserve any tz info the caller supplied; let the Rust engine
+        # handle naive strings according to ``request_tz``.
+        s_dt = _fmt_datetime(start_dt, default_tz=None)
+        e_dt = _fmt_datetime(end_dt, default_tz=None)
     elif dt_value is not None:
-        cur_dt = datetime.fromisoformat(dt_value.replace(" ", "T")).strftime("%Y-%m-%d")
+        cur_dt = _fmt_date(dt_value, "%Y-%m-%d")
         s_dt = f"{cur_dt}T00:00:00"
         e_dt = f"{cur_dt}T23:59:59"
     else:
@@ -4063,8 +4114,11 @@ async def _build_abdib_plan(args: dict[str, Any]) -> _EndpointPlan:
 async def _build_abdtick_plan(args: dict[str, Any]) -> _EndpointPlan:
     kwargs = dict(args.get("kwargs", {}))
 
-    s_dt = datetime.fromisoformat(args["start_datetime"].replace(" ", "T")).isoformat()
-    e_dt = datetime.fromisoformat(args["end_datetime"].replace(" ", "T")).isoformat()
+    # Accept native datetime/date plus duck-typed pd.Timestamp; preserve any
+    # tz info the caller supplied so naive strings keep being interpreted by
+    # the Rust engine according to ``request_tz``.
+    s_dt = _fmt_datetime(args["start_datetime"], default_tz=None)
+    e_dt = _fmt_datetime(args["end_datetime"], default_tz=None)
 
     alias_event_type = _pop_element_alias(kwargs, "eventType")
     event_types = args.get("event_types")
@@ -4109,6 +4163,18 @@ async def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
     time_fmt = "%Y-%m-%dT%H:%M:%S"
 
     def fmt_bqr_datetime(value: Any, default_time: str) -> str:
+        # Native types (datetime / date / pd.Timestamp).
+        if not isinstance(value, str):
+            if isinstance(value, datetime):
+                return value.strftime(time_fmt)
+            if isinstance(value, date):
+                return _fmt_date(value, "%Y-%m-%d") + default_time
+            if hasattr(value, "to_pydatetime"):
+                coerced = value.to_pydatetime()
+                if isinstance(coerced, datetime):
+                    return coerced.strftime(time_fmt)
+                if isinstance(coerced, date):
+                    return _fmt_date(coerced, "%Y-%m-%d") + default_time
         text = str(value).replace(" ", "T")
         if "T" in text:
             return datetime.fromisoformat(text).strftime(time_fmt)
