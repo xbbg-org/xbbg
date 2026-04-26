@@ -6,21 +6,57 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag to publish (e.g. v1.1.0). Defaults to the triggering ref."
-        required: false
+        description: "Stable npm version/tag to publish from the current workflow commit (e.g. v1.2.3). Required for manual retries."
+        required: true
         type: string
-        default: ""
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  release-version:
+    name: Resolve npm release version
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.version.outputs.should_publish }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve and validate version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RAW_VERSION="${{ inputs.version }}"
+          else
+            RAW_VERSION="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$RAW_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+              echo "::error::npm publishes require a stable semver tag/version like v1.2.3; got '$RAW_VERSION'"
+              exit 1
+            fi
+            echo "::notice::Skipping npm publish for non-stable/non-npm-semver tag '$RAW_VERSION'"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="${RAW_VERSION#v}"
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Publishing npm packages for v${VERSION}"
+
+
   sdk-version:
     name: Detect SDK Version
+    needs: release-version
+    if: needs.release-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.detect.outputs.version }}
@@ -34,7 +70,8 @@ jobs:
 
   generate-bindings:
     name: Generate blpapi bindings artifact
-    needs: sdk-version
+    needs: [release-version, sdk-version]
+    if: needs.release-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     container: ghcr.io/${{ github.repository_owner }}/xbbg-ci:latest
     env:
@@ -74,7 +111,8 @@ jobs:
 
   build-core-native:
     name: Build @xbbg/core native package (${{ matrix.label }})
-    needs: [sdk-version, generate-bindings]
+    needs: [release-version, sdk-version, generate-bindings]
+    if: needs.release-version.outputs.should_publish == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -190,7 +228,7 @@ jobs:
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
       - name: Stage @xbbg/core native package
-        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ inputs.version != '' && inputs.version || github.ref_name }}"
+        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ needs.release-version.outputs.tag }}"
 
       - name: Upload staged native package artifact
         uses: actions/upload-artifact@v7
@@ -201,8 +239,12 @@ jobs:
 
   publish-core:
     name: Publish @xbbg/core packages
-    needs: [sdk-version, build-core-native]
+    needs: [release-version, sdk-version, build-core-native]
+    if: needs.release-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -212,6 +254,21 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+
+      - name: Ensure npm trusted publishing support
+        run: |
+          npm install -g npm@^11.5.1
+          node --version
+          npm --version
+
+      - name: Require tokenless trusted publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${NODE_AUTH_TOKEN:-}" || -n "${NPM_TOKEN:-}" ]]; then
+            echo "::error::npm publish workflow must use trusted publishing/OIDC, not long-lived npm tokens"
+            exit 1
+          fi
       - name: Download linux package artifact
         uses: actions/download-artifact@v8
         with:
@@ -231,7 +288,7 @@ jobs:
           path: js-xbbg/packages/xbbg-core-darwin-arm64
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ inputs.version != '' && inputs.version || github.ref_name }}"
+        run: node js-xbbg/scripts/stamp-version.js "${{ needs.release-version.outputs.tag }}"
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux
@@ -254,11 +311,28 @@ jobs:
         shell: bash
         run: npm --prefix js-xbbg run smoke:packaged-install -- --packed
 
-      - name: Publish platform packages
+      - name: Publish @xbbg/core packages with trusted publishing
+        shell: bash
         run: |
-          npm publish js-xbbg/packages/xbbg-core-linux-x64 --access public
-          npm publish js-xbbg/packages/xbbg-core-win32-x64 --access public
-          npm publish js-xbbg/packages/xbbg-core-darwin-arm64 --access public
+          set -euo pipefail
 
-      - name: Publish @xbbg/core
-        run: npm publish js-xbbg --access public
+          publish_if_missing() {
+            local package_dir="$1"
+            local package_name
+            local package_version
+            package_name="$(node -p "require('./${package_dir}/package.json').name")"
+            package_version="$(node -p "require('./${package_dir}/package.json').version")"
+
+            if npm view "${package_name}@${package_version}" version >/dev/null; then
+              echo "${package_name}@${package_version} already exists on npm; skipping"
+              return 0
+            fi
+
+            echo "Publishing ${package_name}@${package_version} from ${package_dir}"
+            npm publish "${package_dir}" --access public
+          }
+
+          publish_if_missing js-xbbg/packages/xbbg-core-linux-x64
+          publish_if_missing js-xbbg/packages/xbbg-core-win32-x64
+          publish_if_missing js-xbbg/packages/xbbg-core-darwin-arm64
+          publish_if_missing js-xbbg

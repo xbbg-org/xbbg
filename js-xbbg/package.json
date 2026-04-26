@@ -29,9 +29,17 @@
   },
   "keywords": [
     "bloomberg",
+    "blpapi",
+    "bpipe",
+    "zfp",
     "finance",
     "market-data",
-    "arrow"
+    "apache-arrow",
+    "arrow",
+    "napi",
+    "node-api",
+    "rust",
+    "typescript"
   ],
   "license": "Apache-2.0",
   "dependencies": {
@@ -66,6 +74,13 @@
     "type": "git",
     "url": "https://github.com/alpha-xone/xbbg.git",
     "directory": "js-xbbg"
+  },
+  "homepage": "https://github.com/alpha-xone/xbbg#readme",
+  "bugs": {
+    "url": "https://github.com/alpha-xone/xbbg/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"
