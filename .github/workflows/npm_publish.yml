@@ -343,7 +343,8 @@ jobs:
           const payload = JSON.parse(Buffer.from(tokenBody.value.split('.')[1], 'base64url').toString('utf8'));
           console.log(`OIDC claims: repository=${payload.repository} workflow_ref=${payload.workflow_ref} job_workflow_ref=${payload.job_workflow_ref} ref=${payload.ref} environment=${payload.environment ?? ''}`);
           for (const packageName of packageNames) {
-            const exchangeUrl = `https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${encodeURIComponent(packageName)}`;
+            const escapedPackageName = packageName.replace('/', '%2f');
+            const exchangeUrl = `https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${escapedPackageName}`;
             const exchangeResponse = await fetch(exchangeUrl, {
               method: 'POST',
               headers: {
