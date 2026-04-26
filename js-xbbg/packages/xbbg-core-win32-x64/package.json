@@ -1,6 +1,33 @@
 {
   "name": "@xbbg/core-win32-x64",
   "version": "0.0.0",
+  "description": "Prebuilt native napi_xbbg.node addon for @xbbg/core on Windows x64.",
+  "keywords": [
+    "xbbg",
+    "bloomberg",
+    "blpapi",
+    "finance",
+    "market-data",
+    "native-addon",
+    "napi",
+    "rust",
+    "prebuild",
+    "windows",
+    "x64"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alpha-xone/xbbg.git",
+    "directory": "js-xbbg/packages/xbbg-core-win32-x64"
+  },
+  "homepage": "https://github.com/alpha-xone/xbbg#readme",
+  "bugs": {
+    "url": "https://github.com/alpha-xone/xbbg/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "os": [
     "win32"
   ],
