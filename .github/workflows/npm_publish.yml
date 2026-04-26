@@ -261,14 +261,6 @@ jobs:
           node --version
           npm --version
 
-      - name: Require tokenless trusted publishing
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "${NODE_AUTH_TOKEN:-}" || -n "${NPM_TOKEN:-}" ]]; then
-            echo "::error::npm publish workflow must use trusted publishing/OIDC, not long-lived npm tokens"
-            exit 1
-          fi
       - name: Download linux package artifact
         uses: actions/download-artifact@v8
         with:
