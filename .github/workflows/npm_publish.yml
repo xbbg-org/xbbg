@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -324,7 +325,7 @@ jobs:
             fi
 
             echo "Publishing ${package_name}@${package_version} from ${package_dir}"
-            NPM_CONFIG_USERCONFIG= NODE_AUTH_TOKEN= NPM_TOKEN= npm publish "${package_dir}" --access public --registry https://registry.npmjs.org
+            NPM_CONFIG_USERCONFIG= NODE_AUTH_TOKEN= NPM_TOKEN= npm publish "${package_dir}" --provenance --access public --registry https://registry.npmjs.org
           }
 
           publish_if_missing js-xbbg/packages/xbbg-core-linux-x64
