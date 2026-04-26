@@ -4,7 +4,7 @@
 <a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
 
 <!-- markdownlint-disable MD036 -->
-**xbbg: An intuitive Bloomberg API for Python**
+**xbbg: The intuitive Bloomberg API for Python, JavaScript and Rust**
 <!-- markdownlint-enable MD036 -->
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
@@ -65,8 +65,8 @@ Latest release: xbbg==1.1.2 (release: [notes](https://github.com/alpha-xone/xbbg
 
 ## Overview
 
-xbbg is the modern standard Bloomberg API for Python: the broadest coverage, the fastest production-oriented runtime, and a clean Pythonic interface without legacy wrapper bloat.
-This `main` branch is the v1 release: Bloomberg request execution is Rust-powered for performance and reliability while preserving the familiar xbbg API for day-to-day workflows.
+xbbg is the modern standard Bloomberg API across Python, JavaScript, and Rust: broad Bloomberg coverage, an enterprise-grade native runtime, and clean language-native interfaces without legacy wrapper bloat.
+This `main` branch is the v1 release: Bloomberg request execution is Rust-powered for performance and reliability while preserving the familiar Python xbbg API and exposing the same engine to JavaScript and Rust workflows.
 
 ### Key Features
 
