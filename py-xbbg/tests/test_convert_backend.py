@@ -12,11 +12,15 @@ across all supported output formats.
 
 from __future__ import annotations
 
+from unittest import TestCase
+
 import narwhals.stable.v1 as nw
 import pandas as pd
 import pytest
 
-from xbbg.blp import Backend, _convert_backend
+from xbbg.blp import Backend, _convert_backend, set_backend
+
+_CASE = TestCase()
 
 
 class TestConvertBackendNarwhals:
@@ -37,22 +41,27 @@ class TestConvertBackendNarwhals:
         """Converting to NARWHALS should return a narwhals DataFrame."""
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.NARWHALS)
-        assert isinstance(result, nw.DataFrame)
+        _CASE.assertIsInstance(result, nw.DataFrame)
 
     def test_convert_narwhals_preserves_data(self):
         """Converting to NARWHALS should preserve all data."""
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.NARWHALS)
-        assert len(result) == 2
-        assert "ticker" in result.columns
-        assert "px_last" in result.columns
+        _CASE.assertEqual(len(result), 2)
+        _CASE.assertIn("ticker", result.columns)
+        _CASE.assertIn("px_last", result.columns)
 
     def test_convert_none_backend_returns_default(self):
-        """Passing None as backend should return default backend result."""
+        """Passing None as backend should return the default narwhals DataFrame."""
         nw_frame = self._create_test_nw_frame()
-        # Should not raise
+        set_backend(None)
         result = _convert_backend(nw_frame, None)
-        assert result is not None
+
+        _CASE.assertIsInstance(result, nw.DataFrame)
+        _CASE.assertEqual(result.columns, ["ticker", "date", "px_last"])
+        _CASE.assertEqual(len(result), 2)
+        _CASE.assertEqual(result["ticker"].to_list()[0], "AAPL US Equity")
+        _CASE.assertEqual(result["px_last"].to_list()[1], 380.0)
 
 
 class TestConvertBackendPandas:
@@ -73,34 +82,34 @@ class TestConvertBackendPandas:
         """Converting to PANDAS should return a pandas DataFrame."""
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.PANDAS)
-        assert isinstance(result, pd.DataFrame)
+        _CASE.assertIsInstance(result, pd.DataFrame)
 
     def test_convert_pandas_preserves_columns(self):
         """Converting to PANDAS should preserve column names."""
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.PANDAS)
-        assert "ticker" in result.columns
-        assert "date" in result.columns
-        assert "px_last" in result.columns
+        _CASE.assertIn("ticker", result.columns)
+        _CASE.assertIn("date", result.columns)
+        _CASE.assertIn("px_last", result.columns)
 
     def test_convert_pandas_preserves_row_count(self):
         """Converting to PANDAS should preserve row count."""
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.PANDAS)
-        assert len(result) == 2
+        _CASE.assertEqual(len(result), 2)
 
     def test_convert_pandas_from_string_backend(self):
         """Converting with string 'pandas' should work like Backend.PANDAS."""
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, "pandas")
-        assert isinstance(result, pd.DataFrame)
+        _CASE.assertIsInstance(result, pd.DataFrame)
 
     def test_convert_pandas_already_pandas(self):
         """Converting an already-pandas DataFrame should return it as-is."""
         pdf = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
         result = _convert_backend(pdf, Backend.PANDAS)
-        assert isinstance(result, pd.DataFrame)
-        assert len(result) == 2
+        _CASE.assertIsInstance(result, pd.DataFrame)
+        _CASE.assertEqual(len(result), 2)
 
 
 class TestConvertBackendPolars:
@@ -127,14 +136,14 @@ class TestConvertBackendPolars:
         pl = pytest.importorskip("polars")
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.POLARS)
-        assert isinstance(result, pl.DataFrame)
+        _CASE.assertIsInstance(result, pl.DataFrame)
 
     def test_convert_polars_lazy_returns_lazyframe(self):
         """Converting to POLARS_LAZY should return a polars LazyFrame."""
         pl = pytest.importorskip("polars")
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.POLARS_LAZY)
-        assert isinstance(result, pl.LazyFrame)
+        _CASE.assertIsInstance(result, pl.LazyFrame)
 
 
 class TestConvertBackendPyArrow:
@@ -172,7 +181,7 @@ class TestConvertBackendPyArrow:
 
         nw_frame = self._create_polars_backed_nw_frame()
         result = _convert_backend(nw_frame, Backend.PYARROW)
-        assert isinstance(result, pa.Table)
+        _CASE.assertIsInstance(result, pa.Table)
 
     def test_convert_pyarrow_from_pandas_returns_arrow_table(self):
         """Converting pandas-backed narwhals to PYARROW should fallback to from_pandas."""
@@ -180,14 +189,14 @@ class TestConvertBackendPyArrow:
 
         nw_frame = self._create_pandas_backed_nw_frame()
         result = _convert_backend(nw_frame, Backend.PYARROW)
-        assert isinstance(result, pa.Table)
+        _CASE.assertIsInstance(result, pa.Table)
 
     def test_convert_pyarrow_preserves_columns(self):
         """Converting to PYARROW should preserve column names."""
         nw_frame = self._create_polars_backed_nw_frame()
         result = _convert_backend(nw_frame, Backend.PYARROW)
-        assert "ticker" in result.column_names
-        assert "px_last" in result.column_names
+        _CASE.assertIn("ticker", result.column_names)
+        _CASE.assertIn("px_last", result.column_names)
 
 
 class TestConvertBackendDuckDB:
@@ -204,12 +213,17 @@ class TestConvertBackendDuckDB:
         return nw.from_native(pdf)
 
     def test_convert_duckdb(self):
-        """Converting to DUCKDB should return a lazy result."""
+        """Converting to DUCKDB should return a collectable duckdb lazy frame."""
         pytest.importorskip("duckdb")
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.DUCKDB)
-        # DuckDB conversion returns a narwhals lazy frame backed by duckdb
-        assert result is not None
+        collected = result.collect()
+
+        _CASE.assertIsInstance(result, nw.LazyFrame)
+        _CASE.assertEqual(collected.columns, ["ticker", "px_last"])
+        _CASE.assertEqual(len(collected), 1)
+        _CASE.assertEqual(collected["ticker"].to_list()[0], "AAPL US Equity")
+        _CASE.assertEqual(collected["px_last"].to_list()[0], 150.0)
 
 
 class TestConvertBackendNarwhalsLazy:
@@ -226,10 +240,16 @@ class TestConvertBackendNarwhalsLazy:
         return nw.from_native(pdf)
 
     def test_convert_narwhals_lazy(self):
-        """Converting to NARWHALS_LAZY should return a lazy frame."""
+        """Converting to NARWHALS_LAZY should return a collectable lazy frame."""
         nw_frame = self._create_test_nw_frame()
         result = _convert_backend(nw_frame, Backend.NARWHALS_LAZY)
-        assert result is not None
+        collected = result.collect()
+
+        _CASE.assertIsInstance(result, nw.LazyFrame)
+        _CASE.assertEqual(collected.columns, ["ticker", "px_last"])
+        _CASE.assertEqual(len(collected), 1)
+        _CASE.assertEqual(collected["ticker"].to_list()[0], "AAPL US Equity")
+        _CASE.assertEqual(collected["px_last"].to_list()[0], 150.0)
 
 
 class TestConvertBackendInvalid:
@@ -259,15 +279,15 @@ class TestConvertBackendEmptyFrame:
         """Converting empty frame to pandas should work."""
         nw_frame = self._create_empty_nw_frame()
         result = _convert_backend(nw_frame, Backend.PANDAS)
-        assert isinstance(result, pd.DataFrame)
-        assert len(result) == 0
+        _CASE.assertIsInstance(result, pd.DataFrame)
+        _CASE.assertEqual(len(result), 0)
 
     def test_convert_empty_to_narwhals(self):
         """Converting empty frame to narwhals should work."""
         nw_frame = self._create_empty_nw_frame()
         result = _convert_backend(nw_frame, Backend.NARWHALS)
-        assert isinstance(result, nw.DataFrame)
-        assert len(result) == 0
+        _CASE.assertIsInstance(result, nw.DataFrame)
+        _CASE.assertEqual(len(result), 0)
 
 
 class TestConvertBackendNativeInput:
@@ -283,22 +303,22 @@ class TestConvertBackendNativeInput:
         pl = pytest.importorskip("polars")
         plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
         result = _convert_backend(plf, Backend.POLARS)
-        assert isinstance(result, pl.DataFrame)
-        assert result["px_last"][0] == 150.0
+        _CASE.assertIsInstance(result, pl.DataFrame)
+        _CASE.assertEqual(result["px_last"][0], 150.0)
 
     def test_native_polars_to_pandas(self):
         pl = pytest.importorskip("polars")
         plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
         result = _convert_backend(plf, Backend.PANDAS)
-        assert isinstance(result, pd.DataFrame)
-        assert result["px_last"].iloc[0] == 150.0
+        _CASE.assertIsInstance(result, pd.DataFrame)
+        _CASE.assertEqual(result["px_last"].iloc[0], 150.0)
 
     def test_native_pandas_to_polars(self):
         pl = pytest.importorskip("polars")
         pdf = pd.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
         result = _convert_backend(pdf, Backend.POLARS)
-        assert isinstance(result, pl.DataFrame)
-        assert result["px_last"][0] == 150.0
+        _CASE.assertIsInstance(result, pl.DataFrame)
+        _CASE.assertEqual(result["px_last"][0], 150.0)
 
     def test_native_polars_to_pyarrow(self):
         pl = pytest.importorskip("polars")
@@ -306,7 +326,7 @@ class TestConvertBackendNativeInput:
 
         plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
         result = _convert_backend(plf, Backend.PYARROW)
-        assert isinstance(result, pa.Table)
+        _CASE.assertIsInstance(result, pa.Table)
 
     def test_double_conversion_is_safe(self):
         """The pre-fix bug: _execute_generated_endpoint called _convert_backend
@@ -317,5 +337,5 @@ class TestConvertBackendNativeInput:
         nw_frame = nw.from_native(pl.DataFrame({"a": [1, 2]}))
         first = _convert_backend(nw_frame, Backend.POLARS)
         second = _convert_backend(first, Backend.POLARS)
-        assert isinstance(second, pl.DataFrame)
-        assert len(second) == 2
+        _CASE.assertIsInstance(second, pl.DataFrame)
+        _CASE.assertEqual(len(second), 2)

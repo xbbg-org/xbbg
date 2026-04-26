@@ -75,6 +75,50 @@ Example::
 
 from __future__ import annotations
 
+# ruff: noqa: E402  # guarded optional native imports require helper definitions first
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+_NATIVE_IMPORT_ERROR_MARKERS = (
+    "DLL load failed",
+    "cannot open shared object file",
+    "image not found",
+    "Library not loaded",
+)
+
+
+def _is_native_import_error(error: ImportError) -> bool:
+    message = str(error)
+    native_loader_error = any(marker in message for marker in _NATIVE_IMPORT_ERROR_MARKERS) and (
+        "_core" in message or "xbbg" in message
+    )
+    return (
+        error.name == "xbbg._core"
+        or "No module named 'xbbg._core'" in message
+        or ("xbbg._core" in message and "cannot import name 'ext_" in message)
+        or native_loader_error
+    )
+
+
+class _UnavailableExtension:
+    def __init__(self, name: str, source: ImportError):
+        self.__name__ = name
+        self._source = source
+
+    def __call__(self, *_args, **_kwargs):
+        raise ImportError(f"xbbg.ext.{self.__name__} requires xbbg._core native helpers") from self._source
+
+    def __getattr__(self, attr: str):
+        raise ImportError(f"xbbg.ext.{self.__name__}.{attr} requires xbbg._core native helpers") from self._source
+
+
+def _bind_unavailable(names: tuple[str, ...], source: ImportError) -> None:
+    logger.debug("Skipping native-dependent extension exports", exc_info=True)
+    globals().update({name: _UnavailableExtension(name, source) for name in names})
+
+
 # Sync functions
 # Async functions
 from xbbg.ext.bonds import (
@@ -110,27 +154,64 @@ from xbbg.ext.cdx import (
     cdx_risk,
 )
 from xbbg.ext.currency import aconvert_ccy, convert_ccy
-from xbbg.ext.fixed_income import (
-    YieldType,
-    abqr,
-    acorporate_bonds,
-    apreferreds,
-    ayas,
-    bqr,
-    corporate_bonds,
-    preferreds,
-    yas,
-)
-from xbbg.ext.futures import (
-    aactive_cdx,
-    aactive_futures,
-    acdx_ticker,
-    active_cdx,
-    active_futures,
-    afut_ticker,
-    cdx_ticker,
-    fut_ticker,
-)
+
+try:
+    from xbbg.ext.fixed_income import (
+        YieldType,
+        abqr,
+        acorporate_bonds,
+        apreferreds,
+        ayas,
+        bqr,
+        corporate_bonds,
+        preferreds,
+        yas,
+    )
+except ImportError as exc:
+    if not _is_native_import_error(exc):
+        raise
+    _bind_unavailable(
+        (
+            "YieldType",
+            "abqr",
+            "acorporate_bonds",
+            "apreferreds",
+            "ayas",
+            "bqr",
+            "corporate_bonds",
+            "preferreds",
+            "yas",
+        ),
+        exc,
+    )
+
+try:
+    from xbbg.ext.futures import (
+        aactive_cdx,
+        aactive_futures,
+        acdx_ticker,
+        active_cdx,
+        active_futures,
+        afut_ticker,
+        cdx_ticker,
+        fut_ticker,
+    )
+except ImportError as exc:
+    if not _is_native_import_error(exc):
+        raise
+    _bind_unavailable(
+        (
+            "aactive_cdx",
+            "aactive_futures",
+            "acdx_ticker",
+            "active_cdx",
+            "active_futures",
+            "afut_ticker",
+            "cdx_ticker",
+            "fut_ticker",
+        ),
+        exc,
+    )
 from xbbg.ext.historical import (
     adividend,
     aearnings,
