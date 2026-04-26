@@ -283,11 +283,11 @@ jobs:
           name: core-package-darwin-arm64
           path: js-xbbg/packages/xbbg-core-darwin-arm64
 
-      - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
-
       - name: Install JS package dependencies
         run: npm ci --prefix js-xbbg
+
+      - name: Stamp JS package versions
+        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
 
       - name: Build offline bundles
         run: |
@@ -334,11 +334,11 @@ jobs:
           name: core-package-darwin-arm64
           path: js-xbbg/packages/xbbg-core-darwin-arm64
 
-      - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
-
       - name: Install JS package dependencies
         run: npm ci --prefix js-xbbg
+
+      - name: Stamp JS package versions
+        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux
