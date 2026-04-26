@@ -1,3 +1,30 @@
+/**
+ * Date-like input accepted by xbbg JS surfaces (issue #317).
+ *
+ * Mirrors the Python `DateLike` alias and the JS half of the date-acceptance
+ * matrix described in the issue:
+ *
+ * - `Date` — JavaScript Date (treated as a calendar date in UTC; the time
+ *   portion is ignored when formatting to `YYYYMMDD`).
+ * - `string` — ISO 8601 (`"2023-01-17"`, `"2023-01-17T10:30:00"`,
+ *   `"2023-01-17T10:30:00-05:00"`) or Bloomberg-native (`"20230117"`).
+ *   Ambiguous formats like `"01/17/2023"` are rejected.
+ * - `number` — epoch milliseconds.
+ * - duck-typed Luxon `DateTime` — anything implementing `toJSDate()`.
+ */
+export type DateLike =
+  | Date
+  | string
+  | number
+  | { toJSDate: () => Date };
+
+/**
+ * Datetime-like input. Same shape as `DateLike` today; named separately so the
+ * call sites (`startDatetime`, `endDatetime`, `dt` on intraday surfaces) can
+ * read clearly.
+ */
+export type DateTimeLike = DateLike;
+
 export interface StringPair {
   key: string;
   value: string;
@@ -133,8 +160,8 @@ export interface BdpOptions {
 }
 
 export interface BdhOptions {
-  start?: string;
-  end?: string;
+  start?: DateLike;
+  end?: DateLike;
   overrides?: OverridesMap;
   kwargs?: OverridesMap;
   format?: string;
@@ -143,8 +170,8 @@ export interface BdhOptions {
 }
 
 export interface BdibOptions {
-  start?: string;
-  end?: string;
+  start?: DateTimeLike;
+  end?: DateTimeLike;
   requestTz?: string;
   outputTz?: string;
   eventType?: string;
@@ -154,8 +181,8 @@ export interface BdibOptions {
 }
 
 export interface BdtickOptions {
-  start?: string;
-  end?: string;
+  start?: DateTimeLike;
+  end?: DateTimeLike;
   requestTz?: string;
   outputTz?: string;
   eventTypes?: readonly string[];
@@ -182,7 +209,7 @@ export interface BqlOptions {
 }
 
 export interface BeqsOptions {
-  asof?: string;
+  asof?: DateLike;
   screenType?: string;
   group?: string;
   overrides?: OverridesMap;
@@ -201,10 +228,10 @@ export interface BsrchOptions {
 export interface BtaOptions {
   studyParams?: OverridesMap;
   kwargs?: OverridesMap;
-  startDate?: string;
-  endDate?: string;
-  start_date?: string;
-  end_date?: string;
+  startDate?: DateLike;
+  endDate?: DateLike;
+  start_date?: DateLike;
+  end_date?: DateLike;
   periodicity?: string;
   interval?: number;
   format?: string;
@@ -242,15 +269,15 @@ export interface StreamOptions {
 }
 
 export interface BqrOptions {
-  startDatetime?: string;
-  endDatetime?: string;
+  startDatetime?: DateTimeLike;
+  endDatetime?: DateTimeLike;
   eventTypes?: readonly string[];
   includeBrokerCodes?: boolean;
   backend?: BackendKind;
 }
 
 export interface YasOptions {
-  settleDt?: string;
+  settleDt?: DateLike;
   yieldType?: number;
   spread?: number;
   yieldVal?: number;

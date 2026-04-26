@@ -13,6 +13,9 @@ import {
   wrapError,
 } from './errors';
 import { tableFromNativeArrowBatch } from './arrow-zero-copy';
+// Date / datetime helpers (#317): isolated module so they can be tested
+// without loading the native NAPI addon. Re-exported as public API below.
+import { formatDate, formatDateTime, hasToJSDate } from './dates';
 import { resolveNativeAddon } from './native/resolve-native';
 import type {
   ActiveCdxOptions,
@@ -32,6 +35,8 @@ import type {
   CdxOptions,
   CdxTickerInfo,
   CorporateBondsOptions,
+  DateLike,
+  DateTimeLike,
   DividendOptions,
   EngineConfig,
   EtfHoldingsOptions,
@@ -479,20 +484,20 @@ function normalizeRecoveryOptions(options: CdxOptions = {}): BdpOptions {
   return normalized;
 }
 
-function fullDayRange(dt: string): TimeRange {
-  const normalized = toRequestString(dt).trim().replace(' ', 'T');
-  const day = normalized.split('T')[0];
-  if (day === undefined || day.length === 0) {
-    throw new TypeError('dt must be a non-empty ISO date string');
+function fullDayRange(dt: DateTimeLike): TimeRange {
+  const formatted = formatDate(dt);
+  if (formatted === undefined) {
+    throw new TypeError('dt must be a non-empty date-like value');
   }
+  const day = `${formatted.slice(0, 4)}-${formatted.slice(4, 6)}-${formatted.slice(6, 8)}`;
   return {
     start: `${day}T00:00:00`,
     end: `${day}T23:59:59`,
   };
 }
 
-function normalizeDate(value: string | undefined): string | undefined {
-  return value === undefined ? undefined : toRequestString(value).replace(/[-/]/g, '');
+function normalizeDate(value: DateLike | undefined): string | undefined {
+  return formatDate(value);
 }
 
 function getStudyAttrName(study: string): string {
@@ -980,8 +985,8 @@ export class Engine {
       operation: 'HistoricalDataRequest',
       securities: tickers,
       fields,
-      startDate: options.start,
-      endDate: options.end,
+      startDate: formatDate(options.start),
+      endDate: formatDate(options.end),
       overrides: mapObjectToPairs(options.overrides),
       kwargs: mapObjectToPairs(options.kwargs),
       format: options.format,
@@ -998,8 +1003,8 @@ export class Engine {
       security: ticker,
       eventType: options.eventType ?? 'TRADE',
       interval: options.interval ?? 1,
-      startDatetime: options.start,
-      endDatetime: options.end,
+      startDatetime: formatDateTime(options.start),
+      endDatetime: formatDateTime(options.end),
       requestTz: options.requestTz,
       outputTz: options.outputTz,
       kwargs: mapObjectToPairs(options.kwargs),
@@ -1014,8 +1019,8 @@ export class Engine {
       operation: 'IntradayTickRequest',
       security: ticker,
       eventTypes: options.eventTypes ?? ['TRADE'],
-      startDatetime: options.start,
-      endDatetime: options.end,
+      startDatetime: formatDateTime(options.start),
+      endDatetime: formatDateTime(options.end),
       requestTz: options.requestTz,
       outputTz: options.outputTz,
       kwargs: buildBdtickKwargs(options),
@@ -1043,7 +1048,10 @@ export class Engine {
       { key: 'Group', value: toRequestString(options.group ?? 'General') },
     ];
     if (options.asof !== undefined) {
-      elements.push({ key: 'asOfDate', value: toRequestString(options.asof) });
+      const asofFormatted = formatDate(options.asof);
+      if (asofFormatted !== undefined) {
+        elements.push({ key: 'asOfDate', value: asofFormatted });
+      }
     }
     const overrides: OverridesMap = { ...(options.overrides ?? {}) };
     return await this.request({
@@ -1418,8 +1426,8 @@ export class Engine {
     try {
       const buffer = await this._inner.recipeBqr(
         toRequestString(ticker),
-        options.startDatetime ?? undefined,
-        options.endDatetime ?? undefined,
+        formatDateTime(options.startDatetime),
+        formatDateTime(options.endDatetime),
         options.eventTypes ?? null,
         options.includeBrokerCodes !== false,
       );
@@ -1439,7 +1447,7 @@ export class Engine {
       const buffer = await this._inner.recipeYas(
         toStringArray(tickers),
         toStringArray(fields),
-        options.settleDt ?? undefined,
+        formatDate(options.settleDt),
         options.yieldType ?? undefined,
         options.spread ?? undefined,
         options.yieldVal ?? undefined,
@@ -1488,14 +1496,14 @@ export class Engine {
 
   public async futTicker(
     genTicker: string,
-    dt: string,
+    dt: DateLike,
     options: FuturesResolveOptions = {},
   ): Promise<unknown> {
     const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeFutTicker(
         toRequestString(genTicker),
-        toRequestString(dt),
+        formatDate(dt) ?? '',
         options.freq ?? undefined,
       );
       return ipcToBackend(buffer, backend);
@@ -1506,14 +1514,14 @@ export class Engine {
 
   public async activeFutures(
     genTicker: string,
-    dt: string,
+    dt: DateLike,
     options: FuturesResolveOptions = {},
   ): Promise<unknown> {
     const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeActiveFutures(
         toRequestString(genTicker),
-        toRequestString(dt),
+        formatDate(dt) ?? '',
         options.freq ?? undefined,
       );
       return ipcToBackend(buffer, backend);
@@ -1524,14 +1532,14 @@ export class Engine {
 
   public async cdxTicker(
     genTicker: string,
-    dt: string,
+    dt: DateLike,
     options: RecipeBackendOptions = {},
   ): Promise<unknown> {
     const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeCdxTicker(
         toRequestString(genTicker),
-        toRequestString(dt),
+        formatDate(dt) ?? '',
       );
       return ipcToBackend(buffer, backend);
     } catch (err) {
@@ -1541,14 +1549,14 @@ export class Engine {
 
   public async activeCdx(
     genTicker: string,
-    dt: string,
+    dt: DateLike,
     options: ActiveCdxOptions = {},
   ): Promise<unknown> {
     const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeActiveCdx(
         toRequestString(genTicker),
-        toRequestString(dt),
+        formatDate(dt) ?? '',
         options.lookbackDays ?? undefined,
       );
       return ipcToBackend(buffer, backend);
@@ -1559,16 +1567,16 @@ export class Engine {
 
   public async dividend(
     tickers: string | readonly string[],
-    startDate: string,
-    endDate: string,
+    startDate: DateLike,
+    endDate: DateLike,
     options: DividendOptions = {},
   ): Promise<unknown> {
     const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeDividend(
         toStringArray(tickers),
-        toRequestString(startDate),
-        toRequestString(endDate),
+        formatDate(startDate) ?? '',
+        formatDate(endDate) ?? '',
         options.dvdType ?? undefined,
       );
       return ipcToBackend(buffer, backend);
@@ -1579,16 +1587,16 @@ export class Engine {
 
   public async turnover(
     tickers: string | readonly string[],
-    startDate: string,
-    endDate: string,
+    startDate: DateLike,
+    endDate: DateLike,
     options: TurnoverOptions = {},
   ): Promise<unknown> {
     const backend = normalizeBackend(options.backend);
     try {
       const buffer = await this._inner.recipeTurnover(
         toStringArray(tickers),
-        toRequestString(startDate),
-        toRequestString(endDate),
+        formatDate(startDate) ?? '',
+        formatDate(endDate) ?? '',
         options.ccy ?? undefined,
         options.factor ?? undefined,
       );
@@ -1617,8 +1625,8 @@ export class Engine {
   public async currencyConversion(
     ticker: string,
     targetCcy: string,
-    startDate: string,
-    endDate: string,
+    startDate: DateLike,
+    endDate: DateLike,
     options: RecipeBackendOptions = {},
   ): Promise<unknown> {
     const backend = normalizeBackend(options.backend);
@@ -1626,8 +1634,8 @@ export class Engine {
       const buffer = await this._inner.recipeCurrencyConversion(
         toRequestString(ticker),
         toRequestString(targetCcy),
-        toRequestString(startDate),
-        toRequestString(endDate),
+        formatDate(startDate) ?? '',
+        formatDate(endDate) ?? '',
       );
       return ipcToBackend(buffer, backend);
     } catch (err) {
@@ -1675,12 +1683,14 @@ export async function bdp(
 export async function abdh(
   tickers: string | readonly string[],
   fields: string | readonly string[],
-  start?: string | BdhOptions,
-  end?: string,
+  start?: DateLike | BdhOptions,
+  end?: DateLike,
   options: BdhOptions = {},
 ): Promise<unknown> {
   const engine = await getConfiguredEngine();
-  if (isPlainObject(start) && end === undefined) {
+  // ``BdhOptions`` is a plain object literal; Dates / Luxon DateTimes are
+  // typed objects so they fall through to the date-typed branch.
+  if (isPlainObject(start) && !(start instanceof Date) && !hasToJSDate(start) && end === undefined) {
     return await engine.bdh(
       toStringArray(tickers),
       toStringArray(fields),
@@ -1689,7 +1699,7 @@ export async function abdh(
   }
   return await engine.bdh(toStringArray(tickers), toStringArray(fields), {
     ...options,
-    start: typeof start === 'string' ? start : undefined,
+    start: start as DateLike | undefined,
     end,
   });
 }
@@ -1729,16 +1739,16 @@ export async function bds(
 
 export async function abdib(
   ticker: string,
-  dt?: string | BdibOptions,
+  dt?: DateTimeLike | BdibOptions,
   interval: number | BdibOptions = 1,
   options: BdibOptions = {},
 ): Promise<unknown> {
   const engine = await getConfiguredEngine();
-  if (
-    isPlainObject(dt) &&
-    interval === 1 &&
-    Object.keys(options).length === 0
-  ) {
+  // Distinguish a BdibOptions plain object from a Date / Luxon DateTime, both
+  // of which would also pass an ``isPlainObject`` check on bare typeof checks.
+  const dtIsOptions =
+    isPlainObject(dt) && !(dt instanceof Date) && !hasToJSDate(dt);
+  if (dtIsOptions && interval === 1 && Object.keys(options).length === 0) {
     return await engine.bdib(toRequestString(ticker), dt);
   }
   const normalizedOptions: BdibOptions = isPlainObject(interval)
@@ -1751,7 +1761,7 @@ export async function abdib(
     if (dt === undefined) {
       throw new TypeError('abdib requires dt or explicit start/end options');
     }
-    const range = fullDayRange(typeof dt === 'string' ? dt : '');
+    const range = fullDayRange(dt as DateTimeLike);
     normalizedOptions.start = range.start;
     normalizedOptions.end = range.end;
   }
@@ -1764,8 +1774,8 @@ export async function bdib(ticker: string, options: BdibOptions = {}): Promise<u
 
 export async function abdtick(
   ticker: string,
-  start: string | null | undefined,
-  end: string | null | undefined,
+  start: DateTimeLike | null | undefined,
+  end: DateTimeLike | null | undefined,
   options: BdtickOptions = {},
 ): Promise<unknown> {
   if (start === undefined || start === null || end === undefined || end === null) {
@@ -1908,6 +1918,9 @@ export function version(): string {
 export const setLogLevel = native.setLogLevel;
 export const getLogLevel = native.getLogLevel;
 
+// Issue #317: native datetime/date acceptance helpers, re-exported.
+export { formatDate, formatDateTime } from './dates';
+
 export {
   BlpError,
   BlpSessionError,
@@ -1936,6 +1949,8 @@ export type {
   CdxOptions,
   CdxTickerInfo,
   CorporateBondsOptions,
+  DateLike,
+  DateTimeLike,
   DividendOptions,
   EngineConfig,
   EtfHoldingsOptions,

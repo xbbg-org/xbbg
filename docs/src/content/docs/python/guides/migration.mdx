@@ -165,6 +165,17 @@ df = blp.bdh(
   </TabItem>
 </Tabs>
 
+### Native datetime / date acceptance (1.x)
+
+Every surface that takes a date or datetime — `bdh` / `bdib` / `bdtick` /
+`bsrch` / `bqr` / `bcurves` / `bgovts` / the `xbbg.ext.*` helpers, plus
+Bloomberg field overrides passed as `**kwargs` — now accepts
+`datetime.date`, `datetime.datetime` (naive or tz-aware), and duck-typed
+`pandas.Timestamp` in addition to strings. ISO 8601, `YYYYMMDD`, and
+`"today"` strings continue to work; ambiguous `MM/DD/YYYY` inputs are
+rejected with a clear `ValueError`. See the
+[Dates and Datetimes guide](../dates/) for the full reference.
+
 ### BDIB before and after
 
 <Tabs>
