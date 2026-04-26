@@ -306,6 +306,16 @@ jobs:
         shell: bash
         run: npm --prefix js-xbbg run smoke:packaged-install -- --packed
 
+      - name: Verify GitHub OIDC is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::GitHub OIDC token request environment is unavailable. Confirm repository/org Actions policy allows id-token: write."
+            exit 1
+          fi
+          echo "GitHub OIDC token request environment is available"
+
       - name: Publish @xbbg/core packages with trusted publishing
         shell: bash
         run: |
@@ -326,7 +336,7 @@ jobs:
             fi
 
             echo "Publishing ${package_name}@${package_version} from ${package_dir}"
-            npm publish "${package_dir}" --access public --registry https://registry.npmjs.org
+            npm publish "${package_dir}" --provenance --access public --registry https://registry.npmjs.org
           }
 
           publish_if_missing js-xbbg/packages/xbbg-core-linux-x64
