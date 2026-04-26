@@ -82,9 +82,7 @@ def test_bdtick_accepts_naive_datetime():
 def test_bdtick_accepts_tz_aware_datetime():
     """bdtick start/end accept tz-aware datetime objects (preserves their tz)."""
     day = _recent_weekday()
-    start = datetime.combine(day, datetime.min.time()).replace(
-        hour=14, minute=30, tzinfo=timezone.utc
-    )
+    start = datetime.combine(day, datetime.min.time()).replace(hour=14, minute=30, tzinfo=timezone.utc)
     end = start + timedelta(minutes=2)
 
     df = blp.bdtick(
