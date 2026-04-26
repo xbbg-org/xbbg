@@ -282,6 +282,9 @@ jobs:
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.release-version.outputs.tag }}"
 
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux
         uses: ./.github/actions/setup-blpapi-sdk
