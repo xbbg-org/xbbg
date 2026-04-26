@@ -253,7 +253,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
 
 
       - name: Ensure npm trusted publishing support
@@ -312,6 +311,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          unset NODE_AUTH_TOKEN NPM_TOKEN NPM_CONFIG_USERCONFIG
+
           publish_if_missing() {
             local package_dir="$1"
             local package_name
@@ -319,13 +320,13 @@ jobs:
             package_name="$(node -p "require('./${package_dir}/package.json').name")"
             package_version="$(node -p "require('./${package_dir}/package.json').version")"
 
-            if NPM_CONFIG_USERCONFIG= NODE_AUTH_TOKEN= NPM_TOKEN= npm view "${package_name}@${package_version}" version --registry https://registry.npmjs.org >/dev/null; then
+            if npm view "${package_name}@${package_version}" version --registry https://registry.npmjs.org --loglevel=silent >/dev/null; then
               echo "${package_name}@${package_version} already exists on npm; skipping"
               return 0
             fi
 
             echo "Publishing ${package_name}@${package_version} from ${package_dir}"
-            NPM_CONFIG_USERCONFIG= NODE_AUTH_TOKEN= NPM_TOKEN= npm publish "${package_dir}" --provenance --access public --registry https://registry.npmjs.org
+            npm publish "${package_dir}" --access public --registry https://registry.npmjs.org
           }
 
           publish_if_missing js-xbbg/packages/xbbg-core-linux-x64

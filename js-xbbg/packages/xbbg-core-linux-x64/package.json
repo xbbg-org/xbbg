@@ -18,7 +18,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alpha-xone/xbbg.git",
+    "url": "git+https://github.com/alpha-xone/xbbg.git",
     "directory": "js-xbbg/packages/xbbg-core-linux-x64"
   },
   "homepage": "https://github.com/alpha-xone/xbbg#readme",
