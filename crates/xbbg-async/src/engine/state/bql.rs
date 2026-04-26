@@ -743,7 +743,7 @@ impl BqlState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{Float64Array, StringArray};
+    use arrow::array::{Array, Float64Array, StringArray};
 
     fn make_state() -> BqlState {
         let (tx, _rx) = oneshot::channel();
@@ -883,5 +883,182 @@ mod tests {
             .downcast_ref::<StringArray>()
             .expect("sector is utf8 via type hint");
         assert_eq!(col.value(0), "Technology");
+    }
+
+    fn large_bql_json_with_padding() -> String {
+        let padding = "x".repeat(BQL_TYPED_JSON_MAX_BYTES);
+        format!(
+            r#"{{
+            "clientContext": {{ "clientRequestId": "large-request" }},
+            "responseExceptions": [{{ "message": "partial top-level warning", "nodeName": "query" }}],
+            "padding": "{padding}",
+            "results": {{
+                "px_last": {{
+                    "idColumn": {{
+                        "name": "ID",
+                        "type": "STRING",
+                        "values": ["AAPL US Equity", "MSFT US Equity", "IBM US Equity"]
+                    }},
+                    "valuesColumn": {{
+                        "name": "VALUE",
+                        "type": "DOUBLE",
+                        "values": [150.1, null, "bad"]
+                    }},
+                    "secondaryColumns": [
+                        {{
+                            "name": "DATE",
+                            "type": "DATE",
+                            "values": ["2026-04-10", "2026-04-11", "2026-04-12"]
+                        }},
+                        {{
+                            "name": "ASOF",
+                            "type": "DATETIME",
+                            "values": ["2026-04-10T12:30:00", "2026-04-11T12:30:00", "2026-04-12T12:30:00"]
+                        }},
+                        {{
+                            "name": "CONFIDENCE",
+                            "type": "STRING",
+                            "values": ["0.95", null, "0.75"]
+                        }}
+                    ],
+                    "responseExceptions": [{{ "message": "field warning", "nodeName": "px_last" }}]
+                }},
+                "rating": {{
+                    "idColumn": {{ "type": "STRING", "values": ["AAPL US Equity", "MSFT US Equity", "IBM US Equity"] }},
+                    "valuesColumn": {{ "type": "STRING", "values": ["1", "2", "3"] }},
+                    "secondaryColumns": []
+                }},
+                "volume": {{
+                    "idColumn": {{ "type": "STRING", "values": ["AAPL US Equity", "MSFT US Equity", "IBM US Equity", "TSLA US Equity"] }},
+                    "valuesColumn": {{ "type": "INT64", "values": [1000, 2000, 3000, 4000] }},
+                    "secondaryColumns": [
+                        {{ "name": "DATE", "type": "DATE", "values": ["2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13"] }}
+                    ]
+                }}
+            }}
+        }}"#
+        )
+    }
+
+    #[test]
+    fn parse_bql_json_large_payload_value_path_preserves_schema_and_values() {
+        let json = large_bql_json_with_padding();
+        assert!(json.len() > BQL_TYPED_JSON_MAX_BYTES);
+
+        let batch = make_state().parse_bql_json(&json).expect("parse ok");
+        let schema = batch.schema();
+        let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "ticker",
+                "date",
+                "asof",
+                "confidence",
+                "px_last",
+                "rating",
+                "volume",
+            ]
+        );
+        assert_eq!(batch.num_rows(), 3);
+        assert_eq!(batch.num_columns(), 7);
+        assert_eq!(schema.field(1).data_type(), &DataType::Utf8);
+        assert_eq!(schema.field(2).data_type(), &DataType::Utf8);
+        assert_eq!(schema.field(3).data_type(), &DataType::Utf8);
+        assert_eq!(schema.field(4).data_type(), &DataType::Float64);
+        assert_eq!(schema.field(5).data_type(), &DataType::Utf8);
+        assert_eq!(schema.field(6).data_type(), &DataType::Float64);
+
+        let ticker = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("ticker is utf8");
+        assert_eq!(ticker.value(0), "AAPL US Equity");
+        assert_eq!(ticker.value(2), "IBM US Equity");
+
+        let dates = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("date is utf8");
+        assert_eq!(dates.value(0), "2026-04-10");
+        assert_eq!(dates.value(2), "2026-04-12");
+
+        let asof = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("datetime is utf8");
+        assert_eq!(asof.value(1), "2026-04-11T12:30:00");
+
+        let confidence = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("confidence is utf8");
+        assert_eq!(confidence.value(0), "0.95");
+        assert!(confidence.is_null(1));
+
+        let px_last = batch
+            .column(4)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .expect("px_last is f64");
+        assert_eq!(px_last.value(0), 150.1);
+        assert!(px_last.is_null(1));
+        assert!(px_last.is_null(2));
+
+        let rating = batch
+            .column(5)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("rating remains utf8 via type hint");
+        assert_eq!(rating.value(0), "1");
+        assert_eq!(rating.value(2), "3");
+
+        let volume = batch
+            .column(6)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .expect("volume is f64 via type hint");
+        assert_eq!(volume.value(0), 1000.0);
+        assert_eq!(volume.value(2), 3000.0);
+    }
+
+    #[test]
+    fn parse_bql_json_keeps_date_and_datetime_as_utf8_for_compatibility() {
+        let json = r#"{
+            "results": {
+                "event_count": {
+                    "idColumn": { "type": "STRING", "values": ["AAPL US Equity"] },
+                    "valuesColumn": { "type": "INT32", "values": [2] },
+                    "secondaryColumns": [
+                        { "name": "DATE", "type": "DATE", "values": ["2026-04-10"] },
+                        { "name": "EVENT_TIME", "type": "DATETIME", "values": ["2026-04-10T09:30:00"] }
+                    ]
+                }
+            }
+        }"#;
+
+        let batch = make_state().parse_bql_json(json).expect("parse ok");
+        let schema = batch.schema();
+        assert_eq!(schema.field(1).name(), "date");
+        assert_eq!(schema.field(1).data_type(), &DataType::Utf8);
+        assert_eq!(schema.field(2).name(), "event_time");
+        assert_eq!(schema.field(2).data_type(), &DataType::Utf8);
+
+        let date = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("date remains utf8");
+        let event_time = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("datetime remains utf8");
+        assert_eq!(date.value(0), "2026-04-10");
+        assert_eq!(event_time.value(0), "2026-04-10T09:30:00");
     }
 }

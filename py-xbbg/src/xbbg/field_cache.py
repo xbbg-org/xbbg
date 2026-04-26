@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+import warnings
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -41,6 +42,15 @@ def _get_engine():
     from .blp import _get_engine
 
     return _get_engine()
+
+
+_QUERY_API_IGNORED_WARNING = (
+    "query_api=False is accepted for compatibility but ignored; field type resolution still uses the Rust resolver."
+)
+_CACHE_PATH_IGNORED_WARNING = (
+    "FieldTypeCache(cache_path=...) is accepted for compatibility but ignored; "
+    "configure field_cache_path before engine startup instead."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +92,8 @@ async def aresolve_field_types(
     Returns:
         Dict mapping field names to Arrow type strings.
     """
+    if query_api is False:
+        warnings.warn(_QUERY_API_IGNORED_WARNING, UserWarning, stacklevel=2)
     engine = _get_engine()
     return await engine.resolve_field_types(
         list(fields),
@@ -171,13 +183,14 @@ class FieldTypeCache:
     """
 
     def __init__(self, cache_path: str | None = None):
-        pass
+        if cache_path is not None:
+            warnings.warn(_CACHE_PATH_IGNORED_WARNING, UserWarning, stacklevel=2)
 
     def resolve_types(
         self,
         fields: Sequence[str],
         overrides: dict[str, str] | None = None,
-        **_kwargs: str,
+        **kwargs: object,
     ) -> dict[str, str]:
         """Resolve Arrow types for a list of fields.
 
@@ -188,6 +201,8 @@ class FieldTypeCache:
         Returns:
             Dict mapping field names to Arrow type strings.
         """
+        if kwargs.get("query_api", True) is False:
+            warnings.warn(_QUERY_API_IGNORED_WARNING, UserWarning, stacklevel=2)
         return resolve_field_types(fields, overrides)
 
     async def aresolve_types(

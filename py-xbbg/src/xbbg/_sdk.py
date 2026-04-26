@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 _sdk_info: dict | None = None
 _manual_sdk_path: Path | None = None
+logger = logging.getLogger(__name__)
 
 
 def _get_lib_version(_lib_path: Path) -> str | None:
@@ -16,6 +18,7 @@ def _get_lib_version(_lib_path: Path) -> str | None:
         major, minor, patch, build = _core.sdk_version()
         return f"{major}.{minor}.{patch}.{build}"
     except Exception:
+        logger.debug("Could not determine Bloomberg SDK runtime version from %s", _lib_path, exc_info=True)
         return None
 
 
@@ -145,7 +148,7 @@ def get_sdk_info() -> dict:
         major, minor, patch, build = _core.sdk_version()
         runtime_version = f"{major}.{minor}.{patch}.{build}"
     except Exception:
-        pass
+        logger.debug("Could not determine Bloomberg SDK runtime version", exc_info=True)
 
     info = {
         "sources": sources,
@@ -340,4 +343,4 @@ def _prepare_sdk_for_core_import() -> None:
         else:
             _preload_sdk_library()
     except Exception:
-        pass
+        logger.debug("Failed to prepare Bloomberg SDK for native extension import", exc_info=True)
