@@ -286,6 +286,9 @@ jobs:
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
 
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
       - name: Build offline bundles
         run: |
           mkdir -p dist-offline
@@ -333,6 +336,9 @@ jobs:
 
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux
