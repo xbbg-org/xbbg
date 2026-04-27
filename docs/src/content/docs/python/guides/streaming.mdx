@@ -266,7 +266,7 @@ async with await blp.amktbar(
 ### Market Depth — `adepth()` / `depth()`
 
 <Aside type="caution">
-Requires a Bloomberg **B-PIPE license**. Not available with standard Terminal connections. Raises `BlpBPipeError` if the service is unavailable.
+Requires a Bloomberg B-PIPE environment and the applicable service entitlements. It is not available from a standard Terminal-only setup, and `BlpBPipeError` is raised when the service or entitlements are unavailable.
 </Aside>
 
 Streaming Level 2 order book data via `//blp/mktdepth`. Fields are implicit (provided by Bloomberg).
@@ -286,7 +286,7 @@ except BlpBPipeError as e:
 ### Option and Futures Chains — `achains()` / `chains()`
 
 <Aside type="caution">
-Requires a Bloomberg **B-PIPE license**. Not available with standard Terminal connections. Raises `BlpBPipeError` if the service is unavailable.
+Requires a Bloomberg B-PIPE environment and the applicable service entitlements. It is not available from a standard Terminal-only setup, and `BlpBPipeError` is raised when the service or entitlements are unavailable.
 </Aside>
 
 Streaming option or futures chain updates via `//blp/mktlist`.

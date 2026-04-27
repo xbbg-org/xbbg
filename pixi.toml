@@ -1,6 +1,6 @@
 [workspace]
 name = "xbbg"
-description = "Intuitive Bloomberg data API"
+description = "Independent client for Bloomberg-connected data workflows"
 # Conda packages below resolve from conda-forge only (see `channels`).
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]

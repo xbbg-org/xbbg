@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xbbg"
-description = "Intuitive Bloomberg data API"
+description = "Independent client for Bloomberg-connected data workflows"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10,<3.15"
 license = "Apache-2.0"

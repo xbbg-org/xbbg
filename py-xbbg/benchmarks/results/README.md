@@ -14,7 +14,7 @@ benchmark_v{version}.md
 
 - **Purpose:** Current benchmark for each version
 - **Behavior:** OVERWRITES when you re-run benchmarks for the same version
-- **Commit:** YES - These are the "official" benchmark results per version
+- **Commit:** YES - These are the canonical benchmark results per xbbg version
 
 ### Timestamped Archives (Never Overwrites)
 ```
@@ -93,7 +93,7 @@ results/
 ## Why This Structure?
 
 ### ✅ Version-Specific Files
-- **Marketing**: "v1.0.0 is 10x faster than v0.10.3" (official comparison)
+- **Marketing/docs:** "v1.0.0 is 10x faster than v0.10.3" (canonical xbbg comparison)
 - **Documentation**: Include in release notes
 - **Reproducibility**: Re-run benchmarks, overwrite if needed
 

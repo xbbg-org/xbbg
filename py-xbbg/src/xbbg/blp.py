@@ -1,6 +1,6 @@
-"""High-level Bloomberg data API: reference, historical, intraday.
+"""High-level xbbg request API: reference, historical, intraday.
 
-This module provides the xbbg-compatible API using the Rust backend,
+This module provides the xbbg-compatible API for authorized Bloomberg environments,
 with support for multiple DataFrame backends via narwhals.
 
 API Design:
@@ -1075,8 +1075,6 @@ def _pop_presentation_aliases(kwargs: dict[str, Any]) -> _PresentationOptions:
         sort=options.get("sort"),
         orientation=options.get("orientation"),
     )
-
-
 
 
 def _periodicity_selection(elements: Sequence[tuple[str, Any]]) -> str | None:
@@ -2783,8 +2781,8 @@ async def adepth(
     """Subscribe to Level 2 market depth / order book data.
 
     .. warning::
-        **Requires Bloomberg B-PIPE license.** This feature is not available
-        with standard Terminal connections.
+        **Requires a Bloomberg B-PIPE environment and applicable service entitlements.**
+        This feature is not available with Terminal-only connections.
 
     Provides real-time order book updates with bid/ask prices and sizes
     at multiple levels.
@@ -2799,7 +2797,7 @@ async def adepth(
         Subscription object for async iteration.
 
     Raises:
-        BlpBPipeError: If B-PIPE license is not available.
+        BlpBPipeError: If a B-PIPE environment or service entitlement is unavailable.
 
     Example::
 
@@ -2829,7 +2827,9 @@ async def adepth(
     except Exception as e:
         # Check for B-PIPE related errors
         if "MKTDEPTHDATA" in str(e).upper() or "SERVICE" in str(e).upper():
-            raise BlpBPipeError("Level 2 market depth requires Bloomberg B-PIPE license.") from e
+            raise BlpBPipeError(
+                "Level 2 market depth requires a Bloomberg B-PIPE environment and applicable service entitlements."
+            ) from e
         raise
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)
@@ -2851,8 +2851,8 @@ async def achains(
     """Subscribe to option or futures chain updates.
 
     .. warning::
-        **Requires Bloomberg B-PIPE license.** This feature is not available
-        with standard Terminal connections.
+        **Requires a Bloomberg B-PIPE environment and applicable service entitlements.**
+        This feature is not available with Terminal-only connections.
 
     Provides real-time updates for option chains or futures chains
     on a given underlying security.
@@ -2868,7 +2868,7 @@ async def achains(
         Subscription object for async iteration.
 
     Raises:
-        BlpBPipeError: If B-PIPE license is not available.
+        BlpBPipeError: If a B-PIPE environment or service entitlement is unavailable.
 
     Example::
 
@@ -2902,7 +2902,9 @@ async def achains(
     except Exception as e:
         # Check for B-PIPE related errors
         if "MKTLIST" in str(e).upper() or "SERVICE" in str(e).upper():
-            raise BlpBPipeError("Option/futures chains require Bloomberg B-PIPE license.") from e
+            raise BlpBPipeError(
+                "Option/futures chains require a Bloomberg B-PIPE environment and applicable service entitlements."
+            ) from e
         raise
 
     return Subscription(py_sub, raw=raw, backend=effective_backend)

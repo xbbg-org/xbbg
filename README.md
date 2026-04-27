@@ -4,7 +4,7 @@
 <a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
 
 <!-- markdownlint-disable MD036 -->
-**xbbg: The intuitive Bloomberg API for Python, JavaScript and Rust**
+**xbbg: an independent Bloomberg-connected data client for Python, JavaScript and Rust**
 <!-- markdownlint-enable MD036 -->
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
@@ -27,6 +27,8 @@ Latest release: xbbg==1.1.2 (release: [notes](https://github.com/alpha-xone/xbbg
 
 > This `main` branch is the Rust-powered v1 release, a significant upgrade over 0.x in performance and architecture.
 > Need the legacy pure-Python behavior? Use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
+
+> **Important:** xbbg is an independent open-source project. It is not affiliated with, endorsed by, sponsored by, or approved by Bloomberg Finance L.P. or its affiliates. Bloomberg, Bloomberg Terminal, B-PIPE, BQL, and related names are trademarks or service marks of their respective owners. xbbg does not grant access to Bloomberg services, data, software, licenses, credentials, or entitlements; users must obtain and use those separately under their own Bloomberg agreements and applicable policies.
 
 ## Table of Contents
 
@@ -65,8 +67,8 @@ Latest release: xbbg==1.1.2 (release: [notes](https://github.com/alpha-xone/xbbg
 
 ## Overview
 
-xbbg is the modern standard Bloomberg API across Python, JavaScript, and Rust: broad Bloomberg coverage, an enterprise-grade native runtime, and clean language-native interfaces without legacy wrapper bloat.
-This `main` branch is the v1 release: Bloomberg request execution is Rust-powered for performance and reliability while preserving the familiar Python xbbg API and exposing the same engine to JavaScript and Rust workflows.
+xbbg is an independent, Rust-powered client library for Bloomberg-connected data workflows across Python, JavaScript, and Rust: broad SDK-backed request coverage, a native runtime, and clean language-native interfaces without legacy wrapper bloat.
+This `main` branch is the v1 release: request execution is Rust-powered for performance and reliability while preserving the familiar Python xbbg API and exposing the same engine to JavaScript and Rust workflows.
 
 ### Key Features
 
@@ -137,45 +139,45 @@ See [`py-xbbg/examples/xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyt
 
 ## Why Choose xbbg?
 
-xbbg is the **standard, most modern, highest-performance** Bloomberg API wrapper for Python. It is built for enterprise use: ZFP over leased lines, B-PIPE authentication, TLS, failover servers, SOCKS5, SDK logging, Rust-powered execution, Arrow-native data movement, typed Python ergonomics, and comprehensive Bloomberg coverage without the boilerplate or one-off wrappers that make smaller libraries feel simple until your workflow grows.
+xbbg is a third-party, Rust-powered client library for Python workflows that run in an already authorized Bloomberg environment. It is built for teams that need ZFP over leased lines, B-PIPE authentication, TLS, failover servers, SOCKS5, SDK logging, Arrow-native data movement, typed Python ergonomics, and broad SDK-backed request coverage without hand-written session and event-loop boilerplate.
 
-### 🎯 Unmatched Feature Coverage
+### Feature Coverage
 
-xbbg is designed to replace direct `blpapi` usage for almost every normal Bloomberg workflow: high-level helpers cover the common APIs, while the generic request layer gives access to arbitrary Bloomberg services and operations when you need to go lower level.
+xbbg provides a higher-level alternative to direct `blpapi` code for many common workflows: high-level helpers cover common request patterns, while the generic request layer lets authorized users reach Bloomberg services and operations when they need a lower-level path.
 
-- **Near-complete `blpapi` coverage**: Reference, Historical, Bulk, Intraday, Tick, Streaming, BQL, BEQS, BSRCH, BQR, BTA, YAS, fields, portfolios, curves, government lookup, and raw/generic service requests
-- **Direct replacement for raw `blpapi` in applications**: session setup, auth, request dispatch, event parsing, Arrow output, async execution, logging, errors, and retries are handled by xbbg instead of hand-written SDK loops
+- **Broad `blpapi` workflow coverage**: Reference, Historical, Bulk, Intraday, Tick, Streaming, BQL, BEQS, BSRCH, BQR, BTA, YAS, fields, portfolios, curves, government lookup, and raw/generic service requests
+- **Less raw SDK boilerplate in applications**: session setup, auth, request dispatch, event parsing, Arrow output, async execution, logging, errors, and retries can be handled by xbbg instead of repeated application-local SDK loops
 - **Sub-second precision**: Down to 10-second intraday bars (unique to xbbg)
 - **Real-time streaming**: Live market data with async support
 - **Advanced utilities**: Futures/CDX contract resolution, currency conversion, market hours
 
 ### 📊 Enterprise-Grade Without Bloat
 
-- **ZFP over leased lines**: First-class `zfp_remote` support using Bloomberg's ZFP leased-line session setup with client credentials and trust material
-- **B-PIPE and SAPI-ready authentication**: User, application, user+application, directory, manual, and token auth modes for real enterprise identity flows
-- **Transport control for managed networks**: Direct hosts, ordered failover servers, TLS, SOCKS5 proxying, startup attempts, auto-restart, and retry policy are all explicit configuration, not ad hoc connection strings
+- **ZFP over leased lines**: `zfp_remote` support for Bloomberg-provisioned ZFP environments with the client credentials and trust material supplied to the user
+- **B-PIPE and SAPI-ready authentication**: User, application, user+application, directory, manual, and token auth modes for authorized enterprise identity flows
+- **Transport control for managed networks**: Already-provisioned direct hosts, ordered failover servers, TLS, SOCKS5 proxying, startup attempts, auto-restart, and retry policy are all explicit configuration, not ad hoc connection strings
 - **Operational observability**: xbbg tracing, Bloomberg SDK log bridging, SDK runtime detection, worker health, and request environment snapshots make failures inspectable instead of opaque
 - **Concurrency and isolation**: Independent request worker pools and isolated subscription sessions keep batch requests, live streams, and scoped engines from stepping on each other
-- **Enterprise middleware hooks**: Request middleware gives platform teams a supported place for audit logging, entitlement checks, request labeling, metrics, tracing, policy enforcement, and standardized error handling across every Bloomberg request
-- **Validation and governance hooks**: Field validation modes, persistent field caches, middleware context, and stable output contracts give teams enforceable request behavior
+- **User-owned middleware hooks**: Request middleware gives platform teams a place to implement their own audit logging, entitlement-aware checks, request labeling, metrics, tracing, policy handling, and standardized error handling around Bloomberg requests
+- **Validation and governance hooks**: Field validation modes, persistent field caches, middleware context, and stable output contracts help teams implement request behavior controls without standing in for Bloomberg permissions or internal governance controls
 - **Advanced zero-copy architecture**: Rust decodes Bloomberg payloads into typed Arrow builders, releases the GIL around native work, wraps native `ArrowTable` results in a Narwhals DataFrame by default for dataframe ergonomics, and exposes explicit native/PyArrow/pandas/Polars/DuckDB conversions when requested
 - **Benchmarking across changes**: Dedicated live and offline benchmark harnesses track request latency, allocation behavior, cache contention, subscription replay throughput, and competitor equivalence so performance regressions are visible instead of guessed
-- **Rust-powered hot path**: Bloomberg sessions, request execution, parsing, and Arrow handoff run in the shared native engine instead of slow Python event-loop glue
-- **No bloat**: every core dependency is part of the enterprise data path — Bloomberg SDK access, typed tabular interchange, backend conversion, benchmarking, diagnostics, or runtime packaging
+- **Rust-powered hot path**: SDK-backed sessions, request execution, parsing, and Arrow handoff run in the shared native engine instead of slow Python event-loop glue
+- **No bloat**: every core dependency supports the data path — SDK runtime integration, typed tabular interchange, backend conversion, benchmarking, diagnostics, or runtime packaging
 
 ### 💡 Developer Experience
 
-- **Excel-compatible**: Use familiar Bloomberg Excel syntax - zero learning curve
+- **Excel-style request compatibility**: Use familiar Bloomberg Excel add-in style request names and date formats where xbbg supports them
 - **Pythonic API**: Consistent, intuitive function names (`bdp`, `bdh`, `bdib`)
 - **Rich documentation**: 100+ examples, Jupyter notebooks, comprehensive guides
 - **Active community**: Discord support, regular updates, responsive maintainers
 
 ### 🚀 Performance & Reliability
 
-- **Nothing else in the Python Bloomberg ecosystem is this complete**: xbbg covers simple BDP/BDH/BDS and scales to intraday bars, ticks, subscriptions, BQL, BEQS, BSRCH, BTA, YAS, ZFP, B-PIPE auth, TLS, failover, SOCKS5, and more
-- **Highest-performance architecture**: Rust worker pools, typed Arrow builders, async execution, GIL-free native work, zero-copy columnar handoff, and reusable Bloomberg sessions replace the repeated Python session boilerplate used by older wrappers
+- **Broad Python Bloomberg workflow surface**: xbbg covers simple BDP/BDH/BDS and scales to intraday bars, ticks, subscriptions, BQL, BEQS, BSRCH, BTA, YAS, ZFP, B-PIPE auth, TLS, failover, SOCKS5, and more when your Bloomberg environment supports those services
+- **High-performance architecture**: Rust worker pools, typed Arrow builders, async execution, GIL-free native work, zero-copy columnar handoff, and reusable SDK sessions reduce repeated Python session boilerplate used by older wrappers
 - **Benchmark-driven engineering**: xbbg tracks performance across changes with live Bloomberg benchmarks, offline replay harnesses, allocation profiling, cache-contention measurements, subscription replay tests, and competitor equivalence checks
-- **No bloat**: every core dependency is part of the enterprise data path — Bloomberg SDK access, typed tabular interchange, backend conversion, benchmarking, diagnostics, or runtime packaging
+- **No bloat**: every core dependency supports the data path — SDK runtime integration, typed tabular interchange, backend conversion, benchmarking, diagnostics, or runtime packaging
 - **Battle-tested**: Used in production by hedge funds, asset managers, and research teams
 - **Modern Python**: Supports Python 3.10-3.14 with latest language features
 - **CI/CD pipeline**: Automated testing across multiple Python versions and platforms
@@ -183,14 +185,14 @@ xbbg is designed to replace direct `blpapi` usage for almost every normal Bloomb
 
 ### Comparison with Alternatives
 
-The gap is not cosmetic. The other Python Bloomberg packages are either narrow homegrown wrappers around BDP/BDH/BDS, seldom-updated legacy pandas-era clients, or partial modern experiments. They can be useful for tiny scripts, but they are not comprehensive Bloomberg platforms: they miss major services, lack enterprise transports, do not provide the same async/session architecture, and do not carry the same benchmark-driven Rust/Arrow runtime. xbbg is the standard because it is the only package that covers the simple path and the institutional path in one stack.
+The gap is not cosmetic. The other Python Bloomberg packages are either narrower wrappers around BDP/BDH/BDS, seldom-updated legacy pandas-era clients, or partial modern experiments. They can be useful for small scripts, but they generally cover fewer Bloomberg-connected workflows, expose less enterprise transport configuration, provide different async/session architecture, or do not carry the same benchmark-driven Rust/Arrow runtime. xbbg aims to cover the simple path and the institutional path in one independent client library.
 
 #### Detailed competitor notes
 
 **vs. raw `blpapi`**
-- Official SDK surface, but intentionally low-level: every app must rebuild session setup, service opening, request construction, correlation IDs, event-loop parsing, retries, logging, and dataframe conversion.
-- xbbg keeps the SDK power underneath through Bloomberg's C/C++ SDK while replacing hand-written event loops with a typed Rust engine, async worker pools, structured exceptions, Arrow output, and generic requests.
-- For almost every normal application, xbbg is the professional replacement for direct `blpapi`, not just a convenience wrapper.
+- Bloomberg's official SDK surface is intentionally low-level: every application has to handle session startup, service opening, request construction, correlation IDs, event-loop parsing, retries, logging, and dataframe conversion.
+- xbbg keeps SDK access underneath through Bloomberg's C/C++ SDK while reducing hand-written event-loop code with a typed Rust engine, async worker pools, structured exceptions, Arrow output, and generic requests.
+- For many normal applications, xbbg can reduce direct `blpapi` code while still depending on the user's Bloomberg runtime, permissions, and entitlements.
 
 **vs. bbg-fetch / BloombergFetch**
 - Small, homegrown pandas helper package for prices/fundamentals/curves/analytics; targets Python 3.9–3.12 and is not a modern Python 3.13+ option.
@@ -210,7 +212,7 @@ The gap is not cosmetic. The other Python Bloomberg packages are either narrow h
 **vs. polars-bloomberg**
 - Locks the whole workflow into Polars; xbbg gives you Polars as an optional conversion alongside pandas, DuckDB, Narwhals, and raw xbbg native Arrow paths.
 - Partial Bloomberg surface: useful BQL/search-style coverage, but not full API coverage across BDP/BDS/BDH/BDIB/BDTICK/streaming, enterprise transports, middleware, diagnostics, or generic service requests.
-- xbbg is the broader platform: same modern Polars-friendly output when you want it, without giving up the rest of Bloomberg or forcing every team onto one dataframe library.
+- xbbg is the broader client: same modern Polars-friendly output when you want it, without giving up other supported request workflows or forcing every team onto one dataframe library.
 
 | Feature | xbbg | bbg-fetch ([BloombergFetch](https://github.com/ArturSepp/BloombergFetch)) | pdblp | blp | polars-bloomberg |
 |---------|------|----------------------------------|-------|-----|------------------|
@@ -255,15 +257,15 @@ The gap is not cosmetic. The other Python Bloomberg packages are either narrow h
 [^8]: `blp` declares Python `>=3.6` and a mandatory `pandas` dependency in its package metadata.
 [^9]: xbbg is the only package in this comparison with a real CI matrix that exercises every supported Python version. The competitors either lack active CI across their claimed range, are legacy/inactive, or test a narrower slice than their advertised compatibility.
 
-**Bottom line**: Use xbbg. The alternatives are narrower, older, slower, seldom updated, or incomplete: they stop at basic pandas workflows, miss major Bloomberg services, lack enterprise connectivity, or rely on repeated Python session boilerplate. xbbg is the standard Bloomberg Python stack and can replace direct `blpapi` for almost every normal application workflow: broader coverage, modern Rust/Arrow internals, benchmarked performance across changes, enterprise transports, async execution, configurable sessions, generic service requests, and non-pandas backends without switching libraries.
+**Bottom line**: xbbg is the broadest, most actively maintained independent client in this comparison for Bloomberg-connected Python workflows. It offers modern Rust/Arrow internals, benchmarked performance across changes, enterprise transports, async execution, configurable sessions, generic service requests, and non-pandas backends without switching libraries. It remains a third-party project and depends on the user's own Bloomberg runtime, entitlements, and applicable terms.
 
 #### Common objections, answered
 
-- **“Rust and Narwhals are dependency bloat.”** False. xbbg has a deliberately small core dependency surface: `narwhals` plus the native engine. The Rust engine emits xbbg native Arrow objects (`ArrowTable` / `ArrowRecordBatch`) directly, and Narwhals provides the lightweight plugin interface that lets one engine serve pandas, Polars, DuckDB, and other dataframe consumers when you explicitly request conversion. By contrast, `bbg-fetch` installs `numpy>=2.0` and `pandas>=2.2.0` as hard dependencies, with optional `pyarrow`, Jupyter, and dev extras. Pandas-based wrappers are not dependency-free; they just make pandas mandatory and still leave you with Python event-loop parsing, one-off dataframe shaping, and a narrow API. xbbg is leaner where it matters: fewer core concepts, fewer repeated parsing paths, fewer mandatory dataframe assumptions, and one native engine for the whole Bloomberg surface.
-- **“Use a lighter package for simple `bdp()` calls.”** No. xbbg is still simple at the call site (`xbbg.bdp(...)`), but it does not trap you in a toy architecture when that same notebook grows into B-PIPE auth, async batch jobs, intraday bars, BQL, streaming, typed outputs, or non-pandas pipelines.
-- **“Fixed income and government bonds are gaps.”** No. xbbg has explicit fixed-income coverage: ISIN/CUSIP/SEDOL support, BDS cash-flow style data, BSRCH fixed-income searches, BQR dealer quotes, YAS helpers, bond analytics, curves, and CDX analytics. When Bloomberg returns no data for a security/field/date combination, xbbg surfaces the request result instead of pretending unavailable Bloomberg data exists.
-- **“You need raw `blpapi` for SAPI or B-PIPE session control.”** No. xbbg exposes first-class session configuration: direct hosts, ordered failover `servers`, ZFP over leased lines, TLS credentials, SOCKS5, SAPI/B-PIPE auth modes (`user`, `app`, `userapp`, `dir`, `manual`, `token`), startup attempts, auto-restart, retry policy, SDK logging, scoped `Engine(...)` instances, and request/subscription worker pools. For unusual Bloomberg operations, the generic request layer lets xbbg replace hand-written `blpapi` request/event-loop code without dropping to the raw SDK.
-- **“xbbg creates Bloomberg data compliance risk by saving data locally.”** No. xbbg does not require a `BBG_ROOT` market-data cache or auto-save Bloomberg responses as local Parquet files. Core requests return typed tables/dataframes to the caller. Metadata caches used for field/schema/type resolution are not Bloomberg market-data archives.
+- **“Rust and Narwhals are dependency bloat.”** False. xbbg has a deliberately small core dependency surface: `narwhals` plus the native engine. The Rust engine emits xbbg native Arrow objects (`ArrowTable` / `ArrowRecordBatch`) directly, and Narwhals provides the lightweight plugin interface that lets one engine serve pandas, Polars, DuckDB, and other dataframe consumers when you explicitly request conversion. By contrast, `bbg-fetch` installs `numpy>=2.0` and `pandas>=2.2.0` as hard dependencies, with optional `pyarrow`, Jupyter, and dev extras. Pandas-based wrappers are not dependency-free; they just make pandas mandatory and still leave you with Python event-loop parsing, one-off dataframe shaping, and a narrow API. xbbg is leaner where it matters: fewer core concepts, fewer repeated parsing paths, fewer mandatory dataframe assumptions, and one native engine for the supported workflow surface.
+- **“Use a lighter package for simple `bdp()` calls.”** xbbg is still simple at the call site (`xbbg.bdp(...)`), but it does not trap you in a narrow architecture when that same notebook grows into B-PIPE auth, async batch jobs, intraday bars, BQL, streaming, typed outputs, or non-pandas pipelines.
+- **“Fixed income and government bonds are gaps.”** xbbg has explicit fixed-income coverage: ISIN/CUSIP/SEDOL support, BDS cash-flow style data, BSRCH fixed-income searches, BQR dealer quotes, YAS helpers, bond analytics, curves, and CDX analytics. When Bloomberg returns no data for a security/field/date combination, xbbg surfaces the request result instead of implying unavailable Bloomberg data exists.
+- **“You need raw `blpapi` for SAPI or B-PIPE session control.”** xbbg exposes session configuration for already-provisioned hosts, ordered failover `servers`, ZFP over leased lines, TLS credentials, SOCKS5, SAPI/B-PIPE auth modes (`user`, `app`, `userapp`, `dir`, `manual`, `token`), startup attempts, auto-restart, retry policy, SDK logging, scoped `Engine(...)` instances, and request/subscription worker pools. For unusual Bloomberg operations, the generic request layer can reduce hand-written `blpapi` request/event-loop code without bypassing Bloomberg permissions or entitlements.
+- **“Does xbbg automatically save Bloomberg data locally?”** xbbg does not require a `BBG_ROOT` market-data cache or auto-save Bloomberg responses as local Parquet files. Core requests return typed tables/dataframes to the caller. Users remain responsible for evaluating any local storage, caching, logging, or downstream persistence under their Bloomberg agreements, entitlements, and internal policies.
 - **“High-level means black-box troubleshooting.”** No. xbbg is high-level at the Python API and low-level where debugging matters: structured exception classes, SDK detection via `get_sdk_info()`, xbbg tracing, Bloomberg SDK log bridging with `enable_sdk_logging()`, request IDs, worker health, middleware context, request environment snapshots, raw request access, and JSON output modes for inspecting Bloomberg payloads.
 
 ## Complete API Reference
@@ -412,9 +414,9 @@ Options helper enums exported by `xbbg.ext`:
 
 | Function | Description | Key Features |
 |----------|-------------|--------------|
-| **`add_middleware()`** | Register request middleware | Enterprise audit logging, entitlement checks, metrics, tracing, policy enforcement, request labeling |
+| **`add_middleware()`** | Register request middleware | Hooks for user-owned audit logging, entitlement-aware checks, metrics, tracing, policy handling, request labeling |
 | **`set_middleware()`** | Replace middleware chain | Install a known platform pipeline in one call |
-| **`get_middleware()`** | Inspect middleware chain | Useful in apps/tests before mutation or compliance checks |
+| **`get_middleware()`** | Inspect middleware chain | Useful in apps/tests before mutation or user-owned compliance checks |
 | **`remove_middleware()`** | Unregister middleware | Clean removal for scoped tests or application shutdown |
 | **`clear_middleware()`** | Clear middleware chain | Reset to a pristine request path |
 | **`RequestContext`** | Request metadata | Request ID, request payload, timing, results, errors |
@@ -437,6 +439,7 @@ Options helper enums exported by `xbbg.ext`:
   - Visit [Bloomberg API Library](https://www.bloomberg.com/professional/support/api-library/) and download C++ Supported Release
   - For local source builds in this repo, install it with `bash ./scripts/sdktool.sh` on macOS/Linux or `.\scripts\sdktool.ps1` on Windows PowerShell
   - If you manage the SDK yourself, set `BLPAPI_ROOT` to the extracted SDK root
+  - You are responsible for obtaining and using Bloomberg SDK/runtime components under your own Bloomberg agreements and entitlements; xbbg does not redistribute or license them.
 
 - **Bloomberg official Python API**:
 
@@ -490,7 +493,7 @@ curl -fsSL https://raw.githubusercontent.com/alpha-xone/xbbg/main/scripts/instal
 
 The installer currently targets **macOS arm64** and **Linux amd64**. Windows `.zip` assets are attached to GitHub releases for manual installation.
 
-GitHub release assets include only the xbbg wrapper/binary pair. They do **not** bundle Bloomberg SDK files or the Bloomberg runtime; you must supply those locally via `blpapi`, `BLPAPI_ROOT`, or another supported runtime source.
+GitHub release assets include only the xbbg wrapper/binary pair. They do **not** bundle Bloomberg SDK files or the Bloomberg runtime. You must obtain and use any Bloomberg SDK/runtime components separately from Bloomberg or another source you are authorized to use, subject to your Bloomberg agreements and entitlements.
 
 Claude Code:
 
@@ -513,7 +516,7 @@ OpenCode:
 }
 ```
 
-The launcher searches for the Bloomberg runtime via `XBBG_MCP_LIB_DIR`, `BLPAPI_LIB_DIR`, `BLPAPI_ROOT`, a vendored SDK under `vendor/blpapi-sdk/`, or the official `blpapi` Python package. See [`apps/xbbg-mcp/README.md`](apps/xbbg-mcp/README.md) for the full env surface.
+The launcher searches for the Bloomberg runtime via `XBBG_MCP_LIB_DIR`, `BLPAPI_LIB_DIR`, `BLPAPI_ROOT`, a locally staged authorized SDK under `vendor/blpapi-sdk/`, or the official `blpapi` Python package. See [`apps/xbbg-mcp/README.md`](apps/xbbg-mcp/README.md) for the full env surface.
 
 ## Quickstart
 
@@ -2033,7 +2036,7 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 Set up the development environment with [pixi](https://pixi.sh/):
 
 ```bash
-# Install the Bloomberg SDK into vendor/blpapi-sdk/ and let xbbg discover it
+# Stage an authorized Bloomberg SDK locally under vendor/blpapi-sdk/ and let xbbg discover it
 bash ./scripts/sdktool.sh               # macOS/Linux
 # .\scripts\sdktool.ps1                # Windows PowerShell
 

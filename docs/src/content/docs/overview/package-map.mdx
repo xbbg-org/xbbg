@@ -8,6 +8,10 @@ import { PhBracketsCurly, PhPackage } from 'phosphor-icons-astro';
 
 This monorepo contains many crates and packages, but the public documentation is intentionally organized around the packages you can install and use directly.
 
+<Aside type="note">
+  Public packages are independent xbbg clients for Bloomberg-connected environments. They do not provide Bloomberg access, credentials, entitlements, data rights, or SDK licenses.
+</Aside>
+
 <CardGrid>
   <Card title="xbbg">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
@@ -28,7 +32,7 @@ This monorepo contains many crates and packages, but the public documentation is
 | Package | Ecosystem | Install | Status | Use when |
 |---------|-----------|---------|--------|----------|
 | `xbbg` | Python / PyPI | `pip install xbbg` | Primary public package | You want the main supported API surface, DataFrame backends, notebooks, or Python services |
-| `@xbbg/core` | Node.js / npm | `npm install @xbbg/core` | Experimental alpha | You need direct Node.js access to the shared Rust engine and Bloomberg request APIs |
+| `@xbbg/core` | Node.js / npm | `npm install @xbbg/core` | Experimental alpha | You need Node.js access to the shared Rust engine for Bloomberg-connected request APIs |
 
 <Aside type="note">
   Choose `xbbg` unless you specifically need Node.js. It is the main public package and the center of the documentation set.

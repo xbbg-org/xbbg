@@ -1,6 +1,6 @@
 # @xbbg/core
 
-Node.js Bloomberg API bindings backed by the Rust `xbbg` engine and a native N-API addon.
+Independent Node.js bindings for Bloomberg-connected environments, backed by the Rust `xbbg` engine and a native N-API addon.
 
 ## Status
 
@@ -27,6 +27,8 @@ If no packaged addon is available for your platform, build from source locally i
 ## Runtime prerequisites
 
 Using the API requires Bloomberg Terminal, B-PIPE, or ZFP access and Bloomberg SDK runtime libraries available on the target system. Configure Bloomberg connectivity and credentials according to your Bloomberg deployment before making requests.
+
+`@xbbg/core` is not affiliated with, endorsed by, sponsored by, or approved by Bloomberg Finance L.P. or its affiliates. It does not provide Bloomberg access, credentials, entitlements, data rights, or SDK licenses; users must supply and use those under their own Bloomberg agreements and policies.
 
 ## Release integrity
 
@@ -120,7 +122,7 @@ const bpipeEngine = await xbbg.connect({
   },
 });
 
-// ZFP over leased lines: Bloomberg supplies endpoints via zfpRemote
+// Authorized ZFP over leased lines: use Bloomberg-provisioned endpoints via zfpRemote
 const zfpEngine = await xbbg.connect({
   zfpRemote: '8194',
   tls: {
@@ -193,12 +195,12 @@ const px = await engine.currencyConversion('700 HK Equity', 'USD', '20240101', '
 
 `connect()` and `configure()` accept a structured `EngineConfig` object. The most important connection controls are:
 
-- `host` / `port` for a single Bloomberg Terminal or direct B-PIPE endpoint
-- `servers` for ordered failover across multiple direct Bloomberg hosts
+- `host` / `port` for a local Terminal session or an already-provisioned direct endpoint
+- `servers` for ordered failover across already-provisioned direct hosts
 - `auth` for Bloomberg session identity auth: `user`, `app`, `userapp`, `dir`, `manual`, or `token`
 - `tls` for encrypted B-PIPE/direct sessions and as a required input for ZFP
-- `zfpRemote` (`'8194'` or `'8196'`) for Bloomberg ZFP over leased lines; do not combine it with `host`/`port`/`servers`/`socks5` because Bloomberg supplies the endpoints
-- `socks5` for proxied direct Bloomberg connectivity
+- `zfpRemote` (`'8194'` or `'8196'`) for Bloomberg-assigned ZFP endpoints in an entitled environment; do not combine it with `host`/`port`/`servers`/`socks5`
+- `socks5` for proxied access to already-provisioned direct Bloomberg endpoints
 - `retryPolicy`, `numStartAttempts`, and recovery settings for reconnect behavior
 
 The JS binding forwards these fields directly to the Rust engine, so Node can configure the same auth and transport features already available in the core runtime. Invalid transport combinations such as `zfpRemote` plus direct hosts fail during configuration instead of silently connecting to `localhost:8194`.

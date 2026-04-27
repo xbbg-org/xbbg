@@ -38,14 +38,14 @@ The installer places two files in `~/.local/bin/` by default:
 - `xbbg-mcp` - launcher wrapper
 - `xbbg-mcp-real` - compiled binary
 
-GitHub release assets include only the launcher wrapper and compiled xbbg binary. They do **not** include Bloomberg SDK files or the Bloomberg runtime; you must provide those locally.
+GitHub release assets include only the launcher wrapper and compiled xbbg binary. They do **not** include Bloomberg SDK files or the Bloomberg runtime. You must provide those locally from a source you are authorized to use under your Bloomberg agreements and entitlements.
 
 The wrapper locates the Bloomberg runtime in this order:
 
 1. `XBBG_MCP_LIB_DIR`
 2. `BLPAPI_LIB_DIR`
 3. `BLPAPI_ROOT`
-4. vendored SDK under `crates/blpapi-sys/vendor/blpapi-sdk/`
+4. locally staged authorized SDK under `crates/blpapi-sys/vendor/blpapi-sdk/`
 5. the official Python `blpapi` package
 
 If you install Bloomberg's Python package, the wrapper can usually run without any extra shell configuration:

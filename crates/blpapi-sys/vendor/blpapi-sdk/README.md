@@ -1,5 +1,7 @@
 # Bloomberg BLPAPI C++ SDK — Local Development
 
+This directory is a local-development location only. The repository does not vendor Bloomberg SDK archives, headers, libraries, credentials, entitlements, or data rights. Use the helper scripts only if you are authorized to download and use the Bloomberg SDK under your Bloomberg agreements.
+
 ## Quick Start
 
 ```bash
@@ -57,6 +59,5 @@ and picks the latest installed version automatically.
 ## Notes
 
 - Everything under `vendor/blpapi-sdk/` except this README is git-ignored.
-- The official Python `blpapi` wheels already bundle the C++ runtime for supported platforms.
-  Use the SDK here only for building from source or running C++ tooling.
-- The helper scripts auto-detect the host OS and choose the Bloomberg archive format for that platform.
+- The official Python `blpapi` wheels already bundle the C++ runtime for supported platforms. Use the SDK here only for building from source or running C++ tooling, and only from an authorized source under your Bloomberg agreements.
+- The helper scripts auto-detect the host OS and choose the Bloomberg archive format for that platform; they do not grant Bloomberg SDK redistribution rights or service access.
