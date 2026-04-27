@@ -1,3 +1,27 @@
 # @xbbg/core-darwin-arm64
 
-Prebuilt native `napi_xbbg.node` addon for `@xbbg/core` on macOS arm64.
+Platform-specific prebuilt native `napi_xbbg.node` addon used by `@xbbg/core`. This package supports the `darwin arm64` target. npm installs it automatically as an optional dependency of `@xbbg/core` on matching platforms.
+
+## Install
+
+Install the wrapper package:
+
+```sh
+npm install @xbbg/core
+```
+
+Direct installation of `@xbbg/core-darwin-arm64` is only recommended for diagnostics or offline packaging workflows.
+
+## Contents
+
+- `index.js`
+- `napi_xbbg.node`
+- `package.json` and `README.md`
+
+## Runtime requirements
+
+Bloomberg access and runtime requirements are inherited from `@xbbg/core`. This package does not vendor Bloomberg SDK binaries.
+
+## Release integrity
+
+Package releases are intended to be built on GitHub-hosted Actions and published to npm with trusted publishing and provenance once configured.

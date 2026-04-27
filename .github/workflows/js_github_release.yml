@@ -283,6 +283,9 @@ jobs:
           name: core-package-darwin-arm64
           path: js-xbbg/packages/xbbg-core-darwin-arm64
 
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
 
@@ -330,6 +333,9 @@ jobs:
         with:
           name: core-package-darwin-arm64
           path: js-xbbg/packages/xbbg-core-darwin-arm64
+
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
 
       - name: Stamp JS package versions
         run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"

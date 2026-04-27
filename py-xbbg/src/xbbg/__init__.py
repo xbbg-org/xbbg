@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 from importlib.metadata import PackageNotFoundError, version
+import logging
 from typing import TYPE_CHECKING
 
 from ._exports import (
@@ -22,6 +23,8 @@ from ._exports import (
     SDK_EXPORTS,
     SERVICE_EXPORTS,
 )
+
+logger = logging.getLogger(__name__)
 
 # Version from git tags via setuptools_scm (same mechanism as release/0.x)
 try:
@@ -46,7 +49,7 @@ try:
 
     _sdk._prepare_sdk_for_core_import()
 except Exception:
-    pass  # SDK detection failures shouldn't block package import
+    logger.debug("Failed to prepare Bloomberg SDK for package import", exc_info=True)
 
 _importing_core = False
 _core_module = None

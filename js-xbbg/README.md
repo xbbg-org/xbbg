@@ -1,25 +1,36 @@
 # @xbbg/core
 
-Bloomberg data API for Node.js — powered by Rust.
+Node.js Bloomberg API bindings backed by the Rust `xbbg` engine and a native N-API addon.
 
 ## Status
 
-🚧 **Experimental alpha** — native N-API bindings are implemented, high-level API is in active development.
+**Experimental alpha** — native N-API bindings are implemented, and the high-level API is still in active development. Expect API changes before production-stable releases.
 
 ## Install
 
-Supported prebuilt addon targets:
-- macOS arm64
-- Linux x64
-- Windows x64
+Install the wrapper package with your package manager:
 
 ```bash
-bun add @xbbg/core
-# or
 npm install @xbbg/core
+# or
+bun add @xbbg/core
 ```
 
-`@xbbg/core` loads a packaged native `napi_xbbg.node` addon via platform-specific optional dependencies on supported targets. If no packaged addon is available for your platform, build from source locally instead.
+`@xbbg/core` uses optional dependencies to load a packaged native `napi_xbbg.node` addon for supported targets:
+
+- `@xbbg/core-darwin-arm64` — macOS arm64
+- `@xbbg/core-linux-x64` — Linux x64
+- `@xbbg/core-win32-x64` — Windows x64
+
+If no packaged addon is available for your platform, build from source locally instead.
+
+## Runtime prerequisites
+
+Using the API requires Bloomberg Terminal, B-PIPE, or ZFP access and Bloomberg SDK runtime libraries available on the target system. Configure Bloomberg connectivity and credentials according to your Bloomberg deployment before making requests.
+
+## Release integrity
+
+Packages are intended to be published from GitHub Actions using npm trusted publishing with provenance, backed by GitHub OIDC at publish time. No npm token or local `.npmrc` credential is required in this repository.
 
 ## Local Development
 

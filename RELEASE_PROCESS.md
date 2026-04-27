@@ -89,9 +89,8 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 3. **README Release Sync**: Updates the `README.md` latest-release marker block to the new version/tag
 4. **Git Tag**: Creates `vX.Y.Z` tag and pushes it
 5. **GitHub Release**: Creates release with notes from CHANGELOG
-5. **GitHub Release**: Creates release with notes from CHANGELOG
 6. **PyPI Publish**: Tag push triggers `pypi_upload.yml` — builds wheels and publishes via OIDC trusted publishing
-7. **npm Publish**: Tag push triggers `npm_publish.yml` — builds platform-native `@xbbg/core-*` packages, stamps JS versions from the git tag, and publishes `@xbbg/core` to npm via trusted publishing
+7. **npm Publish**: Tag push triggers `npm-publish.yml` — builds platform-native `@xbbg/core-*` packages, stamps JS versions from the git tag, and publishes `@xbbg/core` to npm via trusted publishing
 8. **Release Assets**: Wheels and sdist are attached to the GitHub release
 
 ## CI/CD Workflows
@@ -108,7 +107,24 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | Workflow | File | Purpose |
 |----------|------|---------|
 | Release | `pypi_upload.yml` | Build wheels (Linux + Windows × Python 3.10–3.14), sdist, publish to PyPI, attach to GitHub release |
-| Release | `npm_publish.yml` | Build and publish `@xbbg/core` prebuilt native packages for supported platforms, then publish the `@xbbg/core` wrapper package |
+| Release | `npm-publish.yml` | Build and publish stable `@xbbg/core` prebuilt native packages for supported platforms, then publish the `@xbbg/core` wrapper package via npm trusted publishing |
+
+### npm trusted publishing setup
+
+`npm-publish.yml` is tokenless: the publish job uses GitHub OIDC (`id-token: write`) from GitHub-hosted runners and npm CLI `>=11.10.0`. Configure this once on npmjs.com for each published package before relying on tag-push publishing:
+
+| npm package | Publisher | GitHub org/user | Repository | Workflow filename | Environment |
+|-------------|-----------|-----------------|------------|-------------------|-------------|
+| `@xbbg/core` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+| `@xbbg/core-linux-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+| `@xbbg/core-win32-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+| `@xbbg/core-darwin-arm64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+
+GitHub environment `npm` is intentionally not required because current repository credentials cannot create it. Add an environment only if an admin wants reviewer-based release approvals; if you do, update both the workflow `environment:` and all npm trusted publisher entries to the exact same environment name.
+
+After a successful OIDC publish, set each package's npm **Publishing access** to require 2FA and disallow tokens, then revoke any temporary publish tokens.
+
+`npm-publish.yml` intentionally publishes only stable npm versions (`vX.Y.Z`). Python-style pre-release tags such as `vX.Y.Zb1` still trigger the workflow glob but are skipped because they are not valid npm semver versions for this package family.
 
 ### Manual Trigger
 
@@ -116,6 +132,7 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 |----------|------|---------|
 | Bump Version | `semantic_version.yml` | Calculate version, update CHANGELOG and README release marker, create tag + GitHub release |
 | JS GitHub Release | `js_github_release.yml` | Build, validate, and attach GitHub-only JS tarballs for `@xbbg/core` on `js-vX.Y.Z` |
+| npm Publish Retry | `npm-publish.yml` | Manual retry of trusted npm publishing for a stable `vX.Y.Z` version |
 
 ### JS GitHub-only package release
 
@@ -139,11 +156,35 @@ Go to **GitHub Actions** > **JS GitHub Release** > **Run workflow**
 5. Packs and validates the GitHub release tarballs
 6. Attaches the tarballs to a GitHub release on `js-vX.Y.Z`
 
+
 **Attached artifacts (currently supported):**
 
 - `@xbbg/core` wrapper + `darwin-arm64`, `linux-x64`, `win32-x64` platform tarballs
 
 Docker images are not part of this release. CI images stay in GHCR and do not bundle Bloomberg SDK files.
+
+### Manual npm trusted publishing retry
+
+Use this workflow only when a stable npm release needs to be retried after the canonical `vX.Y.Z` tag flow. Do not use it for GitHub-only JS assets; use `js_github_release.yml` and a `js-vX.Y.Z` tag for that case.
+
+Go to **GitHub Actions** > **Publish JS Packages** > **Run workflow**.
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `version` | Stable npm version/tag to publish, such as `v1.2.3`; pre-release forms are rejected for npm publishing |
+
+**What happens automatically:**
+
+1. Validates the stable semver version and skips non-npm pre-release tags from the `v*` trigger
+2. Builds the supported native platform packages (`linux-x64`, `win32-x64`, `darwin-arm64`)
+3. Installs JS package dependencies before stamping package versions so `package-lock.json` stays consistent
+4. Runs a packed-install smoke test before publishing
+5. Publishes missing packages in dependency order: platform packages first, then `@xbbg/core`
+6. Uses npm trusted publishing/OIDC with provenance from GitHub Actions; no npm token is required for normal releases
+
+The npm Trusted Publisher configuration must match the workflow filename exactly: `npm-publish.yml`, repository `alpha-xone/xbbg`, and blank environment unless a matching GitHub environment is intentionally added.
 
 ## Local Development
 
@@ -241,6 +282,7 @@ When asked to create a release:
 - Create `vX.Y.Z` git tags directly (the canonical release workflow handles this)
 - Reuse `vX.Y.Z` tags for JS-only GitHub assets; use `js-vX.Y.Z` instead so the PyPI/npm publish workflows do not trigger
 - Upload to PyPI manually (OIDC trusted publishing only)
+- Upload npm packages manually except for emergency recovery or first-time package seeding; normal npm releases must go through `npm-publish.yml` trusted publishing on a stable `vX.Y.Z` tag
 
 ## CHANGELOG.md Format
 

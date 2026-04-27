@@ -22,15 +22,24 @@
     "lint:fix": "eslint --fix .",
     "format": "eslint --fix .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run test/smoke.test.ts",
-    "test:watch": "vitest test/smoke.test.ts",
+    "test": "vitest run test/resolve-native.test.ts",
+    "test:watch": "vitest test/resolve-native.test.ts",
+    "test:smoke": "vitest run test/smoke.test.ts",
     "test:live": "vitest run test/live.test.ts --testTimeout=120000"
   },
   "keywords": [
     "bloomberg",
+    "blpapi",
+    "bpipe",
+    "zfp",
     "finance",
     "market-data",
-    "arrow"
+    "apache-arrow",
+    "arrow",
+    "napi",
+    "node-api",
+    "rust",
+    "typescript"
   ],
   "license": "Apache-2.0",
   "dependencies": {
@@ -63,8 +72,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/alpha-xone/xbbg.git",
+    "url": "git+https://github.com/alpha-xone/xbbg.git",
     "directory": "js-xbbg"
+  },
+  "homepage": "https://github.com/alpha-xone/xbbg#readme",
+  "bugs": {
+    "url": "https://github.com/alpha-xone/xbbg/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"
