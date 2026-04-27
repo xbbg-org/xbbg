@@ -908,6 +908,27 @@ Conversion backends are explicit opt-ins. Install only the libraries you actuall
 
 **Note:** `wide` / `Format.WIDE` was removed in v1.0.0rc4. Use `semi_long` for one row per security, or pivot a `long` result explicitly in your downstream DataFrame library.
 
+#### Native Arrow Carrier API
+
+`backend="native"` returns xbbg-owned carrier objects, not `pyarrow` or `arro3` objects. The carrier is intentionally small: it exposes Arrow-shaped table, batch, and column access without dataframe compute semantics.
+
+```python
+table = bdp("AAPL US Equity", "PX_LAST", backend="native")
+
+print(table.shape)          # (rows, columns)
+print(table.column_names)   # schema-order names
+print(table.nbytes)         # Arrow buffer bytes referenced by the carrier
+
+first = table.column(table.column_names[0])
+print(first.to_pylist())
+print(first.null_count)
+
+subset = table.select(table.column_names[:2]).head(5)
+batches = subset.to_batches()
+```
+
+Use `table.to_pyarrow()`, `table.to_pandas()`, or `table.to_polars()` when you explicitly want a third-party object. Those methods import optional packages lazily and keep the native backend contract xbbg-owned.
+
 #### Check Backend Availability
 
 ```python

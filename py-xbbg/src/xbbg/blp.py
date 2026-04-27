@@ -1302,7 +1302,12 @@ def _to_pandas_frame(table: Any) -> Any:
 def _to_polars_frame(table: Any) -> Any:
     import polars as pl
 
-    return pl.from_arrow(table)
+    try:
+        return pl.from_arrow(table)
+    except ModuleNotFoundError as exc:
+        if "pyarrow" not in str(exc):
+            raise
+        return pl.DataFrame(table.to_pylist(), schema=table.column_names)
 
 
 def _warn_native_narwhals_fallback() -> None:

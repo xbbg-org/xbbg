@@ -190,13 +190,17 @@ class XbbgDataFrame:
     def to_polars(self) -> Any:
         import polars as pl
 
-        return pl.from_arrow(self.native)
+        try:
+            return pl.from_arrow(self.native)
+        except ModuleNotFoundError as exc:
+            if "pyarrow" not in str(exc):
+                raise
+            return pl.DataFrame(self.native.to_pylist(), schema=self.columns)
 
     def to_dict(self, *, as_series: bool) -> dict[str, Any]:
         if as_series:
             raise NotImplementedError("xbbg Narwhals plugin does not expose Series objects yet")
-        return {name: self.native.column(name) for name in self.columns}
-
+        return {name: self.native.column(name).to_pylist() for name in self.columns}
     def rows(self, *, named: bool) -> Sequence[tuple[Any, ...]] | Sequence[Mapping[str, Any]]:
         if named:
             return self.native.to_pylist()
