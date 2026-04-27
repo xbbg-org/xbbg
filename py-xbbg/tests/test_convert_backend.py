@@ -46,6 +46,7 @@ class TestConvertBackendNative:
             assert native.columns == arrow_table.column_names
         else:
             assert native is arrow_table
+
     def test_convert_record_batch_to_native_table(self, arrow_table: Any):
         batch = arrow_table.to_batches()[0]
         result = _convert_backend(batch, Backend.NATIVE)
@@ -151,9 +152,7 @@ class TestConvertBackendNarwhals:
         assert isinstance(native, pa.Table)
         assert native.column_names == arrow_table.column_names
 
-    def test_convert_narwhals_falls_back_to_xbbg_plugin(
-        self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_convert_narwhals_falls_back_to_xbbg_plugin(self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch):
         self._block_dataframe_backend_imports(monkeypatch)
         monkeypatch.setattr("xbbg.blp._native_narwhals_fallback_warned", False)
         with pytest.warns(RuntimeWarning, match="limited xbbg native ArrowTable plugin"):

@@ -334,6 +334,7 @@ def get_available_backends() -> list[Backend]:
     """Return every :class:`Backend` whose package is currently importable."""
     return [b for b in Backend if is_backend_available(b)]
 
+
 DEFAULT_BACKEND = Backend.NARWHALS
 
 
