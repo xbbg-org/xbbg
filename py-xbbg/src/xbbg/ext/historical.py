@@ -111,8 +111,8 @@ if TYPE_CHECKING:
 
 def _get_empty_dataframe() -> IntoDataFrame:
     """Return empty DataFrame using configured backend."""
-    from xbbg.blp import Backend, get_backend
     from xbbg.backend import get_default_backend
+    from xbbg.blp import Backend, get_backend
 
     backend = get_backend() or get_default_backend()
     if backend == Backend.PANDAS:
