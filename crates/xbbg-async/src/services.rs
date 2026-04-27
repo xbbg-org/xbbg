@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bloomberg service URIs.
 ///
-/// Standard Bloomberg API services with URIs from the Bloomberg C++ SDK.
+/// Common Bloomberg API services with URIs from the Bloomberg C++ SDK.
 /// Use [Service::Custom] for services not listed here.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Service {
@@ -24,9 +24,9 @@ pub enum Service {
     MktBar,
     /// Real-time market data subscriptions (subscribe, stream).
     MktData,
-    /// Level 2 market depth / order book data (depth). Requires B-PIPE license.
+    /// Level 2 market depth / order book data (depth). Requires a B-PIPE environment and applicable entitlements.
     MktDepth,
-    /// Option chains and futures chains (chains). Requires B-PIPE license.
+    /// Option chains and futures chains (chains). Requires a B-PIPE environment and applicable entitlements.
     MktList,
     /// Real-time VWAP subscription service (vwap).
     MktVwap,
@@ -110,7 +110,7 @@ impl<'de> Deserialize<'de> for Service {
 
 /// Bloomberg request operation names.
 ///
-/// Standard Bloomberg API operation types from the Bloomberg C++ SDK.
+/// Common Bloomberg API operation types from the Bloomberg C++ SDK.
 /// Use [Operation::Custom] for operations not listed here.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Operation {

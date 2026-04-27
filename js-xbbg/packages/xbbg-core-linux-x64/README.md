@@ -20,7 +20,7 @@ Direct installation of `@xbbg/core-linux-x64` is only recommended for diagnostic
 
 ## Runtime requirements
 
-Bloomberg access and runtime requirements are inherited from `@xbbg/core`. This package does not vendor Bloomberg SDK binaries.
+Bloomberg access and runtime requirements are inherited from `@xbbg/core`. This package does not vendor Bloomberg SDK binaries and does not provide Bloomberg access, credentials, entitlements, data rights, or SDK licenses.
 
 ## Release integrity
 

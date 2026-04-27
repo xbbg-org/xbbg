@@ -12,7 +12,7 @@ Comprehensive benchmark suite comparing xbbg (Rust) against competing Bloomberg 
 
 **Total per run: ~200-350 data points**
 
-Run benchmarks locally and control frequency to manage Bloomberg data limits.
+Run benchmarks locally, keep request volume bounded, and follow your Bloomberg entitlements, usage terms, and internal policies.
 
 ---
 
@@ -22,7 +22,7 @@ Run benchmarks locally and control frequency to manage Bloomberg data limits.
 |---------|---------|--------|-------|
 | **xbbg (Rust)** | 1.0.0+ | Current | This version (Rust rewrite) |
 | **xbbg (legacy)** | 0.10.3 | Baseline | Pure Python version |
-| **blpapi** | 3.25.11 | Official | Raw Bloomberg API |
+| **blpapi** | 3.25.11 | Bloomberg SDK | Low-level SDK API baseline |
 | **bbg-fetch** | 1.1.2 | Active | Modern alternative |
 | **pdblp** | 0.1.8 | Legacy | Historical comparison |
 

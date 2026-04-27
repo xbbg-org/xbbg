@@ -88,7 +88,7 @@ configure(request_pool_size=4)
 
 ## Jupyter notebooks
 
-Jupyter and VS Code Interactive run an IPykernel event loop. For one-shot request/response APIs, the sync wrappers keep the familiar Bloomberg syntax working by using a notebook-only background event-loop bridge:
+Jupyter and VS Code Interactive run an IPykernel event loop. For one-shot request/response APIs, the sync wrappers keep the familiar xbbg request syntax working by using a notebook-only background event-loop bridge:
 
 ```python
 from xbbg import blp
@@ -210,4 +210,4 @@ If your script is sequential and you have no async requirements, the sync functi
 **Match pool size to workload.**
 The default `request_pool_size=2` is appropriate for most workloads. If you are issuing many concurrent `gather()` calls with large fan-outs, raise it — but Bloomberg API servers also have per-connection limits, so test before committing to a large value.
 
-For the full API reference, see [Bloomberg Data API](/xbbg/python/api/blp/).
+For the full API reference, see [xbbg request API](/xbbg/python/api/blp/).
