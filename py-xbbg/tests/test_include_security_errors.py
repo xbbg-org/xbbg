@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Sized
 
-import pyarrow as pa
 import pytest
 
+from xbbg._core import ArrowRecordBatch, ArrowTable
 from xbbg.services import Operation, RequestParams, Service
+
+
+def _sample_batch() -> ArrowRecordBatch:
+    return ArrowTable.from_pylist(
+        [
+            {"ticker": "IBM US Equity", "field": "PX_LAST", "value": "123.45"},
+        ]
+    ).to_batches()[0]
 
 
 def test_request_params_to_dict_omits_include_security_errors_when_false():
@@ -49,14 +57,7 @@ async def test_arequest_passes_include_security_errors_to_engine(monkeypatch):
     class FakeEngine:
         async def request(self, params_dict):
             captured.update(params_dict)
-            return pa.record_batch(
-                [
-                    pa.array(["IBM US Equity"]),
-                    pa.array(["PX_LAST"]),
-                    pa.array(["123.45"]),
-                ],
-                names=["ticker", "field", "value"],
-            )
+            return _sample_batch()
 
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
 
@@ -83,14 +84,7 @@ async def test_arequest_omits_include_security_errors_when_false(monkeypatch):
     class FakeEngine:
         async def request(self, params_dict):
             captured.update(params_dict)
-            return pa.record_batch(
-                [
-                    pa.array(["IBM US Equity"]),
-                    pa.array(["PX_LAST"]),
-                    pa.array(["123.45"]),
-                ],
-                names=["ticker", "field", "value"],
-            )
+            return _sample_batch()
 
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
 

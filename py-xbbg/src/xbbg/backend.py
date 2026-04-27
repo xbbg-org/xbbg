@@ -37,10 +37,11 @@ class Backend(str, Enum):
 
     **Eager backends** (full API support):
 
+    - ``NATIVE`` – xbbg native Arrow carrier object
+    - ``PYARROW`` – Apache Arrow Python ``pyarrow.Table``
     - ``NARWHALS`` – Backend-agnostic DataFrame API
     - ``PANDAS`` – Most widely used DataFrame library
     - ``POLARS`` – High-performance Rust-based DataFrames
-    - ``PYARROW`` – Apache Arrow columnar format
     - ``CUDF`` – GPU-accelerated DataFrames (NVIDIA RAPIDS)
     - ``MODIN`` – Distributed pandas-like DataFrames
 
@@ -56,10 +57,11 @@ class Backend(str, Enum):
     """
 
     # Eager backends (full API support)
+    NATIVE = "native"
+    PYARROW = "pyarrow"
     NARWHALS = "narwhals"
     PANDAS = "pandas"
     POLARS = "polars"
-    PYARROW = "pyarrow"
     CUDF = "cudf"
     MODIN = "modin"
 
@@ -89,10 +91,10 @@ class Backend(str, Enum):
 # Minimum version requirements per backend.
 # Format: ``(major, minor)`` or ``(major, minor, patch)``.
 MIN_VERSIONS: dict[Backend, tuple[int, ...]] = {
+    Backend.PYARROW: (22, 0),
     Backend.PANDAS: (2, 0),
     Backend.POLARS: (0, 20),
     Backend.POLARS_LAZY: (0, 20),
-    Backend.PYARROW: (13, 0),  # narwhals minimum; xbbg requires >=22.0
     Backend.DUCKDB: (1, 0),
     Backend.CUDF: (24, 10),
     Backend.MODIN: (0, 25),
@@ -104,10 +106,10 @@ MIN_VERSIONS: dict[Backend, tuple[int, ...]] = {
 
 # Package names for ``pip install`` instructions.
 PACKAGE_NAMES: dict[Backend, str] = {
+    Backend.PYARROW: "pyarrow",
     Backend.PANDAS: "pandas",
     Backend.POLARS: "polars",
     Backend.POLARS_LAZY: "polars",
-    Backend.PYARROW: "pyarrow",
     Backend.DUCKDB: "duckdb",
     Backend.CUDF: "cudf-cu12",
     Backend.MODIN: "modin[all]",
@@ -119,10 +121,10 @@ PACKAGE_NAMES: dict[Backend, str] = {
 
 # Module names to ``import`` (may differ from the PyPI package name).
 MODULE_NAMES: dict[Backend, str] = {
+    Backend.PYARROW: "pyarrow",
     Backend.PANDAS: "pandas",
     Backend.POLARS: "polars",
     Backend.POLARS_LAZY: "polars",
-    Backend.PYARROW: "pyarrow",
     Backend.DUCKDB: "duckdb",
     Backend.CUDF: "cudf",
     Backend.MODIN: "modin",
@@ -145,9 +147,10 @@ MODULE_NAMES: dict[Backend, str] = {
 #   for all backends.
 SUPPORTED_FORMATS: dict[Backend, frozenset[Format]] = {
     # Eager backends — full format support
+    Backend.NATIVE: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
+    Backend.PYARROW: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.PANDAS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.POLARS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.PYARROW: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.NARWHALS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.CUDF: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
     Backend.MODIN: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
@@ -226,7 +229,7 @@ def _get_module_version(module: Any) -> tuple[int, ...] | None:
 def is_backend_available(backend: Backend | str) -> bool:
     """Check whether a backend is installed and importable.
 
-    Core dependencies (narwhals, pyarrow) always return ``True``.
+    The native xbbg carrier and bundled Narwhals plugin always return ``True``.
 
     Args:
         backend: A :class:`Backend` member or its string value.
@@ -237,10 +240,8 @@ def is_backend_available(backend: Backend | str) -> bool:
     if isinstance(backend, str):
         backend = Backend(backend)
 
-    # Core dependencies — always available.
-    if backend in (Backend.NARWHALS, Backend.NARWHALS_LAZY):
-        return True
-    if backend == Backend.PYARROW:
+    # Core/native dependencies — always available.
+    if backend in (Backend.NATIVE, Backend.NARWHALS, Backend.NARWHALS_LAZY):
         return True
 
     module_name = MODULE_NAMES.get(backend)
@@ -273,8 +274,8 @@ def check_backend(backend: Backend | str, *, raise_on_error: bool = True) -> boo
     if isinstance(backend, str):
         backend = Backend(backend)
 
-    # Core dependencies — always OK.
-    if backend in (Backend.NARWHALS, Backend.NARWHALS_LAZY, Backend.PYARROW):
+    # Native/core dependencies — always OK.
+    if backend in (Backend.NATIVE, Backend.NARWHALS, Backend.NARWHALS_LAZY):
         return True
 
     module_name = MODULE_NAMES.get(backend)
@@ -333,6 +334,19 @@ def get_available_backends() -> list[Backend]:
     """Return every :class:`Backend` whose package is currently importable."""
     return [b for b in Backend if is_backend_available(b)]
 
+DEFAULT_BACKEND = Backend.NARWHALS
+
+
+def get_default_backend() -> Backend:
+    """Return the default public result backend for xbbg calls."""
+    if check_backend(DEFAULT_BACKEND, raise_on_error=False):
+        return DEFAULT_BACKEND
+    raise ImportError(
+        "No xbbg result backend is available. The core narwhals dependency should provide "
+        "Backend.NARWHALS; if it is unavailable, reinstall xbbg or explicitly request "
+        "a backend such as native, pyarrow, pandas, or polars."
+    )
+
 
 def print_backend_status() -> None:
     """Print a diagnostic table of all backends to the logger.
@@ -347,7 +361,10 @@ def print_backend_status() -> None:
     for backend in Backend:
         module_name = MODULE_NAMES.get(backend, "")
 
-        if backend in (Backend.NARWHALS, Backend.NARWHALS_LAZY, Backend.PYARROW):
+        if backend == Backend.NATIVE:
+            status = "OK (native)"
+            version_info = "provided by xbbg"
+        elif backend in (Backend.NARWHALS, Backend.NARWHALS_LAZY):
             module = _get_module(backend) or __import__(module_name)
             version = _get_module_version(module)
             status = "OK (core)"
@@ -480,7 +497,7 @@ def validate_backend_format(
 
     # Normalise backend.
     if backend is None:
-        backend = _get_backend() or Backend.NARWHALS
+        backend = _get_backend() or get_default_backend()
     elif isinstance(backend, str):
         backend = Backend(backend)
 

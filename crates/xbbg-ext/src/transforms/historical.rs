@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, Float64Array, RecordBatch, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow_array::{Array, ArrayRef, Float64Array, RecordBatch, StringArray};
+use arrow_schema::{DataType, Field, Schema};
 
 use crate::constants::{DVD_COLS, ETF_COLS};
 use crate::error::{ExtError, Result};

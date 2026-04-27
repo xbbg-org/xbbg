@@ -17,8 +17,8 @@
 
 use std::sync::Arc;
 
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::RecordBatch;
+use arrow_schema::{DataType, Field, Schema};
 use tokio::sync::oneshot;
 use xbbg_log::trace;
 
@@ -64,7 +64,7 @@ impl BsrchState {
             )]));
             RecordBatch::try_new(
                 schema,
-                vec![Arc::new(arrow::array::StringArray::from(
+                vec![Arc::new(arrow_array::StringArray::from(
                     Vec::<Option<&str>>::new(),
                 ))],
             )

@@ -50,6 +50,7 @@ use pyo3::exceptions::{PyRuntimeError, PyStopAsyncIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDateTime, PyDict, PyTime, PyTzInfo};
 use pyo3_async_runtimes::tokio::future_into_py;
+#[cfg(feature = "stub-gen")]
 use pyo3_stub_gen::{define_stub_info_gatherer, derive::*};
 use tokio::sync::{watch, Mutex};
 use xbbg_log::{debug, info, warn};
@@ -68,6 +69,7 @@ use xbbg_ext::{ExchangeInfo, MarketInfo, MarketTiming};
 
 mod ext;
 mod markets;
+mod native_arrow;
 mod recipes;
 
 type StreamBatchResult = Result<SubscriptionUpdate, BlpError>;
@@ -378,8 +380,8 @@ fn format_error_msg(
 ///
 /// The defaults are derived from `EngineConfig::default()` in xbbg-async, so they
 /// stay in sync automatically.
-#[gen_stub_pyclass]
-#[pyclass]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyclass)]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyEngineConfig {
     /// Bloomberg server host (default: "localhost")
@@ -497,7 +499,7 @@ pub struct PyEngineConfig {
     pub socks5_port: Option<u16>,
 }
 
-#[gen_stub_pymethods]
+#[cfg_attr(feature = "stub-gen", gen_stub_pymethods)]
 #[pymethods]
 impl PyEngineConfig {
     /// Create a new configuration with defaults.
@@ -910,13 +912,13 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
 }
 
 /// Python wrapper for the xbbg Engine.
-#[gen_stub_pyclass]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyclass)]
 #[pyclass]
 struct PyEngine {
     engine: Arc<Engine>,
 }
 
-#[gen_stub_pymethods]
+#[cfg_attr(feature = "stub-gen", gen_stub_pymethods)]
 #[pymethods]
 impl PyEngine {
     /// Create a new Engine with optional host/port configuration.
@@ -976,7 +978,7 @@ impl PyEngine {
 
     /// Generic async Bloomberg request.
     ///
-    /// Accepts a dictionary of parameters and returns a PyArrow RecordBatch.
+    /// Accepts a dictionary of parameters and returns an xbbg ArrowRecordBatch.
     ///
     /// Required keys:
     /// - service: Bloomberg service URI (e.g., "//blp/refdata")
@@ -1026,7 +1028,7 @@ impl PyEngine {
 
             debug!(num_rows = batch.num_rows(), "PyEngine: request completed");
 
-            Python::attach(|py| record_batch_to_pyarrow(py, batch))
+            Python::attach(|py| native_arrow::record_batch_to_arrow_record_batch(py, batch))
         })
     }
 
@@ -1608,13 +1610,13 @@ impl PyEngine {
 /// - Context manager (`async with`)
 ///
 /// Data arrives as `Result<RecordBatch, BlpError>`:
-/// - `Ok(batch)` — yields a PyArrow RecordBatch
+/// - `Ok(batch)` — yields an xbbg ArrowRecordBatch
 /// - `Err(error)` — raises a Python exception (BlpRequestError, BlpInternalError, etc.)
 ///
 /// Design: Uses separate locks for rx (data receiving) vs stream (metadata snapshots),
 /// plus a dedicated operation lock to serialize add/remove/unsubscribe without holding
 /// the stream metadata lock across Bloomberg awaits.
-#[gen_stub_pyclass]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyclass)]
 #[pyclass]
 pub struct PySubscription {
     /// Receiver for incoming data - separate lock so iteration doesn't block add/remove
@@ -1837,7 +1839,7 @@ impl PySubscription {
     }
 }
 
-#[gen_stub_pymethods]
+#[cfg_attr(feature = "stub-gen", gen_stub_pymethods)]
 #[pymethods]
 impl PySubscription {
     /// Async iterator protocol.
@@ -1848,7 +1850,7 @@ impl PySubscription {
     /// Get next batch of data.
     /// Only locks the rx, not the stream - so add/remove can run concurrently.
     ///
-    /// Returns a PyArrow RecordBatch on success.
+    /// Returns an xbbg ArrowRecordBatch on success.
     /// Raises a Python exception (BlpRequestError, BlpInternalError, etc.) on error.
     /// Raises StopAsyncIteration when the subscription is closed.
     fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -1872,7 +1874,10 @@ impl PySubscription {
 
             match item {
                 Ok(Some(Ok(update))) => {
-                    try_attach_or_suspend(|py| subscription_update_to_pyarrow(py, update)).await
+                    try_attach_or_suspend(|py| {
+                        subscription_update_to_arrow_record_batch(py, update)
+                    })
+                    .await
                 }
                 Ok(Some(Err(blp_err))) => Err(blp_error_to_pyerr(blp_err)),
                 Ok(None) => Err(PyStopAsyncIteration::new_err("subscription ended")),
@@ -2213,7 +2218,7 @@ impl PySubscription {
                 try_attach_or_suspend(|py| {
                     let list = pyo3::types::PyList::empty(py);
                     for update in remaining {
-                        let py_batch = subscription_update_to_pyarrow(py, update)?;
+                        let py_batch = subscription_update_to_arrow_record_batch(py, update)?;
                         list.append(py_batch)?;
                     }
                     Ok(list.into_any().unbind())
@@ -2448,12 +2453,12 @@ fn market_info_to_pydict(py: Python<'_>, info: &MarketInfo) -> PyResult<Py<PyAny
     Ok(dict.into_any().unbind())
 }
 
-fn subscription_update_to_pyarrow(
+fn subscription_update_to_arrow_record_batch(
     py: Python<'_>,
     update: SubscriptionUpdate,
 ) -> PyResult<Py<PyAny>> {
     let batch = subscription_update_to_record_batch(&update).map_err(blp_error_to_pyerr)?;
-    record_batch_to_pyarrow(py, batch)
+    native_arrow::record_batch_to_arrow_record_batch(py, batch)
 }
 
 fn date32_to_py(py: Python<'_>, days: i32) -> PyResult<Py<PyAny>> {
@@ -2537,29 +2542,13 @@ fn subscription_update_to_pydict(
     Ok(dict.into_any().unbind())
 }
 
-/// Convert Arrow RecordBatch to PyArrow RecordBatch using zero-copy FFI.
-///
-/// Uses Arrow's C Data Interface via ToPyArrow for zero-copy conversion.
-pub(crate) fn record_batch_to_pyarrow(
-    py: Python<'_>,
-    batch: arrow::record_batch::RecordBatch,
-) -> PyResult<Py<PyAny>> {
-    use arrow::pyarrow::ToPyArrow;
-
-    // Zero-copy conversion via Arrow C Data Interface
-    batch
-        .to_pyarrow(py)
-        .map(|b| b.unbind())
-        .map_err(|e| PyRuntimeError::new_err(format!("Arrow FFI conversion failed: {e}")))
-}
-
-#[gen_stub_pyfunction]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
 fn version() -> String {
     xbbg_core::version().to_string()
 }
 
-#[gen_stub_pyfunction]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
 fn sdk_version() -> (i32, i32, i32, i32) {
     xbbg_core::sdk_version()
@@ -2591,6 +2580,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", pkg_version)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(sdk_version, m)?)?;
+    native_arrow::register(m)?;
     m.add_class::<PyEngine>()?;
     m.add_class::<PyEngineConfig>()?;
     m.add_class::<PySubscription>()?;
@@ -2633,7 +2623,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///
 /// This sets an atomic integer — no GIL is held on the logging hot path.
 /// For per-crate control, use the RUST_LOG environment variable instead.
-#[gen_stub_pyfunction]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
 fn set_log_level(level: &str) -> PyResult<()> {
     let lvl = xbbg_log::parse_level(level).ok_or_else(|| {
@@ -2647,7 +2637,7 @@ fn set_log_level(level: &str) -> PyResult<()> {
 }
 
 /// Get the current Rust log level as a string.
-#[gen_stub_pyfunction]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
 fn get_log_level() -> &'static str {
     match xbbg_log::current_level() {
@@ -2659,7 +2649,7 @@ fn get_log_level() -> &'static str {
     }
 }
 
-#[gen_stub_pyfunction]
+#[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
 fn enable_sdk_logging(level: &str) -> PyResult<()> {
     let lvl: xbbg_async::sdk_logging::SdkLogLevel = level
@@ -2669,6 +2659,7 @@ fn enable_sdk_logging(level: &str) -> PyResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "stub-gen")]
 define_stub_info_gatherer!(stub_info);
 
 #[cfg(test)]

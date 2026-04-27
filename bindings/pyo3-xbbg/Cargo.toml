@@ -13,27 +13,33 @@ crate-type = ["cdylib", "lib"]
 [[bin]]
 name = "stub_gen"
 path = "src/bin/stub_gen.rs"
+required-features = ["stub-gen"]
 
 [dependencies]
 mimalloc = { version = "0.1", default-features = false, optional = true }
-pyo3 = { version = "0.26" }
-pyo3-async-runtimes = { version = "0.26", features = ["tokio-runtime"] }
-pyo3-stub-gen = { version = "0.19", default-features = false, features = ["infer_signature"] }
-pyo3-stub-gen-derive = "0.19"
+pyo3 = { version = "0.28" }
+pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
+pyo3-stub-gen = { version = "0.22.1", default-features = false, features = ["infer_signature"], optional = true }
+pyo3-stub-gen-derive = { version = "0.22.1", optional = true }
 tokio = { version = "1.48", features = ["sync"] }
 xbbg-log = { path = "../../crates/xbbg-log" }
-arrow = { version = "57.1.0", features = ["pyarrow"] }
+arrow-array = { version = "58.1.0", features = ["ffi", "chrono-tz"] }
+arrow-cast = "58.1.0"
+arrow-ord = "58.1.0"
+arrow-schema = { version = "58.1.0", features = ["ffi"] }
+arrow-select = "58.1.0"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 anyhow = "1.0"
 serde_json = "1.0"
-xbbg_core = { path = "../../crates/xbbg-core" }
-xbbg-async = { path = "../../crates/xbbg-async" }
+xbbg_core = { path = "../../crates/xbbg-core", default-features = false }
+xbbg-async = { path = "../../crates/xbbg-async", default-features = false }
 xbbg-ext = { path = "../../crates/xbbg-ext" }
 xbbg-recipes = { path = "../../crates/xbbg-recipes", default-features = false }
 
 [features]
-default = ["live", "extension-module", "mimalloc"]
+default = ["live", "extension-module"]
 extension-module = ["pyo3/extension-module"]
 mimalloc = ["dep:mimalloc"]
-live = ["xbbg-async/live", "xbbg-recipes/live"]
+stub-gen = ["dep:pyo3-stub-gen", "dep:pyo3-stub-gen-derive"]
+live = ["xbbg_core/live", "xbbg-async/live", "xbbg-recipes/live"]
 

@@ -46,7 +46,8 @@ Paste the full error message or traceback here
 - **Python version**: [e.g., 3.11.5]
 - **Operating System**: [e.g., Windows 11, Ubuntu 22.04, macOS 14]
 - **Bloomberg API version**: [e.g., blpapi 3.20.0]
-- **pyarrow version**: [e.g., 22.0.0]
+- **xbbg backend requested**: [e.g., default `narwhals`, `native`, `pyarrow`, `pandas`, `polars`, `duckdb`]
+- **Optional conversion backend versions**: [if used, e.g., pandas 2.2.3, polars 1.35.0, duckdb 1.2.0, narwhals 2.0.0]
 
 ## Additional Context
 

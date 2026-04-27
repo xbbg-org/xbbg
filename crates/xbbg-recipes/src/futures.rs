@@ -12,8 +12,8 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Array, Date32Array, RecordBatch, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow_array::{Array, Date32Array, RecordBatch, StringArray};
+use arrow_schema::{DataType, Field, Schema};
 use chrono::{Datelike, Duration, NaiveDate};
 use xbbg_async::engine::{Engine, RequestParams};
 use xbbg_async::services::{Operation, Service};

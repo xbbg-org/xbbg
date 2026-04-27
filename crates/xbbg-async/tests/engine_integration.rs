@@ -17,8 +17,7 @@
 
 #![cfg(feature = "live")]
 
-use arrow::array::{Array, Float64Array, StringArray};
-use arrow::record_batch::RecordBatch;
+use arrow_array::{Array, Float64Array, RecordBatch, StringArray};
 
 use xbbg_async::engine::{
     Engine, EngineConfig, ExtractorType, RequestParams, ServerAddr, Transport,

@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use arrow::array::{ArrayRef, Float64Array};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::{ ArrayRef, Float64Array };
+use arrow_schema::{ DataType, Field, Schema };
+use arrow_array::RecordBatch;
 use xbbg_async::engine::state::typed_builder::{ArrowType, TypedBuilder};
 use xbbg_core::Value;
 

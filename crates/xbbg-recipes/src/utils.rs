@@ -1,7 +1,7 @@
 //! Shared utility functions used across recipe modules.
 
-use arrow::array::RecordBatch;
-use arrow::array::{ArrayRef, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray};
+use arrow_array::RecordBatch;
+use arrow_array::{ArrayRef, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray};
 
 use crate::error::{RecipeError, Result};
 

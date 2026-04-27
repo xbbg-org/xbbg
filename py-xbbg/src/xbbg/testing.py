@@ -9,7 +9,17 @@ from typing import Any
 
 from . import blp
 
-pa = importlib.import_module("pyarrow")
+
+def _arrow_table_class():
+    from xbbg._core import ArrowTable
+
+    return ArrowTable
+
+
+def _arrow_record_batch_class():
+    from xbbg._core import ArrowRecordBatch
+
+    return ArrowRecordBatch
 
 
 def _nw_module():
@@ -164,9 +174,10 @@ def _rows_from_operation(operation: str, data: Any) -> list[dict[str, Any]]:
 
 
 def _table_from_rows(rows: Sequence[Mapping[str, Any]]) -> Any:
+    table_cls = _arrow_table_class()
     if not rows:
-        return pa.table({})
-    return pa.Table.from_pylist([dict(row) for row in rows])
+        return table_cls.empty([])
+    return table_cls.from_pylist([dict(row) for row in rows])
 
 
 @dataclass(slots=True)
@@ -236,10 +247,12 @@ def create_mock_response(
 def _coerce_mock_table(value: MockResponse | Any | Sequence[Mapping[str, Any]]) -> Any:
     if isinstance(value, MockResponse):
         return value.table
-    if isinstance(value, pa.Table):
+    table_cls = _arrow_table_class()
+    batch_cls = _arrow_record_batch_class()
+    if isinstance(value, table_cls):
         return value
-    if isinstance(value, pa.RecordBatch):
-        return pa.Table.from_batches([value])
+    if isinstance(value, batch_cls):
+        return value.to_table()
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return _table_from_rows(value)
     raise TypeError("Unsupported mock response value")
@@ -278,7 +291,7 @@ class mock_engine:
         table = _coerce_mock_table(match)
         batch = next(iter(table.to_batches()), None)
         if batch is None:
-            batch = pa.record_batch([], names=[])
+            batch = _arrow_table_class().empty([]).to_batches()[0]
 
         context.metadata["mocked"] = True
         if isinstance(match, MockResponse):
@@ -286,6 +299,10 @@ class mock_engine:
         context.batch = batch
         context.table = table
         context.elapsed_ms = 0.0
+
+        if context.raw:
+            context.frame = table
+            return table
 
         context.frame = blp._convert_backend(table, context.backend)
         return context.frame

@@ -13,12 +13,12 @@ The standard `pyo3-log` bridge acquires the GIL on every log event to forward to
 ```text
 tracing::debug!("...")
   → AtomicLevelFilter (reads AtomicU8, ~1ns, zero GIL)
-  → fmt::layer (non-blocking writer thread via tracing-appender)
+  → fmt::layer
   → stderr
 ```
 
 - **No GIL**: The atomic level check is a single `Relaxed` load
-- **No blocking**: Output goes through a non-blocking writer thread so worker threads never block on stderr I/O
+- **Simple output path**: Output goes directly to stderr; worker threads never touch Python logging
 - **Python and Rust logging are separate**: Rust uses `tracing`, Python uses `logging` — no bridge
 
 ## Crate structure
@@ -53,18 +53,20 @@ All workspace crates depend on `xbbg-log` instead of `tracing` directly, so the 
 
 ### Developer override
 
-Set `RUST_LOG` to bypass the atomic filter and get per-crate control:
+Set `RUST_LOG` to a simple level to choose the initial Rust log level:
 
 ```bash
-RUST_LOG=xbbg_core=trace,xbbg_async=debug python my_script.py
+RUST_LOG=debug python my_script.py
 ```
+
+Python can still change the level later via `xbbg.set_log_level()`.
 
 ## Modes
 
 | `RUST_LOG` set? | Behaviour |
 |-----------------|-----------|
 | No (default) | `AtomicLevelFilter` — Python controls via `set_log_level()`, default WARN |
-| Yes | `EnvFilter` — full per-crate control via `RUST_LOG` syntax |
+| Simple level | Sets the initial atomic level; Python can still update it |
 
 ## API
 

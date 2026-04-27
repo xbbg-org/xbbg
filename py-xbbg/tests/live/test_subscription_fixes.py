@@ -20,7 +20,13 @@ import sys
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
-import pyarrow as pa
+def assert_arrow_record_batch(batch):
+    """Return rows after asserting a native xbbg ArrowRecordBatch shape."""
+    assert batch.__class__.__name__ == "ArrowRecordBatch"
+    assert batch.num_columns == len(batch.column_names)
+    rows = batch.to_pylist()
+    assert batch.num_rows == len(rows)
+    return rows
 
 
 async def test_multitype_fields():
@@ -74,29 +80,31 @@ async def test_multitype_fields():
     try:
         for _ in range(max_batches):
             batch = await asyncio.wait_for(sub.__anext__(), timeout=timeout_seconds)
+            rows = assert_arrow_record_batch(batch)
+            assert rows, "Expected non-empty ArrowRecordBatch"
+            row = rows[0]
             batches_received += 1
 
             # Print schema on first batch
             if batches_received == 1:
                 print("--- Arrow Schema ---")
-                for i, field in enumerate(batch.schema):
-                    print(f"  {field.name:30s} {field.type}")
+                for field in batch.schema.fields:
+                    print(f"  {field.name:30s} {field.data_type}")
                 print()
 
             # Print data
-            topic = batch.column("topic")[0].as_py()
-            ts = batch.column("timestamp")[0].as_py()
+            topic = row.get("topic")
+            ts = row.get("timestamp")
 
             print(f"[Batch {batches_received}] topic={topic}  ts={ts}")
 
             # Print non-null field values with their Arrow types
-            for field in batch.schema:
+            for field in batch.schema.fields:
                 if field.name in ("timestamp", "topic"):
                     continue
-                col = batch.column(field.name)
-                val = col[0].as_py()
+                val = row.get(field.name)
                 if val is not None:
-                    print(f"  {field.name:30s} type={field.type!s:20s} value={val!r}")
+                    print(f"  {field.name:30s} type={field.data_type!s:20s} value={val!r}")
 
             print()
 
@@ -139,8 +147,9 @@ async def test_timestamp_source():
     try:
         async for batch in sub:
             batch_count += 1
-            ts_col = batch.column("timestamp")
-            ts_val = ts_col[0].as_py()
+            rows = assert_arrow_record_batch(batch)
+            assert rows, "Expected non-empty ArrowRecordBatch"
+            ts_val = rows[0].get("timestamp")
             timestamps.append(ts_val)
 
             now = datetime.now(timezone.utc)
@@ -223,7 +232,8 @@ async def test_error_propagation():
     try:
         async for batch in sub:
             batch_count += 1
-            got_data = True
+            rows = assert_arrow_record_batch(batch)
+            got_data = got_data or bool(rows)
             print(f"  Got data batch: {batch.num_rows} rows")
             if batch_count >= 3:
                 break
@@ -236,7 +246,9 @@ async def test_error_propagation():
     # Give a moment for Bloomberg to send failure
     if not got_error and not got_data:
         try:
-            await asyncio.wait_for(sub.__anext__(), timeout=10.0)
+            batch = await asyncio.wait_for(sub.__anext__(), timeout=10.0)
+            rows = assert_arrow_record_batch(batch)
+            got_data = got_data or bool(rows)
         except StopAsyncIteration:
             print("  Stream ended after wait")
         except asyncio.TimeoutError:
@@ -292,12 +304,14 @@ async def test_schema_types():
     try:
         for _ in range(10):
             batch = await asyncio.wait_for(sub.__anext__(), timeout=10.0)
+            rows = assert_arrow_record_batch(batch)
             batch_count += 1
             schema = batch.schema
+            row = rows[0] if rows else {}
             raw_samples.append(
                 {
-                    field.name: batch.column(field.name)[0].as_py()
-                    for field in batch.schema
+                    field.name: row.get(field.name)
+                    for field in batch.schema.fields
                     if field.name
                     in {
                         "timestamp",
@@ -325,28 +339,26 @@ async def test_schema_types():
 
     print("\nFinal schema after stabilization:")
     type_map = {}
-    for field in schema:
-        type_map[field.name] = field.type
-        print(f"  {field.name:30s} {field.type}")
+    for field in schema.fields:
+        type_map[field.name] = field.data_type
+        print(f"  {field.name:30s} {field.data_type}")
 
     print()
 
     # Verify key type expectations
     passed = True
     checks = [
-        ("LAST_PRICE", pa.float64(), "Float64"),
-        ("BID", pa.float64(), "Float64"),
-        ("ASK", pa.float64(), "Float64"),
+        ("LAST_PRICE", "Float64", "Float64"),
+        ("BID", "Float64", "Float64"),
+        ("ASK", "Float64", "Float64"),
     ]
 
     for field_name, expected_type, label in checks:
         if field_name in type_map:
             actual = type_map[field_name]
-            if actual == expected_type:
+            actual_name = str(actual)
+            if actual_name.lower() == expected_type.lower():
                 print(f"  OK: {field_name} is {label} ({actual})")
-            elif str(actual).startswith("timestamp"):
-                # Timestamps might be Timestamp[us] which is fine
-                print(f"  OK: {field_name} is Timestamp ({actual})")
             else:
                 print(f"  MISMATCH: {field_name} expected {expected_type} but got {actual}")
                 passed = False
@@ -357,10 +369,11 @@ async def test_schema_types():
     for ts_field in ["TRADE_UPDATE_STAMP_RT", "TRADING_DT_REALTIME"]:
         if ts_field in type_map:
             actual = type_map[ts_field]
-            if actual == pa.utf8():
+            actual_name = str(actual)
+            if actual_name.lower() in {"utf8", "largeutf8"}:
                 print(f"  MISMATCH: {ts_field} is Utf8 — expected Timestamp or Date")
                 passed = False
-            elif actual == pa.null():
+            elif actual_name.lower() == "null":
                 print(f"  NOTE: {ts_field} is Null (no data received for this field yet)")
             else:
                 print(f"  OK: {ts_field} is {actual} (non-string type preserved)")
@@ -397,6 +410,7 @@ async def test_field_exposure_modes():
     filtered_schema = None
     try:
         async for batch in filtered_sub:
+            assert_arrow_record_batch(batch)
             filtered_schema = batch.schema
             if batch.num_rows > 0:
                 break
@@ -406,10 +420,10 @@ async def test_field_exposure_modes():
         await filtered_sub.unsubscribe()
 
     assert filtered_schema is not None, "No filtered subscription schema received"
-    filtered_names = {field.name for field in filtered_schema}
+    filtered_names = set(filtered_schema.names)
     print("Filtered schema columns:")
-    for field in filtered_schema:
-        print(f"  {field.name:30s} {field.type}")
+    for field in filtered_schema.fields:
+        print(f"  {field.name:30s} {field.data_type}")
     print()
 
     assert metadata_fields.issubset(filtered_names), (
@@ -422,8 +436,9 @@ async def test_field_exposure_modes():
     full_schema = None
     try:
         async for batch in full_sub:
+            assert_arrow_record_batch(batch)
             full_schema = batch.schema
-            full_names = {field.name for field in full_schema}
+            full_names = set(full_schema.names)
             full_extras = full_names - set(requested_fields) - metadata_fields - base_columns
             if full_extras:
                 break
@@ -433,10 +448,10 @@ async def test_field_exposure_modes():
         await full_sub.unsubscribe()
 
     assert full_schema is not None, "No full-field subscription schema received"
-    full_names = {field.name for field in full_schema}
+    full_names = set(full_schema.names)
     print("Full-field schema columns:")
-    for field in full_schema:
-        print(f"  {field.name:30s} {field.type}")
+    for field in full_schema.fields:
+        print(f"  {field.name:30s} {field.data_type}")
     print()
 
     assert metadata_fields.issubset(full_names), (

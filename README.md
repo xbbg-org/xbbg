@@ -89,7 +89,7 @@ This `main` branch is the v1 release: Bloomberg request execution is Rust-powere
 - ZFP over leased lines with TLS credentials
 - B-PIPE auth, failover servers, SOCKS5, and SDK logging
 - Async/await support for non-blocking operations
-- **Multi-backend output** (pandas, Polars, PyArrow, DuckDB)
+- **Narwhals default with legacy PyArrow backing when installed** (plus explicit native, PyArrow, pandas, Polars, and DuckDB backends)
 - Full type hints, structured errors, and diagnostics
 - Exchange-aware market hours
 
@@ -158,7 +158,7 @@ xbbg is designed to replace direct `blpapi` usage for almost every normal Bloomb
 - **Concurrency and isolation**: Independent request worker pools and isolated subscription sessions keep batch requests, live streams, and scoped engines from stepping on each other
 - **Enterprise middleware hooks**: Request middleware gives platform teams a supported place for audit logging, entitlement checks, request labeling, metrics, tracing, policy enforcement, and standardized error handling across every Bloomberg request
 - **Validation and governance hooks**: Field validation modes, persistent field caches, middleware context, and stable output contracts give teams enforceable request behavior
-- **Advanced zero-copy architecture**: Rust decodes Bloomberg payloads into typed Arrow builders, releases the GIL around native work, and hands columnar buffers to pandas, Polars, PyArrow, DuckDB, and Narwhals without the old Python object-churn path
+- **Advanced zero-copy architecture**: Rust decodes Bloomberg payloads into typed Arrow builders, releases the GIL around native work, wraps native `ArrowTable` results in a Narwhals DataFrame by default for dataframe ergonomics, and exposes explicit native/PyArrow/pandas/Polars/DuckDB conversions when requested
 - **Benchmarking across changes**: Dedicated live and offline benchmark harnesses track request latency, allocation behavior, cache contention, subscription replay throughput, and competitor equivalence so performance regressions are visible instead of guessed
 - **Rust-powered hot path**: Bloomberg sessions, request execution, parsing, and Arrow handoff run in the shared native engine instead of slow Python event-loop glue
 - **No bloat**: every core dependency is part of the enterprise data path — Bloomberg SDK access, typed tabular interchange, backend conversion, benchmarking, diagnostics, or runtime packaging
@@ -208,7 +208,7 @@ The gap is not cosmetic. The other Python Bloomberg packages are either narrow h
 - xbbg goes further with native Rust execution, reusable worker pools, Arrow-native output, near-complete `blpapi` workflow coverage, enterprise connection modes, high-level analytics, and benchmark coverage across changes.
 
 **vs. polars-bloomberg**
-- Locks the whole workflow into Polars; xbbg gives you Polars as one backend alongside pandas, PyArrow, DuckDB, Narwhals, and raw Arrow-native paths.
+- Locks the whole workflow into Polars; xbbg gives you Polars as an optional conversion alongside pandas, DuckDB, Narwhals, and raw xbbg native Arrow paths.
 - Partial Bloomberg surface: useful BQL/search-style coverage, but not full API coverage across BDP/BDS/BDH/BDIB/BDTICK/streaming, enterprise transports, middleware, diagnostics, or generic service requests.
 - xbbg is the broader platform: same modern Polars-friendly output when you want it, without giving up the rest of Bloomberg or forcing every team onto one dataframe library.
 
@@ -259,7 +259,7 @@ The gap is not cosmetic. The other Python Bloomberg packages are either narrow h
 
 #### Common objections, answered
 
-- **“Rust, PyArrow, and Narwhals are dependency bloat.”** False. xbbg has a deliberately small core dependency surface: `pyarrow` and `narwhals`. PyArrow is the typed columnar interchange layer used by the Rust engine, and Narwhals is the lightweight backend abstraction that lets one engine serve pandas, Polars, PyArrow, DuckDB, and future dataframe backends. By contrast, `bbg-fetch` installs `numpy>=2.0` and `pandas>=2.2.0` as hard dependencies, with optional `pyarrow`, Jupyter, and dev extras. Pandas-based wrappers are not dependency-free; they just make pandas mandatory and still leave you with Python event-loop parsing, one-off dataframe shaping, and a narrow API. xbbg is leaner where it matters: fewer core concepts, fewer repeated parsing paths, fewer mandatory dataframe assumptions, and one native engine for the whole Bloomberg surface.
+- **“Rust and Narwhals are dependency bloat.”** False. xbbg has a deliberately small core dependency surface: `narwhals` plus the native engine. The Rust engine emits xbbg native Arrow objects (`ArrowTable` / `ArrowRecordBatch`) directly, and Narwhals provides the lightweight plugin interface that lets one engine serve pandas, Polars, DuckDB, and other dataframe consumers when you explicitly request conversion. By contrast, `bbg-fetch` installs `numpy>=2.0` and `pandas>=2.2.0` as hard dependencies, with optional `pyarrow`, Jupyter, and dev extras. Pandas-based wrappers are not dependency-free; they just make pandas mandatory and still leave you with Python event-loop parsing, one-off dataframe shaping, and a narrow API. xbbg is leaner where it matters: fewer core concepts, fewer repeated parsing paths, fewer mandatory dataframe assumptions, and one native engine for the whole Bloomberg surface.
 - **“Use a lighter package for simple `bdp()` calls.”** No. xbbg is still simple at the call site (`xbbg.bdp(...)`), but it does not trap you in a toy architecture when that same notebook grows into B-PIPE auth, async batch jobs, intraday bars, BQL, streaming, typed outputs, or non-pandas pipelines.
 - **“Fixed income and government bonds are gaps.”** No. xbbg has explicit fixed-income coverage: ISIN/CUSIP/SEDOL support, BDS cash-flow style data, BSRCH fixed-income searches, BQR dealer quotes, YAS helpers, bond analytics, curves, and CDX analytics. When Bloomberg returns no data for a security/field/date combination, xbbg surfaces the request result instead of pretending unavailable Bloomberg data exists.
 - **“You need raw `blpapi` for SAPI or B-PIPE session control.”** No. xbbg exposes first-class session configuration: direct hosts, ordered failover `servers`, ZFP over leased lines, TLS credentials, SOCKS5, SAPI/B-PIPE auth modes (`user`, `app`, `userapp`, `dir`, `manual`, `token`), startup attempts, auto-restart, retry policy, SDK logging, scoped `Engine(...)` instances, and request/subscription worker pools. For unusual Bloomberg operations, the generic request layer lets xbbg replace hand-written `blpapi` request/event-loop code without dropping to the raw SDK.
@@ -444,12 +444,14 @@ Options helper enums exported by `xbbg.ext`:
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
-- **Python dependencies (core)**: `narwhals>=1.30`, `pyarrow>=22.0.0`
+- **Python dependencies (core)**: `narwhals>=2.0` plus the native `xbbg._core` extension. PyArrow is optional; when installed, it backs the default Narwhals DataFrame for legacy-compatible behavior.
 
-- **Optional backends** (install separately if needed):
-  - `pandas` - For pandas DataFrame output (`pip install pandas`)
-  - `polars` - For Polars DataFrame output
-  - `duckdb` - For DuckDB relation output
+- **Optional conversion backends** (install separately if needed):
+  - `pyarrow` - For actual `pyarrow.Table` conversion (`pip install xbbg[pyarrow]` or `pip install pyarrow`)
+  - `pandas` - For pandas DataFrame conversion (`pip install xbbg[pandas]` or `pip install pandas`)
+  - `polars` - For Polars DataFrame / LazyFrame conversion (`pip install xbbg[polars]` or `pip install polars`)
+  - `duckdb` - For DuckDB relation conversion (`pip install xbbg[duckdb]` or `pip install duckdb`)
+  - **Native Narwhals plugin** - Included with xbbg as the minimal fallback when no PyArrow/pandas/Polars backend is installed; emits a one-time warning because it intentionally has a smaller dataframe surface
 
 ## Installation
 
@@ -886,27 +888,23 @@ df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
 
 ### Multi-Backend Support
 
-Starting with v0.11.0, xbbg is **DataFrame-library agnostic**. You can get output in your preferred format:
+Starting with v1, xbbg defaults to a Narwhals DataFrame. When PyArrow is installed, that Narwhals frame is backed by a real `pyarrow.Table`, preserving the pre-native-backend behavior and full Narwhals expression support. Minimal installs fall back through installed dataframe libraries and finally xbbg's native Arrow carrier; that final native-plugin fallback emits a one-time `RuntimeWarning` because it intentionally does not implement the full PyArrow/Narwhals expression surface. Request `backend="native"` / `Backend.NATIVE` when you want the raw `xbbg._core.ArrowTable`; request `backend="pyarrow"` / `Backend.PYARROW` when you want PyArrow's full table API.
+
+Conversion backends are explicit opt-ins. Install only the libraries you actually use.
 
 #### Supported Backends
 
 | Backend | Type | Output | Best For |
 |---------|------|--------|----------|
-| **Eager Backends** ||||
-| `pandas` | Eager | `pd.DataFrame` | Traditional workflows, compatibility |
-| `polars` | Eager | `pl.DataFrame` | High performance, large datasets |
-| `pyarrow` | Eager | `pa.Table` | Zero-copy interop, memory efficiency |
-| `narwhals` | Eager | Narwhals DataFrame | Library-agnostic code |
-| `modin` | Eager | Modin DataFrame | Pandas API with parallel execution |
-| `cudf` | Eager | cuDF DataFrame | GPU-accelerated processing (NVIDIA) |
-| **Lazy Backends** ||||
-| `polars_lazy` | Lazy | `pl.LazyFrame` | Deferred execution, query optimization |
-| `narwhals_lazy` | Lazy | Narwhals LazyFrame | Library-agnostic lazy evaluation |
-| `duckdb` | Lazy | DuckDB relation | SQL analytics, OLAP queries |
-| `dask` | Lazy | Dask DataFrame | Out-of-core and distributed computing |
-| `ibis` | Lazy | Ibis Table | Unified interface to many backends |
-| `pyspark` | Lazy | Spark DataFrame | Big data processing (requires Java) |
-| `sqlframe` | Lazy | SQLFrame DataFrame | SQL-first DataFrame operations |
+| default / `narwhals` | Core wrapper | Narwhals DataFrame over PyArrow when installed, otherwise installed dataframe backends or `xbbg._core.ArrowTable` fallback | Backwards-compatible dataframe ergonomics without pandas/PyArrow as hard deps |
+| `native` | Native eager | `xbbg._core.ArrowTable` | Zero-copy xbbg-native workflows, Arrow PyCapsule interop |
+| `pyarrow` | Optional conversion | `pyarrow.Table` | Full PyArrow table functionality and Arrow ecosystem integrations |
+| `pandas` | Optional conversion | `pd.DataFrame` | Traditional dataframe workflows, compatibility |
+| `polars` | Optional conversion | `pl.DataFrame` | High-performance eager analytics |
+| `polars_lazy` | Optional conversion | `pl.LazyFrame` | Deferred Polars execution |
+| `duckdb` | Optional conversion | DuckDB relation | SQL analytics and OLAP queries |
+| `narwhals_lazy` | Native plugin | Narwhals LazyFrame over xbbg Arrow objects | Library-agnostic lazy evaluation |
+| `modin`, `cudf`, `dask`, `ibis`, `pyspark`, `sqlframe` | Optional Narwhals-backed conversions | Native objects for installed libraries | Specialized distributed/GPU/SQL workflows |
 
 **Note:** `wide` / `Format.WIDE` was removed in v1.0.0rc4. Use `semi_long` for one row per security, or pivot a `long` result explicitly in your downstream DataFrame library.
 
@@ -915,11 +913,15 @@ Starting with v0.11.0, xbbg is **DataFrame-library agnostic**. You can get outpu
 ```python
 from xbbg import get_available_backends, print_backend_status, is_backend_available
 
-# List installed backends
-print(get_available_backends())  # ['pandas', 'polars', 'pyarrow', ...]
+# Narwhals/default and native carrier are always available
+print(is_backend_available("narwhals"))  # True
+print(is_backend_available("native"))    # True
 
-# Check if a specific backend is available
-if is_backend_available('polars'):
+# Lists Backend.NARWHALS, Backend.NATIVE, plus installed optional conversion backends
+print(get_available_backends())
+
+# Check if a specific optional conversion backend is available
+if is_backend_available("polars"):
     print("Polars is installed!")
 
 # Print detailed status of all backends
@@ -931,14 +933,29 @@ print_backend_status()
 ```python
 from xbbg import blp, Backend
 
-# Get data as Polars DataFrame
-df_polars = blp.bdp('AAPL US Equity', 'PX_LAST', backend=Backend.POLARS)
+# Default Narwhals DataFrame; PyArrow-backed when PyArrow is installed
+df = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31")
+print(df.columns, len(df))
 
-# Get data as PyArrow Table
-table = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', backend=Backend.PYARROW)
+# Explicit native carrier
+table = blp.bdp("AAPL US Equity", "PX_LAST", backend="native")
 
-# Get data as pandas (default)
-df_pandas = blp.bdp('MSFT US Equity', 'PX_LAST', backend=Backend.PANDAS)
+# Optional conversions
+table_pyarrow = blp.bdp("IBM US Equity", "PX_LAST", backend=Backend.PYARROW)
+df_pandas = blp.bdp("MSFT US Equity", "PX_LAST", backend=Backend.PANDAS)
+df_polars = blp.bdp("AAPL US Equity", "PX_LAST", backend=Backend.POLARS)
+duckdb_rel = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31", backend=Backend.DUCKDB)
+nw_df = blp.bdp("AAPL US Equity", "PX_LAST", backend=Backend.NARWHALS)
+```
+
+Narwhals can also consume native xbbg Arrow objects directly through the included plugin:
+
+```python
+import narwhals as nw
+from xbbg import blp
+
+table = blp.bdp("AAPL US Equity", "PX_LAST", backend="native")
+nw_df = nw.from_native(table)
 ```
 
 #### Output Formats
@@ -956,10 +973,10 @@ Control the shape of your data with the `format` parameter:
 from xbbg import blp
 
 # Long format (tidy data, default)
-df_long = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'], format='long')
+df_long = blp.bdp(["AAPL US Equity", "MSFT US Equity"], ["PX_LAST", "VOLUME"], format="long")
 
 # Semi-long format (one row per ticker, fields as columns)
-df_semi = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', format='semi_long')
+df_semi = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31", format="semi_long")
 ```
 
 #### Global Configuration
@@ -970,20 +987,23 @@ Set defaults for your entire session:
 from xbbg import set_backend, Backend
 from xbbg import blp, get_backend
 
+# Without configuration, calls use Backend.NARWHALS
+print(get_backend())  # None means the default public backend is Backend.NARWHALS
+
 # Set Polars as default backend
 set_backend(Backend.POLARS)
 print(get_backend())  # Backend.POLARS
 
 # All subsequent calls use this default
-df = blp.bdp('AAPL US Equity', 'PX_LAST')  # Returns Polars DataFrame
+df = blp.bdp("AAPL US Equity", "PX_LAST")  # Returns Polars DataFrame
 ```
 
-#### Why Multi-Backend?
+#### Why native Arrow + optional conversions?
 
-- **Performance**: Polars and PyArrow can be 10-100x faster for large datasets
-- **Memory**: Arrow-based backends use zero-copy and columnar storage
-- **Interoperability**: Direct integration with DuckDB, Spark, and other Arrow-compatible tools
-- **Future-proof**: Write library-agnostic code with narwhals backend
+- **Default compatibility**: the public default is a Narwhals DataFrame so existing dataframe-style code keeps `len(df)`, `df.columns`, and explicit conversions
+- **Explicit native carrier**: `backend="native"` returns the raw xbbg `ArrowTable`
+- **Explicit PyArrow**: `backend="pyarrow"` returns a real `pyarrow.Table` when PyArrow is installed
+- **Interoperability**: Arrow PyCapsule methods let Arrow-aware libraries consume xbbg data while keeping PyArrow optional
 
 ## Power User and Infrastructure APIs
 

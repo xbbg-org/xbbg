@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use super::refdata::LongMode;
 use super::typed_builder::{ArrowType, ColumnSet, TypedBuilder};
-use arrow::array::{ArrayRef, Date32Builder, StringBuilder};
-use arrow::datatypes::{Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::builder::{Date32Builder, StringBuilder};
+use arrow_array::ArrayRef;
+use arrow_array::RecordBatch;
+use arrow_schema::{Field, Schema};
 use xbbg_core::{BlpError, DataType as BlpDataType, Element, Name, Value};
 
 pub(crate) fn should_emit_scalar_field(element: &Element<'_>) -> bool {
@@ -696,7 +697,7 @@ pub(crate) fn value_to_string<'a>(value: &'a Value<'a>) -> Cow<'a, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{Array, Date32Array, Float64Array, StringArray};
+    use arrow_array::{Array, Date32Array, Float64Array, StringArray};
 
     #[test]
     fn date_time_formatters_match_expected_strings() {

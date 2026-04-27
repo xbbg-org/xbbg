@@ -560,15 +560,14 @@ class TestBackendConversion:
         df = lf.collect()
         assert isinstance(df, pl.DataFrame)
 
-    def test_backend_pyarrow(self, single_ticker, single_field):
-        """Should convert to PyArrow Table."""
-        import pyarrow as pa
+    def test_backend_arrow(self, single_ticker, single_field):
+        """Should return a native xbbg ArrowTable."""
 
-        from xbbg import bdp
+        from xbbg import ArrowTable, bdp
 
-        table = bdp(single_ticker, single_field, backend="pyarrow")
+        table = bdp(single_ticker, single_field, backend="native")
 
-        assert isinstance(table, pa.Table)
+        assert isinstance(table, ArrowTable)
 
     def test_set_global_backend(self, single_ticker, single_field):
         """Global backend setting should affect all calls."""

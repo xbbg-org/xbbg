@@ -31,7 +31,7 @@ from xbbg import blp
 
 async def main():
     async for batch in blp.astream(['AAPL US Equity', 'MSFT US Equity'], ['LAST_PRICE', 'BID', 'ASK']):
-        # batch is a narwhals DataFrame (or pyarrow.RecordBatch if raw=True)
+        # batch is an xbbg.ArrowTable by default (or xbbg.ArrowRecordBatch if raw=True)
         print(batch)
 ```
 </TabItem>
@@ -45,12 +45,12 @@ for batch in blp.stream(['AAPL US Equity', 'MSFT US Equity'], ['LAST_PRICE', 'BI
 </TabItem>
 </Tabs>
 
-Each `batch` is a narwhals DataFrame by default, containing one or more ticks that arrived together. Use `raw=True` to receive raw `pyarrow.RecordBatch` objects for maximum throughput.
+Each `batch` is a Narwhals DataFrame by default, backed by PyArrow when PyArrow is installed and otherwise by the same warned fallback chain as request endpoints. Pass `backend='native'` for raw `xbbg.ArrowTable` batches, `backend='pyarrow'` for a real `pyarrow.Table`, or another backend for explicit conversion. Use `raw=True` to receive raw `xbbg.ArrowRecordBatch` objects for maximum throughput.
 
 ```python
 async for batch in blp.astream(['AAPL US Equity'], ['LAST_PRICE'], raw=True):
-    # batch: pyarrow.RecordBatch
-    df = batch.to_pandas()
+    # batch: xbbg.ArrowRecordBatch
+    rows = batch.to_pylist()
 ```
 
 <Aside type="note">

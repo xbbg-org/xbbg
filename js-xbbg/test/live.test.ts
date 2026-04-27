@@ -33,6 +33,14 @@ let enginePromise: Promise<Engine> | undefined;
 let engine: Engine | undefined;
 let sessionUnavailableReason: string | null = null;
 
+function formatLocalDate(day: Date): string {
+  const year = day.getFullYear();
+  const month = String(day.getMonth() + 1).padStart(2, '0');
+  const date = String(day.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
+}
+
+
 function getRecentTradingDay(): string {
   const now = new Date();
   for (let daysBack = 1; daysBack <= 5; daysBack += 1) {
@@ -40,12 +48,12 @@ function getRecentTradingDay(): string {
     candidate.setDate(now.getDate() - daysBack);
     const dow = candidate.getDay();
     if (dow !== 0 && dow !== 6) {
-      return candidate.toISOString().slice(0, 10);
+      return formatLocalDate(candidate);
     }
   }
   const fallback = new Date(now);
   fallback.setDate(now.getDate() - 1);
-  return fallback.toISOString().slice(0, 10);
+  return formatLocalDate(fallback);
 }
 
 function getDateRange(days: number): { start: string; end: string } {
@@ -747,7 +755,7 @@ describe('js-xbbg live Bloomberg API', () => {
   describe(`Streaming ${CONFIG.streaming_ticker}`, () => {
     it('subscribe receives 2-3 ticks and unsubscribe', async (t) =>
       runCase(t, 'stream subscribe/unsubscribe', async () => {
-        const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
+        const sub = (await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE'])).arrow();
         const rows = await collectStreamBatches(sub, 3, 15_000);
         for (const [index, table] of rows.entries()) {
           console.log(`  tick batch ${index + 1}: ${tableSummary(table)}`);
@@ -761,10 +769,9 @@ describe('js-xbbg live Bloomberg API', () => {
 
     it('streamed ticks contain price-like column', async (t) =>
       runCase(t, 'stream includes price-like field', async () => {
-        const sub = await engine!.stream(
-          [CONFIG.streaming_ticker],
-          ['LAST_PRICE', 'BID', 'ASK'],
-        );
+        const sub = (
+          await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE', 'BID', 'ASK'])
+        ).arrow();
         const result: any = await nextWithTimeout(sub, 12_000);
         await sub.unsubscribe(true);
         assert.ok(result && !result.done, 'Expected at least one streamed tick batch');
@@ -822,10 +829,12 @@ describe('js-xbbg live Bloomberg API', () => {
         let filteredResult: any;
         let allFieldsResult: any;
         try {
-          filtered = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
-          allFields = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE'], {
-            allFields: true,
-          });
+          filtered = (await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE'])).arrow();
+          allFields = (
+            await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE'], {
+              allFields: true,
+            })
+          ).arrow();
 
           [filteredResult, allFieldsResult] = await Promise.all([
             nextWithTimeout(filtered, 15_000),
@@ -867,6 +876,7 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'stream add/remove tickers', async () => {
         const addedTicker = 'IBM US Equity';
         const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
+        const arrowSub = sub.arrow();
         try {
           assert.deepEqual(sub.tickers, [CONFIG.streaming_ticker]);
           await sub.add([addedTicker]);
@@ -877,7 +887,7 @@ describe('js-xbbg live Bloomberg API', () => {
             `Expected metadata to remove ${addedTicker}: ${sub.tickers.join(', ')}`,
           );
 
-          const next: any = await nextWithTimeout(sub, 12_000);
+          const next: any = await nextWithTimeout(arrowSub, 12_000);
           assert.ok(next && !next.done, 'Expected primary stream data after add/remove');
           const topics = new Set(
             next.value

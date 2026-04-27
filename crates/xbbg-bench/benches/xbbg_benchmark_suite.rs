@@ -13,12 +13,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use arrow::array::{
-    ArrayRef, Float64Array, Float64Builder, Int64Array, StringArray, StringBuilder,
-    TimestampMicrosecondArray, TimestampMicrosecondBuilder,
+use arrow_array::builder::{Float64Builder, StringBuilder, TimestampMicrosecondBuilder};
+use arrow_array::{
+    ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
 };
-use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
-use arrow::record_batch::RecordBatch;
+use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use chrono::{Datelike, Duration as ChronoDuration, Local, NaiveDate, Weekday};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;

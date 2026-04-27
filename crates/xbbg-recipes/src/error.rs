@@ -15,7 +15,7 @@ pub enum RecipeError {
 
     /// Arrow data error.
     #[error("Arrow error: {0}")]
-    Arrow(#[from] arrow::error::ArrowError),
+    Arrow(#[from] arrow_schema::ArrowError),
 
     /// Invalid argument provided to a recipe.
     #[error("Invalid argument: {0}")]

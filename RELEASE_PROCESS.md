@@ -331,14 +331,14 @@ When asked to create a release:
 ## [Unreleased]
 
 ### Added
-- Multi-backend support with `Backend` enum (narwhals, pandas, polars, pyarrow, duckdb) (#173)
+- Native Arrow carrier with explicit `backend="native"`, `backend="pyarrow"` for real PyArrow tables, and a Narwhals default that preserves legacy PyArrow-backed behavior when PyArrow is installed (#173)
 - Output format control with `Format` enum (long, semi_long, long_typed, long_metadata)
 - `bta()` function for Bloomberg Technical Analysis (#175)
 - `get_sdk_info()` as replacement for deprecated `getBlpapiVersion()`
 
 ### Changed
 - All API functions now accept `backend` and `format` parameters
-- Internal pipeline uses PyArrow tables with narwhals transformations
+- Internal pipeline uses xbbg native Arrow tables with explicit optional conversion backends
 - **BREAKING**: Deprecated `wide` output removed; use `semi_long` or pivot `long` results explicitly
 
 ### Deprecated

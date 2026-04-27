@@ -16,8 +16,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use arc_swap::ArcSwap;
-use arrow::array::{Array, RecordBatch, StringArray};
-use arrow::datatypes::DataType;
+use arrow_array::{Array, RecordBatch, StringArray};
+use arrow_schema::DataType;
 use serde::{Deserialize, Serialize};
 use xbbg_log::{debug, info, warn};
 
