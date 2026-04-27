@@ -118,17 +118,18 @@ need a stable application schema.
 
 ## Choose Your Backend
 
-Return data in your preferred DataFrame format:
+The default return is a Narwhals DataFrame. When PyArrow is installed, xbbg preserves the legacy behavior by backing that Narwhals frame with a real `pyarrow.Table`; otherwise it falls back through installed dataframe libraries and finally xbbg's native Arrow carrier. That final native-plugin fallback emits a one-time `RuntimeWarning` because it intentionally does not implement the full PyArrow/Narwhals expression surface. Use `backend="native"` when you want the raw `xbbg.ArrowTable`, or `backend="pyarrow"` when you need a real `pyarrow.Table`.
 
 ```python
-# Global setting
-xbbg.set_backend('polars')
-df = xbbg.bdp('AAPL US Equity', 'PX_LAST')  # polars.DataFrame
+# Default Narwhals DataFrame
+df = xbbg.bdp('AAPL US Equity', 'PX_LAST')
+print(df.columns, len(df))
 
-# Per-call override
-df = xbbg.bdp('AAPL US Equity', 'PX_LAST', backend='pandas')  # pandas.DataFrame
+# Per-call conversion when a library object is required
+df_pd = xbbg.bdp('AAPL US Equity', 'PX_LAST', backend='pandas')  # pandas.DataFrame
+table = xbbg.bdp('AAPL US Equity', 'PX_LAST', backend='native')  # xbbg.ArrowTable
 
-# Available backends: pandas, polars, pyarrow, duckdb, narwhals
+# Available backends: narwhals, native, pyarrow, pandas, polars, duckdb, ...
 ```
 
 ## Async Support

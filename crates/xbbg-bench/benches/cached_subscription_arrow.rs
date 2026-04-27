@@ -16,7 +16,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use arrow::record_batch::RecordBatch;
+use arrow_array::RecordBatch;
 use tokio::sync::mpsc;
 use xbbg_async::engine::state::SubscriptionState;
 use xbbg_async::engine::OverflowPolicy;

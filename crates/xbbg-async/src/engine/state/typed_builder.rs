@@ -8,12 +8,12 @@
 
 use std::sync::Arc;
 
-use arrow::array::{
-    ArrayBuilder, ArrayRef, BooleanBuilder, Date32Builder, Float64Builder, Int32Builder,
-    Int64Builder, StringBuilder, Time64MicrosecondBuilder, TimestampMicrosecondBuilder,
+use arrow_array::builder::{
+    ArrayBuilder, BooleanBuilder, Date32Builder, Float64Builder, Int32Builder, Int64Builder,
+    StringBuilder, Time64MicrosecondBuilder, TimestampMicrosecondBuilder,
 };
-use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
-use arrow::record_batch::RecordBatch;
+use arrow_array::{ArrayRef, RecordBatch};
+use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use indexmap::IndexMap;
 use xbbg_core::{BlpError, Value};
 
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn test_column_set_late_value_pads_prior_rows() {
-        use arrow::array::{Array, StringArray};
+        use arrow_array::{Array, StringArray};
 
         let mut cols = ColumnSet::new();
         cols.append("a", Value::Int64(1));
@@ -726,7 +726,7 @@ mod tests {
 
     #[test]
     fn test_column_set_late_null_pads_current_and_prior_rows() {
-        use arrow::array::{Array, StringArray};
+        use arrow_array::{Array, StringArray};
 
         let mut cols = ColumnSet::new();
         cols.append("a", Value::Int64(1));
@@ -779,7 +779,7 @@ mod tests {
 
     #[test]
     fn typed_builder_string_formats_scalar_values() {
-        use arrow::array::StringArray;
+        use arrow_array::StringArray;
 
         let mut builder = TypedBuilder::new(ArrowType::String);
         builder.append_value(Some(Value::Float64(123.45)));

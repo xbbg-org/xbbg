@@ -24,8 +24,8 @@ before/after examples and migration recipes.
 | Engine | Pure Python wrapping the Bloomberg Python wheel | Rust core, zero-copy Arrow transport into Python |
 | Default output format | Wide (ticker as index / MultiIndex columns) | Long (`ticker`, `field`, `value` rows) |
 | pandas dependency | Required hard dependency | Optional — install separately |
-| Default DataFrame backend | pandas | narwhals (lazy) |
-| Core dependencies | pandas | narwhals ≥ 1.30, pyarrow ≥ 22 |
+| Default result backend | pandas | Narwhals DataFrame backed by PyArrow when installed, with a warned native fallback for minimal installs |
+| Core dependencies | pandas | narwhals ≥ 2.0 plus the native xbbg extension; PyArrow is optional |
 | Connection setup | `blp.connect()` / `blp.disconnect()` | `xbbg.configure()` — engine auto-starts on first use |
 | Authentication | `connect(auth_method=…, app_name=…)` | `configure(auth_method=…, app_name=…)` — same fields, six methods |
 | Bloomberg SDK at runtime | `pip install blpapi` (vendor wheel bundles `libblpapi3_64`) | Same — `pip install blpapi`, no system C++ SDK install needed (1.0.1+) |
@@ -214,13 +214,13 @@ parameter names differ between backends:
 ```python
 from xbbg import blp
 
-# --- narwhals / Polars backend (default) ---
-df = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'])
+# --- Polars backend ---
+df = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], ['PX_LAST', 'VOLUME'], backend='polars')
 wide = df.pivot(on='field', index='ticker', values='value')
 
-# BDH with narwhals / Polars
+# BDH with Polars
 hist = blp.bdh('AAPL US Equity', ['open', 'high', 'low', 'close'],
-               '2024-01-01', '2024-01-31')
+               '2024-01-01', '2024-01-31', backend='polars')
 hist_wide = hist.pivot(on='field', index=['ticker', 'date'], values='value')
 
 # --- pandas backend ---
@@ -265,19 +265,19 @@ df = blp.bdp(
 
 xbbg 0.x depended on pandas. Every function returned `pd.DataFrame`. No configuration was needed.
 
-### After: narwhals default, pandas optional
+### After: Narwhals default, optional conversions
 
-xbbg 1.0 uses PyArrow for the on-the-wire data transport between Rust and Python, and narwhals
-for the DataFrame construction layer. pandas is no longer pulled in automatically.
+xbbg 1.0 uses a Rust native engine and returns a Narwhals DataFrame by default. When PyArrow is installed, the Narwhals frame is backed by a real `pyarrow.Table` to preserve legacy Narwhals/PyArrow behavior; minimal installs fall back through installed dataframe libraries and finally xbbg's native Arrow carrier with a one-time warning. This keeps dataframe-style behavior while making PyArrow, pandas, Polars, DuckDB, and other backends optional explicit conversions.
 
 **Core dependencies** (installed with `pip install xbbg`):
 
-- `narwhals >= 1.30`
-- `pyarrow >= 22`
+- `narwhals >= 2.0`
+- the native `xbbg._core` extension
 
 **Optional backends** (install separately as needed):
 
 ```bash
+pip install pyarrow   # pyarrow.Table conversion
 pip install pandas    # pandas DataFrames
 pip install polars    # Polars DataFrames (eager and lazy)
 pip install duckdb    # DuckDB relations
@@ -313,7 +313,7 @@ df = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'],
 ```python
 from xbbg import get_available_backends, print_backend_status
 
-print(get_available_backends())   # e.g. ['narwhals', 'pyarrow', 'pandas']
+print(get_available_backends())   # e.g. [Backend.NATIVE, Backend.NARWHALS, Backend.PYARROW, Backend.PANDAS]
 print_backend_status()            # installed/missing with version info
 ```
 

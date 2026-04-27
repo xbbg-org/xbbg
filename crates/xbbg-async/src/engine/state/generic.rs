@@ -10,9 +10,9 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Float64Builder, StringBuilder};
-use arrow::datatypes::{DataType as ArrowDataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow_array::builder::{Float64Builder, StringBuilder};
+use arrow_array::RecordBatch;
+use arrow_schema::{DataType as ArrowDataType, Field, Schema};
 use tokio::sync::oneshot;
 
 use super::value_utils::{format_date32, format_timestamp_micros};

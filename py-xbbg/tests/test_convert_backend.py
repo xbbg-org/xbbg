@@ -1,341 +1,192 @@
-"""Tests for _convert_backend() function.
-
-Ported from main branch xbbg/tests/test_convert.py (TestConvertBackend* classes).
-Adapted for the current branch where _convert_backend lives in xbbg.blp
-and supports 7 backends (NARWHALS, NARWHALS_LAZY, PANDAS, POLARS,
-POLARS_LAZY, PYARROW, DUCKDB).
-
-NOTE: _convert_backend is a private function. These tests are
-implementation-focused to ensure backend conversion works correctly
-across all supported output formats.
-"""
+"""Tests for conversion from xbbg native Arrow objects to public backends."""
 
 from __future__ import annotations
 
-from unittest import TestCase
+import importlib.util
+from typing import Any
 
 import narwhals.stable.v1 as nw
-import pandas as pd
 import pytest
 
-from xbbg.blp import Backend, _convert_backend, set_backend
-
-_CASE = TestCase()
-
-
-class TestConvertBackendNarwhals:
-    """Test _convert_backend() for narwhals backend (passthrough)."""
-
-    def _create_test_nw_frame(self):
-        """Create a test narwhals DataFrame."""
-        pdf = pd.DataFrame(
-            {
-                "ticker": ["AAPL US Equity", "MSFT US Equity"],
-                "date": pd.to_datetime(["2024-01-01", "2024-01-01"]),
-                "px_last": [150.0, 380.0],
-            }
-        )
-        return nw.from_native(pdf)
-
-    def test_convert_narwhals_returns_narwhals(self):
-        """Converting to NARWHALS should return a narwhals DataFrame."""
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.NARWHALS)
-        _CASE.assertIsInstance(result, nw.DataFrame)
-
-    def test_convert_narwhals_preserves_data(self):
-        """Converting to NARWHALS should preserve all data."""
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.NARWHALS)
-        _CASE.assertEqual(len(result), 2)
-        _CASE.assertIn("ticker", result.columns)
-        _CASE.assertIn("px_last", result.columns)
-
-    def test_convert_none_backend_returns_default(self):
-        """Passing None as backend should return the default narwhals DataFrame."""
-        nw_frame = self._create_test_nw_frame()
-        set_backend(None)
-        result = _convert_backend(nw_frame, None)
-
-        _CASE.assertIsInstance(result, nw.DataFrame)
-        _CASE.assertEqual(result.columns, ["ticker", "date", "px_last"])
-        _CASE.assertEqual(len(result), 2)
-        _CASE.assertEqual(result["ticker"].to_list()[0], "AAPL US Equity")
-        _CASE.assertEqual(result["px_last"].to_list()[1], 380.0)
+from xbbg._core import ArrowTable
+from xbbg.blp import Backend, _convert_backend
 
 
-class TestConvertBackendPandas:
-    """Test _convert_backend() for pandas backend."""
-
-    def _create_test_nw_frame(self):
-        """Create a test narwhals DataFrame."""
-        pdf = pd.DataFrame(
-            {
-                "ticker": ["AAPL US Equity", "MSFT US Equity"],
-                "date": pd.to_datetime(["2024-01-01", "2024-01-01"]),
-                "px_last": [150.0, 380.0],
-            }
-        )
-        return nw.from_native(pdf)
-
-    def test_convert_pandas_returns_pd_dataframe(self):
-        """Converting to PANDAS should return a pandas DataFrame."""
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.PANDAS)
-        _CASE.assertIsInstance(result, pd.DataFrame)
-
-    def test_convert_pandas_preserves_columns(self):
-        """Converting to PANDAS should preserve column names."""
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.PANDAS)
-        _CASE.assertIn("ticker", result.columns)
-        _CASE.assertIn("date", result.columns)
-        _CASE.assertIn("px_last", result.columns)
-
-    def test_convert_pandas_preserves_row_count(self):
-        """Converting to PANDAS should preserve row count."""
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.PANDAS)
-        _CASE.assertEqual(len(result), 2)
-
-    def test_convert_pandas_from_string_backend(self):
-        """Converting with string 'pandas' should work like Backend.PANDAS."""
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, "pandas")
-        _CASE.assertIsInstance(result, pd.DataFrame)
-
-    def test_convert_pandas_already_pandas(self):
-        """Converting an already-pandas DataFrame should return it as-is."""
-        pdf = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-        result = _convert_backend(pdf, Backend.PANDAS)
-        _CASE.assertIsInstance(result, pd.DataFrame)
-        _CASE.assertEqual(len(result), 2)
+@pytest.fixture
+def arrow_table() -> Any:
+    return ArrowTable.from_pylist(
+        [
+            {"ticker": "AAPL US Equity", "date": "2024-01-01", "px_last": 150.0},
+            {"ticker": "MSFT US Equity", "date": "2024-01-01", "px_last": 380.0},
+        ]
+    )
 
 
-class TestConvertBackendPolars:
-    """Test _convert_backend() for polars backends.
+class TestConvertBackendNative:
+    def test_convert_native_returns_identity(self, arrow_table: Any):
+        result = _convert_backend(arrow_table, Backend.NATIVE)
+        assert result is arrow_table
 
-    NOTE: _convert_backend assumes polars-backed narwhals frames for POLARS/POLARS_LAZY
-    conversion (calls .to_native() which returns polars, then .lazy()). We must create
-    narwhals frames from polars, not pandas, for these tests.
-    """
+    def test_convert_none_backend_defaults_to_narwhals(self, arrow_table: Any):
+        result = _convert_backend(arrow_table, None)
+        assert isinstance(result, nw.DataFrame)
 
-    def _create_test_nw_frame(self):
-        """Create a polars-backed narwhals DataFrame."""
-        pl = pytest.importorskip("polars")
-        plf = pl.DataFrame(
-            {
-                "ticker": ["AAPL US Equity"],
-                "px_last": [150.0],
-            }
-        )
-        return nw.from_native(plf)
+        native = result.to_native()
+        if importlib.util.find_spec("pyarrow") is not None:
+            pa = pytest.importorskip("pyarrow")
+            assert isinstance(native, pa.Table)
+            assert native.column_names == arrow_table.column_names
+        elif importlib.util.find_spec("pandas") is not None:
+            pd = pytest.importorskip("pandas")
+            assert isinstance(native, pd.DataFrame)
+            assert list(native.columns) == arrow_table.column_names
+        elif importlib.util.find_spec("polars") is not None:
+            pl = pytest.importorskip("polars")
+            assert isinstance(native, pl.DataFrame)
+            assert native.columns == arrow_table.column_names
+        else:
+            assert native is arrow_table
+    def test_convert_record_batch_to_native_table(self, arrow_table: Any):
+        batch = arrow_table.to_batches()[0]
+        result = _convert_backend(batch, Backend.NATIVE)
+        assert result.column_names == arrow_table.column_names
+        assert result.to_pylist() == arrow_table.to_pylist()
 
-    def test_convert_polars_returns_polars_df(self):
-        """Converting to POLARS should return a polars DataFrame."""
-        pl = pytest.importorskip("polars")
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.POLARS)
-        _CASE.assertIsInstance(result, pl.DataFrame)
+    def test_record_batch_and_table_indexing_return_arrow_columns(self, arrow_table: Any):
+        batch = arrow_table.to_batches()[0]
 
-    def test_convert_polars_lazy_returns_lazyframe(self):
-        """Converting to POLARS_LAZY should return a polars LazyFrame."""
-        pl = pytest.importorskip("polars")
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.POLARS_LAZY)
-        _CASE.assertIsInstance(result, pl.LazyFrame)
+        batch_column = batch["ticker"]
+        assert batch_column.name == "ticker"
+        assert batch_column.to_pylist() == ["AAPL US Equity", "MSFT US Equity"]
+        assert batch_column[0] == "AAPL US Equity"
+        assert batch_column[-1] == "MSFT US Equity"
+        assert len(batch_column) == 2
+        assert len(batch) == 2
+
+        table_column = arrow_table["px_last"]
+        assert table_column.name == "px_last"
+        assert table_column.to_pylist() == [150.0, 380.0]
+        assert len(arrow_table) == 2
+
+    def test_rejects_non_native_inputs(self):
+        with pytest.raises(TypeError, match="Expected xbbg ArrowTable or ArrowRecordBatch"):
+            _convert_backend({"ticker": ["IBM"]}, Backend.NATIVE)
 
 
 class TestConvertBackendPyArrow:
-    """Test _convert_backend() for pyarrow backend.
+    def test_convert_pyarrow_returns_table(self, arrow_table: Any):
+        pa = pytest.importorskip("pyarrow")
+        result = _convert_backend(arrow_table, Backend.PYARROW)
+        assert isinstance(result, pa.Table)
+        assert result.column_names == arrow_table.column_names
+        assert result.num_rows == arrow_table.num_rows
 
-    NOTE: _convert_backend's PYARROW path calls .to_native().to_arrow() which
-    requires a polars-backed narwhals frame. When backed by pandas, it falls back
-    to pa.Table.from_pandas(). We test both paths.
-    """
 
-    def _create_polars_backed_nw_frame(self):
-        """Create a polars-backed narwhals DataFrame for .to_arrow() path."""
+class TestConvertBackendPandas:
+    def test_convert_pandas_returns_dataframe(self, arrow_table: Any):
+        pd = pytest.importorskip("pandas")
+        result = _convert_backend(arrow_table, Backend.PANDAS)
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == arrow_table.column_names
+        assert len(result) == arrow_table.num_rows
+
+    def test_convert_pandas_does_not_require_pyarrow(self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch):
+        pd = pytest.importorskip("pandas")
+        del pd
+        if importlib.util.find_spec("pyarrow") is not None:
+            pytest.skip("environment has pyarrow installed; isolated no-pyarrow coverage owns this assertion")
+
+        real_import = __import__
+
+        def guarded_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "pyarrow" or name.startswith("pyarrow."):
+                raise AssertionError("pandas conversion must not import optional Arrow bindings")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.__import__", guarded_import)
+        result = _convert_backend(arrow_table, Backend.PANDAS)
+        assert len(result) == arrow_table.num_rows
+
+
+class TestConvertBackendPolars:
+    def test_convert_polars_returns_dataframe(self, arrow_table: Any):
         pl = pytest.importorskip("polars")
-        plf = pl.DataFrame(
-            {
-                "ticker": ["AAPL US Equity"],
-                "px_last": [150.0],
-            }
-        )
-        return nw.from_native(plf)
+        result = _convert_backend(arrow_table, Backend.POLARS)
+        assert isinstance(result, pl.DataFrame)
+        assert result.columns == arrow_table.column_names
 
-    def _create_pandas_backed_nw_frame(self):
-        """Create a pandas-backed narwhals DataFrame for from_pandas fallback path."""
-        pdf = pd.DataFrame(
-            {
-                "ticker": ["AAPL US Equity"],
-                "px_last": [150.0],
-            }
-        )
-        return nw.from_native(pdf)
-
-    def test_convert_pyarrow_from_polars_returns_arrow_table(self):
-        """Converting polars-backed narwhals to PYARROW should return a pyarrow Table."""
-        import pyarrow as pa
-
-        nw_frame = self._create_polars_backed_nw_frame()
-        result = _convert_backend(nw_frame, Backend.PYARROW)
-        _CASE.assertIsInstance(result, pa.Table)
-
-    def test_convert_pyarrow_from_pandas_returns_arrow_table(self):
-        """Converting pandas-backed narwhals to PYARROW should fallback to from_pandas."""
-        import pyarrow as pa
-
-        nw_frame = self._create_pandas_backed_nw_frame()
-        result = _convert_backend(nw_frame, Backend.PYARROW)
-        _CASE.assertIsInstance(result, pa.Table)
-
-    def test_convert_pyarrow_preserves_columns(self):
-        """Converting to PYARROW should preserve column names."""
-        nw_frame = self._create_polars_backed_nw_frame()
-        result = _convert_backend(nw_frame, Backend.PYARROW)
-        _CASE.assertIn("ticker", result.column_names)
-        _CASE.assertIn("px_last", result.column_names)
+    def test_convert_polars_lazy_returns_lazyframe(self, arrow_table: Any):
+        pl = pytest.importorskip("polars")
+        result = _convert_backend(arrow_table, Backend.POLARS_LAZY)
+        assert isinstance(result, pl.LazyFrame)
 
 
 class TestConvertBackendDuckDB:
-    """Test _convert_backend() for duckdb backend."""
-
-    def _create_test_nw_frame(self):
-        """Create a test narwhals DataFrame."""
-        pdf = pd.DataFrame(
-            {
-                "ticker": ["AAPL US Equity"],
-                "px_last": [150.0],
-            }
-        )
-        return nw.from_native(pdf)
-
-    def test_convert_duckdb(self):
-        """Converting to DUCKDB should return a collectable duckdb lazy frame."""
-        pytest.importorskip("duckdb")
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.DUCKDB)
-        collected = result.collect()
-
-        _CASE.assertIsInstance(result, nw.LazyFrame)
-        _CASE.assertEqual(collected.columns, ["ticker", "px_last"])
-        _CASE.assertEqual(len(collected), 1)
-        _CASE.assertEqual(collected["ticker"].to_list()[0], "AAPL US Equity")
-        _CASE.assertEqual(collected["px_last"].to_list()[0], 150.0)
+    def test_convert_duckdb_relation(self, arrow_table: Any):
+        duckdb = pytest.importorskip("duckdb")
+        result = _convert_backend(arrow_table, Backend.DUCKDB)
+        assert result.fetchone() is not None
+        assert result.columns == arrow_table.column_names
+        del duckdb
 
 
-class TestConvertBackendNarwhalsLazy:
-    """Test _convert_backend() for narwhals lazy backend."""
+class TestConvertBackendNarwhals:
+    def _block_dataframe_backend_imports(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_import = __import__
 
-    def _create_test_nw_frame(self):
-        """Create a test narwhals DataFrame."""
-        pdf = pd.DataFrame(
-            {
-                "ticker": ["AAPL US Equity"],
-                "px_last": [150.0],
-            }
-        )
-        return nw.from_native(pdf)
+        def guarded_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            root = name.split(".", 1)[0]
+            if root in {"pyarrow", "pandas", "polars", "arro3"}:
+                raise ImportError(f"blocked optional dataframe backend: {name}")
+            return real_import(name, *args, **kwargs)
 
-    def test_convert_narwhals_lazy(self):
-        """Converting to NARWHALS_LAZY should return a collectable lazy frame."""
-        nw_frame = self._create_test_nw_frame()
-        result = _convert_backend(nw_frame, Backend.NARWHALS_LAZY)
-        collected = result.collect()
+        monkeypatch.setattr("builtins.__import__", guarded_import)
+        monkeypatch.setattr("xbbg.blp._native_narwhals_fallback_warned", True)
 
-        _CASE.assertIsInstance(result, nw.LazyFrame)
-        _CASE.assertEqual(collected.columns, ["ticker", "px_last"])
-        _CASE.assertEqual(len(collected), 1)
-        _CASE.assertEqual(collected["ticker"].to_list()[0], "AAPL US Equity")
-        _CASE.assertEqual(collected["px_last"].to_list()[0], 150.0)
+    def test_convert_narwhals_prefers_pyarrow_when_available(self, arrow_table: Any):
+        pa = pytest.importorskip("pyarrow")
+        result = _convert_backend(arrow_table, Backend.NARWHALS)
+        assert isinstance(result, nw.DataFrame)
+        native = result.to_native()
+        assert isinstance(native, pa.Table)
+        assert native.column_names == arrow_table.column_names
+
+    def test_convert_narwhals_falls_back_to_xbbg_plugin(
+        self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._block_dataframe_backend_imports(monkeypatch)
+        monkeypatch.setattr("xbbg.blp._native_narwhals_fallback_warned", False)
+        with pytest.warns(RuntimeWarning, match="limited xbbg native ArrowTable plugin"):
+            result = _convert_backend(arrow_table, Backend.NARWHALS)
+        assert isinstance(result, nw.DataFrame)
+        assert result.to_native() is arrow_table
+        assert result.columns == arrow_table.column_names
+
+    def test_narwhals_select_delegates_to_xbbg_table_when_native_fallback(
+        self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._block_dataframe_backend_imports(monkeypatch)
+        result = _convert_backend(arrow_table, Backend.NARWHALS)
+        selected = result.select("ticker", "px_last")
+        native = selected.to_native()
+        assert native.column_names == ["ticker", "px_last"]
+        assert native.to_pylist() == [
+            {"ticker": "AAPL US Equity", "px_last": 150.0},
+            {"ticker": "MSFT US Equity", "px_last": 380.0},
+        ]
+
+    def test_convert_narwhals_lazy_collects_to_xbbg_plugin_when_native_fallback(
+        self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._block_dataframe_backend_imports(monkeypatch)
+        result = _convert_backend(arrow_table, Backend.NARWHALS_LAZY)
+        collected = result.select("ticker").collect()
+        native = collected.to_native()
+        assert native.column_names == ["ticker"]
+        assert native.column("ticker") == ["AAPL US Equity", "MSFT US Equity"]
 
 
 class TestConvertBackendInvalid:
-    """Test _convert_backend() with invalid backends."""
-
-    def _create_test_nw_frame(self):
-        """Create a test narwhals DataFrame."""
-        pdf = pd.DataFrame({"a": [1]})
-        return nw.from_native(pdf)
-
-    def test_invalid_string_backend_raises(self):
-        """Invalid string backend should raise ValueError."""
-        nw_frame = self._create_test_nw_frame()
+    def test_invalid_string_backend_raises(self, arrow_table: Any):
         with pytest.raises(ValueError):
-            _convert_backend(nw_frame, "invalid_backend")
-
-
-class TestConvertBackendEmptyFrame:
-    """Test _convert_backend() with empty DataFrames."""
-
-    def _create_empty_nw_frame(self):
-        """Create an empty narwhals DataFrame."""
-        pdf = pd.DataFrame({"ticker": pd.Series([], dtype=str), "px_last": pd.Series([], dtype=float)})
-        return nw.from_native(pdf)
-
-    def test_convert_empty_to_pandas(self):
-        """Converting empty frame to pandas should work."""
-        nw_frame = self._create_empty_nw_frame()
-        result = _convert_backend(nw_frame, Backend.PANDAS)
-        _CASE.assertIsInstance(result, pd.DataFrame)
-        _CASE.assertEqual(len(result), 0)
-
-    def test_convert_empty_to_narwhals(self):
-        """Converting empty frame to narwhals should work."""
-        nw_frame = self._create_empty_nw_frame()
-        result = _convert_backend(nw_frame, Backend.NARWHALS)
-        _CASE.assertIsInstance(result, nw.DataFrame)
-        _CASE.assertEqual(len(result), 0)
-
-
-class TestConvertBackendNativeInput:
-    """Regression tests for issue #287.
-
-    ``_convert_backend`` must accept raw native frames (not only narwhals
-    wrappers). Before the fix, feeding an already-native polars frame
-    caused ``AttributeError: 'DataFrame' object has no attribute 'to_native'``
-    because the polars branch assumed a narwhals wrapper.
-    """
-
-    def test_native_polars_to_polars(self):
-        pl = pytest.importorskip("polars")
-        plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
-        result = _convert_backend(plf, Backend.POLARS)
-        _CASE.assertIsInstance(result, pl.DataFrame)
-        _CASE.assertEqual(result["px_last"][0], 150.0)
-
-    def test_native_polars_to_pandas(self):
-        pl = pytest.importorskip("polars")
-        plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
-        result = _convert_backend(plf, Backend.PANDAS)
-        _CASE.assertIsInstance(result, pd.DataFrame)
-        _CASE.assertEqual(result["px_last"].iloc[0], 150.0)
-
-    def test_native_pandas_to_polars(self):
-        pl = pytest.importorskip("polars")
-        pdf = pd.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
-        result = _convert_backend(pdf, Backend.POLARS)
-        _CASE.assertIsInstance(result, pl.DataFrame)
-        _CASE.assertEqual(result["px_last"][0], 150.0)
-
-    def test_native_polars_to_pyarrow(self):
-        pl = pytest.importorskip("polars")
-        import pyarrow as pa
-
-        plf = pl.DataFrame({"ticker": ["IBM"], "px_last": [150.0]})
-        result = _convert_backend(plf, Backend.PYARROW)
-        _CASE.assertIsInstance(result, pa.Table)
-
-    def test_double_conversion_is_safe(self):
-        """The pre-fix bug: _execute_generated_endpoint called _convert_backend
-        twice when a non-pandas global backend was set, causing the second
-        call to receive an already-native frame. Verify this now no-ops.
-        """
-        pl = pytest.importorskip("polars")
-        nw_frame = nw.from_native(pl.DataFrame({"a": [1, 2]}))
-        first = _convert_backend(nw_frame, Backend.POLARS)
-        second = _convert_backend(first, Backend.POLARS)
-        _CASE.assertIsInstance(second, pl.DataFrame)
-        _CASE.assertEqual(len(second), 2)
+            _convert_backend(arrow_table, "invalid_backend")

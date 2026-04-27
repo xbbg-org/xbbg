@@ -7,11 +7,12 @@
 
 use std::sync::Arc;
 
-use arrow::array::{
-    ArrayRef, Float64Builder, Int64Builder, StringBuilder, TimestampMicrosecondBuilder,
+use arrow_array::builder::{
+    Float64Builder, Int64Builder, StringBuilder, TimestampMicrosecondBuilder,
 };
-use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
-use arrow::record_batch::RecordBatch;
+use arrow_array::ArrayRef;
+use arrow_array::RecordBatch;
+use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use tokio::sync::mpsc;
 
 use xbbg_core::{BlpError, Message};

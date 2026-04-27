@@ -8,9 +8,11 @@ description = "High-level Bloomberg recipe functions built on xbbg-async engine"
 publish = false
 
 [dependencies]
-xbbg-async = { path = "../xbbg-async" }
+xbbg-async = { path = "../xbbg-async", default-features = false }
 xbbg-ext = { path = "../xbbg-ext" }
-arrow = { version = "57", default-features = false }
+arrow-array = { version = "58.1.0", default-features = false }
+arrow-arith = "58.1.0"
+arrow-schema = "58.1.0"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 thiserror = "2"
 tokio = { version = "1.48", features = ["rt"] }

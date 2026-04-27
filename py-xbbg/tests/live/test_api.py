@@ -114,9 +114,15 @@ def get_recent_bqr_quote_window() -> tuple[str, str]:
 
 
 def assert_bqr_quote_rows(table, ticker: str) -> None:
-    """Assert BQR rows are bounded fixed-income BID/ASK quotes with dealer codes."""
+    """Assert native Arrow BQR rows are bounded fixed-income BID/ASK quotes with dealer codes."""
+    assert table.__class__.__name__ == "ArrowTable"
+    assert table.num_columns == len(table.column_names)
+    batches = table.to_batches()
+    assert batches
+    assert all(batch.__class__.__name__ == "ArrowRecordBatch" for batch in batches)
     rows = table.to_pylist()
-    assert 1 <= len(rows) <= 5
+    assert table.num_rows == len(rows)
+    assert 1 <= table.num_rows <= 5
     broker_columns = {"broker_buy", "broker_sell"} & set(table.column_names)
     assert broker_columns, f"Expected broker code column in {table.column_names}"
     assert any(row.get(column) for row in rows for column in broker_columns), "Expected at least one broker code value"
@@ -327,18 +333,27 @@ class TestAbdh:
         logger.info(f"  Async result: {len(df)} rows")
 
     @pytest.mark.asyncio
-    async def test_abdh_pyarrow_keeps_ticker_column_issue_225(self):
-        """Regression for #225: pyarrow BDH default output keeps ticker identity."""
-        import pyarrow as pa
-
+    async def test_abdh_arrow_keeps_ticker_column_issue_225(self):
+        """Regression for #225: native Arrow BDH default output keeps ticker identity."""
         from xbbg import abdh
 
         start, end = get_date_range(5)
-        table = await abdh(CONFIG.equity_multi, CONFIG.price_field, start_date=start, end_date=end, backend="pyarrow")
+        table = await abdh(
+            CONFIG.equity_multi,
+            CONFIG.price_field,
+            start_date=start,
+            end_date=end,
+            backend="native",
+        )
 
-        assert isinstance(table, pa.Table)
+        assert table.__class__.__name__ == "ArrowTable"
+        assert table.num_columns == len(table.column_names)
         assert "ticker" in table.column_names
-        assert len(table) >= len(CONFIG.equity_multi)
+        assert table.num_rows >= len(CONFIG.equity_multi)
+        batches = table.to_batches()
+        assert batches
+        assert all(batch.__class__.__name__ == "ArrowRecordBatch" for batch in batches)
+        assert len(table.to_pylist()) == table.num_rows
 
 
 # =============================================================================
@@ -454,29 +469,45 @@ class TestOutputFormats:
         assert set(pdf["dtype"].unique()) == {"float64"}
 
     def test_bdp_long_numeric_value_is_float_issue_280(self):
-        """Regression for #280: numeric BDP long values stay numeric."""
-        import pyarrow as pa
-
+        """Regression for #280: native Arrow BDP long values stay numeric."""
         from xbbg import bdp
 
-        table = bdp(CONFIG.equity_single, CONFIG.price_field, format="long", backend="pyarrow")
+        table = bdp(
+            CONFIG.equity_single,
+            CONFIG.price_field,
+            format="long",
+            backend="native",
+        )
 
-        assert len(table) == 1
-        assert pa.types.is_floating(table.schema.field("value").type)
+        assert table.__class__.__name__ == "ArrowTable"
+        assert table.column_names == ["ticker", "field", "value"]
+        assert table.num_rows == 1
+        rows = table.to_pylist()
+        assert len(rows) == table.num_rows
+        assert isinstance(rows[0]["value"], float)
 
     def test_bdh_long_numeric_value_is_float_issue_280(self):
-        """Regression for #280: numeric BDH long values stay numeric."""
-        import pyarrow as pa
-
+        """Regression for #280: native Arrow BDH long values stay numeric."""
         from xbbg import bdh
 
         start, end = get_date_range(5)
         table = bdh(
-            CONFIG.equity_single, CONFIG.price_field, start_date=start, end_date=end, format="long", backend="pyarrow"
+            CONFIG.equity_single,
+            CONFIG.price_field,
+            start_date=start,
+            end_date=end,
+            format="long",
+            backend="native",
         )
 
-        assert len(table) >= 1
-        assert pa.types.is_floating(table.schema.field("value").type)
+        assert table.__class__.__name__ == "ArrowTable"
+        assert {"ticker", "date", "field", "value"}.issubset(table.column_names)
+        assert table.num_rows >= 1
+        rows = table.to_pylist()
+        assert len(rows) == table.num_rows
+        values = [row["value"] for row in rows if row["field"] == CONFIG.price_field]
+        assert values
+        assert all(isinstance(value, float) for value in values)
 
     def test_bdh_long(self):
         from xbbg import bdh
@@ -772,10 +803,8 @@ class TestAbdtick:
         logger.info(f"  Async result: {len(df)} ticks for {trading_day} (UTC)")
 
     @pytest.mark.asyncio
-    async def test_abdtick_pyarrow_mixed_fields_issue_224(self):
-        """Regression for #224: pyarrow BDTICK handles mixed typed tick columns."""
-        import pyarrow as pa
-
+    async def test_abdtick_arrow_mixed_fields_issue_224(self):
+        """Regression for #224: native Arrow BDTICK handles mixed typed tick columns."""
         from xbbg import abdtick
 
         start, end = get_recent_utc_market_window(minutes=5)
@@ -786,12 +815,16 @@ class TestAbdtick:
             event_types=["TRADE"],
             includeConditionCodes=True,
             maxDataPoints=1,
-            backend="pyarrow",
+            backend="native",
         )
 
-        assert isinstance(table, pa.Table)
-        assert len(table) >= 1
+        assert table.__class__.__name__ == "ArrowTable"
+        assert table.num_rows >= 1
         assert {"ticker", "time", "type", "value", "size"}.issubset(table.column_names)
+        batches = table.to_batches()
+        assert batches
+        assert all(batch.__class__.__name__ == "ArrowRecordBatch" for batch in batches)
+        assert len(table.to_pylist()) == table.num_rows
 
 
 # =============================================================================
@@ -813,10 +846,10 @@ class TestBqr:
                 start_datetime=start,
                 end_datetime=end,
                 maxDataPoints=5,
-                backend="pyarrow",
+                backend="native",
             )
             assert_bqr_quote_rows(table, CONFIG.bqr_quote_ticker)
-            logger.info(f"  BQR fixed-income broker rows: {len(table)}")
+            logger.info(f"  BQR fixed-income broker rows: {table.num_rows}")
         except RuntimeError as e:
             pytest.skip(f"BQR Bloomberg request failed: {e}")
 
@@ -863,16 +896,20 @@ class TestBackendConversion:
         assert isinstance(df, pl.DataFrame)
         logger.info(f"  Polars DataFrame: {type(df)}")
 
-    def test_backend_pyarrow(self):
-        """Backend: pyarrow."""
-        import pyarrow as pa
-
+    def test_backend_arrow(self):
+        """Backend: arrow."""
         from xbbg import bdp
 
-        table = bdp(CONFIG.equity_single, CONFIG.price_field, backend="pyarrow")
+        table = bdp(CONFIG.equity_single, CONFIG.price_field, backend="native")
 
-        assert isinstance(table, pa.Table)
-        logger.info(f"  PyArrow Table: {type(table)}")
+        assert table.__class__.__name__ == "ArrowTable"
+        assert table.num_rows == 1
+        assert table.num_columns == len(table.column_names)
+        assert {"ticker", "field", "value"}.issubset(table.column_names)
+        batches = table.to_batches()
+        assert batches
+        assert batches[0].__class__.__name__ == "ArrowRecordBatch"
+        logger.info(f"  ArrowTable: {type(table)}")
 
     def test_backend_polars_bdh_uppercase_issue_190_221(self):
         """Regressions for #190/#221: BDH honors polars backend case-insensitively."""
@@ -1172,10 +1209,10 @@ class TestExtensions:
                 start_datetime=start,
                 end_datetime=end,
                 maxDataPoints=5,
-                backend="pyarrow",
+                backend="native",
             )
             assert_bqr_quote_rows(table, CONFIG.bqr_quote_ticker)
-            logger.info(f"  Got {len(table)} BQR quote rows")
+            logger.info(f"  Got {table.num_rows} BQR quote rows")
         except RuntimeError as e:
             pytest.skip(f"BQR Bloomberg request failed: {e}")
 
@@ -1308,10 +1345,10 @@ class TestExtensionsAsync:
                 start_datetime=start,
                 end_datetime=end,
                 maxDataPoints=5,
-                backend="pyarrow",
+                backend="native",
             )
             assert_bqr_quote_rows(table, CONFIG.bqr_quote_ticker)
-            logger.info(f"  Async BQR: {len(table)} quote rows")
+            logger.info(f"  Async BQR: {table.num_rows} quote rows")
         except RuntimeError as e:
             pytest.skip(f"BQR Bloomberg request failed: {e}")
 

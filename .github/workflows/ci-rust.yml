@@ -1117,7 +1117,7 @@ jobs:
           rustflags: ""
 
       - name: Build stub generator
-        run: cargo build -p pyo3-xbbg --bin stub_gen --no-default-features --features live
+        run: cargo build -p pyo3-xbbg --bin stub_gen --no-default-features --features live,stub-gen
 
       - name: Regenerate stubs
         run: CARGO_MANIFEST_DIR="$GITHUB_WORKSPACE/bindings/pyo3-xbbg" ./target/debug/stub_gen

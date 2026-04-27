@@ -14,12 +14,11 @@ rust = ">=1.75"
 libclang = ">=22"
 pkg-config = "*"
 pip = "*"
-pyarrow = ">=22"
 
 # xbbg itself is installed via `pixi run install` (not here) because
 # activation env vars are only available during `pixi run`, not `pixi install`.
 [pypi-dependencies]
-narwhals = ">=1.30"
+narwhals = ">=2.0"
 
 [pypi-options]
 extra-index-urls = ["https://blpapi.bloomberg.com/repository/releases/python/simple/"]
@@ -72,6 +71,7 @@ pytest-cov = "*"
 [feature.test.dependencies]
 pandas = ">=2.3.3,<4"
 polars = ">=0.20.26,<2"
+duckdb = ">=1.0"
 
 [feature.lint.dependencies]
 python = ">=3.10"

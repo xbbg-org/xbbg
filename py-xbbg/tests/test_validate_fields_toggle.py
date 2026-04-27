@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import pyarrow as pa
 import pytest
 
+from xbbg._core import ArrowTable
 from xbbg.services import Operation, RequestParams, Service
 
 
@@ -47,14 +47,11 @@ async def test_arequest_passes_validate_fields_to_engine(monkeypatch):
     class FakeEngine:
         async def request(self, params_dict):
             captured.update(params_dict)
-            return pa.record_batch(
+            return ArrowTable.from_pylist(
                 [
-                    pa.array(["IBM US Equity"]),
-                    pa.array(["PX_LAST"]),
-                    pa.array(["123.45"]),
-                ],
-                names=["ticker", "field", "value"],
-            )
+                    {"ticker": "IBM US Equity", "field": "PX_LAST", "value": "123.45"},
+                ]
+            ).to_batches()[0]
 
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
 

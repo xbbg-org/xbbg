@@ -2,7 +2,7 @@
 //!
 //! High-level recipes for Bloomberg fixed income data queries.
 
-use arrow::array::RecordBatch;
+use arrow_array::RecordBatch;
 use xbbg_async::engine::{Engine, RequestParams};
 use xbbg_async::services::{Operation, Service};
 use xbbg_ext::transforms::fixed_income::{build_yas_overrides, YieldType};

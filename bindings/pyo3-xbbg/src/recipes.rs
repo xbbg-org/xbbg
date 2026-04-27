@@ -3,11 +3,12 @@
 //! Exposes all 12 recipe functions to Python via `#[pyfunction]` wrappers.
 
 use pyo3::prelude::*;
+#[cfg(feature = "stub-gen")]
 use pyo3_stub_gen::derive::*;
 
 use xbbg_ext::transforms::fixed_income::YieldType;
 
-use crate::{record_batch_to_pyarrow, PyEngine};
+use crate::{native_arrow::record_batch_to_arrow_record_batch, PyEngine};
 
 /// Convert a RecipeError to a Python RuntimeError.
 fn recipe_err(e: xbbg_recipes::RecipeError) -> PyErr {
@@ -33,7 +34,7 @@ macro_rules! recipe_wrapper {
 
             crate::shutdown_safe_future(py, &engine.engine, async move {
                 let batch = $call.await.map_err(recipe_err)?;
-                Python::attach(|py| record_batch_to_pyarrow(py, batch))
+                Python::attach(|py| record_batch_to_arrow_record_batch(py, batch))
             })
         }
     };
@@ -54,7 +55,7 @@ recipe_wrapper!(
     /// YAS (Yield & Spread Analysis) recipe.
     ///
     /// Retrieves Bloomberg YAS data with optional yield type and pricing parameters.
-    /// Returns a PyArrow RecordBatch.
+    /// Returns an xbbg ArrowRecordBatch.
     ///
     /// Args:
     ///     engine: Bloomberg engine instance
@@ -66,7 +67,7 @@ recipe_wrapper!(
     ///     yield_val: Yield value override
     ///     price: Price override
     ///     benchmark: Benchmark security for spread calculation
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, tickers, fields, settle_dt=None, yield_type=None, spread=None, yield_val=None, price=None, benchmark=None))]
     #[allow(clippy::too_many_arguments)]
@@ -104,7 +105,7 @@ recipe_wrapper!(
     ///     engine: Bloomberg engine instance
     ///     ticker: Company equity ticker (e.g., "BAC US Equity")
     ///     fields: Additional fields to retrieve (default: id, name)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, ticker, fields=None))]
     |eng|
@@ -123,7 +124,7 @@ recipe_wrapper!(
     ///     ccy: Currency filter (e.g., "USD"). None for all currencies.
     ///     fields: Additional fields to retrieve (default: id)
     ///     active_only: If true, only return active bonds (default: true)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, ticker, ccy=None, fields=None, active_only=true))]
     |eng|
@@ -151,7 +152,7 @@ recipe_wrapper!(
     ///     end_datetime: End datetime (ISO format)
     ///     event_types: Event types to retrieve (default: ["BID", "ASK"])
     ///     include_broker_codes: Include broker/dealer codes (default: true)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, ticker, start_datetime, end_datetime, event_types=None, include_broker_codes=true))]
     |eng|
@@ -183,7 +184,7 @@ recipe_wrapper!(
     ///     gen_ticker: Generic futures ticker (e.g., "ES1 Index", "CL2 Comdty")
     ///     dt: Reference date (YYYYMMDD format)
     ///     freq: Roll frequency ("M" monthly, "Q"/"QE" quarterly)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt, freq=None))]
     |eng|
@@ -202,7 +203,7 @@ recipe_wrapper!(
     ///     gen_ticker: Generic futures ticker (e.g., "ES1 Index")
     ///     dt: Reference date (YYYYMMDD format)
     ///     freq: Roll frequency ("M" monthly, "Q"/"QE" quarterly)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt, freq=None))]
     |eng|
@@ -220,7 +221,7 @@ recipe_wrapper!(
     ///     engine: Bloomberg engine instance
     ///     gen_ticker: Generic CDX ticker (e.g., "CDX IG CDSI GEN 5Y Corp")
     ///     dt: Reference date (YYYYMMDD format)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt))]
     |eng|
@@ -238,7 +239,7 @@ recipe_wrapper!(
     ///     gen_ticker: Generic CDX ticker (e.g., "CDX IG CDSI GEN 5Y Corp")
     ///     dt: Reference date (YYYYMMDD format)
     ///     lookback_days: Lookback window for activity comparison (default: 10)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, gen_ticker, dt, lookback_days=None))]
     |eng|
@@ -262,7 +263,7 @@ recipe_wrapper!(
     ///     start_date: Start date (YYYYMMDD format)
     ///     end_date: End date (YYYYMMDD format)
     ///     dvd_type: Dividend type filter (e.g., "all", "regular")
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, tickers, start_date, end_date, dvd_type=None))]
     |eng|
@@ -284,7 +285,7 @@ recipe_wrapper!(
     ///     end_date: End date (YYYYMMDD format)
     ///     ccy: Currency for conversion. None for local currency.
     ///     factor: Division factor (e.g., 1_000_000.0 for millions)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, tickers, start_date, end_date, ccy=None, factor=None))]
     |eng|
@@ -311,7 +312,7 @@ recipe_wrapper!(
     ///     engine: Bloomberg engine instance
     ///     etf_ticker: ETF ticker (e.g., "SPY US Equity")
     ///     fields: Additional fields beyond defaults (id_isin, weights, id().position)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, etf_ticker, fields=None))]
     |eng|
@@ -334,7 +335,7 @@ recipe_wrapper!(
     ///     target_ccy: Target currency (e.g., "USD", "EUR")
     ///     start_date: Start date (YYYYMMDD format)
     ///     end_date: End date (YYYYMMDD format)
-    #[gen_stub_pyfunction]
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
 #[pyfunction]
     #[pyo3(signature = (engine, ticker, target_ccy, start_date, end_date))]
     |eng|

@@ -6,7 +6,7 @@ use crate::engine::state::{
     subscription_update_to_record_batch, FieldKind, FieldLayout, FieldMeta, SubscriptionUpdate,
 };
 use crate::engine::{EngineConfig, OutputFormat, OverflowPolicy, ServerAddr, Transport};
-use arrow::datatypes::{DataType, TimeUnit};
+use arrow_schema::{DataType, TimeUnit};
 use std::sync::Arc;
 
 // =========================================================================

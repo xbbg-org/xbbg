@@ -7,8 +7,9 @@ edition.workspace = true
 description = "Extension utilities for xbbg - futures resolution, currency adjustment, historical data helpers"
 
 [dependencies]
-# Arrow for zero-copy DataFrame operations (must match pyo3-xbbg version)
-arrow = { version = "57", default-features = false, features = ["chrono-tz"] }
+# Arrow for zero-copy DataFrame operations (narrow crates keep Python wheels small).
+arrow-array = { version = "58.1.0", default-features = false, features = ["chrono-tz"] }
+arrow-schema = "58.1.0"
 
 # Date/time handling
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }

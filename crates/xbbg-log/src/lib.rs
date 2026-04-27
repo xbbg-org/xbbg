@@ -9,7 +9,7 @@
 //! ```text
 //! tracing::debug!("...")
 //!   → AtomicLevelFilter (reads AtomicU8 ~1ns, zero GIL)
-//!   → fmt::layer (non-blocking writer thread)
+//!   → fmt::layer
 //!   → stderr
 //! ```
 //!
@@ -34,12 +34,9 @@
 //!
 //! # Developer Override
 //!
-//! Setting `RUST_LOG` env var bypasses the atomic filter and gives
-//! full per-crate control:
-//!
-//! ```bash
-//! RUST_LOG=xbbg_core=trace,xbbg_async=debug python my_script.py
-//! ```
+//! Setting `RUST_LOG` to a simple level (`trace`, `debug`, `info`, `warn`, or
+//! `error`) sets the initial global level. Python can still change it later via
+//! `xbbg.set_log_level()`.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::OnceLock;
@@ -147,51 +144,33 @@ where
 // Initialization
 // ---------------------------------------------------------------------------
 
-/// Holds the non-blocking writer guard.  Dropped when the process exits,
-/// which flushes any buffered log lines.
-static WRITER_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
-
 /// Initialize the global tracing subscriber.
 ///
 /// Call this **once** from the PyO3 module init (`_core`).
 ///
 /// # Behaviour
 ///
-/// | `RUST_LOG` set? | What happens |
-/// |-----------------|---------------------------------------------------|
-/// | **Yes** | `EnvFilter` controls everything (dev mode) |
-/// | **No** | `AtomicLevelFilter` controls (Python mode, default WARN) |
-///
-/// Output always goes to a **non-blocking** stderr writer so that worker
-/// threads never block on a syscall in the logging path.
+/// `RUST_LOG` may set the initial global level when it contains a simple level
+/// string. Output goes directly to stderr; the logging path remains GIL-free.
 pub fn init() {
+    use tracing_subscriber::fmt;
     use tracing_subscriber::prelude::*;
-    use tracing_subscriber::{fmt, EnvFilter};
 
-    let (non_blocking, guard) = tracing_appender::non_blocking(std::io::stderr());
+    if let Ok(level) = std::env::var("RUST_LOG") {
+        if let Some(level) = parse_level(&level) {
+            set_level(level);
+        }
+    }
 
     let fmt_layer = fmt::layer()
-        .with_writer(non_blocking)
+        .with_writer(std::io::stderr)
         .with_target(true)
         .with_thread_ids(true)
         .with_file(true)
         .with_line_number(true);
 
-    if std::env::var("RUST_LOG").is_ok() {
-        // Developer mode: RUST_LOG has per-crate control.
-        // e.g. RUST_LOG=xbbg_core=trace,xbbg_async=debug
-        let subscriber = tracing_subscriber::registry()
-            .with(fmt_layer.with_filter(EnvFilter::from_default_env()));
-        let _ = tracing::subscriber::set_global_default(subscriber);
-    } else {
-        // User mode: Python controls via set_level().
-        let subscriber =
-            tracing_subscriber::registry().with(fmt_layer.with_filter(AtomicLevelFilter));
-        let _ = tracing::subscriber::set_global_default(subscriber);
-    }
-
-    // Keep the guard alive for the lifetime of the process.
-    let _ = WRITER_GUARD.set(guard);
+    let subscriber = tracing_subscriber::registry().with(fmt_layer.with_filter(AtomicLevelFilter));
+    let _ = tracing::subscriber::set_global_default(subscriber);
 }
 
 // ---------------------------------------------------------------------------

@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-import pyarrow as pa
 import pytest
 
 from xbbg import blp
+from xbbg._core import ArrowTable
 from xbbg.services import Operation, Service
 
 VALID_ALIAS_ELEMENTS = {
@@ -64,13 +64,21 @@ def endpoint_capture(monkeypatch):
 @pytest.fixture
 def arrow_endpoint(monkeypatch):
     captured: dict[str, object] = {}
-    raw = pa.table(
-        {
-            "ticker": ["IBM US Equity", "IBM US Equity"],
-            "date": [date(2026, 1, 2), date(2026, 1, 1)],
-            "field": ["PX_LAST", "PX_LAST"],
-            "value": [2.0, 1.0],
-        }
+    raw = ArrowTable.from_pylist(
+        [
+            {
+                "ticker": "IBM US Equity",
+                "date": date(2026, 1, 2),
+                "field": "PX_LAST",
+                "value": 2.0,
+            },
+            {
+                "ticker": "IBM US Equity",
+                "date": date(2026, 1, 1),
+                "field": "PX_LAST",
+                "value": 1.0,
+            },
+        ]
     )
 
     async def fake_arequest(*, service, operation, backend, **kwargs):
