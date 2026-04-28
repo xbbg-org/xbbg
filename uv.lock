@@ -785,6 +785,11 @@ pyarrow = [
     { name = "pyarrow" },
 ]
 test = [
+    { name = "duckdb" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "polars" },
+    { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -793,12 +798,16 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.0" },
+    { name = "duckdb", marker = "extra == 'test'", specifier = ">=1.0" },
     { name = "narwhals", specifier = ">=2.0" },
     { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.0" },
+    { name = "pandas", marker = "extra == 'test'", specifier = ">=2.0" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=0.20" },
+    { name = "polars", marker = "extra == 'test'", specifier = ">=0.20" },
     { name = "pyarrow", marker = "extra == 'pyarrow'", specifier = ">=22.0.0" },
-    { name = "pytest", marker = "extra == 'test'" },
-    { name = "pytest-asyncio", marker = "extra == 'test'" },
+    { name = "pyarrow", marker = "extra == 'test'", specifier = ">=22.0.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4" },
+    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.24" },
     { name = "pytest-cov", marker = "extra == 'test'" },
 ]
-provides-extras = ["test", "pyarrow", "pandas", "polars", "duckdb"]
+provides-extras = ["pyarrow", "pandas", "polars", "duckdb", "test"]
