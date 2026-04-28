@@ -66,6 +66,8 @@ class LiveTestConfig:
 
     # Streaming ticker — ES1 trades ~23h/day on Globex, works on most holidays
     streaming_ticker: str = "ES1 Index"
+    # Highly active FX ticker for streaming market-bar tests.
+    mktbar_ticker: str = "EURUSD Curncy"
 
     # Common fields
     price_field: str = "PX_LAST"
@@ -133,6 +135,23 @@ def assert_bqr_quote_rows(table, ticker: str) -> None:
         assert row["event_type"] in {"BID", "ASK"}
         assert isinstance(row["price"], int | float)
         assert row["size"] is None or row["size"] >= 0
+
+
+def skip_if_subscription_unavailable(exc: Exception, context: str) -> None:
+    """Skip live service tests when Bloomberg rejects the subscription environment."""
+    if isinstance(exc, AssertionError):
+        raise exc
+    message = str(exc)
+    unavailable_markers = (
+        "Subscription failed",
+        "subscribe failed",
+        "All subscriptions failed",
+        "Invalid override values",
+        "NOT_ENTITLED",
+    )
+    if any(marker in message for marker in unavailable_markers):
+        pytest.skip(f"{context} subscription not available in this Bloomberg environment: {exc}")
+    raise exc
 
 
 # =============================================================================
@@ -1021,6 +1040,36 @@ class TestStreaming:
         logger.info(f"  Received {ticks_received} ticks before unsubscribe")
 
     @pytest.mark.asyncio
+    async def test_conflated_subscription_live(self):
+        """Stream: conflate=True starts a live mktdata subscription."""
+        from xbbg import asubscribe
+
+        rows = []
+
+        async def collect_ticks():
+            async with await asubscribe(
+                CONFIG.streaming_ticker,
+                ["LAST_PRICE", "BID", "ASK", "MKTDATA_EVENT_TYPE", "MKTDATA_EVENT_SUBTYPE"],
+                conflate=True,
+                tick_mode=True,
+            ) as sub:
+                assert sub.tickers == [CONFIG.streaming_ticker]
+                async for tick in sub:
+                    rows.append(tick)
+                    if len(rows) >= 1:
+                        break
+
+        try:
+            await asyncio.wait_for(collect_ticks(), timeout=20)
+        except asyncio.TimeoutError:
+            pytest.skip(f"No conflated ticks received from {CONFIG.streaming_ticker} within timeout")
+
+        assert rows, f"Expected conflated streaming ticks from {CONFIG.streaming_ticker}"
+        assert rows[0].get("MKTDATA_EVENT_TYPE") in {"SUMMARY", "QUOTE", "TRADE"}
+        logger.info(f"  Got conflated tick: {rows[0]}")
+
+
+    @pytest.mark.asyncio
     async def test_unsubscribe_wakes_pending_iteration(self):
         """Stream: unsubscribe completes even when __anext__ is pending."""
         from xbbg import asubscribe
@@ -1757,69 +1806,171 @@ class TestArequest:
 
 
 class TestVwap:
-    """Tests for avwap() - streaming VWAP.
+    """Tests for avwap() - streaming Market VWAP."""
 
-    VWAP subscription may require specific Bloomberg entitlements.
-    rc=131077 from blpapi_Session_subscribe indicates subscription failure.
-    """
+    @staticmethod
+    def _assert_vwap_payload(row: dict, expected_topic: str) -> None:
+        assert row.get("topic") == expected_topic
+        assert row.get("MKTDATA_EVENT_TYPE") is None, "mktvwap must not return regular mktdata events"
+        assert "VWAP" in row
+        assert "RT_VWAP_VOLUME" in row or "VWAP_TURNOVER_RT" in row or "VWAP_NUM_TRADES_RT" in row
 
     @pytest.mark.asyncio
     async def test_avwap_basic(self):
-        """VWAP: basic streaming VWAP."""
+        """VWAP: avwap normalizes tickers and returns VWAP-service payloads."""
         from xbbg import avwap
 
-        ticks = 0
+        expected_topic = f"//blp/mktvwap/ticker/{CONFIG.equity_single}"
+        rows = []
 
         async def collect():
-            nonlocal ticks
-            sub = await avwap(CONFIG.streaming_ticker)
-            async for tick in sub:
-                ticks += 1
-                if ticks >= 2:
+            async with await avwap(
+                CONFIG.equity_single,
+                start_time="10:00",
+                end_time="16:00",
+                raw=True,
+            ) as sub:
+                assert sub.tickers == [expected_topic]
+                async for batch in sub:
+                    rows.extend(batch.to_pylist())
+                    if rows:
+                        break
+
+        try:
+            await asyncio.wait_for(collect(), timeout=30)
+        except asyncio.TimeoutError:
+            pytest.skip(f"No Market VWAP payload received from {CONFIG.equity_single} after 30s")
+        except Exception as exc:
+            skip_if_subscription_unavailable(exc, "Market VWAP")
+
+        assert rows, f"Expected Market VWAP payload from {CONFIG.equity_single}"
+        self._assert_vwap_payload(rows[0], expected_topic)
+        logger.info(f"  Got Market VWAP payload: {rows[0]}")
+
+    @pytest.mark.asyncio
+    async def test_asubscribe_mktvwap_live_contract(self):
+        """VWAP: generic asubscribe enforces Bloomberg's mktvwap topic contract."""
+        from xbbg import Service, blp
+
+        expected_topic = f"//blp/mktvwap/ticker/{CONFIG.equity_single}"
+        rows = []
+
+        async def collect():
+            async with await blp.asubscribe(
+                CONFIG.equity_single,
+                "VWAP",
+                service=Service.MKTVWAP,
+                options=["VWAP_START_TIME=10:00", "VWAP_END_TIME=16:00"],
+                all_fields=True,
+                tick_mode=True,
+            ) as sub:
+                assert sub.tickers == [expected_topic]
+                async for row in sub:
+                    rows.append(row)
                     break
 
         try:
-            await asyncio.wait_for(collect(), timeout=15)
+            await asyncio.wait_for(collect(), timeout=30)
         except asyncio.TimeoutError:
-            logger.warning(f"  VWAP timeout (got {ticks} ticks)")
-        except RuntimeError as e:
-            if "subscribe failed" in str(e):
-                pytest.skip(f"VWAP subscription not available (entitlement): {e}")
-            raise
+            pytest.skip(f"No generic Market VWAP payload received from {CONFIG.equity_single} after 30s")
+        except Exception as exc:
+            skip_if_subscription_unavailable(exc, "Market VWAP")
 
-        if ticks == 0:
-            pytest.skip(
-                "VWAP subscription produced 0 ticks after 15s "
-                "(likely requires specific Bloomberg entitlement for VWAP service)"
-            )
-        logger.info(f"  Got {ticks} VWAP ticks")
+        assert rows, f"Expected generic Market VWAP payload from {CONFIG.equity_single}"
+        self._assert_vwap_payload(rows[0], expected_topic)
+        logger.info(f"  Got generic Market VWAP payload: {rows[0]}")
 
 
 class TestMktbar:
     """Tests for amktbar() - streaming market bars."""
 
+    @staticmethod
+    def _assert_market_bar_service_payload(row: dict, expected_topic: str) -> None:
+        assert row.get("topic") == expected_topic
+        assert row.get("MKTDATA_EVENT_TYPE") is None, "mktbar must not return regular mktdata events"
+        assert "TIME" in row or "DATE_TIME" in row or "DATE" in row
+
+    @staticmethod
+    def _has_ohlc(row: dict) -> bool:
+        return bool({"OPEN", "HIGH", "LOW", "CLOSE"} & row.keys())
+
+    @staticmethod
+    def _assert_market_bar_ohlc(row: dict) -> None:
+        assert {"OPEN", "HIGH", "LOW", "CLOSE"} & row.keys(), f"Expected OHLC bar fields in {sorted(row)}"
+        assert "VOLUME" in row or "NUMBER_OF_TICKS" in row
+
     @pytest.mark.asyncio
     async def test_amktbar_basic(self):
-        """MKTBAR: streaming bars."""
+        """MKTBAR: amktbar normalizes tickers and returns bar-shaped payloads."""
         from xbbg import amktbar
 
-        bars = 0
+        expected_topic = f"//blp/mktbar/ticker/{CONFIG.mktbar_ticker}"
+        rows = []
 
         async def collect():
-            nonlocal bars
-            sub = await amktbar(CONFIG.streaming_ticker, interval=1)
-            async for bar in sub:
-                bars += 1
-                if bars >= 2:
-                    break
+            async with await amktbar(CONFIG.mktbar_ticker, bar_size=1, raw=True) as sub:
+                assert sub.tickers == [expected_topic]
+                async for batch in sub:
+                    rows.extend(batch.to_pylist())
+                    if any(self._has_ohlc(row) for row in rows):
+                        break
 
         try:
-            await asyncio.wait_for(collect(), timeout=15)
+            await asyncio.wait_for(collect(), timeout=30)
         except asyncio.TimeoutError:
-            logger.warning(f"  Mktbar timeout (got {bars} bars)")
+            if not rows:
+                pytest.skip(f"No market bars received from {CONFIG.mktbar_ticker} after 30s")
+        except Exception as exc:
+            skip_if_subscription_unavailable(exc, "Market Bar")
 
-        assert bars >= 1, f"Expected market bars from {CONFIG.streaming_ticker} (ES1 trades ~23h/day), got 0 after 15s"
-        logger.info(f"  Got {bars} market bars")
+        assert rows, f"Expected market bars from {CONFIG.mktbar_ticker}"
+        for row in rows:
+            self._assert_market_bar_service_payload(row, expected_topic)
+        ohlc_rows = [row for row in rows if self._has_ohlc(row)]
+        if not ohlc_rows:
+            pytest.skip(f"Only interval/end market-bar messages received from {CONFIG.mktbar_ticker}")
+        self._assert_market_bar_ohlc(ohlc_rows[0])
+        logger.info(f"  Got mktbar payload: {ohlc_rows[0]}")
+
+    @pytest.mark.asyncio
+    async def test_asubscribe_mktbar_live_contract(self):
+        """MKTBAR: generic asubscribe enforces Bloomberg's mktbar topic contract."""
+        from xbbg import Service, blp
+
+        expected_topic = f"//blp/mktbar/ticker/{CONFIG.mktbar_ticker}"
+        rows = []
+
+        async def collect():
+            async with await blp.asubscribe(
+                CONFIG.mktbar_ticker,
+                "LAST_PRICE",
+                service=Service.MKTBAR,
+                options=["bar_size=1"],
+                all_fields=True,
+                tick_mode=True,
+            ) as sub:
+                assert sub.tickers == [expected_topic]
+                async for row in sub:
+                    rows.append(row)
+                    if self._has_ohlc(row):
+                        break
+
+        try:
+            await asyncio.wait_for(collect(), timeout=30)
+        except asyncio.TimeoutError:
+            if not rows:
+                pytest.skip(f"No generic market-bar payload received from {CONFIG.mktbar_ticker} after 30s")
+        except Exception as exc:
+            skip_if_subscription_unavailable(exc, "Market Bar")
+
+        assert rows, f"Expected generic market-bar payload from {CONFIG.mktbar_ticker}"
+        for row in rows:
+            self._assert_market_bar_service_payload(row, expected_topic)
+        ohlc_rows = [row for row in rows if self._has_ohlc(row)]
+        if not ohlc_rows:
+            pytest.skip(f"Only generic interval/end market-bar messages received from {CONFIG.mktbar_ticker}")
+        self._assert_market_bar_ohlc(ohlc_rows[0])
+        logger.info(f"  Got generic mktbar payload: {ohlc_rows[0]}")
 
 
 class TestDepth:

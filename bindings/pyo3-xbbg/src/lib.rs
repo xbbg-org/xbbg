@@ -1454,9 +1454,9 @@ impl PyEngine {
     /// ```python
     /// sub = await engine.subscribe_with_options(
     ///     '//blp/mktvwap',
-    ///     ['AAPL US Equity'],
-    ///     ['RT_PX_VWAP', 'RT_VWAP_VOLUME'],
-    ///     ['VWAP_START_TIME=09:30', 'VWAP_END_TIME=16:00']
+    ///     ['//blp/mktvwap/ticker/IBM US Equity'],
+    ///     ['VWAP'],
+    ///     ['VWAP_START_TIME=10:00', 'VWAP_END_TIME=16:00']
     /// )
     /// async for batch in sub:
     ///     print(batch)

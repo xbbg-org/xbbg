@@ -261,6 +261,7 @@ export interface RequestOptions {
 
 export interface StreamOptions {
   options?: readonly string[];
+  conflate?: boolean;
   flushThreshold?: number;
   overflowPolicy?: string;
   streamCapacity?: number;

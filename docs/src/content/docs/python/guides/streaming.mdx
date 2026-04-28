@@ -152,6 +152,21 @@ sub = await blp.asubscribe(
 )
 ```
 
+### `conflate`
+
+Set `conflate=True` to request Bloomberg conflated market data for `//blp/mktdata`. Bloomberg samples quote-side updates (`BID`, `ASK`, `PAIRED`) on its fixed conflation interval and sends the latest quote state; trade events are still delivered as received.
+
+```python
+sub = await blp.asubscribe(
+    'ES1 Index',
+    ['BID', 'ASK', 'LAST_PRICE', 'MKTDATA_EVENT_TYPE', 'MKTDATA_EVENT_SUBTYPE'],
+    conflate=True,
+    output='tick',
+)
+```
+
+`conflate=True` is only valid for market-data subscriptions. Do not combine it with `interval=...`; Bloomberg intervalization overrides conflation.
+
 ### `flush_threshold`, `stream_capacity`, `overflow_policy`
 
 These control the backpressure pipeline between the Bloomberg SDK event thread and your Python consumer.
@@ -197,11 +212,14 @@ xbbg provides dedicated functions for Bloomberg's specialized subscription servi
 
 ### VWAP — `avwap()` / `vwap()`
 
-Streaming Volume Weighted Average Price via `//blp/mktvwap`.
+Streaming Market Volume Weighted Average Price via `//blp/mktvwap`.
+Bloomberg requires Market VWAP subscriptions to use explicit `//blp/mktvwap/ticker/...` topics and request `VWAP` as the single main field. `avwap()` handles that topic shape for plain tickers and already-qualified `//blp/mktvwap/...` topics.
+
+Default output exposes the full top-level VWAP payload Bloomberg sends, such as `VWAP`, `RT_VWAP_VOLUME`, `VWAP_NUM_TRADES_RT`, `VWAP_TURNOVER_RT`, and `VWAP_UPDATE_TIME_RT`. The request field sent to Bloomberg remains `VWAP`.
 
 ```python
-# Basic — default fields: RT_PX_VWAP, RT_VWAP_VOLUME
-sub = await blp.avwap(['AAPL US Equity'])
+# Basic — request field is VWAP; output includes the full VWAP payload
+sub = await blp.avwap('IBM US Equity')
 async for batch in sub:
     print(batch)
 await sub.unsubscribe()
@@ -210,35 +228,30 @@ await sub.unsubscribe()
 ```python
 # Custom time window
 sub = await blp.avwap(
-    ['AAPL US Equity', 'MSFT US Equity'],
-    start_time='09:30',
+    ['IBM US Equity', 'MSFT US Equity'],
+    start_time='10:00',
     end_time='16:00',
-)
-```
-
-```python
-# Request additional VWAP fields
-sub = await blp.avwap(
-    'AAPL US Equity',
-    ['RT_PX_VWAP', 'RT_VWAP_VOLUME', 'RT_VWAP_TURNOVER'],
 )
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `tickers` | required | One or more securities |
-| `fields` | `['RT_PX_VWAP', 'RT_VWAP_VOLUME']` | Fields to subscribe to |
-| `start_time` | `None` | VWAP calculation start (e.g., `'09:30'`) |
+| `tickers` | required | One or more equities. Plain tickers become `//blp/mktvwap/ticker/...`; already-qualified `//blp/mktvwap/...` topics pass through unchanged. |
+| `start_time` | `None` | VWAP calculation start (e.g., `'10:00'`) |
 | `end_time` | `None` | VWAP calculation end (e.g., `'16:00'`) |
 
 ### Market Bars — `amktbar()` / `mktbar()`
 
 Streaming real-time OHLCV bars via `//blp/mktbar`. Like `bdib()` but live as bars form.
 
-Default fields: `OPEN`, `HIGH`, `LOW`, `CLOSE`, `VOLUME`, `NUM_TRADES`.
+Bloomberg requires market-bar subscriptions to use explicit `//blp/mktbar/{identifier-type}/{identifier}` topics, request `LAST_PRICE` as the only field, and set `bar_size` in minutes. `amktbar()` handles that for you: plain tickers use the `ticker` topic type, identifier paths like `/figi/...` keep their identifier type, and already-qualified `//blp/mktbar/...` topics pass through unchanged.
+
+Market bars are event-driven. Bloomberg may emit `MarketBarStart`, intra-bar `MarketBarUpdate`, `MarketBarIntervalEnd`, and `MarketBarEnd` messages; no-trade intervals may not produce OHLC payloads until Bloomberg publishes an interval/end event.
+
+Default output exposes the full top-level market-bar payload, including fields Bloomberg sends such as `TIME`, `DATE_TIME`, `OPEN`, `HIGH`, `LOW`, `CLOSE`, `VOLUME`, and `NUMBER_OF_TICKS`. The request field sent to Bloomberg remains `LAST_PRICE`.
 
 ```python
-# 1-minute bars (default interval)
+# 1-minute bars (default bar_size)
 sub = await blp.amktbar('AAPL US Equity')
 async for batch in sub:
     print(batch)
@@ -247,8 +260,8 @@ async for batch in sub:
 ```python
 # 5-minute bars with a session window
 async with await blp.amktbar(
-    ['AAPL US Equity', 'MSFT US Equity'],
-    interval=5,
+    ['AAPL US Equity', '/figi/BBG000JB5HR2'],
+    bar_size=5,
     start_time='09:30',
     end_time='16:00',
 ) as sub:
@@ -258,8 +271,8 @@ async with await blp.amktbar(
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `tickers` | required | One or more securities |
-| `interval` | `1` | Bar interval in minutes |
+| `tickers` | required | One or more securities. Plain tickers become `//blp/mktbar/ticker/...`; `/figi/...`, `/isin/...`, etc. preserve the identifier type. |
+| `bar_size` | `1` | Bar interval in minutes |
 | `start_time` | `None` | Session start in `HH:MM` format |
 | `end_time` | `None` | Session end in `HH:MM` format |
 

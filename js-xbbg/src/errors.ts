@@ -50,6 +50,9 @@ export class BlpTimeoutError extends BlpError {}
 export class BlpInternalError extends BlpError {}
 
 export function wrapError(napiError: unknown): BlpError {
+  if (napiError instanceof BlpError) {
+    return napiError;
+  }
   const msg =
     napiError instanceof Error
       ? napiError.message
