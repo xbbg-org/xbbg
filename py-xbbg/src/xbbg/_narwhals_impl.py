@@ -191,7 +191,9 @@ class XbbgDataFrame:
         import polars as pl
 
         try:
-            return pl.from_arrow(self.native)
+            import pyarrow as pa
+
+            return pl.from_arrow(pa.table(self.native))
         except ModuleNotFoundError as exc:
             if "pyarrow" not in str(exc):
                 raise
