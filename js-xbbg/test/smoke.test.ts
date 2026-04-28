@@ -127,6 +127,11 @@ describe('@xbbg/core surface', () => {
     }
   });
 
+  it('wrapError preserves typed errors', () => {
+    const err = new api.BlpValidationError('typed validation');
+    expect(api.wrapError(err)).toBe(err);
+  });
+
   it('exposes version, connect, setLogLevel, getLogLevel as functions', () => {
     expect(typeof api.connect).toBe('function');
     expect(typeof api.version).toBe('function');
@@ -193,6 +198,106 @@ describe('@xbbg/core surface', () => {
     }
   });
 });
+
+describe('conflated market data options', () => {
+  function fakeNativeSubscription(): any {
+    return {
+      add: async () => undefined,
+      remove: async () => undefined,
+      nextUpdate: async () => null,
+      nextArrow: async () => null,
+      unsubscribe: async () => [],
+      unsubscribeArrow: async () => [],
+      tickers: ['ES1 Index'],
+      fields: ['BID', 'ASK'],
+      isActive: true,
+      stats: {
+        messagesReceived: 0,
+        droppedBatches: 0,
+        batchesSent: 0,
+        slowConsumer: false,
+        dataLossEvents: 0,
+        lastMessageUs: 0,
+        lastDataLossUs: 0,
+        effectiveOverflowPolicy: 'drop_newest',
+      },
+    };
+  }
+
+  function fakeEngine(captured: Record<string, unknown>): api.Engine {
+    const engine = Object.create(api.Engine.prototype) as api.Engine;
+    (engine as unknown as { _inner: unknown })._inner = {
+      subscribe: async (tickers: readonly string[], fields: readonly string[], allFields?: boolean) => {
+        captured.subscribe = { tickers, fields, allFields };
+        return fakeNativeSubscription();
+      },
+      subscribeWithOptions: async (
+        service: string,
+        tickers: readonly string[],
+        fields: readonly string[],
+        options?: readonly string[],
+        flushThreshold?: number,
+        overflowPolicy?: string,
+        streamCapacity?: number,
+        allFields?: boolean,
+      ) => {
+        captured.subscribeWithOptions = {
+          service,
+          tickers,
+          fields,
+          options,
+          flushThreshold,
+          overflowPolicy,
+          streamCapacity,
+          allFields,
+        };
+        return fakeNativeSubscription();
+      },
+    };
+    return engine;
+  }
+
+  it('adds the conflate Bloomberg option for mktdata subscriptions', async () => {
+    const captured: Record<string, unknown> = {};
+    await fakeEngine(captured).subscribe(['ES1 Index'], ['BID', 'ASK'], { conflate: true });
+
+    expect(captured.subscribe).toBeUndefined();
+    expect(captured.subscribeWithOptions).toMatchObject({
+      service: '//blp/mktdata',
+      tickers: ['ES1 Index'],
+      fields: ['BID', 'ASK'],
+      options: ['conflate'],
+    });
+  });
+
+  it('normalizes ampersand conflate and avoids duplicates', async () => {
+    const captured: Record<string, unknown> = {};
+    await fakeEngine(captured).subscribe(['ES1 Index'], ['BID', 'ASK'], {
+      options: ['&conflate'],
+      conflate: true,
+    });
+
+    expect(captured.subscribeWithOptions).toMatchObject({
+      options: ['conflate'],
+    });
+  });
+
+  it('rejects conflate for non-mktdata helpers', async () => {
+    await expect(
+      fakeEngine({}).vwap(['IBM US Equity'], ['VWAP'], { conflate: true }),
+    ).rejects.toBeInstanceOf(api.BlpValidationError);
+  });
+
+  it('rejects conflate with interval options', async () => {
+    await expect(
+      fakeEngine({}).subscribe(['ES1 Index'], ['BID', 'ASK'], {
+        options: ['interval=5'],
+        conflate: true,
+      }),
+    ).rejects.toBeInstanceOf(api.BlpValidationError);
+  });
+});
+
 
 describe('native Arrow zero-copy table construction', () => {
   function typedBuffer(view: ArrayBufferView): Buffer {

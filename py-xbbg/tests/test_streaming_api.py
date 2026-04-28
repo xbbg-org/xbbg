@@ -34,6 +34,9 @@ class TestAsubscribeSignature:
         assert "options" in params
         assert params["options"].default is None
 
+        assert "conflate" in params
+        assert params["conflate"].default is False
+
         assert "tick_mode" in params
         assert params["tick_mode"].default is False
 
@@ -75,6 +78,9 @@ class TestAstreamSignature:
         assert "all_fields" in params
         assert params["all_fields"].default is False
 
+        assert "conflate" in params
+        assert params["conflate"].default is False
+
 
 class TestStreamSignature:
     """Verify stream() also has the new params."""
@@ -101,6 +107,9 @@ class TestStreamSignature:
         assert "all_fields" in params
         assert params["all_fields"].default is False
 
+        assert "conflate" in params
+        assert params["conflate"].default is False
+
 
 class TestStreamingServiceHelpersSignature:
     """avwap / amktbar / adepth / achains forward all_fields."""
@@ -108,10 +117,433 @@ class TestStreamingServiceHelpersSignature:
     def test_all_fields_kwarg_defaults(self):
         from xbbg.blp import achains, adepth, amktbar, avwap
 
-        for fn in (avwap, amktbar, adepth, achains):
+        for fn in (adepth, achains):
             sig = inspect.signature(fn)
             assert "all_fields" in sig.parameters
             assert sig.parameters["all_fields"].default is False
+
+        for fn in (avwap, amktbar):
+            sig = inspect.signature(fn)
+            assert "all_fields" in sig.parameters
+            assert sig.parameters["all_fields"].default is True
+
+
+class TestVwapContract:
+    """Verify Market VWAP helpers use Bloomberg's required subscription shape."""
+
+    def _install_fake_engine(self, monkeypatch, captured: dict[str, object]):
+        import xbbg.blp as blp_module
+
+        class FakePySubscription:
+            tickers = ["//blp/mktvwap/ticker/IBM US Equity"]
+            failed_tickers = []
+            failures = []
+            topic_states = [("//blp/mktvwap/ticker/IBM US Equity", "pending", 1)]
+            session_status = {
+                "state": "up",
+                "last_change_us": 1,
+                "disconnect_count": 0,
+                "reconnect_count": 0,
+            }
+            admin_status = {
+                "slow_consumer_warning_active": False,
+                "slow_consumer_warning_count": 0,
+                "slow_consumer_cleared_count": 0,
+                "data_loss_count": 0,
+                "last_warning_us": None,
+                "last_cleared_us": None,
+                "last_data_loss_us": None,
+            }
+            service_status = []
+            events = []
+            fields = ["VWAP"]
+            is_active = True
+            all_failed = False
+            stats = {
+                "messages_received": 0,
+                "dropped_batches": 0,
+                "batches_sent": 0,
+                "slow_consumer": False,
+                "data_loss_events": 0,
+                "last_message_us": 0,
+                "last_data_loss_us": 0,
+                "effective_overflow_policy": "drop_newest",
+            }
+
+            def __init__(self):
+                self.added: list[list[str]] = []
+
+            async def add(self, tickers):
+                self.added.append(tickers)
+
+        fake_sub = FakePySubscription()
+
+        class FakeEngine:
+            async def subscribe_with_options(self, service, tickers, fields, options, **kwargs):
+                captured.update(
+                    {
+                        "service": service,
+                        "tickers": tickers,
+                        "fields": fields,
+                        "options": options,
+                        **kwargs,
+                    }
+                )
+                return fake_sub
+
+        monkeypatch.setattr(blp_module, "_get_engine", lambda: FakeEngine())
+        return blp_module, fake_sub
+
+    def test_avwap_signature_uses_vwap_only_contract(self):
+        from xbbg.blp import avwap
+
+        sig = inspect.signature(avwap)
+        assert "fields" not in sig.parameters
+        assert sig.parameters["all_fields"].default is True
+
+    def test_avwap_builds_explicit_market_vwap_subscription(self, monkeypatch):
+        from xbbg.services import Service
+
+        captured: dict[str, object] = {}
+        blp_module, fake_sub = self._install_fake_engine(monkeypatch, captured)
+
+        sub = asyncio.run(
+            blp_module.avwap(
+                ["IBM US Equity", "//blp/mktvwap/ticker/MSFT US Equity"],
+                start_time="10:00",
+                end_time="16:00",
+            )
+        )
+
+        assert captured["service"] == Service.MKTVWAP.value
+        assert captured["tickers"] == [
+            "//blp/mktvwap/ticker/IBM US Equity",
+            "//blp/mktvwap/ticker/MSFT US Equity",
+        ]
+        assert captured["fields"] == ["VWAP"]
+        assert captured["options"] == ["VWAP_START_TIME=10:00", "VWAP_END_TIME=16:00"]
+        assert captured["all_fields"] is True
+
+        asyncio.run(sub.add("AAPL US Equity"))
+        assert fake_sub.added == [["//blp/mktvwap/ticker/AAPL US Equity"]]
+
+    def test_asubscribe_mktvwap_normalizes_topics_and_validates_contract(self, monkeypatch):
+        from xbbg.services import Service
+
+        captured: dict[str, object] = {}
+        blp_module, fake_sub = self._install_fake_engine(monkeypatch, captured)
+
+        sub = asyncio.run(
+            blp_module.asubscribe(
+                "IBM US Equity",
+                "VWAP",
+                service=Service.MKTVWAP,
+                options=["VWAP_START_TIME=10:00", "VWAP_END_TIME=16:00"],
+                all_fields=True,
+            )
+        )
+
+        assert captured["service"] == Service.MKTVWAP.value
+        assert captured["tickers"] == ["//blp/mktvwap/ticker/IBM US Equity"]
+        assert captured["fields"] == ["VWAP"]
+        assert captured["options"] == ["VWAP_START_TIME=10:00", "VWAP_END_TIME=16:00"]
+        assert captured["all_fields"] is True
+
+        asyncio.run(sub.add("MSFT US Equity"))
+        assert fake_sub.added == [["//blp/mktvwap/ticker/MSFT US Equity"]]
+
+    def test_mktvwap_rejects_invalid_contract_inputs(self):
+        from xbbg.blp import asubscribe, avwap
+        from xbbg.services import Service
+
+        with pytest.raises(ValueError, match="market-VWAP topic"):
+            asyncio.run(avwap("//blp/mktdata/ticker/IBM US Equity"))
+
+        with pytest.raises(ValueError, match="VWAP"):
+            asyncio.run(
+                asubscribe(
+                    "IBM US Equity",
+                    ["RT_PX_VWAP"],
+                    service=Service.MKTVWAP,
+                )
+            )
+
+
+class TestMktbarContract:
+    """Verify market-bar helpers use Bloomberg's required subscription shape."""
+
+    def _install_fake_engine(self, monkeypatch, captured: dict[str, object]):
+        import xbbg.blp as blp_module
+
+        class FakePySubscription:
+            tickers = ["//blp/mktbar/ticker/ES1 Index"]
+            failed_tickers = []
+            failures = []
+            topic_states = [("//blp/mktbar/ticker/ES1 Index", "pending", 1)]
+            session_status = {
+                "state": "up",
+                "last_change_us": 1,
+                "disconnect_count": 0,
+                "reconnect_count": 0,
+            }
+            admin_status = {
+                "slow_consumer_warning_active": False,
+                "slow_consumer_warning_count": 0,
+                "slow_consumer_cleared_count": 0,
+                "data_loss_count": 0,
+                "last_warning_us": None,
+                "last_cleared_us": None,
+                "last_data_loss_us": None,
+            }
+            service_status = []
+            events = []
+            fields = ["LAST_PRICE"]
+            is_active = True
+            all_failed = False
+            stats = {
+                "messages_received": 0,
+                "dropped_batches": 0,
+                "batches_sent": 0,
+                "slow_consumer": False,
+                "data_loss_events": 0,
+                "last_message_us": 0,
+                "last_data_loss_us": 0,
+                "effective_overflow_policy": "drop_newest",
+            }
+
+            def __init__(self):
+                self.added: list[list[str]] = []
+                self.removed: list[list[str]] = []
+
+            async def add(self, tickers):
+                self.added.append(tickers)
+
+            async def remove(self, tickers):
+                self.removed.append(tickers)
+
+        fake_sub = FakePySubscription()
+
+        class FakeEngine:
+            async def subscribe_with_options(self, service, tickers, fields, options, **kwargs):
+                captured.update(
+                    {
+                        "service": service,
+                        "tickers": tickers,
+                        "fields": fields,
+                        "options": options,
+                        **kwargs,
+                    }
+                )
+                return fake_sub
+
+        monkeypatch.setattr(blp_module, "_get_engine", lambda: FakeEngine())
+        return blp_module, fake_sub
+
+    def test_amktbar_signature_uses_bar_size(self):
+        from xbbg.blp import amktbar
+
+        sig = inspect.signature(amktbar)
+        assert "bar_size" in sig.parameters
+        assert sig.parameters["bar_size"].default == 1
+        assert "interval" not in sig.parameters
+
+    def test_amktbar_builds_explicit_market_bar_subscription(self, monkeypatch):
+        from xbbg.services import Service
+
+        captured: dict[str, object] = {}
+        blp_module, fake_sub = self._install_fake_engine(monkeypatch, captured)
+
+        sub = asyncio.run(
+            blp_module.amktbar(
+                ["ES1 Index", "/figi/BBG000JB5HR2", "isin/GB00B16GWD56 LN"],
+                bar_size=5,
+                start_time="13:30",
+                end_time="20:00",
+            )
+        )
+
+        assert captured["service"] == Service.MKTBAR.value
+        assert captured["tickers"] == [
+            "//blp/mktbar/ticker/ES1 Index",
+            "//blp/mktbar/figi/BBG000JB5HR2",
+            "//blp/mktbar/isin/GB00B16GWD56 LN",
+        ]
+        assert captured["fields"] == ["LAST_PRICE"]
+        assert captured["options"] == ["bar_size=5", "start_time=13:30", "end_time=20:00"]
+        assert captured["all_fields"] is True
+
+        asyncio.run(sub.add("EURUSD Curncy"))
+        asyncio.run(sub.remove("/figi/BBG000JB5HR2"))
+        assert fake_sub.added == [["//blp/mktbar/ticker/EURUSD Curncy"]]
+        assert fake_sub.removed == [["//blp/mktbar/figi/BBG000JB5HR2"]]
+
+    def test_asubscribe_mktbar_normalizes_topics_and_validates_contract(self, monkeypatch):
+        from xbbg.services import Service
+
+        captured: dict[str, object] = {}
+        blp_module, fake_sub = self._install_fake_engine(monkeypatch, captured)
+
+        sub = asyncio.run(
+            blp_module.asubscribe(
+                "ES1 Index",
+                "LAST_PRICE",
+                service=Service.MKTBAR,
+                options=["bar_size=1"],
+                all_fields=True,
+            )
+        )
+
+        assert captured["service"] == Service.MKTBAR.value
+        assert captured["tickers"] == ["//blp/mktbar/ticker/ES1 Index"]
+        assert captured["fields"] == ["LAST_PRICE"]
+        assert captured["options"] == ["bar_size=1"]
+        assert captured["all_fields"] is True
+
+        asyncio.run(sub.add("ticker/EURUSD Curncy"))
+        assert fake_sub.added == [["//blp/mktbar/ticker/EURUSD Curncy"]]
+
+    def test_mktbar_rejects_invalid_contract_inputs(self):
+        from xbbg.blp import amktbar, asubscribe
+        from xbbg.services import Service
+
+        with pytest.raises(ValueError, match="bar_size"):
+            asyncio.run(amktbar("ES1 Index", bar_size=0))
+
+        with pytest.raises(ValueError, match="market-bar topic"):
+            asyncio.run(amktbar("//blp/mktdata/ticker/ES1 Index"))
+
+        with pytest.raises(ValueError, match="LAST_PRICE"):
+            asyncio.run(
+                asubscribe(
+                    "ES1 Index",
+                    ["OPEN"],
+                    service=Service.MKTBAR,
+                    options=["bar_size=1"],
+                )
+            )
+
+        with pytest.raises(ValueError, match="bar_size"):
+            asyncio.run(asubscribe("ES1 Index", "LAST_PRICE", service=Service.MKTBAR))
+
+        for invalid_option in (["bar_size"], ["bar_size="], ["bar_size=0"], ["bar_size=1441"], ["bar_size=abc"]):
+            with pytest.raises(ValueError, match="bar_size"):
+                asyncio.run(
+                    asubscribe(
+                        "ES1 Index",
+                        "LAST_PRICE",
+                        service=Service.MKTBAR,
+                        options=invalid_option,
+                    )
+                )
+
+
+class TestConflatedMarketDataContract:
+    """Verify mktdata conflation is exposed as a typed subscription option."""
+
+    def _install_fake_engine(self, monkeypatch, captured: dict[str, object]):
+        import xbbg.blp as blp_module
+
+        class FakePySubscription:
+            tickers = ["ES1 Index"]
+            failed_tickers = []
+            failures = []
+            topic_states = [("ES1 Index", "pending", 1)]
+            session_status = {
+                "state": "up",
+                "last_change_us": 1,
+                "disconnect_count": 0,
+                "reconnect_count": 0,
+            }
+            admin_status = {
+                "slow_consumer_warning_active": False,
+                "slow_consumer_warning_count": 0,
+                "slow_consumer_cleared_count": 0,
+                "data_loss_count": 0,
+                "last_warning_us": None,
+                "last_cleared_us": None,
+                "last_data_loss_us": None,
+            }
+            service_status = []
+            events = []
+            fields = ["BID", "ASK"]
+            is_active = True
+            all_failed = False
+            stats = {
+                "messages_received": 0,
+                "dropped_batches": 0,
+                "batches_sent": 0,
+                "slow_consumer": False,
+                "data_loss_events": 0,
+                "last_message_us": 0,
+                "last_data_loss_us": 0,
+                "effective_overflow_policy": "drop_newest",
+            }
+
+        class FakeEngine:
+            async def subscribe_with_options(self, service, tickers, fields, options, **kwargs):
+                captured.update(
+                    {
+                        "service": service,
+                        "tickers": tickers,
+                        "fields": fields,
+                        "options": options,
+                        **kwargs,
+                    }
+                )
+                return FakePySubscription()
+
+        monkeypatch.setattr(blp_module, "_get_engine", lambda: FakeEngine())
+        return blp_module
+
+    def test_asubscribe_conflate_adds_mktdata_option(self, monkeypatch):
+        from xbbg.services import Service
+
+        captured: dict[str, object] = {}
+        blp_module = self._install_fake_engine(monkeypatch, captured)
+
+        sub = asyncio.run(
+            blp_module.asubscribe(
+                "ES1 Index",
+                ["BID", "ASK"],
+                conflate=True,
+                all_fields=True,
+            )
+        )
+
+        assert captured["service"] == Service.MKTDATA.value
+        assert captured["tickers"] == ["ES1 Index"]
+        assert captured["fields"] == ["BID", "ASK"]
+        assert captured["options"] == ["conflate"]
+        assert captured["all_fields"] is True
+        assert sub.tickers == ["ES1 Index"]
+
+    def test_conflate_normalizes_ampersand_and_avoids_duplicates(self, monkeypatch):
+        captured: dict[str, object] = {}
+        blp_module = self._install_fake_engine(monkeypatch, captured)
+
+        asyncio.run(
+            blp_module.asubscribe(
+                "ES1 Index",
+                ["BID", "ASK"],
+                options=["&conflate", "delayed"],
+                conflate=True,
+            )
+        )
+
+        assert captured["options"] == ["conflate", "delayed"]
+
+    def test_conflate_rejects_non_mktdata_service(self):
+        from xbbg.blp import asubscribe
+        from xbbg.services import Service
+
+        with pytest.raises(ValueError, match="//blp/mktdata"):
+            asyncio.run(asubscribe("IBM US Equity", "VWAP", service=Service.MKTVWAP, conflate=True))
+
+    def test_conflate_rejects_interval_option(self):
+        from xbbg.blp import asubscribe
+
+        with pytest.raises(ValueError, match="interval"):
+            asyncio.run(asubscribe("ES1 Index", ["BID", "ASK"], options=["interval=5"], conflate=True))
 
 
 class TestConfigValidation:
@@ -345,6 +777,7 @@ class TestBackwardCompatibility:
         new_params = [
             "service",
             "options",
+            "conflate",
             "tick_mode",
             "flush_threshold",
             "stream_capacity",

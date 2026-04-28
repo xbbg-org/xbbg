@@ -850,6 +850,108 @@ def _normalize_fields(fields: str | Sequence[str] | None) -> list[str]:
     return list(fields)
 
 
+_SUBSCRIPTION_IDENTIFIER_PREFIXES = ("ticker/", "figi/", "isin/", "cusip/", "sedol/")
+
+
+def _normalize_service_topic(service: Service, ticker: str, label: str) -> str:
+    """Normalize a security identifier into an explicit Bloomberg service topic."""
+    topic = ticker.strip()
+    service_uri = service.value
+    if topic.startswith("//"):
+        if not topic.startswith(f"{service_uri}/"):
+            raise ValueError(f"{label} topic must start with {service_uri}/, got {ticker!r}")
+        return topic
+    if topic.startswith("/"):
+        return f"{service_uri}{topic}"
+
+    lower_topic = topic.lower()
+    if lower_topic.startswith(_SUBSCRIPTION_IDENTIFIER_PREFIXES):
+        return f"{service_uri}/{topic}"
+
+    return f"{service_uri}/ticker/{topic}"
+
+
+def _normalize_service_topics(service: Service, tickers: str | Sequence[str], label: str) -> list[str]:
+    """Normalize identifiers into explicit Bloomberg service topics."""
+    return [_normalize_service_topic(service, ticker, label) for ticker in _normalize_tickers(tickers)]
+
+
+def _normalize_mktbar_topics(tickers: str | Sequence[str]) -> list[str]:
+    """Normalize market-bar identifiers into explicit service topics."""
+    return _normalize_service_topics(Service.MKTBAR, tickers, "market-bar")
+
+
+def _normalize_mktvwap_topics(tickers: str | Sequence[str]) -> list[str]:
+    """Normalize market-VWAP identifiers into explicit service topics."""
+    return _normalize_service_topics(Service.MKTVWAP, tickers, "market-VWAP")
+
+
+def _get_subscription_option(options: Sequence[str] | None, name: str) -> str | None:
+    """Return a subscription option value by case-insensitive option name."""
+    for option in options or []:
+        key, separator, value = option.partition("=")
+        if key.strip().lower() != name.lower():
+            continue
+        if not separator or not value.strip():
+            raise ValueError(f"{name} option must be provided as {name}=<value>")
+        return value.strip()
+    return None
+
+
+def _subscription_option_key(option: str) -> str:
+    """Return the case-insensitive key for a Bloomberg subscription option."""
+    return option.strip().lstrip("&").partition("=")[0].strip().lower()
+
+
+def _normalize_subscription_options(
+    options: Sequence[str] | None,
+    *,
+    conflate: bool = False,
+    service: str | None = None,
+) -> list[str] | None:
+    """Normalize high-level subscription options before passing them to Bloomberg."""
+    if options is None and not conflate:
+        return None
+
+    normalized: list[str] = []
+    for option in options or []:
+        clean_option = option.strip()
+        if not clean_option:
+            continue
+        if clean_option.startswith("&"):
+            clean_option = clean_option[1:].strip()
+        normalized.append(clean_option)
+
+    if conflate:
+        effective_service = service or Service.MKTDATA.value
+        if effective_service != Service.MKTDATA.value:
+            raise ValueError("conflate=True is only supported for //blp/mktdata subscriptions")
+        if any(_subscription_option_key(option) == "interval" for option in normalized):
+            raise ValueError("conflate=True cannot be combined with interval options; intervalization overrides conflation")
+        if not any(_subscription_option_key(option) == "conflate" for option in normalized):
+            normalized.append("conflate")
+
+    return normalized
+
+
+def _validate_mktbar_bar_size(bar_size: int) -> None:
+    """Validate Bloomberg's documented market-bar interval bounds."""
+    if not 1 <= bar_size <= 1440:
+        raise ValueError("bar_size must be between 1 and 1440 minutes")
+
+
+def _validate_mktbar_options(options: Sequence[str] | None) -> None:
+    """Validate Bloomberg's required market-bar subscription options."""
+    raw_bar_size = _get_subscription_option(options, "bar_size")
+    if raw_bar_size is None:
+        raise ValueError("//blp/mktbar subscriptions require a bar_size option")
+    try:
+        bar_size = int(raw_bar_size)
+    except ValueError as exc:
+        raise ValueError("bar_size must be an integer number of minutes") from exc
+    _validate_mktbar_bar_size(bar_size)
+
+
 # Cache for valid request elements per (service, operation)
 _VALID_ELEMENTS_CACHE: dict[tuple[str, str], set[str]] = {}
 
@@ -2164,7 +2266,14 @@ class Subscription:
         await sub.unsubscribe()
     """
 
-    def __init__(self, py_sub, raw: bool, backend: Backend | None, tick_mode: bool = False):
+    def __init__(
+        self,
+        py_sub,
+        raw: bool,
+        backend: Backend | None,
+        tick_mode: bool = False,
+        topic_normalizer: Callable[[str | Sequence[str]], list[str]] | None = None,
+    ):
         """Initialize subscription wrapper.
 
         Args:
@@ -2172,11 +2281,13 @@ class Subscription:
             raw: If True, yield raw Arrow batches
             backend: DataFrame backend for conversion (if not raw)
             tick_mode: If True, convert batches to dicts (implies raw=True)
+            topic_normalizer: Normalizes add/remove inputs to subscribed Bloomberg topics
         """
         self._sub = py_sub
         self._raw = raw
         self._backend = backend
         self._tick_mode = tick_mode
+        self._topic_normalizer = topic_normalizer or _normalize_tickers
 
     def __aiter__(self):
         return self
@@ -2199,7 +2310,7 @@ class Subscription:
         Args:
             tickers: Single ticker or list of tickers to add
         """
-        ticker_list = _normalize_tickers(tickers)
+        ticker_list = self._topic_normalizer(tickers)
         logger.debug("subscription add: %s", ticker_list)
         await self._sub.add(ticker_list)
 
@@ -2209,7 +2320,7 @@ class Subscription:
         Args:
             tickers: Single ticker or list of tickers to remove
         """
-        ticker_list = _normalize_tickers(tickers)
+        ticker_list = self._topic_normalizer(tickers)
         logger.debug("subscription remove: %s", ticker_list)
         await self._sub.remove(ticker_list)
 
@@ -2350,8 +2461,9 @@ async def asubscribe(
     raw: bool = False,
     all_fields: bool = False,
     backend: Backend | str | None = None,
-    service: str | None = None,
+    service: str | Service | None = None,
     options: list[str] | None = None,
+    conflate: bool = False,
     tick_mode: bool = False,
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
@@ -2374,8 +2486,12 @@ async def asubscribe(
         raw: If True, yield raw Arrow RecordBatches for max performance
         all_fields: If True, expose all top-level scalar Bloomberg subscription fields
         backend: DataFrame backend for batch conversion (ignored if raw=True)
-        service: Bloomberg service (e.g., '//blp/mktdata'). If provided, uses subscribe_with_options
+        service: Bloomberg service (e.g., '//blp/mktdata'). For BPS services
+            such as ``//blp/mktbar`` and ``//blp/mktvwap``, tickers are
+            normalized to explicit service topics.
         options: List of subscription options. If provided, uses subscribe_with_options
+        conflate: If True, request Bloomberg conflated market data for //blp/mktdata.
+            Quote updates are conflated by Bloomberg; trades are still delivered as received.
         tick_mode: If True, return native dict ticks without building Arrow (implies raw=True)
         flush_threshold: Batch flush threshold (validation only in Wave 1)
         stream_capacity: Stream channel capacity (validation only in Wave 1)
@@ -2438,18 +2554,38 @@ async def asubscribe(
         )
         flush_threshold = 1
 
-    ticker_list = _normalize_tickers(tickers)
+    subscription_service = service.value if isinstance(service, Service) else service
+    effective_subscription_service = subscription_service or Service.MKTDATA.value
+    subscription_options = _normalize_subscription_options(
+        options,
+        conflate=conflate,
+        service=effective_subscription_service,
+    )
+    if subscription_service == Service.MKTBAR.value:
+        topic_normalizer = _normalize_mktbar_topics
+    elif subscription_service == Service.MKTVWAP.value:
+        topic_normalizer = _normalize_mktvwap_topics
+    else:
+        topic_normalizer = _normalize_tickers
+
+    ticker_list = topic_normalizer(tickers)
     field_list = _normalize_fields(fields)
+    if subscription_service == Service.MKTBAR.value:
+        if field_list != ["LAST_PRICE"]:
+            raise ValueError("//blp/mktbar subscriptions must request only LAST_PRICE")
+        _validate_mktbar_options(subscription_options)
+    elif subscription_service == Service.MKTVWAP.value and field_list != ["VWAP"]:
+        raise ValueError("//blp/mktvwap subscriptions must request only VWAP")
 
     effective_backend = _resolve_backend(backend)
 
     engine = _get_engine()
     logger.debug("subscribe: tickers=%s fields=%s", ticker_list, field_list)
 
-    # Use subscribe_with_options if service, options, or config params provided
+    # Use subscribe_with_options if service, subscription options, or config params provided
     if (
-        service is not None
-        or options is not None
+        subscription_service is not None
+        or subscription_options is not None
         or flush_threshold is not None
         or stream_capacity is not None
         or overflow_policy is not None
@@ -2465,16 +2601,22 @@ async def asubscribe(
             if v is not None
         }
         py_sub = await engine.subscribe_with_options(
-            service or "//blp/mktdata",
+            subscription_service or "//blp/mktdata",
             ticker_list,
             field_list,
-            options or [],
+            subscription_options or [],
             **opt_kwargs,
         )
     else:
         py_sub = await engine.subscribe(ticker_list, field_list, all_fields=all_fields)
 
-    return Subscription(py_sub, raw=raw or tick_mode, backend=effective_backend, tick_mode=tick_mode)
+    return Subscription(
+        py_sub,
+        raw=raw or tick_mode,
+        backend=effective_backend,
+        tick_mode=tick_mode,
+        topic_normalizer=topic_normalizer,
+    )
 
 
 async def astream(
@@ -2486,6 +2628,7 @@ async def astream(
     backend: Backend | str | None = None,
     callback: Callable[[Any], None] | None = None,
     tick_mode: bool = False,
+    conflate: bool = False,
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
     overflow_policy: str | None = None,
@@ -2503,6 +2646,7 @@ async def astream(
         backend: DataFrame backend for batch conversion
         callback: Optional callback function to invoke on each batch
         tick_mode: If True, convert batches to dicts
+        conflate: If True, request Bloomberg conflated market data for //blp/mktdata.
 
     Yields:
         Batches of market data (RecordBatch, DataFrame, or dict)
@@ -2530,6 +2674,7 @@ async def astream(
         all_fields=all_fields,
         backend=backend,
         tick_mode=tick_mode,
+        conflate=conflate,
         flush_threshold=flush_threshold,
         stream_capacity=stream_capacity,
         overflow_policy=overflow_policy,
@@ -2552,6 +2697,7 @@ def stream(
     backend: Backend | str | None = None,
     callback: Callable[[Any], None] | None = None,
     tick_mode: bool = False,
+    conflate: bool = False,
     flush_threshold: int | None = None,
     stream_capacity: int | None = None,
     overflow_policy: str | None = None,
@@ -2569,6 +2715,7 @@ def stream(
         backend: DataFrame backend for batch conversion
         callback: Optional callback function to invoke on each batch
         tick_mode: If True, convert batches to dicts
+        conflate: If True, request Bloomberg conflated market data for //blp/mktdata.
 
     Yields:
         Batches of market data
@@ -2596,6 +2743,7 @@ def stream(
                 backend=backend,
                 callback=callback,
                 tick_mode=tick_mode,
+                conflate=conflate,
                 flush_threshold=flush_threshold,
                 stream_capacity=stream_capacity,
                 overflow_policy=overflow_policy,
@@ -2634,53 +2782,45 @@ def stream(
 
 async def avwap(
     tickers: str | list[str],
-    fields: str | list[str] | None = None,
     *,
     start_time: str | None = None,
     end_time: str | None = None,
     raw: bool = False,
-    all_fields: bool = False,
+    all_fields: bool = True,
     backend: Backend | str | None = None,
 ) -> Subscription:
-    """Subscribe to real-time VWAP data (//blp/mktvwap).
+    """Subscribe to real-time VWAP data.
 
-    Provides streaming Volume Weighted Average Price calculations.
+    Uses Bloomberg's ``//blp/mktvwap`` service. Bloomberg requires explicit
+    Market VWAP topics (for example, ``//blp/mktvwap/ticker/IBM US Equity``)
+    and ``VWAP`` as the single requested field. Security identifiers passed
+    here are normalized to those explicit topics.
 
     Args:
-        tickers: Securities to subscribe to
-        fields: Fields to subscribe to (default: RT_PX_VWAP, RT_VWAP_VOLUME)
-        start_time: VWAP calculation start time (e.g., "09:30")
-        end_time: VWAP calculation end time (e.g., "16:00")
-        raw: If True, yield raw Arrow RecordBatches for max performance
-        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
-        backend: DataFrame backend for batch conversion (ignored if raw=True)
+        tickers: Security identifier(s). Plain tickers use the ``ticker`` topic type;
+            already-qualified ``//blp/mktvwap/...`` topics pass through unchanged.
+        start_time: Optional VWAP calculation start time (e.g., "09:30").
+        end_time: Optional VWAP calculation end time (e.g., "16:00").
+        raw: If True, yield raw Arrow RecordBatches for max performance.
+        all_fields: If True, expose the full top-level VWAP payload.
+        backend: DataFrame backend for batch conversion (ignored if raw=True).
 
     Returns:
-        Subscription handle for iteration and control
+        Subscription handle for iteration and control.
 
     Example::
 
         # Basic usage - subscribe to VWAP
-        sub = await xbbg.avwap(["AAPL US Equity"])
+        sub = await xbbg.avwap("IBM US Equity")
         async for batch in sub:
             print(batch)
         await sub.unsubscribe()
 
         # With custom time window
-        sub = await xbbg.avwap(["AAPL US Equity", "MSFT US Equity"], start_time="09:30", end_time="16:00")
-
-        # With specific fields
-        sub = await xbbg.avwap("AAPL US Equity", ["RT_PX_VWAP", "RT_VWAP_VOLUME", "RT_VWAP_TURNOVER"])
+        sub = await xbbg.avwap(["IBM US Equity", "MSFT US Equity"], start_time="09:30", end_time="16:00")
     """
-    ticker_list = _normalize_tickers(tickers)
+    ticker_list = _normalize_mktvwap_topics(tickers)
 
-    # Default fields if not provided
-    if fields is None:
-        field_list = ["RT_PX_VWAP", "RT_VWAP_VOLUME"]
-    else:
-        field_list = _normalize_fields(fields)
-
-    # Build subscription options
     options: list[str] = []
     if start_time:
         options.append(f"VWAP_START_TIME={start_time}")
@@ -2693,12 +2833,12 @@ async def avwap(
     py_sub = await engine.subscribe_with_options(
         Service.MKTVWAP.value,
         ticker_list,
-        field_list,
+        ["VWAP"],
         options if options else None,
         all_fields=all_fields,
     )
 
-    return Subscription(py_sub, raw=raw, backend=effective_backend)
+    return Subscription(py_sub, raw=raw, backend=effective_backend, topic_normalizer=_normalize_mktvwap_topics)
 
 
 # =============================================================================
@@ -2709,25 +2849,29 @@ async def avwap(
 async def amktbar(
     tickers: str | list[str],
     *,
-    interval: int = 1,
+    bar_size: int = 1,
     start_time: str | None = None,
     end_time: str | None = None,
     raw: bool = False,
-    all_fields: bool = False,
+    all_fields: bool = True,
     backend: Backend | str | None = None,
 ) -> Subscription:
     """Subscribe to real-time streaming OHLC bars.
 
-    Like bdib but streaming instead of historical. Provides real-time
-    bar updates as they form during the trading day.
+    Uses Bloomberg's ``//blp/mktbar`` service. Bloomberg requires explicit
+    market-bar topics (for example, ``//blp/mktbar/ticker/ES1 Index``),
+    ``LAST_PRICE`` as the only requested field, and ``bar_size`` as the bar
+    interval option. Security identifiers passed here are normalized to those
+    explicit topics.
 
     Args:
-        tickers: Security identifier(s).
-        interval: Bar interval in minutes (default: 1).
+        tickers: Security identifier(s). Plain tickers use the ``ticker`` topic type;
+            identifiers like ``/figi/...`` keep their identifier type.
+        bar_size: Bar interval in minutes (default: 1).
         start_time: Optional start time in HH:MM format.
         end_time: Optional end time in HH:MM format.
         raw: If True, return raw xbbg ArrowRecordBatch (default: False).
-        all_fields: If True, expose all top-level scalar Bloomberg subscription fields
+        all_fields: If True, expose the full top-level market-bar payload.
         backend: DataFrame backend to return. If None, uses global default.
 
     Returns:
@@ -2736,39 +2880,38 @@ async def amktbar(
     Example::
 
         # Subscribe to 5-minute bars
-        async with await amktbar("AAPL US Equity", interval=5) as sub:
+        async with await amktbar("AAPL US Equity", bar_size=5) as sub:
             async for batch in sub:
                 print(batch)
 
         # Multiple securities
-        sub = await amktbar(["AAPL US Equity", "MSFT US Equity"], interval=1)
+        sub = await amktbar(["AAPL US Equity", "MSFT US Equity"], bar_size=1)
         async for batch in sub:
             print(batch)
     """
-    logger.debug("amktbar: tickers=%s interval=%d", tickers, interval)
+    _validate_mktbar_bar_size(bar_size)
 
-    # Normalize inputs
-    ticker_list = _normalize_tickers(tickers)
+    logger.debug("amktbar: tickers=%s bar_size=%d", tickers, bar_size)
+
+    ticker_list = _normalize_mktbar_topics(tickers)
     effective_backend = _resolve_backend(backend)
 
-    # Build subscription options
-    options: list[str] = [f"interval={interval}"]
+    options: list[str] = [f"bar_size={bar_size}"]
     if start_time:
-        options.append(f"START_TIME={start_time}")
+        options.append(f"start_time={start_time}")
     if end_time:
-        options.append(f"END_TIME={end_time}")
+        options.append(f"end_time={end_time}")
 
-    # Get engine and subscribe
     engine = _get_engine()
     py_sub = await engine.subscribe_with_options(
         Service.MKTBAR.value,
         ticker_list,
-        ["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME", "NUM_TRADES"],
-        options if options else None,
+        ["LAST_PRICE"],
+        options,
         all_fields=all_fields,
     )
 
-    return Subscription(py_sub, raw=raw, backend=effective_backend)
+    return Subscription(py_sub, raw=raw, backend=effective_backend, topic_normalizer=_normalize_mktbar_topics)
 
 
 # =============================================================================

@@ -370,6 +370,9 @@ const TA_DEFAULTS: Readonly<Record<string, Readonly<StudyParams>>> = Object.free
   }),
 });
 
+const MKTDATA_SERVICE = '//blp/mktdata';
+
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function toArrowTableFromNative(batch: NativeArrowZeroCopyBatch): Table {
@@ -443,6 +446,54 @@ function toStringArray(value: string | readonly string[] | null | undefined): st
     return [];
   }
   return [toRequestString(value)];
+}
+
+function subscriptionOptionKey(option: string): string {
+  return normalizeSubscriptionOption(option).split('=')[0]?.trim().toLowerCase() ?? '';
+}
+
+function normalizeSubscriptionOption(option: string): string {
+  let clean = option.trim();
+  while (clean.startsWith('&')) {
+    clean = clean.slice(1).trim();
+  }
+  return clean;
+}
+
+function buildStreamSubscriptionOptions(
+  service: string,
+  options: StreamOptions,
+): readonly string[] | undefined {
+  const rawOptions = options.options;
+  const conflate = options.conflate;
+
+  if (rawOptions === undefined && conflate !== true) {
+    return undefined;
+  }
+
+  const subscriptionOptions = (rawOptions ?? [])
+    .map((option) => normalizeSubscriptionOption(option))
+    .filter((option) => option.length > 0);
+
+  if (conflate === true) {
+    if (service !== MKTDATA_SERVICE) {
+      throw new BlpValidationError(
+        'conflate=true is only supported for //blp/mktdata subscriptions',
+        { element: 'conflate' },
+      );
+    }
+    if (subscriptionOptions.some((option) => subscriptionOptionKey(option) === 'interval')) {
+      throw new BlpValidationError(
+        'conflate=true cannot be combined with interval options; intervalization overrides conflation',
+        { element: 'conflate' },
+      );
+    }
+    if (!subscriptionOptions.some((option) => subscriptionOptionKey(option) === 'conflate')) {
+      subscriptionOptions.push('conflate');
+    }
+  }
+
+  return subscriptionOptions.length > 0 || rawOptions !== undefined ? subscriptionOptions : undefined;
 }
 
 function normalizeConfigureArgs(
@@ -1258,17 +1309,18 @@ export class Engine {
     options: StreamOptions = {},
   ): Promise<Subscription> {
     try {
+      const subscriptionOptions = buildStreamSubscriptionOptions(MKTDATA_SERVICE, options);
       const useOptions =
-        options.options !== undefined ||
+        subscriptionOptions !== undefined ||
         options.flushThreshold !== undefined ||
         options.overflowPolicy !== undefined ||
         options.streamCapacity !== undefined;
       const stream = useOptions
         ? await this._inner.subscribeWithOptions(
-            '//blp/mktdata',
+            MKTDATA_SERVICE,
             tickers,
             fields,
-            options.options,
+            subscriptionOptions,
             options.flushThreshold,
             options.overflowPolicy,
             options.streamCapacity,
@@ -1322,10 +1374,10 @@ export class Engine {
     options: StreamOptions = {},
   ): Promise<Subscription> {
     return await this.subscribeWithOptions(
-      '//blp/mktdata',
+      MKTDATA_SERVICE,
       tickers,
       fields,
-      options.options,
+      buildStreamSubscriptionOptions(MKTDATA_SERVICE, options),
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
@@ -1342,7 +1394,7 @@ export class Engine {
       '//blp/mktvwap',
       tickers,
       fields,
-      options.options,
+      buildStreamSubscriptionOptions('//blp/mktvwap', options),
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
@@ -1355,7 +1407,7 @@ export class Engine {
       '//blp/mktbar',
       [ticker],
       options.fields ?? [],
-      options.options,
+      buildStreamSubscriptionOptions('//blp/mktbar', options),
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
@@ -1368,7 +1420,7 @@ export class Engine {
       '//blp/mktdepthdata',
       [ticker],
       options.fields ?? [],
-      options.options,
+      buildStreamSubscriptionOptions('//blp/mktdepthdata', options),
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
@@ -1381,7 +1433,7 @@ export class Engine {
       '//blp/mktlist',
       [ticker],
       options.fields ?? [],
-      options.options,
+      buildStreamSubscriptionOptions('//blp/mktlist', options),
       options.flushThreshold,
       options.overflowPolicy,
       options.streamCapacity,
