@@ -27,10 +27,10 @@ class Service(str, Enum):
     """Real-time market data subscriptions (subscribe, stream)."""
 
     MKTDEPTH = "//blp/mktdepthdata"
-    """Level 2 market depth / order book data (depth). Requires B-PIPE license."""
+    """Level 2 market depth / order book data (depth). Requires a B-PIPE environment and applicable entitlements."""
 
     MKTLIST = "//blp/mktlist"
-    """Option chains and futures chains (chains). Requires B-PIPE license."""
+    """Option chains and futures chains (chains). Requires a B-PIPE environment and applicable entitlements."""
 
     MKTVWAP = "//blp/mktvwap"
     """Real-time VWAP subscription service (vwap)."""

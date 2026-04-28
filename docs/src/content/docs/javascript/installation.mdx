@@ -32,9 +32,13 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
   The platform-specific `@xbbg/core-*` packages are installation artifacts behind `@xbbg/core`. Public docs stay centered on `@xbbg/core` itself.
 </Aside>
 
+<Aside type="caution">
+  `@xbbg/core` does not provide Bloomberg subscriptions, credentials, entitlements, SDK licenses, or data rights. Configure it only for Bloomberg endpoints and runtimes that your organization is authorized to use.
+</Aside>
+
 ## Bloomberg connectivity
 
-After install, point the package at the Bloomberg endpoint you use:
+After install, point the package at the Bloomberg endpoint you are authorized to use:
 
 ```ts
 import * as xbbg from '@xbbg/core';
@@ -45,7 +49,7 @@ xbbg.configure({
 });
 ```
 
-For B-PIPE, leased-line, or advanced auth scenarios, `connect()` and `configure()` accept the structured `EngineConfig` object exposed by the package. Direct B-PIPE hosts use `host`/`port` or `servers`; ZFP over leased lines uses `zfpRemote: '8194' | '8196'` plus `tls` credentials and must not be combined with direct hosts or SOCKS5.
+For B-PIPE, leased-line, or advanced auth scenarios, `connect()` and `configure()` accept the structured `EngineConfig` object exposed by the package. Direct B-PIPE hosts use already-provisioned `host`/`port` or `servers`; ZFP over leased lines uses Bloomberg-assigned `zfpRemote: '8194' | '8196'` plus `tls` credentials in an entitled environment and must not be combined with direct hosts or SOCKS5.
 
 ## Unsupported platforms or source builds
 

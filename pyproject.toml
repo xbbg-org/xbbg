@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xbbg"
-description = "Intuitive Bloomberg data API"
+description = "Independent client for Bloomberg-connected data workflows"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10,<3.15"
 license = "Apache-2.0"
@@ -35,12 +35,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Minimal extras for downstream consumers; dev tooling is managed by pixi.
-test = ["pytest", "pytest-cov", "pytest-asyncio"]
+# Runtime stays minimal; extras opt into optional conversion/test surfaces.
 pyarrow = ["pyarrow>=22.0.0"]
 pandas = ["pandas>=2.0"]
 polars = ["polars>=0.20"]
 duckdb = ["duckdb>=1.0"]
+test = [
+  "pytest>=8.4",
+  "pytest-cov",
+  "pytest-asyncio>=0.24",
+  "pyarrow>=22.0.0",
+  "pandas>=2.0",
+  "polars>=0.20",
+  "duckdb>=1.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/alpha-xone/xbbg"

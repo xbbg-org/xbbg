@@ -1,6 +1,6 @@
 [workspace]
 name = "xbbg"
-description = "Intuitive Bloomberg data API"
+description = "Independent client for Bloomberg-connected data workflows"
 # Conda packages below resolve from conda-forge only (see `channels`).
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
@@ -69,6 +69,7 @@ pytest-asyncio = ">=0.24"
 pytest-cov = "*"
 
 [feature.test.dependencies]
+pyarrow = ">=22.0"
 pandas = ">=2.3.3,<4"
 polars = ">=0.20.26,<2"
 duckdb = ">=1.0"

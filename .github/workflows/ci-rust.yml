@@ -792,8 +792,8 @@ jobs:
         shell: bash
         run: |
           # Install the specific wheel for this Python version
-          uv pip install --system dist/*.whl
-          uv pip install --system pytest pytest-cov pytest-asyncio pandas
+          WHEEL=$(echo dist/*.whl)
+          uv pip install --system "${WHEEL}[test]"
 
       - name: Copy tests to temp directory
         # Run from temp dir to avoid importing local source instead of installed package

@@ -11,6 +11,8 @@ Thank you for your interest in contributing to xbbg!
 - [pixi](https://pixi.sh/) (recommended) or pip
 - Bloomberg C++ SDK (for building the Rust backend)
 
+Contributors must obtain and use the Bloomberg SDK under their own Bloomberg agreements. Repository helper scripts only assist local setup; they do not grant Bloomberg service access, SDK redistribution rights, data rights, credentials, or entitlements.
+
 ### Getting Started
 
 1. Clone the repository:
@@ -19,7 +21,7 @@ Thank you for your interest in contributing to xbbg!
    cd xbbg
    ```
 
-2. Set up the Bloomberg SDK:
+2. Set up a Bloomberg SDK you are authorized to use:
    ```bash
    # macOS/Linux
    bash ./scripts/sdktool.sh

@@ -20,6 +20,7 @@ import sys
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
+
 def assert_arrow_record_batch(batch):
     """Return rows after asserting a native xbbg ArrowRecordBatch shape."""
     assert batch.__class__.__name__ == "ArrowRecordBatch"

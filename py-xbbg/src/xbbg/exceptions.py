@@ -45,10 +45,11 @@ class BlpFieldError(BlpRequestError):
 
 
 class BlpBPipeError(BlpError):
-    """B-PIPE license required for this operation.
+    """B-PIPE environment and entitlements required for this operation.
 
-    Raised when attempting to use features that require Bloomberg B-PIPE
-    license but only a standard Terminal connection is available.
+    Raised when attempting to use features that require a Bloomberg B-PIPE
+    environment and applicable service entitlements, but only a Terminal-only
+    connection is available.
 
     B-PIPE features include:
         - Level 2 market depth data (depth/adepth)

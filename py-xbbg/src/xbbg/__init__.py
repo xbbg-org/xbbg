@@ -1,6 +1,6 @@
-"""xbbg - Intuitive Bloomberg data API.
+"""xbbg - independent client for Bloomberg-connected data workflows.
 
-This package provides a high-level API for Bloomberg data access,
+This package provides a high-level API for authorized Bloomberg environments,
 powered by a high-performance Rust backend.
 """
 

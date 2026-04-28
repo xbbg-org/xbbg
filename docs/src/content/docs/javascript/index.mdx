@@ -12,14 +12,18 @@ The public JavaScript package in this monorepo is `@xbbg/core`.
   `@xbbg/core` is currently marked experimental alpha in the package README. The public package is real and installable, but the high-level API is still evolving.
 </Aside>
 
-`@xbbg/core` exposes the same Bloomberg session model and Rust-backed request engine used by the Python package, but in a Node.js-friendly shape with namespaces such as `xbbg.blp` and `xbbg.ext`.
+<Aside type="note">
+  `@xbbg/core` is an independent client package. It does not provide Bloomberg access, credentials, entitlements, data rights, or SDK licenses; use it only with Bloomberg connectivity your organization is authorized to use.
+</Aside>
+
+`@xbbg/core` exposes an xbbg session model and Rust-backed request engine for Bloomberg-connected workflows in a Node.js-friendly shape with namespaces such as `xbbg.blp` and `xbbg.ext`.
 
 <CardGrid>
   <Card title="Direct Node.js binding">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhBracketsCurly size={20} weight="duotone" aria-hidden="true" />
     </div>
-    Use the public npm package when you need Bloomberg access directly inside Node.js without wrapping the Python runtime.
+    Use the public npm package when you need to integrate Bloomberg-connected workflows into Node.js without wrapping the Python runtime.
   </Card>
   <Card title="Shared engine">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">

@@ -3,7 +3,7 @@ title: xbbg
 description: Public documentation for the xbbg Python package and @xbbg/core Node.js package
 template: splash
 hero:
-  tagline: Enterprise-grade Bloomberg APIs backed by the C++ SDK and a shared Rust engine
+  tagline: Independent clients for Bloomberg-connected workflows backed by a shared Rust engine
   image:
     file: ../../assets/xbbg-logo.png
   actions:
@@ -24,7 +24,7 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Aside, Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
 import {
   PhBracketsCurly,
   PhCpu,
@@ -32,16 +32,20 @@ import {
   PhPackage,
 } from 'phosphor-icons-astro';
 
+<Aside type="caution">
+  xbbg is an independent open-source project. It is not affiliated with, endorsed by, sponsored by, or approved by Bloomberg Finance L.P. or its affiliates. xbbg does not grant Bloomberg service access, market-data rights, software licenses, credentials, or entitlements; users must provide and use those under their own Bloomberg agreements and policies.
+</Aside>
+
 ## Public packages
 
-This site documents the public surfaces of the xbbg monorepo: the enterprise-grade Python package, `xbbg`, and the published Node.js package, `@xbbg/core`. xbbg is a native wrapper around Bloomberg's C/C++ SDK through the shared Rust engine, not a thin Python convenience layer over the `blpapi` Python package. Internal Rust crates, private browser packages, and platform-specific packaging artifacts stay out of the public navigation on purpose.
+This site documents the public surfaces of the xbbg monorepo: the Python package, `xbbg`, and the published Node.js package, `@xbbg/core`. xbbg is an independent client library that uses Bloomberg's C/C++ SDK through the shared Rust engine; it is not a Bloomberg product or an officially endorsed SDK distribution. Internal Rust crates, private browser packages, and platform-specific packaging artifacts stay out of the public navigation on purpose.
 
 <CardGrid stagger>
   <Card title="xbbg (Python)">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhPackage size={20} weight="duotone" aria-hidden="true" />
     </div>
-The primary public package: Bloomberg requests, streaming, async support, enterprise transports, and backend selection for native xbbg Arrow, pandas, Polars, DuckDB, Narwhals, and more.
+The primary public package: SDK-backed requests, streaming, async support, enterprise transports, and backend selection for native xbbg Arrow, pandas, Polars, DuckDB, Narwhals, and more in authorized Bloomberg environments.
   </Card>
   <Card title="@xbbg/core (Node.js)">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
@@ -53,7 +57,7 @@ The primary public package: Bloomberg requests, streaming, async support, enterp
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">
       <PhCpu size={20} weight="duotone" aria-hidden="true" />
     </div>
-Python and Node.js both ride on the same Rust core for Bloomberg C++ SDK transport, Arrow-native data handling, session pooling, authentication, and enterprise connectivity.
+Python and Node.js both ride on the same Rust core for SDK transport, Arrow-native data handling, session pooling, authentication, and connectivity configuration.
   </Card>
   <Card title="Monorepo-aware docs">
     <div style="margin-bottom: 0.75rem; color: var(--sl-color-accent-high);">

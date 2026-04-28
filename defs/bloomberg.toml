@@ -79,12 +79,12 @@ doc = "Real-time streaming OHLC bars (mktbar)."
 [services.MKTDEPTH]
 rust_name = "MktDepth"
 uri = "//blp/mktdepthdata"
-doc = "Level 2 market depth / order book data (depth). Requires B-PIPE license."
+doc = "Level 2 market depth / order book data (depth). Requires a B-PIPE environment and applicable entitlements."
 
 [services.MKTLIST]
 rust_name = "MktList"
 uri = "//blp/mktlist"
-doc = "Option chains and futures chains (chains). Requires B-PIPE license."
+doc = "Option chains and futures chains (chains). Requires a B-PIPE environment and applicable entitlements."
 
 
 # ============================================================================
