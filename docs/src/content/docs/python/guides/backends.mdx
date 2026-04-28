@@ -172,9 +172,31 @@ result = relation.fetchdf()  # trigger execution, returns pd.DataFrame
   </TabItem>
 </Tabs>
 
+## Native Arrow Carrier API
+
+The `native` backend returns xbbg-owned `ArrowTable`, `ArrowRecordBatch`, and `ArrowColumn` objects. These are lightweight Arrow carriers, not dataframe engines and not `arro3` objects. Use them when you want predictable schema/column access, row materialization, or Arrow PyCapsule interop without importing a third-party dataframe package.
+
+```python
+from xbbg import blp, Backend
+
+table = blp.bdp('AAPL US Equity', ['PX_LAST', 'VOLUME'], backend=Backend.NATIVE)
+
+print(len(table), table.shape, table.nbytes)
+print(table.column_names)
+
+first = table.column(table.column_names[0])
+print(first.data_type, first.null_count)
+print(first.to_pylist())
+
+subset = table.select(table.column_names[:2]).slice(0, 5)
+batches = subset.to_batches()
+```
+
+`ArrowTable.column()` / `get_column()` / `table['name']` return `ArrowColumn`; comparing an `ArrowColumn` to a Python list still compares against `to_pylist()` for compatibility. `table[['a', 'b']]` and `table.select([...])` project columns. Convert explicitly with `to_pyarrow()`, `to_pandas()`, or `to_polars()` only at the boundary where a third-party object is needed.
+
 ## Arrow PyCapsule Interop
 
-`xbbg.ArrowTable` implements the Arrow PyCapsule stream protocol (`__arrow_c_stream__`) and schema protocol (`__arrow_c_schema__`). `xbbg.ArrowRecordBatch` implements the Arrow PyCapsule array protocol (`__arrow_c_array__`) for raw streaming batches. Arrow-aware libraries can consume these objects directly without xbbg exposing a separate public backend for that library's Arrow table type.
+`xbbg.ArrowTable` implements the Arrow PyCapsule stream protocol (`__arrow_c_stream__`) and schema protocol (`__arrow_c_schema__`). `xbbg.ArrowRecordBatch` implements the Arrow PyCapsule array protocol (`__arrow_c_array__`) for raw streaming batches. Arrow-aware libraries can consume these objects directly without xbbg returning `arro3`, `pyarrow`, or another third-party table type from the native backend.
 
 ```python
 from xbbg import blp
