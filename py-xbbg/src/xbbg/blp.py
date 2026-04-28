@@ -1301,7 +1301,7 @@ def _to_polars_frame(table: Any) -> Any:
     import polars as pl
 
     try:
-        return pl.from_arrow(table)
+        return pl.from_arrow(_to_pyarrow_table(table))
     except ModuleNotFoundError as exc:
         if "pyarrow" not in str(exc):
             raise
