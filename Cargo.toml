@@ -1,6 +1,7 @@
 [workspace]
 members = [
     # Core engine
+    "crates/xbbg-arrow",
     "crates/xbbg-core",
     "crates/blpapi-sys",
     "crates/xbbg-async",
@@ -18,6 +19,7 @@ members = [
     "apps/xbbg-mcp",
 ]
 default-members = [
+    "crates/xbbg-arrow",
     "crates/xbbg-core",
     "crates/blpapi-sys",
     "crates/xbbg-async",
