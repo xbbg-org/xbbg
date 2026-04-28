@@ -4,7 +4,7 @@
 <a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
 
 <!-- markdownlint-disable MD036 -->
-**xbbg: an independent Bloomberg-connected data client for Python, JavaScript and Rust**
+**xbbg: Bloomberg Data Workflow Built for Humans (and AI) **
 <!-- markdownlint-enable MD036 -->
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
