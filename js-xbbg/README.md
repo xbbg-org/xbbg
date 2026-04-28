@@ -145,6 +145,16 @@ for await (const tick of sub) {
   console.log(tick);
 }
 
+// Conflated market data: quote updates are conflated by Bloomberg; trades still stream as received.
+const conflated = await xbbg.blp.asubscribe(
+  ['ES1 Index'],
+  ['BID', 'ASK', 'LAST_PRICE', 'MKTDATA_EVENT_TYPE', 'MKTDATA_EVENT_SUBTYPE'],
+  { conflate: true },
+);
+for await (const tick of conflated) {
+  console.log(tick);
+}
+
 // CDX analytics
 const cdxInfo = await xbbg.ext.cdx.acdx_info('CDX IG CDSI GEN 5Y Corp');
 const cdxPricing = await xbbg.ext.cdx.acdx_pricing('CDX IG CDSI GEN 5Y Corp');

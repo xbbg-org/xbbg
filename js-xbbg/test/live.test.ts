@@ -787,6 +787,24 @@ describe('js-xbbg live Bloomberg API', () => {
         console.log(`  stream columns=${cols.join(', ')}`);
       }));
 
+    it('stream supports conflated market data option', async (t) =>
+      runCase(t, 'stream conflate option', async () => {
+        const sub = (
+          await engine!.stream(
+            [CONFIG.streaming_ticker],
+            ['LAST_PRICE', 'BID', 'ASK', 'MKTDATA_EVENT_TYPE', 'MKTDATA_EVENT_SUBTYPE'],
+            { conflate: true },
+          )
+        ).arrow();
+        const result: any = await nextWithTimeout(sub, 20_000);
+        await sub.unsubscribe(true);
+        assert.ok(result && !result.done, 'Expected at least one conflated tick batch');
+        const cols = columnsOf(result.value);
+        assert.ok(cols.includes('MKTDATA_EVENT_TYPE'), `columns=${cols.join(', ')}`);
+        console.log(`  conflate stream columns=${cols.join(', ')}`);
+      }));
+
+
     it('stream continues while BDP and BDH requests run concurrently', async (t) =>
       runCase(t, 'stream concurrent with reference requests', async () => {
         const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
