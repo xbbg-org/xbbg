@@ -1068,7 +1068,6 @@ class TestStreaming:
         assert rows[0].get("MKTDATA_EVENT_TYPE") in {"SUMMARY", "QUOTE", "TRADE"}
         logger.info(f"  Got conflated tick: {rows[0]}")
 
-
     @pytest.mark.asyncio
     async def test_unsubscribe_wakes_pending_iteration(self):
         """Stream: unsubscribe completes even when __anext__ is pending."""
