@@ -927,7 +927,9 @@ def _normalize_subscription_options(
         if effective_service != Service.MKTDATA.value:
             raise ValueError("conflate=True is only supported for //blp/mktdata subscriptions")
         if any(_subscription_option_key(option) == "interval" for option in normalized):
-            raise ValueError("conflate=True cannot be combined with interval options; intervalization overrides conflation")
+            raise ValueError(
+                "conflate=True cannot be combined with interval options; intervalization overrides conflation"
+            )
         if not any(_subscription_option_key(option) == "conflate" for option in normalized):
             normalized.append("conflate")
 
