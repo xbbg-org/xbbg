@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-04-29
+
 ### Removed
 
 - **`xbbg-browser`, `xbbg-bridge`, and `xbbg-server` retired**: The `apps/xbbg-server` Rust HTTP server, its `@xbbg/bridge` npm launcher and 5 platform-specific bridge binaries, and the `@xbbg/browser` HTTP client are removed. `js-xbbg`, `napi-xbbg`, and `pyo3-xbbg` remain the supported bindings.
@@ -1312,7 +1314,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/alpha-xone/xbbg/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/alpha-xone/xbbg/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/alpha-xone/xbbg/compare/v1.1.1b1...v1.1.1
 [1.1.1b1]: https://github.com/alpha-xone/xbbg/compare/v1.1.0...v1.1.1b1
