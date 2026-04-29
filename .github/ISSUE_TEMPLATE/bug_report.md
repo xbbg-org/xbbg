@@ -46,6 +46,12 @@ Paste the full error message or traceback here
 - **Python version**: [e.g., 3.11.5]
 - **Operating System**: [e.g., Windows 11, Ubuntu 22.04, macOS 14]
 - **Bloomberg API version**: [e.g., blpapi 3.20.0]
+- **Connection type**:
+  - [ ] DAPI / Terminal
+  - [ ] ZFP
+  - [ ] SAPI
+  - [ ] B-PIPE
+  - [ ] Other: [describe]
 - **xbbg backend requested**: [e.g., default `narwhals`, `native`, `pyarrow`, `pandas`, `polars`, `duckdb`]
 - **Optional conversion backend versions**: [if used, e.g., pandas 2.2.3, polars 1.35.0, duckdb 1.2.0, narwhals 2.0.0]
 
@@ -59,6 +65,6 @@ Add any other context about the problem here, such as:
 
 ## Checklist
 
-- [ ] I have checked the [documentation](https://alpha-xone.github.io/xbbg/) for similar issues
+- [ ] I have checked the [documentation](https://xbbg.org/) for similar issues
 - [ ] I have searched existing [issues](https://github.com/alpha-xone/xbbg/issues) to see if this has been reported
 - [ ] I can provide a minimal reproducible example

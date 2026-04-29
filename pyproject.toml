@@ -51,8 +51,8 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/alpha-xone/xbbg"
-Documentation = "https://alpha-xone.github.io/xbbg"
+Homepage = "https://xbbg.org/"
+Documentation = "https://xbbg.org/"
 Source = "https://github.com/alpha-xone/xbbg"
 Issues = "https://github.com/alpha-xone/xbbg/issues"
 
@@ -88,7 +88,7 @@ include = ["xbbg*"]
 target-version = "py310"
 line-length = 120
 exclude = [
-  "docs/_build",
+  "archive/docs/_build",
   "dist",
   "venv",
   ".venv",

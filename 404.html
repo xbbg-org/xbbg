@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>xbbg docs redirect</title>
     <script>
-      const target = 'https://kj55-dev.github.io' + window.location.pathname + window.location.search + window.location.hash;
+      const legacyPath = window.location.pathname.replace(/^\/xbbg(?=\/|$)/, '') || '/';
+      const target = 'https://xbbg.org' + legacyPath + window.location.search + window.location.hash;
       window.location.replace(target);
     </script>
     <style>
@@ -34,12 +35,13 @@
     <main>
       <h1>Redirecting to xbbg docs</h1>
       <p>
-        This GitHub Pages site is temporarily forwarding missing paths to
-        <a id="target-link" href="https://kj55-dev.github.io/xbbg/">kj55-dev.github.io/xbbg</a>.
+        This GitHub Pages site is forwarding missing paths to
+        <a id="target-link" href="https://xbbg.org/">xbbg.org</a>.
       </p>
       <p>The requested path is preserved when possible.</p>
       <script>
-        document.getElementById('target-link').href = 'https://kj55-dev.github.io' + window.location.pathname + window.location.search + window.location.hash;
+        const legacyPathForLink = window.location.pathname.replace(/^\/xbbg(?=\/|$)/, '') || '/';
+        document.getElementById('target-link').href = 'https://xbbg.org' + legacyPathForLink + window.location.search + window.location.hash;
       </script>
     </main>
   </body>

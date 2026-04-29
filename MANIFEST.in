@@ -58,7 +58,7 @@ prune apps/xbbg-cli
 # Dev/CI files
 prune .github
 prune docker
-prune docs
+prune archive
 prune py-xbbg/benchmarks
 prune py-xbbg/docker
 prune py-xbbg/examples

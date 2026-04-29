@@ -170,32 +170,6 @@ jobs:
         run: pixi run -e js js-lint
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Docs Build (fast, no SDK needed)
-  # ════════════════════════════════════════════════════════════════════════════
-  docs:
-    name: Docs
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.4
-        with:
-          pixi-version: latest
-          environments: docs
-          cache: true
-
-      - name: Build public docs
-        run: pixi run -e docs docs-ci
-
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: docs-build
-          path: docs/dist
-          retention-days: 7
-
-  # ════════════════════════════════════════════════════════════════════════════
   # Security - cargo-audit (vulnerabilities)
   # ════════════════════════════════════════════════════════════════════════════
   audit:
@@ -1036,7 +1010,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [codegen, lint-rust, lint-python, docs, audit, deny, check-linux, check-windows, check-macos, build, test]
+    needs: [codegen, lint-rust, lint-python, audit, deny, check-linux, check-windows, check-macos, build, test]
     if: always()
     steps:
       - name: Check required jobs
@@ -1044,7 +1018,6 @@ jobs:
           if [[ "${{ needs.codegen.result }}" != "success" ]] || \
              [[ "${{ needs.lint-rust.result }}" != "success" ]] || \
              [[ "${{ needs.lint-python.result }}" != "success" ]] || \
-             [[ "${{ needs.docs.result }}" != "success" ]] || \
              [[ "${{ needs.audit.result }}" != "success" ]] || \
              [[ "${{ needs.deny.result }}" != "success" ]] || \
              [[ "${{ needs.check-linux.result }}" != "success" ]] || \
@@ -1056,7 +1029,6 @@ jobs:
             echo "  codegen: ${{ needs.codegen.result }}"
             echo "  lint-rust: ${{ needs.lint-rust.result }}"
             echo "  lint-python: ${{ needs.lint-python.result }}"
-            echo "  docs: ${{ needs.docs.result }}"
             echo "  audit: ${{ needs.audit.result }}"
             echo "  deny: ${{ needs.deny.result }}"
             echo "  check-linux: ${{ needs.check-linux.result }}"

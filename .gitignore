@@ -97,8 +97,8 @@ coverage.xml
 *.mo
 *.pot
 
-# Sphinx documentation
-docs/_build/
+# Archived documentation builds
+archive/docs/_build/
 
 # PyBuilder (target/ also used by Cargo - see above)
 

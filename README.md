@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD013 MD031 MD032 MD033 MD036 MD041 MD051 MD060 -->
 <div align="center">
 
-<a href="https://github.com/alpha-xone/xbbg"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
+<a href="https://xbbg.org/"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/archive/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
 
 <!-- markdownlint-disable MD036 -->
 **xbbg: Bloomberg Data Workflows Built for Humans (and AI)**
@@ -14,7 +14,7 @@
 
 <a href="https://www.buymeacoffee.com/Lntx29Oof"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
 
-**Quick Links:** [Discord](https://discord.gg/P34uMwgCjC) • [Documentation](https://alpha-xone.github.io/xbbg/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Contributing](CONTRIBUTING.md) • [Changelog](CHANGELOG.md)
+**Quick Links:** [Discord](https://discord.gg/P34uMwgCjC) • [Documentation](https://xbbg.org/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Contributing](CONTRIBUTING.md) • [Changelog](CHANGELOG.md)
 
 </div>
 <!-- markdownlint-enable MD033 MD041 -->
@@ -1755,7 +1755,7 @@ bars = await blp.abdib(
 )
 ```
 
-See the [Dates and Datetimes guide](https://alpha-xone.github.io/xbbg/python/guides/dates/)
+See the [Dates and Datetimes guide](https://xbbg.org/python/guides/dates/)
 for the full accepted set across `bdh` / `bdib` / `bdtick` / overrides
 and the JS / Node bindings.
 
@@ -2039,7 +2039,7 @@ blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
 **Get help fast:**
 - 💬 **Discord**: [Join our community](https://discord.gg/P34uMwgCjC) - Usually get answers within hours
 - 🐛 **GitHub Issues**: [Report bugs](https://github.com/alpha-xone/xbbg/issues) - Include error messages & code
-- 📚 **Documentation**: [Docs](https://alpha-xone.github.io/xbbg/) - Comprehensive guides
+- 📚 **Documentation**: [Docs](https://xbbg.org/) - Comprehensive guides
 - 📓 **Examples**: [`xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb) - 100+ working examples
 
 **When reporting issues, include:**
@@ -2102,13 +2102,7 @@ Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
 
 ### Documentation
 
-The docs site uses [Astro](https://astro.build/):
-
-```bash
-pixi run -e docs docs-install  # install npm deps
-pixi run -e docs docs-dev      # local dev server
-pixi run -e docs docs-build    # production build
-```
+The public docs live at [xbbg.org](https://xbbg.org/). The previous in-repo Starlight source is archived under `archive/docs/` for historical reference; it is no longer built or deployed by this repository.
 
 ## Contributing
 
@@ -2144,7 +2138,7 @@ pixi run ci
 
 ### Resources
 
-- **Documentation**: [alpha-xone.github.io/xbbg](https://alpha-xone.github.io/xbbg/)
+- **Documentation**: [xbbg.org](https://xbbg.org/)
 - **Examples**: [`py-xbbg/examples/xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Security**: [SECURITY.md](SECURITY.md)
@@ -2152,7 +2146,7 @@ pixi run ci
 ## Links
 
 - [PyPI Package](https://pypi.org/project/xbbg/)
-- [Documentation](https://alpha-xone.github.io/xbbg/)
+- [Documentation](https://xbbg.org/)
 - [Source Code](https://github.com/alpha-xone/xbbg)
 - [Issue Tracker](https://github.com/alpha-xone/xbbg/issues)
 - [Discord Community](https://discord.gg/P34uMwgCjC)
@@ -2175,7 +2169,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 | Category       | Badge                                                                                                                                    |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Docs           | [![Documentation](https://img.shields.io/badge/docs-Starlight-blue)](https://alpha-xone.github.io/xbbg/)                                |
+| Docs           | [![Documentation](https://img.shields.io/badge/docs-xbbg.org-blue)](https://xbbg.org/)                                |
 | Build          | [![CI](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml) |
 | License        | [![GitHub license](https://img.shields.io/github/license/alpha-xone/xbbg.svg)](https://github.com/alpha-xone/xbbg/blob/main/LICENSE)   |
 

@@ -21,7 +21,7 @@
     "url": "git+https://github.com/alpha-xone/xbbg.git",
     "directory": "js-xbbg/packages/xbbg-core-linux-x64"
   },
-  "homepage": "https://github.com/alpha-xone/xbbg#readme",
+  "homepage": "https://xbbg.org/javascript/",
   "bugs": {
     "url": "https://github.com/alpha-xone/xbbg/issues"
   },
