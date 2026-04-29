@@ -64,7 +64,7 @@ _REMOVED_LEGACY_ATTRS: dict[str, str] = {
         "        auth_method='app',\n"
         "        app_name='my-app',\n"
         "    )\n\n"
-        "See https://alpha-xone.github.io/xbbg/guides/migration/#connection-setup"
+        "See https://xbbg.org/python/guides/migration/#connection-setup"
     ),
     "disconnect": (
         "blp.disconnect() was removed in xbbg 1.0. The engine lifecycle is managed "
