@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- **Market-bar streaming message metadata**: `//blp/mktbar` subscription rows now include `SUBSCRIPTION_DATA` with Bloomberg's message type (for example `MarketBarStart` / `MarketBarUpdate`), so callers can distinguish bar lifecycle states that are not payload elements.
+- **`bdtick` output timezone preservation (#309)**: Native Arrow, pandas, and pyarrow conversions now preserve the requested `output_tz` metadata instead of materializing UTC-aware datetimes when callers ask for a local zone such as Hong Kong.
+- **Optional Python dataframe backend validation**: Explicit optional backend selections now fail with actionable import errors when pandas, pyarrow, polars, or duckdb are missing, and exchange-info helpers no longer hide a missing pandas dependency behind Bloomberg fallback behavior.
 - **`@xbbg/core-darwin-arm64` macOS package portability (#285)**: macOS native addon builds no longer ship absolute CI or Bloomberg SDK rpaths. The build now post-processes `napi_xbbg.node` with `install_name_tool`, rewrites Bloomberg SDK dependencies to `@rpath`, adds `@loader_path` rpaths for relocatable deployments, and fails release builds if `otool` still reports non-system absolute load paths.
 
 ## [1.2.0] - 2026-04-29
