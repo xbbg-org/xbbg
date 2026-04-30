@@ -26,6 +26,7 @@ xbbg-log = { path = "../../crates/xbbg-log" }
 arrow-array = { version = "58.1.0", features = ["ffi", "chrono-tz"] }
 arrow-schema = { version = "58.1.0", features = ["ffi"] }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono-tz = "0.10"
 pyo3-arrow = "0.17"
 xbbg-arrow = { path = "../../crates/xbbg-arrow" }
 anyhow = "1.0"

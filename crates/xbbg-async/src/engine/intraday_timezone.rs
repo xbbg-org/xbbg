@@ -316,4 +316,16 @@ mod tests {
         let s = wall_to_utc_iso("2024-06-01 14:30:00", "UTC").unwrap();
         assert!(s.starts_with("2024-06-01T14:30"));
     }
+
+    #[test]
+    fn hk_wall_time_converts_to_previous_utc_day() {
+        let s = wall_to_utc_iso("2026-04-28 06:00", "Asia/Hong_Kong").unwrap();
+        assert_eq!(s, "2026-04-27T22:00:00");
+    }
+
+    #[test]
+    fn aware_input_preserves_instant() {
+        let s = wall_to_utc_iso("2026-04-28T06:00:00+08:00", "America/New_York").unwrap();
+        assert_eq!(s, "2026-04-27T22:00:00");
+    }
 }
