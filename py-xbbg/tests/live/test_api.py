@@ -1888,6 +1888,10 @@ class TestMktbar:
         assert row.get("topic") == expected_topic
         assert row.get("MKTDATA_EVENT_TYPE") is None, "mktbar must not return regular mktdata events"
         assert "TIME" in row or "DATE_TIME" in row or "DATE" in row
+        subscription_data = row.get("SUBSCRIPTION_DATA")
+        assert isinstance(subscription_data, str) and subscription_data.startswith("MarketBar"), (
+            "mktbar must expose Bloomberg's market-bar subscription message type"
+        )
 
     @staticmethod
     def _has_ohlc(row: dict) -> bool:
@@ -1970,6 +1974,44 @@ class TestMktbar:
             pytest.skip(f"Only generic interval/end market-bar messages received from {CONFIG.mktbar_ticker}")
         self._assert_market_bar_ohlc(ohlc_rows[0])
         logger.info(f"  Got generic mktbar payload: {ohlc_rows[0]}")
+
+    @pytest.mark.asyncio
+    async def test_asubscribe_mktbar_subscription_data_filtered_fields(self):
+        """MKTBAR: filtered subscription output still exposes bar message kind."""
+        from xbbg import Service, blp
+
+        expected_topic = f"//blp/mktbar/ticker/{CONFIG.mktbar_ticker}"
+        rows = []
+
+        async def collect():
+            async with await blp.asubscribe(
+                CONFIG.mktbar_ticker,
+                "LAST_PRICE",
+                service=Service.MKTBAR,
+                options=["bar_size=1"],
+                tick_mode=True,
+            ) as sub:
+                assert sub.tickers == [expected_topic]
+                async for row in sub:
+                    rows.append(row)
+                    if isinstance(row.get("SUBSCRIPTION_DATA"), str):
+                        break
+
+        try:
+            await asyncio.wait_for(collect(), timeout=30)
+        except asyncio.TimeoutError:
+            if not rows:
+                pytest.skip(f"No filtered market-bar payload received from {CONFIG.mktbar_ticker} after 30s")
+        except Exception as exc:
+            skip_if_subscription_unavailable(exc, "Market Bar")
+
+        assert rows, f"Expected filtered market-bar payload from {CONFIG.mktbar_ticker}"
+        row = rows[-1]
+        assert row.get("topic") == expected_topic
+        subscription_data = row.get("SUBSCRIPTION_DATA")
+        assert isinstance(subscription_data, str) and subscription_data.startswith("MarketBar"), (
+            "filtered mktbar output must expose Bloomberg's market-bar subscription message type"
+        )
 
 
 class TestDepth:
