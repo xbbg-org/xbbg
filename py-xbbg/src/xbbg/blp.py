@@ -40,7 +40,7 @@ from xbbg.services import (
 )
 
 from ._exports import BLP_MODULE_EXPORTS
-from .backend import Backend, get_default_backend
+from .backend import Backend, _import_backend_module, check_backend, get_default_backend, is_backend_available
 
 # Type alias for backend conversion return types.
 DataFrameResult: TypeAlias = Any
@@ -729,16 +729,21 @@ def set_backend(backend: Backend | str | None) -> None:
     global _default_backend
     if backend is None:
         _default_backend = None
-    elif isinstance(backend, Backend):
-        _default_backend = backend
+        return
+
+    if isinstance(backend, Backend):
+        resolved = backend
     elif isinstance(backend, str):
         try:
-            _default_backend = Backend(backend)
+            resolved = Backend(backend)
         except ValueError:
             valid = [b.value for b in Backend]
             raise ValueError(f"Invalid backend: {backend}. Must be one of {valid}") from None
     else:
         raise TypeError(f"backend must be Backend, str, or None, not {type(backend).__name__}")
+
+    check_backend(resolved)
+    _default_backend = resolved
 
 
 def get_backend() -> Backend | None:
@@ -1390,26 +1395,25 @@ def _ensure_arrow_table(frame: Any) -> Any:
 
 
 def _to_pyarrow_table(table: Any) -> Any:
-    import pyarrow as pa
+    pa = _import_backend_module(Backend.PYARROW)
 
     return pa.table(table)
 
 
 def _to_pandas_frame(table: Any) -> Any:
-    import pandas as pd
+    pd = _import_backend_module(Backend.PANDAS)
 
     return pd.DataFrame.from_records(table.to_pylist(), columns=table.column_names)
 
 
 def _to_polars_frame(table: Any) -> Any:
-    import polars as pl
+    pl = _import_backend_module(Backend.POLARS)
 
-    try:
-        return pl.from_arrow(_to_pyarrow_table(table))
-    except ModuleNotFoundError as exc:
-        if "pyarrow" not in str(exc):
-            raise
-        return pl.DataFrame(table.to_pylist(), schema=table.column_names)
+    if is_backend_available(Backend.PYARROW) and check_backend(Backend.PYARROW, raise_on_error=False):
+        pa = _import_backend_module(Backend.PYARROW)
+        return pl.from_arrow(pa.table(table))
+
+    return pl.DataFrame(table.to_pylist(), schema=table.column_names)
 
 
 def _warn_native_narwhals_fallback() -> None:
@@ -1435,7 +1439,16 @@ def _best_narwhals_native(table: Any) -> Any:
     when they are installed so existing Narwhals expressions keep their old
     behavior instead of falling through to the intentionally small xbbg plugin.
     """
-    for convert in (_to_pyarrow_table, _to_pandas_frame, _to_polars_frame):
+    candidates: tuple[tuple[Backend, Callable[[Any], Any]], ...] = (
+        (Backend.PYARROW, _to_pyarrow_table),
+        (Backend.PANDAS, _to_pandas_frame),
+        (Backend.POLARS, _to_polars_frame),
+    )
+    for candidate, convert in candidates:
+        if not is_backend_available(candidate):
+            continue
+        if not check_backend(candidate, raise_on_error=False):
+            continue
         try:
             return convert(table)
         except ImportError:
@@ -1451,6 +1464,8 @@ def _convert_backend(
     """Convert an xbbg ArrowTable to the requested public backend."""
     effective = _resolve_backend(backend) or get_default_backend()
     table = _ensure_arrow_table(frame)
+    if effective not in (Backend.NATIVE, Backend.NARWHALS, Backend.NARWHALS_LAZY):
+        check_backend(effective)
 
     if effective == Backend.NATIVE:
         return table

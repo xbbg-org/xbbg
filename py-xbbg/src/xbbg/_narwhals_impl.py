@@ -12,6 +12,8 @@ from typing import Any
 
 from narwhals._utils import Implementation, Version
 
+from xbbg.backend import Backend, _import_backend_module, check_backend, is_backend_available
+
 
 def _arrow_table_class() -> type[Any]:
     from xbbg._core import ArrowTable
@@ -178,26 +180,23 @@ class XbbgDataFrame:
         return XbbgLazyFrame(self.native, version=self._version)
 
     def to_pandas(self) -> Any:
-        import pandas as pd
+        pd = _import_backend_module(Backend.PANDAS, feature="XbbgDataFrame.to_pandas()")
 
         return pd.DataFrame.from_records(self.native.to_pylist(), columns=self.columns)
 
     def to_arrow(self) -> Any:
-        import pyarrow as pa
+        pa = _import_backend_module(Backend.PYARROW, feature="XbbgDataFrame.to_arrow()")
 
         return pa.table(self.native)
 
     def to_polars(self) -> Any:
-        import polars as pl
+        pl = _import_backend_module(Backend.POLARS, feature="XbbgDataFrame.to_polars()")
 
-        try:
-            import pyarrow as pa
-
+        if is_backend_available(Backend.PYARROW) and check_backend(Backend.PYARROW, raise_on_error=False):
+            pa = _import_backend_module(Backend.PYARROW)
             return pl.from_arrow(pa.table(self.native))
-        except ModuleNotFoundError as exc:
-            if "pyarrow" not in str(exc):
-                raise
-            return pl.DataFrame(self.native.to_pylist(), schema=self.columns)
+
+        return pl.DataFrame(self.native.to_pylist(), schema=self.columns)
 
     def to_dict(self, *, as_series: bool) -> dict[str, Any]:
         if as_series:

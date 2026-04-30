@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import importlib.util
 from typing import Any
 
@@ -9,6 +10,7 @@ import narwhals.stable.v1 as nw
 import pytest
 
 from xbbg._core import ArrowTable
+from xbbg.backend import check_backend
 from xbbg.blp import Backend, _convert_backend
 
 
@@ -22,6 +24,18 @@ def arrow_table() -> Any:
     )
 
 
+def _block_imports(monkeypatch: pytest.MonkeyPatch, *roots: str) -> None:
+    real_import = builtins.__import__
+
+    def guarded_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        root = name.split(".", 1)[0]
+        if root in roots:
+            raise ImportError(f"blocked optional dataframe backend: {name}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+
 class TestConvertBackendNative:
     def test_convert_native_returns_identity(self, arrow_table: Any):
         result = _convert_backend(arrow_table, Backend.NATIVE)
@@ -32,15 +46,15 @@ class TestConvertBackendNative:
         assert isinstance(result, nw.DataFrame)
 
         native = result.to_native()
-        if importlib.util.find_spec("pyarrow") is not None:
+        if importlib.util.find_spec("pyarrow") is not None and check_backend(Backend.PYARROW, raise_on_error=False):
             pa = pytest.importorskip("pyarrow")
             assert isinstance(native, pa.Table)
             assert native.column_names == arrow_table.column_names
-        elif importlib.util.find_spec("pandas") is not None:
+        elif importlib.util.find_spec("pandas") is not None and check_backend(Backend.PANDAS, raise_on_error=False):
             pd = pytest.importorskip("pandas")
             assert isinstance(native, pd.DataFrame)
             assert list(native.columns) == arrow_table.column_names
-        elif importlib.util.find_spec("polars") is not None:
+        elif importlib.util.find_spec("polars") is not None and check_backend(Backend.POLARS, raise_on_error=False):
             pl = pytest.importorskip("polars")
             assert isinstance(native, pl.DataFrame)
             assert native.columns == arrow_table.column_names
@@ -112,12 +126,16 @@ class TestConvertBackendPandas:
 class TestConvertBackendPolars:
     def test_convert_polars_returns_dataframe(self, arrow_table: Any):
         pl = pytest.importorskip("polars")
+        if not check_backend(Backend.POLARS, raise_on_error=False):
+            pytest.skip("polars package is not usable in this environment")
         result = _convert_backend(arrow_table, Backend.POLARS)
         assert isinstance(result, pl.DataFrame)
         assert result.columns == arrow_table.column_names
 
     def test_convert_polars_lazy_returns_lazyframe(self, arrow_table: Any):
         pl = pytest.importorskip("polars")
+        if not check_backend(Backend.POLARS_LAZY, raise_on_error=False):
+            pytest.skip("polars package is not usable in this environment")
         result = _convert_backend(arrow_table, Backend.POLARS_LAZY)
         assert isinstance(result, pl.LazyFrame)
 
@@ -133,15 +151,7 @@ class TestConvertBackendDuckDB:
 
 class TestConvertBackendNarwhals:
     def _block_dataframe_backend_imports(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        real_import = __import__
-
-        def guarded_import(name: str, *args: Any, **kwargs: Any) -> Any:
-            root = name.split(".", 1)[0]
-            if root in {"pyarrow", "pandas", "polars", "arro3"}:
-                raise ImportError(f"blocked optional dataframe backend: {name}")
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr("builtins.__import__", guarded_import)
+        _block_imports(monkeypatch, "pyarrow", "pandas", "polars", "arro3")
         monkeypatch.setattr("xbbg.blp._native_narwhals_fallback_warned", True)
 
     def test_convert_narwhals_prefers_pyarrow_when_available(self, arrow_table: Any):
@@ -189,3 +199,37 @@ class TestConvertBackendInvalid:
     def test_invalid_string_backend_raises(self, arrow_table: Any):
         with pytest.raises(ValueError):
             _convert_backend(arrow_table, "invalid_backend")
+
+    @pytest.mark.parametrize(
+        ("backend", "blocked_root", "extra"),
+        [
+            (Backend.PYARROW, "pyarrow", "xbbg[pyarrow]"),
+            (Backend.PANDAS, "pandas", "xbbg[pandas]"),
+            (Backend.POLARS, "polars", "xbbg[polars]"),
+            (Backend.POLARS_LAZY, "polars", "xbbg[polars]"),
+            (Backend.DUCKDB, "duckdb", "xbbg[duckdb]"),
+        ],
+    )
+    def test_missing_explicit_backend_raises_actionable_error(
+        self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch, backend: Backend, blocked_root: str, extra: str
+    ):
+        _block_imports(monkeypatch, blocked_root)
+
+        with pytest.raises(ImportError) as exc_info:
+            _convert_backend(arrow_table, backend)
+
+        msg = str(exc_info.value)
+        assert f"Backend '{backend.value}' requires" in msg
+        assert f"pip install {blocked_root}" in msg
+        assert extra in msg
+
+    def test_set_backend_missing_optional_dependency_errors_before_state_change(self, monkeypatch: pytest.MonkeyPatch):
+        from xbbg.blp import get_backend, set_backend
+
+        original = get_backend()
+        _block_imports(monkeypatch, "pandas")
+
+        with pytest.raises(ImportError, match="Backend 'pandas' requires"):
+            set_backend(Backend.PANDAS)
+
+        assert get_backend() is original

@@ -8,12 +8,33 @@ from datetime import datetime
 import importlib
 import logging
 import re
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+from zoneinfo import ZoneInfo
 
 import narwhals.stable.v1 as nw
-import pandas as pd
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _require_pandas(feature: str) -> Any:
+    from xbbg.backend import Backend, _import_backend_module
+
+    return _import_backend_module(Backend.PANDAS, feature=feature)
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if value.__class__.__name__ in {"NAType", "NaTType"}:
+        return True
+    try:
+        return bool(value != value)
+    except (TypeError, ValueError):
+        return False
+
 
 EXCHANGE_FIELDS = [
     "IANA_TIME_ZONE",
@@ -46,7 +67,7 @@ class ExchangeInfo:
 
 def _parse_hhmm(time_str: str | None) -> str | None:
     """Parse Bloomberg time format (HHMM or HH:MM) to HH:MM."""
-    if not time_str or pd.isna(time_str):
+    if not time_str or _is_missing(time_str):
         return None
 
     time_str = str(time_str).strip()
@@ -76,7 +97,7 @@ def _parse_hhmm(time_str: str | None) -> str | None:
 
 def _parse_futures_hours(fut_hours: str | None) -> dict[str, tuple[str, str]]:
     """Parse Bloomberg FUT_TRADING_HRS to a session dict."""
-    if not fut_hours or pd.isna(fut_hours):
+    if not fut_hours or _is_missing(fut_hours):
         return {}
 
     fut_hours = str(fut_hours).strip()
@@ -101,9 +122,17 @@ def _convert_est_to_local(time_str: str, local_tz: str) -> str:
         return time_str
 
     try:
-        ref_date = datetime.now().strftime("%Y-%m-%d")
-        est_ts = pd.Timestamp(f"{ref_date} {time_str}", tz="America/New_York")
-        local_ts = est_ts.tz_convert(local_tz)
+        hour_text, minute_text = time_str.split(":", 1)
+        ref_date = datetime.now().date()
+        est_ts = datetime(
+            ref_date.year,
+            ref_date.month,
+            ref_date.day,
+            int(hour_text),
+            int(minute_text),
+            tzinfo=ZoneInfo("America/New_York"),
+        )
+        local_ts = est_ts.astimezone(ZoneInfo(local_tz))
         return f"{local_ts.hour:02d}:{local_ts.minute:02d}"
     except Exception as e:
         logger.debug("Failed to convert time %s from EST to %s: %s", time_str, local_tz, e)
@@ -132,7 +161,7 @@ def _parse_trading_hours(
 
 def _infer_timezone_from_country(country_iso: str | None) -> str | None:
     """Infer IANA timezone from country ISO using Rust fallback map."""
-    if not country_iso or pd.isna(country_iso):
+    if not country_iso or _is_missing(country_iso):
         return None
     core = importlib.import_module("xbbg._core")
     infer = cast("Any", getattr(core, "ext_infer_timezone", None))
@@ -152,7 +181,7 @@ def _extract_value(df: pd.DataFrame, field: str) -> str | float | None:
         return None
 
     val = df.iloc[0][actual_col]
-    if pd.isna(val):
+    if _is_missing(val):
         return None
     return val
 
@@ -208,6 +237,7 @@ def _build_exchange_info_from_response(ticker: str, df: pd.DataFrame) -> Exchang
 
 def _to_pandas_wide(data: Any) -> pd.DataFrame:
     """Convert current backend response into a wide pandas DataFrame."""
+    _require_pandas("xbbg.markets Bloomberg metadata helpers")
     utils = importlib.import_module("xbbg.ext._utils")
     pivot_fn = cast("Any", utils._pivot_bdp_to_wide)
     nw_df = nw.from_native(data)
@@ -217,6 +247,7 @@ def _to_pandas_wide(data: Any) -> pd.DataFrame:
 
 async def afetch_exchange_info(ticker: str, **kwargs) -> ExchangeInfo:
     """Async fetch exchange metadata from Bloomberg."""
+    _require_pandas("xbbg.markets.fetch_exchange_info()")
     from xbbg.blp import abdp
 
     try:
