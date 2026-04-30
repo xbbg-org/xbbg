@@ -43,18 +43,76 @@ fn extract_enum_values(type_def: &SchemaTypeDefinition<'_>) -> Option<Vec<String
         .map(|constants| constants.iter().map(|c| c.name_str().to_string()).collect())
 }
 
+const MAX_SCHEMA_NESTING_DEPTH: usize = 32;
+
+fn complex_type_cycle_key(data_type: DataType, type_name: &str) -> Option<String> {
+    if type_name.is_empty() {
+        None
+    } else {
+        Some(format!("{}:{type_name}", datatype_to_string(data_type)))
+    }
+}
+
+fn can_descend_complex_type(
+    is_complex: bool,
+    data_type: DataType,
+    type_name: &str,
+    depth: usize,
+    active_complex_types: &[String],
+) -> bool {
+    if !is_complex || depth >= MAX_SCHEMA_NESTING_DEPTH {
+        return false;
+    }
+
+    let Some(key) = complex_type_cycle_key(data_type, type_name) else {
+        // Anonymous complex types cannot be cycle-detected reliably by name;
+        // the depth cap still prevents unbounded expansion.
+        return true;
+    };
+
+    !active_complex_types.iter().any(|active| active == &key)
+}
+
 /// Convert a SchemaElementDefinition to ElementInfo.
 ///
 /// This recursively converts child elements for complex types.
 fn convert_element_def(elem_def: &SchemaElementDefinition<'_>) -> ElementInfo {
-    let type_def = elem_def.type_definition();
+    let mut active_complex_types = Vec::new();
+    convert_element_def_inner(elem_def, 0, &mut active_complex_types)
+}
 
-    // Get children for complex types
-    let children: Vec<ElementInfo> = if type_def.is_complex_type() {
-        type_def
+fn convert_element_def_inner(
+    elem_def: &SchemaElementDefinition<'_>,
+    depth: usize,
+    active_complex_types: &mut Vec<String>,
+) -> ElementInfo {
+    let type_def = elem_def.type_definition();
+    let data_type = type_def.datatype();
+    let type_name = type_def.name_str().to_string();
+
+    // Get children for complex types, guarding recursive Bloomberg schemas such as BQL.
+    let children: Vec<ElementInfo> = if can_descend_complex_type(
+        type_def.is_complex_type(),
+        data_type,
+        &type_name,
+        depth,
+        active_complex_types,
+    ) {
+        let cycle_key = complex_type_cycle_key(data_type, &type_name);
+        if let Some(key) = cycle_key.as_ref() {
+            active_complex_types.push(key.clone());
+        }
+
+        let converted = type_def
             .element_definitions()
-            .map(|child_def| convert_element_def(&child_def))
-            .collect()
+            .map(|child_def| convert_element_def_inner(&child_def, depth + 1, active_complex_types))
+            .collect();
+
+        if cycle_key.is_some() {
+            active_complex_types.pop();
+        }
+
+        converted
     } else {
         Vec::new()
     };
@@ -65,8 +123,8 @@ fn convert_element_def(elem_def: &SchemaElementDefinition<'_>) -> ElementInfo {
     ElementInfo {
         name: elem_def.name_str().to_string(),
         description: elem_def.description().to_string(),
-        data_type: datatype_to_string(type_def.datatype()),
-        type_name: type_def.name_str().to_string(),
+        data_type: datatype_to_string(data_type),
+        type_name,
         is_array: elem_def.is_array(),
         is_optional: elem_def.is_optional(),
         enum_values,
@@ -155,5 +213,53 @@ mod tests {
         assert!(elem.name.is_empty());
         assert!(elem.children.is_empty());
         assert!(elem.enum_values.is_none());
+    }
+
+    #[test]
+    fn test_complex_type_cycle_key_uses_data_type_and_name() {
+        assert_eq!(
+            complex_type_cycle_key(DataType::Sequence, "ClientContextType"),
+            Some("Sequence:ClientContextType".to_string())
+        );
+        assert_eq!(complex_type_cycle_key(DataType::Sequence, ""), None);
+    }
+
+    #[test]
+    fn test_can_descend_complex_type_rejects_active_cycle() {
+        let active = vec!["Sequence:RecursiveType".to_string()];
+
+        assert!(!can_descend_complex_type(
+            true,
+            DataType::Sequence,
+            "RecursiveType",
+            1,
+            &active,
+        ));
+    }
+
+    #[test]
+    fn test_can_descend_complex_type_rejects_max_depth() {
+        let active = Vec::new();
+
+        assert!(!can_descend_complex_type(
+            true,
+            DataType::Sequence,
+            "DeepType",
+            MAX_SCHEMA_NESTING_DEPTH,
+            &active,
+        ));
+    }
+
+    #[test]
+    fn test_can_descend_complex_type_allows_non_recursive_named_type() {
+        let active = vec!["Sequence:ParentType".to_string()];
+
+        assert!(can_descend_complex_type(
+            true,
+            DataType::Sequence,
+            "ChildType",
+            1,
+            &active,
+        ));
     }
 }
