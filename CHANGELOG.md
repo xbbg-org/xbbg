@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@xbbg/core-darwin-arm64` macOS package portability (#285)**: macOS native addon builds no longer ship absolute CI or Bloomberg SDK rpaths. The build now post-processes `napi_xbbg.node` with `install_name_tool`, rewrites Bloomberg SDK dependencies to `@rpath`, adds `@loader_path` rpaths for relocatable deployments, and fails release builds if `otool` still reports non-system absolute load paths.
+
 ## [1.2.0] - 2026-04-29
 
 ### Removed

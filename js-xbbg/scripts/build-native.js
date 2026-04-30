@@ -128,6 +128,179 @@ function fail(message) {
   process.exit(1);
 }
 
+function runTool(command, args, context) {
+  const result = spawnSync(command, args, { encoding: 'utf8' });
+  if (result.error) {
+    fail(`${context}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr]
+      .filter((value) => value && value.length > 0)
+      .join('\n')
+      .trim();
+    fail(
+      `${context}: ${output || `${command} exited with status ${result.status ?? 'unknown'}`}`,
+    );
+  }
+  return `${result.stdout ?? ''}${result.stderr ?? ''}`;
+}
+
+function stripOtoolPathSuffix(value) {
+  return value.replace(/\s+\(offset \d+\)$/, '');
+}
+
+function parseDarwinRpaths(loadCommands) {
+  const rpaths = new Set();
+  let inRpath = false;
+
+  for (const line of loadCommands.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === 'cmd LC_RPATH') {
+      inRpath = true;
+      continue;
+    }
+    if (inRpath && trimmed.startsWith('path ')) {
+      rpaths.add(stripOtoolPathSuffix(trimmed.slice('path '.length)));
+      inRpath = false;
+      continue;
+    }
+    if (inRpath && trimmed.startsWith('cmd ')) {
+      inRpath = false;
+    }
+  }
+
+  return rpaths;
+}
+
+function parseDarwinLinkedLibraries(output) {
+  return output
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/\s+\([^)]*\).*$/, ''));
+}
+
+function readDarwinLoadCommands(binaryPath) {
+  return runTool(
+    'otool',
+    ['-l', binaryPath],
+    `Failed to inspect Mach-O load commands for ${binaryPath}`,
+  );
+}
+
+function readDarwinLinkedLibraries(binaryPath) {
+  return runTool(
+    'otool',
+    ['-L', binaryPath],
+    `Failed to inspect Mach-O linked libraries for ${binaryPath}`,
+  );
+}
+
+function installNameTool(args, context) {
+  runTool('install_name_tool', args, context);
+}
+
+function startsWithPath(value, parent) {
+  const normalizedValue = path.resolve(value);
+  const normalizedParent = path.resolve(parent);
+  return (
+    normalizedValue === normalizedParent ||
+    normalizedValue.startsWith(`${normalizedParent}${path.sep}`)
+  );
+}
+
+function isSdkBlpapiLibrary(value, sdkLibDir) {
+  return (
+    path.isAbsolute(value) &&
+    startsWithPath(value, sdkLibDir) &&
+    /^libblpapi3(_64|_32)?\.(so|dylib)$/.test(path.basename(value))
+  );
+}
+
+function isForbiddenDarwinPath(value) {
+  if (!path.isAbsolute(value)) {
+    return false;
+  }
+  if (value.startsWith('/usr/lib/') || value.startsWith('/System/Library/')) {
+    return false;
+  }
+  return true;
+}
+
+function verifyDarwinPortableBinary(binaryPath) {
+  const loadCommands = readDarwinLoadCommands(binaryPath);
+  const linkedLibraries = parseDarwinLinkedLibraries(
+    readDarwinLinkedLibraries(binaryPath),
+  );
+  const values = [
+    ...parseDarwinRpaths(loadCommands),
+    ...linkedLibraries,
+  ];
+  const forbidden = Array.from(
+    new Set(values.filter((value) => isForbiddenDarwinPath(value))),
+  );
+  if (forbidden.length > 0) {
+    fail(
+      `Mach-O load commands for ${binaryPath} contain non-portable build paths: ${forbidden.join(', ')}`,
+    );
+  }
+}
+
+// Keep the published macOS addon relocatable; Bloomberg's runtime remains user-provided.
+function patchDarwinNativeAddon(binaryPath, sdkLibDir) {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  installNameTool(
+    ['-id', '@rpath/napi_xbbg.node', binaryPath],
+    `Failed to set portable install name for ${binaryPath}`,
+  );
+
+  const linkedLibraries = parseDarwinLinkedLibraries(
+    readDarwinLinkedLibraries(binaryPath),
+  );
+  for (const linkedLibrary of linkedLibraries) {
+    if (!isSdkBlpapiLibrary(linkedLibrary, sdkLibDir)) {
+      continue;
+    }
+    installNameTool(
+      [
+        '-change',
+        linkedLibrary,
+        `@rpath/${path.basename(linkedLibrary)}`,
+        binaryPath,
+      ],
+      `Failed to rewrite Bloomberg SDK dependency for ${binaryPath}`,
+    );
+  }
+
+  let rpaths = parseDarwinRpaths(readDarwinLoadCommands(binaryPath));
+  for (const rpath of rpaths) {
+    if (!isForbiddenDarwinPath(rpath)) {
+      continue;
+    }
+    installNameTool(
+      ['-delete_rpath', rpath, binaryPath],
+      `Failed to delete non-portable rpath ${rpath} from ${binaryPath}`,
+    );
+  }
+
+  rpaths = parseDarwinRpaths(readDarwinLoadCommands(binaryPath));
+  for (const rpath of ['@loader_path', '@loader_path/lib']) {
+    if (rpaths.has(rpath)) {
+      continue;
+    }
+    installNameTool(
+      ['-add_rpath', rpath, binaryPath],
+      `Failed to add portable rpath ${rpath} to ${binaryPath}`,
+    );
+  }
+
+  verifyDarwinPortableBinary(binaryPath);
+}
+
 const profile = process.argv.includes('--release') ? 'release' : 'debug';
 const artifactPath = resolveBuildArtifact(profile);
 const outputPath = path.join(packageDir, 'napi_xbbg.node');
@@ -149,10 +322,7 @@ if (!exists(sdkLibDir)) {
 
 const extraRustFlags = [];
 if (process.platform === 'darwin') {
-  extraRustFlags.push(
-    '-C link-arg=-Wl,-headerpad_max_install_names',
-    `-C link-arg=-Wl,-rpath,${sdkLibDir}`,
-  );
+  extraRustFlags.push('-C link-arg=-Wl,-headerpad_max_install_names');
 }
 
 const env = { ...process.env };
@@ -184,6 +354,7 @@ if (!exists(artifactPath)) {
 
 fs.copyFileSync(artifactPath, outputPath);
 fs.chmodSync(outputPath, 0o755);
+patchDarwinNativeAddon(outputPath, sdkLibDir);
 
 console.log(
   `Copied ${path.relative(repoRoot, artifactPath)} -> ${path.relative(repoRoot, outputPath)}`,
