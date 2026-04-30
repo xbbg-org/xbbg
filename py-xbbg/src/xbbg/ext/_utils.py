@@ -12,7 +12,6 @@ Functions:
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable, Coroutine, Sequence
 from datetime import date, datetime, timezone
 import functools
@@ -50,12 +49,28 @@ def _canonical_column_name(name: str) -> str:
 
 
 def _syncify(async_func: Callable[_P, Coroutine[Any, Any, _T]]) -> Callable[_P, _T]:
-    """Create a synchronous wrapper for an async function."""
+    """Create a synchronous wrapper for an async ext helper.
+
+    Ext sync helpers should match the core ``xbbg.bdp`` boundary: run normally
+    from synchronous code, bridge one-shot calls in notebooks, and fail clearly
+    in other running event loops before creating an unawaited coroutine.
+    """
+
+    sync_name = async_func.__name__[1:] if async_func.__name__.startswith("a") else async_func.__name__
 
     @functools.wraps(async_func)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-        return asyncio.run(async_func(*args, **kwargs))
+        from xbbg import blp
 
+        sync_wrapper = blp._build_sync_wrapper(
+            sync_name,
+            async_func,
+            allow_notebook_bridge=True,
+        )
+        return sync_wrapper(*args, **kwargs)
+
+    wrapper.__name__ = sync_name
+    wrapper.__qualname__ = sync_name
     return wrapper
 
 
