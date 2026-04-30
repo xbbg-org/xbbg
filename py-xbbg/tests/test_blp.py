@@ -113,6 +113,69 @@ class TestNotebookSyncBridge:
             asyncio.run(call_subscribe())
 
 
+class TestExtSyncify:
+    """Tests for xbbg.ext sync wrappers sharing the core async boundary."""
+
+    def test_sync_context_runs_helper(self):
+        from xbbg.ext._utils import _syncify
+
+        async def afake_ext(value):
+            return f"ok:{value}"
+
+        wrapper = _syncify(afake_ext)
+
+        _CASE.assertEqual(wrapper("value"), "ok:value")
+        _CASE.assertEqual(wrapper.__name__, "fake_ext")
+
+    def test_generic_async_context_rejects_before_creating_coroutine(self):
+        from xbbg.ext._utils import _syncify
+
+        created = False
+
+        def afake_ext():
+            nonlocal created
+            created = True
+
+            async def inner():
+                return "ok"
+
+            return inner()
+
+        wrapper = _syncify(afake_ext)
+
+        async def call_wrapper():
+            wrapper()
+
+        with pytest.raises(RuntimeError, match="await afake_ext"):
+            asyncio.run(call_wrapper())
+
+        _CASE.assertFalse(created)
+
+    def test_notebook_context_uses_core_bridge(self, monkeypatch):
+        from xbbg import blp
+        from xbbg.ext._utils import _syncify
+
+        async def afake_ext(*args, **kwargs):
+            return args, kwargs
+
+        wrapper = _syncify(afake_ext)
+
+        def fake_bridge(async_func, args, kwargs):
+            return async_func.__name__, args, kwargs
+
+        monkeypatch.setattr(blp, "_is_notebook_context", lambda: True)
+        monkeypatch.setattr(blp, "_run_in_notebook_sync_bridge", fake_bridge)
+
+        async def call_wrapper():
+            return wrapper("abc", flag=True)
+
+        name, args, kwargs = asyncio.run(call_wrapper())
+
+        _CASE.assertEqual(name, "afake_ext")
+        _CASE.assertEqual(args, ("abc",))
+        _CASE.assertEqual(kwargs, {"flag": True})
+
+
 class TestBdtick:
     """Tests for bdtick (tick data) function."""
 
