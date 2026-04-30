@@ -246,9 +246,9 @@ Streaming real-time OHLCV bars via `//blp/mktbar`. Like `bdib()` but live as bar
 
 Bloomberg requires market-bar subscriptions to use explicit `//blp/mktbar/{identifier-type}/{identifier}` topics, request `LAST_PRICE` as the only field, and set `bar_size` in minutes. `amktbar()` handles that for you: plain tickers use the `ticker` topic type, identifier paths like `/figi/...` keep their identifier type, and already-qualified `//blp/mktbar/...` topics pass through unchanged.
 
-Market bars are event-driven. Bloomberg may emit `MarketBarStart`, intra-bar `MarketBarUpdate`, `MarketBarIntervalEnd`, and `MarketBarEnd` messages; no-trade intervals may not produce OHLC payloads until Bloomberg publishes an interval/end event.
+Market bars are event-driven. Bloomberg may emit `MarketBarStart`, intra-bar `MarketBarUpdate`, `MarketBarIntervalEnd`, and `MarketBarEnd` messages inside `SUBSCRIPTION_DATA` events; no-trade intervals may not produce OHLC payloads until Bloomberg publishes an interval/end event.
 
-Default output exposes the full top-level market-bar payload, including fields Bloomberg sends such as `TIME`, `DATE_TIME`, `OPEN`, `HIGH`, `LOW`, `CLOSE`, `VOLUME`, and `NUMBER_OF_TICKS`. The request field sent to Bloomberg remains `LAST_PRICE`.
+Default output exposes the full top-level market-bar payload, including fields Bloomberg sends such as `TIME`, `DATE_TIME`, `OPEN`, `HIGH`, `LOW`, `CLOSE`, `VOLUME`, and `NUMBER_OF_TICKS`. xbbg also exposes Bloomberg's market-bar message type as `SUBSCRIPTION_DATA` row metadata so callers can distinguish new bars from updates. The request field sent to Bloomberg remains `LAST_PRICE`.
 
 ```python
 # 1-minute bars (default bar_size)
