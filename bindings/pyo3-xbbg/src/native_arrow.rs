@@ -8,7 +8,7 @@ use arrow_array::{
     TimestampMillisecondArray, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, FieldRef, Schema, SchemaRef, TimeUnit};
-use chrono::{DateTime, Datelike, NaiveDate, Timelike};
+use chrono::{DateTime, Datelike, NaiveDate, Offset, Timelike};
 use pyo3::exceptions::{
     PyImportError, PyIndexError, PyKeyError, PyRuntimeError, PyTypeError, PyValueError,
 };
@@ -185,12 +185,13 @@ fn date32_to_py(py: Python<'_>, days: i32) -> PyResult<Py<PyAny>> {
     )
 }
 
-fn timestamp_to_py(py: Python<'_>, micros: i64) -> PyResult<Py<PyAny>> {
+fn timestamp_to_py(py: Python<'_>, micros: i64, timezone: Option<&str>) -> PyResult<Py<PyAny>> {
     let Some(dt) = DateTime::from_timestamp_micros(micros) else {
         return Ok(py.None());
     };
+
     let utc = PyTzInfo::utc(py)?;
-    Ok(PyDateTime::new(
+    let utc_datetime = PyDateTime::new(
         py,
         dt.year(),
         dt.month() as u8,
@@ -200,9 +201,44 @@ fn timestamp_to_py(py: Python<'_>, micros: i64) -> PyResult<Py<PyAny>> {
         dt.second() as u8,
         dt.timestamp_subsec_micros(),
         Some(&utc),
-    )?
-    .into_any()
-    .unbind())
+    )?;
+
+    let Some(tz_name) = timezone.filter(|tz| !tz.eq_ignore_ascii_case("UTC")) else {
+        return Ok(utc_datetime.into_any().unbind());
+    };
+
+    if let Ok(zoneinfo) = py
+        .import("zoneinfo")
+        .and_then(|module| module.getattr("ZoneInfo"))
+        .and_then(|zoneinfo| zoneinfo.call1((tz_name,)))
+    {
+        if let Ok(converted) = utc_datetime.call_method1("astimezone", (zoneinfo,)) {
+            return Ok(converted.unbind());
+        }
+    }
+
+    let tz = tz_name
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| PyValueError::new_err(format!("unknown timestamp timezone: {tz_name}")))?;
+    let local = dt.with_timezone(&tz);
+    let offset_seconds = local.offset().fix().local_minus_utc();
+    let datetime = py.import("datetime")?;
+    let timedelta = datetime.getattr("timedelta")?.call1((0, offset_seconds))?;
+    let fixed_tz = datetime.getattr("timezone")?.call1((timedelta, tz_name))?;
+
+    Ok(datetime
+        .getattr("datetime")?
+        .call1((
+            local.year(),
+            local.month(),
+            local.day(),
+            local.hour(),
+            local.minute(),
+            local.second(),
+            local.timestamp_subsec_micros(),
+            fixed_tz,
+        ))?
+        .unbind())
 }
 
 fn time64_micros_to_py(py: Python<'_>, micros: i64) -> PyResult<Py<PyAny>> {
@@ -280,13 +316,14 @@ fn scalar_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<Py
                 .expect("Date32Array")
                 .value(row),
         ),
-        DataType::Timestamp(TimeUnit::Microsecond, _) => timestamp_to_py(
+        DataType::Timestamp(TimeUnit::Microsecond, timezone) => timestamp_to_py(
             py,
             array
                 .as_any()
                 .downcast_ref::<TimestampMicrosecondArray>()
                 .expect("TimestampMicrosecondArray")
                 .value(row),
+            timezone.as_deref(),
         ),
         DataType::Time64(TimeUnit::Microsecond) => time64_micros_to_py(
             py,
@@ -296,7 +333,7 @@ fn scalar_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<Py
                 .expect("Time64MicrosecondArray")
                 .value(row),
         ),
-        DataType::Timestamp(TimeUnit::Millisecond, _) => timestamp_to_py(
+        DataType::Timestamp(TimeUnit::Millisecond, timezone) => timestamp_to_py(
             py,
             array
                 .as_any()
@@ -304,6 +341,7 @@ fn scalar_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<Py
                 .expect("TimestampMillisecondArray")
                 .value(row)
                 * 1_000,
+            timezone.as_deref(),
         ),
         _ => format!("{array:?}").into_py_any(py),
     }
@@ -1215,4 +1253,43 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ArrowRecordBatch>()?;
     m.add_class::<ArrowTable>()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scalar_to_py_preserves_timestamp_timezone_metadata() {
+        Python::initialize();
+        Python::attach(|py| {
+            let array = TimestampMicrosecondArray::from(vec![0]).with_timezone("Asia/Hong_Kong");
+            let value = scalar_to_py(py, &array, 0).expect("timestamp");
+            let iso: String = value
+                .bind(py)
+                .call_method0("isoformat")
+                .expect("isoformat")
+                .extract()
+                .expect("iso string");
+
+            assert_eq!(iso, "1970-01-01T08:00:00+08:00");
+        });
+    }
+
+    #[test]
+    fn scalar_to_py_preserves_utc_timestamp_default() {
+        Python::initialize();
+        Python::attach(|py| {
+            let array = TimestampMicrosecondArray::from(vec![0]);
+            let value = scalar_to_py(py, &array, 0).expect("timestamp");
+            let iso: String = value
+                .bind(py)
+                .call_method0("isoformat")
+                .expect("isoformat")
+                .extract()
+                .expect("iso string");
+
+            assert_eq!(iso, "1970-01-01T00:00:00+00:00");
+        });
+    }
 }
