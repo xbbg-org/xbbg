@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-04-30
+
 ### Fixed
 
 - **Market-bar streaming message metadata**: `//blp/mktbar` subscription rows now include `SUBSCRIPTION_DATA` with Bloomberg's message type (for example `MarketBarStart` / `MarketBarUpdate`), so callers can distinguish bar lifecycle states that are not payload elements.
@@ -1321,7 +1323,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/alpha-xone/xbbg/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alpha-xone/xbbg/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/alpha-xone/xbbg/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/alpha-xone/xbbg/compare/v1.1.1b1...v1.1.1
