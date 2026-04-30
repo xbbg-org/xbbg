@@ -119,6 +119,15 @@ PACKAGE_NAMES: dict[Backend, str] = {
     Backend.SQLFRAME: "sqlframe",
 }
 
+# xbbg extras exposed by pyproject. Some backend enum values share one extra.
+EXTRA_NAMES: dict[Backend, str] = {
+    Backend.PYARROW: "pyarrow",
+    Backend.PANDAS: "pandas",
+    Backend.POLARS: "polars",
+    Backend.POLARS_LAZY: "polars",
+    Backend.DUCKDB: "duckdb",
+}
+
 # Module names to ``import`` (may differ from the PyPI package name).
 MODULE_NAMES: dict[Backend, str] = {
     Backend.PYARROW: "pyarrow",
@@ -216,7 +225,7 @@ def _get_module_version(module: Any) -> tuple[int, ...] | None:
     version_str = getattr(module, "__version__", None)
     if version_str is None:
         version_str = getattr(module, "VERSION", None)
-    if version_str is None:
+    if not version_str:
         return None
     return _parse_version(str(version_str))
 
@@ -301,9 +310,30 @@ def check_backend(backend: Backend | str, *, raise_on_error: bool = True) -> boo
         )
         if min_version:
             msg += f">={_format_version(min_version)}"
-        msg += "\n\nOr install with xbbg extras:\n"
-        msg += f"    pip install xbbg[{backend.value}]"
 
+        extra_name = EXTRA_NAMES.get(backend)
+        if extra_name is not None:
+            msg += "\n\nOr install with xbbg extras:\n"
+            msg += f"    pip install xbbg[{extra_name}]"
+
+        if raise_on_error:
+            raise ImportError(msg) from None
+        logger.warning(msg)
+        return False
+
+    if backend in (Backend.POLARS, Backend.POLARS_LAZY) and getattr(module, "__version__", None) == "":
+        msg = (
+            f"Backend '{backend.value}' requires a usable '{package_name}' package, "
+            "but the installed Polars package is missing its native binary.\n\n"
+            "To reinstall, run:\n"
+            f"    pip install --force-reinstall {package_name}"
+        )
+        if min_version:
+            msg += f">={_format_version(min_version)}"
+        extra_name = EXTRA_NAMES.get(backend)
+        if extra_name is not None:
+            msg += "\n\nOr install with xbbg extras:\n"
+            msg += f"    pip install xbbg[{extra_name}]"
         if raise_on_error:
             raise ImportError(msg) from None
         logger.warning(msg)
@@ -328,6 +358,24 @@ def check_backend(backend: Backend | str, *, raise_on_error: bool = True) -> boo
             return False
 
     return True
+
+
+def _import_backend_module(backend: Backend | str, *, feature: str | None = None) -> Any:
+    """Import an optional backend module after xbbg availability checks."""
+    if isinstance(backend, str):
+        backend = Backend(backend)
+
+    try:
+        check_backend(backend)
+    except (ImportError, ValueError) as exc:
+        if feature is not None:
+            raise type(exc)(f"{feature} requires optional backend '{backend.value}'.\n\n{exc}") from None
+        raise
+
+    module_name = MODULE_NAMES.get(backend)
+    if module_name is None:
+        raise ValueError(f"Unknown backend: {backend.value}")
+    return __import__(module_name)
 
 
 def get_available_backends() -> list[Backend]:

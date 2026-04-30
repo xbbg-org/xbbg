@@ -111,31 +111,12 @@ if TYPE_CHECKING:
 
 def _get_empty_dataframe() -> IntoDataFrame:
     """Return empty DataFrame using configured backend."""
+    from xbbg._core import ArrowTable
     from xbbg.backend import get_default_backend
-    from xbbg.blp import Backend, get_backend
+    from xbbg.blp import _convert_backend, get_backend
 
     backend = get_backend() or get_default_backend()
-    if backend == Backend.PANDAS:
-        import pandas as pd
-
-        return pd.DataFrame()
-    if backend == Backend.NATIVE:
-        from xbbg._core import ArrowTable
-
-        return ArrowTable.empty([])
-    if backend == Backend.PYARROW:
-        import pyarrow as pa
-
-        return pa.table({})
-    if backend == Backend.DUCKDB:
-        import duckdb
-
-        return duckdb.query("SELECT 1 WHERE FALSE")
-    else:
-        # Default to polars for POLARS, POLARS_LAZY, NARWHALS, NARWHALS_LAZY, or distributed dataframe backends.
-        import polars as pl
-
-        return pl.DataFrame()
+    return _convert_backend(ArrowTable.empty(["ticker", "field", "value"]), backend)
 
 
 # =============================================================================

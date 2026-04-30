@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 import logging
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
-from xbbg.markets.bloomberg import _to_pandas_wide
+from xbbg.markets.bloomberg import _require_pandas, _to_pandas_wide
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class CurrencyPair:
 
 def exch_info_bloomberg(ticker: str, **kwargs) -> pd.Series:
     """Get exchange info from Bloomberg API."""
+    pd = _require_pandas("xbbg.markets.exch_info_bloomberg()")
     from .bloomberg import fetch_exchange_info
     from .sessions import derive_sessions
 
@@ -70,6 +72,7 @@ def exch_info_bloomberg(ticker: str, **kwargs) -> pd.Series:
 
 def exch_info(ticker: str, **kwargs) -> pd.Series:
     """Exchange info for given ticker."""
+    pd = _require_pandas("xbbg.markets.exch_info()")
     if ref := kwargs.get("ref"):
         return exch_info(ticker=ref, **{k: v for k, v in kwargs.items() if k != "ref"})
 
@@ -85,6 +88,7 @@ def exch_info(ticker: str, **kwargs) -> pd.Series:
 
 def market_info(ticker: str) -> pd.Series:
     """Get market info for a ticker using Bloomberg metadata fields."""
+    pd = _require_pandas("xbbg.markets.market_info()")
     from xbbg.blp import bdp
 
     t_info = ticker.split()
@@ -151,6 +155,7 @@ def market_info(ticker: str) -> pd.Series:
 
 def explode(data: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     """Explode helper retained for backward compatibility."""
+    pd = _require_pandas("xbbg.markets.explode()")
     if data.empty:
         return pd.DataFrame()
 
@@ -193,6 +198,7 @@ def convert_session_times_to_utc(
     time_fmt: str = "%Y-%m-%dT%H:%M:%S",
 ) -> tuple[str, str]:
     """Convert timezone-naive session times from exchange timezone to UTC."""
+    pd = _require_pandas("xbbg.markets.convert_session_times_to_utc()")
     if exchange_tz == "UTC":
         return start_time, end_time
 
@@ -224,6 +230,7 @@ def _resolve_to_timezone(tz: str, exch_tz: str) -> str:
 
 def market_timing(ticker, dt, timing="EOD", tz="local", **kwargs) -> str:
     """Market close/open time for ticker."""
+    pd = _require_pandas("xbbg.markets.market_timing()")
     exch = pd.Series(exch_info(ticker=ticker, **kwargs))
     required = {"tz", "allday", "day"}
     if not required.issubset(exch.index):
