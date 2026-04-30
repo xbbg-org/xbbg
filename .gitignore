@@ -135,6 +135,8 @@ venv.bak/
 crates/blpapi-sys/vendor/blpapi-sdk/*
 !crates/blpapi-sys/vendor/blpapi-sdk/README.md
 crates/blpapi-sys/vendor/*.zip
+vendor/blpapi-sdk/*
+!vendor/blpapi-sdk/README.md
 
 # Bloomberg DLL files (local development only)
 **/blpapi3_64.dll
