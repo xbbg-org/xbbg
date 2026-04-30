@@ -75,11 +75,14 @@ pub struct SubscriptionState {
     suppress_closed_warning: bool,
     /// Whether to append all top-level scalar fields Bloomberg exposes.
     capture_all_fields: bool,
+    /// Optional projected field for Bloomberg mktbar message kind (MarketBarStart/Update/End).
+    subscription_data_index: Option<FieldIndex>,
 }
 
 impl SubscriptionState {
     const EVENT_METADATA_FIELDS: [&'static str; 2] =
         ["MKTDATA_EVENT_TYPE", "MKTDATA_EVENT_SUBTYPE"];
+    const SUBSCRIPTION_DATA_FIELD: &'static str = "SUBSCRIPTION_DATA";
     // Bloomberg can publish date-or-time values here with invalid date parts;
     // any typed/string getter makes the SDK emit warnings, so capture nulls.
     const INVALID_DATEORTIME_FIELDS: [&'static str; 1] = ["LAST_UPDATE_ALL_SESSIONS_RT"];
@@ -140,6 +143,18 @@ impl SubscriptionState {
                 Arc::from(field),
             );
         }
+        let subscription_data_index = if topic.starts_with("//blp/mktbar/") {
+            Some(Self::push_field_if_new(
+                &mut field_strings,
+                &mut field_names,
+                &mut field_name_keys,
+                &mut invalid_dateortime_fields,
+                &mut field_kinds,
+                Arc::from(Self::SUBSCRIPTION_DATA_FIELD),
+            ))
+        } else {
+            None
+        };
 
         let metrics = Arc::new(SubscriptionMetrics {
             messages_received: Arc::new(AtomicU64::new(0)),
@@ -172,6 +187,7 @@ impl SubscriptionState {
             has_received_data: false,
             suppress_closed_warning: false,
             capture_all_fields,
+            subscription_data_index,
         }
     }
 
@@ -220,11 +236,15 @@ impl SubscriptionState {
     /// `SystemTime::now()` if not enabled.
     pub fn on_message(&mut self, msg: &Message) -> bool {
         let timestamp = msg.time_received_us().unwrap_or_else(Self::system_time_us);
+        let subscription_data = self
+            .subscription_data_index
+            .is_some()
+            .then(|| Arc::<str>::from(msg.message_type().as_str()));
         let elem = msg.elements();
         let values = if self.capture_all_fields {
-            self.extract_all_fields(&elem)
+            self.extract_all_fields(&elem, subscription_data.as_ref())
         } else {
-            self.extract_requested_fields(&elem)
+            self.extract_requested_fields(&elem, subscription_data.as_ref())
         };
 
         self.metrics
@@ -256,10 +276,19 @@ impl SubscriptionState {
             .unwrap_or(0)
     }
 
-    fn extract_requested_fields(&mut self, elem: &xbbg_core::Element<'_>) -> Vec<UpdateField> {
+    fn extract_requested_fields(
+        &mut self,
+        elem: &xbbg_core::Element<'_>,
+        subscription_data: Option<&Arc<str>>,
+    ) -> Vec<UpdateField> {
         let mut values = Vec::with_capacity(self.field_names.len());
         for idx in 0..self.field_names.len() {
-            let value = if self.invalid_dateortime_fields[idx] {
+            let value = if Some(idx as FieldIndex) == self.subscription_data_index {
+                subscription_data
+                    .cloned()
+                    .map(UpdateValue::Str)
+                    .unwrap_or(UpdateValue::Null)
+            } else if self.invalid_dateortime_fields[idx] {
                 UpdateValue::Null
             } else if let Some(field) = elem.get(&self.field_names[idx]) {
                 let datatype = field.datatype();
@@ -283,8 +312,13 @@ impl SubscriptionState {
         values
     }
 
-    fn extract_all_fields(&mut self, elem: &xbbg_core::Element<'_>) -> Vec<UpdateField> {
-        let mut values = Vec::with_capacity(elem.num_children());
+    fn extract_all_fields(
+        &mut self,
+        elem: &xbbg_core::Element<'_>,
+        subscription_data: Option<&Arc<str>>,
+    ) -> Vec<UpdateField> {
+        let mut values = Vec::with_capacity(elem.num_children() + 1);
+        self.push_subscription_data(&mut values, subscription_data);
         for child_idx in 0..elem.num_children() {
             let Some(child) = elem.get_at(child_idx) else {
                 continue;
@@ -321,6 +355,22 @@ impl SubscriptionState {
             values.push(UpdateField { index: idx, value });
         }
         values
+    }
+
+    fn push_subscription_data(
+        &mut self,
+        values: &mut Vec<UpdateField>,
+        subscription_data: Option<&Arc<str>>,
+    ) {
+        let Some(idx) = self.subscription_data_index else {
+            return;
+        };
+        let value = subscription_data
+            .cloned()
+            .map(UpdateValue::Str)
+            .unwrap_or(UpdateValue::Null);
+        self.observe_kind(idx, &value);
+        values.push(UpdateField { index: idx, value });
     }
 
     fn extract_child_value(
@@ -498,6 +548,33 @@ mod tests {
         for (field, name) in state.field_strings.iter().zip(state.field_names.iter()) {
             assert_eq!(name.as_str(), field.as_ref());
         }
+    }
+
+    #[test]
+    fn mktbar_topics_include_subscription_data_metadata() {
+        let (tx, _rx) = mpsc::channel(1);
+        let state = SubscriptionState::new(
+            "//blp/mktbar/ticker/EURUSD Curncy".to_string(),
+            vec!["LAST_PRICE".to_string()],
+            tx,
+            10,
+            false,
+        );
+
+        assert_eq!(
+            state
+                .field_strings
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                "LAST_PRICE".to_string(),
+                "MKTDATA_EVENT_TYPE".to_string(),
+                "MKTDATA_EVENT_SUBTYPE".to_string(),
+                "SUBSCRIPTION_DATA".to_string(),
+            ]
+        );
+        assert_eq!(state.subscription_data_index, Some(3));
     }
 
     #[test]
