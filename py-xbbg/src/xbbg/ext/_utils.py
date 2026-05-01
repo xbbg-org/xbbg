@@ -55,7 +55,6 @@ def _syncify(async_func: Callable[_P, Coroutine[Any, Any, _T]]) -> Callable[_P, 
     from synchronous code, bridge one-shot calls in notebooks, and fail clearly
     in other running event loops before creating an unawaited coroutine.
     """
-
     sync_name = async_func.__name__[1:] if async_func.__name__.startswith("a") else async_func.__name__
 
     @functools.wraps(async_func)
