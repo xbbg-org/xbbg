@@ -34,11 +34,23 @@ import xbbg
 
 Describe any alternative solutions or features you've considered.
 
+## Bloomberg Environment
+
+- **Bloomberg API package/version**: [if relevant, e.g., blpapi 3.26.1.1]
+- **Bloomberg connection/API mode**:
+  - [ ] DAPI / Desktop API / Terminal
+  - [ ] ZFP
+  - [ ] SAPI
+  - [ ] B-PIPE
+  - [ ] Other: [describe]
+
+Please redact credentials, tokens, account numbers, proprietary Bloomberg data, portfolio identifiers, and screenshots containing licensed data before posting.
+
 ## Additional Context
 
 - Is this feature available in Bloomberg Terminal/Excel?
 - Are there any related Bloomberg API functions that could support this?
-- Any other context, screenshots, or examples
+- Any other context, redacted screenshots, or examples that do not disclose proprietary Bloomberg data
 
 ## Checklist
 
