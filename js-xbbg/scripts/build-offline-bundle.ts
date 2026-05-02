@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import type { SpawnSyncOptions } from 'node:child_process';
+
 /*
  * Build an offline bundle zip for one @xbbg/core platform.
  *
@@ -13,47 +15,79 @@
  *
  * Requires: node, npm, zip (on PATH). Intended to run on Linux in CI.
  */
-'use strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+interface OfflineBundleArgs {
+  readonly label: string;
+  readonly 'out-dir': string;
+}
 
-function parseArgs(argv) {
-  const args = {};
+interface VersionedPackageJson {
+  readonly version: string;
+}
+
+function usageError(): never {
+  console.error('Usage: tsx ./scripts/build-offline-bundle.ts --label <platform> --out-dir <dir>');
+  process.exit(2);
+}
+
+function parseArgs(argv: readonly string[]): OfflineBundleArgs {
+  const args: Partial<Record<keyof OfflineBundleArgs, string>> = {};
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i];
     if (key === '--label' || key === '--out-dir') {
-      args[key.slice(2)] = argv[i + 1];
+      const value = argv[i + 1];
+      if (value === undefined) {
+        usageError();
+      }
+      if (key === '--label') {
+        args.label = value;
+      } else {
+        args['out-dir'] = value;
+      }
       i += 1;
     }
   }
-  if (!args.label || !args['out-dir']) {
-    console.error('Usage: build-offline-bundle.js --label <platform> --out-dir <dir>');
-    process.exit(2);
+  if (args.label === undefined || args['out-dir'] === undefined) {
+    usageError();
   }
-  return args;
+  return { label: args.label, 'out-dir': args['out-dir'] };
 }
 
-function run(cmd, cmdArgs, opts = {}) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readVersionedPackageJson(packageJsonPath: string): VersionedPackageJson {
+  const packageJson: unknown = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  if (!isRecord(packageJson) || typeof packageJson.version !== 'string') {
+    throw new Error(`Expected package.json with string version: ${packageJsonPath}`);
+  }
+  return { version: packageJson.version };
+}
+
+function run(cmd: string, cmdArgs: readonly string[], opts: SpawnSyncOptions = {}): void {
   const result = spawnSync(cmd, cmdArgs, { stdio: 'inherit', ...opts });
-  if (result.error) throw result.error;
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
     throw new Error(`${cmd} ${cmdArgs.join(' ')} exited with status ${result.status}`);
   }
 }
 
-function main() {
+function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const { label } = args;
   const jsPackageDir = path.resolve(__dirname, '..');
-  const repoRoot = path.resolve(jsPackageDir, '..');
   const outDir = path.resolve(args['out-dir']);
   const corePkgDir = path.join(jsPackageDir, 'packages', `xbbg-core-${label}`);
 
-  const corePkg = JSON.parse(fs.readFileSync(path.join(jsPackageDir, 'package.json'), 'utf8'));
-  const platPkg = JSON.parse(fs.readFileSync(path.join(corePkgDir, 'package.json'), 'utf8'));
+  const corePkg = readVersionedPackageJson(path.join(jsPackageDir, 'package.json'));
+  const platPkg = readVersionedPackageJson(path.join(corePkgDir, 'package.json'));
   if (corePkg.version !== platPkg.version) {
     throw new Error(
       `Version mismatch: @xbbg/core is ${corePkg.version} but @xbbg/core-${label} is ${platPkg.version}`,
@@ -83,13 +117,13 @@ function main() {
     path.join(bundle, 'package.json'),
     `${JSON.stringify(
       {
-        name: `xbbg-offline-${label}-bundle`,
-        private: true,
-        type: 'commonjs',
         dependencies: {
           '@xbbg/core': `file:../tarballs/${coreTgz}`,
           [`@xbbg/core-${label}`]: `file:../tarballs/${platTgz}`,
         },
+        name: `xbbg-offline-${label}-bundle`,
+        private: true,
+        type: 'commonjs',
       },
       null,
       2,
@@ -97,7 +131,7 @@ function main() {
   );
 
   // --force bypasses npm's os/cpu check for @xbbg/core-<label> when
-  // bundling cross-platform (e.g. assembling a win32-x64 bundle on a
+  // Bundling cross-platform (e.g. assembling a win32-x64 bundle on a
   // Linux runner). The bundle is never executed on the install host.
   run(
     'npm',
@@ -165,7 +199,9 @@ function main() {
 
   const zipName = `xbbg-offline-${label}-${version}.zip`;
   const zipPath = path.join(outDir, zipName);
-  if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+  if (fs.existsSync(zipPath)) {
+    fs.unlinkSync(zipPath);
+  }
   run('zip', ['-r', '-q', zipPath, 'bundle', 'tarballs', 'README.txt'], { cwd: work });
 
   console.log(`Wrote ${zipPath}`);

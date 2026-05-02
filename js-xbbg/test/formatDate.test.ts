@@ -1,13 +1,11 @@
-import { describe, expect, it } from 'vitest';
-
-// formatDate / formatDateTime live in src/dates.ts so they can be unit-tested
-// without loading the native NAPI addon (which fails outside a built env).
+// FormatDate / formatDateTime live in src/dates.ts so they can be unit-tested
+// Without loading the native NAPI addon (which fails outside a built env).
 import { formatDate, formatDateTime } from '../src/dates';
 
 class DuckDateTime {
-  constructor(private readonly _dt: Date) {}
+  constructor(private readonly dt: Date) {}
   toJSDate(): Date {
-    return this._dt;
+    return this.dt;
   }
 }
 
@@ -52,9 +50,7 @@ describe('formatDateTime (#317)', () => {
   });
 
   it('preserves tz-aware ISO strings', () => {
-    expect(formatDateTime('2023-01-17T10:30:00-05:00')).toBe(
-      '2023-01-17T10:30:00-05:00',
-    );
+    expect(formatDateTime('2023-01-17T10:30:00-05:00')).toBe('2023-01-17T10:30:00-05:00');
   });
 
   it('expands Bloomberg-native to ISO midnight', () => {

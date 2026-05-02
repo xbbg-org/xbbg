@@ -1,25 +1,40 @@
 #!/usr/bin/env node
 
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
-const { platformKey, platformPackages } = require('./platform-map.cjs');
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { platformKey, platformPackages } from './platform-map';
+
+interface RunOptions {
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+interface NpmInvocation {
+  readonly args: string[];
+  readonly command: string;
+}
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const npmExecPath = process.env.npm_execpath;
 const packedMode = process.argv.includes('--packed');
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`js-xbbg packaged-install smoke failed: ${message}`);
   process.exit(1);
 }
 
-function packageDirName(packageName) {
+function packageDirName(packageName: string): string {
   return packageName.replace('@xbbg/', 'xbbg-');
 }
 
-function run(command, args, options = {}) {
+function outputText(output: string | Buffer | null | undefined): string {
+  return typeof output === 'string' ? output : (output?.toString('utf8') ?? '');
+}
+
+function run(command: string, args: readonly string[], options: RunOptions = {}): void {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,
@@ -30,55 +45,60 @@ function run(command, args, options = {}) {
     throw result.error;
   }
   if (result.status !== 0) {
-    process.exit(result.status || 1);
+    process.exit(result.status ?? 1);
   }
 }
 
-function runCapture(command, args, options = {}) {
+function runCapture(command: string, args: readonly string[], options: RunOptions = {}): string {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
-    env: options.env,
     encoding: 'utf8',
+    env: options.env,
     windowsHide: true,
   });
   if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
-    process.stderr.write(result.stderr || '');
-    process.exit(result.status || 1);
+    process.stderr.write(outputText(result.stderr));
+    process.exit(result.status ?? 1);
   }
-  const lines = (result.stdout || '')
+  const lines = outputText(result.stdout)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  return lines.at(-1) || '';
+  return lines.at(-1) ?? '';
 }
 
-function npmCommand(args) {
-  if (npmExecPath) {
-    return { command: process.execPath, args: [npmExecPath, ...args] };
+function resolvePlatformPackageName(key: string): string | null {
+  const match = Object.entries(platformPackages).find(([platformName]) => platformName === key);
+  return match?.[1] ?? null;
+}
+
+function npmCommand(args: readonly string[]): NpmInvocation {
+  if (npmExecPath !== undefined && npmExecPath.length > 0) {
+    return { args: [npmExecPath, ...args], command: process.execPath };
   }
   if (process.platform === 'win32') {
     return {
-      command: process.env.ComSpec || 'cmd.exe',
       args: ['/d', '/s', '/c', 'npm.cmd', ...args],
+      command: process.env.ComSpec ?? 'cmd.exe',
     };
   }
-  return { command: 'npm', args };
+  return { args: [...args], command: 'npm' };
 }
 
-function runNpm(args, options = {}) {
+function runNpm(args: readonly string[], options: RunOptions = {}): void {
   const invocation = npmCommand(args);
   run(invocation.command, invocation.args, options);
 }
 
-function runNpmCapture(args, options = {}) {
+function runNpmCapture(args: readonly string[], options: RunOptions = {}): string {
   const invocation = npmCommand(args);
   return runCapture(invocation.command, invocation.args, options);
 }
 
-function resolveVendoredSdkRoot() {
+function resolveVendoredSdkRoot(): string | null {
   const vendorDir = path.join(repoRoot, 'vendor', 'blpapi-sdk');
   if (!fs.existsSync(vendorDir)) {
     return null;
@@ -88,28 +108,39 @@ function resolveVendoredSdkRoot() {
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(vendorDir, entry.name))
     .filter((dir) => fs.existsSync(path.join(dir, 'bin')) || fs.existsSync(path.join(dir, 'lib')))
-    .sort();
-  return candidates.at(-1) || null;
+    .toSorted();
+  return candidates.at(-1) ?? null;
 }
 
-function smokeRuntimeEnv() {
+function smokeRuntimeEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  if (env.BLPAPI_ROOT && !path.isAbsolute(env.BLPAPI_ROOT)) {
+  if (
+    env.BLPAPI_ROOT !== undefined &&
+    env.BLPAPI_ROOT.length > 0 &&
+    !path.isAbsolute(env.BLPAPI_ROOT)
+  ) {
     env.BLPAPI_ROOT = path.resolve(repoRoot, env.BLPAPI_ROOT);
   }
-  if (env.XBBG_DEV_SDK_ROOT && !path.isAbsolute(env.XBBG_DEV_SDK_ROOT)) {
+  if (
+    env.XBBG_DEV_SDK_ROOT !== undefined &&
+    env.XBBG_DEV_SDK_ROOT.length > 0 &&
+    !path.isAbsolute(env.XBBG_DEV_SDK_ROOT)
+  ) {
     env.XBBG_DEV_SDK_ROOT = path.resolve(repoRoot, env.XBBG_DEV_SDK_ROOT);
   }
-  if (!env.BLPAPI_ROOT && !env.XBBG_DEV_SDK_ROOT) {
+  if (
+    (env.BLPAPI_ROOT === undefined || env.BLPAPI_ROOT.length === 0) &&
+    (env.XBBG_DEV_SDK_ROOT === undefined || env.XBBG_DEV_SDK_ROOT.length === 0)
+  ) {
     const sdkRoot = resolveVendoredSdkRoot();
-    if (sdkRoot) {
+    if (sdkRoot !== null) {
       env.BLPAPI_ROOT = sdkRoot;
     }
   }
   return env;
 }
 
-function smokeRequire(appDir) {
+function smokeRequire(appDir: string): void {
   run(
     process.execPath,
     [
@@ -120,24 +151,19 @@ function smokeRequire(appDir) {
   );
 }
 
-function smokeSourceInstall(jsPackageDir) {
+function smokeSourceInstall(jsPackageDir: string): void {
   const appDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xbbg-source-install-'));
   runNpm(['init', '-y'], { cwd: appDir, env: process.env });
   runNpm(['install', jsPackageDir], { cwd: appDir, env: process.env });
   smokeRequire(appDir);
 }
 
-function smokePackedInstall(jsPackageDir, platformPackageDir) {
-  const packDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), 'xbbg-packaged-install-'),
-  );
-  const coreTarball = runNpmCapture(
-    ['pack', jsPackageDir, '--pack-destination', packDir],
-    {
-      cwd: repoRoot,
-      env: process.env,
-    },
-  );
+function smokePackedInstall(jsPackageDir: string, platformPackageDir: string): void {
+  const packDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xbbg-packaged-install-'));
+  const coreTarball = runNpmCapture(['pack', jsPackageDir, '--pack-destination', packDir], {
+    cwd: repoRoot,
+    env: process.env,
+  });
   const platformTarball = runNpmCapture(
     ['pack', platformPackageDir, '--pack-destination', packDir],
     { cwd: repoRoot, env: process.env },
@@ -145,21 +171,17 @@ function smokePackedInstall(jsPackageDir, platformPackageDir) {
 
   const appDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xbbg-packed-install-'));
   runNpm(['init', '-y'], { cwd: appDir, env: process.env });
-  runNpm(
-    [
-      'install',
-      path.join(packDir, platformTarball),
-      path.join(packDir, coreTarball),
-    ],
-    { cwd: appDir, env: process.env },
-  );
+  runNpm(['install', path.join(packDir, platformTarball), path.join(packDir, coreTarball)], {
+    cwd: appDir,
+    env: process.env,
+  });
   smokeRequire(appDir);
 }
 
-function main() {
+function main(): void {
   const currentKey = platformKey();
-  const currentPackageName = platformPackages[currentKey];
-  if (!currentPackageName) {
+  const currentPackageName = resolvePlatformPackageName(currentKey);
+  if (currentPackageName === null) {
     fail(`unsupported platform for smoke test: ${currentKey}`);
   }
 

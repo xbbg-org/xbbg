@@ -46,8 +46,8 @@ cargo build -p napi-xbbg
 # Stage the current platform package template with the built addon
 npm --prefix js-xbbg run stage:native-package
 
-# Run JS smoke test from js-xbbg/
-npm test
+# Run package smoke tests from js-xbbg/
+npm run test:smoke
 ```
 
 The JS package automatically loads a local `js-xbbg/napi_xbbg.node` addon first, then falls back to packaged optional native dependencies for supported platforms.
@@ -78,7 +78,7 @@ Pass `{ allFields: true }` to `stream()` / `subscribe()` / service stream helper
 
 ### Subscription replay benchmark
 
-`npm run bench:subscription-replay` is a JS-only benchmark for one-update-at-a-time subscription processing. It does not change the production streaming API and does not batch updates by default. Use `--path legacy` for the original encode+decode measurement, `--path arrow-decode-only` to exclude benchmark-only IPC encoding from timed results, and `--path subscription-wrapper` to time the current JS `Subscription.next()` wrapper with fake native zero-copy descriptors. `--consume rows|vector|schema|none` controls how much decoded output is touched; `rows` remains the default for continuity with prior results. Use `--warmup-iterations N` for untimed replay warmup. Live capture exercises the default native subscription path and prints `sub.stats` telemetry; unsupported-schema diagnostics are surfaced when the native stream returns a schema the zero-copy bridge cannot describe.
+`npm run bench:subscription-replay` is a TypeScript benchmark script for one-update-at-a-time subscription processing. It does not change the production streaming API and does not batch updates by default. Use `--path legacy` for the original encode+decode measurement, `--path arrow-decode-only` to exclude benchmark-only IPC encoding from timed results, and `--path subscription-wrapper` to time the current JS `Subscription.next()` wrapper with fake native zero-copy descriptors. `--consume rows|vector|schema|none` controls how much decoded output is touched; `rows` remains the default for continuity with prior results. Use `--warmup-iterations N` for untimed replay warmup. Live capture exercises the default native subscription path and prints `sub.stats` telemetry; unsupported-schema diagnostics are surfaced when the native stream returns a schema the zero-copy bridge cannot describe.
 
 ```bash
 # Synthetic one-update replay, no Bloomberg connection needed; row materialization is the default
@@ -137,7 +137,11 @@ const hist = await xbbg.blp.abdh(['AAPL US Equity'], ['PX_LAST'], '2024-01-01', 
 const ref = await xbbg.blp.abdp(['AAPL US Equity'], ['PX_LAST', 'SECURITY_NAME']);
 const bulk = await xbbg.blp.abds(['ES1 Index'], ['FUT_CHAIN_LAST_TRADE_DATES']);
 const bars = await xbbg.blp.abdib('AAPL US Equity', '2024-12-01', 5);
-const ticks = await xbbg.blp.abdtick('AAPL US Equity', '2024-12-01T09:30:00', '2024-12-01T10:00:00');
+const ticks = await xbbg.blp.abdtick(
+  'AAPL US Equity',
+  '2024-12-01T09:30:00',
+  '2024-12-01T10:00:00',
+);
 
 // Live streaming
 const sub = await xbbg.blp.asubscribe(['AAPL US Equity'], ['LAST_PRICE', 'BID', 'ASK']);

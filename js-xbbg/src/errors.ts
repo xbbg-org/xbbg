@@ -54,11 +54,7 @@ export function wrapError(napiError: unknown): BlpError {
     return napiError;
   }
   const msg =
-    napiError instanceof Error
-      ? napiError.message
-      : typeof napiError === 'string'
-        ? napiError
-        : '';
+    napiError instanceof Error ? napiError.message : typeof napiError === 'string' ? napiError : '';
 
   // Session errors
   if (

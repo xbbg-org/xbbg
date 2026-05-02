@@ -12,11 +12,7 @@
  * - `number` — epoch milliseconds.
  * - duck-typed Luxon `DateTime` — anything implementing `toJSDate()`.
  */
-export type DateLike =
-  | Date
-  | string
-  | number
-  | { toJSDate: () => Date };
+export type DateLike = Date | string | number | { toJSDate: () => Date };
 
 /**
  * Datetime-like input. Same shape as `DateLike` today; named separately so the

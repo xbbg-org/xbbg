@@ -228,8 +228,11 @@ jobs:
           echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
       - name: Stage @xbbg/core native package
-        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ needs.release-version.outputs.tag }}"
+        run: npm --prefix js-xbbg run stage:native-package -- --build --release --version "${{ needs.release-version.outputs.tag }}"
 
       - name: Upload staged native package artifact
         uses: actions/upload-artifact@v7
@@ -283,7 +286,7 @@ jobs:
         run: npm ci --prefix js-xbbg
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.release-version.outputs.tag }}"
+        run: npm --prefix js-xbbg run stamp:version -- "${{ needs.release-version.outputs.tag }}"
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux

@@ -1,18 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-
-import { describe, expect, it } from 'vitest';
 
 import packageJson from '../package.json';
+import { platformPackages as toolPlatformPackages } from '../scripts/platform-map';
 import { platformPackages } from '../src/native/platform-map';
 import { resolveNativeAddonCore } from '../src/native/resolve-native';
-
-const requireFromHere = createRequire(__filename);
-const cjsPlatformMap = requireFromHere('../scripts/platform-map.cjs') as {
-  readonly platformPackages: Readonly<Record<string, string>>;
-};
 
 const key = 'linux-x64';
 const packageName = '@xbbg/core-linux-x64';
@@ -28,7 +21,7 @@ function withTempRepo(fn: (repoRoot: string) => void): void {
   try {
     fn(repoRoot);
   } finally {
-    fs.rmSync(repoRoot, { recursive: true, force: true });
+    fs.rmSync(repoRoot, { force: true, recursive: true });
   }
 }
 
@@ -36,20 +29,20 @@ function localIndexPath(repoRoot: string): string {
   return path.join(repoRoot, 'packages', 'xbbg-core-linux-x64', 'index.js');
 }
 
-describe('resolveNativeAddonCore', () => {
+describe(resolveNativeAddonCore, () => {
   it('falls back when the target optional package is absent', () => {
     withTempRepo((repoRoot) => {
       const resolution = resolveNativeAddonCore({
+        exists: () => false,
         key,
         packageName,
         repoRoot,
         requirePackage: (id) => {
           throw moduleNotFound(`Cannot find module '${id}'`);
         },
-        exists: () => false,
       });
 
-      expect(resolution).toEqual({ key, packageName, binaryPath: null });
+      expect(resolution).toStrictEqual({ binaryPath: null, key, packageName });
     });
   });
 
@@ -59,13 +52,13 @@ describe('resolveNativeAddonCore', () => {
 
       expect(() =>
         resolveNativeAddonCore({
+          exists: () => false,
           key,
           packageName,
           repoRoot,
           requirePackage: () => {
             throw nested;
           },
-          exists: () => false,
         }),
       ).toThrow(nested);
     });
@@ -75,11 +68,11 @@ describe('resolveNativeAddonCore', () => {
     withTempRepo((repoRoot) => {
       expect(() =>
         resolveNativeAddonCore({
+          exists: () => true,
           key,
           packageName,
           repoRoot,
           requirePackage: () => null,
-          exists: () => true,
         }),
       ).toThrow(`Invalid native package ${packageName}: expected an object with binaryPath`);
     });
@@ -89,11 +82,11 @@ describe('resolveNativeAddonCore', () => {
     withTempRepo((repoRoot) => {
       expect(() =>
         resolveNativeAddonCore({
+          exists: () => true,
           key,
           packageName,
           repoRoot,
           requirePackage: () => ({}),
-          exists: () => true,
         }),
       ).toThrow(`Invalid native package ${packageName}: missing binaryPath`);
     });
@@ -105,26 +98,28 @@ describe('resolveNativeAddonCore', () => {
 
       expect(() =>
         resolveNativeAddonCore({
+          exists: () => false,
           key,
           packageName,
           repoRoot,
           requirePackage: () => ({ binaryPath: missingBinary }),
-          exists: () => false,
         }),
-      ).toThrow(`Invalid native package ${packageName}: binaryPath does not exist: ${missingBinary}`);
+      ).toThrow(
+        `Invalid native package ${packageName}: binaryPath does not exist: ${missingBinary}`,
+      );
     });
   });
 
   it('treats an absent local package index as a benign fallback', () => {
     withTempRepo((repoRoot) => {
       const resolution = resolveNativeAddonCore({
+        exists: () => false,
         key,
         packageName,
         repoRoot,
         requirePackage: (id) => {
           throw moduleNotFound(`Cannot find module '${id}'`);
         },
-        exists: () => false,
       });
 
       expect(resolution.binaryPath).toBeNull();
@@ -135,6 +130,7 @@ describe('resolveNativeAddonCore', () => {
     withTempRepo((repoRoot) => {
       expect(() =>
         resolveNativeAddonCore({
+          exists: (target) => target === localIndexPath(repoRoot),
           key,
           packageName,
           repoRoot,
@@ -144,7 +140,6 @@ describe('resolveNativeAddonCore', () => {
             }
             return 'not an object';
           },
-          exists: (target) => target === localIndexPath(repoRoot),
         }),
       ).toThrow(`Invalid native package ${packageName}: expected an object with binaryPath`);
     });
@@ -154,6 +149,7 @@ describe('resolveNativeAddonCore', () => {
     withTempRepo((repoRoot) => {
       expect(() =>
         resolveNativeAddonCore({
+          exists: (target) => target === localIndexPath(repoRoot),
           key,
           packageName,
           repoRoot,
@@ -163,7 +159,6 @@ describe('resolveNativeAddonCore', () => {
             }
             return {};
           },
-          exists: (target) => target === localIndexPath(repoRoot),
         }),
       ).toThrow(`Invalid native package ${packageName}: missing binaryPath`);
     });
@@ -173,6 +168,7 @@ describe('resolveNativeAddonCore', () => {
     withTempRepo((repoRoot) => {
       expect(() =>
         resolveNativeAddonCore({
+          exists: (target) => target === localIndexPath(repoRoot),
           key,
           packageName,
           repoRoot,
@@ -182,7 +178,6 @@ describe('resolveNativeAddonCore', () => {
             }
             return { binaryPath: 123 };
           },
-          exists: (target) => target === localIndexPath(repoRoot),
         }),
       ).toThrow(`Invalid native package ${packageName}: binaryPath must be a string`);
     });
@@ -194,6 +189,7 @@ describe('resolveNativeAddonCore', () => {
 
       expect(() =>
         resolveNativeAddonCore({
+          exists: (target) => target === localIndexPath(repoRoot),
           key,
           packageName,
           repoRoot,
@@ -203,9 +199,10 @@ describe('resolveNativeAddonCore', () => {
             }
             return { binaryPath: missingBinary };
           },
-          exists: (target) => target === localIndexPath(repoRoot),
         }),
-      ).toThrow(`Invalid native package ${packageName}: binaryPath does not exist: ${missingBinary}`);
+      ).toThrow(
+        `Invalid native package ${packageName}: binaryPath does not exist: ${missingBinary}`,
+      );
     });
   });
 
@@ -215,6 +212,7 @@ describe('resolveNativeAddonCore', () => {
       fs.writeFileSync(binaryPath, 'fake native binary');
 
       const resolution = resolveNativeAddonCore({
+        exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
         key,
         packageName,
         repoRoot,
@@ -224,10 +222,9 @@ describe('resolveNativeAddonCore', () => {
           }
           return { binaryPath };
         },
-        exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
       });
 
-      expect(resolution).toEqual({ key, packageName, binaryPath });
+      expect(resolution).toStrictEqual({ binaryPath, key, packageName });
     });
   });
 
@@ -239,6 +236,7 @@ describe('resolveNativeAddonCore', () => {
       fs.writeFileSync(localBinary, 'fake local native binary');
 
       const resolution = resolveNativeAddonCore({
+        exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
         key,
         packageName,
         repoRoot,
@@ -248,36 +246,35 @@ describe('resolveNativeAddonCore', () => {
           }
           throw new Error(`local package should not be required: ${id}`);
         },
-        exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
       });
 
-      expect(resolution).toEqual({ key, packageName, binaryPath: installedBinary });
+      expect(resolution).toStrictEqual({ binaryPath: installedBinary, key, packageName });
     });
   });
 
   it('returns a null package and binary for unsupported platforms', () => {
     const resolution = resolveNativeAddonCore({
+      exists: () => false,
       key: 'freebsd-x64',
       packageName: null,
       repoRoot: os.tmpdir(),
       requirePackage: () => {
         throw new Error('should not require unsupported package');
       },
-      exists: () => false,
     });
 
-    expect(resolution).toEqual({ key: 'freebsd-x64', packageName: null, binaryPath: null });
+    expect(resolution).toStrictEqual({ binaryPath: null, key: 'freebsd-x64', packageName: null });
   });
 });
 
 describe('platform map packaging metadata', () => {
-  it('keeps TypeScript and CommonJS platform maps in sync', () => {
-    expect(cjsPlatformMap.platformPackages).toEqual(platformPackages);
+  it('keeps source and script platform maps in sync', () => {
+    expect(toolPlatformPackages).toStrictEqual(platformPackages);
   });
 
   it('keeps optional dependency keys in sync with platform packages', () => {
-    expect(Object.keys(packageJson.optionalDependencies).sort()).toEqual(
-      Object.values(platformPackages).sort(),
+    expect(Object.keys(packageJson.optionalDependencies).toSorted()).toStrictEqual(
+      Object.values(platformPackages).toSorted(),
     );
   });
 });
