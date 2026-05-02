@@ -97,8 +97,6 @@ coverage.xml
 *.mo
 *.pot
 
-# Archived documentation builds
-archive/docs/_build/
 
 # PyBuilder (target/ also used by Cargo - see above)
 
