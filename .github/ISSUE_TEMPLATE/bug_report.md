@@ -45,9 +45,9 @@ Paste the full error message or traceback here
 - **xbbg version**: [e.g., 1.0.0]
 - **Python version**: [e.g., 3.11.5]
 - **Operating System**: [e.g., Windows 11, Ubuntu 22.04, macOS 14]
-- **Bloomberg API version**: [e.g., blpapi 3.20.0]
-- **Connection type**:
-  - [ ] DAPI / Terminal
+- **Bloomberg API package/version**: [e.g., blpapi 3.26.1.1]
+- **Bloomberg connection/API mode**:
+  - [ ] DAPI / Desktop API / Terminal
   - [ ] ZFP
   - [ ] SAPI
   - [ ] B-PIPE
@@ -55,12 +55,16 @@ Paste the full error message or traceback here
 - **xbbg backend requested**: [e.g., default `narwhals`, `native`, `pyarrow`, `pandas`, `polars`, `duckdb`]
 - **Optional conversion backend versions**: [if used, e.g., pandas 2.2.3, polars 1.35.0, duckdb 1.2.0, narwhals 2.0.0]
 
+Please redact credentials, tokens, account numbers, proprietary Bloomberg data, portfolio identifiers, and screenshots containing licensed data before posting.
+
 ## Additional Context
 
 Add any other context about the problem here, such as:
 
-- Bloomberg terminal version
-- Network configuration
+- Bloomberg Terminal version, if using DAPI/Desktop API
+- Bloomberg service/operation or Terminal function, if known [e.g., `//blp/refdata`, `ReferenceDataRequest`, PORT]
+- Whether the same security/field/request works in Bloomberg Terminal, Excel, or raw `blpapi`
+- Network/auth details that are safe to share [e.g., ZFP, SAPI app auth, B-PIPE TLS; do not include credentials, tokens, private keys, portfolio IDs, or licensed data]
 - Any workarounds you've tried
 
 ## Checklist
