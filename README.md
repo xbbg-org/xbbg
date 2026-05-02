@@ -1,11 +1,12 @@
 <!-- markdownlint-disable MD013 MD031 MD032 MD033 MD036 MD041 MD051 MD060 -->
 <div align="center">
 
-<h1>xbbg</h1>
+<p>
+  <a href="https://xbbg.org/python/quickstart">
+    <img src=".github/assets/readme-hero.svg" alt="xbbg banner: Intuitive APIs for market data, Rust engine, shared core, typed requests, clear shapes, clear outputs, Arrow-native" width="100%">
+  </a>
+</p>
 
-<!-- markdownlint-disable MD036 -->
-**xbbg: Market Data Workflows Built for Humans (and AI)**
-<!-- markdownlint-enable MD036 -->
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
