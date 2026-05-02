@@ -539,7 +539,7 @@ jobs:
         run: |
           mkdir -p dist-offline
           for label in linux-x64 win32-x64 darwin-arm64; do
-            node js-xbbg/scripts/build-offline-bundle.js --label "$label" --out-dir dist-offline
+            npm --prefix js-xbbg run build:offline-bundle -- --label "$label" --out-dir dist-offline
           done
           ls -1 dist-offline
 

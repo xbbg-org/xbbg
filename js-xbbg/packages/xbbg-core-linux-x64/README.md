@@ -15,7 +15,9 @@ Direct installation of `@xbbg/core-linux-x64` is only recommended for diagnostic
 ## Contents
 
 - `index.js`
+- `index.d.ts`
 - `napi_xbbg.node`
+- `LICENSE`
 - `package.json` and `README.md`
 
 ## Runtime requirements

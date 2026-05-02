@@ -106,15 +106,8 @@ export interface NativeEngine {
   invalidateSchema(service: string): void;
   clearSchemaCache(): void;
   listCachedSchemas(): string[];
-  getEnumValues(
-    service: string,
-    operation: string,
-    element: string,
-  ): Promise<string[] | null>;
-  listValidElements(
-    service: string,
-    operation: string,
-  ): Promise<string[] | null>;
+  getEnumValues(service: string, operation: string, element: string): Promise<string[] | null>;
+  listValidElements(service: string, operation: string): Promise<string[] | null>;
   subscribe(
     tickers: readonly string[],
     fields: readonly string[],
@@ -151,32 +144,17 @@ export interface NativeEngine {
     price: number | undefined,
     benchmark: string | undefined,
   ): Promise<Buffer>;
-  recipePreferreds(
-    equityTicker: string,
-    fields: readonly string[] | null,
-  ): Promise<Buffer>;
+  recipePreferreds(equityTicker: string, fields: readonly string[] | null): Promise<Buffer>;
   recipeCorporateBonds(
     ticker: string,
     ccy: string | undefined,
     fields: readonly string[] | null,
     activeOnly: boolean,
   ): Promise<Buffer>;
-  recipeFutTicker(
-    genTicker: string,
-    dt: string,
-    freq: string | undefined,
-  ): Promise<Buffer>;
-  recipeActiveFutures(
-    genTicker: string,
-    dt: string,
-    freq: string | undefined,
-  ): Promise<Buffer>;
+  recipeFutTicker(genTicker: string, dt: string, freq: string | undefined): Promise<Buffer>;
+  recipeActiveFutures(genTicker: string, dt: string, freq: string | undefined): Promise<Buffer>;
   recipeCdxTicker(genTicker: string, dt: string): Promise<Buffer>;
-  recipeActiveCdx(
-    genTicker: string,
-    dt: string,
-    lookbackDays: number | undefined,
-  ): Promise<Buffer>;
+  recipeActiveCdx(genTicker: string, dt: string, lookbackDays: number | undefined): Promise<Buffer>;
   recipeDividend(
     tickers: readonly string[],
     startDate: string,
@@ -190,10 +168,7 @@ export interface NativeEngine {
     ccy: string | undefined,
     factor: number | undefined,
   ): Promise<Buffer>;
-  recipeEtfHoldings(
-    etfTicker: string,
-    fields: readonly string[] | null,
-  ): Promise<Buffer>;
+  recipeEtfHoldings(etfTicker: string, fields: readonly string[] | null): Promise<Buffer>;
   recipeCurrencyConversion(
     ticker: string,
     targetCcy: string,
@@ -223,12 +198,7 @@ export interface NativeAddon {
   // Ticker utilities
   extParseTicker: (ticker: string) => TickerParts;
   extIsSpecificContract: (ticker: string) => boolean;
-  extBuildFuturesTicker: (
-    prefix: string,
-    monthCode: string,
-    year: string,
-    asset: string,
-  ) => string;
+  extBuildFuturesTicker: (prefix: string, monthCode: string, year: string, asset: string) => string;
   extNormalizeTickers: (tickers: readonly string[]) => string[];
   extFilterEquityTickers: (tickers: readonly string[]) => string[];
 
@@ -262,10 +232,7 @@ export interface NativeAddon {
   // Currency utilities
   extBuildFxPair: (fromCcy: string, toCcy: string) => FxPairInfo;
   extSameCurrency: (ccy1: string, ccy2: string) => boolean;
-  extCurrenciesNeedingConversion: (
-    currencies: readonly string[],
-    target: string,
-  ) => string[];
+  extCurrenciesNeedingConversion: (currencies: readonly string[], target: string) => string[];
 
   // Column renaming
   extRenameDividendColumns: (columns: readonly string[]) => StringPair[];
@@ -301,30 +268,18 @@ export interface NativeAddon {
   ) => (number | null)[];
 
   // BQL query builders
-  extBuildPreferredsQuery: (
-    equityTicker: string,
-    extraFields?: readonly string[],
-  ) => string;
+  extBuildPreferredsQuery: (equityTicker: string, extraFields?: readonly string[]) => string;
   extBuildCorporateBondsQuery: (
     ticker: string,
     ccy?: string,
     extraFields?: readonly string[],
     activeOnly?: boolean,
   ) => string;
-  extBuildEtfHoldingsQuery: (
-    etfTicker: string,
-    extraFields?: readonly string[],
-  ) => string;
+  extBuildEtfHoldingsQuery: (etfTicker: string, extraFields?: readonly string[]) => string;
 
   // DateTime defaults
-  extDefaultTurnoverDates: (
-    startDate?: string,
-    endDate?: string,
-  ) => TimeRange;
-  extDefaultBqrDatetimes: (
-    startDatetime?: string,
-    endDatetime?: string,
-  ) => TimeRange;
+  extDefaultTurnoverDates: (startDate?: string, endDate?: string) => TimeRange;
+  extDefaultBqrDatetimes: (startDatetime?: string, endDatetime?: string) => TimeRange;
 
   // Markets — sessions & timezone
   extDeriveSessions: (
@@ -335,10 +290,7 @@ export interface NativeAddon {
   ) => SessionWindowsInfo;
   extGetMarketRule: (mic?: string, exchCode?: string) => MarketRule | null;
   extInferTimezone: (countryIso: string) => string | null;
-  extSetExchangeOverride: (
-    ticker: string,
-    input: ExchangeOverrideInput,
-  ) => void;
+  extSetExchangeOverride: (ticker: string, input: ExchangeOverrideInput) => void;
   extGetExchangeOverride: (ticker: string) => ExchangeInfoResult | null;
   extClearExchangeOverride: (ticker?: string) => void;
   extListExchangeOverrides: () => ExchangeInfoResult[];

@@ -243,8 +243,11 @@ jobs:
           echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
       - name: Stage @xbbg/core native package
-        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ needs.prepare.outputs.version }}"
+        run: npm --prefix js-xbbg run stage:native-package -- --build --release --version "${{ needs.prepare.outputs.version }}"
 
       - name: Upload staged core package artifact
         uses: actions/upload-artifact@v4
@@ -287,13 +290,13 @@ jobs:
         run: npm ci --prefix js-xbbg
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+        run: npm --prefix js-xbbg run stamp:version -- "${{ needs.prepare.outputs.version }}"
 
       - name: Build offline bundles
         run: |
           mkdir -p dist-offline
           for label in linux-x64 win32-x64 darwin-arm64; do
-            node js-xbbg/scripts/build-offline-bundle.js --label "$label" --out-dir dist-offline
+            npm --prefix js-xbbg run build:offline-bundle -- --label "$label" --out-dir dist-offline
           done
           ls -1 dist-offline
 
@@ -338,7 +341,7 @@ jobs:
         run: npm ci --prefix js-xbbg
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+        run: npm --prefix js-xbbg run stamp:version -- "${{ needs.prepare.outputs.version }}"
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux

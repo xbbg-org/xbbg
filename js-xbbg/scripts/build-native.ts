@@ -1,11 +1,16 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const packageDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(packageDir, '..');
 
-function exists(target) {
+interface SdkLayout {
+  readonly sdkLibDir: string;
+  readonly sdkRoot: string;
+}
+
+function exists(target: fs.PathLike): boolean {
   try {
     fs.accessSync(target);
     return true;
@@ -14,14 +19,12 @@ function exists(target) {
   }
 }
 
-function parseVersionParts(name) {
+function parseVersionParts(name: string): number[] | null {
   const parts = name.split('.').map((part) => Number(part));
-  return parts.every((part) => Number.isInteger(part) && part >= 0)
-    ? parts
-    : null;
+  return parts.every((part) => Number.isInteger(part) && part >= 0) ? parts : null;
 }
 
-function compareSdkRoots(left, right) {
+function compareSdkRoots(left: string, right: string): number {
   const leftParts = parseVersionParts(path.basename(left));
   const rightParts = parseVersionParts(path.basename(right));
   if (leftParts && rightParts) {
@@ -34,36 +37,28 @@ function compareSdkRoots(left, right) {
       }
     }
   }
-  if (leftParts) return -1;
-  if (rightParts) return 1;
+  if (leftParts) {
+    return -1;
+  }
+  if (rightParts) {
+    return 1;
+  }
   return right.localeCompare(left);
 }
 
-function resolveSdkLibDir(sdkRoot) {
+function resolveSdkLibDir(sdkRoot: string): string | null {
   const candidates =
     process.platform === 'darwin'
-      ? [
-          path.join(sdkRoot, 'Darwin'),
-          path.join(sdkRoot, 'lib'),
-          path.join(sdkRoot, 'lib64'),
-        ]
+      ? [path.join(sdkRoot, 'Darwin'), path.join(sdkRoot, 'lib'), path.join(sdkRoot, 'lib64')]
       : process.platform === 'win32'
-        ? [
-            path.join(sdkRoot, 'lib'),
-            path.join(sdkRoot, 'Lib'),
-            path.join(sdkRoot, 'bin'),
-          ]
-        : [
-            path.join(sdkRoot, 'Linux'),
-            path.join(sdkRoot, 'lib64'),
-            path.join(sdkRoot, 'lib'),
-          ];
+        ? [path.join(sdkRoot, 'lib'), path.join(sdkRoot, 'Lib'), path.join(sdkRoot, 'bin')]
+        : [path.join(sdkRoot, 'Linux'), path.join(sdkRoot, 'lib64'), path.join(sdkRoot, 'lib')];
 
   return candidates.find((candidate) => exists(candidate)) ?? null;
 }
 
-function resolveSdkLayout(root) {
-  if (!root || !exists(root)) {
+function resolveSdkLayout(root: string | null | undefined): SdkLayout | null {
+  if (root === undefined || root === null || root.length === 0 || !exists(root)) {
     return null;
   }
 
@@ -83,28 +78,28 @@ function resolveSdkLayout(root) {
         ? path.join(candidate, 'Include')
         : null;
     const libDir = resolveSdkLibDir(candidate);
-    if (includeDir && libDir) {
-      return { sdkRoot: candidate, sdkLibDir: libDir };
+    if (includeDir !== null && libDir !== null) {
+      return { sdkLibDir: libDir, sdkRoot: candidate };
     }
   }
 
   return null;
 }
 
-function resolveSdkRoot() {
-  if (process.env.BLPAPI_ROOT) {
-    const layout = resolveSdkLayout(path.resolve(process.env.BLPAPI_ROOT));
-    if (layout) {
+function resolveSdkRoot(): SdkLayout | null {
+  const blpapiRoot = process.env.BLPAPI_ROOT;
+  if (blpapiRoot !== undefined && blpapiRoot.length > 0) {
+    const layout = resolveSdkLayout(path.resolve(blpapiRoot));
+    if (layout !== null) {
       return layout;
     }
   }
 
-  if (process.env.XBBG_DEV_SDK_ROOT) {
-    const resolved = path.isAbsolute(process.env.XBBG_DEV_SDK_ROOT)
-      ? process.env.XBBG_DEV_SDK_ROOT
-      : path.resolve(repoRoot, process.env.XBBG_DEV_SDK_ROOT);
+  const devSdkRoot = process.env.XBBG_DEV_SDK_ROOT;
+  if (devSdkRoot !== undefined && devSdkRoot.length > 0) {
+    const resolved = path.isAbsolute(devSdkRoot) ? devSdkRoot : path.resolve(repoRoot, devSdkRoot);
     const layout = resolveSdkLayout(resolved);
-    if (layout) {
+    if (layout !== null) {
       return layout;
     }
   }
@@ -112,45 +107,38 @@ function resolveSdkRoot() {
   return resolveSdkLayout(path.join(repoRoot, 'vendor', 'blpapi-sdk'));
 }
 
-function resolveBuildArtifact(profile) {
-  const ext =
-    process.platform === 'darwin'
-      ? 'dylib'
-      : process.platform === 'win32'
-        ? 'dll'
-        : 'so';
+function resolveBuildArtifact(profile: 'debug' | 'release'): string {
+  const ext = process.platform === 'darwin' ? 'dylib' : process.platform === 'win32' ? 'dll' : 'so';
   const prefix = process.platform === 'win32' ? '' : 'lib';
   return path.join(repoRoot, 'target', profile, `${prefix}napi_xbbg.${ext}`);
 }
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`js-xbbg build failed: ${message}`);
   process.exit(1);
 }
 
-function runTool(command, args, context) {
+function runTool(command: string, args: readonly string[], context: string): string {
   const result = spawnSync(command, args, { encoding: 'utf8' });
   if (result.error) {
     fail(`${context}: ${result.error.message}`);
   }
   if (result.status !== 0) {
     const output = [result.stdout, result.stderr]
-      .filter((value) => value && value.length > 0)
+      .filter((value): value is string => value !== undefined && value !== null && value.length > 0)
       .join('\n')
       .trim();
-    fail(
-      `${context}: ${output || `${command} exited with status ${result.status ?? 'unknown'}`}`,
-    );
+    fail(`${context}: ${output || `${command} exited with status ${result.status ?? 'unknown'}`}`);
   }
   return `${result.stdout ?? ''}${result.stderr ?? ''}`;
 }
 
-function stripOtoolPathSuffix(value) {
+function stripOtoolPathSuffix(value: string): string {
   return value.replace(/\s+\(offset \d+\)$/, '');
 }
 
-function parseDarwinRpaths(loadCommands) {
-  const rpaths = new Set();
+function parseDarwinRpaths(loadCommands: string): Set<string> {
+  const rpaths = new Set<string>();
   let inRpath = false;
 
   for (const line of loadCommands.split(/\r?\n/)) {
@@ -172,7 +160,7 @@ function parseDarwinRpaths(loadCommands) {
   return rpaths;
 }
 
-function parseDarwinLinkedLibraries(output) {
+function parseDarwinLinkedLibraries(output: string): string[] {
   return output
     .split(/\r?\n/)
     .slice(1)
@@ -181,7 +169,7 @@ function parseDarwinLinkedLibraries(output) {
     .map((line) => line.replace(/\s+\([^)]*\).*$/, ''));
 }
 
-function readDarwinLoadCommands(binaryPath) {
+function readDarwinLoadCommands(binaryPath: string): string {
   return runTool(
     'otool',
     ['-l', binaryPath],
@@ -189,7 +177,7 @@ function readDarwinLoadCommands(binaryPath) {
   );
 }
 
-function readDarwinLinkedLibraries(binaryPath) {
+function readDarwinLinkedLibraries(binaryPath: string): string {
   return runTool(
     'otool',
     ['-L', binaryPath],
@@ -197,11 +185,11 @@ function readDarwinLinkedLibraries(binaryPath) {
   );
 }
 
-function installNameTool(args, context) {
+function installNameTool(args: readonly string[], context: string): void {
   runTool('install_name_tool', args, context);
 }
 
-function startsWithPath(value, parent) {
+function startsWithPath(value: string, parent: string): boolean {
   const normalizedValue = path.resolve(value);
   const normalizedParent = path.resolve(parent);
   return (
@@ -210,7 +198,7 @@ function startsWithPath(value, parent) {
   );
 }
 
-function isSdkBlpapiLibrary(value, sdkLibDir) {
+function isSdkBlpapiLibrary(value: string, sdkLibDir: string): boolean {
   return (
     path.isAbsolute(value) &&
     startsWithPath(value, sdkLibDir) &&
@@ -218,7 +206,7 @@ function isSdkBlpapiLibrary(value, sdkLibDir) {
   );
 }
 
-function isForbiddenDarwinPath(value) {
+function isForbiddenDarwinPath(value: string): boolean {
   if (!path.isAbsolute(value)) {
     return false;
   }
@@ -228,18 +216,11 @@ function isForbiddenDarwinPath(value) {
   return true;
 }
 
-function verifyDarwinPortableBinary(binaryPath) {
+function verifyDarwinPortableBinary(binaryPath: string): void {
   const loadCommands = readDarwinLoadCommands(binaryPath);
-  const linkedLibraries = parseDarwinLinkedLibraries(
-    readDarwinLinkedLibraries(binaryPath),
-  );
-  const values = [
-    ...parseDarwinRpaths(loadCommands),
-    ...linkedLibraries,
-  ];
-  const forbidden = Array.from(
-    new Set(values.filter((value) => isForbiddenDarwinPath(value))),
-  );
+  const linkedLibraries = parseDarwinLinkedLibraries(readDarwinLinkedLibraries(binaryPath));
+  const values = [...parseDarwinRpaths(loadCommands), ...linkedLibraries];
+  const forbidden = [...new Set(values.filter((value) => isForbiddenDarwinPath(value)))];
   if (forbidden.length > 0) {
     fail(
       `Mach-O load commands for ${binaryPath} contain non-portable build paths: ${forbidden.join(', ')}`,
@@ -248,7 +229,7 @@ function verifyDarwinPortableBinary(binaryPath) {
 }
 
 // Keep the published macOS addon relocatable; Bloomberg's runtime remains user-provided.
-function patchDarwinNativeAddon(binaryPath, sdkLibDir) {
+function patchDarwinNativeAddon(binaryPath: string, sdkLibDir: string): void {
   if (process.platform !== 'darwin') {
     return;
   }
@@ -258,20 +239,13 @@ function patchDarwinNativeAddon(binaryPath, sdkLibDir) {
     `Failed to set portable install name for ${binaryPath}`,
   );
 
-  const linkedLibraries = parseDarwinLinkedLibraries(
-    readDarwinLinkedLibraries(binaryPath),
-  );
+  const linkedLibraries = parseDarwinLinkedLibraries(readDarwinLinkedLibraries(binaryPath));
   for (const linkedLibrary of linkedLibraries) {
     if (!isSdkBlpapiLibrary(linkedLibrary, sdkLibDir)) {
       continue;
     }
     installNameTool(
-      [
-        '-change',
-        linkedLibrary,
-        `@rpath/${path.basename(linkedLibrary)}`,
-        binaryPath,
-      ],
+      ['-change', linkedLibrary, `@rpath/${path.basename(linkedLibrary)}`, binaryPath],
       `Failed to rewrite Bloomberg SDK dependency for ${binaryPath}`,
     );
   }
@@ -301,7 +275,7 @@ function patchDarwinNativeAddon(binaryPath, sdkLibDir) {
   verifyDarwinPortableBinary(binaryPath);
 }
 
-const profile = process.argv.includes('--release') ? 'release' : 'debug';
+const profile: 'debug' | 'release' = process.argv.includes('--release') ? 'release' : 'debug';
 const artifactPath = resolveBuildArtifact(profile);
 const outputPath = path.join(packageDir, 'napi_xbbg.node');
 
@@ -312,26 +286,25 @@ if (!sdkLayout) {
   );
 }
 
-const sdkRoot = sdkLayout.sdkRoot;
-const sdkLibDir = process.env.BLPAPI_LIB_DIR
-  ? path.resolve(process.env.BLPAPI_LIB_DIR)
-  : sdkLayout.sdkLibDir;
+const { sdkRoot } = sdkLayout;
+const blpapiLibDir = process.env.BLPAPI_LIB_DIR;
+const sdkLibDir =
+  blpapiLibDir !== undefined && blpapiLibDir.length > 0
+    ? path.resolve(blpapiLibDir)
+    : sdkLayout.sdkLibDir;
 if (!exists(sdkLibDir)) {
   fail(`Resolved Bloomberg SDK lib dir does not exist: ${sdkLibDir}`);
 }
 
-const extraRustFlags = [];
+const extraRustFlags: string[] = [];
 if (process.platform === 'darwin') {
   extraRustFlags.push('-C link-arg=-Wl,-headerpad_max_install_names');
 }
 
-const env = { ...process.env };
+const env: NodeJS.ProcessEnv = { ...process.env };
 env.BLPAPI_ROOT = sdkRoot;
 env.BLPAPI_LIB_DIR = sdkLibDir;
-env.RUSTFLAGS = [process.env.RUSTFLAGS, ...extraRustFlags]
-  .filter(Boolean)
-  .join(' ')
-  .trim();
+env.RUSTFLAGS = [process.env.RUSTFLAGS, ...extraRustFlags].filter(Boolean).join(' ').trim();
 
 const cargoArgs = ['build', '-p', 'napi-xbbg'];
 if (profile === 'release') {
