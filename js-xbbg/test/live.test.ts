@@ -22,6 +22,7 @@ const CONFIG = Object.freeze({
   price_field: 'PX_LAST',
   name_field: 'NAME',
   volume_field: 'VOLUME',
+  portfolio_security: process.env.XBBG_LIVE_PORTFOLIO_SECURITY,
 } as const);
 
 const SESSION_CONFIG = Object.freeze({
@@ -1081,8 +1082,13 @@ describe('js-xbbg live Bloomberg API', () => {
 
     it('bport API is callable', async (t) =>
       runCase(t, 'bport callable', async () => {
+        if (!CONFIG.portfolio_security) {
+          t.skip('Set XBBG_LIVE_PORTFOLIO_SECURITY to run portfolio live tests');
+          return;
+        }
+
         try {
-          const table: any = await engine!.bport('U10378179-1 Client', [CONFIG.price_field]);
+          const table: any = await engine!.bport(CONFIG.portfolio_security, ['PORTFOLIO_DATA']);
           assert.ok(table.numRows >= 0);
           console.log(`  bport rows=${table.numRows}`);
         } catch (err) {
