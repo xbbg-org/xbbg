@@ -72,4 +72,4 @@ Paste test output here if applicable
 
 ## Screenshots (if applicable)
 
-<!-- Add screenshots to help explain your changes -->
+<!-- Add only redacted screenshots. Do not include credentials, tokens, account numbers, portfolio identifiers, proprietary Bloomberg data, or licensed Bloomberg data. -->
