@@ -3,7 +3,7 @@
 
 <p>
   <a href="https://xbbg.org/python/quickstart">
-    <img src=".github/assets/readme-hero.svg" alt="xbbg banner: Intuitive APIs for market data, Rust engine, shared core, typed requests, clear shapes, clear outputs, Arrow-native" width="100%">
+    <img src=".github/assets/readme-hero-flat.svg" alt="xbbg banner: Intuitive APIs for market data, Rust engine, shared core, typed requests, clear shapes, clear outputs, Arrow-native" width="100%">
   </a>
 </p>
 
