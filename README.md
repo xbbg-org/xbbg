@@ -4,7 +4,7 @@
 <h1>xbbg</h1>
 
 <!-- markdownlint-disable MD036 -->
-**xbbg: Bloomberg Data Workflows Built for Humans (and AI)**
+**xbbg: Market Data Workflows Built for Humans (and AI)**
 <!-- markdownlint-enable MD036 -->
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
