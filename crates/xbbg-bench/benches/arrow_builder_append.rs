@@ -1,6 +1,6 @@
 //! Offline Arrow builder append/finalize benchmarks.
 //!
-//! Pure Rust only: no Bloomberg session, network, datamock, or production hot-path changes.
+//! Pure Rust only: no Bloomberg session, network, or production hot-path changes.
 //!
 //! Run after wiring this bench target:
 //!   ARROW_BENCH_ROWS=100000 ARROW_BENCH_ITERATIONS=5 \
