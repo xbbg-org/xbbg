@@ -1,7 +1,7 @@
 //! Synthetic subscription replay benchmark for the xbbg-async Arrow builder path.
 //!
-//! This benchmark is fully offline: it does not create a Bloomberg session, does not
-//! traverse live SDK events, and does not use datamock. It replays synthetic
+//! This benchmark is fully offline: it does not create a Bloomberg session or
+//! traverse live SDK events. It replays synthetic
 //! subscription-shaped rows through a minimal local harness that mirrors the
 //! `SubscriptionState` timestamp/topic columns, requested-field appends,
 //! dynamic late-field growth with null backfill, sparse missing values, mixed
@@ -363,7 +363,6 @@ fn write_results(config: &BenchConfig, timestamp: u64, results: &[IterationResul
   "benchmark_type": "synthetic_subscription_replay",
   "offline": true,
   "uses_bloomberg_session": false,
-  "uses_datamock": false,
   "config": {{
     "rows": {},
     "flush_threshold": {},

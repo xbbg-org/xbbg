@@ -6,7 +6,7 @@
 //! pure `xbbg-core` parsing and synthetic Arrow replay benchmarks without
 //! hammering Bloomberg data limits.
 //!
-//! It does not use datamock and does not change production hot paths.
+//! It does not change production hot paths.
 //!
 //! Run:
 //!   CACHED_SUB_TICKER="XBTUSD Curncy" CACHED_SUB_CAPTURE_MESSAGES=25 \
@@ -417,7 +417,6 @@ fn write_results(config: &BenchConfig, capture: &CaptureResult, results: &[Repla
     )
     .unwrap();
     writeln!(&mut json, "  \"uses_bloomberg_session\": true,").unwrap();
-    writeln!(&mut json, "  \"uses_datamock\": false,").unwrap();
     writeln!(&mut json, "  \"config\": {{").unwrap();
     writeln!(
         &mut json,
