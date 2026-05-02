@@ -23,6 +23,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
+import os
 import sys
 from typing import TYPE_CHECKING
 
@@ -73,10 +74,12 @@ class LiveTestConfig:
     price_field: str = "PX_LAST"
     name_field: str = "NAME"
     volume_field: str = "VOLUME"
+    portfolio_security: str | None = None
 
     def __post_init__(self):
         if self.equity_multi is None:
             self.equity_multi = ["AAPL US Equity", "MSFT US Equity"]
+        self.portfolio_security = os.environ.get("XBBG_LIVE_PORTFOLIO_SECURITY")
 
 
 CONFIG = LiveTestConfig()
@@ -1652,10 +1655,13 @@ class TestBport:
         """BPORT: basic portfolio request. May fail without portfolio access."""
         from xbbg import bport
 
+        if not CONFIG.portfolio_security:
+            pytest.skip("Set XBBG_LIVE_PORTFOLIO_SECURITY to run portfolio live tests")
+
         try:
-            df = bport("U10378179-1 Client")
+            df = bport(CONFIG.portfolio_security)
             assert len(df) >= 1, "Expected portfolio rows"
-            logger.info(f"  Got {len(df)} portfolio rows")
+            logger.info("  Got %s portfolio rows", len(df))
         except (TypeError, ValueError) as e:
             pytest.skip(f"Portfolio API signature issue: {e}")
         except RuntimeError as e:
@@ -1670,10 +1676,13 @@ class TestAbport:
         """ABPORT: basic async portfolio request."""
         from xbbg import abport
 
+        if not CONFIG.portfolio_security:
+            pytest.skip("Set XBBG_LIVE_PORTFOLIO_SECURITY to run portfolio live tests")
+
         try:
-            df = await abport("U10378179-1 Client")
+            df = await abport(CONFIG.portfolio_security)
             assert len(df) >= 1, "Expected async portfolio rows"
-            logger.info(f"  Async portfolio: {len(df)} rows")
+            logger.info("  Async portfolio: %s rows", len(df))
         except (TypeError, ValueError) as e:
             pytest.skip(f"Portfolio API signature issue: {e}")
         except RuntimeError as e:
