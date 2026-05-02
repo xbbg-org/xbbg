@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD013 MD031 MD032 MD033 MD036 MD041 MD051 MD060 -->
 <div align="center">
 
-<a href="https://xbbg.org/"><img src="https://raw.githubusercontent.com/alpha-xone/xbbg/main/archive/docs/src/assets/xbbg-logo.png" alt="xbbg logo" width="150"></a>
+<h1>xbbg</h1>
 
 <!-- markdownlint-disable MD036 -->
 **xbbg: Bloomberg Data Workflows Built for Humans (and AI)**
@@ -621,6 +621,7 @@ holdings = blp.etf_holdings('SPY US Equity')
 bonds = blp.bsrch("FI:MYSEARCH")
 
 # Dealer quotes with broker codes (BQR)
+# Synthetic/anonymized example only; do not paste proprietary Bloomberg output.
 quotes = blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", date_offset="-2d")
 ```
 
@@ -1870,6 +1871,7 @@ Out[17]:
 # Bloomberg Quote Request (BQR) - Dealer quotes with broker codes
 # Emulates Excel =BQR() function for fixed income dealer quotes
 
+# Synthetic/anonymized examples only; do not paste proprietary Bloomberg output.
 # Get fixed-income dealer quotes from last 2 days; BQR requests broker codes by default
 # blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', date_offset='-2d')  # doctest: +SKIP
 
@@ -1890,6 +1892,7 @@ Out[17]:
 # blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', date_offset='-1d', event_types=['TRADE'])  # doctest: +SKIP
 
 ```pydocstring
+Synthetic/anonymized illustrative output:
 Out[18]:
                               ticker                 time event_type   price      size spread_price broker_buy broker_sell
 0  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:00        BID   98.75  10000000         29.0       DLRA         NaN
@@ -1897,7 +1900,7 @@ Out[18]:
 2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE   98.85   2500000          NaN       DLRC        DLRC
 ```
 
-**Note:** The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula for fixed-income dealer quotes. It requests broker attribution by default and returns 0.x-compatible BQR columns such as `event_type`, `price`, `broker_buy`, and `broker_sell`. Prefer an ISIN input with `@MSG1 Corp`, e.g. `/isin/US037833FB15@MSG1 Corp`, for broker-level attribution. `bqr()` warns when an attributed request does not use that shape; if Bloomberg still returns quote rows without broker codes, `bqr()` raises instead of silently returning unattributed ticks. Pass `include_broker_codes=False` only when raw quote ticks without dealer attribution are intentional. Optional parameters include `include_spread_price`, `include_yield`, `include_condition_codes`, and `include_exchange_codes`.
+**Note:** The `bqr()` example above is synthetic/anonymized and must not be treated as Bloomberg output. The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula for fixed-income dealer quotes. It requests broker attribution by default and returns 0.x-compatible BQR columns such as `event_type`, `price`, `broker_buy`, and `broker_sell`. Prefer an ISIN input with `@MSG1 Corp`, e.g. `/isin/US037833FB15@MSG1 Corp`, for broker-level attribution. `bqr()` warns when an attributed request does not use that shape; if Bloomberg still returns quote rows without broker codes, `bqr()` raises instead of silently returning unattributed ticks. Pass `include_broker_codes=False` only when raw quote ticks without dealer attribution are intentional. Optional parameters include `include_spread_price`, `include_yield`, `include_condition_codes`, and `include_exchange_codes`.
 
 ### 📡 Real-time
 
@@ -2103,7 +2106,7 @@ Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
 
 ### Documentation
 
-The public docs live at [xbbg.org](https://xbbg.org/). The previous in-repo Starlight source is archived under `archive/docs/` for historical reference; it is no longer built or deployed by this repository.
+The public docs live at [xbbg.org](https://xbbg.org/). Archived in-repo Starlight docs were removed to avoid stale examples and accidental inclusion of Bloomberg-like sample output.
 
 ## Contributing
 

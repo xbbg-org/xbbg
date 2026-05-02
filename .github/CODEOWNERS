@@ -16,8 +16,6 @@
 /xbbg/tests/ @alpha-xone @kj55-dev
 /tests/ @alpha-xone @kj55-dev
 
-# Archived documentation
-/archive/docs/ @alpha-xone @kj55-dev
 /README.md @alpha-xone @kj55-dev
 /SECURITY.md @alpha-xone @kj55-dev
 
