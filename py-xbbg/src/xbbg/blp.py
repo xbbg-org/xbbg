@@ -3945,7 +3945,8 @@ async def abport(
     Get portfolio holdings and related data using PortfolioDataRequest.
 
     Args:
-        portfolio: Portfolio identifier/name.
+        portfolio: Bloomberg PortfolioDataRequest security/portfolio ID string, not the PORT display name
+            (for example, "UXXXXXXX-X Client" from PRTU/PORT).
         fields: Field name or list of fields (e.g., "PORTFOLIO_MWEIGHT").
         backend: DataFrame backend to return. If None, uses global default.
         **kwargs: Additional request parameters/overrides.
@@ -3955,11 +3956,12 @@ async def abport(
 
     Example::
 
-        # Get portfolio weights
-        df = await abport("MY_PORTFOLIO", "PORTFOLIO_MWEIGHT")
+        # Get portfolio overview data. Use the Bloomberg portfolio ID/security
+        # string, not the human-readable PORT display name.
+        df = await abport("UXXXXXXX-X Client", "PORTFOLIO_DATA")
 
-        # Get multiple fields
-        df = await abport("MY_PORTFOLIO", ["PORTFOLIO_MWEIGHT", "PORTFOLIO_POSITION"])
+        # Get portfolio weights
+        df = await abport("UXXXXXXX-X Client", "PORTFOLIO_MWEIGHT")
     """
     return await _execute_generated_endpoint(_GENERATED_ENDPOINT_SPECS["abport"], locals())
 

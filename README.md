@@ -1432,8 +1432,9 @@ blp.blkp('Apple', yellowkey='eqty', max_results=20)
 #### Portfolio Data
 
 ```python
-# Get portfolio data (dedicated function)
-blp.bport('PORTFOLIO_NAME', 'PORTFOLIO_MWEIGHT')
+# Get portfolio data using the Bloomberg portfolio ID/security string
+# (for example, the ID shown in PRTU/PORT: "UXXXXXXX-X Client")
+blp.bport('UXXXXXXX-X Client', 'PORTFOLIO_DATA')
 ```
 
 ### 📈 Historical Data

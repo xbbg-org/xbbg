@@ -213,3 +213,8 @@ filterwarnings = [
   "error::FutureWarning",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]
+
