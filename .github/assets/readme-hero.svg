@@ -1,60 +1,60 @@
 <svg width="1200" height="260" viewBox="0 0 1200 260" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">xbbg banner</title>
-  <desc id="desc">xbbg: Intuitive APIs for market data. Rust engine shared core, typed requests clear shapes, clear outputs Arrow-native, get started shared core.</desc>
-  <defs>
-    <linearGradient id="card" x1="0" y1="0" x2="1200" y2="260" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#173f38"/>
-      <stop offset="0.58" stop-color="#16342f"/>
-      <stop offset="1" stop-color="#1d1b20"/>
-    </linearGradient>
-    <linearGradient id="mark" x1="96" y1="55" x2="212" y2="171" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#173d44"/>
-      <stop offset="1" stop-color="#142935"/>
-    </linearGradient>
-    <filter id="shadow" x="-20" y="-20" width="1240" height="300" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000000" flood-opacity="0.35"/>
-    </filter>
-    <pattern id="watermark" patternUnits="userSpaceOnUse" width="680" height="260">
-      <text x="20" y="250" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="260" font-weight="800" fill="#ffffff" opacity="0.035">xbbg</text>
-    </pattern>
-  </defs>
+  <desc id="desc">xbbg: Intuitive APIs for market data. Rust engine shared core, typed requests clear shapes, clear outputs Arrow-native.</desc>
+  <style>
+    .primary { fill: #24292f; }
+    .muted { fill: #57606a; }
+    .stroke { stroke: #57606a; }
+    .soft { fill: #0969da; opacity: 0.08; }
+    .accent { fill: #1a7f37; opacity: 0.14; }
+    .accentStroke { stroke: #1a7f37; opacity: 0.34; }
+    @media (prefers-color-scheme: dark) {
+      .primary { fill: #e6edf3; }
+      .muted { fill: #8b949e; }
+      .stroke { stroke: #8b949e; }
+      .soft { fill: #58a6ff; opacity: 0.10; }
+      .accent { fill: #3fb950; opacity: 0.13; }
+      .accentStroke { stroke: #3fb950; opacity: 0.34; }
+    }
+  </style>
 
-  <rect x="18" y="18" width="1164" height="224" rx="34" fill="url(#card)" filter="url(#shadow)"/>
-  <rect x="18.5" y="18.5" width="1163" height="223" rx="33.5" stroke="#ffffff" stroke-opacity="0.10"/>
-  <rect x="18" y="18" width="1164" height="224" rx="34" fill="url(#watermark)"/>
+  <rect x="18" y="24" width="1164" height="212" rx="28" class="soft"/>
+  <rect x="18.5" y="24.5" width="1163" height="211" rx="27.5" class="accentStroke"/>
+  <path d="M18 198C150 156 252 166 380 194C514 224 642 214 794 173C944 132 1047 139 1182 178V236H18V198Z" class="accent"/>
 
-  <g transform="translate(88 68)">
-    <rect width="124" height="124" rx="28" fill="url(#mark)"/>
-    <text x="62" y="74" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="34" font-weight="700" fill="#ffffff">xbbg</text>
+  <g transform="translate(78 62)" font-family="Inter, Segoe UI, Arial, sans-serif">
+    <rect width="136" height="136" rx="30" class="accent"/>
+    <rect x="0.5" y="0.5" width="135" height="135" rx="29.5" class="accentStroke"/>
+    <text x="68" y="81" text-anchor="middle" font-size="35" font-weight="800" class="primary">xbbg</text>
   </g>
 
-  <g transform="translate(250 80)">
-    <text x="0" y="58" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="70" font-weight="800" letter-spacing="-3" fill="#ffffff">xbbg</text>
-    <text x="3" y="96" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="500" fill="#d6e2dd" opacity="0.82">Intuitive APIs for market data</text>
+  <g transform="translate(250 75)" font-family="Inter, Segoe UI, Arial, sans-serif">
+    <text x="0" y="60" font-size="72" font-weight="850" letter-spacing="-3" class="primary">xbbg</text>
+    <text x="3" y="98" font-size="21" font-weight="500" class="muted">Intuitive APIs for market data</text>
   </g>
 
-  <g transform="translate(690 70)" font-family="Inter, Segoe UI, Arial, sans-serif">
+  <g transform="translate(684 69)" font-family="Inter, Segoe UI, Arial, sans-serif">
     <g transform="translate(0 0)">
-      <rect x="0" y="8" width="34" height="34" rx="5" stroke="#e8f0ec" stroke-width="3" opacity="0.9"/>
-      <path d="M9 0v12M25 0v12M9 42v12M25 42v12M-8 17h12M-8 33h12M30 17h12M30 33h12" stroke="#e8f0ec" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
-      <text x="62" y="18" font-size="16" fill="#b9c5c1">Rust engine</text>
-      <text x="62" y="47" font-size="24" font-weight="800" fill="#ffffff">Shared core</text>
+      <rect x="0" y="8" width="34" height="34" rx="5" class="stroke" stroke-width="3" opacity="0.9"/>
+      <path d="M9 0v12M25 0v12M9 42v12M25 42v12M-8 17h12M-8 33h12M30 17h12M30 33h12" class="stroke" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+      <text x="62" y="18" font-size="16" class="muted">Rust engine</text>
+      <text x="62" y="47" font-size="24" font-weight="800" class="primary">Shared core</text>
     </g>
-    <g transform="translate(260 0)">
-      <path d="M17 3l17 7v16c0 19-17 27-17 27S0 45 0 26V10l17-7z" stroke="#e8f0ec" stroke-width="3" fill="none" opacity="0.9"/>
-      <text x="62" y="18" font-size="16" fill="#b9c5c1">Typed requests</text>
-      <text x="62" y="47" font-size="24" font-weight="800" fill="#ffffff">Clear shapes</text>
+    <g transform="translate(258 0)">
+      <path d="M17 3l17 7v16c0 19-17 27-17 27S0 45 0 26V10l17-7z" class="stroke" stroke-width="3" fill="none" opacity="0.9"/>
+      <text x="62" y="18" font-size="16" class="muted">Typed requests</text>
+      <text x="62" y="47" font-size="24" font-weight="800" class="primary">Clear shapes</text>
     </g>
     <g transform="translate(0 88)">
-      <rect x="0" y="0" width="42" height="42" rx="4" stroke="#e8f0ec" stroke-width="3" opacity="0.9"/>
-      <path d="M0 14h42M14 0v42" stroke="#e8f0ec" stroke-width="3" opacity="0.9"/>
-      <text x="62" y="14" font-size="16" fill="#b9c5c1">Clear outputs</text>
-      <text x="62" y="43" font-size="24" font-weight="800" fill="#ffffff">Arrow-native</text>
+      <rect x="0" y="0" width="42" height="42" rx="4" class="stroke" stroke-width="3" opacity="0.9"/>
+      <path d="M0 14h42M14 0v42" class="stroke" stroke-width="3" opacity="0.9"/>
+      <text x="62" y="14" font-size="16" class="muted">Clear outputs</text>
+      <text x="62" y="43" font-size="24" font-weight="800" class="primary">Arrow-native</text>
     </g>
-    <g transform="translate(260 88)">
-      <path d="M4 4l24 24L4 52" stroke="#e8f0ec" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
-      <text x="62" y="14" font-size="16" fill="#b9c5c1">Get started</text>
-      <text x="62" y="43" font-size="24" font-weight="800" fill="#ffffff">Shared core</text>
+    <g transform="translate(258 88)">
+      <path d="M4 4l24 24L4 52" class="stroke" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+      <text x="62" y="14" font-size="16" class="muted">Get started</text>
+      <text x="62" y="43" font-size="24" font-weight="800" class="primary">Quickstart</text>
     </g>
   </g>
 </svg>
