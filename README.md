@@ -1213,7 +1213,7 @@ from xbbg.testing import create_mock_response, mock_engine
 response = create_mock_response(
     service='//blp/refdata',
     operation='ReferenceDataRequest',
-    data={'AAPL US Equity': {'PX_LAST': 210.5}},
+    data={'AAPL US Equity': {'PX_LAST': 101.23}},
 )
 
 with mock_engine([response]):
@@ -1250,6 +1250,8 @@ except BlpValidationError as exc:
 
 ## Examples
 
+Example outputs below are synthetic/anonymized and illustrate shape only; they are not Bloomberg output or historical market data.
+
 ### 📊 Reference Data
 
 #### Equity and Index Securities
@@ -1264,7 +1266,7 @@ blp.bdp(tickers='NVDA US Equity', flds=['Security_Name', 'GICS_Sector_Name'])
 ```pydocstring
 Out[2]:
                security_name        gics_sector_name
-NVDA US Equity   NVIDIA Corp  Information Technology
+NVDA US Equity   Example Chipmaker  Example Sector
 ```
 
 ```python
@@ -1275,7 +1277,7 @@ blp.bdp('AAPL US Equity', 'Eqy_Weighted_Avg_Px', VWAP_Dt='20181224')
 ```pydocstring
 Out[3]:
                 eqy_weighted_avg_px
-AAPL US Equity               148.75
+AAPL US Equity               101.23
 ```
 
 ```python
@@ -1289,9 +1291,9 @@ blp.bdp(
 ```pydocstring
 Out[3a]:
                   security_name        gics_sector_name px_last
-AAPL US Equity        Company A  Information Technology  150.25
-GOOGL US Equity    Company B  Communication Services  165.30
-MSFT US Equity   Company C  Information Technology  180.45
+AAPL US Equity        Company A          Example Sector  101.23
+GOOGL US Equity       Company B          Example Sector  202.34
+MSFT US Equity        Company C          Example Sector  303.45
 ```
 
 ```python
@@ -1317,7 +1319,7 @@ blp.bdp(tickers='/isin/US1234567890', flds=['SECURITY_NAME', 'MATURITY', 'COUPON
 ```pydocstring
 Out[9]:
                        security_name    maturity coupon    px_last
-/isin/US1234567890  US Treasury Note  2035-05-15   4.25  101.25
+/isin/US1234567890  Example Issuer Note  2035-05-15   4.25  100.12
 ```
 
 ```python
@@ -1347,7 +1349,7 @@ blp.yas('T 4.5 05/15/38 Govt')
 Out[11]:
                      YAS_BOND_YLD
 ticker
-T 4.5 05/15/38 Govt         4.348
+T 4.5 05/15/38 Govt         4.000
 ```
 
 ```python
@@ -1359,7 +1361,7 @@ blp.yas('T 4.5 05/15/38 Govt', price=95.0)
 Out[12]:
                      YAS_BOND_YLD
 ticker
-T 4.5 05/15/38 Govt          5.05
+T 4.5 05/15/38 Govt          4.50
 ```
 
 ```python
@@ -1371,7 +1373,7 @@ blp.yas('T 4.5 05/15/38 Govt', flds='YAS_BOND_PX', yield_=4.8)
 Out[13]:
                      YAS_BOND_PX
 ticker
-T 4.5 05/15/38 Govt    97.229553
+T 4.5 05/15/38 Govt    100.000000
 ```
 
 ```python
@@ -1383,7 +1385,7 @@ blp.yas('AAPL 2.65 05/11/50 Corp', yield_type=YieldType.YTC)
 Out[14]:
                           YAS_BOND_YLD
 ticker
-AAPL 2.65 05/11/50 Corp          5.431
+AAPL 2.65 05/11/50 Corp          4.750
 ```
 
 ```python
@@ -1395,7 +1397,7 @@ blp.yas('T 4.5 05/15/38 Govt', ['YAS_BOND_YLD', 'YAS_MOD_DUR', 'YAS_ASW_SPREAD']
 Out[15]:
                      YAS_ASW_SPREAD  YAS_BOND_YLD  YAS_MOD_DUR
 ticker
-T 4.5 05/15/38 Govt       33.093531         4.348     9.324928
+T 4.5 05/15/38 Govt       25.000000         4.000     8.000000
 ```
 
 **Available parameters:**
@@ -1452,14 +1454,14 @@ blp.bdh(
 Out[4]:
            SPX Index
                 high      low last_price
-2018-10-10  2,874.02 2,784.86   2,785.68
-2018-10-11  2,795.14 2,710.51   2,728.37
-2018-10-12  2,775.77 2,729.44   2,767.13
-2018-10-15  2,775.99 2,749.03   2,750.79
-2018-10-16  2,813.46 2,766.91   2,809.92
-2018-10-17  2,816.94 2,781.81   2,809.21
-2018-10-18  2,806.04 2,755.18   2,768.78
-2018-10-19  2,797.77 2,760.27   2,767.78
+2018-10-10  1,001.00  990.00     995.00
+2018-10-11  1,006.00  994.00   1,002.00
+2018-10-12  1,009.00  998.00   1,004.00
+2018-10-15  1,008.00  996.00   1,000.00
+2018-10-16  1,012.00  999.00   1,010.00
+2018-10-17  1,015.00 1,003.00   1,011.00
+2018-10-18  1,013.00 1,001.00   1,006.00
+2018-10-19  1,010.00  997.00   1,005.00
 ```
 
 ```python
@@ -1475,11 +1477,11 @@ blp.bdh(
 Out[4a]:
            AAPL US Equity             MSFT US Equity            
                   px_last      volume        px_last      volume
-2024-01-02         150.25  45000000.0         180.45  25000000.0
-2024-01-03         151.30  42000000.0         181.20  23000000.0
-2024-01-04         149.80  48000000.0         179.90  24000000.0
-2024-01-05         150.10  44000000.0         180.15  22000000.0
-2024-01-08         151.50  46000000.0         181.80  26000000.0
+2024-01-02         101.00   1000000.0         201.00   2000000.0
+2024-01-03         102.00   1100000.0         202.00   2100000.0
+2024-01-04         100.50   1200000.0         200.50   2200000.0
+2024-01-05         101.25   1050000.0         201.25   2050000.0
+2024-01-08         102.50   1150000.0         202.50   2150000.0
 ```
 
 ```python
@@ -1495,10 +1497,10 @@ blp.bdh(
 Out[5]:
            SHCOMP Index
                    high      low last_price
-2018-09-28     2,827.34 2,771.16   2,821.35
-2018-10-05     2,827.34 2,771.16   2,821.35
-2018-10-12     2,771.94 2,536.66   2,606.91
-2018-10-19     2,611.97 2,449.20   2,550.47
+2018-09-28     1,010.00 1,000.00   1,005.00
+2018-10-05     1,012.00 1,002.00   1,006.00
+2018-10-12     1,008.00   998.00   1,001.00
+2018-10-19     1,006.00   996.00     999.00
 ```
 
 ```python
@@ -1510,8 +1512,8 @@ blp.bdh('AAPL US Equity', 'px_last', '20140606', '20140609', adjust='all')
 Out[15]:
            AAPL US Equity
                   px_last
-2014-06-06          85.22
-2014-06-09          86.58
+2014-06-06          50.00
+2014-06-09          51.00
 ```
 
 ```python
@@ -1522,9 +1524,9 @@ blp.dividend(['C US Equity', 'MS US Equity'], start_date='2018-01-01', end_date=
 ```pydocstring
 Out[13]:
                 dec_date     ex_date    rec_date    pay_date  dvd_amt dvd_freq      dvd_type
-C US Equity   2018-01-18  2018-02-02  2018-02-05  2018-02-23     0.32  Quarter  Regular Cash
-MS US Equity  2018-04-18  2018-04-27  2018-04-30  2018-05-15     0.25  Quarter  Regular Cash
-MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.25  Quarter  Regular Cash
+C US Equity   2018-01-18  2018-02-02  2018-02-05  2018-02-23     0.10  Quarter  Regular Cash
+MS US Equity  2018-04-18  2018-04-27  2018-04-30  2018-05-15     0.20  Quarter  Regular Cash
+MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.20  Quarter  Regular Cash
 ```
 
 ```python
@@ -1535,13 +1537,12 @@ blp.earnings('AMD US Equity', by='Geo', Eqy_Fund_Year=2017, Number_Of_Periods=1)
 ```pydocstring
 Out[12]:
                  level    fy2017  fy2017_pct
-Asia-Pacific      1.00  3,540.00       66.43
-    China         2.00  1,747.00       49.35
-    Japan         2.00  1,242.00       35.08
-    Singapore     2.00    551.00       15.56
-United States     1.00  1,364.00       25.60
-Europe            1.00    263.00        4.94
-Other Countries   1.00    162.00        3.04
+Example Region A  1.00  1,000.00       50.00
+    Market A1     2.00    600.00       60.00
+    Market A2     2.00    400.00       40.00
+Example Region B  1.00    700.00       35.00
+Example Region C  1.00    250.00       12.50
+Other Regions     1.00     50.00        2.50
 ```
 
 ### ⏱️ Intraday Data
@@ -1555,11 +1556,11 @@ blp.bdib(ticker='BHP AU Equity', dt='2018-10-17').tail()
 Out[9]:
                           BHP AU Equity
                                    open  high   low close   volume num_trds
-2018-10-17 15:56:00+11:00         33.62 33.65 33.62 33.64    16660      126
-2018-10-17 15:57:00+11:00         33.65 33.65 33.63 33.64    13875      156
-2018-10-17 15:58:00+11:00         33.64 33.65 33.62 33.63    16244      159
-2018-10-17 15:59:00+11:00         33.63 33.63 33.61 33.62    16507      167
-2018-10-17 16:10:00+11:00         33.66 33.66 33.66 33.66  1115523      216
+2018-10-17 15:56:00+11:00         10.00 10.05  9.98 10.02     1000       10
+2018-10-17 15:57:00+11:00         10.02 10.06 10.01 10.04     1200       12
+2018-10-17 15:58:00+11:00         10.04 10.07 10.02 10.03     1100       11
+2018-10-17 15:59:00+11:00         10.03 10.04 10.00 10.01     1300       13
+2018-10-17 16:10:00+11:00         10.05 10.05 10.05 10.05     5000       15
 ```
 
 **Selecting bar intervals:**
@@ -1590,9 +1591,9 @@ blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=10, intervalHasSecon
 Out[9a]:
                           AAPL US Equity
                                    open    high     low   close volume num_trds
-2025-11-12 09:31:00-05:00        150.25  150.35  150.20  150.30  25000      150
-2025-11-12 09:31:10-05:00        150.30  150.40  150.25  150.35  18000      120
-2025-11-12 09:31:20-05:00        150.35  150.45  150.30  150.40  22000      135
+2025-11-12 09:31:00-05:00        100.00  100.10   99.95  100.05  10000       50
+2025-11-12 09:31:10-05:00        100.05  100.15  100.00  100.10   8000       40
+2025-11-12 09:31:20-05:00        100.10  100.20  100.05  100.15   9000       45
 ```
 
 **Note:** By default, `interval` is interpreted as **minutes**. Set `intervalHasSeconds=True` to use seconds-based intervals.
@@ -1606,11 +1607,11 @@ blp.bdib(ticker='7974 JT Equity', dt='2018-10-17', session='am_open_30').tail()
 Out[11]:
                           7974 JT Equity
                                     open      high       low     close volume num_trds
-2018-10-17 09:27:00+09:00      39,970.00 40,020.00 39,970.00 39,990.00  10800       44
-2018-10-17 09:28:00+09:00      39,990.00 40,020.00 39,980.00 39,980.00   6300       33
-2018-10-17 09:29:00+09:00      39,970.00 40,000.00 39,960.00 39,970.00   3300       21
-2018-10-17 09:30:00+09:00      39,960.00 40,010.00 39,950.00 40,000.00   3100       19
-2018-10-17 09:31:00+09:00      39,990.00 40,000.00 39,980.00 39,990.00   2000       15
+2018-10-17 09:27:00+09:00       1,000.00 1,002.00   999.00 1,001.00   1000       10
+2018-10-17 09:28:00+09:00       1,001.00 1,003.00 1,000.00 1,002.00   1100       11
+2018-10-17 09:29:00+09:00       1,002.00 1,004.00 1,001.00 1,003.00   1200       12
+2018-10-17 09:30:00+09:00       1,003.00 1,005.00 1,002.00 1,004.00   1300       13
+2018-10-17 09:31:00+09:00       1,004.00 1,006.00 1,003.00 1,005.00   1400       14
 ```
 
 #### How the `session` parameter works
@@ -1688,11 +1689,11 @@ blp.bdib(ticker='ESM0 Index', dt='2020-03-20', ref='ES1 Index').tail()
 out[10]:
                           ESM0 Index
                                 open     high      low    close volume num_trds        value
-2020-03-20 16:55:00-04:00   2,260.75 2,262.25 2,260.50 2,262.00    412      157   931,767.00
-2020-03-20 16:56:00-04:00   2,262.25 2,267.00 2,261.50 2,266.75    812      209 1,838,823.50
-2020-03-20 16:57:00-04:00   2,266.75 2,270.00 2,264.50 2,269.00   1136      340 2,576,590.25
-2020-03-20 16:58:00-04:00   2,269.25 2,269.50 2,261.25 2,265.75   1077      408 2,439,276.00
-2020-03-20 16:59:00-04:00   2,265.25 2,272.00 2,265.00 2,266.50   1271      378 2,882,978.25
+2020-03-20 16:55:00-04:00   1,000.00 1,001.00   999.50 1,000.50    100       50   100,050.00
+2020-03-20 16:56:00-04:00   1,000.50 1,002.00 1,000.00 1,001.50    200       60   200,300.00
+2020-03-20 16:57:00-04:00   1,001.50 1,003.00 1,001.00 1,002.50    300       70   300,750.00
+2020-03-20 16:58:00-04:00   1,002.50 1,003.50 1,001.50 1,002.00    250       65   250,500.00
+2020-03-20 16:59:00-04:00   1,002.00 1,004.00 1,001.75 1,003.00    275       68   275,825.00
 ```
 
 ```python
@@ -1769,11 +1770,11 @@ blp.turnover(['ABC US Equity', 'DEF US Equity'], start_date='2024-01-01', end_da
 ```pydocstring
 Out[13]:
             ABC US Equity  DEF US Equity
-2024-01-02        15,304        8,920
-2024-01-03        18,450       12,340
-2024-01-04        14,890        9,560
-2024-01-05        16,720       11,230
-2024-01-08        10,905        7,890
+2024-01-02         1,000        2,000
+2024-01-03         1,100        2,100
+2024-01-04           950        1,950
+2024-01-05         1,050        2,050
+2024-01-08         1,150        2,150
 ```
 
 ```python
@@ -1785,11 +1786,11 @@ blp.convert_ccy(hist, ccy='EUR')
 ```pydocstring
 Out[14]:
             GHI US Equity
-2024-01-02        169.66
-2024-01-03        171.23
-2024-01-04        170.45
-2024-01-05        172.10
-2024-01-08        169.46
+2024-01-02        100.00
+2024-01-03        101.00
+2024-01-04        100.50
+2024-01-05        101.25
+2024-01-08        100.75
 ```
 
 ### 🔍 Screening & Queries
@@ -1817,9 +1818,9 @@ Out[14]:
 # blp.etf_holdings('SPY US Equity')  # doctest: +SKIP
 # Returns:
 #               holding       id_isin SOURCE POSITION_TYPE  weights  position
-# 0     MSFT US Equity  US5949181045    ETF             L   0.0725   123456.0
-# 1     AAPL US Equity  US0378331005    ETF             L   0.0685   112233.0
-# 2     NVDA US Equity  US67066G1040    ETF             L   0.0450    88776.0
+# 0     FUND_A US Equity  US0000000001    ETF             L   0.0500   100000.0
+# 1     FUND_B US Equity  US0000000002    ETF             L   0.0400    80000.0
+# 2     FUND_C US Equity  US0000000003    ETF             L   0.0300    60000.0
 
 # Bloomberg Equity Screening (BEQS)
 # blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP
@@ -1858,11 +1859,11 @@ blp.bsrch(  # doctest: +SKIP
 ```pydocstring
 Out[17]:
               Reported Time  Wind Speed (m/s)  Temperature (°C)  Heating Degree Days (°F)  Cooling Degree Days (°F)
-0 2021-01-01 06:00:00+00:00              3.45              -2.15                   38.25                     0.0
-1 2021-01-02 06:00:00+00:00              2.10              -1.85                   36.50                     0.0
-2 2021-01-03 06:00:00+00:00              1.95              -2.30                   37.80                     0.0
-3 2021-01-04 06:00:00+00:00              2.40              -2.65                   38.10                     0.0
-4 2021-01-05 06:00:00+00:00              2.15              -1.20                   35.75                     0.0
+0 2021-01-01 06:00:00+00:00              1.00              10.00                   12.00                     0.0
+1 2021-01-02 06:00:00+00:00              1.50              11.00                   10.00                     0.0
+2 2021-01-03 06:00:00+00:00              2.00              12.00                    8.00                     0.0
+3 2021-01-04 06:00:00+00:00              1.25              13.00                    6.00                     0.0
+4 2021-01-05 06:00:00+00:00              1.75              14.00                    4.00                     0.0
 ```
 
 **Note:** The `bsrch()` function uses the blpapi Excel service (`//blp/exrsvc`) and supports user-defined SRCH screens, commodity screens, and blpapi example screens. For weather data and other specialized searches, use the `overrides` parameter to pass search-specific parameters.
@@ -2089,7 +2090,7 @@ from xbbg.testing import create_mock_response, mock_engine
 response = create_mock_response(
     service="//blp/refdata",
     operation="ReferenceDataRequest",
-    data={"AAPL US Equity": {"PX_LAST": 254.23}},
+    data={"AAPL US Equity": {"PX_LAST": 101.23}},
 )
 
 with mock_engine([response]):
