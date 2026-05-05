@@ -24,7 +24,7 @@ use xbbg_ext::resolvers::futures::{
 use xbbg_ext::{fmt_date, parse_date, parse_ticker_parts};
 
 use crate::error::{RecipeError, Result};
-use crate::utils::{as_string_col, date32_to_naive};
+use crate::utils::{array_value_as_string, as_string_col, date32_to_naive};
 
 /// Resolve a generic futures ticker to a specific contract ticker for a date.
 ///
@@ -99,11 +99,14 @@ pub async fn recipe_fut_ticker(
 /// Resolve the most active futures contract around a reference date.
 ///
 /// Workflow:
-/// 1. Validate generic ticker input and build front/second generic contracts.
-/// 2. Resolve both generics to specific contracts via [`recipe_fut_ticker`].
-/// 3. Compare front maturity month vs `dt`.
-/// 4. If near roll, query 10-day historical `VOLUME` and compare contracts.
-/// 5. Return the selected active ticker as a single-row `RecordBatch`.
+/// 1. Validate generic ticker input and parse the reference date.
+/// 2. Query historical `FUT_CUR_GEN_TICKER` up to `dt` and return Bloomberg's
+///    own generic mapping when available.
+/// 3. Otherwise build front/second generic contracts and resolve both via
+///    [`recipe_fut_ticker`].
+/// 4. Compare front maturity month vs `dt`.
+/// 5. If near roll, query 10-day historical `VOLUME` and compare contracts.
+/// 6. Return the selected active ticker as a single-row `RecordBatch`.
 ///
 /// # Arguments
 ///
@@ -119,6 +122,12 @@ pub async fn recipe_active_futures(
 ) -> Result<RecordBatch> {
     validate_generic_ticker(&gen_ticker)?;
     let dt_parsed = parse_date(&dt)?;
+
+    if let Ok(Some(mapped_ticker)) =
+        bloomberg_current_generic_ticker(engine, &gen_ticker, dt_parsed).await
+    {
+        return build_single_ticker_batch(mapped_ticker);
+    }
 
     let front_gen = with_generic_index(&gen_ticker, 1)?;
     let second_gen = with_generic_index(&gen_ticker, 2)?;
@@ -324,6 +333,53 @@ pub async fn recipe_active_cdx(
     build_single_ticker_batch(selected)
 }
 
+async fn bloomberg_current_generic_ticker(
+    engine: &Engine,
+    gen_ticker: &str,
+    dt: NaiveDate,
+) -> Result<Option<String>> {
+    let start_date = dt - Duration::days(10);
+    let params = RequestParams {
+        service: Service::RefData.to_string(),
+        operation: Operation::HistoricalData.to_string(),
+        securities: Some(vec![gen_ticker.to_string()]),
+        fields: Some(vec!["FUT_CUR_GEN_TICKER".to_string()]),
+        start_date: Some(fmt_date(start_date, None)),
+        end_date: Some(fmt_date(dt, None)),
+        ..Default::default()
+    };
+
+    let batch = engine.request(params).await?;
+    let Some((_, mapped_root)) =
+        latest_history_string_point(&batch, gen_ticker, "FUT_CUR_GEN_TICKER")?
+    else {
+        return Ok(None);
+    };
+
+    normalize_mapped_generic_ticker(&mapped_root, gen_ticker)
+}
+
+fn normalize_mapped_generic_ticker(raw: &str, gen_ticker: &str) -> Result<Option<String>> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    if raw.split_whitespace().count() > 1 {
+        return Ok(Some(raw.to_string()));
+    }
+
+    let parts = parse_ticker_parts(gen_ticker)?;
+    let ticker = match parts.asset.as_str() {
+        "Equity" => {
+            let exchange = parts.exchange.unwrap_or_else(|| "US".to_string());
+            format!("{raw} {exchange} {}", parts.asset)
+        }
+        _ => format!("{raw} {}", parts.asset),
+    };
+
+    Ok(Some(ticker))
+}
+
 fn futures_candidate_count(gen_ticker: &str, idx: usize) -> Result<usize> {
     let parts = parse_ticker_parts(gen_ticker)?;
     let month_ext = if parts.asset == "Comdty" { 4 } else { 2 };
@@ -378,7 +434,9 @@ fn extract_refdata_string_for_ticker(
 ) -> Result<Option<String>> {
     let ticker_col = as_string_col(batch, "ticker")?;
     let field_col = as_string_col(batch, "field")?;
-    let value_col = as_string_col(batch, "value")?;
+    let value_col = batch
+        .column_by_name("value")
+        .ok_or_else(|| RecipeError::Other("missing 'value' column".to_string()))?;
 
     for row in 0..batch.num_rows() {
         if ticker_col.is_null(row) || field_col.is_null(row) || value_col.is_null(row) {
@@ -389,7 +447,10 @@ fn extract_refdata_string_for_ticker(
             continue;
         }
 
-        let raw = value_col.value(row).trim();
+        let Some(raw_value) = array_value_as_string(value_col, row) else {
+            continue;
+        };
+        let raw = raw_value.trim();
         if raw.is_empty() {
             continue;
         }
@@ -406,7 +467,9 @@ fn extract_refdata_date_values(
 ) -> Result<Vec<(String, NaiveDate)>> {
     let ticker_col = as_string_col(batch, "ticker")?;
     let field_col = as_string_col(batch, "field")?;
-    let value_col = as_string_col(batch, "value")?;
+    let value_col = batch
+        .column_by_name("value")
+        .ok_or_else(|| RecipeError::Other("missing 'value' column".to_string()))?;
 
     let mut output = Vec::new();
 
@@ -419,7 +482,9 @@ fn extract_refdata_date_values(
             continue;
         }
 
-        let Some(parsed) = parse_any_date(value_col.value(row)) else {
+        let Some(parsed) =
+            array_value_as_string(value_col, row).and_then(|value| parse_any_date(&value))
+        else {
             continue;
         };
 
@@ -445,7 +510,9 @@ fn latest_history_numeric_point(
 ) -> Result<Option<(NaiveDate, f64)>> {
     let ticker_col = as_string_col(batch, "ticker")?;
     let field_col = as_string_col(batch, "field")?;
-    let value_col = as_string_col(batch, "value")?;
+    let value_col = batch
+        .column_by_name("value")
+        .ok_or_else(|| RecipeError::Other("missing 'value' column".to_string()))?;
 
     let date_col = batch
         .column_by_name("date")
@@ -464,7 +531,10 @@ fn latest_history_numeric_point(
             continue;
         }
 
-        let raw_value = value_col.value(row).trim();
+        let Some(raw_value) = array_value_as_string(value_col, row) else {
+            continue;
+        };
+        let raw_value = raw_value.trim();
         if raw_value.is_empty() {
             continue;
         }
@@ -496,6 +566,71 @@ fn latest_history_numeric_point(
         match best {
             Some((best_date, _)) if row_date < best_date => {}
             _ => best = Some((row_date, value)),
+        }
+    }
+
+    Ok(best)
+}
+
+fn latest_history_string_point(
+    batch: &RecordBatch,
+    ticker: &str,
+    field: &str,
+) -> Result<Option<(NaiveDate, String)>> {
+    let ticker_col = as_string_col(batch, "ticker")?;
+    let field_col = as_string_col(batch, "field")?;
+    let value_col = batch
+        .column_by_name("value")
+        .ok_or_else(|| RecipeError::Other("missing 'value' column".to_string()))?;
+
+    let date_col = batch
+        .column_by_name("date")
+        .ok_or_else(|| RecipeError::Other("missing 'date' column".to_string()))?;
+    let date32_col = date_col.as_any().downcast_ref::<Date32Array>();
+    let date_str_col = date_col.as_any().downcast_ref::<StringArray>();
+
+    let mut best: Option<(NaiveDate, String)> = None;
+
+    for row in 0..batch.num_rows() {
+        if ticker_col.is_null(row) || field_col.is_null(row) || value_col.is_null(row) {
+            continue;
+        }
+
+        if ticker_col.value(row) != ticker || !field_col.value(row).eq_ignore_ascii_case(field) {
+            continue;
+        }
+
+        let Some(raw_value) = array_value_as_string(value_col, row) else {
+            continue;
+        };
+        let raw_value = raw_value.trim();
+        if raw_value.is_empty() {
+            continue;
+        }
+
+        let row_date = if let Some(col) = date32_col {
+            if col.is_null(row) {
+                None
+            } else {
+                date32_to_naive(col.value(row))
+            }
+        } else if let Some(col) = date_str_col {
+            if col.is_null(row) {
+                None
+            } else {
+                parse_any_date(col.value(row))
+            }
+        } else {
+            None
+        };
+
+        let Some(row_date) = row_date else {
+            continue;
+        };
+
+        match best {
+            Some((best_date, _)) if row_date < best_date => {}
+            _ => best = Some((row_date, raw_value.to_string())),
         }
     }
 
@@ -552,6 +687,34 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_mapped_generic_ticker_adds_asset_suffix() {
+        assert_eq!(
+            normalize_mapped_generic_ticker("UXK6", "UX1 Index")
+                .unwrap()
+                .unwrap(),
+            "UXK6 Index"
+        );
+        assert_eq!(
+            normalize_mapped_generic_ticker("CLM6", "CL1 Comdty")
+                .unwrap()
+                .unwrap(),
+            "CLM6 Comdty"
+        );
+        assert_eq!(
+            normalize_mapped_generic_ticker("SPYH6", "SPY1 US Equity")
+                .unwrap()
+                .unwrap(),
+            "SPYH6 US Equity"
+        );
+        assert_eq!(
+            normalize_mapped_generic_ticker("UXK6 Index", "UX1 Index")
+                .unwrap()
+                .unwrap(),
+            "UXK6 Index"
+        );
+    }
+
+    #[test]
     fn test_extract_refdata_date_values_parses_iso_dates() {
         let schema = Arc::new(Schema::new(vec![
             Field::new("ticker", DataType::Utf8, false),
@@ -573,6 +736,40 @@ mod tests {
         .unwrap();
 
         let parsed = extract_refdata_date_values(&batch, "LAST_TRADEABLE_DT").unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].0, "ESH24 Index");
+        assert_eq!(parsed[0].1, NaiveDate::from_ymd_opt(2024, 3, 15).unwrap());
+    }
+
+    #[test]
+    fn test_extract_refdata_date_values_accepts_typed_date_value_column() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("ticker", DataType::Utf8, false),
+            Field::new("field", DataType::Utf8, false),
+            Field::new("value", DataType::Date32, false),
+        ]));
+        let d1 = (NaiveDate::from_ymd_opt(2024, 3, 15).unwrap()
+            - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+        .num_days() as i32;
+        let d2 = (NaiveDate::from_ymd_opt(2024, 6, 21).unwrap()
+            - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+        .num_days() as i32;
+
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec!["ESH24 Index", "ESM24 Index"])),
+                Arc::new(StringArray::from(vec![
+                    "LAST_TRADEABLE_DT",
+                    "LAST_TRADEABLE_DT",
+                ])),
+                Arc::new(Date32Array::from(vec![Some(d1), Some(d2)])),
+            ],
+        )
+        .unwrap();
+
+        let parsed = extract_refdata_date_values(&batch, "LAST_TRADEABLE_DT").unwrap();
+
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].0, "ESH24 Index");
         assert_eq!(parsed[0].1, NaiveDate::from_ymd_opt(2024, 3, 15).unwrap());
@@ -615,6 +812,92 @@ mod tests {
 
         assert_eq!(latest.0, NaiveDate::from_ymd_opt(2024, 1, 3).unwrap());
         assert_eq!(latest.1, 250.0);
+    }
+
+    #[test]
+    fn test_latest_history_numeric_point_accepts_typed_value_column() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("ticker", DataType::Utf8, false),
+            Field::new("date", DataType::Date32, true),
+            Field::new("field", DataType::Utf8, false),
+            Field::new("value", DataType::Float64, true),
+        ]));
+
+        let d1 = (NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()
+            - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+        .num_days() as i32;
+        let d2 = (NaiveDate::from_ymd_opt(2024, 1, 3).unwrap()
+            - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+        .num_days() as i32;
+
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec![
+                    "UXK24 Index",
+                    "UXK24 Index",
+                    "UXM24 Index",
+                ])),
+                Arc::new(Date32Array::from(vec![Some(d1), Some(d2), Some(d2)])),
+                Arc::new(StringArray::from(vec!["VOLUME", "VOLUME", "VOLUME"])),
+                Arc::new(arrow_array::Float64Array::from(vec![
+                    Some(100.0),
+                    Some(250.0),
+                    Some(300.0),
+                ])),
+            ],
+        )
+        .unwrap();
+
+        let latest = latest_history_numeric_point(&batch, "UXK24 Index", "VOLUME")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(latest.0, NaiveDate::from_ymd_opt(2024, 1, 3).unwrap());
+        assert_eq!(latest.1, 250.0);
+    }
+
+    #[test]
+    fn test_latest_history_string_point_uses_latest_mapping_row() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("ticker", DataType::Utf8, false),
+            Field::new("date", DataType::Date32, true),
+            Field::new("field", DataType::Utf8, false),
+            Field::new("value", DataType::Utf8, true),
+        ]));
+
+        let d1 = (NaiveDate::from_ymd_opt(2026, 4, 15).unwrap()
+            - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+        .num_days() as i32;
+        let d2 = (NaiveDate::from_ymd_opt(2026, 4, 16).unwrap()
+            - NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+        .num_days() as i32;
+
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec![
+                    "UX1 Index",
+                    "UX1 Index",
+                    "UX2 Index",
+                ])),
+                Arc::new(Date32Array::from(vec![Some(d1), Some(d2), Some(d2)])),
+                Arc::new(StringArray::from(vec![
+                    "FUT_CUR_GEN_TICKER",
+                    "FUT_CUR_GEN_TICKER",
+                    "FUT_CUR_GEN_TICKER",
+                ])),
+                Arc::new(StringArray::from(vec!["UXJ6", "UXK6", "UXM6"])),
+            ],
+        )
+        .unwrap();
+
+        let latest = latest_history_string_point(&batch, "UX1 Index", "FUT_CUR_GEN_TICKER")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(latest.0, NaiveDate::from_ymd_opt(2026, 4, 16).unwrap());
+        assert_eq!(latest.1, "UXK6");
     }
 
     #[test]
