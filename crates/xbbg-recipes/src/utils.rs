@@ -1,15 +1,17 @@
 //! Shared utility functions used across recipe modules.
 
 use arrow_array::RecordBatch;
-use arrow_array::{ArrayRef, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray};
+use arrow_array::{
+    ArrayRef, Date32Array, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray,
+};
 
 use crate::error::{RecipeError, Result};
 
 /// Extract a value from an Arrow array at `idx` as a `String`.
 ///
 /// Supports `StringArray`, `LargeStringArray`, `Float64Array`, `Int64Array`,
-/// and `Int32Array`. Returns `None` for null values, out-of-bounds indices,
-/// or unsupported array types.
+/// `Int32Array`, and `Date32Array`. Returns `None` for null values, out-of-bounds
+/// indices, or unsupported array types.
 pub fn array_value_as_string(array: &ArrayRef, idx: usize) -> Option<String> {
     if idx >= array.len() || array.is_null(idx) {
         return None;
@@ -29,6 +31,9 @@ pub fn array_value_as_string(array: &ArrayRef, idx: usize) -> Option<String> {
     }
     if let Some(arr) = array.as_any().downcast_ref::<Int32Array>() {
         return Some(arr.value(idx).to_string());
+    }
+    if let Some(arr) = array.as_any().downcast_ref::<Date32Array>() {
+        return date32_to_naive(arr.value(idx)).map(|date| date.to_string());
     }
 
     None
