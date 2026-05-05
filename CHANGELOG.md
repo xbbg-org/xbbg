@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`active_futures` / `activeFutures` generic futures mapping (#327)**: The shared Rust recipe now uses Bloomberg's historical `FUT_CUR_GEN_TICKER` mapping as the primary source for past/current dates, normalizing returned roots such as `UXK6` to the input asset suffix (`UXK6 Index`) across Python and JavaScript bindings. Future dates or missing mappings fall back to the existing generated-candidate maturity/volume logic. The recipe also accepts typed Arrow `value` columns (`Float64` `VOLUME`, `Date32` `LAST_TRADEABLE_DT`) instead of requiring Utf8, fixing the monthly/default-frequency failure for `UX1 Index`.
+
 ## [1.2.1] - 2026-04-30
 
 ### Fixed
