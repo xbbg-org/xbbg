@@ -7,6 +7,7 @@ from pathlib import Path
 
 _sdk_info: dict | None = None
 _manual_sdk_path: Path | None = None
+_dll_directory_handles: list[object] = []
 logger = logging.getLogger(__name__)
 
 
@@ -94,7 +95,7 @@ def get_sdk_info() -> dict:
                 "path": Path(blpapi_file) if blpapi_file else None,
             }
         )
-    except ImportError:
+    except (ImportError, OSError):
         pass
 
     # Check 2: DAPI (Bloomberg Terminal installation)
@@ -188,6 +189,7 @@ def set_sdk_path(path: str | Path) -> None:
 
     _manual_sdk_path = sdk_path
     _sdk_info = None  # Clear cached info to refresh on next get_sdk_info() call
+    _prepare_sdk_for_core_import()
 
 
 def clear_sdk_path() -> None:
@@ -283,7 +285,8 @@ def _add_sdk_to_dll_search_path() -> None:
         if lib_path is None:
             continue
         try:
-            os.add_dll_directory(str(lib_path.parent))  # type: ignore[unresolved-attribute]
+            handle = os.add_dll_directory(str(lib_path.parent))  # type: ignore[unresolved-attribute]
+            _dll_directory_handles.append(handle)
         except (OSError, PermissionError, ValueError):
             continue
 

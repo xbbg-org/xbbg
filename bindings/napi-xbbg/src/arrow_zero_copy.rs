@@ -68,6 +68,14 @@ struct ExternalBufferOwner {
     _buffer: ArrowBuffer,
 }
 
+fn checked_js_u32_len(label: &str, value: usize) -> Result<u32> {
+    u32::try_from(value).map_err(|_| {
+        Error::new(
+            Status::InvalidArg,
+            format!("{label} {value} exceeds the JavaScript zero-copy Arrow length limit"),
+        )
+    })
+}
 impl NativeArrowBatch {
     pub fn from_record_batch(batch: RecordBatch) -> Result<Self> {
         let unsupported = unsupported_columns(&batch);
@@ -445,7 +453,7 @@ impl ToNapiValue for NativeArrowBatch {
         let env = Env::from_raw(env);
         let mut obj = Object::new(&env)?;
         obj.set_named_property("kind", "zeroCopy")?;
-        obj.set_named_property("numRows", value.num_rows as u32)?;
+        obj.set_named_property("numRows", checked_js_u32_len("numRows", value.num_rows)?)?;
         obj.set_named_property("columns", value.columns)?;
         Ok(obj.raw())
     }
@@ -461,8 +469,11 @@ impl ToNapiValue for NativeArrowColumn {
         obj.set_named_property("name", value.name)?;
         obj.set_named_property("type", value.arrow_type.label())?;
         obj.set_named_property("nullable", value.nullable)?;
-        obj.set_named_property("length", value.length as u32)?;
-        obj.set_named_property("nullCount", value.null_count as u32)?;
+        obj.set_named_property("length", checked_js_u32_len("length", value.length)?)?;
+        obj.set_named_property(
+            "nullCount",
+            checked_js_u32_len("nullCount", value.null_count)?,
+        )?;
         if let Some(timezone) = value.arrow_type.timezone() {
             obj.set_named_property("timezone", timezone)?;
         }
@@ -500,5 +511,27 @@ impl ToNapiValue for NativeArrowColumn {
             )?;
         }
         Ok(obj.raw())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checked_js_u32_len_accepts_u32_max() {
+        assert_eq!(
+            checked_js_u32_len("length", u32::MAX as usize).unwrap(),
+            u32::MAX
+        );
+    }
+
+    #[test]
+    fn checked_js_u32_len_rejects_overflow() {
+        let err = checked_js_u32_len("length", (u32::MAX as usize) + 1).unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+        assert!(err
+            .reason
+            .contains("exceeds the JavaScript zero-copy Arrow length limit"));
     }
 }

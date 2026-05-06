@@ -728,7 +728,7 @@ fn parse_datetime_offset(sign: char, offset: &str) -> Result<i16> {
         detail: format!("invalid timezone offset minutes: {}", minutes_raw),
     })?;
 
-    if hours > 23 || minutes > 59 {
+    if hours > 14 || (hours == 14 && minutes > 0) || minutes > 59 {
         return Err(BlpError::InvalidArgument {
             detail: format!("invalid timezone offset: {}{}", sign, offset),
         });
@@ -785,33 +785,58 @@ fn parse_datetime(s: &str) -> Result<crate::ffi::blpapi_Datetime_t> {
     // Parse time if present: "09:30:00", "09:30", or with an ISO timezone suffix.
     if let Some(raw_time_str) = time_part {
         let (time_str, offset_minutes) = split_datetime_offset(raw_time_str)?;
+        if time_str.is_empty() {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("invalid datetime time: {}", s),
+            });
+        }
+
         let time_parts: Vec<&str> = time_str.split(':').collect();
-        if time_parts.len() >= 2 {
-            dt.hours = time_parts[0]
-                .parse()
-                .map_err(|_| BlpError::InvalidArgument {
-                    detail: format!("invalid hours: {}", time_parts[0]),
-                })?;
-            dt.minutes = time_parts[1]
-                .parse()
-                .map_err(|_| BlpError::InvalidArgument {
-                    detail: format!("invalid minutes: {}", time_parts[1]),
-                })?;
-            dt.parts |= BLPAPI_DATETIME_HOURS_PART | BLPAPI_DATETIME_MINUTES_PART;
+        if !(2..=3).contains(&time_parts.len()) || time_parts.iter().any(|part| part.is_empty()) {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("invalid datetime time: {}", time_str),
+            });
+        }
 
-            if time_parts.len() >= 3 {
-                // Handle seconds, possibly with fractional part.
-                let sec_str = time_parts[2].split('.').next().unwrap_or("0");
-                dt.seconds = sec_str.parse().map_err(|_| BlpError::InvalidArgument {
+        dt.hours = time_parts[0]
+            .parse()
+            .map_err(|_| BlpError::InvalidArgument {
+                detail: format!("invalid hours: {}", time_parts[0]),
+            })?;
+        dt.minutes = time_parts[1]
+            .parse()
+            .map_err(|_| BlpError::InvalidArgument {
+                detail: format!("invalid minutes: {}", time_parts[1]),
+            })?;
+        if dt.hours > 23 || dt.minutes > 59 {
+            return Err(BlpError::InvalidArgument {
+                detail: format!("invalid datetime time: {}", time_str),
+            });
+        }
+        dt.parts |= BLPAPI_DATETIME_HOURS_PART | BLPAPI_DATETIME_MINUTES_PART;
+
+        if time_parts.len() == 3 {
+            // Handle seconds, possibly with fractional part.
+            let sec_str = time_parts[2].split('.').next().unwrap_or("0");
+            if sec_str.is_empty() {
+                return Err(BlpError::InvalidArgument {
+                    detail: format!("invalid seconds: {}", time_parts[2]),
+                });
+            }
+            dt.seconds = sec_str.parse().map_err(|_| BlpError::InvalidArgument {
+                detail: format!("invalid seconds: {}", sec_str),
+            })?;
+            if dt.seconds > 59 {
+                return Err(BlpError::InvalidArgument {
                     detail: format!("invalid seconds: {}", sec_str),
-                })?;
-                dt.parts |= BLPAPI_DATETIME_SECONDS_PART;
+                });
             }
+            dt.parts |= BLPAPI_DATETIME_SECONDS_PART;
+        }
 
-            if let Some(offset) = offset_minutes {
-                dt.offset = offset;
-                dt.parts |= BLPAPI_DATETIME_OFFSET_PART;
-            }
+        if let Some(offset) = offset_minutes {
+            dt.offset = offset;
+            dt.parts |= BLPAPI_DATETIME_OFFSET_PART;
         }
     }
 
@@ -862,5 +887,28 @@ mod tests {
         assert_eq!(dt.seconds, 3);
         assert_eq!(dt.offset, 0);
         assert!(dt.parts & crate::ffi::BLPAPI_DATETIME_OFFSET_PART != 0);
+    }
+
+    #[test]
+    fn parse_datetime_rejects_empty_time_after_t() {
+        assert!(parse_datetime("2026-04-24T").is_err());
+    }
+
+    #[test]
+    fn parse_datetime_rejects_single_component_time_after_t() {
+        assert!(parse_datetime("2026-04-24T14").is_err());
+    }
+
+    #[test]
+    fn parse_datetime_rejects_out_of_range_time() {
+        assert!(parse_datetime("2026-04-24T24:00:00").is_err());
+        assert!(parse_datetime("2026-04-24T14:60:00").is_err());
+        assert!(parse_datetime("2026-04-24T14:30:60").is_err());
+    }
+
+    #[test]
+    fn parse_datetime_rejects_sdk_invalid_offset_range() {
+        assert!(parse_datetime("2026-04-24T14:30:00+14:01").is_err());
+        assert!(parse_datetime("2026-04-24T14:30:00-14:01").is_err());
     }
 }

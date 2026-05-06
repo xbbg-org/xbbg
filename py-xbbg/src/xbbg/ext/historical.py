@@ -564,9 +564,11 @@ async def aturnover(
     import xbbg
     from xbbg.ext.currency import aconvert_ccy
 
-    # Compute default date range using Rust (handles yesterday/30-day defaults)
-    start_str = str(start_date) if start_date is not None else None
-    end_str = str(end_date) if end_date is not None else None
+    # Validate explicit date arguments before applying defaults. The native helper
+    # treats malformed strings like missing values, which would silently shift the
+    # requested turnover window.
+    start_str = _fmt_date(start_date, "%Y-%m-%d") if start_date is not None else None
+    end_str = _fmt_date(end_date, "%Y-%m-%d") if end_date is not None else None
     start_date, end_date = ext_default_turnover_dates(start_str, end_str)
 
     # Normalize tickers

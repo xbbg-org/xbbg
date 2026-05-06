@@ -39,11 +39,10 @@ import type { NativeArrowColumn, NativeArrowZeroCopyBatch } from './napi';
 
 const NATIVE_ARROW_BUFFERS = Symbol('@xbbg/nativeArrowBuffers');
 
-type TypedArrayConstructor<T extends ArrayBufferView> = new (
-  buffer: ArrayBufferLike,
-  byteOffset: number,
-  length: number,
-) => T;
+type TypedArrayConstructor<T extends ArrayBufferView> = {
+  readonly BYTES_PER_ELEMENT: number;
+  new (buffer: ArrayBufferLike, byteOffset: number, length: number): T;
+};
 
 export function tableFromNativeArrowBatch(batch: NativeArrowZeroCopyBatch): Table {
   const retainedBuffers: Buffer[] = [];
@@ -273,6 +272,7 @@ function requiredTypedView<T extends ArrayBufferView>(
   retainedBuffers: Buffer[],
 ): T {
   const buffer = requireBuffer(column, 'data');
+  assertBufferByteLength(column, 'data', buffer, column.length, ctor.BYTES_PER_ELEMENT);
   retainedBuffers.push(buffer);
   return new ctor(buffer.buffer, buffer.byteOffset, column.length);
 }
@@ -282,6 +282,7 @@ function requiredOffsets(
   retainedBuffers: Buffer[],
 ): Int32Array {
   const buffer = requireBuffer(column, 'offsets');
+  assertBufferByteLength(column, 'offsets', buffer, column.length + 1, Int32Array.BYTES_PER_ELEMENT);
   retainedBuffers.push(buffer);
   return new Int32Array(buffer.buffer, buffer.byteOffset, column.length + 1);
 }
@@ -291,6 +292,7 @@ function requiredLargeOffsets(
   retainedBuffers: Buffer[],
 ): BigInt64Array {
   const buffer = requireBuffer(column, 'offsets');
+  assertBufferByteLength(column, 'offsets', buffer, column.length + 1, BigInt64Array.BYTES_PER_ELEMENT);
   retainedBuffers.push(buffer);
   return new BigInt64Array(buffer.buffer, buffer.byteOffset, column.length + 1);
 }
@@ -301,6 +303,9 @@ function requiredUint8View(
   byteLength?: number,
 ): Uint8Array {
   const buffer = requireBuffer(column, 'data');
+  if (byteLength !== undefined) {
+    assertBufferByteLength(column, 'data', buffer, byteLength, 1);
+  }
   retainedBuffers.push(buffer);
   return new Uint8Array(buffer.buffer, buffer.byteOffset, byteLength ?? buffer.byteLength);
 }
@@ -314,6 +319,25 @@ function optionalUint8View(
   }
   retainedBuffers.push(buffer);
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+}
+
+function assertBufferByteLength(
+  column: NativeArrowColumn,
+  property: 'data' | 'offsets',
+  buffer: Buffer,
+  elements: number,
+  bytesPerElement: number,
+): void {
+  if (!Number.isSafeInteger(elements) || elements < 0) {
+    throw new Error(`native Arrow column ${column.name} has invalid ${property} element count: ${elements}`);
+  }
+  const requiredBytes = elements * bytesPerElement;
+  if (!Number.isSafeInteger(requiredBytes) || buffer.byteLength < requiredBytes) {
+    throw new Error(
+      `native Arrow column ${column.name} ${property} buffer is too small: ` +
+        `expected at least ${requiredBytes} bytes, got ${buffer.byteLength}`,
+    );
+  }
 }
 
 function requireBuffer(

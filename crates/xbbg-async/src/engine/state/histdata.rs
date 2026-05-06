@@ -61,6 +61,8 @@ pub struct HistDataState {
     long_columns: Option<LongStringColumns>,
     /// Fixed wide-format builders for requested field columns
     wide_columns: Option<WideColumns>,
+    /// Security identifiers that returned securityError.
+    failed_securities: Vec<String>,
     /// Reply channel
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
 }
@@ -131,6 +133,7 @@ impl HistDataState {
             columns,
             long_columns: long_value_type.map(LongStringColumns::histdata),
             wide_columns,
+            failed_securities: Vec::new(),
             reply,
         }
     }
@@ -143,6 +146,32 @@ impl HistDataState {
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
         self.process_message(msg);
+
+        let row_count = match self.format {
+            OutputFormat::Long => self
+                .long_columns
+                .as_ref()
+                .map_or_else(|| self.columns.row_count(), LongStringColumns::row_count),
+            OutputFormat::Wide => self
+                .wide_columns
+                .as_ref()
+                .map_or_else(|| self.columns.row_count(), WideColumns::row_count),
+        };
+        if row_count == 0 && !self.failed_securities.is_empty() {
+            let detail = format!(
+                "All securities failed: {}",
+                self.failed_securities.join(", ")
+            );
+            let _ = self.reply.send(Err(BlpError::RequestFailure {
+                service: "//blp/refdata".to_string(),
+                operation: Some("HistoricalDataRequest".to_string()),
+                cid: None,
+                label: Some(detail),
+                request_id: None,
+                source: None,
+            }));
+            return;
+        }
         let reply = self.reply;
         let result = match self.format {
             OutputFormat::Long => match self.long_mode {
@@ -224,6 +253,7 @@ impl HistDataState {
 
         // Check for security error
         if security_data.get(&self.names.security_error).is_some() {
+            self.failed_securities.push(ticker.to_string());
             trace!(ticker = ticker, "Security has error, skipping");
             return;
         }

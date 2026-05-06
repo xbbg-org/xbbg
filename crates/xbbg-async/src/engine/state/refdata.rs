@@ -196,10 +196,16 @@ impl RefDataState {
             );
         }
 
-        let row_count = self
-            .long_columns
-            .as_ref()
-            .map_or_else(|| self.columns.row_count(), LongStringColumns::row_count);
+        let row_count = match self.format {
+            OutputFormat::Long => self
+                .long_columns
+                .as_ref()
+                .map_or_else(|| self.columns.row_count(), LongStringColumns::row_count),
+            OutputFormat::Wide => self
+                .wide_columns
+                .as_ref()
+                .map_or_else(|| self.columns.row_count(), WideColumns::row_count),
+        };
         if row_count == 0 && !self.failed_securities.is_empty() {
             let detail = format!(
                 "All securities failed: {}",

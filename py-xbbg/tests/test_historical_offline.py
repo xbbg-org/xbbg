@@ -24,6 +24,21 @@ def test_default_turnover_dates_matches_native_invalid_date_fallbacks():
 
 
 @pytest.mark.asyncio
+async def test_aturnover_rejects_invalid_explicit_dates(monkeypatch):
+    import xbbg
+
+    async def unexpected_abdh(**_kwargs):
+        raise AssertionError("invalid dates must fail before requesting Bloomberg data")
+
+    monkeypatch.setattr(xbbg, "abdh", unexpected_abdh, raising=False)
+
+    with pytest.raises(ValueError):
+        await aturnover("ABC US Equity", start_date="not-a-date", end_date="2024-06-15")
+
+    with pytest.raises(ValueError):
+        await aturnover("ABC US Equity", start_date="2024-01-01", end_date="not-a-date")
+
+@pytest.mark.asyncio
 async def test_aturnover_warns_for_malformed_volume_fallback(monkeypatch, caplog):
     """Malformed present VWAP/volume values are aggregated without live Bloomberg."""
     import xbbg
