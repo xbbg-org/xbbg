@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-05-06
+
 ### Fixed
 
 - **Bloomberg request error handling and datetime semantics (#328, #329, #330)**: Reference-data wide/semi-long requests and historical-data requests now surface all-security `securityError` responses as `BlpError::RequestFailure` instead of returning successful empty batches. The Python terminal wrapper now handles `pyarrow.RecordBatch` returns via `pyarrow.Table.from_batches()` rather than assuming a non-existent `to_table()` method. Bloomberg datetime parsing now rejects malformed `T` datetime strings and SDK-invalid timezone offsets, and timestamp conversion honors Bloomberg's `OFFSET` part when converting to UTC epoch values.
@@ -1332,7 +1334,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/alpha-xone/xbbg/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/alpha-xone/xbbg/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alpha-xone/xbbg/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/alpha-xone/xbbg/compare/v1.1.1...v1.1.2
