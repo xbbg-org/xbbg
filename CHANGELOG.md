@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- **Bloomberg request error handling and datetime semantics (#328, #329, #330)**: Reference-data wide/semi-long requests and historical-data requests now surface all-security `securityError` responses as `BlpError::RequestFailure` instead of returning successful empty batches. The Python terminal wrapper now handles `pyarrow.RecordBatch` returns via `pyarrow.Table.from_batches()` rather than assuming a non-existent `to_table()` method. Bloomberg datetime parsing now rejects malformed `T` datetime strings and SDK-invalid timezone offsets, and timestamp conversion honors Bloomberg's `OFFSET` part when converting to UTC epoch values.
+- **Python and JavaScript binding edge cases**: `xbbg.set_sdk_path()` now immediately prepares native SDK loading and retains Windows DLL search handles, explicit but unimplemented Python dataframe backends now raise `NotImplementedError` instead of falling through to Narwhals/native output, turnover helpers reject malformed explicit dates before applying defaults, NAPI Arrow zero-copy length metadata is checked before narrowing to JavaScript-visible `u32`, and JS zero-copy Arrow construction validates buffer lengths before creating typed views.
+
 - **`active_futures` / `activeFutures` generic futures mapping (#327)**: The shared Rust recipe now uses Bloomberg's historical `FUT_CUR_GEN_TICKER` mapping as the primary source for past/current dates, normalizing returned roots such as `UXK6` to the input asset suffix (`UXK6 Index`) across Python and JavaScript bindings. Future dates or missing mappings fall back to the existing generated-candidate maturity/volume logic. The recipe also accepts typed Arrow `value` columns (`Float64` `VOLUME`, `Date32` `LAST_TRADEABLE_DT`) instead of requiring Utf8, fixing the monthly/default-frequency failure for `UX1 Index`.
 
 ## [1.2.1] - 2026-04-30

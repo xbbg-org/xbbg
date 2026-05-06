@@ -67,6 +67,19 @@ class TestConvertBackendNative:
         assert result.column_names == arrow_table.column_names
         assert result.to_pylist() == arrow_table.to_pylist()
 
+    def test_convert_pyarrow_record_batch_to_table(self):
+        pa = pytest.importorskip("pyarrow")
+        batch = pa.record_batch(
+            [["IBM US Equity"], [123.45]],
+            names=["ticker", "px_last"],
+        )
+
+        result = _convert_backend(batch, Backend.NATIVE)
+
+        assert isinstance(result, pa.Table)
+        assert result.column_names == ["ticker", "px_last"]
+        assert result.to_pylist() == [{"ticker": "IBM US Equity", "px_last": 123.45}]
+
     def test_record_batch_and_table_indexing_return_arrow_columns(self, arrow_table: Any):
         batch = arrow_table.to_batches()[0]
 
@@ -222,6 +235,25 @@ class TestConvertBackendInvalid:
         assert f"Backend '{backend.value}' requires" in msg
         assert f"pip install {blocked_root}" in msg
         assert extra in msg
+
+    @pytest.mark.parametrize(
+        "backend",
+        [
+            Backend.CUDF,
+            Backend.MODIN,
+            Backend.DASK,
+            Backend.IBIS,
+            Backend.PYSPARK,
+            Backend.SQLFRAME,
+        ],
+    )
+    def test_selectable_unimplemented_backends_raise_instead_of_falling_through(
+        self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch, backend: Backend
+    ):
+        monkeypatch.setattr("xbbg.blp.check_backend", lambda *_args, **_kwargs: True)
+
+        with pytest.raises(NotImplementedError, match=f"Backend '{backend.value}'.*not implemented"):
+            _convert_backend(arrow_table, backend)
 
     def test_set_backend_missing_optional_dependency_errors_before_state_change(self, monkeypatch: pytest.MonkeyPatch):
         from xbbg.blp import get_backend, set_backend

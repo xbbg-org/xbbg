@@ -317,6 +317,10 @@ impl WideColumns {
         self.row_count += 1;
     }
 
+    pub(crate) fn row_count(&self) -> usize {
+        self.row_count
+    }
+
     pub(crate) fn append_histdata_row<'a, F>(
         &mut self,
         ticker: &str,

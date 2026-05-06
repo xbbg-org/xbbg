@@ -1386,11 +1386,23 @@ def _is_arrow_record_batch(value: Any) -> bool:
     return value.__class__.__name__ == "ArrowRecordBatch" and hasattr(value, "__arrow_c_array__")
 
 
+def _is_pyarrow_table(value: Any) -> bool:
+    return value.__class__.__module__.startswith("pyarrow.") and value.__class__.__name__ == "Table"
+
+
+def _is_pyarrow_record_batch(value: Any) -> bool:
+    return value.__class__.__module__.startswith("pyarrow.") and value.__class__.__name__ == "RecordBatch"
+
+
 def _ensure_arrow_table(frame: Any) -> Any:
-    if _is_arrow_table(frame):
+    if _is_arrow_table(frame) or _is_pyarrow_table(frame):
         return frame
     if _is_arrow_record_batch(frame):
         return frame.to_table()
+    if _is_pyarrow_record_batch(frame):
+        import pyarrow as pa
+
+        return pa.Table.from_batches([frame])
     raise TypeError(f"Expected xbbg ArrowTable or ArrowRecordBatch, got {type(frame).__name__}")
 
 
@@ -1487,6 +1499,20 @@ def _convert_backend(
         con = duckdb.connect()
         con.register("xbbg_arrow", table)
         return con.sql("select * from xbbg_arrow")
+    unsupported = {
+        Backend.CUDF,
+        Backend.MODIN,
+        Backend.DASK,
+        Backend.IBIS,
+        Backend.PYSPARK,
+        Backend.SQLFRAME,
+    }
+    if effective in unsupported:
+        raise NotImplementedError(
+            f"Backend '{effective.value}' is selectable but conversion from xbbg native Arrow "
+            "is not implemented yet. Choose one of: native, pyarrow, pandas, polars, "
+            "polars_lazy, narwhals, narwhals_lazy, duckdb."
+        )
     return nw.from_native(table)
 
 
@@ -1515,7 +1541,7 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
         context.fields or None,
     )
 
-    context.table = batch.to_table()
+    context.table = _ensure_arrow_table(batch)
     context.frame = context.table
     return context.table
 

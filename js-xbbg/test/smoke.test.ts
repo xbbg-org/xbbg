@@ -404,6 +404,25 @@ describe('native Arrow zero-copy table construction', () => {
     expect(Array.from(table.getChild('PAYLOAD')?.get(1) ?? [])).toEqual([0xbe, 0xef, 0x01]);
   });
 
+  it('rejects native descriptors whose primitive data buffer is too small', () => {
+    const batch: NativeArrowZeroCopyBatch = {
+      kind: 'zeroCopy',
+      numRows: 2,
+      columns: [
+        {
+          name: 'LAST_PRICE',
+          type: 'float64',
+          nullable: false,
+          length: 2,
+          nullCount: 0,
+          data: Buffer.alloc(Float64Array.BYTES_PER_ELEMENT),
+        },
+      ],
+    };
+
+    expect(() => tableFromNativeArrowBatch(batch)).toThrow(/LAST_PRICE data buffer is too small/);
+  });
+
   it('Subscription.next uses native updates', async () => {
     const sub = new api.Subscription({
       nextUpdate: async () =>

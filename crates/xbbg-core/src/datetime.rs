@@ -8,7 +8,7 @@ use crate::ffi;
 /// Bloomberg high-precision datetime.
 ///
 /// Wrapper around FFI type with conversion methods.
-/// Timestamps are treated as **naive UTC** (offset field is ignored).
+/// Timestamp conversions honor Bloomberg's `OFFSET` part when it is set.
 ///
 /// # Examples
 ///
@@ -44,22 +44,19 @@ impl HighPrecisionDatetime {
         &self.0
     }
 
-    /// Convert to microseconds since Unix epoch.
+    /// Convert to UTC microseconds since Unix epoch.
     ///
-    /// **WARNING**: offset field is IGNORED. Treat result as naive UTC.
+    /// Bloomberg's offset is minutes ahead of UTC. When the `OFFSET` part is
+    /// present, this subtracts that offset so the returned epoch value is UTC.
+    /// Datetimes without an offset are treated as already UTC.
     ///
     /// # Performance
     /// Pure arithmetic, no allocations. Target: < 20ns.
     #[inline(always)]
     pub fn to_micros(&self) -> i64 {
-        // Read packed fields safely (Rust 2021 handles packed field access via auto-copy)
         let days = days_from_ymd(self.0.year as i32, self.0.month as u32, self.0.day as u32);
-        let us = (self.0.hours as i64) * 3_600_000_000
-            + (self.0.minutes as i64) * 60_000_000
-            + (self.0.seconds as i64) * 1_000_000
-            + (self.0.milliseconds as i64) * 1_000
-            + (self.0.picoseconds as i64) / 1_000_000;
-        days * 86_400_000_000 + us
+        let us = self.to_time_micros();
+        days * 86_400_000_000 + us - self.offset_micros()
     }
 
     /// Convert to microseconds from midnight (time-of-day only).
@@ -91,9 +88,35 @@ impl HighPrecisionDatetime {
         (self.0.parts & ffi::BLPAPI_DATETIME_DATE_PART) == ffi::BLPAPI_DATETIME_DATE_PART
     }
 
-    /// Convert to nanoseconds since Unix epoch.
+    /// Check if the timezone offset part is present.
+    #[inline(always)]
+    pub fn has_offset_part(&self) -> bool {
+        (self.0.parts & ffi::BLPAPI_DATETIME_OFFSET_PART) == ffi::BLPAPI_DATETIME_OFFSET_PART
+    }
+
+    #[inline(always)]
+    fn offset_micros(&self) -> i64 {
+        if self.has_offset_part() {
+            (self.0.offset as i64) * 60_000_000
+        } else {
+            0
+        }
+    }
+
+    #[inline(always)]
+    fn offset_nanos(&self) -> i64 {
+        if self.has_offset_part() {
+            (self.0.offset as i64) * 60_000_000_000
+        } else {
+            0
+        }
+    }
+
+    /// Convert to UTC nanoseconds since Unix epoch.
     ///
-    /// **WARNING**: offset field is IGNORED. Treat result as naive UTC.
+    /// Bloomberg's offset is minutes ahead of UTC. When the `OFFSET` part is
+    /// present, this subtracts that offset so the returned epoch value is UTC.
+    /// Datetimes without an offset are treated as already UTC.
     ///
     /// # Performance
     /// Pure arithmetic, no allocations. Target: < 20ns.
@@ -105,7 +128,7 @@ impl HighPrecisionDatetime {
             + (self.0.seconds as i64) * 1_000_000_000
             + (self.0.milliseconds as i64) * 1_000_000
             + (self.0.picoseconds as i64) / 1_000;
-        days * 86_400_000_000_000 + ns
+        days * 86_400_000_000_000 + ns - self.offset_nanos()
     }
 }
 
@@ -135,8 +158,30 @@ mod tests {
         seconds: u8,
         milliseconds: u16,
     ) -> HighPrecisionDatetime {
+        make_datetime_with_offset(
+            year,
+            month,
+            day,
+            hours,
+            minutes,
+            seconds,
+            milliseconds,
+            None,
+        )
+    }
+
+    fn make_datetime_with_offset(
+        year: u16,
+        month: u8,
+        day: u8,
+        hours: u8,
+        minutes: u8,
+        seconds: u8,
+        milliseconds: u16,
+        offset: Option<i16>,
+    ) -> HighPrecisionDatetime {
         HighPrecisionDatetime(ffi::blpapi_HighPrecisionDatetime_t {
-            parts: 0xFF, // all parts present
+            parts: 0xF7 | offset.map_or(0, |_| ffi::BLPAPI_DATETIME_OFFSET_PART),
             hours,
             minutes,
             seconds,
@@ -144,7 +189,7 @@ mod tests {
             month,
             day,
             year,
-            offset: 0,
+            offset: offset.unwrap_or(0),
             picoseconds: 0,
         })
     }
@@ -186,5 +231,23 @@ mod tests {
         // Verify nanosecond conversion
         let dt = make_datetime(1970, 1, 1, 0, 0, 1, 0);
         assert_eq!(dt.to_nanos(), 1_000_000_000); // 1 second in nanoseconds
+    }
+
+    #[test]
+    fn test_to_micros_applies_positive_offset() {
+        let dt = make_datetime_with_offset(1970, 1, 1, 1, 0, 0, 0, Some(60));
+        assert_eq!(dt.to_micros(), 0);
+    }
+
+    #[test]
+    fn test_to_micros_applies_negative_offset() {
+        let dt = make_datetime_with_offset(1970, 1, 1, 0, 0, 0, 0, Some(-60));
+        assert_eq!(dt.to_micros(), 3_600_000_000);
+    }
+
+    #[test]
+    fn test_to_nanos_applies_offset() {
+        let dt = make_datetime_with_offset(1970, 1, 1, 1, 0, 0, 0, Some(60));
+        assert_eq!(dt.to_nanos(), 0);
     }
 }
