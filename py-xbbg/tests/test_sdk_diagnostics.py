@@ -101,8 +101,8 @@ def test_windows_dll_directory_handles_are_retained(monkeypatch, tmp_path):
     lib_path = sdk_dir / "blpapi3_64.dll"
     lib_path.write_text("placeholder")
     import os
-    handles = []
 
+    handles = []
 
     monkeypatch.setattr(_sdk, "_collect_sdk_candidate_dirs", lambda: [sdk_dir])
     monkeypatch.setattr(_sdk, "_find_sdk_lib", lambda path: lib_path if path == sdk_dir else None)

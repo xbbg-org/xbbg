@@ -158,30 +158,8 @@ mod tests {
         seconds: u8,
         milliseconds: u16,
     ) -> HighPrecisionDatetime {
-        make_datetime_with_offset(
-            year,
-            month,
-            day,
-            hours,
-            minutes,
-            seconds,
-            milliseconds,
-            None,
-        )
-    }
-
-    fn make_datetime_with_offset(
-        year: u16,
-        month: u8,
-        day: u8,
-        hours: u8,
-        minutes: u8,
-        seconds: u8,
-        milliseconds: u16,
-        offset: Option<i16>,
-    ) -> HighPrecisionDatetime {
         HighPrecisionDatetime(ffi::blpapi_HighPrecisionDatetime_t {
-            parts: 0xF7 | offset.map_or(0, |_| ffi::BLPAPI_DATETIME_OFFSET_PART),
+            parts: 0xF7,
             hours,
             minutes,
             seconds,
@@ -189,7 +167,7 @@ mod tests {
             month,
             day,
             year,
-            offset: offset.unwrap_or(0),
+            offset: 0,
             picoseconds: 0,
         })
     }
@@ -235,19 +213,25 @@ mod tests {
 
     #[test]
     fn test_to_micros_applies_positive_offset() {
-        let dt = make_datetime_with_offset(1970, 1, 1, 1, 0, 0, 0, Some(60));
+        let mut dt = make_datetime(1970, 1, 1, 1, 0, 0, 0);
+        dt.0.parts |= ffi::BLPAPI_DATETIME_OFFSET_PART;
+        dt.0.offset = 60;
         assert_eq!(dt.to_micros(), 0);
     }
 
     #[test]
     fn test_to_micros_applies_negative_offset() {
-        let dt = make_datetime_with_offset(1970, 1, 1, 0, 0, 0, 0, Some(-60));
+        let mut dt = make_datetime(1970, 1, 1, 0, 0, 0, 0);
+        dt.0.parts |= ffi::BLPAPI_DATETIME_OFFSET_PART;
+        dt.0.offset = -60;
         assert_eq!(dt.to_micros(), 3_600_000_000);
     }
 
     #[test]
     fn test_to_nanos_applies_offset() {
-        let dt = make_datetime_with_offset(1970, 1, 1, 1, 0, 0, 0, Some(60));
+        let mut dt = make_datetime(1970, 1, 1, 1, 0, 0, 0);
+        dt.0.parts |= ffi::BLPAPI_DATETIME_OFFSET_PART;
+        dt.0.offset = 60;
         assert_eq!(dt.to_nanos(), 0);
     }
 }
