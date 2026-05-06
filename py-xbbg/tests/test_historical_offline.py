@@ -38,6 +38,7 @@ async def test_aturnover_rejects_invalid_explicit_dates(monkeypatch):
     with pytest.raises(ValueError):
         await aturnover("ABC US Equity", start_date="2024-01-01", end_date="not-a-date")
 
+
 @pytest.mark.asyncio
 async def test_aturnover_warns_for_malformed_volume_fallback(monkeypatch, caplog):
     """Malformed present VWAP/volume values are aggregated without live Bloomberg."""

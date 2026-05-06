@@ -39,10 +39,10 @@ import type { NativeArrowColumn, NativeArrowZeroCopyBatch } from './napi';
 
 const NATIVE_ARROW_BUFFERS = Symbol('@xbbg/nativeArrowBuffers');
 
-type TypedArrayConstructor<T extends ArrayBufferView> = {
+interface TypedArrayConstructor<T extends ArrayBufferView> {
   readonly BYTES_PER_ELEMENT: number;
   new (buffer: ArrayBufferLike, byteOffset: number, length: number): T;
-};
+}
 
 export function tableFromNativeArrowBatch(batch: NativeArrowZeroCopyBatch): Table {
   const retainedBuffers: Buffer[] = [];
