@@ -33,10 +33,12 @@ Latest release: xbbg==1.2.2 (release: [notes](https://github.com/alpha-xone/xbbg
 - [Why xbbg?](#why-xbbg)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
+- [JavaScript and Node](#javascript-and-node)
 - [Configuration and engines](#configuration-and-engines)
 - [Common API surface](#common-api-surface)
 - [Output backends](#output-backends)
 - [Async usage](#async-usage)
+- [Subscriptions, tick mode, and all fields](#subscriptions-tick-mode-and-all-fields)
 - [MCP server](#mcp-server)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -44,7 +46,7 @@ Latest release: xbbg==1.2.2 (release: [notes](https://github.com/alpha-xone/xbbg
 
 ## What is xbbg?
 
-xbbg is a Python-first client for Bloomberg-connected workflows. It keeps the familiar `xbbg.blp` helper style while using a shared Rust engine for request execution, response parsing, Arrow-shaped data movement, async workers, typed errors, and diagnostics.
+xbbg is a Bloomberg client with Python as the primary surface and companion JavaScript/Node bindings, all backed by a shared Rust engine for request execution, response parsing, Arrow-shaped data movement, async workers, typed errors, and diagnostics.
 
 Use xbbg when you already have Bloomberg access and want higher-level helpers for common request patterns, plus an escape hatch for lower-level Bloomberg service requests.
 
@@ -74,9 +76,9 @@ The short version: if all you need is a tiny one-off `bdp()` wrapper, several pa
 | Rust request/parsing engine with Arrow-shaped output | yes | no | no | no | no |
 | Output backends beyond pandas | Narwhals, native, PyArrow, pandas, Polars, DuckDB | application-owned | pandas-first | pandas-first | Polars-first |
 | Typed errors, diagnostics, field cache, testing helpers | yes | application-owned | limited | limited | limited |
-| Default install footprint | ~2.0-2.5 MB platform wheel; hard dependency is `narwhals` only; pandas/PyArrow/Polars/DuckDB are optional extras | Bloomberg `blpapi` wheel/runtime only; application code owns dataframe conversion | tiny package (~25-33 KB), but pandas is part of the documented/declared install path | small package (~29 KB wheel), but hard-depends on `numpy>=2.0` and `pandas>=2.2.0` | small package (~27 KB wheel), but hard-depends on `polars` and `blpapi` |
+| Usable install footprint (Windows x64, Python 3.14) | xbbg 1.2.2 + narwhals 2.21.0 + blpapi 3.26.3.1 = 22.076 MiB | blpapi 3.26.3.1 = 13.653 MiB | pdblp 0.1.8 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.139 MiB / blp 0.0.4 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.246 MiB | bbg-fetch 2.0.2 + numpy 2.4.4 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.156 MiB | polars-bloomberg 0.5.4 + polars 1.40.1 + blpapi 3.26.3.1 = 191.547 MiB |
 
-Package sizes are current PyPI artifact sizes; total environment size varies by Python version, platform wheel, and already-installed transitive dependencies.
+Install footprints were measured in clean target directories on this workstation with the usable install recipe for each column: `xbbg + blpapi`, raw `blpapi`, `pdblp + pandas + blpapi`, `blp + pandas + blpapi`, `bbg-fetch + blpapi`, and `polars-bloomberg` (which pulls `blpapi` transitively).
 That makes xbbg the best fit in this comparison for teams that want one Bloomberg-connected Python client that can start with simple BDP/BDH calls and scale into institutional transport, async, streaming, diagnostics, and multi-backend data workflows.
 
 ## Installation
@@ -146,6 +148,29 @@ fields = blp.bflds(search_spec="vwap")
 ```
 
 For longer walkthroughs and example output shapes, use the [examples notebook](py-xbbg/examples/xbbg_jupyter_examples.ipynb) or [xbbg.org](https://xbbg.org/).
+
+## JavaScript and Node
+
+xbbg also ships experimental Node bindings in [`@xbbg/core`](js-xbbg/README.md). The JS layer uses the same Rust engine through a native N-API addon, so Node can use the same Bloomberg connection modes and request surfaces as Python.
+
+```bash
+npm install @xbbg/core
+# or
+bun add @xbbg/core
+```
+
+Packaged native addons are currently provided for macOS arm64, Linux x64, and Windows x64. You still need Bloomberg access plus Bloomberg SDK runtime libraries on the target system.
+
+```ts
+import * as xbbg from '@xbbg/core';
+
+xbbg.configure({ host: 'localhost', port: 8194 });
+
+const hist = await xbbg.blp.abdh(['AAPL US Equity'], ['PX_LAST'], '2024-01-01', '2024-12-31');
+const ref = await xbbg.blp.abdp(['AAPL US Equity'], ['PX_LAST', 'SECURITY_NAME']);
+```
+
+See [`js-xbbg/README.md`](js-xbbg/README.md) for platform packaging, runtime prerequisites, and the current alpha API surface.
 
 ## Configuration and engines
 
@@ -264,6 +289,40 @@ result = asyncio.run(main())
 
 In Jupyter and VS Code Interactive, one-shot sync calls such as `blp.bdp(...)` and `blp.bdh(...)` use a notebook-only bridge when an IPykernel event loop is already running. Generic async applications such as FastAPI or ASGI services should still use the async APIs directly.
 
+## Subscriptions, tick mode, and all fields
+
+Use `asubscribe()` when you need dynamic add/remove, explicit unsubscribe, or subscription health diagnostics. Use `stream()` when you only want the simple async-iterator wrapper.
+
+```python
+from xbbg import asubscribe
+
+sub = await asubscribe(
+    ["AAPL US Equity"],
+    ["LAST_PRICE", "BID", "ASK"],
+    tick_mode=True,
+    all_fields=True,
+    conflate=True,
+)
+
+async for tick in sub:
+    print(tick)       # dict ticks in tick_mode
+    print(sub.stats)  # messages_received, dropped_batches, data_loss_events, ...
+    break
+
+await sub.unsubscribe()
+```
+
+Key behaviors:
+
+- default iteration yields Arrow-backed record batches, or the configured backend if `raw=False`
+- `tick_mode=True` returns native dict ticks and implies raw subscription mode
+- `all_fields=True` exposes all top-level scalar Bloomberg subscription fields
+- filtered mode keeps requested fields plus `MKTDATA_EVENT_TYPE` and `MKTDATA_EVENT_SUBTYPE`
+- `conflate=True` requests Bloomberg-conflated quote updates on `//blp/mktdata`; trades are still delivered as received
+- `sub.add(...)`, `sub.remove(...)`, `sub.status`, `sub.events`, `sub.failed_tickers`, and `sub.stats` expose runtime control and diagnostics
+
+In Node, pass `{ allFields: true }` to `stream()` / `subscribe()` helpers for the same top-level field expansion. JS subscriptions use a native zero-copy Arrow path for supported schemas and fail fast with column-level diagnostics when a schema cannot use that path.
+
 ## MCP server
 
 The repository also includes a local MCP server for coding-agent workflows. It wraps selected xbbg request/response operations and returns bounded JSON results with schema metadata.
@@ -346,6 +405,7 @@ Publishing is handled through GitHub Actions and PyPI Trusted Publishing.
 ## Project links
 
 - Documentation: [xbbg.org](https://xbbg.org/)
+- JavaScript/Node bindings: [js-xbbg/README.md](js-xbbg/README.md)
 - PyPI: [pypi.org/project/xbbg](https://pypi.org/project/xbbg/)
 - Source: [github.com/alpha-xone/xbbg](https://github.com/alpha-xone/xbbg)
 - Issues: [GitHub Issues](https://github.com/alpha-xone/xbbg/issues)
