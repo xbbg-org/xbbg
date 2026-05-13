@@ -1,24 +1,21 @@
-<!-- markdownlint-disable MD013 MD031 MD032 MD033 MD036 MD041 MD051 MD060 -->
+<!-- markdownlint-disable MD013 MD031 MD032 MD033 MD041 MD051 -->
 <div align="center">
 
 <p>
   <a href="https://xbbg.org/python/quickstart">
-    <img src=".github/assets/readme-hero-flat.svg" alt="xbbg banner: Intuitive APIs for market data, Rust engine, shared core, typed requests, clear shapes, clear outputs, Arrow-native" width="100%">
+    <img src=".github/assets/readme-hero-flat.svg" alt="xbbg banner" width="100%">
   </a>
 </p>
-
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Downloads](https://pepy.tech/badge/xbbg)](https://pepy.tech/project/xbbg)
+[![CI](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/P34uMwgCjC)
 
-<a href="https://www.buymeacoffee.com/Lntx29Oof"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-1E3A8A?style=plastic&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me a Coffee"></a>
-
-**Quick Links:** [Discord](https://discord.gg/P34uMwgCjC) • [Documentation](https://xbbg.org/) • [Installation](#installation) • [Quickstart](#quickstart) • [Examples](#examples) • [Contributing](CONTRIBUTING.md) • [Changelog](CHANGELOG.md)
+**Links:** [Documentation](https://xbbg.org/) · [Quickstart](#quickstart) · [Configuration](#configuration-and-engines) · [Examples notebook](py-xbbg/examples/xbbg_jupyter_examples.ipynb) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 </div>
-<!-- markdownlint-enable MD033 MD041 -->
 
 ---
 
@@ -26,436 +23,61 @@
 Latest release: xbbg==1.2.2 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.2.2))
 <!-- xbbg:latest-release-end -->
 
-> This `main` branch is the Rust-powered v1 release, a significant upgrade over 0.x in performance and architecture.
-> Need the legacy pure-Python behavior? Use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
+> This `main` branch is the Rust-powered v1 release. For the legacy pure-Python line, use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
 
 > **Important:** xbbg is an independent open-source project. It is not affiliated with, endorsed by, sponsored by, or approved by Bloomberg Finance L.P. or its affiliates. Bloomberg, Bloomberg Terminal, B-PIPE, BQL, and related names are trademarks or service marks of their respective owners. xbbg does not grant access to Bloomberg services, data, software, licenses, credentials, or entitlements; users must obtain and use those separately under their own Bloomberg agreements and applicable policies.
 
-## Table of Contents
+## Contents
 
-- [Overview](#overview)
-- [Why Choose xbbg?](#why-choose-xbbg)
-- [Complete API Reference](#complete-api-reference)
-- [Requirements](#requirements)
+- [What is xbbg?](#what-is-xbbg)
+- [Why xbbg?](#why-xbbg)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
-  - [Basic Usage](#basic-usage)
-  - [Common Workflows](#common-workflows)
-  - [Connection Options](#connection-options)
-  - [Async Functions](#async-functions)
-  - [Multi-Backend Support](#multi-backend-support)
-- [Power User and Infrastructure APIs](#power-user-and-infrastructure-apis)
-  - [Generic Requests and Raw JSON](#generic-requests-and-raw-json)
-  - [Schema, Operations, and IDE Stubs](#schema-operations-and-ide-stubs)
-  - [Field Metadata, Cache, and Type Resolution](#field-metadata-cache-and-type-resolution)
-  - [Market Metadata and Session Overrides](#market-metadata-and-session-overrides)
-  - [SDK Detection, Logging, and Diagnostics](#sdk-detection-logging-and-diagnostics)
-  - [Testing Utilities](#testing-utilities)
-  - [Exception Types](#exception-types)
-- [Examples](#examples)
-  - [📊 Reference Data](#-reference-data)
-  - [📈 Historical Data](#-historical-data)
-  - [⏱️ Intraday Data](#-intraday-data)
-  - [🔍 Screening & Queries](#-screening-queries)
-  - [📡 Real-time](#-real-time)
-  - [🔧 Utilities](#-utilities)
-- [Troubleshooting](#-troubleshooting)
+- [Configuration and engines](#configuration-and-engines)
+- [Common API surface](#common-api-surface)
+- [Output backends](#output-backends)
+- [Async usage](#async-usage)
+- [MCP server](#mcp-server)
+- [Troubleshooting](#troubleshooting)
 - [Development](#development)
-- [Contributing](#contributing)
-- [Getting Help](#getting-help)
-- [Links](#links)
-- [License](#license)
+- [Project links](#project-links)
 
-## Overview
+## What is xbbg?
 
-xbbg is an independent, Rust-powered client library for Bloomberg-connected data workflows across Python, JavaScript, and Rust: broad SDK-backed request coverage, a native runtime, and clean language-native interfaces without legacy wrapper bloat.
-This `main` branch is the v1 release: request execution is Rust-powered for performance and reliability while preserving the familiar Python xbbg API and exposing the same engine to JavaScript and Rust workflows.
+xbbg is a Python-first client for Bloomberg-connected workflows. It keeps the familiar `xbbg.blp` helper style while using a shared Rust engine for request execution, response parsing, Arrow-shaped data movement, async workers, typed errors, and diagnostics.
 
-### Key Features
+Use xbbg when you already have Bloomberg access and want higher-level helpers for common request patterns, plus an escape hatch for lower-level Bloomberg service requests.
 
-<table>
-<tr>
-<td width="50%">
+Core scope:
 
-**Complete API Coverage**
-- Reference data (BDP/BDS)
-- Historical time series (BDH)
-- Intraday bars and tick data
-- Real-time subscriptions
-- BQL, BEQS, and BSRCH queries
-- Technical analysis (BTA)
+- request helpers for BDP, BDS, BDH, intraday bars, ticks, BQL, BEQS, BSRCH, BQR, BTA, YAS, and related analytics
+- local Bloomberg Desktop API / DAPI by default
+- configuration for managed Bloomberg environments, including B-PIPE/SAPI, ZFP leased lines, TLS, failover hosts, SOCKS5, and SDK logging
+- sync and async Python APIs backed by the same engine
+- output as Narwhals, native xbbg Arrow carriers, PyArrow, pandas, Polars, DuckDB, and other optional Narwhals-backed libraries
+- JavaScript/Node bindings in [`js-xbbg`](js-xbbg/README.md)
 
-</td>
-<td width="50%">
+## Why xbbg?
 
-**Enterprise-Grade Features**
-- ZFP over leased lines with TLS credentials
-- B-PIPE auth, failover servers, SOCKS5, and SDK logging
-- Async/await support for non-blocking operations
-- **Narwhals default with legacy PyArrow backing when installed** (plus explicit native, PyArrow, pandas, Polars, and DuckDB backends)
-- Full type hints, structured errors, and diagnostics
-- Exchange-aware market hours
+xbbg's project goal is direct: be the most complete, technically advanced, and performance-focused open-source Bloomberg client for Python workflows, while staying independent of Bloomberg and requiring users to bring their own authorized Bloomberg access.
 
-</td>
-</tr>
-<tr>
-<td width="50%">
+The short version: if all you need is a tiny one-off `bdp()` wrapper, several packages can work. xbbg is built for the path where that notebook later grows into intraday data, BQL, streaming, B-PIPE/SAPI, ZFP, async services, typed errors, diagnostics, and non-pandas data pipelines.
 
-**Excel Compatibility**
-- Familiar Bloomberg Excel syntax
-- Same field names and date formats
-- Minimal learning curve for Excel users
-- Direct migration path from Excel workflows
+| Capability | xbbg | raw `blpapi` | pdblp / blp | bbg-fetch | polars-bloomberg |
+| --- | --- | --- | --- | --- | --- |
+| BDP/BDS/BDH helpers | yes | manual SDK code | yes | yes | partial |
+| Intraday bars and ticks | yes | manual SDK code | limited / no | no | partial |
+| Streaming subscriptions | yes | manual SDK code | no | no | no |
+| BQL, BEQS, BSRCH, BQR, YAS, BTA | broad helper coverage | manual SDK code | limited | limited | partial |
+| DAPI, SAPI/B-PIPE, ZFP, TLS, failover, SOCKS5 | configurable engine support | manual SDK code | limited | limited | limited |
+| Async worker pools and isolated subscription sessions | yes | application-owned | no | no | no |
+| Rust request/parsing engine with Arrow-shaped output | yes | no | no | no | no |
+| Output backends beyond pandas | Narwhals, native, PyArrow, pandas, Polars, DuckDB | application-owned | pandas-first | pandas-first | Polars-first |
+| Typed errors, diagnostics, field cache, testing helpers | yes | application-owned | limited | limited | limited |
+| Default install footprint | ~2.0-2.5 MB platform wheel; hard dependency is `narwhals` only; pandas/PyArrow/Polars/DuckDB are optional extras | Bloomberg `blpapi` wheel/runtime only; application code owns dataframe conversion | tiny package (~25-33 KB), but pandas is part of the documented/declared install path | small package (~29 KB wheel), but hard-depends on `numpy>=2.0` and `pandas>=2.2.0` | small package (~27 KB wheel), but hard-depends on `polars` and `blpapi` |
 
-</td>
-<td width="50%">
-
-**Developer Experience**
-- Consistent, intuitive API design
-- Extensive documentation and examples
-- Active community support (Discord)
-- Regular updates and maintenance
-- Semantic versioning
-
-</td>
-</tr>
-</table>
-
-### Quick Example
-
-```python
-from xbbg import blp
-
-# Reference data
-prices = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST')
-
-# Historical data
-hist = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31')
-
-# Intraday bars with sub-minute precision
-intraday = blp.bdib('TSLA US Equity', dt='2024-01-15', interval=10, intervalHasSeconds=True)
-```
-
-See [`py-xbbg/examples/xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb) for comprehensive tutorials and examples.
-
-## Why Choose xbbg?
-
-xbbg is a third-party, Rust-powered client library for Python workflows that run in an already authorized Bloomberg environment. It is built for teams that need ZFP over leased lines, B-PIPE authentication, TLS, failover servers, SOCKS5, SDK logging, Arrow-native data movement, typed Python ergonomics, and broad SDK-backed request coverage without hand-written session and event-loop boilerplate.
-
-### Feature Coverage
-
-xbbg provides a higher-level alternative to direct `blpapi` code for many common workflows: high-level helpers cover common request patterns, while the generic request layer lets authorized users reach Bloomberg services and operations when they need a lower-level path.
-
-- **Broad `blpapi` workflow coverage**: Reference, Historical, Bulk, Intraday, Tick, Streaming, BQL, BEQS, BSRCH, BQR, BTA, YAS, fields, portfolios, curves, government lookup, and raw/generic service requests
-- **Less raw SDK boilerplate in applications**: session setup, auth, request dispatch, event parsing, Arrow output, async execution, logging, errors, and retries can be handled by xbbg instead of repeated application-local SDK loops
-- **Sub-second precision**: Down to 10-second intraday bars (unique to xbbg)
-- **Real-time streaming**: Live market data with async support
-- **Advanced utilities**: Futures/CDX contract resolution, currency conversion, market hours
-
-### 📊 Enterprise-Grade Without Bloat
-
-- **ZFP over leased lines**: `zfp_remote` support for Bloomberg-provisioned ZFP environments with the client credentials and trust material supplied to the user
-- **B-PIPE and SAPI-ready authentication**: User, application, user+application, directory, manual, and token auth modes for authorized enterprise identity flows
-- **Transport control for managed networks**: Already-provisioned direct hosts, ordered failover servers, TLS, SOCKS5 proxying, startup attempts, auto-restart, and retry policy are all explicit configuration, not ad hoc connection strings
-- **Operational observability**: xbbg tracing, Bloomberg SDK log bridging, SDK runtime detection, worker health, and request environment snapshots make failures inspectable instead of opaque
-- **Concurrency and isolation**: Independent request worker pools and isolated subscription sessions keep batch requests, live streams, and scoped engines from stepping on each other
-- **User-owned middleware hooks**: Request middleware gives platform teams a place to implement their own audit logging, entitlement-aware checks, request labeling, metrics, tracing, policy handling, and standardized error handling around Bloomberg requests
-- **Validation and governance hooks**: Field validation modes, persistent field caches, middleware context, and stable output contracts help teams implement request behavior controls without standing in for Bloomberg permissions or internal governance controls
-- **Advanced zero-copy architecture**: Rust decodes Bloomberg payloads into typed Arrow builders, releases the GIL around native work, wraps native `ArrowTable` results in a Narwhals DataFrame by default for dataframe ergonomics, and exposes explicit native/PyArrow/pandas/Polars/DuckDB conversions when requested
-- **Benchmarking across changes**: Dedicated live and offline benchmark harnesses track request latency, allocation behavior, cache contention, subscription replay throughput, and competitor equivalence so performance regressions are visible instead of guessed
-- **Rust-powered hot path**: SDK-backed sessions, request execution, parsing, and Arrow handoff run in the shared native engine instead of slow Python event-loop glue
-- **No bloat**: every core dependency supports the data path — SDK runtime integration, typed tabular interchange, backend conversion, benchmarking, diagnostics, or runtime packaging
-
-### 💡 Developer Experience
-
-- **Excel-style request compatibility**: Use familiar Bloomberg Excel add-in style request names and date formats where xbbg supports them
-- **Pythonic API**: Consistent, intuitive function names (`bdp`, `bdh`, `bdib`)
-- **Rich documentation**: 100+ examples, Jupyter notebooks, comprehensive guides
-- **Active community**: Discord support, regular updates, responsive maintainers
-
-### 🚀 Performance & Reliability
-
-- **Broad Python Bloomberg workflow surface**: xbbg covers simple BDP/BDH/BDS and scales to intraday bars, ticks, subscriptions, BQL, BEQS, BSRCH, BTA, YAS, ZFP, B-PIPE auth, TLS, failover, SOCKS5, and more when your Bloomberg environment supports those services
-- **High-performance architecture**: Rust worker pools, typed Arrow builders, async execution, GIL-free native work, zero-copy columnar handoff, and reusable SDK sessions reduce repeated Python session boilerplate used by older wrappers
-- **Benchmark-driven engineering**: xbbg tracks performance across changes with live Bloomberg benchmarks, offline replay harnesses, allocation profiling, cache-contention measurements, subscription replay tests, and competitor equivalence checks
-- **No bloat**: every core dependency supports the data path — SDK runtime integration, typed tabular interchange, backend conversion, benchmarking, diagnostics, or runtime packaging
-- **Battle-tested**: Used in production by hedge funds, asset managers, and research teams
-- **Modern Python**: Supports Python 3.10-3.14 with latest language features
-- **CI/CD pipeline**: Automated testing across multiple Python versions and platforms
-- **Semantic versioning**: Predictable releases with clear upgrade paths
-
-### Comparison with Alternatives
-
-The gap is not cosmetic. The other Python Bloomberg packages are either narrower wrappers around BDP/BDH/BDS, seldom-updated legacy pandas-era clients, or partial modern experiments. They can be useful for small scripts, but they generally cover fewer Bloomberg-connected workflows, expose less enterprise transport configuration, provide different async/session architecture, or do not carry the same benchmark-driven Rust/Arrow runtime. xbbg aims to cover the simple path and the institutional path in one independent client library.
-
-#### Detailed competitor notes
-
-**vs. raw `blpapi`**
-- Bloomberg's official SDK surface is intentionally low-level: every application has to handle session startup, service opening, request construction, correlation IDs, event-loop parsing, retries, logging, and dataframe conversion.
-- xbbg keeps SDK access underneath through Bloomberg's C/C++ SDK while reducing hand-written event-loop code with a typed Rust engine, async worker pools, structured exceptions, Arrow output, and generic requests.
-- For many normal applications, xbbg can reduce direct `blpapi` code while still depending on the user's Bloomberg runtime, permissions, and entitlements.
-
-**vs. bbg-fetch / BloombergFetch**
-- Small, homegrown pandas helper package for prices/fundamentals/curves/analytics; targets Python 3.9–3.12 and is not a modern Python 3.13+ option.
-- Hard-depends on `numpy>=2.0` and `pandas>=2.2.0` (plus optional `pyarrow`, Jupyter, and dev extras), so it is not meaningfully simpler than xbbg's core dependency surface.
-- Missing the institutional surface: intraday bars, ticks, streaming, BQL/BEQS/BSRCH/BQR/BTA, ZFP, B-PIPE/SAPI auth, SDK logging, multi-backend output, typed Arrow transport, async execution, and generic Bloomberg service requests.
-
-**vs. pdblp**
-- Legacy pandas-era wrapper; its own README says it has been superseded by `blp` and is no longer under active development.
-- No modern `Requires-Python` floor; only declares `pandas>=0.18.0`, exactly the old pandas-wrapper model xbbg replaces.
-- Covers a small subset of Bloomberg data and leaves async, streaming, enterprise transports, Rust/Arrow performance, typed errors, diagnostics, multi-backend output, and broad service coverage outside the package.
-
-**vs. blp**
-- Cleaner than pdblp, but still a Python-level interface around Bloomberg Open API concepts.
-- Declares Python `>=3.6` and mandatory `pandas`, keeping it in the classic Python/pandas wrapper category.
-- xbbg goes further with native Rust execution, reusable worker pools, Arrow-native output, near-complete `blpapi` workflow coverage, enterprise connection modes, high-level analytics, and benchmark coverage across changes.
-
-**vs. polars-bloomberg**
-- Locks the whole workflow into Polars; xbbg gives you Polars as an optional conversion alongside pandas, DuckDB, Narwhals, and raw xbbg native Arrow paths.
-- Partial Bloomberg surface: useful BQL/search-style coverage, but not full API coverage across BDP/BDS/BDH/BDIB/BDTICK/streaming, enterprise transports, middleware, diagnostics, or generic service requests.
-- xbbg is the broader client: same modern Polars-friendly output when you want it, without giving up other supported request workflows or forcing every team onto one dataframe library.
-
-| Feature | xbbg | bbg-fetch ([BloombergFetch](https://github.com/ArturSepp/BloombergFetch)) | pdblp | blp | polars-bloomberg |
-|---------|------|----------------------------------|-------|-----|------------------|
-| **Data Services** | | | | | |
-| Reference Data (BDP/BDS) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Historical Data (BDH) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Intraday Bars (BDIB) | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Tick-by-Tick Data | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Real-time Subscriptions | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Advanced Features** | | | | | |
-| Equity Screening (BEQS) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Query Language (BQL) | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Quote Request (BQR) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Search (BSRCH) | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Technical Analysis (BTA) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Yield & Spread Analysis (YAS) | ✅ | ❌[^1] | ❌ | ❌ | ❌ |
-| **Developer Features** | | | | | |
-| Excel-compatible syntax | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Sub-minute intervals (10s bars) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Async/await support | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Multi-backend output | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Utilities** | | | | | |
-| Currency conversion | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Futures contract resolution | ✅ | ✅[^2] | ❌ | ❌ | ❌ |
-| CDX index resolution | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Exchange market hours | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Project Health** | | | | | |
-| Active development | ✅ | ✅ | ❌[^5] | ✅ | ✅ |
-| Python version support | 3.10-3.14[^6] | 3.9-3.12[^3] | legacy 3.x[^7] | 3.6+[^8] | 3.12+ |
-| Live last commit[^4] | [![xbbg last commit](https://img.shields.io/github/last-commit/alpha-xone/xbbg?label=)](https://github.com/alpha-xone/xbbg/commits/main) | [![BloombergFetch last commit](https://img.shields.io/github/last-commit/ArturSepp/BloombergFetch?label=)](https://github.com/ArturSepp/BloombergFetch/commits) | [![pdblp last commit](https://img.shields.io/github/last-commit/matthewgilbert/pdblp?label=)](https://github.com/matthewgilbert/pdblp/commits) | [![blp last commit](https://img.shields.io/github/last-commit/matthewgilbert/blp?label=)](https://github.com/matthewgilbert/blp/commits) | [![polars-bloomberg last commit](https://img.shields.io/github/last-commit/MarekOzana/polars-bloomberg?label=)](https://github.com/MarekOzana/polars-bloomberg/commits) |
-| DataFrame library | **Multi-backend** | pandas | pandas | pandas | Polars |
-| Type hints | ✅ Full | ❌ | ❌ | Partial | ✅ Full |
-| Real CI matrix across all supported Python versions[^9] | ✅ | ❌ | ❌ | ❌ | ❌ |
-
-[^1]: BloombergFetch README advertises bond analytics by ISIN, but not Bloomberg YAS request coverage.
-[^2]: BloombergFetch README advertises futures contract tables, active contract series, and roll handling rather than the broader xbbg futures helper surface.
-[^3]: `bbg-fetch` targets Python 3.9–3.12; its installed hard dependencies currently include NumPy and pandas, with optional `pyarrow`, Jupyter, and dev extras.
-[^4]: Last-commit badges are live shields.io badges against each GitHub repository's default branch; click through for the commit history. `pdblp` is still marked inactive by its own README even if repository metadata changes.
-[^5]: pdblp has been superseded by blp and is no longer under active development.
-[^6]: xbbg supports and tests Python 3.10, 3.11, 3.12, 3.13, and 3.14.
-[^7]: `pdblp` package metadata does not declare a modern `Requires-Python`; its README says Python 3.x and the package depends on `pandas>=0.18.0`.
-[^8]: `blp` declares Python `>=3.6` and a mandatory `pandas` dependency in its package metadata.
-[^9]: xbbg is the only package in this comparison with a real CI matrix that exercises every supported Python version. The competitors either lack active CI across their claimed range, are legacy/inactive, or test a narrower slice than their advertised compatibility.
-
-**Bottom line**: xbbg is the broadest, most actively maintained independent client in this comparison for Bloomberg-connected Python workflows. It offers modern Rust/Arrow internals, benchmarked performance across changes, enterprise transports, async execution, configurable sessions, generic service requests, and non-pandas backends without switching libraries. It remains a third-party project and depends on the user's own Bloomberg runtime, entitlements, and applicable terms.
-
-#### Common objections, answered
-
-- **“Rust and Narwhals are dependency bloat.”** False. xbbg has a deliberately small core dependency surface: `narwhals` plus the native engine. The Rust engine emits xbbg native Arrow objects (`ArrowTable` / `ArrowRecordBatch`) directly, and Narwhals provides the lightweight plugin interface that lets one engine serve pandas, Polars, DuckDB, and other dataframe consumers when you explicitly request conversion. By contrast, `bbg-fetch` installs `numpy>=2.0` and `pandas>=2.2.0` as hard dependencies, with optional `pyarrow`, Jupyter, and dev extras. Pandas-based wrappers are not dependency-free; they just make pandas mandatory and still leave you with Python event-loop parsing, one-off dataframe shaping, and a narrow API. xbbg is leaner where it matters: fewer core concepts, fewer repeated parsing paths, fewer mandatory dataframe assumptions, and one native engine for the supported workflow surface.
-- **“Use a lighter package for simple `bdp()` calls.”** xbbg is still simple at the call site (`xbbg.bdp(...)`), but it does not trap you in a narrow architecture when that same notebook grows into B-PIPE auth, async batch jobs, intraday bars, BQL, streaming, typed outputs, or non-pandas pipelines.
-- **“Fixed income and government bonds are gaps.”** xbbg has explicit fixed-income coverage: ISIN/CUSIP/SEDOL support, BDS cash-flow style data, BSRCH fixed-income searches, BQR dealer quotes, YAS helpers, bond analytics, curves, and CDX analytics. When Bloomberg returns no data for a security/field/date combination, xbbg surfaces the request result instead of implying unavailable Bloomberg data exists.
-- **“You need raw `blpapi` for SAPI or B-PIPE session control.”** xbbg exposes session configuration for already-provisioned hosts, ordered failover `servers`, ZFP over leased lines, TLS credentials, SOCKS5, SAPI/B-PIPE auth modes (`user`, `app`, `userapp`, `dir`, `manual`, `token`), startup attempts, auto-restart, retry policy, SDK logging, scoped `Engine(...)` instances, and request/subscription worker pools. For unusual Bloomberg operations, the generic request layer can reduce hand-written `blpapi` request/event-loop code without bypassing Bloomberg permissions or entitlements.
-- **“Does xbbg automatically save Bloomberg data locally?”** xbbg does not require a `BBG_ROOT` market-data cache or auto-save Bloomberg responses as local Parquet files. Core requests return typed tables/dataframes to the caller. Users remain responsible for evaluating any local storage, caching, logging, or downstream persistence under their Bloomberg agreements, entitlements, and internal policies.
-- **“High-level means black-box troubleshooting.”** No. xbbg is high-level at the Python API and low-level where debugging matters: structured exception classes, SDK detection via `get_sdk_info()`, xbbg tracing, Bloomberg SDK log bridging with `enable_sdk_logging()`, request IDs, worker health, middleware context, request environment snapshots, raw request access, and JSON output modes for inspecting Bloomberg payloads.
-
-## Complete API Reference
-
-> Unless noted otherwise, the typed request helpers below have async `a...` counterparts (`bdp` → `abdp`, `bcurves` → `abcurves`, etc.).
-
-### Reference Data - Point-in-Time Snapshots
-
-| Function | Description | Key Features |
-|----------|--------------|-------------|
-| **`bdp()`** | Get current/reference data | Multiple tickers & fields<br>Excel-style overrides<br>ISIN/CUSIP/SEDOL support |
-| **`bds()`** | Bulk/multi-row data | Portfolio holdings<br>Fixed income cash flows<br>Corporate actions |
-| **`abdp()`** | Async reference data | Non-blocking operations<br>Concurrent requests<br>Web application friendly |
-| **`abds()`** | Async bulk data | Parallel bulk queries<br>Same API as `bds()` |
-| **`bflds()`** | Unified field metadata | Get field info or search by keyword<br>Single function for both use cases |
-| **`fieldInfo()`** | Field metadata lookup (alias for `bflds`) | Data types & descriptions<br>Discover available fields |
-| **`fieldSearch()`** | Search Bloomberg fields (alias for `bflds`) | Find fields by keyword<br>Explore data catalog |
-| **`blkp()`** | Find tickers by name | Company name search<br>Asset class filtering |
-| **`bport()`** | Portfolio data queries | Dedicated portfolio API<br>Holdings & weights |
-
-### Fixed Income Analytics
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`yas()`** | Yield & Spread Analysis | YAS calculator wrapper<br>YTM/YTC yield types<br>Price↔yield conversion<br>Spread calculations |
-| **`preferreds()`** | Preferred security screening | Issuer-centric lookup<br>BQL-backed preferred universe |
-| **`corporate_bonds()`** | Corporate bond screening | Cross-market debt lookup<br>Issuer-to-bond discovery |
-
-> `xbbg.ext` follows the same async naming convention as the core API: extension helpers generally expose `a...` variants without needing separate conceptual documentation for each async name.
-
-### Bond Analytics (via `xbbg.ext`)
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`bond_info()`** | Bond reference metadata | Ratings, maturity, coupon |
-| **`bond_risk()`** | Duration and risk metrics | Modified/Macaulay duration, convexity, DV01 |
-| **`bond_spreads()`** | Spread analytics | OAS, Z-spread, I-spread, ASW |
-| **`bond_cashflows()`** | Cash flow schedule | Coupon and principal payments |
-| **`bond_key_rates()`** | Key rate durations | Key rate DV01s and risks |
-| **`bond_curve()`** | Relative value comparison | Multi-bond analytics |
-
-### Options Analytics (via `xbbg.ext`)
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`option_info()`** | Contract metadata | Strike, expiry, exercise type |
-| **`option_greeks()`** | Greeks and implied vol | Delta, gamma, theta, vega, IV |
-| **`option_pricing()`** | Value decomposition | Intrinsic/time value, activity |
-| **`option_chain()`** | Chain via overrides | `CHAIN_TICKERS` with filtering |
-| **`option_chain_bql()`** | Chain via BQL | Rich filtering, expiry/strike ranges |
-| **`option_screen()`** | Multi-option comparison | Side-by-side analytics |
-
-Options helper enums exported by `xbbg.ext`:
-- **`PutCall`** — put/call selector
-- **`ChainPeriodicity`** — chain interval / expiry grouping
-- **`StrikeRef`** — strike-reference mode
-- **`ExerciseType`** — American/European exercise metadata
-- **`ExpiryMatch`** — expiry matching strategy
-
-### CDX Analytics (via `xbbg.ext`)
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`cdx_info()`** | CDX reference metadata | Series, version, constituents |
-| **`cdx_defaults()`** | Default history | Settled defaults in index |
-| **`cdx_pricing()`** | Market pricing | Spread, price, recovery rate |
-| **`cdx_risk()`** | Risk metrics | DV01, duration, spread sensitivity |
-| **`cdx_basis()`** | Basis analytics | CDX vs intrinsics spread |
-| **`cdx_default_prob()`** | Default probability | Implied default rates |
-| **`cdx_cashflows()`** | Cash flow schedule | Premium and protection legs |
-| **`cdx_curve()`** | Term structure | Multi-tenor curve analytics |
-
-### Historical Data - Time Series Analysis
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`bdh()`** | End-of-day historical data | Flexible date ranges<br>Excel-compatible aliases (`Per`, `Fill`, `Points`, etc.)<br>Local presentation aliases (`Dts`, `DtFmt`, `Sort`, `Direction`)<br>Dividend/split adjustments |
-| **`abdh()`** | Async historical data | Non-blocking time series<br>Batch historical queries<br>Same alias support as `bdh()` |
-| **`dividend()`** | Dividend & split history | All dividend types<br>Projected dividends<br>Date range filtering |
-| **`earnings()`** | Corporate earnings | Geographic breakdowns<br>Product segments<br>Fiscal period analysis |
-| **`turnover()`** | Trading volume & turnover | Multi-currency support<br>Automatic FX conversion |
-
-### Intraday Data - High-Frequency Analysis
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`bdib()`** | Intraday bar data | Sub-minute bars (10s intervals)<br>Session filtering (open/close)<br>Exchange-aware timing<br>Timezone control (`tz` parameter) |
-| **`bdtick()`** | Tick-by-tick data | Trade & quote events<br>Condition codes<br>Exchange/broker details |
-
-### Screening & Advanced Queries
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`beqs()`** | Bloomberg Equity Screening | Custom screening criteria<br>Private & public screens |
-| **`bql()`** | Bloomberg Query Language | SQL-like syntax<br>Complex transformations<br>Options chain analysis |
-| **`bqr()`** | Bloomberg Quote Request | Tick-level dealer quotes<br>Broker attribution codes<br>Spread price & yield data<br>Date offset support (-2d, -1w) |
-| **`bsrch()`** | SRCH (Search) queries | Fixed income searches<br>Commodity screens<br>Weather data |
-| **`bcurves()`** | Yield-curve discovery | Country/currency filters<br>Curve ID lookup |
-| **`bgovts()`** | Government security search | Treasury/sovereign lookup<br>Partial or exact matching |
-| **`bta()`** | Technical Analysis | 50+ technical indicators<br>Custom studies |
-| **`ta_studies()`** | Technical analysis catalog | Discover available studies |
-| **`ta_study_params()`** | TA parameter inspection | Study inputs, defaults, and metadata |
-| **`etf_holdings()`** | ETF holdings via BQL | Complete holdings list<br>Weights & positions |
-
-### Real-Time - Live Market Data
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`subscribe()`** | Real-time subscriptions | Async iteration<br>Topic failure isolation<br>`status` / `events` / `stats` observability |
-| **`stream()`** | Simplified streaming | Context manager<br>Non-blocking updates |
-| **`vwap()`** | Real-time VWAP | Streaming volume-weighted average price |
-| **`mktbar()`** | Real-time market bars | Streaming OHLCV bars |
-| **`depth()`** | Market depth | Streaming order book levels<br>B-PIPE required |
-| **`chains()`** | Option/futures chains | Real-time chain data<br>B-PIPE required |
-
-### Utilities
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`convert_ccy()`** | Currency conversion | Multi-currency DataFrames<br>Historical FX rates<br>Automatic alignment |
-| **`fut_ticker()`** | Futures contract resolution | Generic to specific mapping<br>Date-aware selection |
-| **`active_futures()`** | Active futures selection | Volume-based logic<br>Roll date handling |
-| **`cdx_ticker()`** | CDX index resolution | Series mapping<br>Index family support |
-| **`active_cdx()`** | Active CDX selection | On-the-run detection<br>Lookback windows |
-
-### Schema Introspection
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`bops()`** | List service operations | Discover available request types |
-| **`bschema()`** | Get operation schema | Field definitions, types, enums |
-| **`list_valid_elements()`** | Valid request elements | Check parameter names before sending |
-| **`get_enum_values()`** | Enum values for a field | Discover valid override values |
-| **`generate_stubs()`** | IDE stub generation | Auto-complete for request parameters |
-
-### Engine Lifecycle
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`configure()`** | Engine and session setup | Server host/port, auth, options<br>Replaces `connect()` / `disconnect()` |
-| **`shutdown()`** | Stop engine and sessions | Graceful cleanup |
-| **`reset()`** | Reset engine state | Clear sessions and caches |
-| **`is_connected()`** | Check connection status | Boolean connectivity check |
-
-### Request Middleware
-
-| Function | Description | Key Features |
-|----------|-------------|--------------|
-| **`add_middleware()`** | Register request middleware | Hooks for user-owned audit logging, entitlement-aware checks, metrics, tracing, policy handling, request labeling |
-| **`set_middleware()`** | Replace middleware chain | Install a known platform pipeline in one call |
-| **`get_middleware()`** | Inspect middleware chain | Useful in apps/tests before mutation or user-owned compliance checks |
-| **`remove_middleware()`** | Unregister middleware | Clean removal for scoped tests or application shutdown |
-| **`clear_middleware()`** | Clear middleware chain | Reset to a pristine request path |
-| **`RequestContext`** | Request metadata | Request ID, request payload, timing, results, errors |
-| **`RequestEnvironment`** | Engine/auth snapshot | Host, auth method, validation mode, server list, transport context |
-
-### Additional Features
-
-- **Timezone Support**: Exchange-aware market hours for 50+ global exchanges; `bdib()` / `bdtick()` support `request_tz` and `output_tz` (interpretation and `time`-column relabeling in the Rust engine; Bloomberg wire format remains UTC)
-- **Per-request field validation**: `validate_fields=` can override engine-level validation on `bdp()` / `bds()` / `bdh()`
-- **Scoped engines**: `Engine(...)` lets you route a block of requests to a dedicated connection without mutating global state
-- **Configurable Logging**: Debug mode for troubleshooting
-- **Batch Processing**: Efficient multi-ticker queries
-- **Explicit output contracts**: Core metadata columns are stable; generic BDS preserves Bloomberg bulk subfield labels exactly
-- **Non-live test helpers**: `xbbg.testing` exposes `mock_engine()` and TestUtil-backed helpers for unit testing Bloomberg flows without a live terminal
-- **Bloomberg ZFP over leased lines**: `blp.configure(zfp_remote='8194' | '8196', tls_client_credentials=..., tls_trust_material=...)` uses Bloomberg's ZFP leased-line session setup directly. ZFP is a distinct enterprise transport mode from direct `host`/`port`/`servers`/SOCKS5 configuration.
-
-## Requirements
-
-- **Bloomberg C++ SDK** version 3.12.1 or higher:
-  - Visit [Bloomberg API Library](https://www.bloomberg.com/professional/support/api-library/) and download C++ Supported Release
-  - For local source builds in this repo, install it with `bash ./scripts/sdktool.sh` on macOS/Linux or `.\scripts\sdktool.ps1` on Windows PowerShell
-  - If you manage the SDK yourself, set `BLPAPI_ROOT` to the extracted SDK root
-  - You are responsible for obtaining and using Bloomberg SDK/runtime components under your own Bloomberg agreements and entitlements; xbbg does not redistribute or license them.
-
-- **Bloomberg official Python API**:
-
-```cmd
-pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
-```
-
-- **Python dependencies (core)**: `narwhals>=2.0` plus the native `xbbg._core` extension. PyArrow is optional; when installed, it backs the default Narwhals DataFrame for legacy-compatible behavior.
-
-- **Optional conversion backends** (install separately if needed):
-  - `pyarrow` - For actual `pyarrow.Table` conversion (`pip install xbbg[pyarrow]` or `pip install pyarrow`)
-  - `pandas` - For pandas DataFrame conversion (`pip install xbbg[pandas]` or `pip install pandas`)
-  - `polars` - For Polars DataFrame / LazyFrame conversion (`pip install xbbg[polars]` or `pip install polars`)
-  - `duckdb` - For DuckDB relation conversion (`pip install xbbg[duckdb]` or `pip install duckdb`)
-  - **Native Narwhals plugin** - Included with xbbg as the minimal fallback when no PyArrow/pandas/Polars backend is installed; emits a one-time warning because it intentionally has a smaller dataframe surface
+Package sizes are current PyPI artifact sizes; total environment size varies by Python version, platform wheel, and already-installed transitive dependencies.
+That makes xbbg the best fit in this comparison for teams that want one Bloomberg-connected Python client that can start with simple BDP/BDH calls and scale into institutional transport, async, streaming, diagnostics, and multi-backend data workflows.
 
 ## Installation
 
@@ -463,1626 +85,247 @@ pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/
 pip install xbbg
 ```
 
-For most users, also install Bloomberg's official Python package so xbbg can auto-detect the SDK runtime:
+Most users should also install Bloomberg's official Python package so xbbg can locate the Bloomberg SDK/runtime:
 
 ```cmd
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
 ```
 
-Supported Python versions: **3.10 – 3.14** (universal wheel).
+Supported Python versions: **3.10 through 3.14**.
 
-Quick verification:
+Requirements and notes:
+
+- You need an authorized Bloomberg environment: local Terminal/DAPI, SAPI/B-PIPE, or ZFP, depending on your setup.
+- If you build from source, stage the Bloomberg C++ SDK with `bash ./scripts/sdktool.sh` on macOS/Linux or `.\\scripts\\sdktool.ps1` on Windows PowerShell.
+- If you manage the SDK yourself, set `BLPAPI_ROOT` or use `xbbg.set_sdk_path(...)`.
+- Optional dataframe conversions are installed separately: `xbbg[pyarrow]`, `xbbg[pandas]`, `xbbg[polars]`, or `xbbg[duckdb]`.
+
+Verify the install:
 
 ```python
 import xbbg
 
 print(xbbg.__version__)
 print(xbbg.get_sdk_info())
-
-# Optional: if you manage the SDK yourself instead of using blpapi/DAPI
-# xbbg.set_sdk_path('/path/to/blpapi_cpp')
-# xbbg.clear_sdk_path()  # remove a manual override
 ```
-
-### MCP Server for Claude Code / OpenCode
-
-Need xbbg inside a coding agent instead of Python code? Install the local MCP wrapper + binary from GitHub Releases:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/alpha-xone/xbbg/main/scripts/install-xbbg-mcp.sh | sh
-```
-
-The installer currently targets **macOS arm64** and **Linux amd64**. Windows `.zip` assets are attached to GitHub releases for manual installation.
-
-GitHub release assets include only the xbbg wrapper/binary pair. They do **not** bundle Bloomberg SDK files or the Bloomberg runtime. You must obtain and use any Bloomberg SDK/runtime components separately from Bloomberg or another source you are authorized to use, subject to your Bloomberg agreements and entitlements.
-
-Claude Code:
-
-```bash
-claude mcp add --transport stdio xbbg -- ~/.local/bin/xbbg-mcp
-```
-
-OpenCode:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "xbbg": {
-      "type": "local",
-      "command": ["/Users/you/.local/bin/xbbg-mcp"],
-      "enabled": true
-    }
-  }
-}
-```
-
-The launcher searches for the Bloomberg runtime via `XBBG_MCP_LIB_DIR`, `BLPAPI_LIB_DIR`, `BLPAPI_ROOT`, a locally staged authorized SDK under `vendor/blpapi-sdk/`, or the official `blpapi` Python package. See [`apps/xbbg-mcp/README.md`](apps/xbbg-mcp/README.md) for the full env surface.
 
 ## Quickstart
 
-### Basic Usage
-
 ```python
 from xbbg import blp
 
-# Get current stock prices
-prices = blp.bdp(['AAPL US Equity', 'MSFT US Equity'], 'PX_LAST')
-print(prices)
+# Reference data
+prices = blp.bdp(["AAPL US Equity", "MSFT US Equity"], "PX_LAST")
+
+# Historical data
+hist = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31")
+
+# Intraday bars
+bars = blp.bdib("TSLA US Equity", dt="2024-01-15", interval=5)
 ```
 
-### Common Workflows
-
-<details>
-<summary><b>📊 Get Reference Data (Current Snapshot)</b></summary>
+Common request patterns:
 
 ```python
-# Single ticker, multiple fields
-info = blp.bdp('NVDA US Equity', ['Security_Name', 'GICS_Sector_Name', 'PX_LAST'])
-
-# Multiple tickers, single field
-prices = blp.bdp(['AAPL US Equity', 'MSFT US Equity', 'GOOGL US Equity'], 'PX_LAST')
-
-# With overrides (e.g., VWAP for specific date)
-vwap = blp.bdp('AAPL US Equity', 'Eqy_Weighted_Avg_Px', VWAP_Dt='20240115')
-```
-
-</details>
-
-<details>
-<summary><b>📈 Get Historical Data (Time Series)</b></summary>
-
-```python
-# Simple historical query
-hist = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31')
+from xbbg import blp
 
 # Multiple fields
-ohlc = blp.bdh('AAPL US Equity', ['open', 'high', 'low', 'close'], '2024-01-01', '2024-01-31')
+info = blp.bdp("NVDA US Equity", ["Security_Name", "GICS_Sector_Name", "PX_LAST"])
 
-# With dividend/split adjustments
-adjusted = blp.bdh('AAPL US Equity', 'px_last', '2024-01-01', '2024-12-31', adjust='all')
+# Bloomberg-style overrides
+vwap = blp.bdp("AAPL US Equity", "Eqy_Weighted_Avg_Px", VWAP_Dt="20240115")
 
-# Weekly data with forward fill
-weekly = blp.bdh('SPX Index', 'PX_LAST', '2024-01-01', '2024-12-31', Per='W', Fill='P')
+# Bulk data
+holders = blp.bds("AAPL US Equity", "DVD_Hist_All", DVD_Start_Dt="20240101")
 
-# Excel-style request aliases and presentation controls
-weekly = blp.bdh(
-    'SPX Index',
-    'PX_LAST',
-    '2024-01-01',
-    '2024-12-31',
-    Per='W',        # periodicitySelection='WEEKLY'
-    Fill='P',       # nonTradingDayFillMethod='PREVIOUS_VALUE'
-    Points=10,      # maxDataPoints=10
-    Dts='Show',     # keep date column
-    DtFmt='Both',   # add period labels alongside dates
-    Sort='Reverse', # newest rows first
-    Direction='V',  # vertical/long output shape
-)
-```
-
-</details>
-
-<details>
-<summary><b>⏱️ Get Intraday Data (High Frequency)</b></summary>
-
-```python
-# 5-minute bars
-bars_5m = blp.bdib('SPY US Equity', dt='2024-01-15', interval=5)
-
-# 1-minute bars (default)
-bars_1m = blp.bdib('TSLA US Equity', dt='2024-01-15')
-
-# Sub-minute bars (10-second intervals) - UNIQUE TO XBBG!
-bars_10s = blp.bdib('AAPL US Equity', dt='2024-01-15', interval=10, intervalHasSeconds=True)
-
-# Session filtering (e.g., first 30 minutes)
-opening = blp.bdib('SPY US Equity', dt='2024-01-15', session='day_open_30')
-
-# Get data in UTC instead of exchange local time
-bars_utc = blp.bdib('SPY US Equity', dt='2024-01-15', tz='UTC')
-```
-
-</details>
-
-<details>
-<summary><b>🔍 Advanced Queries (BQL, Screening)</b></summary>
-
-```python
-# Bloomberg Query Language
+# BQL
 result = blp.bql("get(px_last) for('AAPL US Equity')")
 
-# Equity screening
-screen_results = blp.beqs(screen='MyScreen', asof='2024-01-01')
-
-# ETF holdings
-holdings = blp.etf_holdings('SPY US Equity')
-
-# Search queries
-bonds = blp.bsrch("FI:MYSEARCH")
-
-# Dealer quotes with broker codes (BQR)
-# Synthetic/anonymized example only; do not paste proprietary Bloomberg output.
-quotes = blp.bqr("XYZ 4.5 01/15/30@MSG1 Corp", date_offset="-2d")
+# Field lookup
+fields = blp.bflds(search_spec="vwap")
 ```
 
-</details>
+For longer walkthroughs and example output shapes, use the [examples notebook](py-xbbg/examples/xbbg_jupyter_examples.ipynb) or [xbbg.org](https://xbbg.org/).
 
-<details>
-<summary><b>🔧 Utilities (Futures, Currency, etc.)</b></summary>
+## Configuration and engines
+
+By default, xbbg starts a Rust-backed engine and connects to local Bloomberg Desktop API / DAPI on `localhost:8194`. Configure the engine before the first request when you need a different transport, authentication mode, worker count, timeout policy, field cache, or logging behavior.
 
 ```python
-# Resolve futures contract
-contract = blp.fut_ticker('ES1 Index', '2024-01-15', freq='ME')  # → 'ESH24 Index'
+from xbbg import blp, configure
 
-# Get active futures
-active = blp.active_futures('ESA Index', '2024-01-15')
+# Equivalent to the default local Terminal / DAPI path
+configure(host="localhost", port=8194)
 
-# Currency conversion
-hist_usd = blp.bdh('BMW GR Equity', 'PX_LAST', '2024-01-01', '2024-01-31')
-hist_eur = blp.convert_ccy(hist_usd, ccy='EUR')
-
-# Dividend history
-divs = blp.dividend('AAPL US Equity', start_date='2024-01-01', end_date='2024-12-31')
+print(blp.bdp("AAPL US Equity", "PX_LAST"))
 ```
 
-</details>
+Common environments:
 
-<details>
-<summary><b>Fixed Income Analytics (Bond, CDX)</b></summary>
+| Environment | Use when | Configuration shape |
+| --- | --- | --- |
+| Desktop API / DAPI | Local Bloomberg Terminal session | no config, or `configure(host="localhost", port=8194)` |
+| Direct server / SAPI | Firm-managed Bloomberg server | `configure(host="bpipe-host", port=8194, auth_method="app", app_name="...")` |
+| B-PIPE | Enterprise Bloomberg feed infrastructure | direct host/failover config plus the auth/TLS settings your Bloomberg setup requires |
+| ZFP leased line | Bloomberg zero-footprint leased-line path | `configure(zfp_remote="8194", tls_client_credentials="...", tls_trust_material="...")` |
 
-```python
-from xbbg.ext import bond_info, bond_risk, bond_spreads, cdx_info, cdx_pricing
-
-# Bond reference data
-info = bond_info('T 4.5 05/15/38 Govt')
-
-# Bond risk metrics (duration, convexity, DV01)
-risk = bond_risk('T 4.5 05/15/38 Govt')
-
-# Bond spreads (OAS, Z-spread, ASW)
-spreads = bond_spreads('T 4.5 05/15/38 Govt')
-
-# CDX index info
-cdx = cdx_info('CDX IG CDSI GEN 5Y Corp')
-
-# CDX pricing
-px = cdx_pricing('CDX IG CDSI GEN 5Y Corp')
-```
-
-</details>
-
-<details>
-<summary><b>Options Analytics</b></summary>
+Example B-PIPE/SAPI-style configuration:
 
 ```python
-from xbbg.ext import option_info, option_greeks, option_chain_bql
+from xbbg import configure
 
-# Option contract metadata
-info = option_info('AAPL US 01/17/25 C200 Equity')
-
-# Greeks and implied volatility
-greeks = option_greeks('AAPL US 01/17/25 C200 Equity')
-
-# Option chain via BQL (rich filtering)
-chain = option_chain_bql('AAPL US Equity', expiry='2025-01-17')
-```
-
-</details>
-
-### Best Practices
-
-- **Excel users**: Use the same field names and date formats as Bloomberg Excel
-- **Performance**: Rust-powered request execution and Arrow-native output reduce Python overhead for large Bloomberg responses
-- **Async operations**: Use `abdp()`, `abdh()`, `abds()` for non-blocking requests
-- **Debugging**: Set `logging.getLogger('xbbg').setLevel(logging.DEBUG)` for detailed logs
-
-### Connection Options
-
-By default, xbbg connects to `localhost` on port `8194`. To connect to a remote Bloomberg server or configure authentication, use `configure()`:
-
-```python
-from xbbg import blp
-
-# Connect to a remote Bloomberg server
-blp.configure(server_host='192.168.1.100', server_port=18194)
-
-# With SAPI authentication
-blp.configure(
-    server_host='192.168.1.100',
-    server_port=18194,
-    auth_method='app',
-    app_name='myapp:SAPI',
+configure(
+    host="bpipe-host",
+    port=8194,
+    auth_method="app",
+    app_name="my-app",
+    request_pool_size=4,
+    subscription_pool_size=2,
+    num_start_attempts=5,
 )
-
-# All subsequent calls use the configured connection
-blp.bdp(tickers='NVDA US Equity', flds=['Security_Name'])
 ```
 
-You can also pass `server` and `port` as kwargs to individual function calls for ad-hoc connections.
-
-### Engine Architecture
-
-xbbg v1 is powered by a Rust async engine with **pre-warmed worker pools**:
-
-```
-┌─────────────────────────────────────────────────┐
-│                   xbbg Engine                   │
-│                                                 │
-│  ┌──────────────────────┐  ┌─────────────────┐  │
-│  │  Request Worker Pool │  │ Subscription    │  │
-│  │  (request_pool_size) │  │ Session Pool    │  │
-│  │                      │  │ (sub_pool_size) │  │
-│  │  Worker 1 ──session  │  │                 │  │
-│  │  Worker 2 ──session  │  │  Session 1      │  │
-│  │  ...                 │  │  ...            │  │
-│  └──────────────────────┘  └─────────────────┘  │
-│           │ round-robin          │ isolated      │
-│           ▼                      ▼               │
-│    bdp/bdh/bds/bdib       subscribe/stream       │
-│    bql/bsrch/beqs         vwap/mktbar/depth      │
-└─────────────────────────────────────────────────┘
-```
-
-- **Request workers** each hold an independent Bloomberg session. Concurrent `bdp`/`bdh`/`bds` calls are dispatched round-robin across workers, so `request_pool_size=4` allows 4 parallel Bloomberg requests.
-- **Subscription sessions** are isolated per session to avoid cross-contamination between topic streams. Each `subscribe()` call gets its own Bloomberg session from the pool.
-- Workers are **pre-warmed** at first use — sessions are started and services opened before your first request, eliminating cold-start latency.
-
-### EngineConfig Reference
-
-Call `configure()` before any Bloomberg request to tune the engine. All fields have sensible defaults:
+Example ZFP leased-line configuration:
 
 ```python
-from xbbg import configure, EngineConfig
+from xbbg import configure
 
-# Keyword arguments (most common)
-configure(request_pool_size=4, subscription_pool_size=2)
-
-# Or use an EngineConfig object
-configure(EngineConfig(request_pool_size=4, subscription_pool_size=2))
+configure(
+    zfp_remote="8194",
+    tls_client_credentials="/path/to/client.p12",
+    tls_client_credentials_password="<load from your secret store>",
+    tls_trust_material="/path/to/trust.pem",
+)
 ```
 
-#### Connection & Session
+The engine uses separate worker pools for request/response calls and subscriptions:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `host` | `'localhost'` | Bloomberg server host. Aliases: `server_host`, `server` |
-| `port` | `8194` | Bloomberg server port. Alias: `server_port` |
-| `num_start_attempts` | `3` | Retries before giving up on session start. Alias: `max_attempt` |
-| `auto_restart_on_disconnection` | `True` | Auto-reconnect on session disconnect. Alias: `auto_restart` |
+- request workers hold independent Bloomberg sessions and dispatch BDP/BDH/BDS/BQL-style calls across the pool
+- subscription sessions are isolated from request workers, so live streams do not share a single blocking session with batch requests
+- field validation, field-type caching, SDK logging, retry policy, keep-alive, slow-consumer thresholds, TLS, SOCKS5, and failover servers are configuration options rather than per-call ad hoc code
 
-#### Worker Pools
+Use `Engine(...)` when an application needs a scoped engine with its own connection settings instead of mutating global configuration.
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `request_pool_size` | `2` | Number of pre-warmed request workers (parallel Bloomberg sessions for bdp/bdh/bds/etc.) |
-| `subscription_pool_size` | `1` | Number of pre-warmed subscription sessions (isolated sessions for subscribe/stream) |
-| `warmup_services` | `['//blp/refdata', '//blp/apiflds']` | Services to pre-open on startup |
+## Common API surface
 
-#### Subscription Tuning
+| Area | Functions |
+| --- | --- |
+| Reference and bulk data | `bdp`, `bds`, `bflds`, `fieldInfo`, `fieldSearch`, `blkp`, `bport` |
+| Historical data | `bdh`, `dividend`, `earnings`, `turnover` |
+| Intraday data | `bdib`, `bdtick` |
+| Query and screening | `bql`, `beqs`, `bsrch`, `bqr`, `bcurves`, `bgovts` |
+| Analytics and utilities | `yas`, `bta`, `ta_studies`, `ta_study_params`, `convert_ccy`, `fut_ticker`, `active_futures`, `cdx_ticker`, `active_cdx` |
+| Real-time data | `subscribe`, `stream`, `vwap`, `mktbar`, `depth`, `chains` |
+| Generic requests | `request`, `Service`, `Operation`, `RequestParams`, `OutputMode` |
+| Schema and diagnostics | `bops`, `bschema`, `get_sdk_info`, `enable_sdk_logging`, `print_backend_status` |
+| Testing helpers | `xbbg.testing.create_mock_response`, `xbbg.testing.mock_engine` |
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `subscription_flush_threshold` | `1` | Ticks buffered before flushing to Python (increase for throughput, decrease for latency) |
-| `subscription_stream_capacity` | `256` | Backpressure buffer size per subscription stream |
-| `overflow_policy` | `'drop_newest'` | Slow consumer policy: `'drop_newest'` or `'block'` |
+Most sync helpers have async counterparts with an `a` prefix: `bdp` → `abdp`, `bdh` → `abdh`, `bdib` → `abdib`, `request` → `arequest`.
 
-#### Internal Buffers
+## Output backends
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `max_event_queue_size` | `10000` | Bloomberg SDK event queue depth |
-| `command_queue_size` | `256` | Internal command channel capacity |
-
-#### Validation
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `validation_mode` | `'disabled'` | Field validation: `'disabled'`, `'strict'` (reject unknown fields), or `'lenient'` (warn) |
-| `field_cache_path` | `~/.xbbg/field_cache.json` | Path for persistent field type cache. Set to customize location |
-
-#### Authentication (SAPI / B-PIPE)
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `auth_method` | `None` | Auth mode: `'user'`, `'app'`, `'userapp'`, `'dir'`, `'manual'`, or `'token'` |
-| `app_name` | `None` | Application name (required for `app`, `userapp`, `manual`) |
-| `user_id` | `None` | Bloomberg user ID (required for `manual`) |
-| `ip_address` | `None` | Bloomberg IP address (required for `manual`) |
-| `dir_property` | `None` | Active Directory property (required for `dir`) |
-| `token` | `None` | Auth token (required for `token`) |
-
-**Auth mode examples:**
+xbbg defaults to a Narwhals DataFrame. When PyArrow is installed, the Narwhals frame is backed by a real `pyarrow.Table`; otherwise xbbg falls back through available dataframe libraries and finally to its native Arrow carrier.
 
 ```python
-# B-PIPE application auth
-configure(auth_method='app', app_name='myapp:8888', host='bpipe-host')
+from xbbg import Backend, blp
 
-# Manual auth (SAPI)
-configure(auth_method='manual', app_name='myapp', user_id='12345', ip_address='10.0.0.1')
+# Default Narwhals output
+frame = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31")
 
-# Active Directory auth
-configure(auth_method='dir', dir_property='mail')
+# Explicit native xbbg Arrow carrier
+table = blp.bdp("AAPL US Equity", "PX_LAST", backend="native")
+
+# Optional conversions
+as_pyarrow = blp.bdp("IBM US Equity", "PX_LAST", backend=Backend.PYARROW)
+as_pandas = blp.bdp("MSFT US Equity", "PX_LAST", backend=Backend.PANDAS)
+as_polars = blp.bdp("AAPL US Equity", "PX_LAST", backend=Backend.POLARS)
+as_duckdb = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31", backend=Backend.DUCKDB)
 ```
 
-### Async Functions
+Output shape is controlled with `format=`, including `long`, `long_typed`, `long_metadata`, and `semi_long`.
 
-Every sync function has an async counterpart prefixed with `a` — for example `bdp()` → `abdp()`, `bdh()` → `abdh()`, `bdib()` → `abdib()`. In the v1 architecture, async implementations are the canonical source of truth and sync functions delegate via `_run_sync()`.
+## Async usage
 
-Common async families:
-
-| Sync | Async |
-|------|-------|
-| `bdp`, `bds`, `bdh`, `bdib`, `bdtick` | `abdp`, `abds`, `abdh`, `abdib`, `abdtick` |
-| `bql`, `bsrch`, `bqr`, `beqs` | `abql`, `absrch`, `abqr`, `abeqs` |
-| `blkp`, `bport`, `bcurves`, `bgovts` | `ablkp`, `abport`, `abcurves`, `abgovts` |
-| `subscribe`, `stream`, `vwap`, `mktbar`, `depth`, `chains` | `asubscribe`, `astream`, `avwap`, `amktbar`, `adepth`, `achains` |
-| `bta`, `bflds`, `fieldInfo`, `fieldSearch` | `abta`, `abflds`, `afieldInfo`, `afieldSearch` |
-
-#### In scripts (no existing event loop)
+Use async helpers directly in async applications:
 
 ```python
 import asyncio
 from xbbg import blp
 
-async def get_data():
-    df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
-    return df
-
-async def get_multiple():
-    # Concurrent requests — runs in parallel on a single thread
-    results = await asyncio.gather(
-        blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST']),
-        blp.abdp(tickers='MSFT US Equity', flds=['PX_LAST']),
-        blp.abdh(tickers='GOOGL US Equity', start_date='2024-01-01'),
+async def main():
+    aapl, msft = await asyncio.gather(
+        blp.abdp("AAPL US Equity", "PX_LAST"),
+        blp.abdp("MSFT US Equity", "PX_LAST"),
     )
-    return results
+    return aapl, msft
 
-data = asyncio.run(get_data())
-multiple = asyncio.run(get_multiple())
+result = asyncio.run(main())
 ```
 
-#### In Jupyter notebooks
+In Jupyter and VS Code Interactive, one-shot sync calls such as `blp.bdp(...)` and `blp.bdh(...)` use a notebook-only bridge when an IPykernel event loop is already running. Generic async applications such as FastAPI or ASGI services should still use the async APIs directly.
 
-Jupyter and VS Code Interactive already run an event loop. For one-shot request/response calls, you can keep using the familiar sync API:
+## MCP server
 
-```python
-from xbbg import blp
+The repository also includes a local MCP server for coding-agent workflows. It wraps selected xbbg request/response operations and returns bounded JSON results with schema metadata.
 
-df = blp.bdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
-hist = blp.bdh(tickers='AAPL US Equity', flds='PX_LAST', start_date='2024-01-01')
-```
+See [`apps/xbbg-mcp/README.md`](apps/xbbg-mcp/README.md) for installation, supported environment variables, and release asset notes. The MCP release assets do not include Bloomberg SDK files or runtime components.
 
-`bdp`, `bdh`, `bds`, `bdib`, `bdtick`, and `request` use a notebook-only background event-loop bridge when IPykernel already has a loop running.
+## Troubleshooting
 
-If your notebook cell is already async, use the async APIs directly:
+Empty results usually mean one of the inputs or entitlements is wrong rather than that the Python call failed:
 
 ```python
 from xbbg import blp
 
-df = await blp.abdp(tickers='AAPL US Equity', flds=['PX_LAST', 'VOLUME'])
+# Check security lookup and field discovery
+print(blp.blkp("Apple", yellowkey="eqty"))
+print(blp.fieldSearch("vwap"))
 ```
 
-> **Important:** Generic async applications such as FastAPI or ASGI services should still use `await blp.abdp(...)` / `await blp.abdh(...)`. The sync bridge is only for IPykernel notebook environments and does not apply to streaming or long-lived async APIs.
+Connection failures:
 
-**Benefits:**
-- Non-blocking: async APIs don't block the event loop
-- Concurrent: use `asyncio.gather()` for parallel requests
-- Compatible: async APIs work with web frameworks; one-shot sync APIs work in notebooks
-- Same API: identical parameters between sync and async versions (`bdp` / `abdp`, `bdh` / `abdh`)
+- confirm Bloomberg Terminal is running and logged in for local DAPI usage
+- confirm the host, port, auth method, TLS files, and entitlements for SAPI/B-PIPE/ZFP environments
+- run `print(xbbg.get_sdk_info())` to see how the SDK/runtime was detected
+- enable SDK logging before the first session when debugging low-level connection problems
 
-### Multi-Backend Support
+Timeouts and large responses:
 
-Starting with v1, xbbg defaults to a Narwhals DataFrame. When PyArrow is installed, that Narwhals frame is backed by a real `pyarrow.Table`, preserving the pre-native-backend behavior and full Narwhals expression support. Minimal installs fall back through installed dataframe libraries and finally xbbg's native Arrow carrier; that final native-plugin fallback emits a one-time `RuntimeWarning` because it intentionally does not implement the full PyArrow/Narwhals expression surface. Request `backend="native"` / `Backend.NATIVE` when you want the raw `xbbg._core.ArrowTable`; request `backend="pyarrow"` / `Backend.PYARROW` when you want PyArrow's full table API.
+- increase per-request timeout where appropriate
+- split large historical/tick requests into smaller date ranges
+- tune `request_pool_size`, `subscription_pool_size`, queue sizes, and keep-alive settings for managed infrastructure
 
-Conversion backends are explicit opt-ins. Install only the libraries you actually use.
+When reporting issues, include:
 
-#### Supported Backends
-
-| Backend | Type | Output | Best For |
-|---------|------|--------|----------|
-| default / `narwhals` | Core wrapper | Narwhals DataFrame over PyArrow when installed, otherwise installed dataframe backends or `xbbg._core.ArrowTable` fallback | Backwards-compatible dataframe ergonomics without pandas/PyArrow as hard deps |
-| `native` | Native eager | `xbbg._core.ArrowTable` | Zero-copy xbbg-native workflows, Arrow PyCapsule interop |
-| `pyarrow` | Optional conversion | `pyarrow.Table` | Full PyArrow table functionality and Arrow ecosystem integrations |
-| `pandas` | Optional conversion | `pd.DataFrame` | Traditional dataframe workflows, compatibility |
-| `polars` | Optional conversion | `pl.DataFrame` | High-performance eager analytics |
-| `polars_lazy` | Optional conversion | `pl.LazyFrame` | Deferred Polars execution |
-| `duckdb` | Optional conversion | DuckDB relation | SQL analytics and OLAP queries |
-| `narwhals_lazy` | Native plugin | Narwhals LazyFrame over xbbg Arrow objects | Library-agnostic lazy evaluation |
-| `modin`, `cudf`, `dask`, `ibis`, `pyspark`, `sqlframe` | Optional Narwhals-backed conversions | Native objects for installed libraries | Specialized distributed/GPU/SQL workflows |
-
-**Note:** `wide` / `Format.WIDE` was removed in v1.0.0rc4. Use `semi_long` for one row per security, or pivot a `long` result explicitly in your downstream DataFrame library.
-
-#### Native Arrow Carrier API
-
-`backend="native"` returns xbbg-owned carrier objects, not `pyarrow` or `arro3` objects. The carrier is intentionally small: it exposes Arrow-shaped table, batch, and column access without dataframe compute semantics.
-
-```python
-table = bdp("AAPL US Equity", "PX_LAST", backend="native")
-
-print(table.shape)          # (rows, columns)
-print(table.column_names)   # schema-order names
-print(table.nbytes)         # Arrow buffer bytes referenced by the carrier
-
-first = table.column(table.column_names[0])
-print(first.to_pylist())
-print(first.null_count)
-
-subset = table.select(table.column_names[:2]).head(5)
-batches = subset.to_batches()
-```
-
-Use `table.to_pyarrow()`, `table.to_pandas()`, or `table.to_polars()` when you explicitly want a third-party object. Those methods import optional packages lazily and keep the native backend contract xbbg-owned.
-
-#### Check Backend Availability
-
-```python
-from xbbg import get_available_backends, print_backend_status, is_backend_available
-
-# Narwhals/default and native carrier are always available
-print(is_backend_available("narwhals"))  # True
-print(is_backend_available("native"))    # True
-
-# Lists Backend.NARWHALS, Backend.NATIVE, plus installed optional conversion backends
-print(get_available_backends())
-
-# Check if a specific optional conversion backend is available
-if is_backend_available("polars"):
-    print("Polars is installed!")
-
-# Print detailed status of all backends
-print_backend_status()
-```
-
-#### Usage
-
-```python
-from xbbg import blp, Backend
-
-# Default Narwhals DataFrame; PyArrow-backed when PyArrow is installed
-df = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31")
-print(df.columns, len(df))
-
-# Explicit native carrier
-table = blp.bdp("AAPL US Equity", "PX_LAST", backend="native")
-
-# Optional conversions
-table_pyarrow = blp.bdp("IBM US Equity", "PX_LAST", backend=Backend.PYARROW)
-df_pandas = blp.bdp("MSFT US Equity", "PX_LAST", backend=Backend.PANDAS)
-df_polars = blp.bdp("AAPL US Equity", "PX_LAST", backend=Backend.POLARS)
-duckdb_rel = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31", backend=Backend.DUCKDB)
-nw_df = blp.bdp("AAPL US Equity", "PX_LAST", backend=Backend.NARWHALS)
-```
-
-Narwhals can also consume native xbbg Arrow objects directly through the included plugin:
-
-```python
-import narwhals as nw
-from xbbg import blp
-
-table = blp.bdp("AAPL US Equity", "PX_LAST", backend="native")
-nw_df = nw.from_native(table)
-```
-
-#### Output Formats
-
-Control the shape of your data with the `format` parameter:
-
-| Format | Description | Use Case |
-|--------|-------------|----------|
-| `long` | Tidy format with ticker, field, value columns | Analysis, joins, aggregations |
-| `long_typed` | Typed value columns per data type | Type-safe analysis, no casting needed |
-| `long_metadata` | String values with dtype metadata column | Serialization, debugging, data catalogs |
-| `semi_long` | One row per security/date, fields as columns | Quick inspection, Excel-style output, replacement for removed `wide` |
-
-```python
-from xbbg import blp
-
-# Long format (tidy data, default)
-df_long = blp.bdp(["AAPL US Equity", "MSFT US Equity"], ["PX_LAST", "VOLUME"], format="long")
-
-# Semi-long format (one row per ticker, fields as columns)
-df_semi = blp.bdh("SPX Index", "PX_LAST", "2024-01-01", "2024-12-31", format="semi_long")
-```
-
-#### Global Configuration
-
-Set defaults for your entire session:
-
-```python
-from xbbg import set_backend, Backend
-from xbbg import blp, get_backend
-
-# Without configuration, calls use Backend.NARWHALS
-print(get_backend())  # None means the default public backend is Backend.NARWHALS
-
-# Set Polars as default backend
-set_backend(Backend.POLARS)
-print(get_backend())  # Backend.POLARS
-
-# All subsequent calls use this default
-df = blp.bdp("AAPL US Equity", "PX_LAST")  # Returns Polars DataFrame
-```
-
-#### Why native Arrow + optional conversions?
-
-- **Default compatibility**: the public default is a Narwhals DataFrame so existing dataframe-style code keeps `len(df)`, `df.columns`, and explicit conversions
-- **Explicit native carrier**: `backend="native"` returns the raw xbbg `ArrowTable`
-- **Explicit PyArrow**: `backend="pyarrow"` returns a real `pyarrow.Table` when PyArrow is installed
-- **Interoperability**: Arrow PyCapsule methods let Arrow-aware libraries consume xbbg data while keeping PyArrow optional
-
-## Power User and Infrastructure APIs
-
-The core `blp.bdp()` / `blp.bdh()` workflow covers most day-to-day usage, but the current package exposes several advanced surfaces that are easy to miss if you only skim the quickstart. This section summarizes the non-obvious parts of the public API so the README tracks the package more faithfully.
-
-### Generic Requests and Raw JSON
-
-For uncommon Bloomberg operations, raw service access, or debugging request payloads, use the generic request layer:
-
-| Surface | Purpose | Notes |
-|---------|---------|-------|
-| `request()` / `arequest()` | Low-level request entrypoint | Works with arbitrary Bloomberg services and operations |
-| `Service` / `Operation` | Enum wrappers for service URIs and request types | Safer than hand-typed strings |
-| `RequestParams` | Dataclass for validated request payloads | Useful in middleware or reusable request builders |
-| `OutputMode` | Output transport (`ARROW` or `JSON`) | `JSON` is useful for debugging Bloomberg payloads |
-| `ExtractorHint` | Override extraction strategy | Advanced escape hatch for bulk/custom responses |
-
-```python
-from xbbg import Operation, OutputMode, Service, request
-
-# Generic refdata request
-df = request(
-    Service.REFDATA,
-    Operation.REFERENCE_DATA,
-    securities=['AAPL US Equity'],
-    fields=['PX_LAST', 'VOLUME'],
-)
-
-# Raw JSON transport for debugging/custom parsing
-raw = request(
-    Service.REFDATA,
-    Operation.REFERENCE_DATA,
-    securities=['AAPL US Equity'],
-    fields=['PX_LAST'],
-    output=OutputMode.JSON,
-)
-```
-
-### Schema, Operations, and IDE Stubs
-
-xbbg ships two schema surfaces:
-
-- `blp.bops()` / `blp.bschema()` for quick interactive discovery
-- `xbbg.schema` for typed schema objects and stub-generation utilities
-
-| Surface | Purpose |
-|---------|---------|
-| `bops()` / `abops()` | List operations available on a Bloomberg service |
-| `bschema()` / `abschema()` | Return service/operation schema as plain dictionaries |
-| `xbbg.schema.get_schema()` / `aget_schema()` | Return typed `ServiceSchema` objects |
-| `xbbg.schema.get_operation()` / `aget_operation()` | Return typed `OperationSchema` objects backed by `ElementInfo` trees |
-| `xbbg.schema.list_operations()` / `alist_operations()` | Enumerate operations for a service |
-| `xbbg.schema.get_enum_values()` / `aget_enum_values()` | Discover valid enum values for an element |
-| `xbbg.schema.list_valid_elements()` / `alist_valid_elements()` | Inspect valid request element names before sending |
-| `generate_stubs()` / `configure_ide_stubs()` | Generate IDE-friendly stubs from cached Bloomberg schema |
-| `generate_ta_stubs()` | Generate TA helper stubs for study-specific autocomplete |
-
-```python
-from xbbg import blp
-from xbbg.schema import get_operation, list_operations
-
-print(blp.bops())  # quick list for //blp/refdata
-print(list_operations('//blp/instruments'))
-
-hist_schema = get_operation('//blp/refdata', 'HistoricalDataRequest')
-print(hist_schema.request.children[0].name)
-```
-
-### Field Metadata, Cache, and Type Resolution
-
-There are three related layers here:
-
-1. `bflds()` / `fieldInfo()` / `fieldSearch()` for Bloomberg field catalog discovery
-2. `xbbg.field_cache` for Arrow type resolution and cache management
-3. `field_types=` request overrides for per-call control
-
-| Surface | Purpose |
-|---------|---------|
-| `bflds()` / `abflds()` | Unified field-info and field-search entrypoint |
-| `bfld()` / `abfld()` | Alias for `bflds()` |
-| `fieldInfo()` / `afieldInfo()` | Alias for `bflds(fields=...)` |
-| `fieldSearch()` / `afieldSearch()` | Alias for `bflds(search_spec=...)` |
-| `resolve_field_types()` / `aresolve_field_types()` | Resolve Bloomberg fields to Arrow types |
-| `cache_field_types()` | Pre-warm the field cache |
-| `get_field_info()` | Return structured `FieldInfo` objects |
-| `get_field_cache_stats()` | Inspect cache path and entry count |
-| `clear_field_cache()` | Clear in-memory and on-disk field cache |
-| `FieldTypeCache` | Compatibility facade over the Rust resolver |
-
-```python
-from xbbg import blp
-from xbbg.field_cache import (
-    get_field_cache_stats,
-    resolve_field_types,
-)
-
-catalog = blp.fieldSearch('vwap')
-details = blp.fieldInfo(['PX_LAST', 'VOLUME'])
-types = resolve_field_types(['PX_LAST', 'NAME', 'DVD_EX_DT'])
-stats = get_field_cache_stats()
-```
-
-**Important current behavior:**
-
-- Field type resolution is Rust-backed and persistent
-- `field_cache_path=` can be set via `configure(...)` before the engine starts
-- `long_typed` and `long_metadata` formats are driven by these resolved field types
-
-### Market Metadata and Session Overrides
-
-The `xbbg.markets` module exposes exchange/session helpers that complement request APIs:
-
-| Surface | Purpose |
-|---------|---------|
-| `ExchangeInfo` | Structured exchange metadata record returned by Bloomberg-backed helpers |
-| `SessionWindows` | Dataclass representing derived market sessions (`day`, `pre`, `post`, etc.) |
-| `market_info()` | Lightweight market metadata for a security |
-| `market_timing()` | Session timing lookup for a ticker/session combination |
-| `ccy_pair()` | FX conversion metadata for currency pair normalization |
-| `exch_info()` | Exchange/session metadata lookup |
-| `get_session_windows()` / `derive_sessions()` | Derive named session windows without a data request |
-| `fetch_exchange_info()` / `afetch_exchange_info()` | Bloomberg-backed exchange metadata fetch |
-| `set_exchange_override()` / `get_exchange_override()` / `clear_exchange_override()` | Runtime override lifecycle for timezone/session metadata |
-| `list_exchange_overrides()` / `has_override()` | Inspect override state |
-| `convert_session_times_to_utc()` | Convert local market sessions to UTC |
-
-```python
-from xbbg.markets import get_session_windows, market_info, set_exchange_override
-
-print(market_info('ES1 Index'))
-print(get_session_windows('AAPL US Equity', mic='XNAS', regular_hours=('09:30', '16:00')))
-
-set_exchange_override(
-    'MY_PRIVATE_TICKER Equity',
-    timezone='America/New_York',
-    sessions={'regular': ('09:30', '16:00')},
-)
-```
-
-### SDK Detection, Logging, and Diagnostics
-
-Beyond `configure()`, the package exposes helpers for SDK discovery, backend validation, and engine diagnostics:
-
-| Surface | Purpose |
-|---------|---------|
-| `get_sdk_info()` | Show detected Bloomberg SDK sources and active runtime |
-| `set_sdk_path()` / `clear_sdk_path()` | Manually override SDK discovery |
-| `set_log_level()` / `get_log_level()` | Control Rust-side logging verbosity |
-| `enable_sdk_logging()` | Surface underlying Bloomberg SDK logs |
-| `get_available_backends()` / `is_backend_available()` | Inspect installed dataframe backends |
-| `check_backend()` | Validate backend availability/version and get install guidance |
-| `get_supported_formats()` / `is_format_supported()` | Inspect backend/format compatibility |
-| `check_format_compatibility()` / `validate_backend_format()` | Guard backend + format combinations programmatically |
-
-```python
-from xbbg import Backend, check_backend, get_sdk_info, print_backend_status, validate_backend_format
-
-print(get_sdk_info())
-check_backend('polars')
-validate_backend_format(Backend.PANDAS, 'semi_long')
-print_backend_status()
-```
-
-### Testing Utilities
-
-`xbbg.testing` is part of the supported public surface for non-live tests:
-
-| Helper | Purpose |
-|--------|---------|
-| `MockResponse` | Structured canned-response container used by `mock_engine()` |
-| `create_mock_response()` | Build canned request responses without a live terminal |
-| `mock_engine()` | Context manager that intercepts xbbg calls and returns canned responses |
-| `create_mock_event()` | Build Bloomberg `blpapi.test` events when `blpapi` is installed |
-| `get_admin_message_definition()` | Fetch TestUtil admin-message definitions for mocked admin events |
-| `deserialize_service()` | Deserialize service XML for TestUtil-backed mocks |
-| `append_message_dict()` | Populate mock Bloomberg messages from Python dictionaries |
-
-```python
-from xbbg import blp
-from xbbg.testing import create_mock_response, mock_engine
-
-response = create_mock_response(
-    service='//blp/refdata',
-    operation='ReferenceDataRequest',
-    data={'AAPL US Equity': {'PX_LAST': 101.23}},
-)
-
-with mock_engine([response]):
-    df = blp.bdp('AAPL US Equity', 'PX_LAST')
-```
-
-### Exception Types
-
-The current exception surface is intentionally typed and worth calling out in the README because many workflows want to catch Bloomberg failures explicitly:
-
-| Exception | Typical use |
-|-----------|-------------|
-| `BlpError` | Base class for Bloomberg-related failures |
-| `BlpSessionError` | Session startup/connectivity/auth failures |
-| `BlpRequestError` | Request-level failure with service/operation context |
-| `BlpSecurityError` | Security-specific request failure |
-| `BlpFieldError` | Field-specific request failure |
-| `BlpValidationError` | Invalid request shape, bad elements, bad enum values |
-| `BlpTimeoutError` | Request timed out |
-| `BlpInternalError` | Internal engine/runtime failure |
-| `BlpBPipeError` | B-PIPE-only feature used without B-PIPE access (`depth`, `chains`) |
-
-```python
-from xbbg import blp
-from xbbg.exceptions import BlpBPipeError, BlpValidationError
-
-try:
-    blp.depth('AAPL US Equity')
-except BlpBPipeError:
-    ...
-except BlpValidationError as exc:
-    print(exc.element, exc.suggestion)
-```
-
-## Examples
-
-Example outputs below are synthetic/anonymized and illustrate shape only; they are not Bloomberg output or historical market data.
-
-### 📊 Reference Data
-
-#### Equity and Index Securities
-
-```python
-from xbbg import blp
-
-# Single point-in-time data (BDP)
-blp.bdp(tickers='NVDA US Equity', flds=['Security_Name', 'GICS_Sector_Name'])
-```
-
-```pydocstring
-Out[2]:
-               security_name        gics_sector_name
-NVDA US Equity   Example Chipmaker  Example Sector
-```
-
-```python
-# With field overrides
-blp.bdp('AAPL US Equity', 'Eqy_Weighted_Avg_Px', VWAP_Dt='20181224')
-```
-
-```pydocstring
-Out[3]:
-                eqy_weighted_avg_px
-AAPL US Equity               101.23
-```
-
-```python
-# Multiple tickers and fields
-blp.bdp(
-    tickers=['AAPL US Equity', 'MSFT US Equity', 'GOOGL US Equity'],
-    flds=['Security_Name', 'GICS_Sector_Name', 'PX_LAST']
-)
-```
-
-```pydocstring
-Out[3a]:
-                  security_name        gics_sector_name px_last
-AAPL US Equity        Company A          Example Sector  101.23
-GOOGL US Equity       Company B          Example Sector  202.34
-MSFT US Equity        Company C          Example Sector  303.45
-```
-
-```python
-# Bulk/block data (BDS) - multi-row per ticker
-blp.bds('AAPL US Equity', 'DVD_Hist_All', DVD_Start_Dt='20180101', DVD_End_Dt='20180531')
-```
-
-`bds()` and `abds()` preserve Bloomberg bulk subfield labels exactly as emitted.
-The only xbbg-added columns are `ticker` and `field`; field-specific columns may
-contain spaces, punctuation, and Bloomberg casing such as `Future's Ticker` or
-`Last Trade Date`. Normalize or rename these columns in your own code when you
-need a stable application schema.
-
-#### Fixed Income Securities
-
-xbbg supports fixed income securities using standard security identifiers (ISIN, CUSIP, SEDOL). Use the `/isin/{isin}`, `/cusip/{cusip}`, or `/sedol/{sedol}` format as the ticker:
-
-```python
-# Reference data using ISIN
-blp.bdp(tickers='/isin/US1234567890', flds=['SECURITY_NAME', 'MATURITY', 'COUPON', 'PX_LAST'])
-```
-
-```pydocstring
-Out[9]:
-                       security_name    maturity coupon    px_last
-/isin/US1234567890  Example Issuer Note  2035-05-15   4.25  100.12
-```
-
-```python
-# Cash flow schedule using ISIN
-blp.bds(tickers='/isin/US1234567890', flds='DES_CASH_FLOW')
-```
-
-The cash-flow output follows the same BDS contract: `ticker` and `field` are
-xbbg metadata columns, and Bloomberg cash-flow subfield labels are preserved
-verbatim.
-
-**Note:** Fixed income securities work with `bdp()`, `bds()`, and `bdh()` functions. The identifier format (`/isin/`, `/cusip/`, `/sedol/`) is automatically passed to blpapi.
-
-#### Yield & Spread Analysis (YAS)
-
-The `yas()` function provides a convenient wrapper for Bloomberg's YAS calculator:
-
-```python
-from xbbg import blp
-from xbbg.api.fixed_income import YieldType
-
-# Get yield to maturity
-blp.yas('T 4.5 05/15/38 Govt')
-```
-
-```pydocstring
-Out[11]:
-                     YAS_BOND_YLD
-ticker
-T 4.5 05/15/38 Govt         4.000
-```
-
-```python
-# Calculate yield from price
-blp.yas('T 4.5 05/15/38 Govt', price=95.0)
-```
-
-```pydocstring
-Out[12]:
-                     YAS_BOND_YLD
-ticker
-T 4.5 05/15/38 Govt          4.50
-```
-
-```python
-# Calculate price from yield
-blp.yas('T 4.5 05/15/38 Govt', flds='YAS_BOND_PX', yield_=4.8)
-```
-
-```pydocstring
-Out[13]:
-                     YAS_BOND_PX
-ticker
-T 4.5 05/15/38 Govt    100.000000
-```
-
-```python
-# Yield to call for callable bonds
-blp.yas('AAPL 2.65 05/11/50 Corp', yield_type=YieldType.YTC)
-```
-
-```pydocstring
-Out[14]:
-                          YAS_BOND_YLD
-ticker
-AAPL 2.65 05/11/50 Corp          4.750
-```
-
-```python
-# Multiple YAS analytics
-blp.yas('T 4.5 05/15/38 Govt', ['YAS_BOND_YLD', 'YAS_MOD_DUR', 'YAS_ASW_SPREAD'])
-```
-
-```pydocstring
-Out[15]:
-                     YAS_ASW_SPREAD  YAS_BOND_YLD  YAS_MOD_DUR
-ticker
-T 4.5 05/15/38 Govt       25.000000         4.000     8.000000
-```
-
-**Available parameters:**
-- `settle_dt`: Settlement date (YYYYMMDD or datetime)
-- `yield_type`: `YieldType.YTM` (default) or `YieldType.YTC`
-- `price`: Input price to calculate yield
-- `yield_`: Input yield to calculate price
-- `spread`: Spread to benchmark in basis points
-- `benchmark`: Benchmark bond ticker for spread calculations
-
-#### Field Information and Search
-
-```python
-# Unified field lookup (recommended)
-blp.bflds(fields=['PX_LAST', 'VOLUME'])  # Get metadata for specific fields
-blp.bflds(search_spec='vwap')            # Search for fields by keyword
-
-# Convenience aliases
-blp.fieldInfo(['PX_LAST', 'VOLUME'])     # Same as bflds(fields=...)
-blp.fieldSearch('vwap')                  # Same as bflds(search_spec=...)
-```
-
-#### Security Lookup
-
-```python
-# Look up securities by company name
-blp.blkp('IBM', max_results=10)
-```
-
-```python
-# Lookup with asset class filter
-blp.blkp('Apple', yellowkey='eqty', max_results=20)
-```
-
-#### Portfolio Data
-
-```python
-# Get portfolio data using the Bloomberg portfolio ID/security string
-# (for example, the ID shown in PRTU/PORT: "UXXXXXXX-X Client")
-blp.bport('UXXXXXXX-X Client', 'PORTFOLIO_DATA')
-```
-
-### 📈 Historical Data
-
-```python
-# End-of-day historical data (BDH)
-blp.bdh(
-    tickers='SPX Index', flds=['high', 'low', 'last_price'],
-    start_date='2018-10-10', end_date='2018-10-20',
-)
-```
-
-```pydocstring
-Out[4]:
-           SPX Index
-                high      low last_price
-2018-10-10  1,001.00  990.00     995.00
-2018-10-11  1,006.00  994.00   1,002.00
-2018-10-12  1,009.00  998.00   1,004.00
-2018-10-15  1,008.00  996.00   1,000.00
-2018-10-16  1,012.00  999.00   1,010.00
-2018-10-17  1,015.00 1,003.00   1,011.00
-2018-10-18  1,013.00 1,001.00   1,006.00
-2018-10-19  1,010.00  997.00   1,005.00
-```
-
-```python
-# Multiple tickers and fields
-blp.bdh(
-    tickers=['AAPL US Equity', 'MSFT US Equity'],
-    flds=['px_last', 'volume'],
-    start_date='2024-01-01', end_date='2024-01-10',
-)
-```
-
-```pydocstring
-Out[4a]:
-           AAPL US Equity             MSFT US Equity            
-                  px_last      volume        px_last      volume
-2024-01-02         101.00   1000000.0         201.00   2000000.0
-2024-01-03         102.00   1100000.0         202.00   2100000.0
-2024-01-04         100.50   1200000.0         200.50   2200000.0
-2024-01-05         101.25   1050000.0         201.25   2050000.0
-2024-01-08         102.50   1150000.0         202.50   2150000.0
-```
-
-```python
-# Excel-compatible inputs with periodicity
-blp.bdh(
-    tickers='SHCOMP Index', flds=['high', 'low', 'last_price'],
-    start_date='2018-09-26', end_date='2018-10-20',
-    Per='W', Fill='P', Days='A',
-)
-```
-
-```pydocstring
-Out[5]:
-           SHCOMP Index
-                   high      low last_price
-2018-09-28     1,010.00 1,000.00   1,005.00
-2018-10-05     1,012.00 1,002.00   1,006.00
-2018-10-12     1,008.00   998.00   1,001.00
-2018-10-19     1,006.00   996.00     999.00
-```
-
-```python
-# Dividend/split adjustments
-blp.bdh('AAPL US Equity', 'px_last', '20140606', '20140609', adjust='all')
-```
-
-```pydocstring
-Out[15]:
-           AAPL US Equity
-                  px_last
-2014-06-06          50.00
-2014-06-09          51.00
-```
-
-```python
-# Dividend history
-blp.dividend(['C US Equity', 'MS US Equity'], start_date='2018-01-01', end_date='2018-05-01')
-```
-
-```pydocstring
-Out[13]:
-                dec_date     ex_date    rec_date    pay_date  dvd_amt dvd_freq      dvd_type
-C US Equity   2018-01-18  2018-02-02  2018-02-05  2018-02-23     0.10  Quarter  Regular Cash
-MS US Equity  2018-04-18  2018-04-27  2018-04-30  2018-05-15     0.20  Quarter  Regular Cash
-MS US Equity  2018-01-18  2018-01-30  2018-01-31  2018-02-15     0.20  Quarter  Regular Cash
-```
-
-```python
-# Earnings breakdowns
-blp.earnings('AMD US Equity', by='Geo', Eqy_Fund_Year=2017, Number_Of_Periods=1)
-```
-
-```pydocstring
-Out[12]:
-                 level    fy2017  fy2017_pct
-Example Region A  1.00  1,000.00       50.00
-    Market A1     2.00    600.00       60.00
-    Market A2     2.00    400.00       40.00
-Example Region B  1.00    700.00       35.00
-Example Region C  1.00    250.00       12.50
-Other Regions     1.00     50.00        2.50
-```
-
-### ⏱️ Intraday Data
-
-```python
-# Intraday bars (1-minute default)
-blp.bdib(ticker='BHP AU Equity', dt='2018-10-17').tail()
-```
-
-```pydocstring
-Out[9]:
-                          BHP AU Equity
-                                   open  high   low close   volume num_trds
-2018-10-17 15:56:00+11:00         10.00 10.05  9.98 10.02     1000       10
-2018-10-17 15:57:00+11:00         10.02 10.06 10.01 10.04     1200       12
-2018-10-17 15:58:00+11:00         10.04 10.07 10.02 10.03     1100       11
-2018-10-17 15:59:00+11:00         10.03 10.04 10.00 10.01     1300       13
-2018-10-17 16:10:00+11:00         10.05 10.05 10.05 10.05     5000       15
-```
-
-**Selecting bar intervals:**
-
-- **Minute-based intervals** (default): Use the `interval` parameter to specify minutes.
-  By default, `interval=1` (1-minute bars). Common intervals:
-  - `interval=5` → 5-minute bars
-  - `interval=15` → 15-minute bars
-  - `interval=30` → 30-minute bars
-  - `interval=60` → 1-hour bars
-
-```python
-# 5-minute bars
-blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=5).head()
-
-# 15-minute bars
-blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=15).head()
-```
-
-- **Sub-minute intervals** (seconds): Set `intervalHasSeconds=True` and specify seconds:
-
-```python
-# 10-second bars
-blp.bdib(ticker='AAPL US Equity', dt='2025-11-12', interval=10, intervalHasSeconds=True).head()
-```
-
-```pydocstring
-Out[9a]:
-                          AAPL US Equity
-                                   open    high     low   close volume num_trds
-2025-11-12 09:31:00-05:00        100.00  100.10   99.95  100.05  10000       50
-2025-11-12 09:31:10-05:00        100.05  100.15  100.00  100.10   8000       40
-2025-11-12 09:31:20-05:00        100.10  100.20  100.05  100.15   9000       45
-```
-
-**Note:** By default, `interval` is interpreted as **minutes**. Set `intervalHasSeconds=True` to use seconds-based intervals.
-
-```python
-# Market session filtering
-blp.bdib(ticker='7974 JT Equity', dt='2018-10-17', session='am_open_30').tail()
-```
-
-```pydocstring
-Out[11]:
-                          7974 JT Equity
-                                    open      high       low     close volume num_trds
-2018-10-17 09:27:00+09:00       1,000.00 1,002.00   999.00 1,001.00   1000       10
-2018-10-17 09:28:00+09:00       1,001.00 1,003.00 1,000.00 1,002.00   1100       11
-2018-10-17 09:29:00+09:00       1,002.00 1,004.00 1,001.00 1,003.00   1200       12
-2018-10-17 09:30:00+09:00       1,003.00 1,005.00 1,002.00 1,004.00   1300       13
-2018-10-17 09:31:00+09:00       1,004.00 1,006.00 1,003.00 1,005.00   1400       14
-```
-
-#### How the `session` parameter works
-
-The `session` parameter is resolved by `xbbg.core.config.intervals.get_interval()`
-and `xbbg.core.process.time_range()` using exchange metadata from
-`xbbg/markets/config/exch.yml`:
-
-- **Base sessions** (no underscores) map directly to session windows defined
-  for the ticker's exchange in `exch.yml`:
-  - `allday` - Full trading day including pre/post market (e.g., `[400, 2000]` for US equities)
-  - `day` - Regular trading hours (e.g., `[0930, 1600]` for US equities)
-  - `am` - Morning session (e.g., `[901, 1130]` for Japanese equities)
-  - `pm` - Afternoon session (e.g., `[1230, 1458]` for Japanese equities)
-  - `pre` - Pre-market session (e.g., `[400, 0930]` for US equities)
-  - `post` - Post-market session (e.g., `[1601, 2000]` for US equities)
-  - `night` - Night trading session (e.g., `[1710, 700]` for Australian futures)
-  
-  Not all exchanges define all sessions. For example, `GBP Curncy` uses
-  `CurrencyGeneric` which defines `allday` and `day` only.
-
-- **Compound sessions** (with underscores) allow finer control by combining
-  a base session with modifiers (`open`, `close`, `normal`, `exact`):
-  - **Open windows** (first N minutes of a session):
-    - `day_open_30` → first 30 minutes of the `day` session
-    - `am_open_30` → first 30 minutes of the `am` session
-    - Note: `open` is not a base session; use `day_open_30`, not `open_30`
-  - **Close windows** (last N minutes of a session):
-    - `day_close_20` → last 20 minutes of the `day` session
-    - `am_close_30` → last 30 minutes of the `am` session
-    - Note: `close` is not a base session; use `day_close_20`, not `close_20`
-  - **Normal windows** (skip open/close buffers):
-    - `day_normal_30_20` → skips first 30 min and last 20 min of `day`
-    - `am_normal_30_30` → skips first 30 min and last 30 min of `am`
-  - **Exact clock times** (exchange-local HHMM format):
-    - `day_exact_2130_2230` → [21:30, 22:30] local time (marker session)
-    - `allday_exact_2130_2230` → [21:30, 22:30] local time (actual window)
-    - `allday_exact_2130_0230` → [21:30, 02:30 next day] local time
-
-- **Resolution order and fallbacks**:
-  - `blp.bdib` / `blp.bdtick` call `time_range()`, which:
-    1. Uses `exch.yml` + `get_interval()` and `const.exch_info()` to resolve
-       local session times and exchange timezone.
-    2. Converts that window to UTC and then to your requested `tz` argument
-       (e.g., `'UTC'`, `'NY'`, `'Europe/London'`).
-    3. If exchange metadata is missing for `session` and the asset, it may
-       fall back to pandas‑market‑calendars (PMC) for simple sessions
-       (`'day'` / `'allday'`), based on the exchange code.
-
-- **Errors and diagnostics**:
-  - If a `session` name is not defined for the ticker's exchange,
-    `get_interval()` raises a `ValueError` listing the available sessions
-    for that exchange and points to `xbbg/markets/exch.yml`.
-  - For compound sessions whose base session doesn't exist (e.g. mis-typed
-    `am_open_30` for an exchange that has no `am` section), `get_interval()`
-    returns `SessNA` and `time_range()` will then try the PMC fallback or
-    ultimately raise a clear `ValueError`.
-
-In practice:
-
-- Use simple names like `session='day'` or `session='allday'` when you just
-  want the main trading hours.
-- Use compound names like `session='day_open_30'` or `session='am_normal_30_30'`
-  when you need to focus on opening/closing auctions or to exclude "micro"
-  windows (e.g. the first X minutes).
-- If you add or customize sessions, update `exch.yml` and rely on
-  `get_interval()` to pick them up automatically.
-
-```python
-# Using reference exchange for market hours
-blp.bdib(ticker='ESM0 Index', dt='2020-03-20', ref='ES1 Index').tail()
-```
-
-```pydocstring
-out[10]:
-                          ESM0 Index
-                                open     high      low    close volume num_trds        value
-2020-03-20 16:55:00-04:00   1,000.00 1,001.00   999.50 1,000.50    100       50   100,050.00
-2020-03-20 16:56:00-04:00   1,000.50 1,002.00 1,000.00 1,001.50    200       60   200,300.00
-2020-03-20 16:57:00-04:00   1,001.50 1,003.00 1,001.00 1,002.50    300       70   300,750.00
-2020-03-20 16:58:00-04:00   1,002.50 1,003.50 1,001.50 1,002.00    250       65   250,500.00
-2020-03-20 16:59:00-04:00   1,002.00 1,004.00 1,001.75 1,003.00    275       68   275,825.00
-```
-
-```python
-# Tick-by-tick data with event types and condition codes
-blp.bdtick(ticker='XYZ US Equity', dt='2024-10-15', session='day', types=['TRADE']).head()
-```
-
-```pydocstring
-Out[12]:
-                          XYZ US Equity
-                                   volume    typ   cond exch            trd_time
-2024-10-15 09:30:15-04:00           1500  TRADE     @  NYSE  2024-10-15 09:30:15
-2024-10-15 09:30:23-04:00            800  TRADE     @  NYSE  2024-10-15 09:30:23
-2024-10-15 09:30:31-04:00           2200  TRADE     @  NYSE  2024-10-15 09:30:31
-```
-
-```python
-# Tick data with timeout (useful for large requests)
-blp.bdtick(ticker='XYZ US Equity', dt='2024-10-15', session='day', timeout=1000)
-```
-
-Note: `bdtick` requests can take longer to respond. Use `timeout` parameter (in milliseconds) if you encounter empty DataFrames due to timeout.
-
-#### Timezone handling (`bdib` / `bdtick`)
-
-Bloomberg intraday APIs use **UTC** on the wire. The Rust engine accepts two optional knobs:
-
-- **`request_tz`**: How **naive** `start_datetime` / `end_datetime` (and the implicit full-day window when using `dt=`) are interpreted before the request. Omit or use `UTC` to keep the previous behavior (naive times treated as UTC wall times, matching older examples that use e.g. `14:30` for US cash open).
-- **`output_tz`**: Relabel the Arrow/Pandas **`time`** column to an IANA zone (same instants; only the timestamp type metadata changes). Omit or `UTC` leaves UTC.
-
-Supported labels (case-insensitive where noted): `UTC`, `local` (machine IANA zone), `exchange` (resolve via the request’s security and cached/Bloomberg metadata), short aliases `NY`, `LN`, `TK`, `HK`, a **reference ticker** string containing a space (same as `exch_info`), or any **IANA** name (e.g. `Europe/Zurich`).
-
-```python
-# Naive times in America/New_York → converted to UTC in the engine before the API call
-bars = await blp.abdib(
-    "SPY US Equity",
-    start_datetime="2024-01-15 09:30",
-    end_datetime="2024-01-15 16:00",
-    interval=5,
-    request_tz="America/New_York",
-)
-
-# Present tick times in the listing’s exchange zone (resolved in Rust)
-ticks = await blp.abdtick(
-    "SPY US Equity",
-    "2024-01-15 09:30",
-    "2024-01-15 10:00",
-    request_tz="exchange",
-    output_tz="exchange",
-)
-
-# Native datetime objects are accepted everywhere a date or datetime is taken.
-# Tz-aware values preserve their tz; tz-naive values use request_tz.
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-bars = await blp.abdib(
-    "SPY US Equity",
-    start_datetime=datetime(2024, 1, 15, 9, 30, tzinfo=ZoneInfo("America/New_York")),
-    end_datetime=datetime(2024, 1, 15, 16, 0, tzinfo=ZoneInfo("America/New_York")),
-    interval=5,
-)
-```
-
-See the [Dates and Datetimes guide](https://xbbg.org/python/guides/dates/)
-for the full accepted set across `bdh` / `bdib` / `bdtick` / overrides
-and the JS / Node bindings.
-
-```python
-# Trading volume & turnover (currency-adjusted, in millions)
-blp.turnover(['ABC US Equity', 'DEF US Equity'], start_date='2024-01-01', end_date='2024-01-10', ccy='USD')
-```
-
-```pydocstring
-Out[13]:
-            ABC US Equity  DEF US Equity
-2024-01-02         1,000        2,000
-2024-01-03         1,100        2,100
-2024-01-04           950        1,950
-2024-01-05         1,050        2,050
-2024-01-08         1,150        2,150
-```
-
-```python
-# Currency conversion for historical data
-hist = blp.bdh(['GHI US Equity'], ['px_last'], '2024-01-01', '2024-01-10')
-blp.convert_ccy(hist, ccy='EUR')
-```
-
-```pydocstring
-Out[14]:
-            GHI US Equity
-2024-01-02        100.00
-2024-01-03        101.00
-2024-01-04        100.50
-2024-01-05        101.25
-2024-01-08        100.75
-```
-
-### 🔍 Screening & Queries
-
-```python
-# Bloomberg Query Language (BQL)
-# IMPORTANT: The 'for' clause must be OUTSIDE get(), not inside
-# Correct: get(px_last) for('AAPL US Equity')
-# Incorrect: get(px_last for('AAPL US Equity'))
-# blp.bql("get(px_last) for('AAPL US Equity')")  # doctest: +SKIP
-
-# BQL Options query example - sum open interest
-# blp.bql("get(sum(group(open_int))) for(filter(options('SPX Index'), expire_dt=='2025-11-21'))")  # doctest: +SKIP
-
-# BQL Options metadata - get available expiries
-# blp.bql("get(expire_dt) for(options('INDEX Ticker'))")  # doctest: +SKIP
-
-# BQL Options metadata - get option tickers for an underlying
-# blp.bql("get(id) for(options('INDEX Ticker'))")  # doctest: +SKIP
-
-# BQL Options metadata - get option chain (expiry, strike, put/call)
-# blp.bql("get(id, expire_dt, strike_px, PUT_CALL) for(filter(options('INDEX Ticker'), expire_dt=='YYYY-MM-DD'))")  # doctest: +SKIP
-
-# ETF Holdings (BQL)
-# blp.etf_holdings('SPY US Equity')  # doctest: +SKIP
-# Returns:
-#               holding       id_isin SOURCE POSITION_TYPE  weights  position
-# 0     FUND_A US Equity  US0000000001    ETF             L   0.0500   100000.0
-# 1     FUND_B US Equity  US0000000002    ETF             L   0.0400    80000.0
-# 2     FUND_C US Equity  US0000000003    ETF             L   0.0300    60000.0
-
-# Bloomberg Equity Screening (BEQS)
-# blp.beqs(screen='MyScreen', asof='2023-01-01')  # doctest: +SKIP
-
-# SRCH (Search) - Fixed Income example
-# blp.bsrch("FI:YOURSRCH")  # doctest: +SKIP
-```
-
-```pydocstring
-Out[16]:
-              id
-0  !!ABC123 Mtge
-1  !!DEF456 Mtge
-2  !!GHI789 Mtge
-3  !!JKL012 Mtge
-4  !!MNO345 Mtge
-```
-
-```python
-# SRCH - Weather data with parameters
-blp.bsrch(  # doctest: +SKIP
-    "comdty:weather",
-    overrides={
-        "provider": "wsi",
-        "location": "US_XX",
-        "model": "ACTUALS",
-        "frequency": "DAILY",
-        "target_start_date": "2021-01-01",
-        "target_end_date": "2021-01-05",
-        "location_time": "false",
-        "fields": "WIND_SPEED|TEMPERATURE|HDD_65F|CDD_65F|HDD_18C|CDD_18C|PRECIPITATION_24HR|CLOUD_COVER|FEELS_LIKE_TEMPERATURE|MSL_PRESSURE|TEMPERATURE_MAX_24HR|TEMPERATURE_MIN_24HR"
-    }
-)
-```
-
-```pydocstring
-Out[17]:
-              Reported Time  Wind Speed (m/s)  Temperature (°C)  Heating Degree Days (°F)  Cooling Degree Days (°F)
-0 2021-01-01 06:00:00+00:00              1.00              10.00                   12.00                     0.0
-1 2021-01-02 06:00:00+00:00              1.50              11.00                   10.00                     0.0
-2 2021-01-03 06:00:00+00:00              2.00              12.00                    8.00                     0.0
-3 2021-01-04 06:00:00+00:00              1.25              13.00                    6.00                     0.0
-4 2021-01-05 06:00:00+00:00              1.75              14.00                    4.00                     0.0
-```
-
-**Note:** The `bsrch()` function uses the blpapi Excel service (`//blp/exrsvc`) and supports user-defined SRCH screens, commodity screens, and blpapi example screens. For weather data and other specialized searches, use the `overrides` parameter to pass search-specific parameters.
-
-```python
-# Bloomberg Quote Request (BQR) - Dealer quotes with broker codes
-# Emulates Excel =BQR() function for fixed income dealer quotes
-
-# Synthetic/anonymized examples only; do not paste proprietary Bloomberg output.
-# Get fixed-income dealer quotes from last 2 days; BQR requests broker codes by default
-# blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', date_offset='-2d')  # doctest: +SKIP
-
-# Using ISIN with MSG1 pricing source (recommended for dealer attribution)
-# blp.bqr('/isin/US123456789@MSG1 Corp', date_offset='-2d')  # doctest: +SKIP
-
-# With spread data
-# blp.bqr(  # doctest: +SKIP
-#     'XYZ 4.5 01/15/30@MSG1 Corp',
-#     date_offset='-2d',
-#     include_spread_price=True,
-# )
-
-# With explicit date range
-# blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', start_date='2024-01-15', end_date='2024-01-17')  # doctest: +SKIP
-
-# Get only trade events
-# blp.bqr('XYZ 4.5 01/15/30@MSG1 Corp', date_offset='-1d', event_types=['TRADE'])  # doctest: +SKIP
-
-```pydocstring
-Synthetic/anonymized illustrative output:
-Out[18]:
-                              ticker                 time event_type   price      size spread_price broker_buy broker_sell
-0  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:00        BID   98.75  10000000         29.0       DLRA         NaN
-1  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 10:30:05        ASK   99.00   5000000         24.1        NaN        DLRB
-2  XYZ 4.5 01/15/30@MSG1 Corp  2024-01-15 11:45:00      TRADE   98.85   2500000          NaN       DLRC        DLRC
-```
-
-**Note:** The `bqr()` example above is synthetic/anonymized and must not be treated as Bloomberg output. The `bqr()` function emulates Bloomberg Excel's `=BQR()` formula for fixed-income dealer quotes. It requests broker attribution by default and returns 0.x-compatible BQR columns such as `event_type`, `price`, `broker_buy`, and `broker_sell`. Prefer an ISIN input with `@MSG1 Corp`, e.g. `/isin/US037833FB15@MSG1 Corp`, for broker-level attribution. `bqr()` warns when an attributed request does not use that shape; if Bloomberg still returns quote rows without broker codes, `bqr()` raises instead of silently returning unattributed ticks. Pass `include_broker_codes=False` only when raw quote ticks without dealer attribution are intentional. Optional parameters include `include_spread_price`, `include_yield`, `include_condition_codes`, and `include_exchange_codes`.
-
-### 📡 Real-time
-
-```python
-# Real-time market data streaming (async)
-# async for tick in blp.astream(['AAPL US Equity'], ['LAST_PRICE']):  # doctest: +SKIP
-#     print(tick)  # doctest: +SKIP
-
-# Subscriptions with failure isolation and health metadata
-# sub = await blp.asubscribe(['AAPL US Equity'], ['LAST_PRICE'])  # doctest: +SKIP
-# async for update in sub:  # doctest: +SKIP
-#     print(update)  # doctest: +SKIP
-
-# Full Bloomberg payload (e.g. INITPAINT summary fields beyond your request list):
-# sub = await blp.asubscribe(['XBTUSD Curncy'], ['LAST_PRICE', 'BID', 'ASK'], all_fields=True)  # doctest: +SKIP
-
-# Real-time VWAP streaming
-# async for bar in blp.avwap(['AAPL US Equity']):  # doctest: +SKIP
-#     print(bar)  # doctest: +SKIP
-```
-
-### 🔧 Utilities
-
-```python
-# Futures ticker resolution (generic to specific contract)
-blp.fut_ticker('ES1 Index', '2024-01-15', freq='ME')
-```
-
-```pydocstring
-Out[15]:
-'ESH24 Index'
-```
-
-```python
-# Active futures contract selection (volume-based)
-blp.active_futures('ESA Index', '2024-01-15')
-```
-
-```pydocstring
-Out[16]:
-'ESH24 Index'
-```
-
-```python
-# CDX index ticker resolution (series mapping)
-blp.cdx_ticker('CDX IG CDSI GEN 5Y Corp', '2024-01-15')
-```
-
-```pydocstring
-Out[17]:
-'CDX IG CDSI S45 5Y Corp'
-```
-
-```python
-# Active CDX contract selection
-blp.active_cdx('CDX IG CDSI GEN 5Y Corp', '2024-01-15', lookback_days=10)
-```
-
-```pydocstring
-Out[18]:
-'CDX IG CDSI S45 5Y Corp'
-```
-
-
-## 🔧 Troubleshooting
-
-<details>
-<summary><b>❌ Empty DataFrame Returned</b></summary>
-
-**Possible causes:**
-- ✅ Bloomberg Terminal not running → Start Bloomberg Terminal
-- ✅ Wrong ticker format → Use `'AAPL US Equity'` not `'AAPL'`
-- ✅ Data not available for date/time → Check Bloomberg Terminal
-- ✅ Timeout too short → Increase: `blp.bdtick(..., timeout=1000)`
-
-**Quick fix:**
-```python
-# Verify ticker exists
-blp.blkp('Apple', yellowkey='eqty')
-
-# Check field availability
-blp.fieldSearch('price')
-```
-
-</details>
-
-<details>
-<summary><b>🔌 Connection Errors</b></summary>
-
-**Checklist:**
-- ✅ Bloomberg Terminal is running and logged in
-- ✅ Default connection is `localhost:8194`
-- ✅ For remote: `blp.bdp(..., server='192.168.1.100', port=18194)`
-- ✅ Bloomberg API (blpapi) is installed
-
-**Test connection:**
-```python
-from xbbg import blp
-blp.bdp('AAPL US Equity', 'PX_LAST')  # Should return data
-```
-
-</details>
-
-<details>
-<summary><b>⏱️ Timeout Errors</b></summary>
-
-**Solutions:**
-```python
-# Increase timeout (milliseconds)
-blp.bdtick('AAPL US Equity', dt='2024-01-15', timeout=5000)
-
-# Break large requests into chunks
-dates = pd.date_range('2024-01-01', '2024-12-31', freq='MS')
-chunks = [blp.bdh('SPX Index', 'PX_LAST', start, end) for start, end in zip(dates[:-1], dates[1:])]
-result = pd.concat(chunks)
-```
-
-</details>
-
-<details>
-<summary><b>🔍 Field Not Found</b></summary>
-
-**Find the right field:**
-```python
-# Search for fields
-blp.fieldSearch('vwap')  # Find VWAP-related fields
-
-# Get field info
-blp.fieldInfo(['PX_LAST', 'VOLUME'])  # See data types & descriptions
-
-# Check in Bloomberg Terminal
-# Type FLDS<GO> to browse all fields
-```
-
-</details>
-
-<details>
-<summary><b>🐛 Still Stuck?</b></summary>
-
-**Get help fast:**
-- 💬 **Discord**: [Join our community](https://discord.gg/P34uMwgCjC) - Usually get answers within hours
-- 🐛 **GitHub Issues**: [Report bugs](https://github.com/alpha-xone/xbbg/issues) - Include error messages & code
-- 📚 **Documentation**: [Docs](https://xbbg.org/) - Comprehensive guides
-- 📓 **Examples**: [`xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb) - 100+ working examples
-
-**When reporting issues, include:**
 1. xbbg version: `import xbbg; print(xbbg.__version__)`
-2. Python version: `python --version`
-3. Error message (full traceback)
-4. Minimal code to reproduce
-
-</details>
+2. Python version and operating system
+3. Bloomberg connection mode: DAPI, SAPI/B-PIPE, ZFP, or other
+4. minimal code to reproduce
+5. full traceback or error message
 
 ## Development
-
-### Setup
 
 Set up the development environment with [pixi](https://pixi.sh/):
 
 ```bash
-# Stage an authorized Bloomberg SDK locally under vendor/blpapi-sdk/ and let xbbg discover it
+# Stage an authorized Bloomberg SDK locally under vendor/blpapi-sdk/
 bash ./scripts/sdktool.sh               # macOS/Linux
 # .\scripts\sdktool.ps1                # Windows PowerShell
 
-# Install environment and compile the Rust extension
+# Install the environment and compile the Rust extension
 pixi install
 pixi run install
 ```
 
-If you already manage the SDK yourself, you can still set `BLPAPI_ROOT` manually.
-
-### Running Tests and Linting
+Common checks:
 
 ```bash
-pixi run test                  # run tests
-pixi run lint                  # lint Python + Rust
-pixi run ci                    # full sweep: fmt-check + lint + typecheck + test
+pixi run test
+pixi run lint
+pixi run ci
 ```
 
-For non-live application tests, `xbbg.testing` can mock Bloomberg-style responses:
+For non-live tests, use `xbbg.testing`:
 
 ```python
 from xbbg import blp
@@ -2098,85 +341,17 @@ with mock_engine([response]):
     df = blp.bdp("AAPL US Equity", "PX_LAST")
 ```
 
-### Building
+Publishing is handled through GitHub Actions and PyPI Trusted Publishing.
 
-```bash
-pixi run build
-```
+## Project links
 
-Publishing is handled via GitHub Actions using PyPI Trusted Publishing (OIDC).
-
-### Documentation
-
-The public docs live at [xbbg.org](https://xbbg.org/). Archived in-repo Starlight docs were removed to avoid stale examples and accidental inclusion of Bloomberg-like sample output.
-
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
-
-- Setting up your development environment
-- Code style and standards
-- Testing requirements
-- Pull request process
-- Community guidelines
-
-Quick start for contributors:
-
-```bash
-# Fork and clone the repository
-git clone https://github.com/YOUR-USERNAME/xbbg.git
-cd xbbg
-
-# Set up development environment
-pixi install && pixi run install
-
-# Run tests and linting
-pixi run ci
-```
-
-## Getting Help
-
-### Community Support
-
-- **Discord**: [Join our community](https://discord.gg/P34uMwgCjC) for discussions, questions, and help
-- **GitHub Issues**: [Report bugs or request features](https://github.com/alpha-xone/xbbg/issues)
-- **GitHub Discussions**: Share ideas and ask questions
-
-### Resources
-
-- **Documentation**: [xbbg.org](https://xbbg.org/)
-- **Examples**: [`py-xbbg/examples/xbbg_jupyter_examples.ipynb`](py-xbbg/examples/xbbg_jupyter_examples.ipynb)
-- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
-- **Security**: [SECURITY.md](SECURITY.md)
-
-## Links
-
-- [PyPI Package](https://pypi.org/project/xbbg/)
-- [Documentation](https://xbbg.org/)
-- [Source Code](https://github.com/alpha-xone/xbbg)
-- [Issue Tracker](https://github.com/alpha-xone/xbbg/issues)
-- [Discord Community](https://discord.gg/P34uMwgCjC)
-- [Changelog](CHANGELOG.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security Policy](SECURITY.md)
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=alpha-xone/xbbg&type=Date)](https://star-history.com/#alpha-xone/xbbg&Date)
-
-## Project Status
-
-| Category       | Badge                                                                                                                                    |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Docs           | [![Documentation](https://img.shields.io/badge/docs-xbbg.org-blue)](https://xbbg.org/)                                |
-| Build          | [![CI](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml) |
-| License        | [![GitHub license](https://img.shields.io/github/license/alpha-xone/xbbg.svg)](https://github.com/alpha-xone/xbbg/blob/main/LICENSE)   |
-
-For detailed release history, see [CHANGELOG.md](CHANGELOG.md).
+- Documentation: [xbbg.org](https://xbbg.org/)
+- PyPI: [pypi.org/project/xbbg](https://pypi.org/project/xbbg/)
+- Source: [github.com/alpha-xone/xbbg](https://github.com/alpha-xone/xbbg)
+- Issues: [GitHub Issues](https://github.com/alpha-xone/xbbg/issues)
+- Discord: [Join the community](https://discord.gg/P34uMwgCjC)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Security: [SECURITY.md](SECURITY.md)
+- License: [LICENSE](LICENSE)
