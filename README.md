@@ -38,7 +38,7 @@ Latest release: xbbg==1.2.2 (release: [notes](https://github.com/alpha-xone/xbbg
 - [Common API surface](#common-api-surface)
 - [Output backends](#output-backends)
 - [Async usage](#async-usage)
-- [Subscriptions, tick mode, and all fields](#subscriptions-tick-mode-and-all-fields)
+- [Subscriptions: raw, tick mode, and all fields](#subscriptions-raw-tick-mode-and-all-fields)
 - [MCP server](#mcp-server)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -289,9 +289,9 @@ result = asyncio.run(main())
 
 In Jupyter and VS Code Interactive, one-shot sync calls such as `blp.bdp(...)` and `blp.bdh(...)` use a notebook-only bridge when an IPykernel event loop is already running. Generic async applications such as FastAPI or ASGI services should still use the async APIs directly.
 
-## Subscriptions, tick mode, and all fields
+## Subscriptions: raw, tick mode, and all fields
 
-Use `asubscribe()` when you need dynamic add/remove, explicit unsubscribe, or subscription health diagnostics. Use `stream()` when you only want the simple async-iterator wrapper.
+Use `asubscribe()` when you need dynamic add/remove, explicit unsubscribe, raw Arrow batches, or subscription health diagnostics. Use `stream()` when you only want the simple async-iterator wrapper.
 
 ```python
 from xbbg import asubscribe
@@ -312,10 +312,21 @@ async for tick in sub:
 await sub.unsubscribe()
 ```
 
+```python
+raw_sub = await asubscribe(["AAPL US Equity"], ["LAST_PRICE"], raw=True)
+
+async for batch in raw_sub:
+    print(batch.to_table())  # raw xbbg ArrowRecordBatch -> ArrowTable
+    break
+
+await raw_sub.unsubscribe()
+```
+
 Key behaviors:
 
-- default iteration yields Arrow-backed record batches, or the configured backend if `raw=False`
-- `tick_mode=True` returns native dict ticks and implies raw subscription mode
+- `raw=True` or `output="record_batch"` yields raw xbbg `ArrowRecordBatch` values for max-performance consumers
+- default iteration without `raw=True` returns the configured backend output instead of raw record batches
+- `tick_mode=True` or `output="dict"` returns native dict ticks and implies raw subscription mode
 - `all_fields=True` exposes all top-level scalar Bloomberg subscription fields
 - filtered mode keeps requested fields plus `MKTDATA_EVENT_TYPE` and `MKTDATA_EVENT_SUBTYPE`
 - `conflate=True` requests Bloomberg-conflated quote updates on `//blp/mktdata`; trades are still delivered as received
