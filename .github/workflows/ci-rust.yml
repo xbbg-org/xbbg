@@ -146,11 +146,10 @@ jobs:
         run: pixi run -e lint typecheck || true
 
 
-  # ════════════════════════════════════════════════════════════════════════════
-  # JavaScript wrapper lint (Biome via pixi js env)
+  # JavaScript wrapper quality (Oxfmt/Oxlint/ESLint/TypeScript/Vitest)
   # ════════════════════════════════════════════════════════════════════════════
   lint-js:
-    name: Lint (JS wrapper)
+    name: Quality (JS wrapper)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -166,8 +165,8 @@ jobs:
         working-directory: js-xbbg
         run: npm ci
 
-      - name: Biome check
-        run: pixi run -e js js-lint
+      - name: JS quality suite
+        run: pixi run -e js js-quality
 
   # ════════════════════════════════════════════════════════════════════════════
   # Security - cargo-audit (vulnerabilities)

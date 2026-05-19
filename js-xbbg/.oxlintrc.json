@@ -87,6 +87,7 @@
     "eslint-plugin-promise/avoid-new": "off",
     "eslint-plugin-promise/prefer-await-to-callbacks": "off",
     "eslint-plugin-promise/prefer-await-to-then": "off",
+    "unicorn/no-negated-condition": "off",
     "eslint-plugin-unicorn/catch-error-name": "off",
     "eslint-plugin-unicorn/custom-error-definition": "off",
     "eslint-plugin-unicorn/filename-case": "off",

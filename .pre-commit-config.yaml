@@ -30,6 +30,21 @@ repos:
         files: ^(py-xbbg/src/|py-xbbg/tests/)
         pass_filenames: false
 
+
+      - id: js-format-check
+        name: js-format-check
+        entry: npm --prefix js-xbbg run format:check
+        language: system
+        files: ^js-xbbg/
+        pass_filenames: false
+
+      - id: js-lint
+        name: js-lint
+        entry: npm --prefix js-xbbg run lint
+        language: system
+        files: ^js-xbbg/
+        pass_filenames: false
+
       - id: cargo-fmt
         name: cargo-fmt
         entry: cargo fmt --all -- --check

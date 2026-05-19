@@ -1,0 +1,330 @@
+#!/usr/bin/env node
+
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { platformPackages } from './platform-map';
+
+const repoRoot = path.resolve(__dirname, '..', '..');
+const packageDir = path.resolve(repoRoot, 'js-xbbg');
+const npmExecPath = process.env.npm_execpath;
+
+type ValidationMode = 'attw' | 'dry-run' | 'publint';
+
+interface NpmInvocation {
+  readonly args: readonly string[];
+  readonly command: string;
+}
+
+interface PackageSpec {
+  readonly dir: string;
+  readonly expectedFiles: readonly string[];
+  readonly forbiddenFiles?: readonly string[];
+  readonly name: string;
+}
+
+interface PackFile {
+  readonly path?: unknown;
+}
+
+interface PackResult {
+  readonly files?: unknown;
+}
+
+interface PackageManifest {
+  readonly name: string;
+  readonly version: string;
+}
+
+interface AttwProblem {
+  readonly entrypoint?: string;
+  readonly kind: string;
+  readonly resolutionKind?: string;
+}
+
+interface ValidateOptions {
+  readonly allPlatforms: boolean;
+  readonly mode: ValidationMode;
+}
+
+function fail(message: string): never {
+  console.error(`js-xbbg package validation failed: ${message}`);
+  process.exit(1);
+}
+
+function packageDirName(packageName: string): string {
+  return packageName.replace('@xbbg/', 'xbbg-');
+}
+
+function parseArgs(argv: readonly string[]): ValidateOptions {
+  let mode: ValidationMode | null = null;
+  let allPlatforms = false;
+
+  for (const arg of argv) {
+    switch (arg) {
+      case '--all-platforms': {
+        allPlatforms = true;
+        break;
+      }
+      case '--attw': {
+        mode = setMode(mode, 'attw');
+        break;
+      }
+      case '--dry-run': {
+        mode = setMode(mode, 'dry-run');
+        break;
+      }
+      case '--publint': {
+        mode = setMode(mode, 'publint');
+        break;
+      }
+      default: {
+        fail(`unknown argument: ${arg}`);
+      }
+    }
+  }
+
+  if (mode === null) {
+    fail('usage: validate-packages.ts (--dry-run | --publint | --attw) [--all-platforms]');
+  }
+
+  return { allPlatforms, mode };
+}
+
+function setMode(current: ValidationMode | null, next: ValidationMode): ValidationMode {
+  if (current !== null && current !== next) {
+    fail('choose exactly one package validation mode');
+  }
+  return next;
+}
+
+function npmCommand(args: readonly string[]): NpmInvocation {
+  if (npmExecPath !== undefined && npmExecPath.length > 0) {
+    return { args: [npmExecPath, ...args], command: process.execPath };
+  }
+  if (process.platform === 'win32') {
+    return {
+      args: ['/d', '/s', '/c', 'npm.cmd', ...args],
+      command: process.env.ComSpec ?? 'cmd.exe',
+    };
+  }
+  return { args, command: 'npm' };
+}
+
+function outputText(output: string | Buffer | null | undefined): string {
+  return typeof output === 'string' ? output : (output?.toString('utf8') ?? '');
+}
+
+function runNpmCapture(args: readonly string[], cwd: string): string {
+  const invocation = npmCommand(args);
+  const result = spawnSync(invocation.command, invocation.args, {
+    cwd,
+    encoding: 'utf8',
+    env: process.env,
+    windowsHide: true,
+  });
+  if (result.error) {
+    fail(`failed to run npm ${args.join(' ')}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    process.stderr.write(outputText(result.stderr));
+    process.exit(result.status ?? 1);
+  }
+  return outputText(result.stdout);
+}
+
+function runNpm(args: readonly string[], cwd: string): void {
+  const invocation = npmCommand(args);
+  const result = spawnSync(invocation.command, invocation.args, {
+    cwd,
+    env: process.env,
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+  if (result.error) {
+    fail(`failed to run npm ${args.join(' ')}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+function runLocalBin(command: string, args: readonly string[], cwd: string): void {
+  runNpm(['exec', '--', command, ...args], cwd);
+}
+
+function platformSpec(packageName: string): PackageSpec {
+  return {
+    dir: path.join(packageDir, 'packages', packageDirName(packageName)),
+    expectedFiles: [
+      'index.js',
+      'index.d.ts',
+      'README.md',
+      'LICENSE',
+      'package.json',
+      'napi_xbbg.node',
+    ],
+    name: packageName,
+  };
+}
+
+function packageSpecs(allPlatforms: boolean): PackageSpec[] {
+  const specs: PackageSpec[] = [
+    {
+      dir: packageDir,
+      expectedFiles: ['dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE', 'package.json'],
+      forbiddenFiles: ['napi_xbbg.node'],
+      name: '@xbbg/core',
+    },
+  ];
+
+  const allPlatformSpecs = Object.values(platformPackages).map(platformSpec);
+  const selectedPlatformSpecs = allPlatforms
+    ? allPlatformSpecs
+    : allPlatformSpecs.filter((spec) => fs.existsSync(path.join(spec.dir, 'napi_xbbg.node')));
+
+  if (selectedPlatformSpecs.length === 0) {
+    fail('no staged platform package found; run npm run stage:native-package first');
+  }
+
+  specs.push(...selectedPlatformSpecs);
+  return specs;
+}
+
+function parsePackJson(raw: string, spec: PackageSpec): PackResult {
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed) || parsed.length !== 1 || !isRecord(parsed[0])) {
+    fail(`${spec.name}: npm pack --json returned an unexpected shape`);
+  }
+  return parsed[0] as PackResult;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function packFiles(result: PackResult, spec: PackageSpec): Set<string> {
+  if (!Array.isArray(result.files)) {
+    fail(`${spec.name}: npm pack --json result did not include a files array`);
+  }
+  const files = new Set<string>();
+  for (const file of result.files) {
+    if (!isRecord(file)) {
+      fail(`${spec.name}: npm pack file entry was not an object`);
+    }
+    const filePath = (file as PackFile).path;
+    if (typeof filePath !== 'string') {
+      fail(`${spec.name}: npm pack file entry did not include a string path`);
+    }
+    files.add(filePath);
+  }
+  return files;
+}
+
+function dryRunFiles(spec: PackageSpec): Set<string> {
+  const raw = runNpmCapture(
+    ['pack', spec.dir, '--dry-run', '--json', '--ignore-scripts'],
+    repoRoot,
+  );
+  return packFiles(parsePackJson(raw, spec), spec);
+}
+
+function validateDryRun(spec: PackageSpec): void {
+  const files = dryRunFiles(spec);
+
+  for (const expectedFile of spec.expectedFiles) {
+    if (!files.has(expectedFile)) {
+      fail(`${spec.name}: npm pack dry-run omitted ${expectedFile}`);
+    }
+  }
+
+  for (const forbiddenFile of spec.forbiddenFiles ?? []) {
+    if (files.has(forbiddenFile)) {
+      fail(`${spec.name}: npm pack dry-run unexpectedly included ${forbiddenFile}`);
+    }
+  }
+
+  console.log(`${spec.name}: dry-run package contents OK`);
+}
+
+function validatePublint(spec: PackageSpec): void {
+  runLocalBin('publint', ['run', spec.dir, '--pack', 'npm', '--strict'], packageDir);
+}
+
+function readPackageManifest(spec: PackageSpec): PackageManifest {
+  const packageJsonPath = path.join(spec.dir, 'package.json');
+  const parsed: unknown = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  if (!isRecord(parsed) || typeof parsed.name !== 'string' || typeof parsed.version !== 'string') {
+    fail(`${spec.name}: package.json must contain string name and version fields`);
+  }
+  return { name: parsed.name, version: parsed.version };
+}
+
+function readPackageFileMap(
+  spec: PackageSpec,
+  files: ReadonlySet<string>,
+  packageName: string,
+): Record<string, Uint8Array> {
+  const packageFiles: Record<string, Uint8Array> = {};
+  for (const file of files) {
+    const sourcePath = path.join(spec.dir, ...file.split('/'));
+    packageFiles[`/node_modules/${packageName}/${file}`] = fs.readFileSync(sourcePath);
+  }
+  return packageFiles;
+}
+
+function isNode10OnlyProblem(problem: AttwProblem): boolean {
+  return problem.resolutionKind === 'node10';
+}
+
+function describeAttwProblem(problem: AttwProblem): string {
+  const resolution = problem.resolutionKind === undefined ? '' : ` ${problem.resolutionKind}`;
+  const entrypoint = problem.entrypoint === undefined ? '' : ` ${problem.entrypoint}`;
+  return `${problem.kind}${resolution}${entrypoint}`;
+}
+
+async function validateAttw(spec: PackageSpec): Promise<void> {
+  const { Package, checkPackage } = await import('@arethetypeswrong/core');
+  const manifest = readPackageManifest(spec);
+  const pkg = new Package(
+    readPackageFileMap(spec, dryRunFiles(spec), manifest.name),
+    manifest.name,
+    manifest.version,
+  );
+  const analysis = await checkPackage(pkg);
+  if (analysis.types === false) {
+    fail(`${spec.name}: package does not expose TypeScript types`);
+  }
+  const failures = analysis.problems.filter((problem) => !isNode10OnlyProblem(problem));
+  if (failures.length > 0) {
+    fail(
+      `${spec.name}: attw found ${failures.length} problem(s): ${failures.map(describeAttwProblem).join(', ')}`,
+    );
+  }
+  console.log(`${spec.name}: attw type resolution OK`);
+}
+
+async function main(): Promise<void> {
+  const options = parseArgs(process.argv.slice(2));
+  for (const spec of packageSpecs(options.allPlatforms)) {
+    switch (options.mode) {
+      case 'attw': {
+        await validateAttw(spec);
+        break;
+      }
+      case 'dry-run': {
+        validateDryRun(spec);
+        break;
+      }
+      case 'publint': {
+        validatePublint(spec);
+        break;
+      }
+    }
+  }
+}
+
+main().catch((error: unknown) => {
+  fail(error instanceof Error ? error.message : String(error));
+});

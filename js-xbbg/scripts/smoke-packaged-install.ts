@@ -64,7 +64,7 @@ function runCapture(command: string, args: readonly string[], options: RunOption
     process.exit(result.status ?? 1);
   }
   const lines = outputText(result.stdout)
-    .split(/\r?\n/)
+    .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter(Boolean);
   return lines.at(-1) ?? '';

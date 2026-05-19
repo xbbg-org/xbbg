@@ -59,8 +59,8 @@ function getDateRange(days: number): { start: string; end: string } {
   const start = new Date(end);
   start.setDate(end.getDate() - days);
   return {
-    end: end.toISOString().slice(0, 10).replace(/-/g, ''),
-    start: start.toISOString().slice(0, 10).replace(/-/g, ''),
+    end: end.toISOString().slice(0, 10).replace(/-/gu, ''),
+    start: start.toISOString().slice(0, 10).replace(/-/gu, ''),
   };
 }
 

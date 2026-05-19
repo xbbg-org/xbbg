@@ -74,7 +74,7 @@ if (rawVersion === undefined || rawVersion.length === 0) {
   fail('usage: npm run stamp:version -- <version>');
 }
 
-const version = rawVersion.replace(/^js-v/, '').replace(/^v/, '');
+const version = rawVersion.replace(/^js-v/u, '').replace(/^v/u, '');
 if (version.length === 0) {
   fail('version must not be empty');
 }

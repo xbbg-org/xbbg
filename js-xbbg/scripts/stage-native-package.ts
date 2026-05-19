@@ -123,7 +123,7 @@ function stagePackage(version: string | null = null): StagePackageResult {
   fs.copyFileSync(sourceBinary, destBinary);
 
   if (version !== null) {
-    const normalizedVersion = version.replace(/^v/, '');
+    const normalizedVersion = version.replace(/^v/u, '');
     const packageJsonPath = path.join(localPackageDir, 'package.json');
     const packageJson: unknown = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     if (!isRecord(packageJson)) {

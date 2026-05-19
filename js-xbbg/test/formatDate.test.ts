@@ -38,9 +38,9 @@ describe('formatDate (#317)', () => {
   });
 
   it('rejects ambiguous formats', () => {
-    expect(() => formatDate('01/17/2023')).toThrow(/Ambiguous/);
-    expect(() => formatDate('1/17/23')).toThrow(/Ambiguous/);
-    expect(() => formatDate('17-01-2023')).toThrow(/Ambiguous/);
+    expect(() => formatDate('01/17/2023')).toThrow(/Ambiguous/u);
+    expect(() => formatDate('1/17/23')).toThrow(/Ambiguous/u);
+    expect(() => formatDate('17-01-2023')).toThrow(/Ambiguous/u);
   });
 });
 
@@ -75,7 +75,7 @@ describe('formatDateTime (#317)', () => {
   });
 
   it('rejects ambiguous datetime formats', () => {
-    expect(() => formatDateTime('01/17/2023 10:30:00')).toThrow(/Ambiguous/);
-    expect(() => formatDateTime('01/17/2023T10:30:00')).toThrow(/Ambiguous/);
+    expect(() => formatDateTime('01/17/2023 10:30:00')).toThrow(/Ambiguous/u);
+    expect(() => formatDateTime('01/17/2023T10:30:00')).toThrow(/Ambiguous/u);
   });
 });
