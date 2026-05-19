@@ -45,6 +45,20 @@ function typedBuffer(view: ArrayBufferView): Buffer {
   return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
 }
 
+function captureRequests(): api.Engine & { readonly calls: RequestInput[] } {
+  const calls: RequestInput[] = [];
+  const engine = Object.create(api.Engine.prototype) as api.Engine & {
+    calls: RequestInput[];
+    request(params: RequestInput): Promise<unknown>;
+  };
+  engine.calls = calls;
+  engine.request = async (params: RequestInput): Promise<unknown> => {
+    calls.push(params);
+    return Promise.resolve(params);
+  };
+  return engine;
+}
+
 describe('@xbbg/core surface', () => {
   it('exposes all public exports', () => {
     const required = [
@@ -475,20 +489,6 @@ describe('native Arrow zero-copy table construction', () => {
 });
 
 describe('engine wrapper request plumbing', () => {
-  function captureRequests(): api.Engine & { readonly calls: RequestInput[] } {
-    const calls: RequestInput[] = [];
-    const engine = Object.create(api.Engine.prototype) as api.Engine & {
-      calls: RequestInput[];
-      request(params: RequestInput): Promise<unknown>;
-    };
-    engine.calls = calls;
-    engine.request = async (params: RequestInput): Promise<unknown> => {
-      calls.push(params);
-      return Promise.resolve(params);
-    };
-    return engine;
-  }
-
   it('forwards allFields to native subscriptions', async () => {
     const calls: { method: string; args: unknown[] }[] = [];
     const nativeSub = {

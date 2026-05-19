@@ -134,14 +134,14 @@ function runTool(command: string, args: readonly string[], context: string): str
 }
 
 function stripOtoolPathSuffix(value: string): string {
-  return value.replace(/\s+\(offset \d+\)$/, '');
+  return value.replace(/\s+\(offset \d+\)$/u, '');
 }
 
 function parseDarwinRpaths(loadCommands: string): Set<string> {
   const rpaths = new Set<string>();
   let inRpath = false;
 
-  for (const line of loadCommands.split(/\r?\n/)) {
+  for (const line of loadCommands.split(/\r?\n/u)) {
     const trimmed = line.trim();
     if (trimmed === 'cmd LC_RPATH') {
       inRpath = true;
@@ -162,11 +162,11 @@ function parseDarwinRpaths(loadCommands: string): Set<string> {
 
 function parseDarwinLinkedLibraries(output: string): string[] {
   return output
-    .split(/\r?\n/)
+    .split(/\r?\n/u)
     .slice(1)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => line.replace(/\s+\([^)]*\).*$/, ''));
+    .map((line) => line.replace(/\s+\([^)]*\).*$/u, ''));
 }
 
 function readDarwinLoadCommands(binaryPath: string): string {
@@ -202,7 +202,7 @@ function isSdkBlpapiLibrary(value: string, sdkLibDir: string): boolean {
   return (
     path.isAbsolute(value) &&
     startsWithPath(value, sdkLibDir) &&
-    /^libblpapi3(_64|_32)?\.(so|dylib)$/.test(path.basename(value))
+    /^libblpapi3(_64|_32)?\.(so|dylib)$/u.test(path.basename(value))
   );
 }
 

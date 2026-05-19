@@ -15,12 +15,12 @@
 
 import type { DateLike, DateTimeLike } from './types';
 
-const ISO_DATE_RE = /^\d{4}[-/]\d{2}[-/]\d{2}$/;
-const BBG_DATE_RE = /^\d{8}$/;
+const ISO_DATE_RE = /^\d{4}[-/]\d{2}[-/]\d{2}$/u;
+const BBG_DATE_RE = /^\d{8}$/u;
 // Whole-string ambiguous (e.g. "01/17/2023") OR ambiguous prefix in a
 // Datetime string (e.g. "01/17/2023 10:30" / "01/17/2023T10:30"). Year-leading
 // ISO is not flagged because ISO_DATE_RE matches it explicitly.
-const AMBIGUOUS_DATE_RE = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}([T \D]|$)/;
+const AMBIGUOUS_DATE_RE = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}([T \D]|$)/u;
 
 export function hasToJSDate(value: unknown): value is { toJSDate: () => Date } {
   return (
@@ -97,7 +97,7 @@ export function formatDate(value: DateLike | undefined | null): string | undefin
     }
     rejectAmbiguousString(text);
     if (ISO_DATE_RE.test(text)) {
-      return text.replaceAll(/[-/]/g, '');
+      return text.replaceAll(/[-/]/gu, '');
     }
   }
   const date = dateLikeToJSDate(value);

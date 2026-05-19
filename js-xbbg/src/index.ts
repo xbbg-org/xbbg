@@ -602,7 +602,7 @@ function normalizeDate(value: DateLike | undefined): string | undefined {
 }
 
 function getStudyAttrName(study: string): string {
-  const normalized = study.toLowerCase().replaceAll(/-/g, '_').replaceAll(/ /g, '_');
+  const normalized = study.toLowerCase().replaceAll(/-/gu, '_').replaceAll(/ /gu, '_');
   const mapped = TA_STUDIES[normalized];
   if (mapped !== undefined) {
     return mapped;

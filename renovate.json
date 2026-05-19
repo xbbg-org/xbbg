@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "labels": ["dependencies"],
+  "enabledManagers": ["npm", "github-actions", "cargo", "pep621", "pixi", "pre-commit"],
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Group js-xbbg development tooling updates.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["js-xbbg/package.json"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "js tooling"
+    },
+    {
+      "description": "Group js-xbbg runtime package updates separately from tooling.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["js-xbbg/package.json"],
+      "matchDepTypes": ["dependencies", "optionalDependencies", "peerDependencies"],
+      "groupName": "js runtime dependencies"
+    },
+    {
+      "description": "Keep internally stamped JS platform package versions under release scripts.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "@xbbg/core-darwin-arm64",
+        "@xbbg/core-linux-x64",
+        "@xbbg/core-win32-x64"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Group GitHub Actions updates.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "Group Rust crate updates.",
+      "matchManagers": ["cargo"],
+      "groupName": "rust crates"
+    },
+    {
+      "description": "Group Python, PEP 621, and Pixi updates.",
+      "matchManagers": ["pep621", "pixi"],
+      "groupName": "python and pixi dependencies"
+    },
+    {
+      "description": "Group pre-commit hook updates.",
+      "matchManagers": ["pre-commit"],
+      "groupName": "pre-commit hooks"
+    }
+  ]
+}

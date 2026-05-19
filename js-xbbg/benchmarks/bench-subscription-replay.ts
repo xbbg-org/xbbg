@@ -334,7 +334,7 @@ function readJsonl(filePath: string): ReplayRow[] {
   const raw = fs.readFileSync(filePath, 'utf8');
   const rows: ReplayRow[] = [];
   let lineNumber = 0;
-  for (const line of raw.split(/\r?\n/)) {
+  for (const line of raw.split(/\r?\n/u)) {
     lineNumber += 1;
     const trimmed = line.trim();
     if (trimmed.length === 0) {

@@ -114,12 +114,12 @@ function parseRequestOptions(msg: string): BlpRequestErrorOptions {
     request_id?: string;
     code?: string | number;
   } = {};
-  const serviceOpMatch = /on ([^:]+)::([^ (]+)/.exec(msg);
+  const serviceOpMatch = /on ([^:]+)::([^ (]+)/u.exec(msg);
   if (serviceOpMatch !== null) {
     options.service = serviceOpMatch[1];
     options.operation = serviceOpMatch[2];
   }
-  const requestIdMatch = /\[request_id=([^\]]+)\]/.exec(msg);
+  const requestIdMatch = /\[request_id=([^\]]+)\]/u.exec(msg);
   if (requestIdMatch !== null) {
     options.request_id = requestIdMatch[1];
   }
@@ -128,7 +128,7 @@ function parseRequestOptions(msg: string): BlpRequestErrorOptions {
 
 function parseValidationOptions(msg: string): BlpValidationErrorOptions {
   const options: { element?: string; suggestion?: string } = {};
-  const suggestionMatch = /\(did you mean '([^']+)'\?\)/.exec(msg);
+  const suggestionMatch = /\(did you mean '([^']+)'\?\)/u.exec(msg);
   if (suggestionMatch !== null) {
     options.suggestion = suggestionMatch[1];
   }

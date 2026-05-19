@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "Node16",
     "moduleResolution": "node16",
+    "ignoreDeprecations": "6.0",
     "lib": ["ES2023"],
     "types": ["node", "vitest/globals"],
     "strict": true,
