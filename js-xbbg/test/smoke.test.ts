@@ -612,6 +612,98 @@ describe('engine wrapper request plumbing', () => {
   });
 });
 
+describe('recipe wrapper forwarding', () => {
+  it('forwards new workflow options to native recipe methods', async () => {
+    const engine = Object.create(api.Engine.prototype) as api.Engine;
+    const calls: Record<string, unknown[]> = {};
+    (engine as unknown as { inner: unknown }).inner = {
+      recipeFuturesCurve: async (...args: unknown[]) => {
+        calls.futuresCurve = args;
+        throw new Error('stop');
+      },
+      recipeVolSurface: async (...args: unknown[]) => {
+        calls.volSurface = args;
+        throw new Error('stop');
+      },
+      recipeDividendYield: async (...args: unknown[]) => {
+        calls.dividendYield = args;
+        throw new Error('stop');
+      },
+      recipeIndexMembers: async (...args: unknown[]) => {
+        calls.indexMembers = args;
+        throw new Error('stop');
+      },
+      recipeResolveIsins: async (...args: unknown[]) => {
+        calls.resolveIsins = args;
+        throw new Error('stop');
+      },
+      recipeIssuerIsins: async (...args: unknown[]) => {
+        calls.issuerIsins = args;
+        throw new Error('stop');
+      },
+    };
+
+    await expect(
+      engine.futuresCurve('ES1 Index', {
+        asof: '2024-01-02',
+        chainField: 'FUT_CHAIN_LAST_TRADE_DATES',
+        fields: ['PX_BID'],
+        maxContracts: 4,
+      }),
+    ).rejects.toThrow('stop');
+    await expect(
+      engine.volSurface('SPX Index', '2024-01-02', '2024-01-03', {
+        preset: ['MONEYNESS_30D'],
+        fields: {
+          CUSTOM_VOL: { metric: 'implied_volatility', tenor: '1M', pointType: 'custom', point: 1 },
+        },
+        includeDerived: true,
+        riskFreeRate: 0.05,
+      }),
+    ).rejects.toThrow('stop');
+    await expect(
+      engine.dividendYield('AAPL US Equity', '2024-01-01', '2024-12-31', {
+        dividendTypes: ['Regular Cash'],
+        windowDays: 365,
+      }),
+    ).rejects.toThrow('stop');
+    await expect(
+      engine.indexMembers('SPX Index', { field: 'INDX_MWEIGHT', asof: '2024-01-02' }),
+    ).rejects.toThrow('stop');
+    await expect(engine.resolveIsins(['US0378331005', 'BAD'])).rejects.toThrow('stop');
+    await expect(engine.issuerIsins('US037833FB15')).rejects.toThrow('stop');
+
+    expect(calls.futuresCurve).toStrictEqual([
+      'ES1 Index',
+      '20240102',
+      'FUT_CHAIN_LAST_TRADE_DATES',
+      ['PX_BID'],
+      4,
+    ]);
+    expect(calls.volSurface).toStrictEqual([
+      ['SPX Index'],
+      '20240102',
+      '20240103',
+      ['MONEYNESS_30D'],
+      ['CUSTOM_VOL|implied_volatility|1M|custom|1'],
+      true,
+      true,
+      0.05,
+      undefined,
+    ]);
+    expect(calls.dividendYield).toStrictEqual([
+      ['AAPL US Equity'],
+      '20240101',
+      '20241231',
+      ['Regular Cash'],
+      365,
+    ]);
+    expect(calls.indexMembers).toStrictEqual(['SPX Index', 'INDX_MWEIGHT', '20240102']);
+    expect(calls.resolveIsins).toStrictEqual([['US0378331005', 'BAD']]);
+    expect(calls.issuerIsins).toStrictEqual([['US037833FB15']]);
+  });
+});
+
 describe('engine instantiation', () => {
   it('new Engine(host, port) exposes expected methods', () => {
     try {
@@ -647,11 +739,17 @@ describe('engine instantiation', () => {
         'corporateBonds',
         'futTicker',
         'activeFutures',
+        'futuresCurve',
         'cdxTicker',
         'activeCdx',
         'dividend',
+        'dividendYield',
         'turnover',
         'etfHoldings',
+        'volSurface',
+        'indexMembers',
+        'resolveIsins',
+        'issuerIsins',
         'currencyConversion',
         'subscribe',
         'subscribeWithOptions',

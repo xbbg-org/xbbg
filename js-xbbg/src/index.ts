@@ -47,6 +47,7 @@ import type {
   DateLike,
   DateTimeLike,
   DividendOptions,
+  DividendYieldOptions,
   EngineConfig,
   EtfHoldingsOptions,
   ExchangeInfoResult,
@@ -55,9 +56,11 @@ import type {
   FormatKind,
   FuturesCandidate,
   FuturesResolveOptions,
+  FuturesCurveOptions,
   FxPairInfo,
   MarketRule,
   OverridesMap,
+  IndexMembersOptions,
   PreferredsOptions,
   PrimitiveValue,
   RecipeBackendOptions,
@@ -73,6 +76,9 @@ import type {
   TimeRange,
   TlsConfig,
   TurnoverOptions,
+  VolFieldSpec,
+  VolSurfaceOptions,
+  VolSurfacePreset,
   YasOptions,
 } from './types';
 
@@ -496,6 +502,47 @@ function toStringArray(value: string | readonly string[] | null | undefined): st
     return [];
   }
   return [toRequestString(value)];
+}
+
+function encodeVolFieldSpec(field: string, spec: VolFieldSpec | undefined): string {
+  if (spec === undefined) {
+    return field;
+  }
+  return [
+    field,
+    spec.metric ?? '',
+    spec.tenor ?? '',
+    spec.pointType ?? '',
+    spec.point === undefined ? '' : String(spec.point),
+  ].join('|');
+}
+
+function isVolFieldSpecMap(
+  fields: VolSurfaceOptions['fields'],
+): fields is Record<string, VolFieldSpec> {
+  return fields !== undefined && !Array.isArray(fields);
+}
+
+function normalizeVolFieldSpecs(fields: VolSurfaceOptions['fields'] | undefined): string[] | null {
+  if (fields === undefined) {
+    return null;
+  }
+  if (!isVolFieldSpecMap(fields)) {
+    return fields.map((field) => toRequestString(field));
+  }
+  return Object.entries(fields).map(([field, spec]) => encodeVolFieldSpec(field, spec));
+}
+
+function isVolSurfacePresetArray(
+  preset: VolSurfaceOptions['preset'],
+): preset is readonly VolSurfacePreset[] {
+  return Array.isArray(preset);
+}
+function normalizeVolPresets(preset: VolSurfaceOptions['preset'] | undefined): string[] | null {
+  if (preset === undefined || preset === null) {
+    return null;
+  }
+  return isVolSurfacePresetArray(preset) ? [...preset] : [preset];
 }
 
 function subscriptionOptionKey(option: string): string {
@@ -1633,6 +1680,25 @@ export class Engine {
     }
   }
 
+  public async futuresCurve(
+    genTicker: string,
+    options: FuturesCurveOptions = {},
+  ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
+    try {
+      const buffer = await this.inner.recipeFuturesCurve(
+        toRequestString(genTicker),
+        options.asof === undefined ? undefined : (formatDate(options.asof) ?? ''),
+        options.chainField ?? undefined,
+        options.fields !== undefined ? toStringArray(options.fields) : null,
+        options.maxContracts ?? undefined,
+      );
+      return ipcToBackend(buffer, backend);
+    } catch (error) {
+      throw wrapError(error);
+    }
+  }
+
   public async cdxTicker(
     genTicker: string,
     dt: DateLike,
@@ -1688,6 +1754,27 @@ export class Engine {
     }
   }
 
+  public async dividendYield(
+    tickers: string | readonly string[],
+    startDate: DateLike,
+    endDate: DateLike,
+    options: DividendYieldOptions = {},
+  ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
+    try {
+      const buffer = await this.inner.recipeDividendYield(
+        toStringArray(tickers),
+        formatDate(startDate) ?? '',
+        formatDate(endDate) ?? '',
+        options.dividendTypes !== undefined ? toStringArray(options.dividendTypes) : null,
+        options.windowDays ?? undefined,
+      );
+      return ipcToBackend(buffer, backend);
+    } catch (error) {
+      throw wrapError(error);
+    }
+  }
+
   public async turnover(
     tickers: string | readonly string[],
     startDate: DateLike,
@@ -1716,6 +1803,71 @@ export class Engine {
         toRequestString(etfTicker),
         options.fields !== undefined ? toStringArray(options.fields) : null,
       );
+      return ipcToBackend(buffer, backend);
+    } catch (error) {
+      throw wrapError(error);
+    }
+  }
+
+  public async volSurface(
+    tickers: string | readonly string[],
+    startDate: DateLike,
+    endDate: DateLike,
+    options: VolSurfaceOptions = {},
+  ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
+    try {
+      const buffer = await this.inner.recipeVolSurface(
+        toStringArray(tickers),
+        formatDate(startDate) ?? '',
+        formatDate(endDate) ?? '',
+        normalizeVolPresets(options.preset ?? 'MONEYNESS_30D'),
+        normalizeVolFieldSpecs(options.fields),
+        options.asDecimal ?? true,
+        options.includeDerived ?? false,
+        options.riskFreeRate ?? undefined,
+        options.dividendYieldField ?? undefined,
+      );
+      return ipcToBackend(buffer, backend);
+    } catch (error) {
+      throw wrapError(error);
+    }
+  }
+
+  public async indexMembers(index: string, options: IndexMembersOptions = {}): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
+    try {
+      const buffer = await this.inner.recipeIndexMembers(
+        toRequestString(index),
+        options.field ?? undefined,
+        options.asof === undefined ? undefined : (formatDate(options.asof) ?? ''),
+      );
+      return ipcToBackend(buffer, backend);
+    } catch (error) {
+      throw wrapError(error);
+    }
+  }
+
+  public async resolveIsins(
+    isins: string | readonly string[],
+    options: RecipeBackendOptions = {},
+  ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
+    try {
+      const buffer = await this.inner.recipeResolveIsins(toStringArray(isins));
+      return ipcToBackend(buffer, backend);
+    } catch (error) {
+      throw wrapError(error);
+    }
+  }
+
+  public async issuerIsins(
+    bondIsins: string | readonly string[],
+    options: RecipeBackendOptions = {},
+  ): Promise<unknown> {
+    const backend = normalizeBackend(options.backend);
+    try {
+      const buffer = await this.inner.recipeIssuerIsins(toStringArray(bondIsins));
       return ipcToBackend(buffer, backend);
     } catch (error) {
       throw wrapError(error);
@@ -2040,6 +2192,7 @@ export type {
   DateLike,
   DateTimeLike,
   DividendOptions,
+  DividendYieldOptions,
   EngineConfig,
   EtfHoldingsOptions,
   ExchangeInfoResult,
@@ -2048,9 +2201,11 @@ export type {
   FormatKind,
   FuturesCandidate,
   FuturesResolveOptions,
+  FuturesCurveOptions,
   FxPairInfo,
   MarketRule,
   OverridesMap,
+  IndexMembersOptions,
   PreferredsOptions,
   PrimitiveValue,
   RecipeBackendOptions,
@@ -2066,5 +2221,8 @@ export type {
   TimeRange,
   TlsConfig,
   TurnoverOptions,
+  VolFieldSpec,
+  VolSurfaceOptions,
+  VolSurfacePreset,
   YasOptions,
 };

@@ -73,6 +73,16 @@ def _syncify(async_func: Callable[_P, Coroutine[Any, Any, _T]]) -> Callable[_P, 
     return wrapper
 
 
+async def _call_native_recipe(recipe_name: str, *args: Any, backend: Any = None, **kwargs: Any) -> Any:
+    """Call a native recipe through the active engine and convert its Arrow output."""
+    from xbbg import _core, blp
+
+    recipe = getattr(_core, recipe_name)
+    engine = blp._get_engine()
+    batch = await recipe(engine, *args, **kwargs)
+    return blp._convert_backend(batch, backend)
+
+
 async def _abdp_fields(
     tickers: str | Sequence[str],
     fields: str | Sequence[str],
