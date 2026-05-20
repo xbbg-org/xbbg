@@ -5,18 +5,24 @@ These are pure Python functions that compose core operations (bdp, bds, bdh, bql
 for common use cases.
 
 Extension Categories:
-    - historical: dividend(), earnings(), turnover(), etf_holdings()
-    - futures: fut_ticker(), active_futures(), cdx_ticker(), active_cdx()
+    - historical: dividend(), dividend_yield(), earnings(), turnover(), etf_holdings()
+    - futures: fut_ticker(), active_futures(), futures_curve(), cdx_ticker(), active_cdx()
+    - volatility: vol_surface()
     - currency: convert_ccy()
+    - indices: index_members()
+    - identifiers: resolve_isins(), issuer_isins()
     - fixed_income: yas(), preferreds(), corporate_bonds(), bqr()
     - bonds: bond_info(), bond_risk(), bond_spreads(), bond_cashflows(), bond_key_rates(), bond_curve()
     - options: option_info(), option_greeks(), option_pricing(), option_chain(), option_chain_bql(), option_screen()
     - cdx: cdx_info(), cdx_defaults(), cdx_pricing(), cdx_risk(), cdx_basis(), cdx_default_prob(), cdx_cashflows(), cdx_curve()
 
 Async versions (primary implementations):
-    - historical: adividend(), aearnings(), aturnover(), aetf_holdings()
-    - futures: afut_ticker(), aactive_futures(), acdx_ticker(), aactive_cdx()
+    - historical: adividend(), adividend_yield(), aearnings(), aturnover(), aetf_holdings()
+    - futures: afut_ticker(), aactive_futures(), afutures_curve(), acdx_ticker(), aactive_cdx()
+    - volatility: avol_surface()
     - currency: aconvert_ccy()
+    - indices: aindex_members()
+    - identifiers: aresolve_isins(), aissuer_isins()
     - fixed_income: ayas(), apreferreds(), acorporate_bonds(), abqr()
     - bonds: abond_info(), abond_risk(), abond_spreads(), abond_cashflows(), abond_key_rates(), abond_curve()
     - options: aoption_info(), aoption_greeks(), aoption_pricing(), aoption_chain(), aoption_chain_bql(), aoption_screen()
@@ -154,6 +160,8 @@ from xbbg.ext.cdx import (
     cdx_risk,
 )
 from xbbg.ext.currency import aconvert_ccy, convert_ccy
+from xbbg.ext.identifiers import aissuer_isins, aresolve_isins, issuer_isins, resolve_isins
+from xbbg.ext.indices import aindex_members, index_members
 
 try:
     from xbbg.ext.fixed_income import (
@@ -193,8 +201,10 @@ try:
         active_cdx,
         active_futures,
         afut_ticker,
+        afutures_curve,
         cdx_ticker,
         fut_ticker,
+        futures_curve,
     )
 except ImportError as exc:
     if not _is_native_import_error(exc):
@@ -207,17 +217,21 @@ except ImportError as exc:
             "active_cdx",
             "active_futures",
             "afut_ticker",
+            "afutures_curve",
             "cdx_ticker",
             "fut_ticker",
+            "futures_curve",
         ),
         exc,
     )
 from xbbg.ext.historical import (
     adividend,
+    adividend_yield,
     aearnings,
     aetf_holdings,
     aturnover,
     dividend,
+    dividend_yield,
     earnings,
     etf_holdings,
     turnover,
@@ -241,6 +255,7 @@ from xbbg.ext.options import (
     option_pricing,
     option_screen,
 )
+from xbbg.ext.volatility import VolSurfacePreset, avol_surface, vol_surface
 
 __all__ = [
     # Historical extensions (sync)
@@ -248,25 +263,41 @@ __all__ = [
     "earnings",
     "turnover",
     "etf_holdings",
+    "dividend_yield",
     # Historical extensions (async)
     "adividend",
     "aearnings",
     "aturnover",
     "aetf_holdings",
+    "adividend_yield",
     # Futures extensions (sync)
     "fut_ticker",
     "active_futures",
+    "futures_curve",
     "cdx_ticker",
     "active_cdx",
     # Futures extensions (async)
     "afut_ticker",
     "aactive_futures",
+    "afutures_curve",
     "acdx_ticker",
     "aactive_cdx",
     # Currency extensions (sync)
     "convert_ccy",
     # Currency extensions (async)
     "aconvert_ccy",
+    # Volatility extensions
+    "VolSurfacePreset",
+    "vol_surface",
+    "avol_surface",
+    # Index extensions
+    "index_members",
+    "aindex_members",
+    # Identifier extensions
+    "resolve_isins",
+    "aresolve_isins",
+    "issuer_isins",
+    "aissuer_isins",
     # Fixed income extensions (sync)
     "yas",
     "YieldType",

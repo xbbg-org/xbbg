@@ -369,6 +369,7 @@ Options helper enums exported by `xbbg.ext`:
 | **`ta_studies()`** | Technical analysis catalog | Discover available studies |
 | **`ta_study_params()`** | TA parameter inspection | Study inputs, defaults, and metadata |
 | **`etf_holdings()`** | ETF holdings via BQL | Complete holdings list<br>Weights & positions |
+| **`index_members()`** | Index constituent bulk data | `INDX_MWEIGHT` / `INDX_MEMBERS`<br>As-of overrides<br>Normalized `member` column |
 
 ### Real-Time - Live Market Data
 
@@ -388,6 +389,11 @@ Options helper enums exported by `xbbg.ext`:
 | **`convert_ccy()`** | Currency conversion | Multi-currency DataFrames<br>Historical FX rates<br>Automatic alignment |
 | **`fut_ticker()`** | Futures contract resolution | Generic to specific mapping<br>Date-aware selection |
 | **`active_futures()`** | Active futures selection | Volume-based logic<br>Roll date handling |
+| **`futures_curve()`** | Futures curve workflow | Chain metadata<br>Bid/ask mid<br>Annualized carry |
+| **`vol_surface()`** | Volatility surface workflow | Preset Bloomberg vol fields<br>Tidy metric schema<br>Optional forwards/discounts |
+| **`dividend_yield()`** | Realized dividend yield | Event aggregation<br>Rolling trailing amount<br>Price-aligned yield |
+| **`resolve_isins()`** | Equity ISIN resolution | Stable input order<br>Status/error metadata |
+| **`issuer_isins()`** | Bond issuer ISIN lookup | Bond ISIN → equity ticker → issuer ISIN<br>Unresolved rows preserved |
 | **`cdx_ticker()`** | CDX index resolution | Series mapping<br>Index family support |
 | **`active_cdx()`** | Active CDX selection | On-the-run detection<br>Lookback windows |
 
@@ -617,6 +623,9 @@ screen_results = blp.beqs(screen='MyScreen', asof='2024-01-01')
 # ETF holdings
 holdings = blp.etf_holdings('SPY US Equity')
 
+# Index members
+members = blp.index_members('SPX Index', asof='2024-01-02')
+
 # Search queries
 bonds = blp.bsrch("FI:MYSEARCH")
 
@@ -635,6 +644,19 @@ contract = blp.fut_ticker('ES1 Index', '2024-01-15', freq='ME')  # → 'ESH24 In
 
 # Get active futures
 active = blp.active_futures('ESA Index', '2024-01-15')
+
+# Futures curve with carry
+curve = blp.futures_curve('ES1 Index', max_contracts=6)
+
+# Volatility surface as tidy rows
+surface = blp.vol_surface('SPX Index', start_date='2024-01-02', end_date='2024-01-05')
+
+# Realized trailing dividend yield
+dy = blp.dividend_yield('AAPL US Equity', start_date='2023-01-01', end_date='2024-12-31')
+
+# Safe ISIN resolution
+equities = blp.resolve_isins(['US0378331005', 'INVALIDISIN000'])
+issuers = blp.issuer_isins(['US037833FB15', 'INVALIDISIN000'])
 
 # Currency conversion
 hist_usd = blp.bdh('BMW GR Equity', 'PX_LAST', '2024-01-01', '2024-01-31')
@@ -1939,6 +1961,33 @@ blp.active_futures('ESA Index', '2024-01-15')
 Out[16]:
 'ESH24 Index'
 ```
+
+```python
+# Futures curve with bid/ask mid and annualized carry
+blp.futures_curve('ES1 Index', max_contracts=6)
+```
+
+```python
+# Tidy volatility surface rows from preset Bloomberg fields
+blp.vol_surface('SPX Index', start_date='2024-01-02', end_date='2024-01-05')
+```
+
+```python
+# Realized trailing dividend yield, preserving missing prices as null
+blp.dividend_yield('AAPL US Equity', start_date='2023-01-01', end_date='2024-12-31')
+```
+
+```python
+# Index members with a normalized member column
+blp.index_members('SPX Index', field='INDX_MWEIGHT', asof='2024-01-02')
+```
+
+```python
+# Safe identifier resolution with status/error metadata
+blp.resolve_isins(['US0378331005', 'INVALIDISIN000'])
+blp.issuer_isins(['US037833FB15', 'INVALIDISIN000'])
+```
+
 
 ```python
 # CDX index ticker resolution (series mapping)

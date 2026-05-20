@@ -189,6 +189,7 @@ const corpBonds = await engine.corporateBonds('AAPL', { ccy: 'USD' });
 // Futures and CDX resolution
 const front = await engine.futTicker('ES1 Index', '20240301');
 const active = await engine.activeFutures('CL1 Comdty', '20240301', { freq: 'M' });
+const curve = await engine.futuresCurve('ES1 Index', { maxContracts: 6 });
 const cdx = await engine.cdxTicker('CDX IG CDSI GEN 5Y Corp', '20240301');
 const activeCdx = await engine.activeCdx('CDX IG CDSI GEN 5Y Corp', '20240301', {
   lookbackDays: 10,
@@ -200,6 +201,17 @@ const turn = await engine.turnover(['AAPL US Equity'], '20240101', '20240131', {
   ccy: 'USD',
 });
 const holdings = await engine.etfHoldings('SPY US Equity');
+const realizedYield = await engine.dividendYield('AAPL US Equity', '20230101', '20231231', {
+  dividendTypes: ['Regular Cash'],
+});
+const members = await engine.indexMembers('SPX Index', { field: 'INDX_MWEIGHT', asof: '20240102' });
+const surface = await engine.volSurface('SPX Index', '20240102', '20240105', {
+  preset: 'MONEYNESS_30D',
+  includeDerived: true,
+  riskFreeRate: 0.05,
+});
+const resolved = await engine.resolveIsins(['US0378331005', 'INVALIDISIN000']);
+const issuers = await engine.issuerIsins(['US037833FB15', 'INVALIDISIN000']);
 
 // Currency-converted prices
 const px = await engine.currencyConversion('700 HK Equity', 'USD', '20240101', '20240131');

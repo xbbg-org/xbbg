@@ -6,12 +6,14 @@ Uses high-performance Rust utilities from xbbg._core for parsing and resolution.
 Sync functions (wrap async with asyncio.run):
     - fut_ticker(): Resolve generic futures ticker to specific contract
     - active_futures(): Get most active futures contract for a date
+    - futures_curve(): Build futures chain table with metadata and carry
     - cdx_ticker(): Resolve generic CDX ticker to specific series
     - active_cdx(): Get most active CDX contract for a date
 
 Async functions (primary implementation):
     - afut_ticker(): Async resolve generic futures ticker
     - aactive_futures(): Async get most active futures contract
+    - afutures_curve(): Async futures chain table
     - acdx_ticker(): Async resolve generic CDX ticker
     - aactive_cdx(): Async get most active CDX contract
 """
@@ -29,7 +31,9 @@ import narwhals.stable.v1 as nw
 from xbbg._core import ext_get_futures_months, ext_parse_date
 from xbbg.ext._utils import (
     DateLike,
+    _call_native_recipe,
     _canonical_column_name,
+    _fmt_date,
     _normalize_to_datetime,
     _syncify,
 )
@@ -670,11 +674,34 @@ async def aactive_cdx(
 
     except (ValueError, TypeError, KeyError):
         logger.debug("Failed to compare CDX activity")
-
     return cur
+
+
+async def afutures_curve(
+    gen_ticker: str,
+    *,
+    asof: DateLike = None,
+    chain_field: str | None = None,
+    fields: list[str] | None = None,
+    max_contracts: int | None = None,
+    backend=None,
+    **_kwargs,
+):
+    """Async futures chain table with contract metadata, mid, and annualized carry."""
+    asof_fmt = _fmt_date(asof) if asof is not None else None
+    return await _call_native_recipe(
+        "recipe_futures_curve",
+        gen_ticker,
+        asof_fmt,
+        chain_field,
+        list(fields) if fields is not None else None,
+        max_contracts,
+        backend=backend,
+    )
 
 
 fut_ticker = _syncify(afut_ticker)
 active_futures = _syncify(aactive_futures)
 cdx_ticker = _syncify(acdx_ticker)
 active_cdx = _syncify(aactive_cdx)
+futures_curve = _syncify(afutures_curve)

@@ -6,12 +6,14 @@ Uses high-performance Rust utilities from xbbg._core.
 
 Sync functions (wrap async with asyncio.run):
     - dividend(): Get dividend and split history
+    - dividend_yield(): Get trailing realized dividend yield
     - earnings(): Get earnings breakdown
     - turnover(): Get trading volume and turnover
     - etf_holdings(): Get ETF holdings via BQL
 
 Async functions (primary implementation):
     - adividend(): Async dividend history
+    - adividend_yield(): Async trailing realized dividend yield
     - aearnings(): Async earnings breakdown
     - aturnover(): Async turnover data
     - aetf_holdings(): Async ETF holdings
@@ -24,7 +26,7 @@ from typing import TYPE_CHECKING
 
 import narwhals.stable.v1 as nw
 
-from xbbg.ext._utils import DateLike, _fmt_date, _syncify
+from xbbg.ext._utils import DateLike, _call_native_recipe, _fmt_date, _syncify
 
 _NATIVE_IMPORT_ERROR_MARKERS = (
     "DLL load failed",
@@ -705,7 +707,35 @@ async def aetf_holdings(
     return df
 
 
+async def adividend_yield(
+    tickers: str | list[str],
+    *,
+    start_date: DateLike,
+    end_date: DateLike,
+    dividend_types: list[str] | None = None,
+    window_days: int = 365,
+    backend=None,
+    **_kwargs,
+) -> IntoDataFrame:
+    """Async trailing realized dividend amount and dividend yield from native recipe."""
+    tickers_list = [tickers] if isinstance(tickers, str) else list(tickers)
+    start = _fmt_date(start_date)
+    end = _fmt_date(end_date)
+    if start is None or end is None:
+        raise ValueError("start_date and end_date are required")
+    return await _call_native_recipe(
+        "recipe_dividend_yield",
+        tickers_list,
+        start,
+        end,
+        list(dividend_types) if dividend_types is not None else None,
+        window_days,
+        backend=backend,
+    )
+
+
 dividend = _syncify(adividend)
 earnings = _syncify(aearnings)
 turnover = _syncify(aturnover)
 etf_holdings = _syncify(aetf_holdings)
+dividend_yield = _syncify(adividend_yield)

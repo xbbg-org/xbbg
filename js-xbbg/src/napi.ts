@@ -153,6 +153,13 @@ export interface NativeEngine {
   ): Promise<Buffer>;
   recipeFutTicker(genTicker: string, dt: string, freq: string | undefined): Promise<Buffer>;
   recipeActiveFutures(genTicker: string, dt: string, freq: string | undefined): Promise<Buffer>;
+  recipeFuturesCurve(
+    genTicker: string,
+    asof: string | undefined,
+    chainField: string | undefined,
+    fields: readonly string[] | null,
+    maxContracts: number | undefined,
+  ): Promise<Buffer>;
   recipeCdxTicker(genTicker: string, dt: string): Promise<Buffer>;
   recipeActiveCdx(genTicker: string, dt: string, lookbackDays: number | undefined): Promise<Buffer>;
   recipeDividend(
@@ -160,6 +167,13 @@ export interface NativeEngine {
     startDate: string,
     endDate: string,
     dvdType: string | undefined,
+  ): Promise<Buffer>;
+  recipeDividendYield(
+    tickers: readonly string[],
+    startDate: string,
+    endDate: string,
+    dividendTypes: readonly string[] | null,
+    windowDays: number | undefined,
   ): Promise<Buffer>;
   recipeTurnover(
     tickers: readonly string[],
@@ -169,6 +183,24 @@ export interface NativeEngine {
     factor: number | undefined,
   ): Promise<Buffer>;
   recipeEtfHoldings(etfTicker: string, fields: readonly string[] | null): Promise<Buffer>;
+  recipeVolSurface(
+    tickers: readonly string[],
+    startDate: string,
+    endDate: string,
+    presets: readonly string[] | null,
+    fieldSpecs: readonly string[] | null,
+    asDecimal: boolean | undefined,
+    includeDerived: boolean | undefined,
+    riskFreeRate: number | undefined,
+    dividendYieldField: string | undefined,
+  ): Promise<Buffer>;
+  recipeIndexMembers(
+    index: string,
+    field: string | undefined,
+    asof: string | undefined,
+  ): Promise<Buffer>;
+  recipeResolveIsins(isins: readonly string[]): Promise<Buffer>;
+  recipeIssuerIsins(bondIsins: readonly string[]): Promise<Buffer>;
   recipeCurrencyConversion(
     ticker: string,
     targetCcy: string,
