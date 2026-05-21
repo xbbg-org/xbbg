@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bsrch` / `absrch` Excel grid requests restored (#333, #334)**: Python now sends BSRCH search parameters as `ExcelGetGridRequest` `Overrides[]` entries while keeping `Domain` as the top-level request element, so Excel-style weather searches no longer fail with Bloomberg element validation errors. The Rust extractor now parses `GridResponse.ColumnTitles[]` and `DataRecords[].DataFields[]` directly instead of the BEQS schema, preserves Bloomberg column names, propagates grid errors, and validates reported row/field counts rather than returning an empty placeholder ticker column.
+- **`bsrch` / `absrch` request plumbing hardened (#333, #334)**: Low-level `arequest()` now preserves `//blp/exrsvc` overrides as overrides instead of rewriting them into root elements, and the Rust engine normalizes `ExcelGetGridRequest` `Domain`/override pairs consistently across generated endpoints, raw requests, and direct request kwargs. `RawRequest` calls whose effective operation is `ExcelGetGridRequest` now pick the BSRCH extractor by default, with regression coverage for malformed Python override pairs and live weather-grid requests.
+
 ## [1.2.2] - 2026-05-06
 
 ### Fixed
