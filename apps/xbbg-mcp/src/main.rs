@@ -74,6 +74,7 @@ impl HistoricalFormat {
 }
 
 struct XbbgMcpServer {
+    #[allow(dead_code)] // read by rmcp's generated ServerHandler impl
     tool_router: ToolRouter<Self>,
     engine: OnceCell<Arc<Engine>>,
     engine_config: EngineConfig,
