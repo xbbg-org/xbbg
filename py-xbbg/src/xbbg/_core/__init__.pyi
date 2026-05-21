@@ -66,13 +66,13 @@ __all__ = [
     "recipe_dividend",
     "recipe_dividend_yield",
     "recipe_etf_holdings",
+    "recipe_fut_ticker",
     "recipe_futures_curve",
     "recipe_index_members",
     "recipe_issuer_isins",
-    "recipe_fut_ticker",
     "recipe_preferreds",
-    "recipe_turnover",
     "recipe_resolve_isins",
+    "recipe_turnover",
     "recipe_vol_surface",
     "recipe_yas",
     "sdk_version",
@@ -1102,12 +1102,6 @@ def recipe_active_futures(engine: PyEngine, gen_ticker: builtins.str, dt: builti
         freq: Roll frequency ("M" monthly, "Q"/"QE" quarterly)
     """
 
-
-def recipe_futures_curve(engine: PyEngine, gen_ticker: builtins.str, asof: typing.Optional[builtins.str] = None, chain_field: typing.Optional[builtins.str] = None, fields: typing.Optional[typing.Sequence[builtins.str]] = None, max_contracts: typing.Optional[builtins.int] = None) -> typing.Any:
-    r"""
-    Build a futures chain table with contract metadata, mid, and annualized carry.
-    """
-
 def recipe_bqr(engine: PyEngine, ticker: builtins.str, start_datetime: builtins.str, end_datetime: builtins.str, event_types: typing.Optional[typing.Sequence[builtins.str]] = None, include_broker_codes: builtins.bool = True) -> typing.Any:
     r"""
     Bloomberg Quote Request - dealer quotes via IntradayTick.
@@ -1170,8 +1164,15 @@ def recipe_dividend(engine: PyEngine, tickers: typing.Sequence[builtins.str], st
 def recipe_dividend_yield(engine: PyEngine, tickers: typing.Sequence[builtins.str], start_date: builtins.str, end_date: builtins.str, dividend_types: typing.Optional[typing.Sequence[builtins.str]] = None, window_days: typing.Optional[builtins.int] = None) -> typing.Any:
     r"""
     Compute trailing realized dividend amount and trailing dividend yield.
+    
+    Args:
+        engine: Bloomberg engine instance
+        tickers: Securities to query
+        start_date: Start date (YYYYMMDD format)
+        end_date: End date (YYYYMMDD format)
+        dividend_types: Dividend event type filter
+        window_days: Rolling trailing window in calendar days
     """
-
 
 def recipe_etf_holdings(engine: PyEngine, etf_ticker: builtins.str, fields: typing.Optional[typing.Sequence[builtins.str]] = None) -> typing.Any:
     r"""
@@ -1182,27 +1183,6 @@ def recipe_etf_holdings(engine: PyEngine, etf_ticker: builtins.str, fields: typi
         etf_ticker: ETF ticker (e.g., "SPY US Equity")
         fields: Additional fields beyond defaults (id_isin, weights, id().position)
     """
-
-def recipe_vol_surface(engine: PyEngine, tickers: typing.Sequence[builtins.str], start_date: builtins.str, end_date: builtins.str, presets: typing.Optional[typing.Sequence[builtins.str]] = None, field_specs: typing.Optional[typing.Sequence[builtins.str]] = None, as_decimal: typing.Optional[builtins.bool] = True, include_derived: typing.Optional[builtins.bool] = False, risk_free_rate: typing.Optional[builtins.float] = None, dividend_yield_field: typing.Optional[builtins.str] = None) -> typing.Any:
-    r"""
-    Build a tidy historical implied volatility surface.
-    """
-
-def recipe_index_members(engine: PyEngine, index: builtins.str, field: typing.Optional[builtins.str] = None, asof: typing.Optional[builtins.str] = None) -> typing.Any:
-    r"""
-    Fetch normalized index members from Bloomberg bulk constituent fields.
-    """
-
-def recipe_resolve_isins(engine: PyEngine, isins: typing.Sequence[builtins.str]) -> typing.Any:
-    r"""
-    Resolve equity ISINs through Bloomberg `/ISIN/<id>` lookups.
-    """
-
-def recipe_issuer_isins(engine: PyEngine, bond_isins: typing.Sequence[builtins.str]) -> typing.Any:
-    r"""
-    Resolve bond ISINs to issuer equity ISINs.
-    """
-
 
 def recipe_fut_ticker(engine: PyEngine, gen_ticker: builtins.str, dt: builtins.str, freq: typing.Optional[builtins.str] = None) -> typing.Any:
     r"""
@@ -1215,6 +1195,29 @@ def recipe_fut_ticker(engine: PyEngine, gen_ticker: builtins.str, dt: builtins.s
         freq: Roll frequency ("M" monthly, "Q"/"QE" quarterly)
     """
 
+def recipe_futures_curve(engine: PyEngine, gen_ticker: builtins.str, asof: typing.Optional[builtins.str] = None, chain_field: typing.Optional[builtins.str] = None, fields: typing.Optional[typing.Sequence[builtins.str]] = None, max_contracts: typing.Optional[builtins.int] = None) -> typing.Any:
+    r"""
+    Build a futures chain table with contract metadata, mid, and annualized carry.
+    
+    Args:
+        engine: Bloomberg engine instance
+        gen_ticker: Generic futures ticker (e.g., "ES1 Index")
+        asof: Optional chain date (YYYYMMDD format)
+        chain_field: Bloomberg bulk chain field (default FUT_CHAIN_LAST_TRADE_DATES)
+        fields: Contract metadata fields to retrieve
+        max_contracts: Optional positive row limit
+    """
+
+def recipe_index_members(engine: PyEngine, index: builtins.str, field: typing.Optional[builtins.str] = None, asof: typing.Optional[builtins.str] = None) -> typing.Any:
+    r"""
+    Fetch normalized index members from Bloomberg bulk constituent fields.
+    """
+
+def recipe_issuer_isins(engine: PyEngine, bond_isins: typing.Sequence[builtins.str]) -> typing.Any:
+    r"""
+    Resolve bond ISINs to issuer equity ISINs.
+    """
+
 def recipe_preferreds(engine: PyEngine, ticker: builtins.str, fields: typing.Optional[typing.Sequence[builtins.str]] = None) -> typing.Any:
     r"""
     Find preferred stocks for a company via BQL.
@@ -1223,6 +1226,11 @@ def recipe_preferreds(engine: PyEngine, ticker: builtins.str, fields: typing.Opt
         engine: Bloomberg engine instance
         ticker: Company equity ticker (e.g., "BAC US Equity")
         fields: Additional fields to retrieve (default: id, name)
+    """
+
+def recipe_resolve_isins(engine: PyEngine, isins: typing.Sequence[builtins.str]) -> typing.Any:
+    r"""
+    Resolve equity ISINs through Bloomberg `/ISIN/<id>` lookups.
     """
 
 def recipe_turnover(engine: PyEngine, tickers: typing.Sequence[builtins.str], start_date: builtins.str, end_date: builtins.str, ccy: typing.Optional[builtins.str] = None, factor: typing.Optional[builtins.float] = None) -> typing.Any:
@@ -1236,6 +1244,11 @@ def recipe_turnover(engine: PyEngine, tickers: typing.Sequence[builtins.str], st
         end_date: End date (YYYYMMDD format)
         ccy: Currency for conversion. None for local currency.
         factor: Division factor (e.g., 1_000_000.0 for millions)
+    """
+
+def recipe_vol_surface(engine: PyEngine, tickers: typing.Sequence[builtins.str], start_date: builtins.str, end_date: builtins.str, presets: typing.Optional[typing.Sequence[builtins.str]] = None, field_specs: typing.Optional[typing.Sequence[builtins.str]] = None, as_decimal: typing.Optional[builtins.bool] = True, include_derived: typing.Optional[builtins.bool] = False, risk_free_rate: typing.Optional[builtins.float] = None, dividend_yield_field: typing.Optional[builtins.str] = None) -> typing.Any:
+    r"""
+    Build a tidy historical implied volatility surface.
     """
 
 def recipe_yas(engine: PyEngine, tickers: typing.Sequence[builtins.str], fields: typing.Sequence[builtins.str], settle_dt: typing.Optional[builtins.str] = None, yield_type: typing.Optional[builtins.int] = None, spread: typing.Optional[builtins.float] = None, yield_val: typing.Optional[builtins.float] = None, price: typing.Optional[builtins.float] = None, benchmark: typing.Optional[builtins.str] = None) -> typing.Any:
