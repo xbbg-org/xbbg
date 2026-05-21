@@ -74,6 +74,25 @@ jobs:
           echo "release_name=xbbg JS packages $VERSION" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
+
+  validate-js:
+    name: Validate JS package tooling
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
+      - name: Run JS quality suite
+        run: npm --prefix js-xbbg run quality
+
   sdk-version:
     name: Detect SDK Version
     runs-on: ubuntu-latest
@@ -121,7 +140,7 @@ jobs:
           test -s "$GITHUB_WORKSPACE/ci-bindings/bindings.rs"
 
       - name: Upload bindings artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: blpapi-bindings
           path: ci-bindings/bindings.rs
@@ -129,7 +148,7 @@ jobs:
 
   build-core-native:
     name: Build @xbbg/core native package (${{ matrix.label }})
-    needs: [prepare, sdk-version, generate-bindings]
+    needs: [prepare, sdk-version, generate-bindings, validate-js]
     strategy:
       fail-fast: false
       matrix:
@@ -162,7 +181,7 @@ jobs:
           node-version: "24"
 
       - name: Download pre-generated bindings
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: blpapi-bindings
           path: ci-bindings
@@ -243,11 +262,14 @@ jobs:
           echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
       - name: Stage @xbbg/core native package
-        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ needs.prepare.outputs.version }}"
+        run: npm --prefix js-xbbg run stage:native-package -- --build --release --version "${{ needs.prepare.outputs.version }}"
 
       - name: Upload staged core package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: core-package-${{ matrix.label }}
           path: ${{ matrix.package_dir }}
@@ -266,19 +288,19 @@ jobs:
           node-version: "24"
 
       - name: Download linux core package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: core-package-linux-x64
           path: js-xbbg/packages/xbbg-core-linux-x64
 
       - name: Download windows core package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: core-package-win32-x64
           path: js-xbbg/packages/xbbg-core-win32-x64
 
       - name: Download macOS core package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: core-package-darwin-arm64
           path: js-xbbg/packages/xbbg-core-darwin-arm64
@@ -287,18 +309,18 @@ jobs:
         run: npm ci --prefix js-xbbg
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+        run: npm --prefix js-xbbg run stamp:version -- "${{ needs.prepare.outputs.version }}"
 
       - name: Build offline bundles
         run: |
           mkdir -p dist-offline
           for label in linux-x64 win32-x64 darwin-arm64; do
-            node js-xbbg/scripts/build-offline-bundle.js --label "$label" --out-dir dist-offline
+            npm --prefix js-xbbg run build:offline-bundle -- --label "$label" --out-dir dist-offline
           done
           ls -1 dist-offline
 
       - name: Upload offline bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: js-offline-bundles
           path: dist-offline/*.zip
@@ -317,19 +339,19 @@ jobs:
           node-version: "24"
 
       - name: Download linux core package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: core-package-linux-x64
           path: js-xbbg/packages/xbbg-core-linux-x64
 
       - name: Download windows core package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: core-package-win32-x64
           path: js-xbbg/packages/xbbg-core-win32-x64
 
       - name: Download macOS core package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: core-package-darwin-arm64
           path: js-xbbg/packages/xbbg-core-darwin-arm64
@@ -338,7 +360,16 @@ jobs:
         run: npm ci --prefix js-xbbg
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.prepare.outputs.version }}"
+        run: npm --prefix js-xbbg run stamp:version -- "${{ needs.prepare.outputs.version }}"
+
+      - name: Build wrapper package artifacts
+        run: npm --prefix js-xbbg run build:ts
+
+      - name: Validate package metadata and types
+        run: |
+          npm --prefix js-xbbg run pack:dry-run -- --all-platforms
+          npm --prefix js-xbbg run pack:lint -- --all-platforms
+          npm --prefix js-xbbg run types:attw -- --all-platforms
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux
@@ -373,7 +404,7 @@ jobs:
           ls -1 dist
 
       - name: Upload JS release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: js-release-assets
           path: dist/*.tgz
@@ -385,13 +416,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download JS release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: js-release-assets
           path: dist
 
       - name: Download offline bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: js-offline-bundles
           path: dist
@@ -455,13 +486,13 @@ jobs:
           fetch-depth: 0
 
       - name: Download JS release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: js-release-assets
           path: dist
 
       - name: Download offline bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: js-offline-bundles
           path: dist

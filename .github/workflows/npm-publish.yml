@@ -110,9 +110,29 @@ jobs:
           path: ci-bindings/bindings.rs
           retention-days: 7
 
+
+  validate-js:
+    name: Validate JS package tooling
+    needs: release-version
+    if: needs.release-version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
+      - name: Run JS quality suite
+        run: npm --prefix js-xbbg run quality
+
   build-core-native:
     name: Build @xbbg/core native package (${{ matrix.label }})
-    needs: [release-version, sdk-version, generate-bindings]
+    needs: [release-version, sdk-version, generate-bindings, validate-js]
     if: needs.release-version.outputs.should_publish == 'true'
     strategy:
       fail-fast: false
@@ -228,8 +248,11 @@ jobs:
           echo "BLPAPI_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=$LIB_DIR:$DYLD_LIBRARY_PATH" >> "$GITHUB_ENV"
 
+      - name: Install JS package dependencies
+        run: npm ci --prefix js-xbbg
+
       - name: Stage @xbbg/core native package
-        run: node js-xbbg/scripts/stage-native-package.js --build --release --version "${{ needs.release-version.outputs.tag }}"
+        run: npm --prefix js-xbbg run stage:native-package -- --build --release --version "${{ needs.release-version.outputs.tag }}"
 
       - name: Upload staged native package artifact
         uses: actions/upload-artifact@v7
@@ -283,7 +306,16 @@ jobs:
         run: npm ci --prefix js-xbbg
 
       - name: Stamp JS package versions
-        run: node js-xbbg/scripts/stamp-version.js "${{ needs.release-version.outputs.tag }}"
+        run: npm --prefix js-xbbg run stamp:version -- "${{ needs.release-version.outputs.tag }}"
+
+      - name: Build wrapper package artifacts
+        run: npm --prefix js-xbbg run build:ts
+
+      - name: Validate package metadata and types
+        run: |
+          npm --prefix js-xbbg run pack:dry-run -- --all-platforms
+          npm --prefix js-xbbg run pack:lint -- --all-platforms
+          npm --prefix js-xbbg run types:attw -- --all-platforms
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux

@@ -15,12 +15,12 @@
 
 import type { DateLike, DateTimeLike } from './types';
 
-const ISO_DATE_RE = /^\d{4}[-/]\d{2}[-/]\d{2}$/;
-const BBG_DATE_RE = /^\d{8}$/;
+const ISO_DATE_RE = /^\d{4}[-/]\d{2}[-/]\d{2}$/u;
+const BBG_DATE_RE = /^\d{8}$/u;
 // Whole-string ambiguous (e.g. "01/17/2023") OR ambiguous prefix in a
-// datetime string (e.g. "01/17/2023 10:30" / "01/17/2023T10:30"). Year-leading
+// Datetime string (e.g. "01/17/2023 10:30" / "01/17/2023T10:30"). Year-leading
 // ISO is not flagged because ISO_DATE_RE matches it explicitly.
-const AMBIGUOUS_DATE_RE = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}([T \D]|$)/;
+const AMBIGUOUS_DATE_RE = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}([T \D]|$)/u;
 
 export function hasToJSDate(value: unknown): value is { toJSDate: () => Date } {
   return (
@@ -74,9 +74,7 @@ function dateLikeToJSDate(value: DateLike): Date {
     }
     return dt;
   }
-  throw new TypeError(
-    `Cannot convert ${typeof value} value ${String(value)} to a Date.`,
-  );
+  throw new TypeError(`Cannot convert ${typeof value} value ${String(value)} to a Date.`);
 }
 
 /**
@@ -99,7 +97,7 @@ export function formatDate(value: DateLike | undefined | null): string | undefin
     }
     rejectAmbiguousString(text);
     if (ISO_DATE_RE.test(text)) {
-      return text.replace(/[-/]/g, '');
+      return text.replaceAll(/[-/]/gu, '');
     }
   }
   const date = dateLikeToJSDate(value);
@@ -116,9 +114,7 @@ export function formatDate(value: DateLike | undefined | null): string | undefin
  * can apply the caller's ``request_tz``. Anything else (Date, epoch ms, Luxon
  * DateTime, or ISO with explicit tz) is converted to a tz-bearing ISO string.
  */
-export function formatDateTime(
-  value: DateTimeLike | undefined | null,
-): string | undefined {
+export function formatDateTime(value: DateTimeLike | undefined | null): string | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -132,7 +128,7 @@ export function formatDateTime(
       return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}T00:00:00`;
     }
     // Preserve user-supplied naive strings; the Rust engine interprets them
-    // according to ``request_tz``.
+    // According to ``request_tz``.
     return text.replace(' ', 'T');
   }
   const date = dateLikeToJSDate(value);

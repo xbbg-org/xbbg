@@ -1,21 +1,22 @@
-import { fileURLToPath } from 'node:url';
 import eslint from '@eslint/js';
-import globals from 'globals';
 import nodePlugin from 'eslint-plugin-n';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-const tsconfigRootDir = fileURLToPath(new URL('.', import.meta.url));
+const tsconfigRootDir = __dirname;
 
 export default [
   // ── Global ignores ─────────────────────────────────────────────────────
   {
     ignores: [
       '**/node_modules/',
+      'benchmarks/',
       'dist/',
       'scripts/',
       '**/*.js',
       '**/*.cjs',
       '**/*.mjs',
+      '**/*.d.ts',
     ],
   },
 
@@ -32,13 +33,13 @@ export default [
   // ── Shared rules (all TS/TSX) ──────────────────────────────────────────
   {
     languageOptions: {
+      globals: { ...globals.node, ...globals.vitest },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.ts', 'vitest.config.ts'],
+          allowDefaultProject: ['eslint.config.ts', 'tsup.config.ts', 'vitest.config.ts'],
         },
         tsconfigRootDir,
       },
-      globals: { ...globals.node },
     },
     rules: {
       // ── Strictness ────────────────────────────────────────────────────
@@ -52,15 +53,15 @@ export default [
         'error',
         {
           argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
           caughtErrorsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
         },
       ],
 
       // ── Consistency ───────────────────────────────────────────────────
       '@typescript-eslint/consistent-type-imports': [
         'error',
-        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+        { fixStyle: 'inline-type-imports', prefer: 'type-imports' },
       ],
       '@typescript-eslint/consistent-type-exports': [
         'error',
@@ -69,10 +70,10 @@ export default [
       '@typescript-eslint/explicit-function-return-type': [
         'error',
         {
-          allowExpressions: true,
-          allowTypedFunctionExpressions: true,
-          allowHigherOrderFunctions: true,
           allowDirectConstAssertionInArrowFunctions: true,
+          allowExpressions: true,
+          allowHigherOrderFunctions: true,
+          allowTypedFunctionExpressions: true,
         },
       ],
       '@typescript-eslint/explicit-module-boundary-types': 'error',
@@ -80,20 +81,17 @@ export default [
       '@typescript-eslint/strict-boolean-expressions': [
         'error',
         {
-          allowString: false,
-          allowNumber: false,
-          allowNullableObject: true,
-          allowNullableBoolean: false,
-          allowNullableString: false,
-          allowNullableNumber: false,
           allowAny: false,
+          allowNullableBoolean: false,
+          allowNullableNumber: false,
+          allowNullableObject: true,
+          allowNullableString: false,
+          allowNumber: false,
+          allowString: false,
         },
       ],
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
-      '@typescript-eslint/no-confusing-void-expression': [
-        'error',
-        { ignoreArrowShorthand: true },
-      ],
+      '@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }],
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/no-unnecessary-condition': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
@@ -103,21 +101,21 @@ export default [
       '@typescript-eslint/naming-convention': [
         'error',
         {
-          selector: 'variable',
           format: ['camelCase', 'UPPER_CASE', 'PascalCase'],
           leadingUnderscore: 'allow',
+          selector: 'variable',
         },
         {
-          selector: 'function',
           format: ['camelCase', 'PascalCase'],
+          selector: 'function',
         },
         {
-          selector: 'typeLike',
           format: ['PascalCase'],
+          selector: 'typeLike',
         },
         {
-          selector: 'enumMember',
           format: ['PascalCase', 'UPPER_CASE'],
+          selector: 'enumMember',
         },
       ],
 
@@ -134,10 +132,7 @@ export default [
       '@typescript-eslint/no-redundant-type-constituents': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/unified-signatures': 'error',
-      '@typescript-eslint/restrict-template-expressions': [
-        'error',
-        { allowNumber: true },
-      ],
+      '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
 
       // ── Node plugin overrides ─────────────────────────────────────────
       'n/no-missing-import': 'off', // TypeScript resolver handles this.
@@ -151,26 +146,26 @@ export default [
   {
     files: ['test/**/*.ts'],
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-      '@typescript-eslint/no-unsafe-call': 'off',
-      '@typescript-eslint/no-unsafe-argument': 'off',
-      '@typescript-eslint/no-unsafe-return': 'off',
-      '@typescript-eslint/no-floating-promises': 'off',
-      '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
-      'no-console': 'off',
       '@typescript-eslint/no-empty-function': 'off',
-      '@typescript-eslint/strict-boolean-expressions': 'off',
-      '@typescript-eslint/prefer-nullish-coalescing': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unnecessary-condition': 'off',
-      '@typescript-eslint/return-await': 'off',
-      '@typescript-eslint/require-await': 'off',
-      '@typescript-eslint/promise-function-async': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/prefer-nullish-coalescing': 'off',
       '@typescript-eslint/prefer-promise-reject-errors': 'off',
+      '@typescript-eslint/promise-function-async': 'off',
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/return-await': 'off',
+      '@typescript-eslint/strict-boolean-expressions': 'off',
       '@typescript-eslint/use-unknown-in-catch-callback-variable': 'off',
+      'no-console': 'off',
     },
   },
 ];
