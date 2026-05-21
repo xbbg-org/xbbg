@@ -27,7 +27,7 @@ Dev builds (untagged commits) automatically get versions like `0.12.1.dev268+g84
 | Build backend | `setuptools` | Python packaging |
 | Rust extension | `setuptools-rust` | Compiles PyO3 extension (`xbbg._core`) |
 | Version | `setuptools_scm` | Derives Python package versions from git tags |
-| JS package version | `js-xbbg/scripts/stamp-version.js` | Stamps `@xbbg/core` wrapper/platform package versions for JS release workflows |
+| JS package version | `js-xbbg/scripts/stamp-version.ts` | Stamps `@xbbg/core` wrapper/platform package versions for JS release workflows |
 | Build tool | `uv` | Fast package manager and build frontend |
 
 ## Release Workflow

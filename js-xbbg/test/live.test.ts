@@ -5,22 +5,21 @@ Run with:
 */
 
 import assert from 'node:assert/strict';
-import { afterAll, beforeAll, describe, it } from 'vitest';
 import { performance } from 'node:perf_hooks';
 
 import { Backend, connect } from '../src/index';
 import type { Engine } from '../src/index';
 
 const CONFIG = Object.freeze({
-  equity_single: 'IBM US Equity',
-  equity_multi: ['AAPL US Equity', 'MSFT US Equity'],
-  index_ticker: 'INDU Index',
   bond_ticker: 'GT10 Govt',
+  equity_multi: ['AAPL US Equity', 'MSFT US Equity'],
+  equity_single: 'IBM US Equity',
   etf_ticker: 'SPY US Equity',
   futures_generic: 'ES1 Index',
-  streaming_ticker: process.env.XBBG_STREAMING_TICKER ?? 'XBTUSD Curncy',
-  price_field: 'PX_LAST',
+  index_ticker: 'INDU Index',
   name_field: 'NAME',
+  price_field: 'PX_LAST',
+  streaming_ticker: process.env.XBBG_STREAMING_TICKER ?? 'XBTUSD Curncy',
   volume_field: 'VOLUME',
   portfolio_security: process.env.XBBG_LIVE_PORTFOLIO_SECURITY,
 } as const);
@@ -40,7 +39,6 @@ function formatLocalDate(day: Date): string {
   const date = String(day.getDate()).padStart(2, '0');
   return `${year}-${month}-${date}`;
 }
-
 
 function getRecentTradingDay(): string {
   const now = new Date();
@@ -62,37 +60,30 @@ function getDateRange(days: number): { start: string; end: string } {
   const start = new Date(end);
   start.setDate(end.getDate() - days);
   return {
-    start: start.toISOString().slice(0, 10).replace(/-/g, ''),
-    end: end.toISOString().slice(0, 10).replace(/-/g, ''),
+    end: end.toISOString().slice(0, 10).replace(/-/gu, ''),
+    start: start.toISOString().slice(0, 10).replace(/-/gu, ''),
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  promise.catch(() => {});
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    let settled = false;
     const timer = setTimeout(() => {
-      settled = true;
       reject(new Error(`Timed out waiting for ${label}`));
     }, ms);
-    promise.then(
-      (val) => {
-        if (!settled) {
-          clearTimeout(timer);
-          resolve(val);
-        }
-      },
-      (err) => {
-        if (!settled) {
-          clearTimeout(timer);
-          reject(err);
-        }
-      },
-    );
+    void (async (): Promise<void> => {
+      try {
+        const val = await promise;
+        clearTimeout(timer);
+        resolve(val);
+      } catch (error) {
+        clearTimeout(timer);
+        reject(error);
+      }
+    })();
   });
 }
 
-function sleep(ms: number): Promise<void> {
+async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
@@ -119,9 +110,13 @@ async function collectStreamBatches(
   const started = Date.now();
   while (batches.length < minBatches) {
     const remainingMs = maxWaitMs - (Date.now() - started);
-    if (remainingMs <= 0) break;
+    if (remainingMs <= 0) {
+      break;
+    }
     const next = await nextWithTimeout(sub, remainingMs);
-    if (!next || next.done) break;
+    if (!next || next.done) {
+      break;
+    }
     batches.push(next.value);
   }
   return batches;
@@ -135,10 +130,7 @@ function assertArrowTable(table: any, requiredColumns: string[], minRows = 1): v
   assert.ok(table, 'Expected table');
   assert.ok(Number.isInteger(table.numRows), 'Expected table.numRows');
   assert.ok(Number.isInteger(table.numCols), 'Expected table.numCols');
-  assert.ok(
-    table.numRows >= minRows,
-    `Expected at least ${minRows} rows, got ${table.numRows}`,
-  );
+  assert.ok(table.numRows >= minRows, `Expected at least ${minRows} rows, got ${table.numRows}`);
   assert.ok(
     table.numCols >= requiredColumns.length,
     `Expected at least ${requiredColumns.length} columns`,
@@ -150,28 +142,38 @@ function assertArrowTable(table: any, requiredColumns: string[], minRows = 1): v
 }
 
 function toNumber(value: any): number {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
   if (typeof value === 'string') {
     const n = Number(value);
-    return Number.isFinite(n) ? n : NaN;
+    return Number.isFinite(n) ? n : Number.NaN;
   }
-  return NaN;
+  return Number.NaN;
 }
 
 function toMillis(value: any): number {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'number') return value;
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
   if (typeof value === 'bigint') {
-    if (value > 1e15) return Number(value / 1000n);
+    if (value > 1e15) {
+      return Number(value / 1000n);
+    }
     return Number(value);
   }
   const parsed = Date.parse(String(value));
-  return Number.isFinite(parsed) ? parsed : NaN;
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
 function maybeSkipEntitlement(t: any, err: any): boolean {
-  const message = String(err?.message ? err.message : err);
+  const message = String(err?.message ?? err);
   const markers = [
     'not authorized',
     'not permissioned',
@@ -194,7 +196,7 @@ function maybeSkipEntitlement(t: any, err: any): boolean {
 }
 
 function isSessionUnavailable(err: any): boolean {
-  const message = String(err?.message ? err.message : err).toLowerCase();
+  const message = String(err?.message ?? err).toLowerCase();
   return (
     message.includes('session start failed') ||
     message.includes('failed to spawn worker') ||
@@ -212,16 +214,14 @@ async function runCase(t: any, name: string, fn: () => Promise<void>): Promise<v
     await fn();
     const elapsed = (performance.now() - started).toFixed(1);
     console.log(`[PASS] ${name} (${elapsed}ms)`);
-  } catch (err: any) {
+  } catch (error: any) {
     const elapsed = (performance.now() - started).toFixed(1);
-    if (err?.code === 'ERR_TEST_SKIP') {
-      console.log(`[SKIP] ${name} (${elapsed}ms) ${err.message || ''}`);
-      throw err;
+    if (error?.code === 'ERR_TEST_SKIP') {
+      console.log(`[SKIP] ${name} (${elapsed}ms) ${error.message ?? ''}`);
+      throw error;
     }
-    console.log(
-      `[FAIL] ${name} (${elapsed}ms): ${err?.message ? err.message : err}`,
-    );
-    throw err;
+    console.log(`[FAIL] ${name} (${elapsed}ms): ${error?.message ?? error}`);
+    throw error;
   }
 }
 
@@ -230,12 +230,12 @@ describe('js-xbbg live Bloomberg API', () => {
     try {
       enginePromise ??= connect(SESSION_CONFIG);
       engine = await enginePromise;
-    } catch (err: any) {
-      if (isSessionUnavailable(err)) {
-        sessionUnavailableReason = `Bloomberg session is not available in this environment: ${err.message || err}`;
+    } catch (error: any) {
+      if (isSessionUnavailable(error)) {
+        sessionUnavailableReason = `Bloomberg session is not available in this environment: ${error.message ?? error}`;
         return;
       }
-      throw err;
+      throw error;
     }
     assert.ok(engine, 'Engine should be created via connect()');
   });
@@ -246,7 +246,7 @@ describe('js-xbbg live Bloomberg API', () => {
     }
   });
 
-  describe('Connectivity', () => {
+  describe('connectivity', () => {
     it('engine is available', async (t) =>
       runCase(t, 'engine is available', async () => {
         assert.equal(typeof engine!.isAvailable, 'function');
@@ -257,22 +257,16 @@ describe('js-xbbg live Bloomberg API', () => {
 
     it('bdp baseline request works', async (t) =>
       runCase(t, 'bdp baseline request works', async () => {
-        const table: any = await engine!.bdp(
-          [CONFIG.equity_single],
-          [CONFIG.price_field],
-        );
+        const table: any = await engine!.bdp([CONFIG.equity_single], [CONFIG.price_field]);
         assertArrowTable(table, ['ticker', 'field', 'value']);
         console.log(`  BDP baseline -> ${tableSummary(table)}`);
       }));
   });
 
-  describe('BDP reference data', () => {
+  describe('bDP reference data', () => {
     it('single ticker single field', async (t) =>
       runCase(t, 'bdp single ticker single field', async () => {
-        const table: any = await engine!.bdp(
-          [CONFIG.equity_single],
-          [CONFIG.price_field],
-        );
+        const table: any = await engine!.bdp([CONFIG.equity_single], [CONFIG.price_field]);
         assertArrowTable(table, ['ticker', 'field', 'value'], 1);
         const ticker = table.getChild('ticker')?.get(0);
         const field = table.getChild('field')?.get(0);
@@ -289,12 +283,15 @@ describe('js-xbbg live Bloomberg API', () => {
         const table: any = await engine!.bdp([CONFIG.equity_single], fields);
         assertArrowTable(table, ['ticker', 'field', 'value'], fields.length);
         const gotFields = new Set<string>(
-          table.getChild('field').toArray().map((v: any) => String(v)),
+          table
+            .getChild('field')
+            .toArray()
+            .map((v: any) => String(v)),
         );
         for (const f of fields) {
           assert.ok(gotFields.has(f), `Missing ${f}`);
         }
-        console.log(`  ${CONFIG.equity_single} fields=${Array.from(gotFields).join(', ')}`);
+        console.log(`  ${CONFIG.equity_single} fields=${[...gotFields].join(', ')}`);
       }));
 
     it('multiple tickers single field', async (t) =>
@@ -302,15 +299,18 @@ describe('js-xbbg live Bloomberg API', () => {
         const table: any = await engine!.bdp(CONFIG.equity_multi, [CONFIG.price_field]);
         assertArrowTable(table, ['ticker', 'field', 'value'], CONFIG.equity_multi.length);
         const tickers = new Set<string>(
-          table.getChild('ticker').toArray().map((v: any) => String(v)),
+          table
+            .getChild('ticker')
+            .toArray()
+            .map((v: any) => String(v)),
         );
         for (const expected of CONFIG.equity_multi) {
           assert.ok(
-            Array.from(tickers).some((tkr) => tkr.includes(expected)),
+            [...tickers].some((tkr) => tkr.includes(expected)),
             `Missing ticker ${expected}`,
           );
         }
-        console.log(`  tickers=${Array.from(tickers).join(', ')}`);
+        console.log(`  tickers=${[...tickers].join(', ')}`);
       }));
 
     it('multiple tickers multiple fields', async (t) =>
@@ -325,11 +325,9 @@ describe('js-xbbg live Bloomberg API', () => {
 
     it('with EUR override', async (t) =>
       runCase(t, 'bdp with override', async () => {
-        const table: any = await engine!.bdp(
-          [CONFIG.equity_single],
-          ['CRNCY_ADJ_PX_LAST'],
-          { overrides: { EQY_FUND_CRNCY: 'EUR' } },
-        );
+        const table: any = await engine!.bdp([CONFIG.equity_single], ['CRNCY_ADJ_PX_LAST'], {
+          overrides: { EQY_FUND_CRNCY: 'EUR' },
+        });
         assertArrowTable(table, ['ticker', 'field', 'value'], 1);
         const value = table.getChild('value')?.get(0);
         assert.ok(Number.isFinite(toNumber(value)), 'Override value should be numeric');
@@ -338,10 +336,7 @@ describe('js-xbbg live Bloomberg API', () => {
 
     it('price is positive number', async (t) =>
       runCase(t, 'bdp price positive', async () => {
-        const table: any = await engine!.bdp(
-          [CONFIG.equity_single],
-          [CONFIG.price_field],
-        );
+        const table: any = await engine!.bdp([CONFIG.equity_single], [CONFIG.price_field]);
         assertArrowTable(table, ['ticker', 'field', 'value'], 1);
         const price = toNumber(table.getChild('value')?.get(0));
         assert.ok(Number.isFinite(price));
@@ -351,10 +346,7 @@ describe('js-xbbg live Bloomberg API', () => {
 
     it('name is non-empty string', async (t) =>
       runCase(t, 'bdp name string', async () => {
-        const table: any = await engine!.bdp(
-          [CONFIG.equity_single],
-          [CONFIG.name_field],
-        );
+        const table: any = await engine!.bdp([CONFIG.equity_single], [CONFIG.name_field]);
         assertArrowTable(table, ['ticker', 'field', 'value'], 1);
         const name = String(table.getChild('value')?.get(0) ?? '');
         assert.ok(name.trim().length > 0, 'Name should be non-empty');
@@ -362,15 +354,11 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('BDH historical data', () => {
+  describe('bDH historical data', () => {
     it('single ticker date range', async (t) =>
       runCase(t, 'bdh single ticker range', async () => {
         const range = getDateRange(7);
-        const table: any = await engine!.bdh(
-          [CONFIG.equity_single],
-          [CONFIG.price_field],
-          range,
-        );
+        const table: any = await engine!.bdh([CONFIG.equity_single], [CONFIG.price_field], range);
         assertArrowTable(table, ['ticker', 'date', 'field', 'value'], 1);
         console.log(`  ${CONFIG.equity_single} ${range.start}->${range.end} rows=${table.numRows}`);
       }));
@@ -379,11 +367,7 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'bdh multi ticker', async () => {
         const range = getDateRange(5);
         const table: any = await engine!.bdh(CONFIG.equity_multi, [CONFIG.price_field], range);
-        assertArrowTable(
-          table,
-          ['ticker', 'date', 'field', 'value'],
-          CONFIG.equity_multi.length,
-        );
+        assertArrowTable(table, ['ticker', 'date', 'field', 'value'], CONFIG.equity_multi.length);
         console.log(`  bdh multi ticker rows=${table.numRows}`);
       }));
 
@@ -394,27 +378,22 @@ describe('js-xbbg live Bloomberg API', () => {
         const table: any = await engine!.bdh([CONFIG.equity_single], fields, range);
         assertArrowTable(table, ['ticker', 'date', 'field', 'value'], 2);
         const gotFields = new Set<string>(
-          table.getChild('field').toArray().map((v: any) => String(v)),
+          table
+            .getChild('field')
+            .toArray()
+            .map((v: any) => String(v)),
         );
         assert.ok(gotFields.has(CONFIG.price_field));
         assert.ok(gotFields.has(CONFIG.volume_field));
-        console.log(`  got fields=${Array.from(gotFields).join(', ')}`);
+        console.log(`  got fields=${[...gotFields].join(', ')}`);
       }));
 
     it('date order is ascending', async (t) =>
       runCase(t, 'bdh dates ordered', async () => {
         const range = getDateRange(14);
-        const table: any = await engine!.bdh(
-          [CONFIG.equity_single],
-          [CONFIG.price_field],
-          range,
-        );
+        const table: any = await engine!.bdh([CONFIG.equity_single], [CONFIG.price_field], range);
         assertArrowTable(table, ['ticker', 'date', 'field', 'value'], 1);
-        const dates = table
-          .getChild('date')
-          .toArray()
-          .map(toMillis)
-          .filter(Number.isFinite);
+        const dates = table.getChild('date').toArray().map(toMillis).filter(Number.isFinite);
         for (let i = 1; i < dates.length; i += 1) {
           assert.ok(dates[i] >= dates[i - 1], 'Dates should be ascending');
         }
@@ -424,11 +403,10 @@ describe('js-xbbg live Bloomberg API', () => {
     it('supports periodicitySelection kwargs', async (t) =>
       runCase(t, 'bdh kwargs periodicity', async () => {
         const range = getDateRange(30);
-        const table: any = await engine!.bdh(
-          [CONFIG.equity_single],
-          [CONFIG.price_field],
-          { ...range, kwargs: { periodicitySelection: 'DAILY' } },
-        );
+        const table: any = await engine!.bdh([CONFIG.equity_single], [CONFIG.price_field], {
+          ...range,
+          kwargs: { periodicitySelection: 'DAILY' },
+        });
         assertArrowTable(table, ['ticker', 'date', 'field', 'value'], 1);
         console.log(`  periodicity DAILY rows=${table.numRows}`);
       }));
@@ -436,17 +414,9 @@ describe('js-xbbg live Bloomberg API', () => {
     it('contains at least one positive price', async (t) =>
       runCase(t, 'bdh positive values', async () => {
         const range = getDateRange(10);
-        const table: any = await engine!.bdh(
-          [CONFIG.equity_single],
-          [CONFIG.price_field],
-          range,
-        );
+        const table: any = await engine!.bdh([CONFIG.equity_single], [CONFIG.price_field], range);
         assertArrowTable(table, ['ticker', 'date', 'field', 'value'], 1);
-        const values = table
-          .getChild('value')
-          .toArray()
-          .map(toNumber)
-          .filter(Number.isFinite);
+        const values = table.getChild('value').toArray().map(toNumber).filter(Number.isFinite);
         assert.ok(
           values.some((v: number) => v > 0),
           'Expected at least one positive value',
@@ -455,7 +425,7 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('BDS bulk data', () => {
+  describe('bDS bulk data', () => {
     it('index members return 30 rows', async (t) =>
       runCase(t, 'bds index members', async () => {
         const table: any = await engine!.bds([CONFIG.index_ticker], ['INDX_MEMBERS']);
@@ -471,7 +441,7 @@ describe('js-xbbg live Bloomberg API', () => {
         const rows = table.toArray();
         assert.ok(rows.length === 30);
         const hasNonEmpty = rows.some((row: any) =>
-          Object.values(row).some((v: any) => String(v || '').trim().length > 0),
+          Object.values(row).some((v: any) => String(v ?? '').trim().length > 0),
         );
         assert.ok(hasNonEmpty, 'Expected non-empty member values');
         console.log(`  sample member row=${JSON.stringify(rows[0])}`);
@@ -483,8 +453,8 @@ describe('js-xbbg live Bloomberg API', () => {
           const table: any = await engine!.bds([CONFIG.equity_single], ['DVD_HIST']);
           assertArrowTable(table, ['ticker'], 1);
           console.log(`  dividend history rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -494,26 +464,22 @@ describe('js-xbbg live Bloomberg API', () => {
           const table: any = await engine!.bds([CONFIG.equity_single], ['DVD_HIST']);
           assert.ok(table.numCols >= 2, `Expected >=2 columns, got ${table.numCols}`);
           console.log(`  dividend columns=${columnsOf(table).join(', ')}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
   });
 
-  describe('BDIB intraday bars', () => {
+  describe('bDIB intraday bars', () => {
     it('single day 5-min bars', async (t) =>
       runCase(t, 'bdib single day', async () => {
         const day = getRecentTradingDay();
         const table: any = await engine!.bdib(CONFIG.equity_single, {
-          start: `${day}T14:30:00`,
           end: `${day}T20:00:00`,
           interval: 5,
+          start: `${day}T14:30:00`,
         });
-        assertArrowTable(
-          table,
-          ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents'],
-          1,
-        );
+        assertArrowTable(table, ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents'], 1);
         console.log(`  day=${day}, rows=${table.numRows}`);
       }));
 
@@ -521,15 +487,11 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'bdib datetime range', async () => {
         const day = getRecentTradingDay();
         const table: any = await engine!.bdib(CONFIG.equity_single, {
-          start: `${day}T14:30:00`,
           end: `${day}T15:30:00`,
           interval: 5,
+          start: `${day}T14:30:00`,
         });
-        assertArrowTable(
-          table,
-          ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents'],
-          1,
-        );
+        assertArrowTable(table, ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents'], 1);
         console.log(`  ${day} 14:30-15:30 UTC rows=${table.numRows}`);
       }));
 
@@ -537,9 +499,9 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'bdib numeric ohlc', async () => {
         const day = getRecentTradingDay();
         const table: any = await engine!.bdib(CONFIG.equity_single, {
-          start: `${day}T14:30:00`,
           end: `${day}T15:30:00`,
           interval: 5,
+          start: `${day}T14:30:00`,
         });
         assertArrowTable(table, ['open', 'high', 'low', 'close'], 1);
         const firstOpen = toNumber(table.getChild('open')?.get(0));
@@ -553,14 +515,12 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'bdib times ordered', async () => {
         const day = getRecentTradingDay();
         const table: any = await engine!.bdib(CONFIG.equity_single, {
-          start: `${day}T14:30:00`,
           end: `${day}T16:00:00`,
           interval: 5,
+          start: `${day}T14:30:00`,
         });
         assertArrowTable(table, ['time'], 1);
-        const times = Array.from(table.getChild('time').toArray())
-          .map(toMillis)
-          .filter(Number.isFinite);
+        const times = [...table.getChild('time')].map(toMillis).filter(Number.isFinite);
         for (let i = 1; i < times.length; i += 1) {
           assert.ok(times[i]! >= times[i - 1]!, 'Bar times should be ascending');
         }
@@ -568,14 +528,14 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('BDTICK intraday ticks', () => {
+  describe('bDTICK intraday ticks', () => {
     it('one-hour market open window', async (t) =>
       runCase(t, 'bdtick one-hour window', async () => {
         const day = getRecentTradingDay();
         const table: any = await engine!.bdtick(CONFIG.equity_single, {
-          start: `${day}T14:30:00`,
           end: `${day}T15:30:00`,
           eventTypes: ['TRADE'],
+          start: `${day}T14:30:00`,
         });
         assertArrowTable(table, ['time'], 1);
         console.log(`  ticks rows=${table.numRows}, day=${day}`);
@@ -585,15 +545,13 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'bdtick expected columns', async () => {
         const day = getRecentTradingDay();
         const table: any = await engine!.bdtick(CONFIG.equity_single, {
-          start: `${day}T14:30:00`,
           end: `${day}T15:30:00`,
+          start: `${day}T14:30:00`,
         });
         assertArrowTable(table, ['time'], 1);
         const cols = columnsOf(table);
         assert.ok(
-          cols.some(
-            (c) => c.toLowerCase().includes('value') || c.toLowerCase().includes('price'),
-          ),
+          cols.some((c) => c.toLowerCase().includes('value') || c.toLowerCase().includes('price')),
         );
         console.log(`  tick columns=${cols.join(', ')}`);
       }));
@@ -602,9 +560,9 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'bdtick multi event types', async () => {
         const day = getRecentTradingDay();
         const table: any = await engine!.bdtick(CONFIG.equity_single, {
-          start: `${day}T14:30:00`,
           end: `${day}T15:30:00`,
           eventTypes: ['TRADE', 'BID'],
+          start: `${day}T14:30:00`,
         });
         assertArrowTable(table, ['time'], 1);
         console.log(`  multi event rows=${table.numRows}`);
@@ -616,14 +574,12 @@ describe('js-xbbg live Bloomberg API', () => {
         const start = `${day}T14:30:00`;
         const end = `${day}T15:30:00`;
         const table: any = await engine!.bdtick(CONFIG.equity_single, {
-          start,
           end,
           eventTypes: ['TRADE'],
+          start,
         });
         assertArrowTable(table, ['time'], 1);
-        const times = Array.from(table.getChild('time').toArray())
-          .map(toMillis)
-          .filter(Number.isFinite);
+        const times = [...table.getChild('time')].map(toMillis).filter(Number.isFinite);
         for (let i = 1; i < times.length; i += 1) {
           assert.ok(times[i]! >= times[i - 1]!, 'Tick times should be ascending');
         }
@@ -631,15 +587,15 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('BQL query', () => {
+  describe('bQL query', () => {
     it('basic query returns rows', async (t) =>
       runCase(t, 'bql basic', async () => {
         try {
           const table: any = await engine!.bql("get(px_last) for('IBM US Equity')");
           assertArrowTable(table, columnsOf(table), 1);
           console.log(`  bql rows=${table.numRows}, cols=${table.numCols}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -650,25 +606,25 @@ describe('js-xbbg live Bloomberg API', () => {
           const fields = columnsOf(table);
           assert.ok(fields.length > 0, 'Expected BQL output fields');
           console.log(`  bql fields=${fields.join(', ')}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
   });
 
-  describe('BEQS screening', () => {
+  describe('bEQS screening', () => {
     it('core capital goods makers screen', async (t) =>
       runCase(t, 'beqs basic screen', async () => {
         try {
           const table: any = await withTimeout(
             engine!.beqs('Core Capital Goods Makers'),
-            30000,
+            30_000,
             'BEQS',
           );
           assertArrowTable(table, columnsOf(table), 1);
           console.log(`  beqs rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -677,18 +633,18 @@ describe('js-xbbg live Bloomberg API', () => {
         try {
           const table: any = await withTimeout(
             engine!.beqs('Core Capital Goods Makers'),
-            30000,
+            30_000,
             'BEQS',
           );
           assert.ok(table.numCols >= 1);
           console.log(`  beqs columns=${columnsOf(table).join(', ')}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
   });
 
-  describe('BFLDS field metadata', () => {
+  describe('bFLDS field metadata', () => {
     it('single field info PX_LAST', async (t) =>
       runCase(t, 'bflds single field', async () => {
         const table: any = await engine!.bflds({ fields: CONFIG.price_field });
@@ -720,15 +676,15 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('BLKP instrument lookup', () => {
+  describe('bLKP instrument lookup', () => {
     it('lookup IBM returns rows', async (t) =>
       runCase(t, 'blkp IBM lookup', async () => {
         try {
           const table: any = await engine!.blkp('IBM');
           assertArrowTable(table, columnsOf(table), 0);
           console.log(`  blkp rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -747,8 +703,8 @@ describe('js-xbbg live Bloomberg API', () => {
           );
           assert.ok(hasText, 'Expected at least one textual value in lookup row');
           console.log(`  sample row=${JSON.stringify(firstRow)}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
   });
@@ -763,7 +719,7 @@ describe('js-xbbg live Bloomberg API', () => {
         }
 
         const drained = await sub.unsubscribe(true);
-        assert.ok(rows.length >= 1, `Expected at least 1 tick batch, got ${rows.length}`);
+        assert.ok(rows.length > 0, `Expected at least 1 tick batch, got ${rows.length}`);
         assert.ok(Array.isArray(drained), 'unsubscribe(true) should return drained table array');
         console.log(`  received=${rows.length}, drained=${drained.length}`);
       }));
@@ -805,7 +761,6 @@ describe('js-xbbg live Bloomberg API', () => {
         console.log(`  conflate stream columns=${cols.join(', ')}`);
       }));
 
-
     it('stream continues while BDP and BDH requests run concurrently', async (t) =>
       runCase(t, 'stream concurrent with reference requests', async () => {
         const sub = await engine!.stream([CONFIG.streaming_ticker], ['LAST_PRICE']);
@@ -835,7 +790,7 @@ describe('js-xbbg live Bloomberg API', () => {
 
         assertArrowTable(bdpTable, ['ticker', 'field', 'value']);
         assertArrowTable(bdhTable, ['ticker', 'date', 'field', 'value']);
-        assert.ok(batches.length >= 1, 'Expected stream to remain alive during requests');
+        assert.ok(batches.length > 0, 'Expected stream to remain alive during requests');
         console.log(
           `  concurrent stream batches=${batches.length}, bdp=${bdpTable.numRows}, bdh=${bdhTable.numRows}`,
         );
@@ -875,13 +830,28 @@ describe('js-xbbg live Bloomberg API', () => {
             );
             return;
           }
-          assert.ok(extraCols.length > 0, 'Expected allFields to contain columns beyond filtered mode');
+          assert.ok(
+            extraCols.length > 0,
+            'Expected allFields to contain columns beyond filtered mode',
+          );
 
           const row = allFieldsResult.value.toArray()[0] as Record<string, unknown>;
           assert.notEqual(row.MKTDATA_EVENT_TYPE, null, 'MKTDATA_EVENT_TYPE should be non-null');
-          assert.notEqual(row.MKTDATA_EVENT_TYPE, undefined, 'MKTDATA_EVENT_TYPE should be defined');
-          assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, null, 'MKTDATA_EVENT_SUBTYPE should be non-null');
-          assert.notEqual(row.MKTDATA_EVENT_SUBTYPE, undefined, 'MKTDATA_EVENT_SUBTYPE should be defined');
+          assert.notEqual(
+            row.MKTDATA_EVENT_TYPE,
+            undefined,
+            'MKTDATA_EVENT_TYPE should be defined',
+          );
+          assert.notEqual(
+            row.MKTDATA_EVENT_SUBTYPE,
+            null,
+            'MKTDATA_EVENT_SUBTYPE should be non-null',
+          );
+          assert.notEqual(
+            row.MKTDATA_EVENT_SUBTYPE,
+            undefined,
+            'MKTDATA_EVENT_SUBTYPE should be defined',
+          );
           console.log(
             `  filtered cols=${filteredCols.size}, allFields cols=${allCols.size}, extra=${extraCols.slice(0, 8).join(', ')}`,
           );
@@ -899,7 +869,10 @@ describe('js-xbbg live Bloomberg API', () => {
         try {
           assert.deepEqual(sub.tickers, [CONFIG.streaming_ticker]);
           await sub.add([addedTicker]);
-          assert.ok(sub.tickers.includes(addedTicker), `Expected metadata to include ${addedTicker}`);
+          assert.ok(
+            sub.tickers.includes(addedTicker),
+            `Expected metadata to include ${addedTicker}`,
+          );
           await sub.remove([addedTicker]);
           assert.ok(
             !sub.tickers.includes(addedTicker),
@@ -942,7 +915,7 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('Schema and operations', () => {
+  describe('schema and operations', () => {
     it('bops lists operations', async (t) =>
       runCase(t, 'bops list operations', async () => {
         const ops = await engine!.bops('//blp/refdata');
@@ -985,7 +958,7 @@ describe('js-xbbg live Bloomberg API', () => {
           'HistoricalDataRequest',
           'periodicitySelection',
         );
-        assert.ok(vals == null || Array.isArray(vals));
+        assert.ok(vals === null || Array.isArray(vals));
         if (Array.isArray(vals)) {
           assert.ok(vals.length > 0);
         }
@@ -995,7 +968,7 @@ describe('js-xbbg live Bloomberg API', () => {
     it('listValidElements returns request elements', async (t) =>
       runCase(t, 'listValidElements', async () => {
         const elems = await engine!.listValidElements('//blp/refdata', 'ReferenceDataRequest');
-        assert.ok(elems == null || Array.isArray(elems));
+        assert.ok(elems === null || Array.isArray(elems));
         if (Array.isArray(elems)) {
           assert.ok(elems.length > 0);
         }
@@ -1003,40 +976,40 @@ describe('js-xbbg live Bloomberg API', () => {
       }));
   });
 
-  describe('Backend conversion', () => {
-    it('BDP JSON backend returns array', async (t) =>
+  describe('backend conversion', () => {
+    it('bDP JSON backend returns array', async (t) =>
       runCase(t, 'backend JSON bdp', async () => {
         const rows: any = await engine!.request({
-          service: '//blp/refdata',
+          backend: Backend.JSON,
+          extractor: 'refdata',
+          fields: [CONFIG.price_field],
           operation: 'ReferenceDataRequest',
           securities: [CONFIG.equity_single],
-          fields: [CONFIG.price_field],
-          extractor: 'refdata',
-          backend: Backend.JSON,
+          service: '//blp/refdata',
         });
         assert.ok(Array.isArray(rows), 'Expected JSON backend to return array');
-        assert.ok(rows.length >= 1);
+        assert.ok(rows.length > 0);
         assert.ok(Object.hasOwn(rows[0], 'ticker'));
         assert.ok(Object.hasOwn(rows[0], 'field'));
         assert.ok(Object.hasOwn(rows[0], 'value'));
         console.log(`  json rows=${rows.length}, first=${JSON.stringify(rows[0])}`);
       }));
 
-    it('BDH JSON backend returns array', async (t) =>
+    it('bDH JSON backend returns array', async (t) =>
       runCase(t, 'backend JSON bdh', async () => {
         const range = getDateRange(5);
         const rows: any = await engine!.request({
-          service: '//blp/refdata',
-          operation: 'HistoricalDataRequest',
-          securities: [CONFIG.equity_single],
-          fields: [CONFIG.price_field],
-          startDate: range.start,
+          backend: Backend.JSON,
           endDate: range.end,
           extractor: 'histdata',
-          backend: Backend.JSON,
+          fields: [CONFIG.price_field],
+          operation: 'HistoricalDataRequest',
+          securities: [CONFIG.equity_single],
+          service: '//blp/refdata',
+          startDate: range.start,
         });
         assert.ok(Array.isArray(rows), 'Expected JSON backend to return array');
-        assert.ok(rows.length >= 1);
+        assert.ok(rows.length > 0);
         assert.ok(Object.hasOwn(rows[0], 'date'));
         console.log(`  json hist rows=${rows.length}`);
       }));
@@ -1044,28 +1017,28 @@ describe('js-xbbg live Bloomberg API', () => {
     it('generic request with JSON backend', async (t) =>
       runCase(t, 'backend JSON request()', async () => {
         const rows: any = await engine!.request({
-          service: '//blp/refdata',
+          backend: Backend.JSON,
+          extractor: 'refdata',
+          fields: [CONFIG.price_field],
           operation: 'ReferenceDataRequest',
           securities: [CONFIG.equity_single],
-          fields: [CONFIG.price_field],
-          extractor: 'refdata',
-          backend: Backend.JSON,
+          service: '//blp/refdata',
         });
         assert.ok(Array.isArray(rows));
-        assert.ok(rows.length >= 1);
+        assert.ok(rows.length > 0);
         console.log(`  request(json) rows=${rows.length}`);
       }));
   });
 
-  describe('Additional API coverage', () => {
+  describe('additional API coverage', () => {
     it('bcurves query is callable', async (t) =>
       runCase(t, 'bcurves callable', async () => {
         try {
           const table: any = await engine!.bcurves('YCSW0023 Index');
           assert.ok(table.numRows >= 0);
           console.log(`  bcurves rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -1075,8 +1048,8 @@ describe('js-xbbg live Bloomberg API', () => {
           const table: any = await engine!.bgovts('USD');
           assert.ok(table.numRows >= 0);
           console.log(`  bgovts rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -1091,19 +1064,19 @@ describe('js-xbbg live Bloomberg API', () => {
           const table: any = await engine!.bport(CONFIG.portfolio_security, ['PORTFOLIO_DATA']);
           assert.ok(table.numRows >= 0);
           console.log(`  bport rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
     it('bsrch returns search results', async (t) =>
       runCase(t, 'bsrch basic', async () => {
         try {
-          const table: any = await withTimeout(engine!.bsrch('FI:SOVR'), 30000, 'bsrch');
+          const table: any = await withTimeout(engine!.bsrch('FI:SOVR'), 30_000, 'bsrch');
           assert.ok(table.numRows >= 0);
           console.log(`  bsrch rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -1113,16 +1086,16 @@ describe('js-xbbg live Bloomberg API', () => {
           const range = getDateRange(30);
           const table: any = await withTimeout(
             engine!.bta(CONFIG.futures_generic, 'sma', {
+              kwargs: { endDate: range.end, startDate: range.start },
               studyParams: { calcInterval: 'DAILY', length: 20 },
-              kwargs: { startDate: range.start, endDate: range.end },
             }),
-            30000,
+            30_000,
             'bta',
           );
           assert.ok(table.numRows >= 0);
           console.log(`  bta rows=${table.numRows}`);
-        } catch (err) {
-          if (!maybeSkipEntitlement(t, err)) throw err;
+        } catch (error) {
+          if (!maybeSkipEntitlement(t, error)) throw error;
         }
       }));
 
@@ -1133,7 +1106,7 @@ describe('js-xbbg live Bloomberg API', () => {
           CONFIG.volume_field,
           CONFIG.name_field,
         ]);
-        assert.ok(mapping && typeof mapping === 'object');
+        assert.ok(typeof mapping === 'object');
         assert.ok(Object.keys(mapping).length >= 3);
         console.log(`  field types=${JSON.stringify(mapping)}`);
       }));
@@ -1141,9 +1114,7 @@ describe('js-xbbg live Bloomberg API', () => {
     it('validateFields returns validation result', async (t) =>
       runCase(t, 'validateFields', async () => {
         const result = await engine!.validateFields([CONFIG.price_field, CONFIG.name_field]);
-        assert.ok(
-          result == null || typeof result === 'object' || Array.isArray(result),
-        );
+        assert.ok(Array.isArray(result));
         console.log(`  validateFields=${JSON.stringify(result)}`);
       }));
 
@@ -1167,7 +1138,7 @@ describe('js-xbbg live Bloomberg API', () => {
       runCase(t, 'field cache lifecycle', async () => {
         engine!.clearFieldCache();
         const enabled = engine!.isFieldValidationEnabled();
-        assert.ok(typeof enabled === 'boolean' || typeof enabled === 'undefined');
+        assert.ok(typeof enabled === 'boolean' || enabled === undefined);
         engine!.saveFieldCache();
         assert.ok(true, 'saveFieldCache should be callable');
         console.log(`  validationEnabled=${enabled}, saveFieldCache=called`);

@@ -3,42 +3,57 @@
   "version": "0.0.0",
   "description": "Prebuilt native napi_xbbg.node addon for @xbbg/core on macOS arm64.",
   "keywords": [
-    "xbbg",
+    "arm64",
     "bloomberg",
     "blpapi",
     "finance",
-    "market-data",
-    "native-addon",
-    "napi",
-    "rust",
-    "prebuild",
     "macos",
-    "arm64"
+    "market-data",
+    "napi",
+    "native-addon",
+    "prebuild",
+    "rust",
+    "xbbg"
   ],
+  "homepage": "https://xbbg.org/javascript/",
+  "bugs": {
+    "url": "https://github.com/alpha-xone/xbbg/issues"
+  },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alpha-xone/xbbg.git",
     "directory": "js-xbbg/packages/xbbg-core-darwin-arm64"
   },
-  "homepage": "https://xbbg.org/javascript/",
-  "bugs": {
-    "url": "https://github.com/alpha-xone/xbbg/issues"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "package.json",
+    "napi_xbbg.node"
+  ],
   "os": [
     "darwin"
   ],
   "cpu": [
     "arm64"
   ],
+  "type": "commonjs",
   "main": "./index.js",
-  "files": [
-    "index.js",
-    "README.md",
-    "package.json",
-    "napi_xbbg.node"
-  ]
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "require": "./index.js",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24"
+  }
 }

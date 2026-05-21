@@ -145,6 +145,15 @@ result = blp.bql("get(px_last) for('AAPL US Equity')")
 
 # Field lookup
 fields = blp.bflds(search_spec="vwap")
+
+# Equity screening and constituents
+screen = blp.beqs(screen="MyScreen", asof="2024-01-01")
+members = blp.index_members("SPX Index", asof="2024-01-02")
+
+# Workflow helpers
+active = blp.active_futures("ESA Index", "2024-01-15")
+surface = blp.vol_surface("SPX Index", start_date="2024-01-02", end_date="2024-01-05")
+resolved = blp.resolve_isins(["US0378331005", "INVALIDISIN000"])
 ```
 
 For longer walkthroughs and example output shapes, use the [examples notebook](py-xbbg/examples/xbbg_jupyter_examples.ipynb) or [xbbg.org](https://xbbg.org/).
@@ -236,10 +245,10 @@ Use `Engine(...)` when an application needs a scoped engine with its own connect
 | Area | Functions |
 | --- | --- |
 | Reference and bulk data | `bdp`, `bds`, `bflds`, `fieldInfo`, `fieldSearch`, `blkp`, `bport` |
-| Historical data | `bdh`, `dividend`, `earnings`, `turnover` |
+| Historical data | `bdh`, `dividend`, `earnings`, `turnover`, `dividend_yield` |
 | Intraday data | `bdib`, `bdtick` |
-| Query and screening | `bql`, `beqs`, `bsrch`, `bqr`, `bcurves`, `bgovts` |
-| Analytics and utilities | `yas`, `bta`, `ta_studies`, `ta_study_params`, `convert_ccy`, `fut_ticker`, `active_futures`, `cdx_ticker`, `active_cdx` |
+| Query and screening | `bql`, `beqs`, `bsrch`, `bqr`, `bcurves`, `bgovts`, `etf_holdings`, `index_members` |
+| Analytics and utilities | `yas`, `bta`, `ta_studies`, `ta_study_params`, `convert_ccy`, `fut_ticker`, `active_futures`, `futures_curve`, `vol_surface`, `resolve_isins`, `issuer_isins`, `cdx_ticker`, `active_cdx` |
 | Real-time data | `subscribe`, `stream`, `vwap`, `mktbar`, `depth`, `chains` |
 | Generic requests | `request`, `Service`, `Operation`, `RequestParams`, `OutputMode` |
 | Schema and diagnostics | `bops`, `bschema`, `get_sdk_info`, `enable_sdk_logging`, `print_backend_status` |

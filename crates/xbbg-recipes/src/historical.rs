@@ -9,19 +9,25 @@
 //! - [`recipe_turnover`]: Fetch volume/turnover data
 //! - [`recipe_etf_holdings`]: Fetch ETF constituent holdings via BQL
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::error::Result;
-use crate::utils::array_value_as_string;
+use crate::error::{RecipeError, Result};
+use crate::utils::{
+    array_value_as_date, array_value_as_f64, array_value_as_string, as_string_col, canonical_name,
+    naive_to_date32,
+};
+use arrow_array::builder::{Date32Builder, Float64Builder, StringBuilder};
 use arrow_array::RecordBatch;
 use arrow_array::{
     Array, ArrayRef, Float64Array, Int32Array, Int64Array, LargeStringArray, StringArray,
 };
 use arrow_schema::{DataType, Field, Schema};
+use chrono::{Duration, NaiveDate};
 use xbbg_async::engine::{Engine, ExtractorType, RequestParams};
 use xbbg_async::services::{Operation, Service};
 use xbbg_ext::transforms::historical::{apply_column_renames, calculate_level_percentages};
+use xbbg_ext::{fmt_date, parse_date};
 
 pub async fn recipe_dividend(
     engine: &Engine,
@@ -47,6 +53,452 @@ pub async fn recipe_dividend(
         ..Default::default()
     };
     engine.request(params).await.map_err(Into::into)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DividendEvent {
+    ticker: String,
+    ex_date: NaiveDate,
+    declared_date: Option<NaiveDate>,
+    record_date: Option<NaiveDate>,
+    payable_date: Option<NaiveDate>,
+    dividend_type: Option<String>,
+    amount: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DividendYieldRow {
+    ticker: String,
+    date: NaiveDate,
+    dividend_amount: Option<f64>,
+    trailing_dividend_amount: Option<f64>,
+    price: Option<f64>,
+    dividend_yield: Option<f64>,
+    dividend_type: Option<String>,
+    declared_date: Option<NaiveDate>,
+    record_date: Option<NaiveDate>,
+    payable_date: Option<NaiveDate>,
+}
+
+/// Compute trailing realized dividend amount and trailing dividend yield.
+pub async fn recipe_dividend_yield(
+    engine: &Engine,
+    tickers: Vec<String>,
+    start_date: String,
+    end_date: String,
+    dividend_types: Option<Vec<String>>,
+    window_days: Option<i32>,
+) -> Result<RecordBatch> {
+    let start = parse_date(&start_date)?;
+    let end = parse_date(&end_date)?;
+    if end < start {
+        return Err(RecipeError::InvalidArgument(format!(
+            "end_date {end_date} is before start_date {start_date}"
+        )));
+    }
+    let window_days = window_days.unwrap_or(365).max(1);
+    let event_start = start - Duration::days(window_days as i64);
+    let dividend_type_filter = normalize_dividend_type_filter(dividend_types);
+
+    let dividend_params = RequestParams {
+        service: Service::RefData.to_string(),
+        operation: Operation::ReferenceData.to_string(),
+        extractor: ExtractorType::BulkData,
+        extractor_set: true,
+        securities: Some(tickers.clone()),
+        fields: Some(vec!["DVD_HIST_ALL".to_string()]),
+        overrides: Some(vec![
+            ("DVD_Start_Dt".to_string(), fmt_date(event_start, None)),
+            ("DVD_End_Dt".to_string(), fmt_date(end, None)),
+        ]),
+        ..Default::default()
+    };
+    let dividend_batch = engine.request(dividend_params).await?;
+    let events = aggregate_dividend_events(extract_dividend_events(
+        &dividend_batch,
+        dividend_type_filter.as_ref(),
+    )?);
+
+    let price_params = RequestParams {
+        service: Service::RefData.to_string(),
+        operation: Operation::HistoricalData.to_string(),
+        securities: Some(tickers.clone()),
+        fields: Some(vec!["PX_LAST".to_string()]),
+        start_date: Some(fmt_date(start, None)),
+        end_date: Some(fmt_date(end, None)),
+        ..Default::default()
+    };
+    let price_batch = engine.request(price_params).await?;
+    let prices = extract_price_history(&price_batch)?;
+    let rows = build_dividend_yield_rows(&tickers, start, end, window_days, &events, &prices);
+    build_dividend_yield_batch(&rows)
+}
+
+fn normalize_dividend_type_filter(dividend_types: Option<Vec<String>>) -> Option<HashSet<String>> {
+    dividend_types.map(|types| {
+        types
+            .into_iter()
+            .map(|typ| canonical_name(&typ))
+            .filter(|typ| !typ.is_empty())
+            .collect::<HashSet<_>>()
+    })
+}
+
+fn dividend_type_allowed(value: Option<&str>, filter: Option<&HashSet<String>>) -> bool {
+    let Some(filter) = filter else {
+        return true;
+    };
+    if filter.is_empty() {
+        return true;
+    }
+    let Some(value) = value else {
+        return false;
+    };
+    filter.contains(&canonical_name(value))
+}
+
+fn find_dividend_column(batch: &RecordBatch, candidates: &[&str]) -> Option<String> {
+    let wanted = candidates
+        .iter()
+        .map(|candidate| canonical_name(candidate))
+        .collect::<Vec<_>>();
+    batch.schema().fields().iter().find_map(|field| {
+        let key = canonical_name(field.name());
+        wanted
+            .iter()
+            .any(|candidate| candidate == &key)
+            .then(|| field.name().to_string())
+    })
+}
+
+pub(crate) fn extract_dividend_events(
+    batch: &RecordBatch,
+    dividend_type_filter: Option<&HashSet<String>>,
+) -> Result<Vec<DividendEvent>> {
+    let ticker_col = batch
+        .column_by_name("ticker")
+        .ok_or_else(|| RecipeError::Other("missing 'ticker' column".to_string()))?;
+    let ex_date_col = find_dividend_column(
+        batch,
+        &[
+            "ex date",
+            "ex-date",
+            "ex_date",
+            "dvd ex dt",
+            "dividend ex date",
+        ],
+    )
+    .and_then(|name| batch.column_by_name(&name))
+    .ok_or_else(|| {
+        RecipeError::Other("DVD_HIST_ALL response missing ex-date column".to_string())
+    })?;
+    let amount_col = find_dividend_column(
+        batch,
+        &[
+            "amount",
+            "dividend amount",
+            "dvd amount",
+            "cash amount",
+            "gross amount",
+        ],
+    )
+    .and_then(|name| batch.column_by_name(&name));
+    let type_col = find_dividend_column(
+        batch,
+        &["dividend type", "dvd type", "type", "distribution type"],
+    )
+    .and_then(|name| batch.column_by_name(&name));
+    let declared_col = find_dividend_column(
+        batch,
+        &[
+            "declared date",
+            "declaration date",
+            "declared_date",
+            "announcement date",
+        ],
+    )
+    .and_then(|name| batch.column_by_name(&name));
+    let record_col = find_dividend_column(batch, &["record date", "record_date"])
+        .and_then(|name| batch.column_by_name(&name));
+    let payable_col = find_dividend_column(
+        batch,
+        &["payable date", "payment date", "pay date", "payable_date"],
+    )
+    .and_then(|name| batch.column_by_name(&name));
+
+    let mut events = Vec::new();
+    for row in 0..batch.num_rows() {
+        let Some(ticker) =
+            array_value_as_string(ticker_col, row).map(|value| value.trim().to_string())
+        else {
+            continue;
+        };
+        if ticker.is_empty() {
+            continue;
+        }
+        let Some(ex_date) = array_value_as_date(ex_date_col, row) else {
+            continue;
+        };
+        let dividend_type = type_col
+            .and_then(|col| array_value_as_string(col, row))
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if !dividend_type_allowed(dividend_type.as_deref(), dividend_type_filter) {
+            continue;
+        }
+
+        events.push(DividendEvent {
+            ticker,
+            ex_date,
+            declared_date: declared_col.and_then(|col| array_value_as_date(col, row)),
+            record_date: record_col.and_then(|col| array_value_as_date(col, row)),
+            payable_date: payable_col.and_then(|col| array_value_as_date(col, row)),
+            dividend_type,
+            amount: amount_col.and_then(|col| array_value_as_f64(col, row)),
+        });
+    }
+
+    Ok(events)
+}
+
+pub(crate) fn aggregate_dividend_events(events: Vec<DividendEvent>) -> Vec<DividendEvent> {
+    type EventKey = (
+        String,
+        NaiveDate,
+        Option<NaiveDate>,
+        Option<NaiveDate>,
+        Option<NaiveDate>,
+        Option<String>,
+    );
+
+    let mut grouped: HashMap<EventKey, DividendEvent> = HashMap::new();
+    for event in events {
+        let key = (
+            event.ticker.clone(),
+            event.ex_date,
+            event.declared_date,
+            event.record_date,
+            event.payable_date,
+            event.dividend_type.clone(),
+        );
+        grouped
+            .entry(key)
+            .and_modify(|existing| {
+                existing.amount = match (existing.amount, event.amount) {
+                    (Some(left), Some(right)) => Some(left + right),
+                    (Some(left), None) => Some(left),
+                    (None, Some(right)) => Some(right),
+                    (None, None) => None,
+                };
+            })
+            .or_insert(event);
+    }
+
+    let mut output = grouped.into_values().collect::<Vec<_>>();
+    output.sort_by(|left, right| {
+        left.ticker
+            .cmp(&right.ticker)
+            .then(left.ex_date.cmp(&right.ex_date))
+            .then(left.declared_date.cmp(&right.declared_date))
+            .then(left.record_date.cmp(&right.record_date))
+            .then(left.payable_date.cmp(&right.payable_date))
+            .then(left.dividend_type.cmp(&right.dividend_type))
+    });
+    output
+}
+
+fn extract_price_history(batch: &RecordBatch) -> Result<HashMap<(String, NaiveDate), f64>> {
+    let ticker_col = as_string_col(batch, "ticker")?;
+    let field_col = as_string_col(batch, "field")?;
+    let value_col = batch
+        .column_by_name("value")
+        .ok_or_else(|| RecipeError::Other("missing 'value' column".to_string()))?;
+    let date_col = batch
+        .column_by_name("date")
+        .ok_or_else(|| RecipeError::Other("missing 'date' column".to_string()))?;
+    let mut prices = HashMap::new();
+
+    for row in 0..batch.num_rows() {
+        if ticker_col.is_null(row) || field_col.is_null(row) || value_col.is_null(row) {
+            continue;
+        }
+        if !field_col.value(row).eq_ignore_ascii_case("PX_LAST") {
+            continue;
+        }
+        let Some(date) = array_value_as_date(date_col, row) else {
+            continue;
+        };
+        let Some(price) = array_value_as_f64(value_col, row) else {
+            continue;
+        };
+        prices.insert((ticker_col.value(row).to_string(), date), price);
+    }
+
+    Ok(prices)
+}
+
+pub(crate) fn build_dividend_yield_rows(
+    tickers: &[String],
+    start: NaiveDate,
+    end: NaiveDate,
+    window_days: i32,
+    events: &[DividendEvent],
+    prices: &HashMap<(String, NaiveDate), f64>,
+) -> Vec<DividendYieldRow> {
+    let mut events_by_ticker: HashMap<&str, Vec<&DividendEvent>> = HashMap::new();
+    for event in events {
+        events_by_ticker
+            .entry(event.ticker.as_str())
+            .or_default()
+            .push(event);
+    }
+
+    let mut rows = Vec::new();
+    for ticker in tickers {
+        let ticker_events = events_by_ticker
+            .get(ticker.as_str())
+            .cloned()
+            .unwrap_or_default();
+        let mut dates = BTreeSet::new();
+        for (price_ticker, date) in prices.keys() {
+            if price_ticker == ticker && *date >= start && *date <= end {
+                dates.insert(*date);
+            }
+        }
+        for event in &ticker_events {
+            if event.ex_date >= start && event.ex_date <= end {
+                dates.insert(event.ex_date);
+            }
+        }
+
+        for date in dates {
+            let same_day_events = ticker_events
+                .iter()
+                .copied()
+                .filter(|event| event.ex_date == date)
+                .collect::<Vec<_>>();
+            let dividend_amount =
+                sum_optional(same_day_events.iter().filter_map(|event| event.amount));
+            let trailing_start = date - Duration::days(window_days as i64);
+            let trailing_dividend_amount = sum_optional(ticker_events.iter().filter_map(|event| {
+                (event.ex_date > trailing_start && event.ex_date <= date)
+                    .then_some(event.amount)
+                    .flatten()
+            }));
+            let price = prices.get(&(ticker.clone(), date)).copied();
+            let dividend_yield = match (trailing_dividend_amount, price) {
+                (Some(amount), Some(price)) if price != 0.0 => Some(amount / price),
+                _ => None,
+            };
+            let representative = same_day_events.first().copied();
+
+            rows.push(DividendYieldRow {
+                ticker: ticker.clone(),
+                date,
+                dividend_amount,
+                trailing_dividend_amount,
+                price,
+                dividend_yield,
+                dividend_type: representative.and_then(|event| event.dividend_type.clone()),
+                declared_date: representative.and_then(|event| event.declared_date),
+                record_date: representative.and_then(|event| event.record_date),
+                payable_date: representative.and_then(|event| event.payable_date),
+            });
+        }
+    }
+
+    rows.sort_by(|left, right| {
+        left.ticker
+            .cmp(&right.ticker)
+            .then(left.date.cmp(&right.date))
+    });
+    rows
+}
+
+fn sum_optional(values: impl Iterator<Item = f64>) -> Option<f64> {
+    let mut seen = false;
+    let mut total = 0.0;
+    for value in values {
+        seen = true;
+        total += value;
+    }
+    seen.then_some(total)
+}
+
+fn append_date_opt(builder: &mut Date32Builder, value: Option<NaiveDate>) {
+    match value {
+        Some(value) => builder.append_value(naive_to_date32(value)),
+        None => builder.append_null(),
+    }
+}
+
+fn append_f64_opt(builder: &mut Float64Builder, value: Option<f64>) {
+    match value {
+        Some(value) => builder.append_value(value),
+        None => builder.append_null(),
+    }
+}
+
+fn append_string_opt(builder: &mut StringBuilder, value: Option<&String>) {
+    match value {
+        Some(value) => builder.append_value(value),
+        None => builder.append_null(),
+    }
+}
+
+fn build_dividend_yield_batch(rows: &[DividendYieldRow]) -> Result<RecordBatch> {
+    let mut ticker = StringBuilder::new();
+    let mut date = Date32Builder::new();
+    let mut amount = Float64Builder::new();
+    let mut trailing = Float64Builder::new();
+    let mut price = Float64Builder::new();
+    let mut yield_builder = Float64Builder::new();
+    let mut dividend_type = StringBuilder::new();
+    let mut declared = Date32Builder::new();
+    let mut record = Date32Builder::new();
+    let mut payable = Date32Builder::new();
+
+    for row in rows {
+        ticker.append_value(&row.ticker);
+        date.append_value(naive_to_date32(row.date));
+        append_f64_opt(&mut amount, row.dividend_amount);
+        append_f64_opt(&mut trailing, row.trailing_dividend_amount);
+        append_f64_opt(&mut price, row.price);
+        append_f64_opt(&mut yield_builder, row.dividend_yield);
+        append_string_opt(&mut dividend_type, row.dividend_type.as_ref());
+        append_date_opt(&mut declared, row.declared_date);
+        append_date_opt(&mut record, row.record_date);
+        append_date_opt(&mut payable, row.payable_date);
+    }
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("ticker", DataType::Utf8, false),
+        Field::new("date", DataType::Date32, false),
+        Field::new("dividend_amount", DataType::Float64, true),
+        Field::new("trailing_dividend_amount", DataType::Float64, true),
+        Field::new("price", DataType::Float64, true),
+        Field::new("dividend_yield", DataType::Float64, true),
+        Field::new("dividend_type", DataType::Utf8, true),
+        Field::new("declared_date", DataType::Date32, true),
+        Field::new("record_date", DataType::Date32, true),
+        Field::new("payable_date", DataType::Date32, true),
+    ]));
+    RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(ticker.finish()),
+            Arc::new(date.finish()),
+            Arc::new(amount.finish()),
+            Arc::new(trailing.finish()),
+            Arc::new(price.finish()),
+            Arc::new(yield_builder.finish()),
+            Arc::new(dividend_type.finish()),
+            Arc::new(declared.finish()),
+            Arc::new(record.finish()),
+            Arc::new(payable.finish()),
+        ],
+    )
+    .map_err(Into::into)
 }
 
 /// Fetch earnings bulk data and derive hierarchical percentages.
@@ -882,5 +1334,82 @@ mod tests {
             bql_query,
             "get(id_isin, weights, id().position) for(holdings('SPY US Equity'))"
         );
+    }
+
+    #[test]
+    fn test_dividend_yield_aggregates_duplicates_and_rolls_window() {
+        let ticker = "AAPL US Equity".to_string();
+        let d1 = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
+        let d2 = NaiveDate::from_ymd_opt(2024, 4, 10).unwrap();
+        let price_date = NaiveDate::from_ymd_opt(2024, 4, 11).unwrap();
+        let events = aggregate_dividend_events(vec![
+            DividendEvent {
+                ticker: ticker.clone(),
+                ex_date: d1,
+                declared_date: Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+                record_date: None,
+                payable_date: None,
+                dividend_type: Some("Regular Cash".to_string()),
+                amount: Some(0.24),
+            },
+            DividendEvent {
+                ticker: ticker.clone(),
+                ex_date: d1,
+                declared_date: Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+                record_date: None,
+                payable_date: None,
+                dividend_type: Some("Regular Cash".to_string()),
+                amount: Some(0.01),
+            },
+            DividendEvent {
+                ticker: ticker.clone(),
+                ex_date: d2,
+                declared_date: Some(NaiveDate::from_ymd_opt(2024, 4, 1).unwrap()),
+                record_date: None,
+                payable_date: None,
+                dividend_type: Some("Regular Cash".to_string()),
+                amount: Some(0.25),
+            },
+        ]);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].amount, Some(0.25));
+
+        let prices = HashMap::from([((ticker.clone(), price_date), 100.0)]);
+        let rows = build_dividend_yield_rows(
+            &[ticker],
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            price_date,
+            365,
+            &events,
+            &prices,
+        );
+        let priced = rows.iter().find(|row| row.date == price_date).unwrap();
+        assert_eq!(priced.trailing_dividend_amount, Some(0.50));
+        assert_eq!(priced.dividend_yield, Some(0.005));
+    }
+
+    #[test]
+    fn test_dividend_yield_missing_price_keeps_yield_null() {
+        let ticker = "AAPL US Equity".to_string();
+        let ex_date = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
+        let events = vec![DividendEvent {
+            ticker: ticker.clone(),
+            ex_date,
+            declared_date: None,
+            record_date: None,
+            payable_date: None,
+            dividend_type: Some("Regular Cash".to_string()),
+            amount: Some(0.25),
+        }];
+        let rows = build_dividend_yield_rows(
+            &[ticker],
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 1, 31).unwrap(),
+            365,
+            &events,
+            &HashMap::new(),
+        );
+        assert_eq!(rows[0].price, None);
+        assert_eq!(rows[0].dividend_yield, None);
     }
 }

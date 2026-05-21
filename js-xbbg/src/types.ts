@@ -12,11 +12,7 @@
  * - `number` — epoch milliseconds.
  * - duck-typed Luxon `DateTime` — anything implementing `toJSDate()`.
  */
-export type DateLike =
-  | Date
-  | string
-  | number
-  | { toJSDate: () => Date };
+export type DateLike = Date | string | number | { toJSDate: () => Date };
 
 /**
  * Datetime-like input. Same shape as `DateLike` today; named separately so the
@@ -304,6 +300,14 @@ export interface FuturesResolveOptions {
   backend?: BackendKind;
 }
 
+export interface FuturesCurveOptions {
+  asof?: DateLike;
+  chainField?: string;
+  fields?: readonly string[];
+  maxContracts?: number;
+  backend?: BackendKind;
+}
+
 export interface ActiveCdxOptions {
   lookbackDays?: number;
   backend?: BackendKind;
@@ -311,6 +315,12 @@ export interface ActiveCdxOptions {
 
 export interface DividendOptions {
   dvdType?: string;
+  backend?: BackendKind;
+}
+
+export interface DividendYieldOptions {
+  dividendTypes?: readonly string[];
+  windowDays?: number;
   backend?: BackendKind;
 }
 
@@ -322,6 +332,37 @@ export interface TurnoverOptions {
 
 export interface EtfHoldingsOptions {
   fields?: readonly string[];
+  backend?: BackendKind;
+}
+
+export type VolSurfacePreset =
+  | 'DELTA_1M_2M'
+  | 'MONEYNESS_30D'
+  | 'MONEYNESS_60D'
+  | 'MONEYNESS_3M'
+  | 'MONEYNESS_6M'
+  | 'MONEYNESS_12M';
+
+export interface VolFieldSpec {
+  metric?: string;
+  tenor?: string;
+  pointType?: string;
+  point?: number;
+}
+
+export interface VolSurfaceOptions {
+  preset?: VolSurfacePreset | readonly VolSurfacePreset[] | null;
+  fields?: readonly string[] | Record<string, VolFieldSpec>;
+  asDecimal?: boolean;
+  includeDerived?: boolean;
+  riskFreeRate?: number;
+  dividendYieldField?: string;
+  backend?: BackendKind;
+}
+
+export interface IndexMembersOptions {
+  field?: 'INDX_MWEIGHT' | 'INDX_MEMBERS' | 'INDX_MEMBERS3';
+  asof?: DateLike;
   backend?: BackendKind;
 }
 

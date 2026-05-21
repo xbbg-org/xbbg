@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { expectTypeOf } from 'vitest';
 
-import type { NativeArrowZeroCopyBatch } from '../src/napi';
 import { tableFromNativeArrowBatch } from '../src/arrow-zero-copy';
-import type { RequestInput } from '../src/types';
 import * as api from '../src/index';
+import type { NativeArrowZeroCopyBatch } from '../src/napi';
+import type { RequestInput } from '../src/types';
 
 const SESSION_HOST = process.env.XBBG_HOST ?? 'localhost';
 const SESSION_PORT = Number(process.env.XBBG_PORT ?? 8194);
@@ -15,6 +15,48 @@ function nativeUnavailable(err: unknown): boolean {
     message.toLowerCase().includes('session start failed') ||
     message.toLowerCase().includes('failed to spawn worker')
   );
+}
+
+function fakeNativeSubscription(): any {
+  return {
+    add: async () => undefined,
+    fields: ['BID', 'ASK'],
+    isActive: true,
+    nextArrow: async () => null,
+    nextUpdate: async () => null,
+    remove: async () => undefined,
+    stats: {
+      batchesSent: 0,
+      dataLossEvents: 0,
+      droppedBatches: 0,
+      effectiveOverflowPolicy: 'drop_newest',
+      lastDataLossUs: 0,
+      lastMessageUs: 0,
+      messagesReceived: 0,
+      slowConsumer: false,
+    },
+    tickers: ['ES1 Index'],
+    unsubscribe: async () => [],
+    unsubscribeArrow: async () => [],
+  };
+}
+
+function typedBuffer(view: ArrayBufferView): Buffer {
+  return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+}
+
+function captureRequests(): api.Engine & { readonly calls: RequestInput[] } {
+  const calls: RequestInput[] = [];
+  const engine = Object.create(api.Engine.prototype) as api.Engine & {
+    calls: RequestInput[];
+    request(params: RequestInput): Promise<unknown>;
+  };
+  engine.calls = calls;
+  engine.request = async (params: RequestInput): Promise<unknown> => {
+    calls.push(params);
+    return Promise.resolve(params);
+  };
+  return engine;
 }
 
 describe('@xbbg/core surface', () => {
@@ -52,20 +94,20 @@ describe('@xbbg/core surface', () => {
       'getLogLevel',
     ] as const;
     for (const key of required) {
-      expect(api, `Missing export: ${key}`).toHaveProperty(key);
+      expect(api).toHaveProperty(key);
     }
   });
 
-  it('Backend enum is frozen with correct values', () => {
-    expect(Object.isFrozen(api.Backend)).toBe(true);
+  it('backend enum is frozen with correct values', () => {
+    expect(Object.isFrozen(api.Backend)).toBeTruthy();
     expect(api.Backend.ARROW).toBe('arrow');
     expect(api.Backend.JSON).toBe('json');
     expect(api.Backend.POLARS).toBe('polars');
     expect(Object.keys(api.Backend)).toHaveLength(3);
   });
 
-  it('Format enum is frozen with correct values', () => {
-    expect(Object.isFrozen(api.Format)).toBe(true);
+  it('format enum is frozen with correct values', () => {
+    expect(Object.isFrozen(api.Format)).toBeTruthy();
     expect(api.Format.LONG).toBe('long');
     expect(api.Format.LONG_TYPED).toBe('long_typed');
     expect(api.Format.LONG_WITH_METADATA).toBe('long_with_metadata');
@@ -91,18 +133,18 @@ describe('@xbbg/core surface', () => {
     expect(new api.BlpInternalError('test').name).toBe('BlpInternalError');
   });
 
-  it('BlpRequestError carries optional properties', () => {
+  it('blpRequestError carries optional properties', () => {
     const err = new api.BlpRequestError('test', {
-      service: '//blp/refdata',
-      operation: 'BDP',
       code: 123,
+      operation: 'BDP',
+      service: '//blp/refdata',
     });
     expect(err.service).toBe('//blp/refdata');
     expect(err.operation).toBe('BDP');
     expect(err.code).toBe(123);
   });
 
-  it('BlpValidationError carries optional properties', () => {
+  it('blpValidationError carries optional properties', () => {
     const err = new api.BlpValidationError('test', {
       element: 'field1',
       suggestion: 'PX_LAST',
@@ -133,40 +175,40 @@ describe('@xbbg/core surface', () => {
   });
 
   it('exposes version, connect, setLogLevel, getLogLevel as functions', () => {
-    expect(typeof api.connect).toBe('function');
-    expect(typeof api.version).toBe('function');
-    expect(typeof api.setLogLevel).toBe('function');
-    expect(typeof api.getLogLevel).toBe('function');
-    expect(typeof api.version()).toBe('string');
+    expectTypeOf(api.connect).toBeFunction();
+    expectTypeOf(api.version).toBeFunction();
+    expectTypeOf(api.setLogLevel).toBeFunction();
+    expectTypeOf(api.getLogLevel).toBeFunction();
+    expectTypeOf(api.version()).toBeString();
     expect(api.version().length).toBeGreaterThan(0);
   });
 
   it('configure accepts both flat and nested config shapes', () => {
-    expect(api.configure({ host: SESSION_HOST, port: SESSION_PORT })).toEqual({
+    expect(api.configure({ host: SESSION_HOST, port: SESSION_PORT })).toStrictEqual({
       host: SESSION_HOST,
       port: SESSION_PORT,
     });
     const advanced = {
+      auth: { appName: 'my-bpipe-app', method: 'userapp' as const },
+      retryPolicy: {
+        backoffFactor: 1.5,
+        initialDelayMs: 100,
+        maxDelayMs: 1000,
+        maxRetries: 2,
+      },
       servers: [
         { host: 'primary.example.com', port: 8194 },
         { host: 'secondary.example.com', port: 8196 },
       ],
-      auth: { method: 'userapp' as const, appName: 'my-bpipe-app' },
+      socks5: { host: 'proxy.example.com', port: 1080 },
       tls: {
         clientCredentials: '/secure/client.p12',
         trustMaterial: '/secure/trust.p7',
       },
       zfpRemote: '8194' as const,
-      retryPolicy: {
-        maxRetries: 2,
-        initialDelayMs: 100,
-        backoffFactor: 1.5,
-        maxDelayMs: 1000,
-      },
-      socks5: { host: 'proxy.example.com', port: 1080 },
     };
-    expect(api.configure(advanced)).toEqual(advanced);
-    expect(api.configure(SESSION_HOST, SESSION_PORT)).toEqual({
+    expect(api.configure(advanced)).toStrictEqual(advanced);
+    expect(api.configure(SESSION_HOST, SESSION_PORT)).toStrictEqual({
       host: SESSION_HOST,
       port: SESSION_PORT,
     });
@@ -188,7 +230,7 @@ describe('@xbbg/core surface', () => {
       'asubscribe',
     ] as const;
     for (const m of methods) {
-      expect(typeof api.blp[m]).toBe('function');
+      expectTypeOf(api.blp[m]).toBeFunction();
     }
   });
 
@@ -200,35 +242,15 @@ describe('@xbbg/core surface', () => {
 });
 
 describe('conflated market data options', () => {
-  function fakeNativeSubscription(): any {
-    return {
-      add: async () => undefined,
-      remove: async () => undefined,
-      nextUpdate: async () => null,
-      nextArrow: async () => null,
-      unsubscribe: async () => [],
-      unsubscribeArrow: async () => [],
-      tickers: ['ES1 Index'],
-      fields: ['BID', 'ASK'],
-      isActive: true,
-      stats: {
-        messagesReceived: 0,
-        droppedBatches: 0,
-        batchesSent: 0,
-        slowConsumer: false,
-        dataLossEvents: 0,
-        lastMessageUs: 0,
-        lastDataLossUs: 0,
-        effectiveOverflowPolicy: 'drop_newest',
-      },
-    };
-  }
-
   function fakeEngine(captured: Record<string, unknown>): api.Engine {
     const engine = Object.create(api.Engine.prototype) as api.Engine;
-    (engine as unknown as { _inner: unknown })._inner = {
-      subscribe: async (tickers: readonly string[], fields: readonly string[], allFields?: boolean) => {
-        captured.subscribe = { tickers, fields, allFields };
+    (engine as unknown as { inner: unknown }).inner = {
+      subscribe: async (
+        tickers: readonly string[],
+        fields: readonly string[],
+        allFields?: boolean,
+      ) => {
+        captured.subscribe = { allFields, fields, tickers };
         return fakeNativeSubscription();
       },
       subscribeWithOptions: async (
@@ -242,14 +264,14 @@ describe('conflated market data options', () => {
         allFields?: boolean,
       ) => {
         captured.subscribeWithOptions = {
-          service,
-          tickers,
-          fields,
-          options,
-          flushThreshold,
-          overflowPolicy,
-          streamCapacity,
           allFields,
+          fields,
+          flushThreshold,
+          options,
+          overflowPolicy,
+          service,
+          streamCapacity,
+          tickers,
         };
         return fakeNativeSubscription();
       },
@@ -263,18 +285,18 @@ describe('conflated market data options', () => {
 
     expect(captured.subscribe).toBeUndefined();
     expect(captured.subscribeWithOptions).toMatchObject({
-      service: '//blp/mktdata',
-      tickers: ['ES1 Index'],
       fields: ['BID', 'ASK'],
       options: ['conflate'],
+      service: '//blp/mktdata',
+      tickers: ['ES1 Index'],
     });
   });
 
   it('normalizes ampersand conflate and avoids duplicates', async () => {
     const captured: Record<string, unknown> = {};
     await fakeEngine(captured).subscribe(['ES1 Index'], ['BID', 'ASK'], {
-      options: ['&conflate'],
       conflate: true,
+      options: ['&conflate'],
     });
 
     expect(captured.subscribeWithOptions).toMatchObject({
@@ -291,21 +313,16 @@ describe('conflated market data options', () => {
   it('rejects conflate with interval options', async () => {
     await expect(
       fakeEngine({}).subscribe(['ES1 Index'], ['BID', 'ASK'], {
-        options: ['interval=5'],
         conflate: true,
+        options: ['interval=5'],
       }),
     ).rejects.toBeInstanceOf(api.BlpValidationError);
   });
 });
 
-
 describe('native Arrow zero-copy table construction', () => {
-  function typedBuffer(view: ArrayBufferView): Buffer {
-    return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
-  }
-
   it('constructs an Arrow table from native buffer descriptors', () => {
-    const prices = new Float64Array([50000.5, 0]);
+    const prices = new Float64Array([50_000.5, 0]);
     const sizes = new Int32Array([10, 20]);
     const offsets = new Int32Array([0, 13, 26]);
     const text = Buffer.from('XBTUSD CurncyIBM US Equity');
@@ -316,8 +333,6 @@ describe('native Arrow zero-copy table construction', () => {
     const binaryOffsets = new Int32Array([0, 2, 5]);
     const binaryValues = Buffer.from([0xde, 0xad, 0xbe, 0xef, 0x01]);
     const batch: NativeArrowZeroCopyBatch = {
-      kind: 'zeroCopy',
-      numRows: 2,
       columns: [
         {
           name: 'topic',
@@ -387,6 +402,8 @@ describe('native Arrow zero-copy table construction', () => {
           data: binaryValues,
         },
       ],
+      kind: 'zeroCopy',
+      numRows: 2,
     };
 
     const table = tableFromNativeArrowBatch(batch);
@@ -394,14 +411,14 @@ describe('native Arrow zero-copy table construction', () => {
     expect(table.numRows).toBe(2);
     expect(table.getChild('topic')?.get(0)).toBe('XBTUSD Curncy');
     expect(table.getChild('topic')?.get(1)).toBe('IBM US Equity');
-    expect(table.getChild('LAST_PRICE')?.get(0)).toBe(50000.5);
+    expect(table.getChild('LAST_PRICE')?.get(0)).toBe(50_000.5);
     expect(table.getChild('LAST_PRICE')?.get(1)).toBeNull();
     expect(table.getChild('SIZE')?.get(1)).toBe(20);
     expect(table.getChild('UPDATE_TIME')?.get(0)).toBe(45_000_000_000n);
     expect(table.getChild('QUANTITY')?.get(1)).toBe(4_000_000_000);
     expect(table.getChild('YIELD')?.get(0)).toBeCloseTo(1.25);
     expect(table.getChild('TRADE_DATE')?.get(0)).toBe(1_700_000_000_000);
-    expect(Array.from(table.getChild('PAYLOAD')?.get(1) ?? [])).toEqual([0xbe, 0xef, 0x01]);
+    expect([...(table.getChild('PAYLOAD')?.get(1) ?? [])]).toStrictEqual([0xbe, 0xef, 0x01]);
   });
 
   it('rejects native descriptors whose primitive data buffer is too small', () => {
@@ -420,13 +437,17 @@ describe('native Arrow zero-copy table construction', () => {
       ],
     };
 
-    expect(() => tableFromNativeArrowBatch(batch)).toThrow(/LAST_PRICE data buffer is too small/);
+    expect(() => tableFromNativeArrowBatch(batch)).toThrow(/LAST_PRICE data buffer is too small/u);
   });
 
-  it('Subscription.next uses native updates', async () => {
+  it('subscription.next uses native updates', async () => {
     const sub = new api.Subscription({
+      add: async () => {},
+      fields: [],
+      isActive: true,
+      nextArrow: async () => Promise.resolve(null),
       nextUpdate: async () =>
-        await Promise.resolve({
+        Promise.resolve({
           kind: 'update',
           topic: 'XBTUSD Curncy',
           topicId: 1,
@@ -436,29 +457,23 @@ describe('native Arrow zero-copy table construction', () => {
           values: [42],
           valueKinds: ['i32'],
         }),
-      nextArrow: async () => await Promise.resolve(null),
-      add: async () => {},
       remove: async () => {},
-      unsubscribe: async () => await Promise.resolve(null),
-      unsubscribeArrow: async () => await Promise.resolve(null),
+      stats: { batchesSent: 0, droppedBatches: 0, messagesReceived: 0, slowConsumer: false },
       tickers: [],
-      fields: [],
-      isActive: true,
-      stats: { messagesReceived: 0, droppedBatches: 0, batchesSent: 0, slowConsumer: false },
+      unsubscribe: async () => Promise.resolve(null),
+      unsubscribeArrow: async () => Promise.resolve(null),
     });
 
     const result = await sub.next();
 
-    expect(result.done).toBe(false);
+    expect(result.done).toBeFalsy();
     expect(result.value?.topic).toBe('XBTUSD Curncy');
     expect(result.value?.f64('answer')).toBe(42);
   });
 
-  it('Subscription.arrow drains native zero-copy batches', async () => {
+  it('subscription.arrow drains native zero-copy batches', async () => {
     const values = new Int32Array([7]);
     const batch: NativeArrowZeroCopyBatch = {
-      kind: 'zeroCopy',
-      numRows: 1,
       columns: [
         {
           name: 'answer',
@@ -469,18 +484,20 @@ describe('native Arrow zero-copy table construction', () => {
           data: typedBuffer(values),
         },
       ],
+      kind: 'zeroCopy',
+      numRows: 1,
     };
     const sub = new api.Subscription({
-      nextUpdate: async () => await Promise.resolve(null),
-      nextArrow: async () => await Promise.resolve(null),
       add: async () => {},
-      remove: async () => {},
-      unsubscribe: async () => await Promise.resolve(null),
-      unsubscribeArrow: async (drain) => await Promise.resolve(drain ? [batch] : null),
-      tickers: [],
       fields: [],
       isActive: true,
-      stats: { messagesReceived: 0, droppedBatches: 0, batchesSent: 0, slowConsumer: false },
+      nextArrow: async () => Promise.resolve(null),
+      nextUpdate: async () => Promise.resolve(null),
+      remove: async () => {},
+      stats: { batchesSent: 0, droppedBatches: 0, messagesReceived: 0, slowConsumer: false },
+      tickers: [],
+      unsubscribe: async () => Promise.resolve(null),
+      unsubscribeArrow: async (drain) => Promise.resolve(drain ? [batch] : null),
     });
 
     const drained = await sub.arrow().unsubscribe(true);
@@ -490,42 +507,28 @@ describe('native Arrow zero-copy table construction', () => {
   });
 });
 
-describe('Engine wrapper request plumbing', () => {
-  function captureRequests(): api.Engine & { readonly calls: RequestInput[] } {
-    const calls: RequestInput[] = [];
-    const engine = Object.create(api.Engine.prototype) as api.Engine & {
-      calls: RequestInput[];
-      request(params: RequestInput): Promise<unknown>;
-    };
-    engine.calls = calls;
-    engine.request = async (params: RequestInput): Promise<unknown> => {
-      calls.push(params);
-      return await Promise.resolve(params);
-    };
-    return engine;
-  }
-
+describe('engine wrapper request plumbing', () => {
   it('forwards allFields to native subscriptions', async () => {
     const calls: { method: string; args: unknown[] }[] = [];
     const nativeSub = {
-      nextArrow: async () => await Promise.resolve(null),
       add: async () => {},
-      remove: async () => {},
-      unsubscribeArrow: async () => await Promise.resolve(null),
-      tickers: [],
       fields: [],
       isActive: true,
-      stats: { messagesReceived: 0, droppedBatches: 0, batchesSent: 0, slowConsumer: false },
+      nextArrow: async () => Promise.resolve(null),
+      remove: async () => {},
+      stats: { batchesSent: 0, droppedBatches: 0, messagesReceived: 0, slowConsumer: false },
+      tickers: [],
+      unsubscribeArrow: async () => Promise.resolve(null),
     };
     const engine = Object.create(api.Engine.prototype) as api.Engine;
-    (engine as unknown as { _inner: unknown })._inner = {
+    (engine as unknown as { inner: unknown }).inner = {
       subscribe: async (...args: unknown[]) => {
-        calls.push({ method: 'subscribe', args });
-        return await Promise.resolve(nativeSub);
+        calls.push({ args, method: 'subscribe' });
+        return Promise.resolve(nativeSub);
       },
       subscribeWithOptions: async (...args: unknown[]) => {
-        calls.push({ method: 'subscribeWithOptions', args });
-        return await Promise.resolve(nativeSub);
+        calls.push({ args, method: 'subscribeWithOptions' });
+        return Promise.resolve(nativeSub);
       },
     };
 
@@ -533,12 +536,11 @@ describe('Engine wrapper request plumbing', () => {
     await engine.stream(['XETUSD Curncy'], ['LAST_PRICE'], { allFields: true });
     await engine.vwap(['XETUSD Curncy'], ['LAST_PRICE'], { allFields: false });
 
-    expect(calls[0]).toEqual({
-      method: 'subscribe',
+    expect(calls[0]).toStrictEqual({
       args: [['XETUSD Curncy'], ['LAST_PRICE'], true],
+      method: 'subscribe',
     });
-    expect(calls[1]).toEqual({
-      method: 'subscribeWithOptions',
+    expect(calls[1]).toStrictEqual({
       args: [
         '//blp/mktdata',
         ['XETUSD Curncy'],
@@ -549,8 +551,9 @@ describe('Engine wrapper request plumbing', () => {
         undefined,
         true,
       ],
+      method: 'subscribeWithOptions',
     });
-    expect(calls[2]?.args.at(-1)).toBe(false);
+    expect(calls[2]?.args.at(-1)).toBeFalsy();
   });
 
   it('forwards per-request validation toggles for reference and history wrappers', async () => {
@@ -559,40 +562,40 @@ describe('Engine wrapper request plumbing', () => {
     await engine.bdp(['IBM US Equity'], ['PX_LAST'], { validateFields: true });
     await engine.bds(['IBM US Equity'], ['DVD_HIST'], { validateFields: false });
     await engine.bdh(['IBM US Equity'], ['PX_LAST'], {
-      start: '2024-01-01',
       end: '2024-01-02',
+      start: '2024-01-01',
       validateFields: true,
     });
 
-    expect(engine.calls[0]?.validateFields).toBe(true);
-    expect(engine.calls[1]?.validateFields).toBe(false);
-    expect(engine.calls[2]?.validateFields).toBe(true);
+    expect(engine.calls[0]?.validateFields).toBeTruthy();
+    expect(engine.calls[1]?.validateFields).toBeFalsy();
+    expect(engine.calls[2]?.validateFields).toBeTruthy();
   });
 
   it('forwards intraday timezone controls and typed tick include options', async () => {
     const engine = captureRequests();
 
     await engine.bdib('IBM US Equity', {
-      start: '2024-01-02T09:30:00',
       end: '2024-01-02T10:00:00',
-      requestTz: 'NY',
       outputTz: 'exchange',
+      requestTz: 'NY',
+      start: '2024-01-02T09:30:00',
     });
     await engine.bdtick('IBM US Equity', {
-      start: '2024-01-02T09:30:00',
       end: '2024-01-02T10:00:00',
-      requestTz: 'NY',
-      outputTz: 'NY',
       includeConditionCodes: true,
       includeExchangeCodes: true,
       kwargs: { customOption: 'customValue' },
+      outputTz: 'NY',
+      requestTz: 'NY',
+      start: '2024-01-02T09:30:00',
     });
 
     expect(engine.calls[0]?.requestTz).toBe('NY');
     expect(engine.calls[0]?.outputTz).toBe('exchange');
     expect(engine.calls[1]?.requestTz).toBe('NY');
     expect(engine.calls[1]?.outputTz).toBe('NY');
-    expect(engine.calls[1]?.kwargs).toEqual(
+    expect(engine.calls[1]?.kwargs).toStrictEqual(
       expect.arrayContaining([
         { key: 'customOption', value: 'customValue' },
         { key: 'includeConditionCodes', value: 'true' },
@@ -601,10 +604,10 @@ describe('Engine wrapper request plumbing', () => {
     );
 
     await engine.bdtick('IBM US Equity', {
-      start: '2024-01-02T09:30:00',
       end: '2024-01-02T10:00:00',
       includeConditionCodes: false,
       kwargs: { includeConditionCodes: true },
+      start: '2024-01-02T09:30:00',
     });
     expect(engine.calls[2]?.kwargs).toContainEqual({
       key: 'includeConditionCodes',
@@ -613,18 +616,114 @@ describe('Engine wrapper request plumbing', () => {
   });
 
   it('rejects unknown backend strings instead of silently returning Arrow', async () => {
-    const engine = Object.create(api.Engine.prototype);
-    engine._inner = {
-      request: async () => await Promise.resolve(Buffer.alloc(0)),
+    const engine = Object.create(api.Engine.prototype) as api.Engine;
+    (engine as unknown as { inner: unknown }).inner = {
+      request: async () => Promise.resolve(Buffer.alloc(0)),
     };
 
-    await expect(
-      engine.request({ service: '//blp/refdata', operation: 'ReferenceDataRequest', backend: 'bogus' }),
-    ).rejects.toThrow('Unsupported @xbbg/core backend');
+    const invalidRequest = {
+      backend: 'bogus',
+      operation: 'ReferenceDataRequest',
+      service: '//blp/refdata',
+    };
+    const request = engine.request.bind(engine) as (params: unknown) => Promise<unknown>;
+    await expect(request(invalidRequest)).rejects.toThrow('Unsupported @xbbg/core backend');
   });
 });
 
-describe('Engine instantiation', () => {
+describe('recipe wrapper forwarding', () => {
+  it('forwards new workflow options to native recipe methods', async () => {
+    const engine = Object.create(api.Engine.prototype) as api.Engine;
+    const calls: Record<string, unknown[]> = {};
+    (engine as unknown as { inner: unknown }).inner = {
+      recipeFuturesCurve: async (...args: unknown[]) => {
+        calls.futuresCurve = args;
+        throw new Error('stop');
+      },
+      recipeVolSurface: async (...args: unknown[]) => {
+        calls.volSurface = args;
+        throw new Error('stop');
+      },
+      recipeDividendYield: async (...args: unknown[]) => {
+        calls.dividendYield = args;
+        throw new Error('stop');
+      },
+      recipeIndexMembers: async (...args: unknown[]) => {
+        calls.indexMembers = args;
+        throw new Error('stop');
+      },
+      recipeResolveIsins: async (...args: unknown[]) => {
+        calls.resolveIsins = args;
+        throw new Error('stop');
+      },
+      recipeIssuerIsins: async (...args: unknown[]) => {
+        calls.issuerIsins = args;
+        throw new Error('stop');
+      },
+    };
+
+    await expect(
+      engine.futuresCurve('ES1 Index', {
+        asof: '2024-01-02',
+        chainField: 'FUT_CHAIN_LAST_TRADE_DATES',
+        fields: ['PX_BID'],
+        maxContracts: 4,
+      }),
+    ).rejects.toThrow('stop');
+    await expect(
+      engine.volSurface('SPX Index', '2024-01-02', '2024-01-03', {
+        preset: ['MONEYNESS_30D'],
+        fields: {
+          CUSTOM_VOL: { metric: 'implied_volatility', tenor: '1M', pointType: 'custom', point: 1 },
+        },
+        includeDerived: true,
+        riskFreeRate: 0.05,
+      }),
+    ).rejects.toThrow('stop');
+    await expect(
+      engine.dividendYield('AAPL US Equity', '2024-01-01', '2024-12-31', {
+        dividendTypes: ['Regular Cash'],
+        windowDays: 365,
+      }),
+    ).rejects.toThrow('stop');
+    await expect(
+      engine.indexMembers('SPX Index', { field: 'INDX_MWEIGHT', asof: '2024-01-02' }),
+    ).rejects.toThrow('stop');
+    await expect(engine.resolveIsins(['US0378331005', 'BAD'])).rejects.toThrow('stop');
+    await expect(engine.issuerIsins('US037833FB15')).rejects.toThrow('stop');
+
+    expect(calls.futuresCurve).toStrictEqual([
+      'ES1 Index',
+      '20240102',
+      'FUT_CHAIN_LAST_TRADE_DATES',
+      ['PX_BID'],
+      4,
+    ]);
+    expect(calls.volSurface).toStrictEqual([
+      ['SPX Index'],
+      '20240102',
+      '20240103',
+      ['MONEYNESS_30D'],
+      ['CUSTOM_VOL|implied_volatility|1M|custom|1'],
+      true,
+      true,
+      0.05,
+      undefined,
+    ]);
+    expect(calls.dividendYield).toStrictEqual([
+      ['AAPL US Equity'],
+      '20240101',
+      '20241231',
+      ['Regular Cash'],
+      365,
+    ]);
+    expect(calls.indexMembers).toStrictEqual(['SPX Index', 'INDX_MWEIGHT', '20240102']);
+    expect(calls.resolveIsins).toStrictEqual([['US0378331005', 'BAD']]);
+    expect(calls.issuerIsins).toStrictEqual([['US037833FB15']]);
+  });
+});
+
+describe('engine instantiation', () => {
   it('new Engine(host, port) exposes expected methods', () => {
     try {
       const engine: any = new api.Engine(SESSION_HOST, SESSION_PORT);
@@ -659,11 +758,17 @@ describe('Engine instantiation', () => {
         'corporateBonds',
         'futTicker',
         'activeFutures',
+        'futuresCurve',
         'cdxTicker',
         'activeCdx',
         'dividend',
+        'dividendYield',
         'turnover',
         'etfHoldings',
+        'volSurface',
+        'indexMembers',
+        'resolveIsins',
+        'issuerIsins',
         'currencyConversion',
         'subscribe',
         'subscribeWithOptions',
@@ -695,29 +800,29 @@ describe('Engine instantiation', () => {
       for (const method of syncMethods) {
         expect(typeof engine[method]).toBe('function');
       }
-    } catch (err) {
-      if (nativeUnavailable(err)) {
+    } catch (error) {
+      if (nativeUnavailable(error)) {
         console.warn('Engine instantiation skipped: native module or session unavailable');
         return;
       }
-      throw err;
+      throw error;
     }
   });
 
-  it('Engine.withConfig returns an Engine', () => {
+  it('engine.withConfig returns an Engine', () => {
     try {
       const engine = api.Engine.withConfig({ host: SESSION_HOST, port: SESSION_PORT });
       expect(engine).toBeInstanceOf(api.Engine);
-    } catch (err) {
-      if (nativeUnavailable(err)) {
+    } catch (error) {
+      if (nativeUnavailable(error)) {
         console.warn('Engine.withConfig skipped: native module or session unavailable');
         return;
       }
-      throw err;
+      throw error;
     }
   });
 
-  it('Subscription prototype exposes async iterator + methods', () => {
+  it('subscription prototype exposes async iterator + methods', () => {
     const subProto = api.Subscription.prototype as any;
     expect(typeof subProto.next).toBe('function');
     expect(typeof subProto.add).toBe('function');

@@ -10,9 +10,14 @@ use xbbg_ext::transforms::fixed_income::YieldType;
 
 use crate::{native_arrow::record_batch_to_arrow_record_batch, PyEngine};
 
-/// Convert a RecipeError to a Python RuntimeError.
+/// Convert a RecipeError to a Python exception.
 fn recipe_err(e: xbbg_recipes::RecipeError) -> PyErr {
-    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+    match e {
+        xbbg_recipes::RecipeError::InvalidArgument(message) => {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(message)
+        }
+        other => PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(other.to_string()),
+    }
 }
 
 macro_rules! recipe_wrapper {
@@ -215,6 +220,36 @@ recipe_wrapper!(
 );
 
 recipe_wrapper!(
+    /// Build a futures chain table with contract metadata, mid, and annualized carry.
+    ///
+    /// Args:
+    ///     engine: Bloomberg engine instance
+    ///     gen_ticker: Generic futures ticker (e.g., "ES1 Index")
+    ///     asof: Optional chain date (YYYYMMDD format)
+    ///     chain_field: Bloomberg bulk chain field (default FUT_CHAIN_LAST_TRADE_DATES)
+    ///     fields: Contract metadata fields to retrieve
+    ///     max_contracts: Optional positive row limit
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
+#[pyfunction]
+    #[pyo3(signature = (engine, gen_ticker, asof=None, chain_field=None, fields=None, max_contracts=None))]
+    |eng|
+    fn recipe_futures_curve(
+        gen_ticker: String,
+        asof: Option<String>,
+        chain_field: Option<String>,
+        fields: Option<Vec<String>>,
+        max_contracts: Option<i32>,
+    ) => xbbg_recipes::futures::recipe_futures_curve(
+        &eng,
+        gen_ticker,
+        asof,
+        chain_field,
+        fields,
+        max_contracts,
+    )
+);
+
+recipe_wrapper!(
     /// Resolve a generic CDX ticker to the active specific series.
     ///
     /// Args:
@@ -276,6 +311,36 @@ recipe_wrapper!(
 );
 
 recipe_wrapper!(
+    /// Compute trailing realized dividend amount and trailing dividend yield.
+    ///
+    /// Args:
+    ///     engine: Bloomberg engine instance
+    ///     tickers: Securities to query
+    ///     start_date: Start date (YYYYMMDD format)
+    ///     end_date: End date (YYYYMMDD format)
+    ///     dividend_types: Dividend event type filter
+    ///     window_days: Rolling trailing window in calendar days
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
+#[pyfunction]
+    #[pyo3(signature = (engine, tickers, start_date, end_date, dividend_types=None, window_days=None))]
+    |eng|
+    fn recipe_dividend_yield(
+        tickers: Vec<String>,
+        start_date: String,
+        end_date: String,
+        dividend_types: Option<Vec<String>>,
+        window_days: Option<i32>,
+    ) => xbbg_recipes::historical::recipe_dividend_yield(
+        &eng,
+        tickers,
+        start_date,
+        end_date,
+        dividend_types,
+        window_days,
+    )
+);
+
+recipe_wrapper!(
     /// Fetch trading volume and turnover for securities.
     ///
     /// Args:
@@ -323,6 +388,76 @@ recipe_wrapper!(
 );
 
 // =============================================================================
+// Volatility / Index / Identifier Recipes
+// =============================================================================
+
+recipe_wrapper!(
+    /// Build a tidy historical implied volatility surface.
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
+#[pyfunction]
+    #[pyo3(signature = (engine, tickers, start_date, end_date, presets=None, field_specs=None, as_decimal=Some(true), include_derived=Some(false), risk_free_rate=None, dividend_yield_field=None))]
+    #[allow(clippy::too_many_arguments)]
+    |eng|
+    fn recipe_vol_surface(
+        tickers: Vec<String>,
+        start_date: String,
+        end_date: String,
+        presets: Option<Vec<String>>,
+        field_specs: Option<Vec<String>>,
+        as_decimal: Option<bool>,
+        include_derived: Option<bool>,
+        risk_free_rate: Option<f64>,
+        dividend_yield_field: Option<String>,
+    ) => xbbg_recipes::volatility::recipe_vol_surface(
+        &eng,
+        tickers,
+        start_date,
+        end_date,
+        presets,
+        field_specs,
+        as_decimal,
+        include_derived,
+        risk_free_rate,
+        dividend_yield_field,
+    )
+);
+
+recipe_wrapper!(
+    /// Fetch normalized index members from Bloomberg bulk constituent fields.
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
+#[pyfunction]
+    #[pyo3(signature = (engine, index, field=None, asof=None))]
+    |eng|
+    fn recipe_index_members(
+        index: String,
+        field: Option<String>,
+        asof: Option<String>,
+    ) => xbbg_recipes::indices::recipe_index_members(&eng, index, field, asof)
+);
+
+recipe_wrapper!(
+    /// Resolve equity ISINs through Bloomberg `/ISIN/<id>` lookups.
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
+#[pyfunction]
+    #[pyo3(signature = (engine, isins))]
+    |eng|
+    fn recipe_resolve_isins(
+        isins: Vec<String>,
+    ) => xbbg_recipes::identifiers::recipe_resolve_isins(&eng, isins)
+);
+
+recipe_wrapper!(
+    /// Resolve bond ISINs to issuer equity ISINs.
+    #[cfg_attr(feature = "stub-gen", gen_stub_pyfunction)]
+#[pyfunction]
+    #[pyo3(signature = (engine, bond_isins))]
+    |eng|
+    fn recipe_issuer_isins(
+        bond_isins: Vec<String>,
+    ) => xbbg_recipes::identifiers::recipe_issuer_isins(&eng, bond_isins)
+);
+
+// =============================================================================
 // Currency Recipes
 // =============================================================================
 
@@ -363,11 +498,17 @@ pub fn register_recipes_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
         recipe_bqr,
         recipe_fut_ticker,
         recipe_active_futures,
+        recipe_futures_curve,
         recipe_cdx_ticker,
         recipe_active_cdx,
         recipe_dividend,
+        recipe_dividend_yield,
         recipe_turnover,
         recipe_etf_holdings,
+        recipe_vol_surface,
+        recipe_index_members,
+        recipe_resolve_isins,
+        recipe_issuer_isins,
         recipe_currency_conversion,
     )
 }
