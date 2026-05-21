@@ -31,6 +31,8 @@ const SERVICE_OPEN_CID_TAG: i64 = 1_i64 << 62;
 /// Max wall time we'll wait for an async open_service reply.
 const SERVICE_OPEN_TIMEOUT_MS: u64 = 10_000;
 
+const EXCEL_GET_GRID_OPERATION: &str = "ExcelGetGridRequest";
+
 use super::dispatch::DispatchKey;
 use super::state::{
     BqlState, BsrchState, BulkDataState, FieldInfoState, GenericState, HistDataState,
@@ -65,6 +67,44 @@ fn apply_named_request_parameter(
         }
     } else if request.set_str(name, value).is_err() {
         request.append_str(name, value)?;
+    }
+
+    Ok(())
+}
+
+fn apply_excel_grid_request_parameters(
+    request: &mut xbbg_core::Request,
+    params: &RequestParams,
+) -> Result<(), BlpError> {
+    if let Some(domain) = params
+        .elements
+        .iter()
+        .flat_map(|pairs| pairs.iter())
+        .rev()
+        .find(|(name, _)| name.eq_ignore_ascii_case("Domain"))
+        .map(|(_, value)| value.as_str())
+    {
+        request.set_str("Domain", domain)?;
+    }
+
+    let Some(overrides) = params
+        .overrides
+        .as_ref()
+        .filter(|values| !values.is_empty())
+    else {
+        return Ok(());
+    };
+
+    let overrides_ptr = request.get_or_create_element("Overrides")?;
+    for (name, value) in overrides {
+        if name.is_empty() {
+            continue;
+        }
+        // SAFETY: overrides_ptr is a valid element obtained from get_or_create_element;
+        // entry_ptr is valid from append_element and belongs to this request.
+        let entry_ptr = unsafe { request.append_element(overrides_ptr)? };
+        unsafe { request.set_element_string(entry_ptr, "name", name)? };
+        unsafe { request.set_element_string(entry_ptr, "value", value)? };
     }
 
     Ok(())
@@ -796,6 +836,11 @@ impl RequestWorker {
         xbbg_log::trace!(operation = %operation, "creating request");
         let mut request = service.create_request(operation)?;
         xbbg_log::trace!("request created");
+
+        if params.effective_operation() == EXCEL_GET_GRID_OPERATION {
+            apply_excel_grid_request_parameters(&mut request, params)?;
+            return Ok(request);
+        }
 
         // Set securities (multi or single)
         if let Some(ref securities) = params.securities {

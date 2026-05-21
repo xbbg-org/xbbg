@@ -879,10 +879,17 @@ impl RequestParams {
         }
     }
 
+    pub(crate) fn is_excel_get_grid_request(&self) -> bool {
+        matches!(
+            parse_operation_lossless(self.effective_operation()),
+            Operation::ExcelGetGrid
+        )
+    }
+
     /// Apply default values derived from operation semantics.
     pub fn with_defaults(mut self) -> Self {
         if !self.extractor_set && self.extractor == ExtractorType::default() {
-            let operation = parse_operation_lossless(&self.operation);
+            let operation = parse_operation_lossless(self.effective_operation());
             self.extractor = operation.default_extractor();
         }
         self
@@ -1108,6 +1115,43 @@ impl RequestParams {
             .as_ref()
             .is_some_and(|value| !value.is_empty())
     }
+}
+
+fn normalize_excel_grid_params(params: &mut RequestParams, kwargs: HashMap<String, String>) {
+    let mut domain: Option<String> = None;
+    let mut grid_overrides: Vec<(String, String)> = Vec::new();
+
+    fn route_pair(
+        domain: &mut Option<String>,
+        grid_overrides: &mut Vec<(String, String)>,
+        key: String,
+        value: String,
+    ) {
+        if key.eq_ignore_ascii_case("Domain") {
+            *domain = Some(value);
+        } else if !key.is_empty() && !key.eq_ignore_ascii_case("Overrides") {
+            grid_overrides.push((key, value));
+        }
+    }
+
+    for (key, value) in params.elements.take().unwrap_or_default() {
+        route_pair(&mut domain, &mut grid_overrides, key, value);
+    }
+
+    for (key, value) in params.overrides.take().unwrap_or_default() {
+        route_pair(&mut domain, &mut grid_overrides, key, value);
+    }
+
+    let mut keys: Vec<String> = kwargs.keys().cloned().collect();
+    keys.sort();
+    for key in keys {
+        if let Some(value) = kwargs.get(&key) {
+            route_pair(&mut domain, &mut grid_overrides, key, value.clone());
+        }
+    }
+
+    params.elements = domain.map(|value| vec![("Domain".to_string(), value)]);
+    params.overrides = (!grid_overrides.is_empty()).then_some(grid_overrides);
 }
 
 fn merge_raw_kwargs_into_elements(params: &mut RequestParams, kwargs: HashMap<String, String>) {
@@ -1415,6 +1459,11 @@ impl Engine {
         params.validate()?;
 
         let kwargs = params.kwargs.take().unwrap_or_default();
+        if params.is_excel_get_grid_request() {
+            normalize_excel_grid_params(&mut params, kwargs);
+            return Ok(params);
+        }
+
         if params.is_raw_request() {
             merge_raw_kwargs_into_elements(&mut params, kwargs);
             return Ok(params);
@@ -2363,6 +2412,63 @@ mod tests {
                 ("zeta".to_string(), "9".to_string()),
             ])
         );
+    }
+
+    #[test]
+    fn normalize_excel_grid_params_routes_domain_and_grid_overrides() {
+        let mut params = RequestParams {
+            operation: Operation::ExcelGetGrid.to_string(),
+            elements: Some(vec![
+                ("Domain".to_string(), "FI:OLD".to_string()),
+                ("provider".to_string(), "wsi".to_string()),
+            ]),
+            overrides: Some(vec![
+                ("location".to_string(), "nwe".to_string()),
+                ("Domain".to_string(), "COMDTY:WEATHER".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        normalize_excel_grid_params(
+            &mut params,
+            HashMap::from([("model".to_string(), "ecmwf".to_string())]),
+        );
+
+        assert_eq!(
+            params.elements,
+            Some(vec![("Domain".to_string(), "COMDTY:WEATHER".to_string())])
+        );
+        assert_eq!(
+            params.overrides,
+            Some(vec![
+                ("provider".to_string(), "wsi".to_string()),
+                ("location".to_string(), "nwe".to_string()),
+                ("model".to_string(), "ecmwf".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn excel_grid_detection_uses_raw_request_operation() {
+        let params = RequestParams {
+            operation: Operation::RawRequest.to_string(),
+            request_operation: Some(Operation::ExcelGetGrid.to_string()),
+            ..Default::default()
+        };
+
+        assert!(params.is_excel_get_grid_request());
+    }
+
+    #[test]
+    fn raw_excel_grid_defaults_to_bsrch_extractor() {
+        let params = RequestParams {
+            operation: Operation::RawRequest.to_string(),
+            request_operation: Some(Operation::ExcelGetGrid.to_string()),
+            ..Default::default()
+        }
+        .with_defaults();
+
+        assert_eq!(params.extractor, ExtractorType::Bsrch);
     }
 
     #[test]

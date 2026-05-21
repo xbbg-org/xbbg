@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 import concurrent.futures
 import contextvars
 from dataclasses import dataclass, field
@@ -1686,9 +1686,10 @@ async def arequest(
         override_tuples: list[tuple[str, str]] = (
             [(str(k), str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
         )
-        # For BQL and bsrch services, pass overrides as generic elements (not Bloomberg field overrides)
+        # BQL accepts query parameters as request elements. Other services keep
+        # overrides as Bloomberg override tuples unless an endpoint builder says otherwise.
         service_str = service.value if isinstance(service, Service) else service
-        if service_str in (Service.BQLSVC.value, Service.EXRSVC.value):
+        if service_str == Service.BQLSVC.value:
             if elements_list:
                 elements_list.extend(override_tuples)
             else:
@@ -3642,7 +3643,10 @@ async def absrch(
     Args:
         domain: The saved search domain/name (e.g., "FI:SOVR", "COMDTY:PRECIOUS").
         backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Additional search parameters passed as request elements.
+        **kwargs: Search parameters. Direct keyword arguments, and legacy
+            ``overrides={...}`` mappings or ``(name, value)`` pairs, are sent
+            as ExcelGetGrid overrides. ``Domain`` is sent as the request's
+            top-level domain element.
 
     Returns:
         DataFrame with columns from the saved search results.
@@ -4408,14 +4412,51 @@ async def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
     )
 
 
+def _normalize_grid_override_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
+
+
+def _iter_grid_override_pairs(value: Any) -> Iterable[tuple[Any, Any]]:
+    if value is None:
+        return ()
+    if isinstance(value, Mapping):
+        return value.items()
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        pairs: list[tuple[Any, Any]] = []
+        for item in value:
+            if isinstance(item, (str, bytes, bytearray)) or not isinstance(item, Sequence) or len(item) != 2:
+                raise TypeError("bsrch overrides must be a mapping or a sequence of (name, value) pairs")
+            pairs.append((item[0], item[1]))
+        return pairs
+    raise TypeError("bsrch overrides must be a mapping or a sequence of (name, value) pairs")
+
+
 def _build_absrch_plan(args: dict[str, Any]) -> _EndpointPlan:
     kwargs = dict(args.get("kwargs", {}))
-    overrides: dict[str, str] = {"Domain": args["domain"]}
+    domain = str(args["domain"])
+    grid_overrides: list[tuple[str, str]] = []
+
+    def add_grid_override(key: Any, value: Any) -> None:
+        nonlocal domain
+        name = str(key)
+        if name.lower() == "domain":
+            domain = str(value)
+            return
+        grid_overrides.append((name, _normalize_grid_override_value(value)))
+
+    for key, value in _iter_grid_override_pairs(kwargs.pop("overrides", None)):
+        add_grid_override(key, value)
     for key, value in kwargs.items():
-        overrides[key] = str(value)
+        add_grid_override(key, value)
+
+    request_kwargs: dict[str, Any] = {"elements": [("Domain", domain)]}
+    if grid_overrides:
+        request_kwargs["overrides"] = grid_overrides
 
     return _EndpointPlan(
-        request_kwargs={"overrides": overrides},
+        request_kwargs=request_kwargs,
         backend=args.get("backend"),
     )
 

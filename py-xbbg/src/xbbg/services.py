@@ -58,7 +58,7 @@ class RequestParams:
         security: Single security identifier (for intraday requests).
         fields: List of field names to retrieve.
         overrides: List of (field, value) tuples for field overrides.
-        elements: List of (name, value) tuples for generic request elements (BQL, bsrch).
+        elements: List of (name, value) tuples for generic request elements (for example BQL or BSRCH Domain).
         start_date: Start date for historical requests. Accepts ISO 8601 /
             ``YYYYMMDD`` string, ``"today"``, ``datetime.date``,
             ``datetime.datetime``, or ``pd.Timestamp``.

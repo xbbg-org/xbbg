@@ -157,6 +157,20 @@ def skip_if_subscription_unavailable(exc: Exception, context: str) -> None:
     raise exc
 
 
+def skip_if_bsrch_unavailable(exc: Exception, context: str) -> None:
+    """Skip saved-search tests when Bloomberg rejects the account/domain."""
+    if isinstance(exc, AssertionError):
+        raise exc
+    message = str(exc)
+    unavailable_markers = (
+        "Problem accessing the saved search",
+        "NOT_ENTITLED",
+    )
+    if any(marker in message for marker in unavailable_markers):
+        pytest.skip(f"{context} BSRCH not available in this Bloomberg environment: {exc}")
+    raise exc
+
+
 # =============================================================================
 # BDP Tests - Reference Data
 # =============================================================================
@@ -1545,7 +1559,10 @@ class TestBsrch:
         """BSRCH: basic search query."""
         from xbbg import bsrch
 
-        df = bsrch("FI:SOVR")
+        try:
+            df = bsrch("FI:SOVR")
+        except Exception as e:
+            skip_if_bsrch_unavailable(e, "FI:SOVR")
         if len(df) == 0:
             pytest.skip("bsrch returned 0 rows (domain may not be available for this account)")
         logger.info(f"  Got {len(df)} search results")
@@ -1559,7 +1576,10 @@ class TestAbsrch:
         """ABSRCH: basic async search."""
         from xbbg import absrch
 
-        df = await absrch("FI:SOVR")
+        try:
+            df = await absrch("FI:SOVR")
+        except Exception as e:
+            skip_if_bsrch_unavailable(e, "FI:SOVR")
         if len(df) == 0:
             pytest.skip("absrch returned 0 rows (domain may not be available for this account)")
         logger.info(f"  Async search result: {len(df)} rows")
