@@ -3643,8 +3643,8 @@ async def absrch(
     Args:
         domain: The saved search domain/name (e.g., "FI:SOVR", "COMDTY:PRECIOUS").
         backend: DataFrame backend to return. If None, uses global default.
-        **kwargs: Search parameters. Direct keyword arguments, and legacy
-            ``overrides={...}`` mappings or ``(name, value)`` pairs, are sent
+        **kwargs: Search parameters. Direct keyword arguments and explicit
+            ``overrides={...}`` mappings or ``(name, value)`` pairs are sent
             as ExcelGetGrid overrides. ``Domain`` is sent as the request's
             top-level domain element.
 
