@@ -86,7 +86,7 @@ def test_absrch_plan_routes_search_kwargs_to_excel_grid_overrides():
     assert plan.backend is None
 
 
-def test_absrch_plan_accepts_legacy_override_pairs():
+def test_absrch_plan_accepts_explicit_override_pairs():
     plan = blp._build_absrch_plan(
         {
             "domain": "COMDTY:WEATHER",
