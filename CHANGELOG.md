@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-05-22
+
 ### Added
 
 - **Native-backed extension workflow parity across Python and JavaScript**: Added shared Rust recipe implementations and bindings for futures curves, volatility surfaces, dividend yield, index members, and ISIN workflows, giving the Python `xbbg.ext` helpers and `@xbbg/core` JavaScript client the same backend-neutral Bloomberg workflows with typed Arrow extraction.
@@ -1349,7 +1351,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.3...HEAD
+[1.2.3]: https://github.com/alpha-xone/xbbg/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/alpha-xone/xbbg/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/alpha-xone/xbbg/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alpha-xone/xbbg/compare/v1.1.2...v1.2.0
