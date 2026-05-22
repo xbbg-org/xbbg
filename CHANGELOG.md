@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Native-backed extension workflow parity across Python and JavaScript**: Added shared Rust recipe implementations and bindings for futures curves, volatility surfaces, dividend yield, index members, and ISIN workflows, giving the Python `xbbg.ext` helpers and `@xbbg/core` JavaScript client the same backend-neutral Bloomberg workflows with typed Arrow extraction.
+
+### Changed
+
+- **`@xbbg/core` npm package and TypeScript tooling hardening**: JS build, packaging, validation, and subscription replay tooling now run through TypeScript sources, stricter Oxfmt/Oxlint/ESLint/TypeScript checks, packed-install smoke validation, package metadata validation, and platform package loaders for the native `@xbbg/core-*` packages.
+- **README and JavaScript usage documentation**: The root and JS READMEs now clarify JavaScript package usage, native package packaging behavior, raw subscription output, and subscription workflow details.
+
 ### Fixed
 
 - **`bsrch` / `absrch` Excel grid requests restored (#333, #334)**: Python now sends BSRCH search parameters as `ExcelGetGridRequest` `Overrides[]` entries while keeping `Domain` as the top-level request element, so Excel-style weather searches no longer fail with Bloomberg element validation errors. The Rust extractor now parses `GridResponse.ColumnTitles[]` and `DataRecords[].DataFields[]` directly instead of the BEQS schema, preserves Bloomberg column names, propagates grid errors, and validates reported row/field counts rather than returning an empty placeholder ticker column.
 - **`bsrch` / `absrch` request plumbing hardened (#333, #334)**: Low-level `arequest()` now preserves `//blp/exrsvc` overrides as overrides instead of rewriting them into root elements, and the Rust engine normalizes `ExcelGetGridRequest` `Domain`/override pairs consistently across generated endpoints, raw requests, and direct request kwargs. `RawRequest` calls whose effective operation is `ExcelGetGridRequest` now pick the BSRCH extractor by default, with regression coverage for malformed Python override pairs and live weather-grid requests.
+- **Release and CI hardening**: CI and release workflows now choose the latest Bloomberg C++ SDK version with downloadable Linux, macOS, and Windows archives instead of assuming the newest Python `blpapi` wheel has matching C++ SDK artifacts, keeping Python and npm release builds reproducible when Bloomberg publishes package families asynchronously. The MCP server build also annotates the macro-generated tool router field so strict cross-platform Clippy checks remain green.
 
 ## [1.2.2] - 2026-05-06
 
