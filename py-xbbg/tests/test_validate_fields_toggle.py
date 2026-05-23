@@ -68,6 +68,29 @@ async def test_arequest_passes_validate_fields_to_engine(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_arequest_maps_native_validation_error_to_public_exception(monkeypatch):
+    """Native validation errors should be catchable via xbbg.exceptions."""
+    from xbbg import blp
+    from xbbg import _core
+    from xbbg.exceptions import BlpValidationError
+
+    class FakeEngine:
+        async def request(self, _params_dict):
+            raise _core.BlpValidationError("Configuration error: Unknown Bloomberg field(s): BAD_FIELD")
+
+    monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
+
+    with pytest.raises(BlpValidationError, match="Unknown Bloomberg field"):
+        await blp.arequest(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=["IBM US Equity"],
+            fields=["BAD_FIELD"],
+            validate_fields=True,
+        )
+
+
+@pytest.mark.asyncio
 async def test_abdp_forwards_validate_fields(monkeypatch):
     """abdp() should forward validate_fields to arequest()."""
     from xbbg import blp
