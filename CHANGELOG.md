@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bsrch` / `absrch` live SRCH grids with `NumOfFields=0` (#334)**: Treat Bloomberg `GridResponse.NumOfFields = 0` as "not reported" instead of validating it against populated `ColumnTitles[]` / `DataRecords[].DataFields[]`, matching live `ExcelGetGridRequest` payloads that carry rows and titles while reporting zero fields.
+
 ## [1.2.3] - 2026-05-22
 
 ### Added
