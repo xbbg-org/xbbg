@@ -1516,6 +1516,15 @@ def _convert_backend(
     return nw.from_native(table)
 
 
+def _normalize_engine_exception(exc: Exception) -> Exception:
+    from . import _core
+    from .exceptions import BlpValidationError
+
+    if isinstance(exc, _core.BlpValidationError) and not isinstance(exc, BlpValidationError):
+        return BlpValidationError.from_rust_error(str(exc))
+    return exc
+
+
 async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
     engine = _get_engine()
     started = time.perf_counter()
@@ -1523,9 +1532,12 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
     try:
         batch = await engine.request(context.params_dict)
     except Exception as exc:
+        mapped = _normalize_engine_exception(exc)
         context.elapsed_ms = (time.perf_counter() - started) * 1000
-        context.error = exc
-        raise
+        context.error = mapped
+        if mapped is exc:
+            raise
+        raise mapped from exc
 
     context.batch = batch
     context.elapsed_ms = (time.perf_counter() - started) * 1000
