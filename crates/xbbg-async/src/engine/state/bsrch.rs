@@ -5,7 +5,7 @@
 //!
 //! ```text
 //! GridResponse {
-//!   NumOfFields
+//!   NumOfFields (0 means Bloomberg did not report the field count)
 //!   NumOfRecords
 //!   ColumnTitles[]
 //!   DataRecords[] {
@@ -49,7 +49,7 @@ pub struct BsrchState {
     error: Option<String>,
     /// Bloomberg reported `NumOfRecords` total across processed pages.
     expected_records: Option<usize>,
-    /// Bloomberg reported `NumOfFields`, if present.
+    /// Bloomberg reported positive `NumOfFields`, if present.
     expected_fields: Option<usize>,
     /// Reply channel.
     pub reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
@@ -143,7 +143,7 @@ impl BsrchState {
         let root = msg.elements();
         let mut page = ProcessedGridPage {
             num_records: element_i32_usize(&root, "NumOfRecords"),
-            num_fields: element_i32_usize(&root, "NumOfFields"),
+            num_fields: element_reported_num_fields(&root, "NumOfFields"),
             reach_max: root
                 .get_by_str("ReachMax")
                 .and_then(|value| value.get_bool(0))
@@ -177,10 +177,11 @@ impl BsrchState {
         };
 
         for record in records.values() {
-            let expected_width = page
-                .num_fields
-                .or(self.expected_fields)
-                .or_else(|| (!self.column_names.is_empty()).then_some(self.column_names.len()));
+            let expected_width = expected_record_width(
+                page.num_fields,
+                self.expected_fields,
+                self.column_names.len(),
+            );
 
             let Some(fields) = record.get_by_str("DataFields") else {
                 if let Some(width) = expected_width.filter(|width| *width > 0) {
@@ -363,6 +364,24 @@ fn element_i32_usize(element: &Element<'_>, name: &str) -> Option<usize> {
     usize::try_from(value).ok()
 }
 
+fn element_reported_num_fields(element: &Element<'_>, name: &str) -> Option<usize> {
+    reported_num_fields(element_i32_usize(element, name))
+}
+
+fn reported_num_fields(value: Option<usize>) -> Option<usize> {
+    value.filter(|value| *value > 0)
+}
+
+fn expected_record_width(
+    page_fields: Option<usize>,
+    expected_fields: Option<usize>,
+    column_name_count: usize,
+) -> Option<usize> {
+    page_fields
+        .or(expected_fields)
+        .or_else(|| (column_name_count > 0).then_some(column_name_count))
+}
+
 fn element_string(element: Element<'_>) -> Option<String> {
     let value = if let Some(value) = element.get_value(0) {
         match value {
@@ -375,4 +394,32 @@ fn element_string(element: Element<'_>) -> Option<String> {
 
     let trimmed = value.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{expected_record_width, reported_num_fields};
+
+    #[test]
+    fn reported_num_fields_treats_zero_as_unreported() {
+        assert_eq!(reported_num_fields(Some(1)), Some(1));
+        assert_eq!(reported_num_fields(Some(0)), None);
+        assert_eq!(reported_num_fields(None), None);
+    }
+
+    #[test]
+    fn expected_record_width_uses_column_titles_when_num_fields_is_zero() {
+        assert_eq!(
+            expected_record_width(reported_num_fields(Some(0)), None, 1),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn expected_record_width_prefers_positive_num_fields() {
+        assert_eq!(
+            expected_record_width(reported_num_fields(Some(2)), None, 1),
+            Some(2)
+        );
+    }
 }
