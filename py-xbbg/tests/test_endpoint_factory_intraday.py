@@ -17,7 +17,7 @@ async def test_abdtick_forwards_overrides(monkeypatch):
         return []
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     await blp.abdtick(
         "ESM6 Index",
@@ -44,7 +44,7 @@ async def test_abdib_forwards_overrides(monkeypatch):
         return []
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     await blp.abdib(
         "ESM6 Index",

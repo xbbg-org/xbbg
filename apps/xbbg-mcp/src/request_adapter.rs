@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::str::FromStr;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use rmcp::ErrorData;
@@ -50,143 +49,143 @@ impl HistoricalFormat {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct BdpArgs {
-    pub(crate) tickers: Vec<String>,
-    pub(crate) fields: Vec<String>,
+    tickers: Vec<String>,
+    fields: Vec<String>,
     #[serde(default)]
-    pub(crate) overrides: Option<BTreeMap<String, String>>,
+    overrides: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) options: Option<BTreeMap<String, String>>,
+    options: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) field_types: Option<BTreeMap<String, String>>,
+    field_types: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) format: Option<ReferenceFormat>,
+    format: Option<ReferenceFormat>,
     #[serde(default)]
-    pub(crate) include_security_errors: bool,
+    include_security_errors: bool,
     #[serde(default)]
-    pub(crate) validate_fields: Option<bool>,
+    validate_fields: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct BdhArgs {
-    pub(crate) tickers: Vec<String>,
-    pub(crate) fields: Vec<String>,
-    pub(crate) start_date: String,
-    pub(crate) end_date: String,
+    tickers: Vec<String>,
+    fields: Vec<String>,
+    start_date: String,
+    end_date: String,
     #[serde(default)]
-    pub(crate) overrides: Option<BTreeMap<String, String>>,
+    overrides: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) options: Option<BTreeMap<String, String>>,
+    options: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) field_types: Option<BTreeMap<String, String>>,
+    field_types: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) format: Option<HistoricalFormat>,
+    format: Option<HistoricalFormat>,
     #[serde(default)]
-    pub(crate) validate_fields: Option<bool>,
+    validate_fields: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct BdsArgs {
-    pub(crate) tickers: Vec<String>,
-    pub(crate) field: String,
+    tickers: Vec<String>,
+    field: String,
     #[serde(default)]
-    pub(crate) overrides: Option<BTreeMap<String, String>>,
+    overrides: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) options: Option<BTreeMap<String, String>>,
+    options: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) validate_fields: Option<bool>,
+    validate_fields: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct BdibArgs {
-    pub(crate) ticker: String,
-    pub(crate) start_datetime: String,
-    pub(crate) end_datetime: String,
-    pub(crate) interval: u32,
+    ticker: String,
+    start_datetime: String,
+    end_datetime: String,
+    interval: u32,
     #[serde(default)]
-    pub(crate) event_type: Option<String>,
+    event_type: Option<String>,
     #[serde(default)]
-    pub(crate) request_tz: Option<String>,
+    request_tz: Option<String>,
     #[serde(default)]
-    pub(crate) output_tz: Option<String>,
+    output_tz: Option<String>,
     #[serde(default)]
-    pub(crate) options: Option<BTreeMap<String, String>>,
+    options: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct BqlArgs {
-    pub(crate) expression: String,
+    expression: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct BsrchArgs {
-    pub(crate) domain: String,
+    domain: String,
     #[serde(default)]
-    pub(crate) parameters: Option<BTreeMap<String, String>>,
+    parameters: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct BfldsArgs {
     #[serde(default)]
-    pub(crate) fields: Option<Vec<String>>,
+    fields: Option<Vec<String>>,
     #[serde(default)]
-    pub(crate) search_spec: Option<String>,
+    search_spec: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct RequestArgs {
-    pub(crate) service: String,
+    service: String,
     #[serde(default)]
-    pub(crate) operation: Option<String>,
+    operation: Option<String>,
     #[serde(default)]
-    pub(crate) request_operation: Option<String>,
+    request_operation: Option<String>,
     #[serde(default)]
-    pub(crate) request_id: Option<String>,
+    request_id: Option<String>,
     #[serde(default)]
-    pub(crate) extractor: Option<String>,
+    extractor: Option<String>,
     #[serde(default)]
-    pub(crate) securities: Option<Vec<String>>,
+    securities: Option<Vec<String>>,
     #[serde(default)]
-    pub(crate) security: Option<String>,
+    security: Option<String>,
     #[serde(default)]
-    pub(crate) fields: Option<Vec<String>>,
+    fields: Option<Vec<String>>,
     #[serde(default)]
-    pub(crate) overrides: Option<BTreeMap<String, String>>,
+    overrides: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) elements: Option<BTreeMap<String, String>>,
+    elements: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) kwargs: Option<BTreeMap<String, String>>,
+    kwargs: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) start_date: Option<String>,
+    start_date: Option<String>,
     #[serde(default)]
-    pub(crate) end_date: Option<String>,
+    end_date: Option<String>,
     #[serde(default)]
-    pub(crate) start_datetime: Option<String>,
+    start_datetime: Option<String>,
     #[serde(default)]
-    pub(crate) end_datetime: Option<String>,
+    end_datetime: Option<String>,
     #[serde(default)]
-    pub(crate) request_tz: Option<String>,
+    request_tz: Option<String>,
     #[serde(default)]
-    pub(crate) output_tz: Option<String>,
+    output_tz: Option<String>,
     #[serde(default)]
-    pub(crate) event_type: Option<String>,
+    event_type: Option<String>,
     #[serde(default)]
-    pub(crate) event_types: Option<Vec<String>>,
+    event_types: Option<Vec<String>>,
     #[serde(default)]
-    pub(crate) interval: Option<u32>,
+    interval: Option<u32>,
     #[serde(default)]
-    pub(crate) options: Option<BTreeMap<String, String>>,
+    options: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) field_types: Option<BTreeMap<String, String>>,
+    field_types: Option<BTreeMap<String, String>>,
     #[serde(default)]
-    pub(crate) include_security_errors: Option<bool>,
+    include_security_errors: Option<bool>,
     #[serde(default)]
-    pub(crate) validate_fields: Option<bool>,
+    validate_fields: Option<bool>,
     #[serde(default)]
-    pub(crate) search_spec: Option<String>,
+    search_spec: Option<String>,
     #[serde(default)]
-    pub(crate) field_ids: Option<Vec<String>>,
+    field_ids: Option<Vec<String>>,
     #[serde(default)]
-    pub(crate) format: Option<HistoricalFormat>,
+    format: Option<HistoricalFormat>,
 }
 
 pub(crate) fn bdp_request_params(args: BdpArgs) -> Result<RequestParams, ErrorData> {
@@ -351,72 +350,16 @@ pub(crate) fn generic_request_params(args: RequestArgs) -> Result<RequestParams,
         }
     };
 
-    let operation_kind = match Operation::from_str(&operation) {
-        Ok(kind) => kind,
-        Err(never) => match never {},
-    };
-    let mut fields = args
+    let fields = args
         .fields
         .map(|values| normalize_nonempty_list("fields", values))
         .transpose()?;
-    let mut field_ids = args
+    let field_ids = args
         .field_ids
         .map(|values| normalize_nonempty_list("field_ids", values))
         .transpose()?;
-    let mut search_spec = trim_optional(args.search_spec);
-
-    match operation_kind {
-        Operation::FieldInfo => {
-            if fields.is_some() && field_ids.is_some() {
-                return Err(ErrorData::invalid_params(
-                    "FieldInfoRequest accepts either fields or field_ids, not both",
-                    None,
-                ));
-            }
-            if field_ids.is_none() {
-                field_ids = fields.take();
-            }
-        }
-        Operation::FieldSearch => {
-            if fields.is_some() && search_spec.is_some() {
-                return Err(ErrorData::invalid_params(
-                    "FieldSearchRequest accepts either fields or search_spec, not both",
-                    None,
-                ));
-            }
-            if search_spec.is_none() {
-                if let Some(mut field_values) = fields.take() {
-                    if field_values.len() != 1 {
-                        return Err(ErrorData::invalid_params(
-                            "FieldSearchRequest requires exactly one field value when fields is used as a search alias",
-                            None,
-                        ));
-                    }
-                    search_spec = field_values.pop();
-                }
-            }
-        }
-        _ => {}
-    }
-
-    let format = match (args.format, &operation_kind) {
-        (Some(HistoricalFormat::Wide), Operation::ReferenceData) => {
-            return Err(ErrorData::invalid_params(
-                "ReferenceDataRequest does not support format=wide",
-                None,
-            ))
-        }
-        (Some(format), Operation::ReferenceData | Operation::HistoricalData) => {
-            Some(format.as_str().to_string())
-        }
-        (Some(_), _) => {
-            return Err(ErrorData::invalid_params(
-                "format is only supported for ReferenceDataRequest and HistoricalDataRequest",
-                None,
-            ))
-        }
-        (None, _) => None,
-    };
+    let search_spec = trim_optional(args.search_spec);
+    let format = args.format.map(|format| format.as_str().to_string());
 
     let extractor_set = args.extractor.is_some();
     let extractor = match args.extractor.as_deref() {
@@ -765,19 +708,5 @@ mod tests {
             search_spec: Some("price".to_string()),
         })
         .is_err());
-
-        let mut field_info = empty_request_args("//blp/apiflds", Some("FieldInfoRequest"));
-        field_info.fields = Some(vec!["PX_LAST".to_string()]);
-        field_info.field_ids = Some(vec!["PX_LAST".to_string()]);
-        assert!(generic_request_params(field_info).is_err());
-
-        let mut field_search = empty_request_args("//blp/apiflds", Some("FieldSearchRequest"));
-        field_search.fields = Some(vec!["price".to_string()]);
-        field_search.search_spec = Some("price".to_string());
-        assert!(generic_request_params(field_search).is_err());
-
-        let mut reference_wide = empty_request_args("//blp/refdata", Some("ReferenceDataRequest"));
-        reference_wide.format = Some(HistoricalFormat::Wide);
-        assert!(generic_request_params(reference_wide).is_err());
     }
 }

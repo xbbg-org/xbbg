@@ -33,11 +33,6 @@ interface PackResult {
   readonly files?: unknown;
 }
 
-interface PackageArtifact {
-  readonly files: readonly string[];
-  readonly fileBytes: ReadonlyMap<string, Uint8Array>;
-}
-
 interface PackageManifest {
   readonly name: string;
   readonly version: string;
@@ -221,31 +216,25 @@ function packFiles(result: PackResult, spec: PackageSpec): Set<string> {
   return files;
 }
 
-function dryRunArtifact(spec: PackageSpec): PackageArtifact {
+function dryRunFiles(spec: PackageSpec): readonly string[] {
   const raw = runNpmCapture(
     ['pack', spec.dir, '--dry-run', '--json', '--ignore-scripts'],
     repoRoot,
   );
-  const files = Object.freeze([...packFiles(parsePackJson(raw, spec), spec)].toSorted());
-  const fileBytes = new Map<string, Uint8Array>();
-  for (const file of files) {
-    const sourcePath = path.join(spec.dir, ...file.split('/'));
-    fileBytes.set(file, fs.readFileSync(sourcePath));
-  }
-  return { fileBytes, files };
+  return Object.freeze([...packFiles(parsePackJson(raw, spec), spec)].toSorted());
 }
 
 function validateDryRun(spec: PackageSpec): void {
-  const artifact = dryRunArtifact(spec);
+  const files = dryRunFiles(spec);
 
   for (const expectedFile of spec.expectedFiles) {
-    if (!artifact.files.includes(expectedFile)) {
+    if (!files.includes(expectedFile)) {
       fail(`${spec.name}: npm pack dry-run omitted ${expectedFile}`);
     }
   }
 
   for (const forbiddenFile of spec.forbiddenFiles ?? []) {
-    if (artifact.files.includes(forbiddenFile)) {
+    if (files.includes(forbiddenFile)) {
       fail(`${spec.name}: npm pack dry-run unexpectedly included ${forbiddenFile}`);
     }
   }
@@ -266,13 +255,15 @@ function readPackageManifest(spec: PackageSpec): PackageManifest {
   return { name: parsed.name, version: parsed.version };
 }
 
-function readPackageFileMap(
-  artifact: PackageArtifact,
+function readSourcePackageFileMap(
+  spec: PackageSpec,
+  files: readonly string[],
   packageName: string,
 ): Record<string, Uint8Array> {
   const packageFiles: Record<string, Uint8Array> = {};
-  for (const [file, bytes] of artifact.fileBytes) {
-    packageFiles[`/node_modules/${packageName}/${file}`] = new Uint8Array(bytes);
+  for (const file of files) {
+    const sourcePath = path.join(spec.dir, ...file.split('/'));
+    packageFiles[`/node_modules/${packageName}/${file}`] = fs.readFileSync(sourcePath);
   }
   return packageFiles;
 }
@@ -290,9 +281,9 @@ function describeAttwProblem(problem: AttwProblem): string {
 async function validateAttw(spec: PackageSpec): Promise<void> {
   const { Package, checkPackage } = await import('@arethetypeswrong/core');
   const manifest = readPackageManifest(spec);
-  const artifact = dryRunArtifact(spec);
+  const files = dryRunFiles(spec);
   const pkg = new Package(
-    readPackageFileMap(artifact, manifest.name),
+    readSourcePackageFileMap(spec, files, manifest.name),
     manifest.name,
     manifest.version,
   );

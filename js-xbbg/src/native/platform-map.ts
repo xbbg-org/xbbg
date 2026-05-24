@@ -1,90 +1,40 @@
-const EXPECTED_NATIVE_PACKAGE_FILES = Object.freeze([
-  'index.js',
-  'index.d.ts',
-  'README.md',
-  'LICENSE',
-  'package.json',
-  'napi_xbbg.node',
-] as const);
-
 export const nativeBinaryName = 'napi_xbbg.node';
 
-export const nativePackageSpecs = Object.freeze([
-  {
+export const nativePackageDescriptors = Object.freeze({
+  'darwin-arm64': Object.freeze({
     key: 'darwin-arm64',
-    packageName: '@xbbg/core-darwin-arm64',
-    dirName: 'xbbg-core-darwin-arm64',
     packageDir: 'packages/xbbg-core-darwin-arm64',
-    binaryName: nativeBinaryName,
-    expectedFiles: EXPECTED_NATIVE_PACKAGE_FILES,
-    os: 'darwin',
-    cpu: 'arm64',
-  },
-  {
+    packageName: '@xbbg/core-darwin-arm64',
+  }),
+  'linux-x64': Object.freeze({
     key: 'linux-x64',
-    packageName: '@xbbg/core-linux-x64',
-    dirName: 'xbbg-core-linux-x64',
     packageDir: 'packages/xbbg-core-linux-x64',
-    binaryName: nativeBinaryName,
-    expectedFiles: EXPECTED_NATIVE_PACKAGE_FILES,
-    os: 'linux',
-    cpu: 'x64',
-  },
-  {
+    packageName: '@xbbg/core-linux-x64',
+  }),
+  'win32-x64': Object.freeze({
     key: 'win32-x64',
-    packageName: '@xbbg/core-win32-x64',
-    dirName: 'xbbg-core-win32-x64',
     packageDir: 'packages/xbbg-core-win32-x64',
-    binaryName: nativeBinaryName,
-    expectedFiles: EXPECTED_NATIVE_PACKAGE_FILES,
-    os: 'win32',
-    cpu: 'x64',
-  },
-] as const);
+    packageName: '@xbbg/core-win32-x64',
+  }),
+} as const);
 
-export type NativePackageSpec = (typeof nativePackageSpecs)[number];
-export type PlatformKey = NativePackageSpec['key'];
-
-function frozenSpecMap<Key extends string>(
-  label: string,
-  entries: readonly (readonly [Key, NativePackageSpec])[],
-): Readonly<Record<Key, NativePackageSpec>> {
-  const out: Partial<Record<Key, NativePackageSpec>> = {};
-  for (const [key, spec] of entries) {
-    if (out[key] !== undefined) {
-      throw new Error(`duplicate native package ${label}: ${key}`);
-    }
-    out[key] = spec;
-  }
-  return Object.freeze(out as Record<Key, NativePackageSpec>);
-}
-
-export const nativePackageSpecByKey = frozenSpecMap(
-  'platform key',
-  nativePackageSpecs.map((spec) => [spec.key, spec] as const),
-);
-
-export const nativePackageSpecByPackageName = frozenSpecMap(
-  'package name',
-  nativePackageSpecs.map((spec) => [spec.packageName, spec] as const),
-);
+export type PlatformKey = keyof typeof nativePackageDescriptors;
+export type NativePackageDescriptor = (typeof nativePackageDescriptors)[PlatformKey];
+export type NativePackageName = NativePackageDescriptor['packageName'];
 
 export const platformPackages = Object.freeze(
   Object.fromEntries(
-    nativePackageSpecs.map((spec) => [spec.key, spec.packageName] as const),
-  ) as Record<PlatformKey, NativePackageSpec['packageName']>,
-);
+    Object.entries(nativePackageDescriptors).map(([key, descriptor]) => [
+      key,
+      descriptor.packageName,
+    ]),
+  ),
+) as Readonly<{ [K in PlatformKey]: (typeof nativePackageDescriptors)[K]['packageName'] }>;
 
-export function nativePackageSpecForKey(key: string): NativePackageSpec | null {
+export function nativePackageForKey(key: string): NativePackageDescriptor | null {
   return (
-    (nativePackageSpecByKey as Readonly<Record<string, NativePackageSpec | undefined>>)[key] ?? null
-  );
-}
-
-export function nativePackageSpecForPackageName(packageName: string): NativePackageSpec | null {
-  return (
-    (nativePackageSpecByPackageName as Readonly<Record<string, NativePackageSpec | undefined>>)[
-      packageName
+    (nativePackageDescriptors as Readonly<Record<string, NativePackageDescriptor | undefined>>)[
+      key
     ] ?? null
   );
 }

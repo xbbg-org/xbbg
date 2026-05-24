@@ -20,7 +20,6 @@ use arrow_array::RecordBatch;
 use slab::Slab;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::schema::SchemaCache;
 use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType};
 
@@ -39,8 +38,8 @@ use super::state::{
     IntradayTickStreamState, RefDataState,
 };
 use super::{
-    start_configured_session, BlpAsyncError, EngineConfig, ExtractorType, PreparedRequest,
-    RequestKind, RequestParams, SlabKey, WorkerHealth,
+    start_configured_session, EngineConfig, PreparedRequest, RequestKind, RequestParams, SlabKey,
+    WorkerHealth,
 };
 
 fn iter_named_request_parameters(
@@ -111,22 +110,11 @@ fn apply_excel_grid_request_parameters(
 }
 
 /// Commands sent to a request worker.
-pub enum WorkerCommand {
-    /// Execute a request and send result via oneshot channel.
-    Request {
-        params: RequestParams,
-        reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
-        cancelled: Arc<AtomicBool>,
-    },
+pub(crate) enum WorkerCommand {
     PreparedRequest {
         request: PreparedRequest,
         reply: oneshot::Sender<Result<RecordBatch, BlpError>>,
         cancelled: Arc<AtomicBool>,
-    },
-    /// Execute a streaming request and send batches via mpsc channel.
-    RequestStream {
-        params: RequestParams,
-        stream: mpsc::Sender<Result<RecordBatch, BlpError>>,
     },
     PreparedRequestStream {
         request: PreparedRequest,
@@ -260,8 +248,6 @@ struct RequestWorker {
     open_services: HashSet<String>,
     /// Configuration.
     config: Arc<EngineConfig>,
-    /// Schema cache used by legacy raw-parameter worker commands.
-    schema_cache: SchemaCache,
     /// Send times for round-trip measurement.
     send_times: HashMap<SlabKey, std::time::Instant>,
     /// Track which requests we've already warned about (to avoid log spam).
@@ -283,17 +269,6 @@ fn send_stream_error(stream: mpsc::Sender<Result<RecordBatch, BlpError>>, error:
     let _ = stream.blocking_send(Err(error));
 }
 
-fn async_error_to_blp(error: BlpAsyncError) -> BlpError {
-    match error {
-        BlpAsyncError::Blp(error) | BlpAsyncError::BlpError(error) => error,
-        BlpAsyncError::ConfigError { detail } => BlpError::InvalidArgument { detail },
-        BlpAsyncError::Timeout => BlpError::Timeout,
-        other => BlpError::Internal {
-            detail: other.to_string(),
-        },
-    }
-}
-
 impl RequestWorker {
     /// Create a new worker with a pre-warmed session.
     fn new(
@@ -311,7 +286,6 @@ impl RequestWorker {
             cmd_rx,
             open_services: HashSet::new(),
             config,
-            schema_cache: SchemaCache::new(),
             send_times: HashMap::new(),
             warned_requests: std::collections::HashSet::new(),
             poll_counter: 0,
@@ -349,10 +323,6 @@ impl RequestWorker {
         Ok(())
     }
 
-    fn prepare_compat_request(&self, params: RequestParams) -> Result<PreparedRequest, BlpError> {
-        PreparedRequest::prepare(params, &self.schema_cache).map_err(async_error_to_blp)
-    }
-
     /// Main pump loop.
     fn run(&mut self) -> Result<(), BlpError> {
         xbbg_log::info!(worker_id = self.id, "RequestWorker started");
@@ -365,20 +335,6 @@ impl RequestWorker {
                         xbbg_log::info!(worker_id = self.id, "RequestWorker shutting down");
                         return Ok(());
                     }
-                    Ok(WorkerCommand::Request {
-                        params,
-                        reply,
-                        cancelled,
-                    }) => match self.prepare_compat_request(params) {
-                        Ok(request) => {
-                            if let Err(e) = self.send_request(request, reply, cancelled) {
-                                xbbg_log::error!(worker_id = self.id, error = %e, "request error");
-                            }
-                        }
-                        Err(error) => {
-                            let _ = reply.send(Err(error));
-                        }
-                    },
                     Ok(WorkerCommand::PreparedRequest {
                         request,
                         reply,
@@ -386,16 +342,6 @@ impl RequestWorker {
                     }) => {
                         if let Err(e) = self.send_request(request, reply, cancelled) {
                             xbbg_log::error!(worker_id = self.id, error = %e, "request error");
-                        }
-                    }
-                    Ok(WorkerCommand::RequestStream { params, stream }) => {
-                        match self.prepare_compat_request(params) {
-                            Ok(request) => {
-                                if let Err(e) = self.send_request_stream(request, stream) {
-                                    xbbg_log::error!(worker_id = self.id, error = %e, "stream request error");
-                                }
-                            }
-                            Err(error) => send_stream_error(stream, error),
                         }
                     }
                     Ok(WorkerCommand::PreparedRequestStream { request, stream }) => {
@@ -879,12 +825,9 @@ impl RequestWorker {
             }
         }
         if let Some(ref security) = params.security {
-            // For intraday requests, "security" is a scalar element (use set_str)
-            // For other requests, add to "securities" array (use append_str)
-            if matches!(
-                params.extractor,
-                ExtractorType::IntradayBar | ExtractorType::IntradayTick
-            ) {
+            // Bloomberg intraday operations use a scalar "security" element; other
+            // operations treat the singular convenience input as one "securities" entry.
+            if prepared.uses_intraday_security_element() {
                 xbbg_log::trace!(element = "security", value = %security, "setting scalar");
                 request.set_str("security", security)?;
             } else {
@@ -1233,7 +1176,7 @@ pub struct WorkerHandle {
     /// Worker ID.
     pub id: usize,
     /// Command channel to send requests.
-    pub cmd_tx: mpsc::Sender<WorkerCommand>,
+    pub(crate) cmd_tx: mpsc::Sender<WorkerCommand>,
     /// Thread handle (for shutdown).
     thread: Option<JoinHandle<()>>,
     health: Arc<AtomicU8>,

@@ -52,7 +52,7 @@ async def test_abqr_generated_routes_intraday_tick_defaults(monkeypatch):
         return _raw_bqr_table()
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = await blp.abqr("/isin/US037833FB15@MSG1 Corp", date_offset="-1d")
 
@@ -76,7 +76,7 @@ async def test_abqr_generated_warns_for_non_isin_msg1_source(monkeypatch):
         return _raw_bqr_table()
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     with pytest.warns(UserWarning, match="@MSG1 Corp"):
         await blp.abqr("US037833FB15@MSG1 Corp", date_offset="-1d")
@@ -94,7 +94,7 @@ async def test_abqr_generated_reshapes_generic_path_output(monkeypatch):
         return _generic_bqr_table()
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = await blp.abqr(
         "/isin/US037833FB15@MSG1 Corp",
@@ -140,7 +140,7 @@ async def test_abqr_generated_keeps_typed_include_output(monkeypatch):
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
     monkeypatch.setattr(blp, "_reshape_bqr_generic", fail_reshape)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = await blp.abqr(
         "/isin/US037833FB15@MSG1 Corp",
@@ -168,7 +168,7 @@ async def test_abqr_generated_uses_explicit_datetime_range_and_event_types(monke
         return _raw_bqr_table(broker=False)
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = await blp.abqr(
         "XYZ 4.5 01/15/30 Corp",
@@ -223,7 +223,7 @@ async def test_ext_abqr_defaults_to_bid_ask_and_broker_codes(monkeypatch):
         return _raw_bqr_table()
 
     monkeypatch.setattr(xbbg, "abdtick", fake_abdtick)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = await fixed_income.abqr(
         "/isin/US037833FB15@MSG1 Corp",
@@ -247,7 +247,7 @@ async def test_ext_abqr_warns_for_non_isin_msg1_source(monkeypatch):
         return _raw_bqr_table()
 
     monkeypatch.setattr(xbbg, "abdtick", fake_abdtick)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     with pytest.warns(UserWarning, match="/isin/US037833FB15@MSG1 Corp"):
         await fixed_income.abqr(
@@ -267,7 +267,7 @@ async def test_ext_abqr_preserves_explicit_event_types(monkeypatch):
         return _raw_bqr_table(broker=False)
 
     monkeypatch.setattr(xbbg, "abdtick", fake_abdtick)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = await fixed_income.abqr(
         "IBM US Equity",

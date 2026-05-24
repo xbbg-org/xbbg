@@ -113,15 +113,30 @@ function replaceWithPreparedFile(tempPath: string, destPath: string): void {
     return;
   }
 
-  // Windows does not reliably replace an existing file with renameSync. Keep
-  // the current artifact in place while copying the already-validated temp file
-  // over it, rather than moving the destination aside and creating an absence
-  // window on the release platform.
-  fs.copyFileSync(tempPath, destPath);
-  fs.rmSync(tempPath, { force: true });
+  const backupPath = tempPathFor(destPath, 'backup');
+  let backedUp = false;
+  let committed = false;
+  try {
+    fs.renameSync(destPath, backupPath);
+    backedUp = true;
+    fs.renameSync(tempPath, destPath);
+    committed = true;
+    fs.rmSync(backupPath, { force: true });
+  } catch (error) {
+    if (backedUp && !committed && fs.existsSync(backupPath) && !fs.existsSync(destPath)) {
+      try {
+        fs.renameSync(backupPath, destPath);
+      } catch (rollbackError) {
+        throw new Error(
+          `failed to replace ${destPath}; rollback backup preserved at ${backupPath}: ${String(error)}; rollback failed: ${String(rollbackError)}`,
+        );
+      }
+    }
+    throw error;
+  }
 }
 
-function copyBinaryAtomically(sourcePath: string, destPath: string): void {
+function copyBinarySafely(sourcePath: string, destPath: string): void {
   const tempPath = tempPathFor(destPath, 'binary');
   try {
     fs.copyFileSync(sourcePath, tempPath);
@@ -136,7 +151,7 @@ function copyBinaryAtomically(sourcePath: string, destPath: string): void {
   }
 }
 
-function writePackageJsonAtomically(
+function writePackageJsonSafely(
   packageJsonPath: string,
   packageJson: Record<string, unknown>,
 ): void {
@@ -171,7 +186,7 @@ function stagePackage(version: string | null = null): StagePackageResult {
   }
 
   const destBinary = path.join(localPackageDir, spec.binaryName);
-  copyBinaryAtomically(sourceBinary, destBinary);
+  copyBinarySafely(sourceBinary, destBinary);
 
   if (version !== null) {
     const normalizedVersion = version.replace(/^v/u, '');
@@ -180,7 +195,7 @@ function stagePackage(version: string | null = null): StagePackageResult {
     if (!isRecord(packageJson)) {
       fail(`expected package.json object at ${packageJsonPath}`);
     }
-    writePackageJsonAtomically(packageJsonPath, { ...packageJson, version: normalizedVersion });
+    writePackageJsonSafely(packageJsonPath, { ...packageJson, version: normalizedVersion });
   }
 
   console.log(`Staged ${sourceBinary} -> ${destBinary}`);

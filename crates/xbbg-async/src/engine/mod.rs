@@ -41,15 +41,15 @@ use exchange_cache::ExchangeCache;
 // Re-export here so existing `use xbbg_async::engine::ExtractorType` paths keep working.
 pub use crate::services::ExtractorType;
 
-pub use request_plan::{PlannedOutput, PreparedRequest, RequestKind};
-pub use request_pool::RequestWorkerPool;
+pub(crate) use request_plan::{PreparedRequest, RequestKind};
+use request_pool::RequestWorkerPool;
 use state::SubscriptionMetrics;
 pub use state::{
     BqlState, BulkDataState, HistDataState, IntradayTickState, LongMode, OutputFormat,
     RefDataState, SubscriptionState, SubscriptionUpdate,
 };
 pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, SubscriptionSessionPool};
-pub use worker::{UnifiedRequestState, WorkerCommand, WorkerHandle};
+pub use worker::{UnifiedRequestState, WorkerHandle};
 
 const SESSION_STARTUP_TIMEOUT_MS: u32 = 30_000;
 
@@ -895,60 +895,7 @@ impl RequestParams {
 
     /// Validate request parameters for known Bloomberg operations.
     pub fn validate(&self) -> Result<(), BlpAsyncError> {
-        request_plan::validate_request_params(self)
-    }
-}
-
-fn normalize_excel_grid_params(params: &mut RequestParams, kwargs: HashMap<String, String>) {
-    let mut domain: Option<String> = None;
-    let mut grid_overrides: Vec<(String, String)> = Vec::new();
-
-    fn route_pair(
-        domain: &mut Option<String>,
-        grid_overrides: &mut Vec<(String, String)>,
-        key: String,
-        value: String,
-    ) {
-        if key.eq_ignore_ascii_case("Domain") {
-            *domain = Some(value);
-        } else if !key.is_empty() && !key.eq_ignore_ascii_case("Overrides") {
-            grid_overrides.push((key, value));
-        }
-    }
-
-    for (key, value) in params.elements.take().unwrap_or_default() {
-        route_pair(&mut domain, &mut grid_overrides, key, value);
-    }
-
-    for (key, value) in params.overrides.take().unwrap_or_default() {
-        route_pair(&mut domain, &mut grid_overrides, key, value);
-    }
-
-    let mut keys: Vec<String> = kwargs.keys().cloned().collect();
-    keys.sort();
-    for key in keys {
-        if let Some(value) = kwargs.get(&key) {
-            route_pair(&mut domain, &mut grid_overrides, key, value.clone());
-        }
-    }
-
-    params.elements = domain.map(|value| vec![("Domain".to_string(), value)]);
-    params.overrides = (!grid_overrides.is_empty()).then_some(grid_overrides);
-}
-
-fn merge_raw_kwargs_into_elements(params: &mut RequestParams, kwargs: HashMap<String, String>) {
-    if kwargs.is_empty() {
-        return;
-    }
-
-    let mut keys: Vec<String> = kwargs.keys().cloned().collect();
-    keys.sort();
-
-    let elements = params.elements.get_or_insert_with(Vec::new);
-    for key in keys {
-        if let Some(value) = kwargs.get(&key) {
-            elements.push((key, value.clone()));
-        }
+        request_plan::validate_request_params(self).map(|_| ())
     }
 }
 
@@ -1206,14 +1153,14 @@ impl Engine {
     ) -> Result<RecordBatch, BlpAsyncError> {
         let prepared = self.prepare_request_params(params)?;
         self.maybe_validate_request_fields(&prepared).await?;
-        self.request_pool.request_prepared(prepared).await
+        self.request_pool.request(prepared).await
     }
 
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
         let mut prepared = self.prepare_request_params(params)?;
         self.apply_intraday_request_timezone(&mut prepared).await?;
         self.maybe_validate_request_fields(&prepared).await?;
-        let batch = self.request_pool.request_prepared(prepared.clone()).await?;
+        let batch = self.request_pool.request(prepared.clone()).await?;
         intraday_timezone::apply_intraday_output_timezone(self, batch, prepared.params()).await
     }
 
@@ -1226,7 +1173,7 @@ impl Engine {
         self.apply_intraday_request_timezone(&mut prepared).await?;
         let out_iana = intraday_timezone::resolve_output_tz_iana(self, prepared.params()).await?;
         self.maybe_validate_request_fields(&prepared).await?;
-        let rx = self.request_pool.request_stream_prepared(prepared).await?;
+        let rx = self.request_pool.request_stream(prepared).await?;
         Ok(intraday_timezone::wrap_batch_stream_with_output_tz(
             rx, out_iana,
         ))
@@ -1300,11 +1247,15 @@ impl Engine {
             return Ok(());
         }
 
+        if prepared.is_raw() {
+            return Ok(());
+        }
+
         if params.service != Service::RefData.to_string() {
             return Ok(());
         }
 
-        let operation = parse_operation_lossless(&params.operation);
+        let operation = prepared.operation();
         if !matches!(
             operation,
             Operation::ReferenceData | Operation::HistoricalData
@@ -1328,7 +1279,7 @@ impl Engine {
         if validation_mode == ValidationMode::Lenient {
             xbbg_log::warn!(
                 service = %params.service,
-                operation = %params.operation,
+                operation = %prepared.effective_operation(),
                 invalid_fields = ?invalid_fields,
                 "field validation warning"
             );
@@ -1562,7 +1513,7 @@ impl Engine {
         };
 
         let params = self.prepare_request_params(params)?;
-        let batch = self.request_pool.request_prepared(params).await?;
+        let batch = self.request_pool.request(params).await?;
 
         // Get the field column from the response
         let field_col = batch
@@ -2140,65 +2091,6 @@ mod tests {
 
         let err = config.validate().unwrap_err().to_string();
         assert!(err.contains("subscription_stream_capacity must be greater than zero"));
-    }
-
-    #[test]
-    fn merge_raw_kwargs_into_elements_preserves_existing_elements_and_sorts_kwargs() {
-        let mut params = RequestParams {
-            elements: Some(vec![("alpha".to_string(), "1".to_string())]),
-            ..Default::default()
-        };
-
-        merge_raw_kwargs_into_elements(
-            &mut params,
-            HashMap::from([
-                ("zeta".to_string(), "9".to_string()),
-                ("beta".to_string(), "2".to_string()),
-            ]),
-        );
-
-        assert_eq!(
-            params.elements,
-            Some(vec![
-                ("alpha".to_string(), "1".to_string()),
-                ("beta".to_string(), "2".to_string()),
-                ("zeta".to_string(), "9".to_string()),
-            ])
-        );
-    }
-
-    #[test]
-    fn normalize_excel_grid_params_routes_domain_and_grid_overrides() {
-        let mut params = RequestParams {
-            operation: Operation::ExcelGetGrid.to_string(),
-            elements: Some(vec![
-                ("Domain".to_string(), "FI:OLD".to_string()),
-                ("provider".to_string(), "wsi".to_string()),
-            ]),
-            overrides: Some(vec![
-                ("location".to_string(), "nwe".to_string()),
-                ("Domain".to_string(), "COMDTY:WEATHER".to_string()),
-            ]),
-            ..Default::default()
-        };
-
-        normalize_excel_grid_params(
-            &mut params,
-            HashMap::from([("model".to_string(), "ecmwf".to_string())]),
-        );
-
-        assert_eq!(
-            params.elements,
-            Some(vec![("Domain".to_string(), "COMDTY:WEATHER".to_string())])
-        );
-        assert_eq!(
-            params.overrides,
-            Some(vec![
-                ("provider".to_string(), "wsi".to_string()),
-                ("location".to_string(), "nwe".to_string()),
-                ("model".to_string(), "ecmwf".to_string()),
-            ])
-        );
     }
 
     #[test]

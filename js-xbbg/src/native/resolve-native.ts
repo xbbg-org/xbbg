@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { nativePackageSpecForKey, platformKey } from './platform-map';
+import { nativePackageForKey, platformKey, type NativePackageDescriptor } from './platform-map';
 
 const nodeRequire = createRequire(__filename);
 
@@ -16,14 +16,24 @@ export interface NativeAddonResolution {
   readonly binaryPath: string | null;
 }
 
-export interface NativeResolverOptions {
-  readonly key: string;
-  readonly packageName: string | null;
-  readonly packageDir?: string | null;
+interface NativeResolverBaseOptions {
   readonly repoRoot: string;
   readonly requirePackage: (id: string) => unknown;
   readonly exists: (target: string) => boolean;
 }
+
+interface SupportedNativeResolverOptions extends NativeResolverBaseOptions {
+  readonly nativePackage: NativePackageDescriptor;
+}
+
+interface UnsupportedNativeResolverOptions extends NativeResolverBaseOptions {
+  readonly key: string;
+  readonly nativePackage: null;
+}
+
+export type NativeResolverOptions =
+  | SupportedNativeResolverOptions
+  | UnsupportedNativeResolverOptions;
 
 function exists(target: string): boolean {
   try {
@@ -94,41 +104,37 @@ function resolveInstalledPackage(
 
 function resolveLocalPackage(
   repoRoot: string,
-  packageDir: string,
-  packageName: string,
+  nativePackage: NativePackageDescriptor,
   requirePackage: (id: string) => unknown,
   existsFile: (target: string) => boolean,
 ): NativePackageResolution | null {
-  const localIndex = localPackageIndex(repoRoot, packageDir);
+  const localIndex = localPackageIndex(repoRoot, nativePackage.packageDir);
   if (!existsFile(localIndex)) {
     return null;
   }
 
-  const resolved = validateNativePackage(packageName, requirePackage(localIndex));
+  const resolved = validateNativePackage(nativePackage.packageName, requirePackage(localIndex));
   if (!existsFile(resolved.binaryPath)) {
     throw new Error(
-      `Invalid native package ${packageName}: binaryPath does not exist: ${resolved.binaryPath}`,
+      `Invalid native package ${nativePackage.packageName}: binaryPath does not exist: ${resolved.binaryPath}`,
     );
   }
   return resolved;
 }
 
 export function resolveNativeAddonCore(options: NativeResolverOptions): NativeAddonResolution {
-  const { key, packageName, repoRoot, requirePackage, exists: existsFile } = options;
-  if (packageName === null) {
-    return { binaryPath: null, key, packageName: null };
+  const { nativePackage, repoRoot, requirePackage, exists: existsFile } = options;
+  if (nativePackage === null) {
+    return { binaryPath: null, key: options.key, packageName: null };
   }
+
+  const { key, packageName } = nativePackage;
   const installed = resolveInstalledPackage(packageName, requirePackage, existsFile);
   if (installed !== null) {
     return { binaryPath: installed.binaryPath, key, packageName };
   }
 
-  const packageDir = options.packageDir ?? nativePackageSpecForKey(key)?.packageDir ?? null;
-  if (packageDir === null) {
-    return { binaryPath: null, key, packageName };
-  }
-
-  const local = resolveLocalPackage(repoRoot, packageDir, packageName, requirePackage, existsFile);
+  const local = resolveLocalPackage(repoRoot, nativePackage, requirePackage, existsFile);
   if (local !== null) {
     return { binaryPath: local.binaryPath, key, packageName };
   }
@@ -138,13 +144,10 @@ export function resolveNativeAddonCore(options: NativeResolverOptions): NativeAd
 
 export function resolveNativeAddon(repoRoot: string): NativeAddonResolution {
   const key = platformKey();
-  const spec = nativePackageSpecForKey(key);
-  return resolveNativeAddonCore({
-    exists,
-    key,
-    packageDir: spec?.packageDir ?? null,
-    packageName: spec?.packageName ?? null,
-    repoRoot,
-    requirePackage: (id: string): unknown => nodeRequire(id) as unknown,
-  });
+  const nativePackage = nativePackageForKey(key);
+  const requirePackage = (id: string): unknown => nodeRequire(id) as unknown;
+  if (nativePackage === null) {
+    return resolveNativeAddonCore({ exists, key, nativePackage, repoRoot, requirePackage });
+  }
+  return resolveNativeAddonCore({ exists, nativePackage, repoRoot, requirePackage });
 }

@@ -41,11 +41,11 @@ from xbbg.services import (
 from ._exports import BLP_MODULE_EXPORTS
 from .backend import (
     Backend,
-    _ensure_arrow_table,
-    _is_arrow_table,
     check_backend,
     convert_backend_frame,
     get_default_backend,
+    ensure_arrow_table,
+    is_arrow_table,
 )
 from .request_middleware import (
     RequestContext,
@@ -67,17 +67,6 @@ logger = logging.getLogger(__name__)
 
 
 __all__ = list(BLP_MODULE_EXPORTS)
-RequestEnvironment.__module__ = __name__
-RequestContext.__module__ = __name__
-for _middleware_export in (
-    add_middleware,
-    remove_middleware,
-    clear_middleware,
-    get_middleware,
-    set_middleware,
-):
-    _middleware_export.__module__ = __name__
-del _middleware_export
 
 
 _REMOVED_LEGACY_ATTRS: dict[str, str] = {
@@ -680,6 +669,16 @@ def _resolve_backend(backend: Backend | str | None) -> Backend | None:
     if backend is None:
         return _default_backend
     return Backend(backend) if isinstance(backend, str) else backend
+
+
+def _effective_backend(backend: Backend | str | None) -> Backend:
+    """Resolve backend at the facade boundary, honoring set_backend()."""
+    return _resolve_backend(backend) or get_default_backend()
+
+
+def _convert_result_backend(frame: Any, backend: Backend | str | None) -> DataFrameResult:
+    """Convert Arrow output after applying the facade-level backend default."""
+    return convert_backend_frame(frame, _effective_backend(backend))
 
 
 def _get_engine(*, engine: Engine | None = None):
@@ -1302,15 +1301,6 @@ def _core_arrow_table_class() -> type[Any]:
     return ArrowTable
 
 
-def _convert_backend(
-    frame: Any,
-    backend: Backend | str | None,
-) -> DataFrameResult:
-    """Resolve xbbg's backend default and delegate conversion to backend descriptors."""
-    effective = _resolve_backend(backend) or get_default_backend()
-    return convert_backend_frame(frame, effective)
-
-
 def _normalize_engine_exception(exc: Exception) -> Exception:
     from . import _core
     from .exceptions import BlpValidationError
@@ -1348,7 +1338,7 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
         context.fields or None,
     )
 
-    context.table = _ensure_arrow_table(batch)
+    context.table = ensure_arrow_table(batch)
     context.frame = context.table
     return context.table
 
@@ -1569,13 +1559,13 @@ async def arequest(
     # Low-level arequest() defaults to the raw Arrow output requested by OutputMode.ARROW.
     # High-level generated endpoints call arequest(_raw=True) and then apply their own
     # public backend conversion, so their default remains the Narwhals dataframe contract.
-    if _raw or not _is_arrow_table(result):
+    if _raw or not is_arrow_table(result):
         return result
     effective_backend = _resolve_backend(backend)
     if effective_backend is None and params.output == OutputMode.ARROW:
         context.frame = result
         return result
-    context.frame = _convert_backend(result, effective_backend)
+    context.frame = _convert_result_backend(result, effective_backend)
     return context.frame
 
 
@@ -2028,7 +2018,7 @@ async def _execute_generated_endpoint(spec: _GeneratedEndpointSpec, call_args: d
     if plan.postprocess is not None:
         return plan.postprocess(raw)
 
-    return _convert_backend(raw, plan.backend)
+    return _convert_result_backend(raw, plan.backend)
 
 
 def _build_generated_async(spec: _GeneratedEndpointSpec, async_template: Callable[..., Any]) -> Callable[..., Any]:
@@ -2153,7 +2143,7 @@ class Subscription:
             return batch
 
         # Dispatch xbbg ArrowTable directly to the requested backend.
-        return _convert_backend(batch.to_table(), self._backend)
+        return _convert_result_backend(batch.to_table(), self._backend)
 
     async def add(self, tickers: str | list[str]) -> None:
         """Add tickers to subscription dynamically.
@@ -3200,7 +3190,7 @@ async def abta(
 
     # Combine all batches into a single native Arrow table
     table = _core_arrow_table_class().from_batches(batches)
-    return _convert_backend(table, _default_backend)
+    return _convert_result_backend(table, None)
 
 
 def ta_studies() -> list[str]:
@@ -3544,7 +3534,7 @@ def _postprocess_bqr_result(
     backend: Backend | str | None,
     enforce_broker_codes: bool,
 ) -> DataFrameResult:
-    table = _ensure_arrow_table(result)
+    table = ensure_arrow_table(result)
 
     if "path" in table.column_names:
         table = _reshape_bqr_generic(table, ticker)
@@ -3561,7 +3551,7 @@ def _postprocess_bqr_result(
 
     rename_map = {column: _BQR_RENAME_MAP[column] for column in table.column_names if column in _BQR_RENAME_MAP}
     table = table.rename_columns(rename_map)
-    return _convert_backend(table, backend)
+    return _convert_result_backend(table, backend)
 
 
 async def abqr(
@@ -3983,7 +3973,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
             presentation,
             periodicity=presentation_periodicity,
         )
-        return _convert_backend(shaped, backend)
+        return _convert_result_backend(shaped, backend)
 
     return _EndpointPlan(
         request_kwargs={
@@ -4197,7 +4187,7 @@ async def _build_abqr_plan(args: dict[str, Any]) -> _EndpointPlan:
     )
 
     def postprocess(nw_df: Any) -> DataFrameResult:
-        logger.debug("abqr: received %d rows", _ensure_arrow_table(nw_df).num_rows)
+        logger.debug("abqr: received %d rows", ensure_arrow_table(nw_df).num_rows)
         return _postprocess_bqr_result(
             nw_df,
             ticker=ticker,

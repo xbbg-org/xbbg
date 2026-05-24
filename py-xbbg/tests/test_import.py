@@ -63,12 +63,6 @@ def test_public_python_surface_remains_importable():
     assert callable(blp.bschema)
     assert blp.RequestContext is xbbg.RequestContext
     assert blp.RequestEnvironment is xbbg.RequestEnvironment
-    assert blp.RequestContext.__module__ == "xbbg.blp"
-    assert blp.RequestEnvironment.__module__ == "xbbg.blp"
-
-    for name in PACKAGE_MIDDLEWARE_EXPORTS:
-        assert getattr(blp, name).__module__ == "xbbg.blp"
-        assert getattr(xbbg, name).__module__ == "xbbg.blp"
 
 
 def test_markets_modules_do_not_require_pandas(monkeypatch: pytest.MonkeyPatch):

@@ -110,7 +110,7 @@ async def test_abdp_forwards_validate_fields(monkeypatch):
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
     monkeypatch.setattr(blp, "_aroute_kwargs", fake_route_kwargs)
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = await blp.abdp("IBM US Equity", "PX_LAST", validate_fields=True)
 
@@ -138,7 +138,7 @@ def test_bdp_forwards_validate_fields(monkeypatch):
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
     monkeypatch.setattr(blp, "_aroute_kwargs", fake_route_kwargs)
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda df, _backend: df)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda df, _backend: df)
 
     result = blp.bdp("IBM US Equity", "PX_LAST", validate_fields=True)
 

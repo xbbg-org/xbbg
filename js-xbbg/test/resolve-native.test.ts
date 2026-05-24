@@ -4,20 +4,28 @@ import path from 'node:path';
 
 import packageJson from '../package.json';
 import {
-  nativePackageSpecs as toolNativePackageSpecs,
+  nativePackageSpecs,
   platformPackages as toolPlatformPackages,
 } from '../scripts/platform-map';
 import {
   nativeBinaryName,
-  nativePackageSpecForKey,
-  nativePackageSpecForPackageName,
-  nativePackageSpecs,
+  nativePackageForKey,
   platformPackages,
+  type NativePackageDescriptor,
 } from '../src/native/platform-map';
 import { resolveNativeAddonCore } from '../src/native/resolve-native';
 
 const key = 'linux-x64';
 const packageName = '@xbbg/core-linux-x64';
+function requireNativePackage(key: string): NativePackageDescriptor {
+  const nativePackage = nativePackageForKey(key);
+  if (nativePackage === null) {
+    throw new Error(`missing test native package descriptor for ${key}`);
+  }
+  return nativePackage;
+}
+
+const nativePackage = requireNativePackage(key);
 
 function moduleNotFound(message: string): Error {
   const err = new Error(message) as Error & { code: string };
@@ -35,11 +43,7 @@ function withTempRepo(fn: (repoRoot: string) => void): void {
 }
 
 function localIndexPath(repoRoot: string): string {
-  const spec = nativePackageSpecForKey(key);
-  if (spec === null) {
-    throw new Error(`missing test native package spec for ${key}`);
-  }
-  return path.join(repoRoot, spec.packageDir, 'index.js');
+  return path.join(repoRoot, nativePackage.packageDir, 'index.js');
 }
 
 describe(resolveNativeAddonCore, () => {
@@ -47,8 +51,7 @@ describe(resolveNativeAddonCore, () => {
     withTempRepo((repoRoot) => {
       const resolution = resolveNativeAddonCore({
         exists: () => false,
-        key,
-        packageName,
+        nativePackage,
         repoRoot,
         requirePackage: (id) => {
           throw moduleNotFound(`Cannot find module '${id}'`);
@@ -66,8 +69,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: () => false,
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: () => {
             throw nested;
@@ -82,8 +84,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: () => true,
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: () => null,
         }),
@@ -96,8 +97,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: () => true,
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: () => ({}),
         }),
@@ -112,8 +112,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: () => false,
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: () => ({ binaryPath: missingBinary }),
         }),
@@ -127,8 +126,7 @@ describe(resolveNativeAddonCore, () => {
     withTempRepo((repoRoot) => {
       const resolution = resolveNativeAddonCore({
         exists: () => false,
-        key,
-        packageName,
+        nativePackage,
         repoRoot,
         requirePackage: (id) => {
           throw moduleNotFound(`Cannot find module '${id}'`);
@@ -144,8 +142,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: (target) => target === localIndexPath(repoRoot),
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: (id) => {
             if (id === packageName) {
@@ -163,8 +160,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: (target) => target === localIndexPath(repoRoot),
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: (id) => {
             if (id === packageName) {
@@ -182,8 +178,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: (target) => target === localIndexPath(repoRoot),
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: (id) => {
             if (id === packageName) {
@@ -203,8 +198,7 @@ describe(resolveNativeAddonCore, () => {
       expect(() =>
         resolveNativeAddonCore({
           exists: (target) => target === localIndexPath(repoRoot),
-          key,
-          packageName,
+          nativePackage,
           repoRoot,
           requirePackage: (id) => {
             if (id === packageName) {
@@ -226,8 +220,7 @@ describe(resolveNativeAddonCore, () => {
 
       const resolution = resolveNativeAddonCore({
         exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
-        key,
-        packageName,
+        nativePackage,
         repoRoot,
         requirePackage: (id) => {
           if (id === packageName) {
@@ -250,8 +243,7 @@ describe(resolveNativeAddonCore, () => {
 
       const resolution = resolveNativeAddonCore({
         exists: (target) => target === localIndexPath(repoRoot) || fs.existsSync(target),
-        key,
-        packageName,
+        nativePackage,
         repoRoot,
         requirePackage: (id) => {
           if (id === packageName) {
@@ -264,32 +256,12 @@ describe(resolveNativeAddonCore, () => {
       expect(resolution).toStrictEqual({ binaryPath: installedBinary, key, packageName });
     });
   });
-  it('resolves an explicit installed package before requiring a known platform spec', () => {
-    withTempRepo((repoRoot) => {
-      const binaryPath = path.join(repoRoot, 'custom.node');
-      fs.writeFileSync(binaryPath, 'fake custom native binary');
-
-      const resolution = resolveNativeAddonCore({
-        exists: (target) => target === binaryPath,
-        key: 'future-os-x64',
-        packageName: '@xbbg/core-future-os-x64',
-        repoRoot,
-        requirePackage: () => ({ binaryPath }),
-      });
-
-      expect(resolution).toStrictEqual({
-        binaryPath,
-        key: 'future-os-x64',
-        packageName: '@xbbg/core-future-os-x64',
-      });
-    });
-  });
 
   it('returns a null package and binary for unsupported platforms', () => {
     const resolution = resolveNativeAddonCore({
       exists: () => false,
       key: 'freebsd-x64',
-      packageName: null,
+      nativePackage: null,
       repoRoot: os.tmpdir(),
       requirePackage: () => {
         throw new Error('should not require unsupported package');
@@ -304,10 +276,6 @@ describe('platform map packaging metadata', () => {
   it('keeps source and script platform maps in sync', () => {
     expect(toolPlatformPackages).toStrictEqual(platformPackages);
   });
-  it('keeps source and script native package specs in sync', () => {
-    expect(toolNativePackageSpecs).toStrictEqual(nativePackageSpecs);
-  });
-
   it('keeps optional dependency keys in sync with platform packages', () => {
     expect(Object.keys(packageJson.optionalDependencies).toSorted()).toStrictEqual(
       Object.values(platformPackages).toSorted(),
@@ -319,9 +287,14 @@ describe('platform map packaging metadata', () => {
       Object.keys(packageJson.optionalDependencies).toSorted(),
     );
     for (const spec of nativePackageSpecs) {
-      expect(platformPackages[spec.key]).toBe(spec.packageName);
-      expect(nativePackageSpecForKey(spec.key)).toBe(spec);
-      expect(nativePackageSpecForPackageName(spec.packageName)).toBe(spec);
+      expect((platformPackages as Readonly<Record<string, string>>)[spec.key]).toBe(
+        spec.packageName,
+      );
+      expect(nativePackageForKey(spec.key)).toStrictEqual({
+        key: spec.key,
+        packageDir: spec.packageDir,
+        packageName: spec.packageName,
+      });
       expect(path.basename(spec.packageDir)).toBe(spec.dirName);
       expect(spec.binaryName).toBe(nativeBinaryName);
       expect(spec.expectedFiles).toContain(nativeBinaryName);
