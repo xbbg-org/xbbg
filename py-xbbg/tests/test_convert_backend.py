@@ -10,8 +10,9 @@ import narwhals.stable.v1 as nw
 import pytest
 
 from xbbg._core import ArrowTable
-from xbbg.backend import check_backend
-from xbbg.blp import Backend, _convert_backend
+from xbbg import blp
+from xbbg.backend import check_backend, convert_backend_frame
+from xbbg.blp import Backend
 
 
 @pytest.fixture
@@ -38,11 +39,11 @@ def _block_imports(monkeypatch: pytest.MonkeyPatch, *roots: str) -> None:
 
 class TestConvertBackendNative:
     def test_convert_native_returns_identity(self, arrow_table: Any):
-        result = _convert_backend(arrow_table, Backend.NATIVE)
+        result = convert_backend_frame(arrow_table, Backend.NATIVE)
         assert result is arrow_table
 
-    def test_convert_none_backend_defaults_to_narwhals(self, arrow_table: Any):
-        result = _convert_backend(arrow_table, None)
+    def test_facade_conversion_defaults_to_narwhals(self, arrow_table: Any):
+        result = blp._convert_result_backend(arrow_table, None)
         assert isinstance(result, nw.DataFrame)
 
         native = result.to_native()
@@ -61,9 +62,17 @@ class TestConvertBackendNative:
         else:
             assert native is arrow_table
 
+    def test_facade_conversion_honors_set_backend(self, arrow_table: Any):
+        original = blp.get_backend()
+        try:
+            blp.set_backend(Backend.NATIVE)
+            assert blp._convert_result_backend(arrow_table, None) is arrow_table
+        finally:
+            blp.set_backend(original)
+
     def test_convert_record_batch_to_native_table(self, arrow_table: Any):
         batch = arrow_table.to_batches()[0]
-        result = _convert_backend(batch, Backend.NATIVE)
+        result = convert_backend_frame(batch, Backend.NATIVE)
         assert result.column_names == arrow_table.column_names
         assert result.to_pylist() == arrow_table.to_pylist()
 
@@ -74,7 +83,7 @@ class TestConvertBackendNative:
             names=["ticker", "px_last"],
         )
 
-        result = _convert_backend(batch, Backend.NATIVE)
+        result = convert_backend_frame(batch, Backend.NATIVE)
 
         assert isinstance(result, pa.Table)
         assert result.column_names == ["ticker", "px_last"]
@@ -98,13 +107,13 @@ class TestConvertBackendNative:
 
     def test_rejects_non_native_inputs(self):
         with pytest.raises(TypeError, match="Expected xbbg ArrowTable or ArrowRecordBatch"):
-            _convert_backend({"ticker": ["IBM"]}, Backend.NATIVE)
+            convert_backend_frame({"ticker": ["IBM"]}, Backend.NATIVE)
 
 
 class TestConvertBackendPyArrow:
     def test_convert_pyarrow_returns_table(self, arrow_table: Any):
         pa = pytest.importorskip("pyarrow")
-        result = _convert_backend(arrow_table, Backend.PYARROW)
+        result = convert_backend_frame(arrow_table, Backend.PYARROW)
         assert isinstance(result, pa.Table)
         assert result.column_names == arrow_table.column_names
         assert result.num_rows == arrow_table.num_rows
@@ -113,7 +122,7 @@ class TestConvertBackendPyArrow:
 class TestConvertBackendPandas:
     def test_convert_pandas_returns_dataframe(self, arrow_table: Any):
         pd = pytest.importorskip("pandas")
-        result = _convert_backend(arrow_table, Backend.PANDAS)
+        result = convert_backend_frame(arrow_table, Backend.PANDAS)
         assert isinstance(result, pd.DataFrame)
         assert list(result.columns) == arrow_table.column_names
         assert len(result) == arrow_table.num_rows
@@ -132,7 +141,7 @@ class TestConvertBackendPandas:
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr("builtins.__import__", guarded_import)
-        result = _convert_backend(arrow_table, Backend.PANDAS)
+        result = convert_backend_frame(arrow_table, Backend.PANDAS)
         assert len(result) == arrow_table.num_rows
 
 
@@ -141,7 +150,7 @@ class TestConvertBackendPolars:
         pl = pytest.importorskip("polars")
         if not check_backend(Backend.POLARS, raise_on_error=False):
             pytest.skip("polars package is not usable in this environment")
-        result = _convert_backend(arrow_table, Backend.POLARS)
+        result = convert_backend_frame(arrow_table, Backend.POLARS)
         assert isinstance(result, pl.DataFrame)
         assert result.columns == arrow_table.column_names
 
@@ -149,14 +158,14 @@ class TestConvertBackendPolars:
         pl = pytest.importorskip("polars")
         if not check_backend(Backend.POLARS_LAZY, raise_on_error=False):
             pytest.skip("polars package is not usable in this environment")
-        result = _convert_backend(arrow_table, Backend.POLARS_LAZY)
+        result = convert_backend_frame(arrow_table, Backend.POLARS_LAZY)
         assert isinstance(result, pl.LazyFrame)
 
 
 class TestConvertBackendDuckDB:
     def test_convert_duckdb_relation(self, arrow_table: Any):
         duckdb = pytest.importorskip("duckdb")
-        result = _convert_backend(arrow_table, Backend.DUCKDB)
+        result = convert_backend_frame(arrow_table, Backend.DUCKDB)
         assert result.fetchone() is not None
         assert result.columns == arrow_table.column_names
         del duckdb
@@ -169,7 +178,7 @@ class TestConvertBackendNarwhals:
 
     def test_convert_narwhals_prefers_pyarrow_when_available(self, arrow_table: Any):
         pa = pytest.importorskip("pyarrow")
-        result = _convert_backend(arrow_table, Backend.NARWHALS)
+        result = convert_backend_frame(arrow_table, Backend.NARWHALS)
         assert isinstance(result, nw.DataFrame)
         native = result.to_native()
         assert isinstance(native, pa.Table)
@@ -179,7 +188,7 @@ class TestConvertBackendNarwhals:
         self._block_dataframe_backend_imports(monkeypatch)
         monkeypatch.setattr("xbbg.backend._native_narwhals_fallback_warned", False)
         with pytest.warns(RuntimeWarning, match="limited xbbg native ArrowTable plugin"):
-            result = _convert_backend(arrow_table, Backend.NARWHALS)
+            result = convert_backend_frame(arrow_table, Backend.NARWHALS)
         assert isinstance(result, nw.DataFrame)
         assert result.to_native() is arrow_table
         assert result.columns == arrow_table.column_names
@@ -188,7 +197,7 @@ class TestConvertBackendNarwhals:
         self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch
     ):
         self._block_dataframe_backend_imports(monkeypatch)
-        result = _convert_backend(arrow_table, Backend.NARWHALS)
+        result = convert_backend_frame(arrow_table, Backend.NARWHALS)
         selected = result.select("ticker", "px_last")
         native = selected.to_native()
         assert native.column_names == ["ticker", "px_last"]
@@ -201,7 +210,7 @@ class TestConvertBackendNarwhals:
         self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch
     ):
         self._block_dataframe_backend_imports(monkeypatch)
-        result = _convert_backend(arrow_table, Backend.NARWHALS_LAZY)
+        result = convert_backend_frame(arrow_table, Backend.NARWHALS_LAZY)
         collected = result.select("ticker").collect()
         native = collected.to_native()
         assert native.column_names == ["ticker"]
@@ -211,7 +220,7 @@ class TestConvertBackendNarwhals:
 class TestConvertBackendInvalid:
     def test_invalid_string_backend_raises(self, arrow_table: Any):
         with pytest.raises(ValueError):
-            _convert_backend(arrow_table, "invalid_backend")
+            convert_backend_frame(arrow_table, "invalid_backend")
 
     @pytest.mark.parametrize(
         ("backend", "blocked_root", "extra"),
@@ -229,7 +238,7 @@ class TestConvertBackendInvalid:
         _block_imports(monkeypatch, blocked_root)
 
         with pytest.raises(ImportError) as exc_info:
-            _convert_backend(arrow_table, backend)
+            convert_backend_frame(arrow_table, backend)
 
         msg = str(exc_info.value)
         assert f"Backend '{backend.value}' requires" in msg
@@ -253,7 +262,7 @@ class TestConvertBackendInvalid:
         monkeypatch.setattr("xbbg.backend.check_backend", lambda *_args, **_kwargs: True)
 
         with pytest.raises(NotImplementedError, match=f"Backend '{backend.value}'.*not implemented"):
-            _convert_backend(arrow_table, backend)
+            convert_backend_frame(arrow_table, backend)
 
     def test_set_backend_missing_optional_dependency_errors_before_state_change(self, monkeypatch: pytest.MonkeyPatch):
         from xbbg.blp import get_backend, set_backend

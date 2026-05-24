@@ -19,7 +19,7 @@ async def test_absrch_generated_endpoint_preserves_excel_grid_overrides(monkeypa
         return []
 
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda frame, _backend: frame)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda frame, _backend: frame)
 
     result = await blp.absrch("COMDTY:WEATHER", provider="wsi", location_time=True)
 

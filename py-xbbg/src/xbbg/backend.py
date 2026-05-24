@@ -481,7 +481,7 @@ def _import_backend_module(backend: Backend | str, *, feature: str | None = None
     return __import__(module_name)
 
 
-def _is_arrow_table(value: Any) -> bool:
+def is_arrow_table(value: Any) -> bool:
     return value.__class__.__name__ == "ArrowTable" and hasattr(value, "__arrow_c_stream__")
 
 
@@ -497,8 +497,8 @@ def _is_pyarrow_record_batch(value: Any) -> bool:
     return value.__class__.__module__.startswith("pyarrow.") and value.__class__.__name__ == "RecordBatch"
 
 
-def _ensure_arrow_table(frame: Any) -> Any:
-    if _is_arrow_table(frame) or _is_pyarrow_table(frame):
+def ensure_arrow_table(frame: Any) -> Any:
+    if is_arrow_table(frame) or _is_pyarrow_table(frame):
         return frame
     if _is_arrow_record_batch(frame):
         return frame.to_table()
@@ -571,7 +571,7 @@ def convert_backend_frame(frame: Any, backend: Backend | str) -> DataFrameResult
     """Convert an xbbg ArrowTable to the requested public backend."""
     effective = Backend(backend) if isinstance(backend, str) else backend
     descriptor = BACKEND_DESCRIPTORS[effective]
-    table = _ensure_arrow_table(frame)
+    table = ensure_arrow_table(frame)
 
     if effective not in (Backend.NATIVE, Backend.NARWHALS, Backend.NARWHALS_LAZY):
         check_backend(effective)
@@ -604,7 +604,7 @@ def convert_backend_frame(frame: Any, backend: Backend | str) -> DataFrameResult
                 "polars_lazy, narwhals, narwhals_lazy, duckdb."
             )
 
-    return nw.from_native(table)
+    raise AssertionError(f"Unhandled backend conversion: {descriptor.conversion!r}")
 
 
 def get_available_backends() -> list[Backend]:

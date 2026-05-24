@@ -57,7 +57,7 @@ def endpoint_capture(monkeypatch):
     blp._VALID_ELEMENTS_CACHE.clear()
     monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
     monkeypatch.setattr(blp, "arequest", fake_arequest)
-    monkeypatch.setattr(blp, "_convert_backend", lambda frame, _backend: frame)
+    monkeypatch.setattr(blp, "convert_backend_frame", lambda frame, _backend: frame)
     return captured
 
 

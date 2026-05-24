@@ -5,6 +5,7 @@
 //! kwargs, and classifies the request shape consumed by workers.
 
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::errors::BlpAsyncError;
 use crate::request_builder::RequestBuilder;
@@ -12,42 +13,71 @@ use crate::schema::SchemaCache;
 use crate::services::{ExtractorType, Operation};
 
 use super::state::{LongMode, OutputFormat};
-use super::{
-    merge_raw_kwargs_into_elements, normalize_excel_grid_params, parse_operation_lossless,
-    RequestParams,
-};
+use super::RequestParams;
+
+fn parse_operation(operation: &str) -> Operation {
+    match Operation::from_str(operation) {
+        Ok(operation) => operation,
+        Err(never) => match never {},
+    }
+}
+
+fn effective_operation(params: &RequestParams) -> Result<(Operation, bool), BlpAsyncError> {
+    let outer = parse_operation(&params.operation);
+    if matches!(outer, Operation::RawRequest) {
+        let request_operation = params
+            .request_operation
+            .as_deref()
+            .filter(|operation| !operation.is_empty())
+            .ok_or_else(|| BlpAsyncError::ConfigError {
+                detail: "request_operation is required for RawRequest".to_string(),
+            })?;
+        return Ok((parse_operation(request_operation), true));
+    }
+    if params.operation.is_empty() {
+        return Err(BlpAsyncError::ConfigError {
+            detail: "operation is required".to_string(),
+        });
+    }
+    Ok((outer, false))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PlannedOutput {
-    pub format: OutputFormat,
-    pub long_mode: LongMode,
+pub(crate) struct PlannedOutput {
+    pub(crate) format: OutputFormat,
+    pub(crate) long_mode: LongMode,
 }
 
 impl PlannedOutput {
-    fn from_format(format: Option<&str>) -> Self {
+    fn parse(format: Option<&str>) -> Result<Self, BlpAsyncError> {
         match format {
-            Some("semi_long" | "wide") => Self {
+            None | Some("long") => Ok(Self {
+                format: OutputFormat::Long,
+                long_mode: LongMode::String,
+            }),
+            Some("semi_long" | "wide") => Ok(Self {
                 format: OutputFormat::Wide,
                 long_mode: LongMode::String,
-            },
-            Some("long_typed" | "typed") => Self {
+            }),
+            Some("long_typed" | "typed") => Ok(Self {
                 format: OutputFormat::Long,
                 long_mode: LongMode::Typed,
-            },
-            Some("long_metadata" | "metadata" | "with_metadata") => Self {
+            }),
+            Some("long_metadata" | "metadata" | "with_metadata") => Ok(Self {
                 format: OutputFormat::Long,
                 long_mode: LongMode::WithMetadata,
-            },
-            _ => Self {
-                format: OutputFormat::Long,
-                long_mode: LongMode::String,
-            },
+            }),
+            Some(other) => Err(BlpAsyncError::ConfigError {
+                detail: format!(
+                    "unknown output format '{other}' (expected long, long_typed, long_metadata, wide, or semi_long)"
+                ),
+            }),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RequestKind {
+pub(crate) enum RequestKind {
     RefData(PlannedOutput),
     HistData(PlannedOutput),
     BulkData,
@@ -60,48 +90,55 @@ pub enum RequestKind {
 }
 
 impl RequestKind {
-    fn from_params(params: &RequestParams) -> Self {
+    fn from_params(params: &RequestParams) -> Result<Self, BlpAsyncError> {
         match params.extractor {
-            ExtractorType::RefData => {
-                Self::RefData(PlannedOutput::from_format(params.format.as_deref()))
-            }
-            ExtractorType::HistData => {
-                Self::HistData(PlannedOutput::from_format(params.format.as_deref()))
-            }
-            ExtractorType::BulkData => Self::BulkData,
-            ExtractorType::Generic => Self::Generic,
-            ExtractorType::Bql => Self::Bql,
-            ExtractorType::Bsrch => Self::Bsrch,
-            ExtractorType::FieldInfo => Self::FieldInfo,
-            ExtractorType::IntradayBar => Self::IntradayBar,
-            ExtractorType::IntradayTick => Self::IntradayTick,
+            ExtractorType::RefData => Ok(Self::RefData(PlannedOutput::parse(
+                params.format.as_deref(),
+            )?)),
+            ExtractorType::HistData => Ok(Self::HistData(PlannedOutput::parse(
+                params.format.as_deref(),
+            )?)),
+            ExtractorType::BulkData => Ok(Self::BulkData),
+            ExtractorType::Generic => Ok(Self::Generic),
+            ExtractorType::Bql => Ok(Self::Bql),
+            ExtractorType::Bsrch => Ok(Self::Bsrch),
+            ExtractorType::FieldInfo => Ok(Self::FieldInfo),
+            ExtractorType::IntradayBar => Ok(Self::IntradayBar),
+            ExtractorType::IntradayTick => Ok(Self::IntradayTick),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct PreparedRequest {
+pub(crate) struct PreparedRequest {
     params: RequestParams,
     kind: RequestKind,
+    operation: Operation,
+    raw: bool,
 }
 
 impl PreparedRequest {
-    pub fn prepare(
+    pub(crate) fn prepare(
         mut params: RequestParams,
         schema_cache: &SchemaCache,
     ) -> Result<Self, BlpAsyncError> {
         apply_request_defaults(&mut params);
-        validate_request_params(&params)?;
-        route_request_params(&mut params, schema_cache);
-        let kind = RequestKind::from_params(&params);
-        Ok(Self { params, kind })
+        let (operation, raw) = validate_request_params(&params)?;
+        route_request_params(&mut params, schema_cache, &operation)?;
+        let kind = RequestKind::from_params(&params)?;
+        Ok(Self {
+            params,
+            kind,
+            operation,
+            raw,
+        })
     }
 
-    pub fn kind(&self) -> RequestKind {
+    pub(crate) fn kind(&self) -> RequestKind {
         self.kind
     }
 
-    pub fn params(&self) -> &RequestParams {
+    pub(crate) fn params(&self) -> &RequestParams {
         &self.params
     }
 
@@ -114,8 +151,23 @@ impl PreparedRequest {
         self.params.end_datetime = Some(end_datetime);
     }
 
+    pub(crate) fn operation(&self) -> &Operation {
+        &self.operation
+    }
+
+    pub(crate) fn is_raw(&self) -> bool {
+        self.raw
+    }
+
     pub(crate) fn effective_operation(&self) -> &str {
-        self.params.effective_operation()
+        self.operation.as_str()
+    }
+
+    pub(crate) fn uses_intraday_security_element(&self) -> bool {
+        matches!(
+            self.operation(),
+            Operation::IntradayBar | Operation::IntradayTick
+        )
     }
 
     pub(crate) fn is_excel_get_grid_request(&self) -> bool {
@@ -125,41 +177,36 @@ impl PreparedRequest {
 
 pub(crate) fn apply_request_defaults(params: &mut RequestParams) {
     if !params.extractor_set && params.extractor == ExtractorType::default() {
-        let operation = parse_operation_lossless(params.effective_operation());
+        let operation = parse_operation(params.effective_operation());
         params.extractor = operation.default_extractor();
     }
 }
 
-pub(crate) fn validate_request_params(params: &RequestParams) -> Result<(), BlpAsyncError> {
+pub(crate) fn validate_request_params(
+    params: &RequestParams,
+) -> Result<(Operation, bool), BlpAsyncError> {
     if params.service.is_empty() {
         return Err(BlpAsyncError::ConfigError {
             detail: "service is required".to_string(),
         });
     }
 
-    let operation = parse_operation_lossless(&params.operation);
-    if matches!(operation, Operation::RawRequest) {
-        if params
-            .request_operation
-            .as_ref()
-            .is_none_or(|operation| operation.is_empty())
-        {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "request_operation is required for RawRequest".to_string(),
-            });
-        }
-    } else if params.operation.is_empty() {
-        return Err(BlpAsyncError::ConfigError {
-            detail: "operation is required".to_string(),
-        });
+    let (operation, raw) = effective_operation(params)?;
+    validate_field_metadata_aliases(params, &operation)?;
+    validate_format_compatibility(params, &operation)?;
+
+    if raw {
+        return Ok((operation, true));
     }
 
-    match operation {
-        Operation::ReferenceData => validate_reference_data(params),
-        Operation::HistoricalData => validate_historical_data(params),
-        Operation::IntradayBar => validate_intraday_bar(params),
-        Operation::IntradayTick => validate_intraday_tick(params),
-        Operation::FieldInfo | Operation::FieldSearch => validate_field_request(params, &operation),
+    match &operation {
+        Operation::ReferenceData => validate_reference_data(params)?,
+        Operation::HistoricalData => validate_historical_data(params)?,
+        Operation::IntradayBar => validate_intraday_bar(params)?,
+        Operation::IntradayTick => validate_intraday_tick(params)?,
+        Operation::FieldInfo | Operation::FieldSearch => {
+            validate_field_request(params, &operation)?
+        }
         // Unknown/custom operations run in power-user mode.
         Operation::Beqs
         | Operation::PortfolioData
@@ -170,20 +217,27 @@ pub(crate) fn validate_request_params(params: &RequestParams) -> Result<(), BlpA
         | Operation::ExcelGetGrid
         | Operation::StudyRequest
         | Operation::RawRequest
-        | Operation::Custom(_) => Ok(()),
+        | Operation::Custom(_) => {}
     }
+    Ok((operation, false))
 }
 
-fn route_request_params(params: &mut RequestParams, schema_cache: &SchemaCache) {
+fn route_request_params(
+    params: &mut RequestParams,
+    schema_cache: &SchemaCache,
+    operation: &Operation,
+) -> Result<(), BlpAsyncError> {
+    normalize_field_metadata_aliases(params, operation);
+
     let kwargs = params.kwargs.take().unwrap_or_default();
     if params.is_excel_get_grid_request() {
         normalize_excel_grid_params(params, kwargs);
-        return;
+        return Ok(());
     }
 
     if params.is_raw_request() {
         merge_raw_kwargs_into_elements(params, kwargs);
-        return;
+        return Ok(());
     }
 
     let routed = RequestBuilder::route_kwargs(
@@ -214,6 +268,138 @@ fn route_request_params(params: &mut RequestParams, schema_cache: &SchemaCache) 
             warning = %warning,
             "request parameter routing warning"
         );
+    }
+    Ok(())
+}
+
+fn validate_field_metadata_aliases(
+    params: &RequestParams,
+    operation: &Operation,
+) -> Result<(), BlpAsyncError> {
+    match operation {
+        Operation::FieldInfo => {
+            if params.fields.is_some() && params.field_ids.is_some() {
+                return Err(BlpAsyncError::ConfigError {
+                    detail: "FieldInfoRequest accepts either fields or field_ids, not both"
+                        .to_string(),
+                });
+            }
+        }
+        Operation::FieldSearch => {
+            if params.fields.is_some() && params.search_spec.is_some() {
+                return Err(BlpAsyncError::ConfigError {
+                    detail: "FieldSearchRequest accepts either fields or search_spec, not both"
+                        .to_string(),
+                });
+            }
+            if params.search_spec.is_none() {
+                if let Some(field_values) = params.fields.as_ref() {
+                    if field_values.len() != 1 {
+                        return Err(BlpAsyncError::ConfigError {
+                            detail: "FieldSearchRequest requires exactly one field value when fields is used as a search alias".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_format_compatibility(
+    params: &RequestParams,
+    operation: &Operation,
+) -> Result<(), BlpAsyncError> {
+    let format = params.format.as_deref();
+    if format.is_none() {
+        return Ok(());
+    }
+
+    match operation {
+        Operation::ReferenceData | Operation::HistoricalData => {
+            PlannedOutput::parse(format)?;
+        }
+        _ => {
+            return Err(BlpAsyncError::ConfigError {
+                detail:
+                    "format is only supported for ReferenceDataRequest and HistoricalDataRequest"
+                        .to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn normalize_field_metadata_aliases(params: &mut RequestParams, operation: &Operation) {
+    match operation {
+        Operation::FieldInfo => {
+            if params.field_ids.is_none() {
+                params.field_ids = params.fields.take();
+            }
+        }
+        Operation::FieldSearch => {
+            if params.search_spec.is_none() {
+                if let Some(mut field_values) = params.fields.take() {
+                    debug_assert_eq!(field_values.len(), 1);
+                    params.search_spec = field_values.pop();
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_excel_grid_params(params: &mut RequestParams, kwargs: HashMap<String, String>) {
+    let mut domain: Option<String> = None;
+    let mut grid_overrides: Vec<(String, String)> = Vec::new();
+
+    fn route_pair(
+        domain: &mut Option<String>,
+        grid_overrides: &mut Vec<(String, String)>,
+        key: String,
+        value: String,
+    ) {
+        if key.eq_ignore_ascii_case("Domain") {
+            *domain = Some(value);
+        } else if !key.is_empty() && !key.eq_ignore_ascii_case("Overrides") {
+            grid_overrides.push((key, value));
+        }
+    }
+
+    for (key, value) in params.elements.take().unwrap_or_default() {
+        route_pair(&mut domain, &mut grid_overrides, key, value);
+    }
+
+    for (key, value) in params.overrides.take().unwrap_or_default() {
+        route_pair(&mut domain, &mut grid_overrides, key, value);
+    }
+
+    let mut keys: Vec<String> = kwargs.keys().cloned().collect();
+    keys.sort();
+    for key in keys {
+        if let Some(value) = kwargs.get(&key) {
+            route_pair(&mut domain, &mut grid_overrides, key, value.clone());
+        }
+    }
+
+    params.elements = domain.map(|value| vec![("Domain".to_string(), value)]);
+    params.overrides = (!grid_overrides.is_empty()).then_some(grid_overrides);
+}
+
+fn merge_raw_kwargs_into_elements(params: &mut RequestParams, kwargs: HashMap<String, String>) {
+    if kwargs.is_empty() {
+        return;
+    }
+
+    let mut keys: Vec<String> = kwargs.keys().cloned().collect();
+    keys.sort();
+
+    let elements = params.elements.get_or_insert_with(Vec::new);
+    for key in keys {
+        if let Some(value) = kwargs.get(&key) {
+            elements.push((key, value.clone()));
+        }
     }
 }
 
@@ -639,5 +825,139 @@ mod tests {
             prepared.params().overrides.as_ref().unwrap(),
             &[("Ticker".to_string(), "IBM".to_string())]
         );
+    }
+
+    #[test]
+    fn merge_raw_kwargs_into_elements_preserves_existing_elements_and_sorts_kwargs() {
+        let mut params = RequestParams {
+            elements: Some(vec![("alpha".to_string(), "1".to_string())]),
+            ..Default::default()
+        };
+
+        merge_raw_kwargs_into_elements(
+            &mut params,
+            HashMap::from([
+                ("zeta".to_string(), "9".to_string()),
+                ("beta".to_string(), "2".to_string()),
+            ]),
+        );
+
+        assert_eq!(
+            params.elements,
+            Some(vec![
+                ("alpha".to_string(), "1".to_string()),
+                ("beta".to_string(), "2".to_string()),
+                ("zeta".to_string(), "9".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn normalize_excel_grid_params_routes_domain_and_grid_overrides() {
+        let mut params = RequestParams {
+            operation: Operation::ExcelGetGrid.to_string(),
+            elements: Some(vec![
+                ("Domain".to_string(), "FI:OLD".to_string()),
+                ("provider".to_string(), "wsi".to_string()),
+            ]),
+            overrides: Some(vec![
+                ("location".to_string(), "nwe".to_string()),
+                ("Domain".to_string(), "COMDTY:WEATHER".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        normalize_excel_grid_params(
+            &mut params,
+            HashMap::from([("model".to_string(), "ecmwf".to_string())]),
+        );
+
+        assert_eq!(
+            params.elements,
+            Some(vec![("Domain".to_string(), "COMDTY:WEATHER".to_string())])
+        );
+        assert_eq!(
+            params.overrides,
+            Some(vec![
+                ("provider".to_string(), "wsi".to_string()),
+                ("location".to_string(), "nwe".to_string()),
+                ("model".to_string(), "ecmwf".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn generic_field_aliases_are_normalized_in_request_plan() {
+        let info = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldInfo.to_string(),
+            fields: Some(vec!["PX_LAST".to_string()]),
+            ..Default::default()
+        };
+        let prepared = PreparedRequest::prepare(info, &empty_schema()).unwrap();
+        assert_eq!(
+            prepared.params().field_ids.as_deref(),
+            Some(&["PX_LAST".to_string()][..])
+        );
+        assert!(prepared.params().fields.is_none());
+
+        let search = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldSearch.to_string(),
+            fields: Some(vec!["price".to_string()]),
+            ..Default::default()
+        };
+        let prepared = PreparedRequest::prepare(search, &empty_schema()).unwrap();
+        assert_eq!(prepared.params().search_spec.as_deref(), Some("price"));
+        assert!(prepared.params().fields.is_none());
+    }
+
+    #[test]
+    fn validation_catches_metadata_alias_and_format_errors_before_routing() {
+        let field_info_with_duplicate_aliases = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldInfo.to_string(),
+            fields: Some(vec!["PX_LAST".to_string()]),
+            field_ids: Some(vec!["PX_LAST".to_string()]),
+            ..Default::default()
+        };
+        assert!(validate_request_params(&field_info_with_duplicate_aliases).is_err());
+
+        let field_search_with_duplicate_aliases = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldSearch.to_string(),
+            fields: Some(vec!["price".to_string()]),
+            search_spec: Some("price".to_string()),
+            ..Default::default()
+        };
+        assert!(validate_request_params(&field_search_with_duplicate_aliases).is_err());
+
+        let field_search_with_ambiguous_alias = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldSearch.to_string(),
+            fields: Some(vec!["price".to_string(), "last".to_string()]),
+            ..Default::default()
+        };
+        assert!(validate_request_params(&field_search_with_ambiguous_alias).is_err());
+
+        let refdata_wide = RequestParams {
+            format: Some("wide".to_string()),
+            ..refdata_params()
+        };
+        assert!(validate_request_params(&refdata_wide).is_ok());
+
+        let unsupported_operation_format = RequestParams {
+            service: Service::RefData.to_string(),
+            operation: Operation::Beqs.to_string(),
+            format: Some("wide".to_string()),
+            ..Default::default()
+        };
+        assert!(validate_request_params(&unsupported_operation_format).is_err());
+
+        let unknown_format = RequestParams {
+            format: Some("sideways".to_string()),
+            ..refdata_params()
+        };
+        assert!(validate_request_params(&unknown_format).is_err());
     }
 }

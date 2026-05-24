@@ -80,7 +80,7 @@ async def _call_native_recipe(recipe_name: str, *args: Any, backend: Any = None,
     recipe = getattr(_core, recipe_name)
     engine = blp._get_engine()
     batch = await recipe(engine, *args, **kwargs)
-    return blp._convert_backend(batch, backend)
+    return blp._convert_result_backend(batch, backend)
 
 
 async def _abdp_fields(

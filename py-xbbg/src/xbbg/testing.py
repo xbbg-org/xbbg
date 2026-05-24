@@ -304,7 +304,7 @@ class mock_engine:
             context.frame = table
             return table
 
-        context.frame = blp._convert_backend(table, context.backend)
+        context.frame = blp._convert_result_backend(table, context.backend)
         return context.frame
 
     def __enter__(self):
