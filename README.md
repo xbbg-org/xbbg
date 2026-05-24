@@ -9,6 +9,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
+[![Conda version](https://anaconda.org/conda-forge/xbbg/badges/version.svg)](https://anaconda.org/conda-forge/xbbg)
 [![Downloads](https://pepy.tech/badge/xbbg)](https://pepy.tech/project/xbbg)
 [![CI](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/P34uMwgCjC)
@@ -85,6 +86,12 @@ That makes xbbg the best fit in this comparison for teams that want one Bloomber
 
 ```cmd
 pip install xbbg
+```
+
+Conda users can install the conda-forge build:
+
+```cmd
+conda install -c conda-forge xbbg
 ```
 
 Most users should also install Bloomberg's official Python package so xbbg can locate the Bloomberg SDK/runtime:
