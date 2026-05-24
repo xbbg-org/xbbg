@@ -28,7 +28,6 @@ import time
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 import warnings
 
-import narwhals.stable.v1 as nw
 
 from xbbg.services import (
     ExtractorHint,
@@ -40,16 +39,45 @@ from xbbg.services import (
 )
 
 from ._exports import BLP_MODULE_EXPORTS
-from .backend import Backend, _import_backend_module, check_backend, get_default_backend, is_backend_available
+from .backend import (
+    Backend,
+    _ensure_arrow_table,
+    _is_arrow_table,
+    check_backend,
+    convert_backend_frame,
+    get_default_backend,
+)
+from .request_middleware import (
+    RequestContext,
+    RequestEnvironment,
+    RequestHandler,
+    RequestMiddleware,
+    add_middleware,
+    clear_middleware,
+    get_middleware,
+    remove_middleware,
+    run_request_middleware as _run_request_middleware,
+    set_middleware,
+)
 
 # Type alias for backend conversion return types.
 DataFrameResult: TypeAlias = Any
 
 logger = logging.getLogger(__name__)
-_native_narwhals_fallback_warned = False
 
 
 __all__ = list(BLP_MODULE_EXPORTS)
+RequestEnvironment.__module__ = __name__
+RequestContext.__module__ = __name__
+for _middleware_export in (
+    add_middleware,
+    remove_middleware,
+    clear_middleware,
+    get_middleware,
+    set_middleware,
+):
+    _middleware_export.__module__ = __name__
+del _middleware_export
 
 
 _REMOVED_LEGACY_ATTRS: dict[str, str] = {
@@ -334,110 +362,6 @@ class Engine:
 
     def shutdown(self) -> None:
         self._py_engine.signal_shutdown()
-
-
-RequestHandler: TypeAlias = Callable[["RequestContext"], Awaitable[DataFrameResult]]
-RequestMiddleware: TypeAlias = Callable[
-    ["RequestContext", RequestHandler],
-    DataFrameResult | Awaitable[DataFrameResult],
-]
-
-
-@dataclass(frozen=True, slots=True)
-class RequestEnvironment:
-    """Read-only engine and auth snapshot available to request middleware."""
-
-    source: str
-    host: str | None = None
-    port: int | None = None
-    servers: tuple[tuple[str, int], ...] = ()
-    zfp_remote: str | None = None
-    auth_method: str | None = None
-    app_name: str | None = None
-    user_id: str | None = None
-    validation_mode: str | None = None
-
-
-@dataclass(slots=True)
-class RequestContext:
-    """Mutable context object passed through the request middleware chain."""
-
-    request_id: str
-    params: RequestParams
-    params_dict: dict[str, Any]
-    backend: Backend | str | None
-    raw: bool
-    securities: list[str]
-    fields: list[str]
-    environment: RequestEnvironment
-    metadata: dict[str, Any] = field(default_factory=dict)
-    started_at: float = field(default_factory=time.perf_counter)
-    elapsed_ms: float | None = None
-    batch: Any | None = None
-    table: Any | None = None
-    frame: DataFrameResult | None = None
-    error: Exception | None = None
-
-
-_request_middleware: list[RequestMiddleware] = []
-
-
-async def _await_request_value(value: DataFrameResult | Awaitable[DataFrameResult]) -> DataFrameResult:
-    if inspect.isawaitable(value):
-        return cast("DataFrameResult", await value)
-    return value
-
-
-def add_middleware(middleware: RequestMiddleware) -> RequestMiddleware:
-    """Register a request middleware callable.
-
-    Middleware is called as ``middleware(context, call_next)`` and may be sync or async.
-    Returning the middleware makes this usable as a decorator.
-    """
-    _request_middleware.append(middleware)
-    return middleware
-
-
-def remove_middleware(middleware: RequestMiddleware) -> None:
-    """Remove a previously registered middleware callable."""
-    _request_middleware.remove(middleware)
-
-
-def clear_middleware() -> None:
-    """Remove all registered middleware."""
-    _request_middleware.clear()
-
-
-def get_middleware() -> tuple[RequestMiddleware, ...]:
-    """Return the currently registered middleware chain."""
-    return tuple(_request_middleware)
-
-
-def set_middleware(middleware: Sequence[RequestMiddleware]) -> None:
-    """Replace the current middleware chain."""
-    _request_middleware[:] = list(middleware)
-
-
-async def _run_request_middleware(
-    context: RequestContext,
-    terminal: RequestHandler,
-) -> DataFrameResult:
-    async def invoke(index: int, current_context: RequestContext) -> DataFrameResult:
-        if index >= len(_request_middleware):
-            return await terminal(current_context)
-
-        middleware = _request_middleware[index]
-
-        async def call_next(next_context: RequestContext) -> DataFrameResult:
-            return await invoke(index + 1, next_context)
-
-        try:
-            return await _await_request_value(middleware(current_context, call_next))
-        except Exception as exc:
-            current_context.error = exc
-            raise
-
-    return await invoke(0, context)
 
 
 # =============================================================================
@@ -1378,142 +1302,13 @@ def _core_arrow_table_class() -> type[Any]:
     return ArrowTable
 
 
-def _is_arrow_table(value: Any) -> bool:
-    return value.__class__.__name__ == "ArrowTable" and hasattr(value, "__arrow_c_stream__")
-
-
-def _is_arrow_record_batch(value: Any) -> bool:
-    return value.__class__.__name__ == "ArrowRecordBatch" and hasattr(value, "__arrow_c_array__")
-
-
-def _is_pyarrow_table(value: Any) -> bool:
-    return value.__class__.__module__.startswith("pyarrow.") and value.__class__.__name__ == "Table"
-
-
-def _is_pyarrow_record_batch(value: Any) -> bool:
-    return value.__class__.__module__.startswith("pyarrow.") and value.__class__.__name__ == "RecordBatch"
-
-
-def _ensure_arrow_table(frame: Any) -> Any:
-    if _is_arrow_table(frame) or _is_pyarrow_table(frame):
-        return frame
-    if _is_arrow_record_batch(frame):
-        return frame.to_table()
-    if _is_pyarrow_record_batch(frame):
-        import pyarrow as pa
-
-        return pa.Table.from_batches([frame])
-    raise TypeError(f"Expected xbbg ArrowTable or ArrowRecordBatch, got {type(frame).__name__}")
-
-
-def _to_pyarrow_table(table: Any) -> Any:
-    pa = _import_backend_module(Backend.PYARROW)
-
-    return pa.table(table)
-
-
-def _to_pandas_frame(table: Any) -> Any:
-    pd = _import_backend_module(Backend.PANDAS)
-
-    return pd.DataFrame.from_records(table.to_pylist(), columns=table.column_names)
-
-
-def _to_polars_frame(table: Any) -> Any:
-    pl = _import_backend_module(Backend.POLARS)
-
-    if is_backend_available(Backend.PYARROW) and check_backend(Backend.PYARROW, raise_on_error=False):
-        pa = _import_backend_module(Backend.PYARROW)
-        return pl.from_arrow(pa.table(table))
-
-    return pl.DataFrame(table.to_pylist(), schema=table.column_names)
-
-
-def _warn_native_narwhals_fallback() -> None:
-    global _native_narwhals_fallback_warned
-    if _native_narwhals_fallback_warned:
-        return
-    _native_narwhals_fallback_warned = True
-    warnings.warn(
-        "No optional dataframe backend is installed for xbbg's Narwhals output; "
-        "falling back to the limited xbbg native ArrowTable plugin. "
-        "Install `xbbg[pyarrow]`, `xbbg[pandas]`, or `xbbg[polars]` for full dataframe behavior, "
-        "or request `backend='native'` explicitly if the raw xbbg ArrowTable is intended.",
-        RuntimeWarning,
-        stacklevel=3,
-    )
-
-
-def _best_narwhals_native(table: Any) -> Any:
-    """Return the richest installed native object for Narwhals wrapping.
-
-    The Rust engine always produces the xbbg native Arrow carrier.  For the
-    public Narwhals default, prefer mature dataframe/Arrow implementations
-    when they are installed so existing Narwhals expressions keep their old
-    behavior instead of falling through to the intentionally small xbbg plugin.
-    """
-    candidates: tuple[tuple[Backend, Callable[[Any], Any]], ...] = (
-        (Backend.PYARROW, _to_pyarrow_table),
-        (Backend.PANDAS, _to_pandas_frame),
-        (Backend.POLARS, _to_polars_frame),
-    )
-    for candidate, convert in candidates:
-        if not is_backend_available(candidate):
-            continue
-        if not check_backend(candidate, raise_on_error=False):
-            continue
-        try:
-            return convert(table)
-        except ImportError:
-            continue
-    _warn_native_narwhals_fallback()
-    return table
-
-
 def _convert_backend(
     frame: Any,
     backend: Backend | str | None,
 ) -> DataFrameResult:
-    """Convert an xbbg ArrowTable to the requested public backend."""
+    """Resolve xbbg's backend default and delegate conversion to backend descriptors."""
     effective = _resolve_backend(backend) or get_default_backend()
-    table = _ensure_arrow_table(frame)
-    if effective not in (Backend.NATIVE, Backend.NARWHALS, Backend.NARWHALS_LAZY):
-        check_backend(effective)
-
-    if effective == Backend.NATIVE:
-        return table
-    if effective == Backend.PYARROW:
-        return _to_pyarrow_table(table)
-    if effective == Backend.PANDAS:
-        return _to_pandas_frame(table)
-    if effective == Backend.POLARS:
-        return _to_polars_frame(table)
-    if effective == Backend.POLARS_LAZY:
-        return _to_polars_frame(table).lazy()
-    if effective == Backend.NARWHALS:
-        return nw.from_native(_best_narwhals_native(table))
-    if effective == Backend.NARWHALS_LAZY:
-        return nw.from_native(_best_narwhals_native(table)).lazy()
-    if effective == Backend.DUCKDB:
-        import duckdb
-
-        con = duckdb.connect()
-        con.register("xbbg_arrow", table)
-        return con.sql("select * from xbbg_arrow")
-    unsupported = {
-        Backend.CUDF,
-        Backend.MODIN,
-        Backend.DASK,
-        Backend.IBIS,
-        Backend.PYSPARK,
-        Backend.SQLFRAME,
-    }
-    if effective in unsupported:
-        raise NotImplementedError(
-            f"Backend '{effective.value}' is selectable but conversion from xbbg native Arrow "
-            "is not implemented yet. Choose one of: native, pyarrow, pandas, polars, "
-            "polars_lazy, narwhals, narwhals_lazy, duckdb."
-        )
-    return nw.from_native(table)
+    return convert_backend_frame(frame, effective)
 
 
 def _normalize_engine_exception(exc: Exception) -> Exception:

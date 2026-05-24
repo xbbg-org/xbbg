@@ -59,9 +59,9 @@ use xbbg_async::engine::state::{
     subscription_update_to_record_batch, SubscriptionMetrics, SubscriptionUpdate, UpdateValue,
 };
 use xbbg_async::engine::{
-    AdminStatusInfo, Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy, ServerAddr,
-    ServiceStatusInfo, SessionStatusInfo, Socks5Proxy, SubscriptionCommandHandle,
-    SubscriptionEventInfo, SubscriptionFailureInfo, TlsConfig, TopicStatusInfo, Transport,
+    AdminStatusInfo, Engine, EngineConfig, RetryPolicy, ServerAddr, ServiceStatusInfo,
+    SessionStatusInfo, Socks5Proxy, SubscriptionCommandHandle, SubscriptionEventInfo,
+    SubscriptionFailureInfo, TlsConfig, TopicStatusInfo, Transport,
 };
 use xbbg_async::{BlpAsyncError, OverflowPolicy, ValidationMode};
 use xbbg_core::{AuthConfig, BlpError};
@@ -71,6 +71,9 @@ mod ext;
 mod markets;
 mod native_arrow;
 mod recipes;
+mod request;
+
+use request::dict_to_request_params;
 
 type StreamBatchResult = Result<SubscriptionUpdate, BlpError>;
 type StreamSender = tokio::sync::mpsc::Sender<StreamBatchResult>;
@@ -2260,173 +2263,6 @@ impl PySubscription {
     }
 }
 
-/// Convert a Python dictionary to Rust RequestParams.
-fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
-    // Required fields
-    let service: String = dict
-        .get_item("service")?
-        .ok_or_else(|| PyRuntimeError::new_err("missing required field: service"))?
-        .extract()?;
-
-    let operation: String = dict
-        .get_item("operation")?
-        .ok_or_else(|| PyRuntimeError::new_err("missing required field: operation"))?
-        .extract()?;
-
-    let (extractor, extractor_set) = match dict.get_item("extractor")? {
-        Some(value) => {
-            let extractor_str: String = value.extract()?;
-            let extractor = ExtractorType::parse(&extractor_str).ok_or_else(|| {
-                PyRuntimeError::new_err(format!("invalid extractor type: {}", extractor_str))
-            })?;
-            (extractor, true)
-        }
-        None => (ExtractorType::default(), false),
-    };
-
-    let request_operation: Option<String> = dict
-        .get_item("request_operation")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let request_id: Option<String> = dict
-        .get_item("request_id")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    // Optional fields
-    let securities: Option<Vec<String>> = dict
-        .get_item("securities")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let security: Option<String> = dict
-        .get_item("security")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let fields: Option<Vec<String>> = dict.get_item("fields")?.map(|v| v.extract()).transpose()?;
-
-    let overrides: Option<Vec<(String, String)>> = dict
-        .get_item("overrides")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let elements: Option<Vec<(String, String)>> = dict
-        .get_item("elements")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let kwargs: Option<HashMap<String, String>> =
-        dict.get_item("kwargs")?.map(|v| v.extract()).transpose()?;
-
-    let start_date: Option<String> = dict
-        .get_item("start_date")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let end_date: Option<String> = dict
-        .get_item("end_date")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let start_datetime: Option<String> = dict
-        .get_item("start_datetime")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let end_datetime: Option<String> = dict
-        .get_item("end_datetime")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let event_type: Option<String> = dict
-        .get_item("event_type")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let event_types: Option<Vec<String>> = dict
-        .get_item("event_types")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let interval: Option<u32> = dict
-        .get_item("interval")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let options: Option<Vec<(String, String)>> =
-        dict.get_item("options")?.map(|v| v.extract()).transpose()?;
-
-    let field_types: Option<HashMap<String, String>> = dict
-        .get_item("field_types")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let include_security_errors: bool = dict
-        .get_item("include_security_errors")?
-        .map(|v| v.extract())
-        .transpose()?
-        .unwrap_or(false);
-
-    let validate_fields: Option<bool> = dict
-        .get_item("validate_fields")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let search_spec: Option<String> = dict
-        .get_item("search_spec")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let field_ids: Option<Vec<String>> = dict
-        .get_item("field_ids")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    let format: Option<String> = dict.get_item("format")?.map(|v| v.extract()).transpose()?;
-
-    let request_tz: Option<String> = dict
-        .get_item("request_tz")?
-        .map(|v| v.extract())
-        .transpose()?;
-    let output_tz: Option<String> = dict
-        .get_item("output_tz")?
-        .map(|v| v.extract())
-        .transpose()?;
-
-    Ok(RequestParams {
-        service,
-        operation,
-        request_operation,
-        request_id,
-        extractor,
-        extractor_set,
-        securities,
-        security,
-        fields,
-        overrides,
-        elements,
-        kwargs,
-        start_date,
-        end_date,
-        start_datetime,
-        end_datetime,
-        request_tz,
-        output_tz,
-        event_type,
-        event_types,
-        interval,
-        options,
-        field_types,
-        include_security_errors,
-        validate_fields,
-        search_spec,
-        field_ids,
-        format,
-    })
-}
-
 fn exchange_info_to_pydict(py: Python<'_>, info: &ExchangeInfo) -> PyResult<Py<PyAny>> {
     let dict = PyDict::new(py);
     dict.set_item("ticker", &info.ticker)?;
@@ -2666,6 +2502,7 @@ define_stub_info_gatherer!(stub_info);
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicU64};
+    use xbbg_async::engine::ExtractorType;
 
     fn metrics(
         messages_received: u64,
@@ -2795,7 +2632,162 @@ mod tests {
             })
         );
     }
+    #[test]
+    fn core_module_registration_exposes_public_names() {
+        Python::initialize();
+        Python::attach(|py| {
+            let module = pyo3::types::PyModule::new(py, "_core").expect("module");
+            _core(py, &module).expect("register module");
 
+            for name in [
+                "__version__",
+                "version",
+                "sdk_version",
+                "PyEngine",
+                "PyEngineConfig",
+                "PySubscription",
+                "ArrowTable",
+                "ArrowRecordBatch",
+                "ArrowSchema",
+                "ArrowField",
+                "BlpError",
+                "BlpSessionError",
+                "BlpRequestError",
+                "BlpSecurityError",
+                "BlpFieldError",
+                "BlpValidationError",
+                "BlpTimeoutError",
+                "BlpInternalError",
+                "set_log_level",
+                "get_log_level",
+                "enable_sdk_logging",
+            ] {
+                assert!(module.hasattr(name).expect("hasattr"), "missing {name}");
+            }
+        });
+    }
+
+    #[test]
+    fn dict_to_request_params_preserves_all_accepted_keys() {
+        Python::initialize();
+        Python::attach(|py| {
+            let dict = PyDict::new(py);
+            dict.set_item("service", "//blp/refdata").expect("service");
+            dict.set_item("operation", "RawRequest").expect("operation");
+            dict.set_item("request_operation", "ReferenceDataRequest")
+                .expect("request_operation");
+            dict.set_item("request_id", "req-123").expect("request_id");
+            dict.set_item("extractor", "refdata").expect("extractor");
+            dict.set_item("securities", vec!["IBM US Equity"])
+                .expect("securities");
+            dict.set_item("security", "IBM US Equity")
+                .expect("security");
+            dict.set_item("fields", vec!["PX_LAST"]).expect("fields");
+            dict.set_item("overrides", vec![("EQY_FUND_CRNCY", "USD")])
+                .expect("overrides");
+            dict.set_item("elements", vec![("returnEids", "true")])
+                .expect("elements");
+            dict.set_item(
+                "kwargs",
+                HashMap::from([("Period".to_string(), "D".to_string())]),
+            )
+            .expect("kwargs");
+            dict.set_item("start_date", "20240101").expect("start_date");
+            dict.set_item("end_date", "20240131").expect("end_date");
+            dict.set_item("start_datetime", "2024-01-01T09:30:00")
+                .expect("start_datetime");
+            dict.set_item("end_datetime", "2024-01-01T10:00:00")
+                .expect("end_datetime");
+            dict.set_item("request_tz", "NY").expect("request_tz");
+            dict.set_item("output_tz", "UTC").expect("output_tz");
+            dict.set_item("event_type", "TRADE").expect("event_type");
+            dict.set_item("event_types", vec!["TRADE", "BID"])
+                .expect("event_types");
+            dict.set_item("interval", 5_u32).expect("interval");
+            dict.set_item("options", vec![("includeConditionCodes", "true")])
+                .expect("options");
+            dict.set_item(
+                "field_types",
+                HashMap::from([("PX_LAST".to_string(), "Float64".to_string())]),
+            )
+            .expect("field_types");
+            dict.set_item("include_security_errors", true)
+                .expect("include_security_errors");
+            dict.set_item("validate_fields", false)
+                .expect("validate_fields");
+            dict.set_item("search_spec", "price").expect("search_spec");
+            dict.set_item("field_ids", vec!["PX_LAST"])
+                .expect("field_ids");
+            dict.set_item("format", "long_typed").expect("format");
+
+            let params = dict_to_request_params(&dict).expect("request params");
+
+            assert_eq!(params.service, "//blp/refdata");
+            assert_eq!(params.operation, "RawRequest");
+            assert_eq!(
+                params.request_operation.as_deref(),
+                Some("ReferenceDataRequest")
+            );
+            assert_eq!(params.request_id.as_deref(), Some("req-123"));
+            assert_eq!(params.extractor, ExtractorType::RefData);
+            assert!(params.extractor_set);
+            assert_eq!(
+                params.securities.as_deref(),
+                Some(&["IBM US Equity".to_string()][..])
+            );
+            assert_eq!(params.security.as_deref(), Some("IBM US Equity"));
+            assert_eq!(params.fields.as_deref(), Some(&["PX_LAST".to_string()][..]));
+            assert_eq!(
+                params.overrides.as_deref(),
+                Some(&[("EQY_FUND_CRNCY".to_string(), "USD".to_string())][..])
+            );
+            assert_eq!(
+                params.elements.as_deref(),
+                Some(&[("returnEids".to_string(), "true".to_string())][..])
+            );
+            assert_eq!(
+                params
+                    .kwargs
+                    .as_ref()
+                    .and_then(|values| values.get("Period")),
+                Some(&"D".to_string())
+            );
+            assert_eq!(params.start_date.as_deref(), Some("20240101"));
+            assert_eq!(params.end_date.as_deref(), Some("20240131"));
+            assert_eq!(
+                params.start_datetime.as_deref(),
+                Some("2024-01-01T09:30:00")
+            );
+            assert_eq!(params.end_datetime.as_deref(), Some("2024-01-01T10:00:00"));
+            assert_eq!(params.request_tz.as_deref(), Some("NY"));
+            assert_eq!(params.output_tz.as_deref(), Some("UTC"));
+            assert_eq!(params.event_type.as_deref(), Some("TRADE"));
+            assert_eq!(
+                params.event_types.as_deref(),
+                Some(&["TRADE".to_string(), "BID".to_string()][..])
+            );
+            assert_eq!(params.interval, Some(5));
+            assert_eq!(
+                params.options.as_deref(),
+                Some(&[("includeConditionCodes".to_string(), "true".to_string())][..])
+            );
+            assert_eq!(
+                params
+                    .field_types
+                    .as_ref()
+                    .and_then(|values| values.get("PX_LAST")),
+                Some(&"Float64".to_string())
+            );
+            assert!(params.include_security_errors);
+            assert_eq!(params.validate_fields, Some(false));
+            assert_eq!(params.search_spec.as_deref(), Some("price"));
+            assert_eq!(
+                params.field_ids.as_deref(),
+                Some(&["PX_LAST".to_string()][..])
+            );
+            assert_eq!(params.format.as_deref(), Some("long_typed"));
+        });
+    }
     #[test]
     fn dict_to_request_params_extracts_request_id() {
         Python::initialize();

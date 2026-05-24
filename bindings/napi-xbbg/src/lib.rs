@@ -1,8 +1,9 @@
 mod arrow_zero_copy;
 mod ext;
+mod request;
 pub use ext::*;
+use request::pairs_to_map;
 
-use std::collections::HashMap;
 use std::io::Cursor;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,8 +19,8 @@ use xbbg_async::engine::state::{
     subscription_update_to_record_batch, SubscriptionUpdate, UpdateValue,
 };
 use xbbg_async::engine::{
-    Engine, EngineConfig, ExtractorType, OverflowPolicy, RequestParams, ServerAddr,
-    SharedSubscriptionStatus, Socks5Proxy, TlsConfig, Transport,
+    Engine, EngineConfig, OverflowPolicy, RequestParams, ServerAddr, SharedSubscriptionStatus,
+    Socks5Proxy, TlsConfig, Transport,
 };
 use xbbg_async::{BlpAsyncError, ValidationMode};
 use xbbg_core::{AuthConfig, BlpError};
@@ -491,159 +492,6 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
 
         Ok(config)
     }
-}
-
-impl TryFrom<RequestInput> for RequestParams {
-    type Error = Error;
-
-    fn try_from(input: RequestInput) -> Result<Self, Self::Error> {
-        let mut extractor = ExtractorType::default();
-        let mut extractor_set = false;
-        if let Some(name) = input.extractor {
-            extractor = ExtractorType::parse(&name).ok_or_else(|| {
-                Error::new(
-                    Status::InvalidArg,
-                    format!("invalid extractor type: {name}"),
-                )
-            })?;
-            extractor_set = true;
-        }
-
-        let mut elements = pairs_to_tuples(input.elements);
-        if let Some(raw_json) = input.json_elements {
-            let value: serde_json::Value = serde_json::from_str(&raw_json).map_err(|e| {
-                Error::new(
-                    Status::InvalidArg,
-                    format!("invalid jsonElements payload: {e}"),
-                )
-            })?;
-            let flattened = elements.get_or_insert_with(Vec::new);
-            flatten_json_elements(None, &value, flattened)?;
-        }
-
-        Ok(RequestParams {
-            service: input.service,
-            operation: input.operation,
-            request_operation: input.request_operation,
-            request_id: input.request_id,
-            extractor,
-            extractor_set,
-            securities: input.securities,
-            security: input.security,
-            fields: input.fields,
-            overrides: pairs_to_tuples(input.overrides),
-            elements,
-            kwargs: pairs_to_map(input.kwargs),
-            start_date: input.start_date,
-            end_date: input.end_date,
-            start_datetime: input.start_datetime,
-            end_datetime: input.end_datetime,
-            request_tz: input.request_tz,
-            output_tz: input.output_tz,
-            event_type: input.event_type,
-            event_types: input.event_types,
-            interval: input.interval,
-            options: pairs_to_tuples(input.options),
-            field_types: pairs_to_map(input.field_types),
-            include_security_errors: input.include_security_errors.unwrap_or(false),
-            validate_fields: input.validate_fields,
-            search_spec: input.search_spec,
-            field_ids: input.field_ids,
-            format: input.format,
-        })
-    }
-}
-
-fn flatten_json_elements(
-    path: Option<&str>,
-    value: &serde_json::Value,
-    out: &mut Vec<(String, String)>,
-) -> Result<(), Error> {
-    match value {
-        serde_json::Value::Object(map) => {
-            if map.is_empty() {
-                return Ok(());
-            }
-            for (key, child) in map {
-                let next_path = match path {
-                    Some(prefix) if !prefix.is_empty() => format!("{prefix}.{key}"),
-                    _ => key.clone(),
-                };
-                flatten_json_elements(Some(&next_path), child, out)?;
-            }
-            Ok(())
-        }
-        serde_json::Value::Array(items) => {
-            let path = path.ok_or_else(|| {
-                Error::new(
-                    Status::InvalidArg,
-                    "jsonElements must be a JSON object at the top level",
-                )
-            })?;
-
-            if path.contains('.') {
-                out.push((
-                    path.to_string(),
-                    serde_json::to_string(items).map_err(|e| {
-                        Error::new(
-                            Status::GenericFailure,
-                            format!("failed to serialize nested jsonElements array: {e}"),
-                        )
-                    })?,
-                ));
-            } else {
-                for item in items {
-                    out.push((path.to_string(), json_value_to_string(item)?));
-                }
-            }
-
-            Ok(())
-        }
-        _ => {
-            let path = path.ok_or_else(|| {
-                Error::new(
-                    Status::InvalidArg,
-                    "jsonElements must be a JSON object at the top level",
-                )
-            })?;
-            out.push((path.to_string(), json_value_to_string(value)?));
-            Ok(())
-        }
-    }
-}
-
-fn json_value_to_string(value: &serde_json::Value) -> Result<String, Error> {
-    match value {
-        serde_json::Value::Null => Ok("null".to_string()),
-        serde_json::Value::Bool(flag) => Ok(flag.to_string()),
-        serde_json::Value::Number(number) => Ok(number.to_string()),
-        serde_json::Value::String(text) => Ok(text.clone()),
-        serde_json::Value::Array(_) | serde_json::Value::Object(_) => serde_json::to_string(value)
-            .map_err(|e| {
-                Error::new(
-                    Status::GenericFailure,
-                    format!("failed to serialize jsonElements value: {e}"),
-                )
-            }),
-    }
-}
-
-fn pairs_to_tuples(input: Option<Vec<StringPair>>) -> Option<Vec<(String, String)>> {
-    input.map(|pairs| {
-        pairs
-            .into_iter()
-            .map(|pair| (pair.key, pair.value))
-            .collect()
-    })
-}
-
-fn pairs_to_map(input: Option<Vec<StringPair>>) -> Option<HashMap<String, String>> {
-    input.map(|pairs| {
-        pairs
-            .into_iter()
-            .map(|pair| (pair.key, pair.value))
-            .collect()
-    })
 }
 
 fn to_ipc_buffer(batch: RecordBatch) -> napi::Result<Buffer> {
@@ -1988,6 +1836,7 @@ impl JsSubscription {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xbbg_async::engine::ExtractorType;
 
     fn minimal_input() -> EngineConfigInput {
         EngineConfigInput {
@@ -2027,6 +1876,112 @@ mod tests {
             Transport::Direct(s) => s.as_slice(),
             other => panic!("expected Direct, got {other}"),
         }
+    }
+    fn pair(key: &str, value: &str) -> StringPair {
+        StringPair {
+            key: key.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    #[test]
+    fn request_input_preserves_all_request_fields() {
+        let params = RequestParams::try_from(RequestInput {
+            service: "//blp/refdata".to_string(),
+            operation: "RawRequest".to_string(),
+            request_operation: Some("ReferenceDataRequest".to_string()),
+            request_id: Some("req-123".to_string()),
+            extractor: Some("refdata".to_string()),
+            securities: Some(vec!["IBM US Equity".to_string()]),
+            security: Some("IBM US Equity".to_string()),
+            fields: Some(vec!["PX_LAST".to_string()]),
+            overrides: Some(vec![pair("EQY_FUND_CRNCY", "USD")]),
+            elements: Some(vec![pair("returnEids", "true")]),
+            kwargs: Some(vec![pair("Period", "D")]),
+            json_elements: Some(r#"{"nested":{"flag":true},"count":3}"#.to_string()),
+            start_date: Some("20240101".to_string()),
+            end_date: Some("20240131".to_string()),
+            start_datetime: Some("2024-01-01T09:30:00".to_string()),
+            end_datetime: Some("2024-01-01T10:00:00".to_string()),
+            request_tz: Some("NY".to_string()),
+            output_tz: Some("UTC".to_string()),
+            event_type: Some("TRADE".to_string()),
+            event_types: Some(vec!["TRADE".to_string(), "BID".to_string()]),
+            interval: Some(5),
+            options: Some(vec![pair("includeConditionCodes", "true")]),
+            field_types: Some(vec![pair("PX_LAST", "Float64")]),
+            include_security_errors: Some(true),
+            validate_fields: Some(false),
+            search_spec: Some("price".to_string()),
+            field_ids: Some(vec!["PX_LAST".to_string()]),
+            format: Some("long_typed".to_string()),
+        })
+        .expect("request input");
+
+        assert_eq!(params.service, "//blp/refdata");
+        assert_eq!(params.operation, "RawRequest");
+        assert_eq!(
+            params.request_operation.as_deref(),
+            Some("ReferenceDataRequest")
+        );
+        assert_eq!(params.request_id.as_deref(), Some("req-123"));
+        assert_eq!(params.extractor, ExtractorType::RefData);
+        assert!(params.extractor_set);
+        assert_eq!(
+            params.securities.as_deref(),
+            Some(&["IBM US Equity".to_string()][..])
+        );
+        assert_eq!(params.security.as_deref(), Some("IBM US Equity"));
+        assert_eq!(params.fields.as_deref(), Some(&["PX_LAST".to_string()][..]));
+        assert_eq!(
+            params.overrides.as_deref(),
+            Some(&[("EQY_FUND_CRNCY".to_string(), "USD".to_string())][..])
+        );
+        let elements = params.elements.as_ref().expect("elements");
+        assert!(elements.contains(&("returnEids".to_string(), "true".to_string())));
+        assert!(elements.contains(&("nested.flag".to_string(), "true".to_string())));
+        assert!(elements.contains(&("count".to_string(), "3".to_string())));
+        assert_eq!(
+            params
+                .kwargs
+                .as_ref()
+                .and_then(|values| values.get("Period")),
+            Some(&"D".to_string())
+        );
+        assert_eq!(params.start_date.as_deref(), Some("20240101"));
+        assert_eq!(params.end_date.as_deref(), Some("20240131"));
+        assert_eq!(
+            params.start_datetime.as_deref(),
+            Some("2024-01-01T09:30:00")
+        );
+        assert_eq!(params.end_datetime.as_deref(), Some("2024-01-01T10:00:00"));
+        assert_eq!(params.request_tz.as_deref(), Some("NY"));
+        assert_eq!(params.output_tz.as_deref(), Some("UTC"));
+        assert_eq!(params.event_type.as_deref(), Some("TRADE"));
+        assert_eq!(
+            params.event_types.as_deref(),
+            Some(&["TRADE".to_string(), "BID".to_string()][..])
+        );
+        assert_eq!(params.interval, Some(5));
+        assert_eq!(
+            params.options.as_deref(),
+            Some(&[("includeConditionCodes".to_string(), "true".to_string())][..])
+        );
+        assert_eq!(
+            params
+                .field_types
+                .as_ref()
+                .and_then(|values| values.get("PX_LAST")),
+            Some(&"Float64".to_string())
+        );
+        assert!(params.include_security_errors);
+        assert_eq!(params.validate_fields, Some(false));
+        assert_eq!(params.search_spec.as_deref(), Some("price"));
+        assert_eq!(
+            params.field_ids.as_deref(),
+            Some(&["PX_LAST".to_string()][..])
+        );
+        assert_eq!(params.format.as_deref(), Some("long_typed"));
     }
 
     #[test]

@@ -274,6 +274,7 @@ BLP_MODULE_EXPORTS = (
     "configure",
     "set_backend",
     "get_backend",
+    "RequestEnvironment",
     "RequestContext",
     "add_middleware",
     "remove_middleware",

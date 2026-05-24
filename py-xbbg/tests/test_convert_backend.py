@@ -165,7 +165,7 @@ class TestConvertBackendDuckDB:
 class TestConvertBackendNarwhals:
     def _block_dataframe_backend_imports(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _block_imports(monkeypatch, "pyarrow", "pandas", "polars", "arro3")
-        monkeypatch.setattr("xbbg.blp._native_narwhals_fallback_warned", True)
+        monkeypatch.setattr("xbbg.backend._native_narwhals_fallback_warned", True)
 
     def test_convert_narwhals_prefers_pyarrow_when_available(self, arrow_table: Any):
         pa = pytest.importorskip("pyarrow")
@@ -177,7 +177,7 @@ class TestConvertBackendNarwhals:
 
     def test_convert_narwhals_falls_back_to_xbbg_plugin(self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch):
         self._block_dataframe_backend_imports(monkeypatch)
-        monkeypatch.setattr("xbbg.blp._native_narwhals_fallback_warned", False)
+        monkeypatch.setattr("xbbg.backend._native_narwhals_fallback_warned", False)
         with pytest.warns(RuntimeWarning, match="limited xbbg native ArrowTable plugin"):
             result = _convert_backend(arrow_table, Backend.NARWHALS)
         assert isinstance(result, nw.DataFrame)
@@ -250,7 +250,7 @@ class TestConvertBackendInvalid:
     def test_selectable_unimplemented_backends_raise_instead_of_falling_through(
         self, arrow_table: Any, monkeypatch: pytest.MonkeyPatch, backend: Backend
     ):
-        monkeypatch.setattr("xbbg.blp.check_backend", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr("xbbg.backend.check_backend", lambda *_args, **_kwargs: True)
 
         with pytest.raises(NotImplementedError, match=f"Backend '{backend.value}'.*not implemented"):
             _convert_backend(arrow_table, backend)

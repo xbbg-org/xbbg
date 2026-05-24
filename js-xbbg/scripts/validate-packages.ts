@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { platformPackages } from './platform-map';
+import { nativeBinaryName, nativePackageSpecs, type NativePackageSpec } from './platform-map';
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const packageDir = path.resolve(repoRoot, 'js-xbbg');
@@ -22,6 +22,7 @@ interface PackageSpec {
   readonly expectedFiles: readonly string[];
   readonly forbiddenFiles?: readonly string[];
   readonly name: string;
+  readonly native?: NativePackageSpec;
 }
 
 interface PackFile {
@@ -30,6 +31,11 @@ interface PackFile {
 
 interface PackResult {
   readonly files?: unknown;
+}
+
+interface PackageArtifact {
+  readonly files: readonly string[];
+  readonly fileBytes: ReadonlyMap<string, Uint8Array>;
 }
 
 interface PackageManifest {
@@ -51,10 +57,6 @@ interface ValidateOptions {
 function fail(message: string): never {
   console.error(`js-xbbg package validation failed: ${message}`);
   process.exit(1);
-}
-
-function packageDirName(packageName: string): string {
-  return packageName.replace('@xbbg/', 'xbbg-');
 }
 
 function parseArgs(argv: readonly string[]): ValidateOptions {
@@ -154,18 +156,12 @@ function runLocalBin(command: string, args: readonly string[], cwd: string): voi
   runNpm(['exec', '--', command, ...args], cwd);
 }
 
-function platformSpec(packageName: string): PackageSpec {
+function platformSpec(native: NativePackageSpec): PackageSpec {
   return {
-    dir: path.join(packageDir, 'packages', packageDirName(packageName)),
-    expectedFiles: [
-      'index.js',
-      'index.d.ts',
-      'README.md',
-      'LICENSE',
-      'package.json',
-      'napi_xbbg.node',
-    ],
-    name: packageName,
+    dir: path.join(packageDir, native.packageDir),
+    expectedFiles: native.expectedFiles,
+    name: native.packageName,
+    native,
   };
 }
 
@@ -174,15 +170,18 @@ function packageSpecs(allPlatforms: boolean): PackageSpec[] {
     {
       dir: packageDir,
       expectedFiles: ['dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE', 'package.json'],
-      forbiddenFiles: ['napi_xbbg.node'],
+      forbiddenFiles: [nativeBinaryName],
       name: '@xbbg/core',
     },
   ];
 
-  const allPlatformSpecs = Object.values(platformPackages).map(platformSpec);
+  const allPlatformSpecs = nativePackageSpecs.map(platformSpec);
   const selectedPlatformSpecs = allPlatforms
     ? allPlatformSpecs
-    : allPlatformSpecs.filter((spec) => fs.existsSync(path.join(spec.dir, 'napi_xbbg.node')));
+    : allPlatformSpecs.filter((spec) => {
+        const binaryName = spec.native?.binaryName ?? nativeBinaryName;
+        return fs.existsSync(path.join(spec.dir, binaryName));
+      });
 
   if (selectedPlatformSpecs.length === 0) {
     fail('no staged platform package found; run npm run stage:native-package first');
@@ -222,25 +221,31 @@ function packFiles(result: PackResult, spec: PackageSpec): Set<string> {
   return files;
 }
 
-function dryRunFiles(spec: PackageSpec): Set<string> {
+function dryRunArtifact(spec: PackageSpec): PackageArtifact {
   const raw = runNpmCapture(
     ['pack', spec.dir, '--dry-run', '--json', '--ignore-scripts'],
     repoRoot,
   );
-  return packFiles(parsePackJson(raw, spec), spec);
+  const files = Object.freeze([...packFiles(parsePackJson(raw, spec), spec)].toSorted());
+  const fileBytes = new Map<string, Uint8Array>();
+  for (const file of files) {
+    const sourcePath = path.join(spec.dir, ...file.split('/'));
+    fileBytes.set(file, fs.readFileSync(sourcePath));
+  }
+  return { fileBytes, files };
 }
 
 function validateDryRun(spec: PackageSpec): void {
-  const files = dryRunFiles(spec);
+  const artifact = dryRunArtifact(spec);
 
   for (const expectedFile of spec.expectedFiles) {
-    if (!files.has(expectedFile)) {
+    if (!artifact.files.includes(expectedFile)) {
       fail(`${spec.name}: npm pack dry-run omitted ${expectedFile}`);
     }
   }
 
   for (const forbiddenFile of spec.forbiddenFiles ?? []) {
-    if (files.has(forbiddenFile)) {
+    if (artifact.files.includes(forbiddenFile)) {
       fail(`${spec.name}: npm pack dry-run unexpectedly included ${forbiddenFile}`);
     }
   }
@@ -262,14 +267,12 @@ function readPackageManifest(spec: PackageSpec): PackageManifest {
 }
 
 function readPackageFileMap(
-  spec: PackageSpec,
-  files: ReadonlySet<string>,
+  artifact: PackageArtifact,
   packageName: string,
 ): Record<string, Uint8Array> {
   const packageFiles: Record<string, Uint8Array> = {};
-  for (const file of files) {
-    const sourcePath = path.join(spec.dir, ...file.split('/'));
-    packageFiles[`/node_modules/${packageName}/${file}`] = fs.readFileSync(sourcePath);
+  for (const [file, bytes] of artifact.fileBytes) {
+    packageFiles[`/node_modules/${packageName}/${file}`] = new Uint8Array(bytes);
   }
   return packageFiles;
 }
@@ -287,8 +290,9 @@ function describeAttwProblem(problem: AttwProblem): string {
 async function validateAttw(spec: PackageSpec): Promise<void> {
   const { Package, checkPackage } = await import('@arethetypeswrong/core');
   const manifest = readPackageManifest(spec);
+  const artifact = dryRunArtifact(spec);
   const pkg = new Package(
-    readPackageFileMap(spec, dryRunFiles(spec), manifest.name),
+    readPackageFileMap(artifact, manifest.name),
     manifest.name,
     manifest.version,
   );

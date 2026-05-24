@@ -9,10 +9,11 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::schema::SchemaCache;
 use xbbg_core::BlpError;
 
 use super::worker::{WorkerCommand, WorkerHandle};
-use super::{BlpAsyncError, EngineConfig, RequestParams, WorkerHealth};
+use super::{BlpAsyncError, EngineConfig, PreparedRequest, RequestParams, WorkerHealth};
 
 struct RequestCancelGuard {
     cancelled: Arc<AtomicBool>,
@@ -48,6 +49,8 @@ pub struct RequestWorkerPool {
     next_worker: AtomicUsize,
     /// Configuration.
     config: Arc<EngineConfig>,
+    /// Schema cache used by the low-level public compatibility methods.
+    schema_cache: SchemaCache,
 }
 
 impl RequestWorkerPool {
@@ -80,6 +83,7 @@ impl RequestWorkerPool {
             workers,
             next_worker: AtomicUsize::new(0),
             config,
+            schema_cache: SchemaCache::new(),
         })
     }
 
@@ -127,8 +131,29 @@ impl RequestWorkerPool {
         }
     }
 
+    fn prepare_public_request(
+        &self,
+        params: RequestParams,
+    ) -> Result<PreparedRequest, BlpAsyncError> {
+        PreparedRequest::prepare(params, &self.schema_cache)
+    }
+
     /// Dispatch a request to an available worker and wait for the result.
+    ///
+    /// This low-level compatibility entry point applies request defaults,
+    /// validation, and kwargs routing before dispatch. Engine-level enrichments
+    /// that need an [`super::Engine`] instance (field-cache hints and intraday
+    /// timezone resolution) are only available through [`super::Engine::request`].
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
+        let request = self.prepare_public_request(params)?;
+        self.request_prepared(request).await
+    }
+
+    pub(crate) async fn request_prepared(
+        &self,
+        request: PreparedRequest,
+    ) -> Result<RecordBatch, BlpAsyncError> {
+        let params = request.params();
         let max_attempts = 1 + self.config.retry_policy.max_retries as usize;
         let mut last_error = None;
 
@@ -157,11 +182,12 @@ impl RequestWorkerPool {
                 attempt = attempt,
                 "dispatching request"
             );
+            let worker_request = request.clone();
 
             if worker
                 .cmd_tx
-                .send(WorkerCommand::Request {
-                    params: params.clone(),
+                .send(WorkerCommand::PreparedRequest {
+                    request: worker_request,
                     reply: reply_tx,
                     cancelled: cancelled.clone(),
                 })
@@ -199,11 +225,22 @@ impl RequestWorkerPool {
 
     /// Dispatch a streaming request to an available worker.
     ///
-    /// Returns a receiver that will receive batches as they arrive.
+    /// Returns a receiver that will receive batches as they arrive. This is the
+    /// streaming counterpart to [`Self::request`] and performs the same
+    /// low-level compatibility preparation before dispatch.
     pub async fn request_stream(
         &self,
         params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
+        let request = self.prepare_public_request(params)?;
+        self.request_stream_prepared(request).await
+    }
+
+    pub(crate) async fn request_stream_prepared(
+        &self,
+        request: PreparedRequest,
+    ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
+        let params = request.params();
         let (stream_tx, stream_rx) = mpsc::channel(self.config.subscription_stream_capacity);
 
         let worker = self.next_healthy_worker()?;
@@ -215,8 +252,8 @@ impl RequestWorkerPool {
         );
         worker
             .cmd_tx
-            .send(WorkerCommand::RequestStream {
-                params,
+            .send(WorkerCommand::PreparedRequestStream {
+                request,
                 stream: stream_tx,
             })
             .await
@@ -310,6 +347,7 @@ mod tests {
             workers: Vec::new(),
             next_worker: AtomicUsize::new(0),
             config,
+            schema_cache: SchemaCache::new(),
         }
     }
 
@@ -358,5 +396,22 @@ mod tests {
             detail: "invalid field".to_string(),
         }));
         assert!(!pool.is_retryable(&BlpError::Timeout));
+    }
+
+    #[test]
+    fn public_request_path_validates_before_dispatch() {
+        let pool = pool_with_retry_policy(RetryPolicy::default());
+        let error = pool
+            .prepare_public_request(RequestParams {
+                operation: crate::services::Operation::RawRequest.to_string(),
+                ..Default::default()
+            })
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            BlpAsyncError::ConfigError { ref detail }
+                if detail == "service is required"
+        ));
     }
 }

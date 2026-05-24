@@ -2,6 +2,7 @@ import { expectTypeOf } from 'vitest';
 
 import { tableFromNativeArrowBatch } from '../src/arrow-zero-copy';
 import * as api from '../src/index';
+import type { BackendKind, FormatKind, RequestOptions, StreamOptions } from '../src/index';
 import type { NativeArrowZeroCopyBatch } from '../src/napi';
 import type { RequestInput } from '../src/types';
 
@@ -64,6 +65,7 @@ describe('@xbbg/core surface', () => {
     const required = [
       'Engine',
       'Subscription',
+      'ArrowSubscription',
       'connect',
       'configure',
       'blp',
@@ -92,10 +94,23 @@ describe('@xbbg/core surface', () => {
       'version',
       'setLogLevel',
       'getLogLevel',
+      'formatDate',
+      'formatDateTime',
     ] as const;
     for (const key of required) {
       expect(api).toHaveProperty(key);
     }
+  });
+  it('keeps representative public type exports available', () => {
+    const backend: BackendKind = api.Backend.ARROW;
+    const format: FormatKind = api.Format.LONG_TYPED;
+    const requestOptions: RequestOptions = { backend, format };
+    const streamOptions: StreamOptions = { allFields: true };
+
+    expectTypeOf(backend).toMatchTypeOf<BackendKind>();
+    expectTypeOf(format).toMatchTypeOf<FormatKind>();
+    expectTypeOf(requestOptions).toEqualTypeOf<RequestOptions>();
+    expectTypeOf(streamOptions).toEqualTypeOf<StreamOptions>();
   });
 
   it('backend enum is frozen with correct values', () => {

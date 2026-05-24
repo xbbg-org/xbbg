@@ -11,6 +11,7 @@ mod dispatch;
 mod exchange;
 mod exchange_cache;
 mod intraday_timezone;
+mod request_plan;
 mod request_pool;
 pub mod state;
 mod subscription_pool;
@@ -33,7 +34,6 @@ use xbbg_core::session::Session;
 use xbbg_core::{apply_session_identity_options, AuthConfig, BlpError, SessionOptions};
 
 use crate::errors::BlpAsyncError;
-use crate::request_builder::RequestBuilder;
 use crate::services::{Operation, Service};
 use exchange_cache::ExchangeCache;
 
@@ -41,6 +41,7 @@ use exchange_cache::ExchangeCache;
 // Re-export here so existing `use xbbg_async::engine::ExtractorType` paths keep working.
 pub use crate::services::ExtractorType;
 
+pub use request_plan::{PlannedOutput, PreparedRequest, RequestKind};
 pub use request_pool::RequestWorkerPool;
 use state::SubscriptionMetrics;
 pub use state::{
@@ -888,232 +889,13 @@ impl RequestParams {
 
     /// Apply default values derived from operation semantics.
     pub fn with_defaults(mut self) -> Self {
-        if !self.extractor_set && self.extractor == ExtractorType::default() {
-            let operation = parse_operation_lossless(self.effective_operation());
-            self.extractor = operation.default_extractor();
-        }
+        request_plan::apply_request_defaults(&mut self);
         self
     }
 
     /// Validate request parameters for known Bloomberg operations.
     pub fn validate(&self) -> Result<(), BlpAsyncError> {
-        if self.service.is_empty() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "service is required".to_string(),
-            });
-        }
-
-        let operation = parse_operation_lossless(&self.operation);
-        if matches!(operation, Operation::RawRequest) {
-            if self
-                .request_operation
-                .as_ref()
-                .is_none_or(|operation| operation.is_empty())
-            {
-                return Err(BlpAsyncError::ConfigError {
-                    detail: "request_operation is required for RawRequest".to_string(),
-                });
-            }
-        } else if self.operation.is_empty() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "operation is required".to_string(),
-            });
-        }
-
-        match operation {
-            Operation::ReferenceData => self.validate_reference_data(),
-            Operation::HistoricalData => self.validate_historical_data(),
-            Operation::IntradayBar => self.validate_intraday_bar(),
-            Operation::IntradayTick => self.validate_intraday_tick(),
-            Operation::FieldInfo | Operation::FieldSearch => {
-                self.validate_field_request(&operation)
-            }
-            // Unknown/custom operations run in power-user mode.
-            Operation::Beqs
-            | Operation::PortfolioData
-            | Operation::InstrumentList
-            | Operation::CurveList
-            | Operation::GovtList
-            | Operation::BqlSendQuery
-            | Operation::ExcelGetGrid
-            | Operation::StudyRequest
-            | Operation::RawRequest
-            | Operation::Custom(_) => Ok(()),
-        }
-    }
-
-    fn validate_reference_data(&self) -> Result<(), BlpAsyncError> {
-        if !self.has_securities() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "securities is required for ReferenceDataRequest".to_string(),
-            });
-        }
-
-        if !self.has_fields() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "fields is required for ReferenceDataRequest".to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_historical_data(&self) -> Result<(), BlpAsyncError> {
-        if !self.has_securities() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "securities is required for HistoricalDataRequest".to_string(),
-            });
-        }
-
-        if !self.has_fields() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "fields is required for HistoricalDataRequest".to_string(),
-            });
-        }
-
-        if !self.has_start_date() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "start_date is required for HistoricalDataRequest".to_string(),
-            });
-        }
-
-        if !self.has_end_date() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "end_date is required for HistoricalDataRequest".to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_intraday_bar(&self) -> Result<(), BlpAsyncError> {
-        if !self.has_security() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "security is required for IntradayBarRequest".to_string(),
-            });
-        }
-
-        if !self.has_event_type() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "event_type is required for IntradayBarRequest".to_string(),
-            });
-        }
-
-        if self.interval.is_none() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "interval is required for IntradayBarRequest".to_string(),
-            });
-        }
-
-        if !self.has_start_datetime() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "start_datetime is required for IntradayBarRequest".to_string(),
-            });
-        }
-
-        if !self.has_end_datetime() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "end_datetime is required for IntradayBarRequest".to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_intraday_tick(&self) -> Result<(), BlpAsyncError> {
-        if !self.has_security() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "security is required for IntradayTickRequest".to_string(),
-            });
-        }
-
-        if !self.has_start_datetime() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "start_datetime is required for IntradayTickRequest".to_string(),
-            });
-        }
-
-        if !self.has_end_datetime() {
-            return Err(BlpAsyncError::ConfigError {
-                detail: "end_datetime is required for IntradayTickRequest".to_string(),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn validate_field_request(&self, operation: &Operation) -> Result<(), BlpAsyncError> {
-        let has_fields = self.has_fields();
-
-        match operation {
-            Operation::FieldInfo => {
-                let has_field_ids = self.field_ids.as_ref().is_some_and(|ids| !ids.is_empty());
-                if !has_fields && !has_field_ids {
-                    return Err(BlpAsyncError::ConfigError {
-                        detail: "fields is required for field metadata requests".to_string(),
-                    });
-                }
-            }
-            Operation::FieldSearch => {
-                let has_search_spec = self.search_spec.as_ref().is_some_and(|s| !s.is_empty());
-                if !has_fields && !has_search_spec {
-                    return Err(BlpAsyncError::ConfigError {
-                        detail: "fields is required for field metadata requests".to_string(),
-                    });
-                }
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
-
-    fn has_securities(&self) -> bool {
-        self.securities
-            .as_ref()
-            .is_some_and(|values| !values.is_empty())
-    }
-
-    fn has_security(&self) -> bool {
-        self.security
-            .as_ref()
-            .is_some_and(|value| !value.is_empty())
-    }
-
-    fn has_fields(&self) -> bool {
-        self.fields
-            .as_ref()
-            .is_some_and(|values| !values.is_empty())
-    }
-
-    fn has_start_date(&self) -> bool {
-        self.start_date
-            .as_ref()
-            .is_some_and(|value| !value.is_empty())
-    }
-
-    fn has_end_date(&self) -> bool {
-        self.end_date
-            .as_ref()
-            .is_some_and(|value| !value.is_empty())
-    }
-
-    fn has_start_datetime(&self) -> bool {
-        self.start_datetime
-            .as_ref()
-            .is_some_and(|value| !value.is_empty())
-    }
-
-    fn has_end_datetime(&self) -> bool {
-        self.end_datetime
-            .as_ref()
-            .is_some_and(|value| !value.is_empty())
-    }
-
-    fn has_event_type(&self) -> bool {
-        self.event_type
-            .as_ref()
-            .is_some_and(|value| !value.is_empty())
+        request_plan::validate_request_params(self)
     }
 }
 
@@ -1422,17 +1204,17 @@ impl Engine {
         &self,
         params: RequestParams,
     ) -> Result<RecordBatch, BlpAsyncError> {
-        let params = self.prepare_request_params(params)?;
-        self.maybe_validate_request_fields(&params).await?;
-        self.request_pool.request(params).await
+        let prepared = self.prepare_request_params(params)?;
+        self.maybe_validate_request_fields(&prepared).await?;
+        self.request_pool.request_prepared(prepared).await
     }
 
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
-        let mut params = self.prepare_request_params(params)?;
-        intraday_timezone::apply_intraday_request_timezone(self, &mut params).await?;
-        self.maybe_validate_request_fields(&params).await?;
-        let batch = self.request_pool.request(params.clone()).await?;
-        intraday_timezone::apply_intraday_output_timezone(self, batch, &params).await
+        let mut prepared = self.prepare_request_params(params)?;
+        self.apply_intraday_request_timezone(&mut prepared).await?;
+        self.maybe_validate_request_fields(&prepared).await?;
+        let batch = self.request_pool.request_prepared(prepared.clone()).await?;
+        intraday_timezone::apply_intraday_output_timezone(self, batch, prepared.params()).await
     }
 
     /// Streaming generic request - dispatches to worker pool.
@@ -1440,11 +1222,11 @@ impl Engine {
         &self,
         params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
-        let mut params = self.prepare_request_params(params)?;
-        intraday_timezone::apply_intraday_request_timezone(self, &mut params).await?;
-        let out_iana = intraday_timezone::resolve_output_tz_iana(self, &params).await?;
-        self.maybe_validate_request_fields(&params).await?;
-        let rx = self.request_pool.request_stream(params).await?;
+        let mut prepared = self.prepare_request_params(params)?;
+        self.apply_intraday_request_timezone(&mut prepared).await?;
+        let out_iana = intraday_timezone::resolve_output_tz_iana(self, prepared.params()).await?;
+        self.maybe_validate_request_fields(&prepared).await?;
+        let rx = self.request_pool.request_stream_prepared(prepared).await?;
         Ok(intraday_timezone::wrap_batch_stream_with_output_tz(
             rx, out_iana,
         ))
@@ -1454,57 +1236,14 @@ impl Engine {
     fn prepare_request_params(
         &self,
         params: RequestParams,
-    ) -> Result<RequestParams, BlpAsyncError> {
-        let mut params = params.with_defaults();
-        params.validate()?;
-
-        let kwargs = params.kwargs.take().unwrap_or_default();
-        if params.is_excel_get_grid_request() {
-            normalize_excel_grid_params(&mut params, kwargs);
-            return Ok(params);
-        }
-
-        if params.is_raw_request() {
-            merge_raw_kwargs_into_elements(&mut params, kwargs);
-            return Ok(params);
-        }
-
-        let routed = RequestBuilder::route_kwargs(
-            &self.schema_cache,
-            &params.service,
-            &params.operation,
-            kwargs,
-            params.overrides.take(),
-        );
-
-        if !routed.elements.is_empty() {
-            params
-                .elements
-                .get_or_insert_with(Vec::new)
-                .extend(routed.elements);
-        }
-
-        params.overrides = if routed.overrides.is_empty() {
-            None
-        } else {
-            Some(routed.overrides)
-        };
-
-        for warning in routed.warnings {
-            xbbg_log::warn!(
-                service = %params.service,
-                operation = %params.operation,
-                warning = %warning,
-                "request parameter routing warning"
-            );
-        }
-
-        self.apply_cached_field_types(&mut params);
-
-        Ok(params)
+    ) -> Result<PreparedRequest, BlpAsyncError> {
+        let mut prepared = PreparedRequest::prepare(params, &self.schema_cache)?;
+        self.apply_cached_field_types(&mut prepared);
+        Ok(prepared)
     }
 
-    fn apply_cached_field_types(&self, params: &mut RequestParams) {
+    fn apply_cached_field_types(&self, prepared: &mut PreparedRequest) {
+        let params = prepared.params();
         if !matches!(
             params.extractor,
             ExtractorType::RefData | ExtractorType::HistData
@@ -1528,15 +1267,29 @@ impl Engine {
             if added > 0 {
                 xbbg_log::debug!(field_count = added, "using cached field type hints");
             }
-            params.field_types = Some(resolved);
+            prepared.set_field_types(resolved);
         }
+    }
+
+    async fn apply_intraday_request_timezone(
+        &self,
+        prepared: &mut PreparedRequest,
+    ) -> Result<(), BlpAsyncError> {
+        let Some((start_datetime, end_datetime)) =
+            intraday_timezone::resolve_intraday_request_datetimes(self, prepared.params()).await?
+        else {
+            return Ok(());
+        };
+        prepared.set_intraday_datetimes(start_datetime, end_datetime);
+        Ok(())
     }
 
     /// Validate request fields against Bloomberg field metadata when enabled.
     async fn maybe_validate_request_fields(
         &self,
-        params: &RequestParams,
+        prepared: &PreparedRequest,
     ) -> Result<(), BlpAsyncError> {
+        let params = prepared.params();
         let validation_mode = match params.validate_fields {
             Some(true) => ValidationMode::Strict,
             Some(false) => ValidationMode::Disabled,
@@ -1809,7 +1562,7 @@ impl Engine {
         };
 
         let params = self.prepare_request_params(params)?;
-        let batch = self.request_pool.request(params).await?;
+        let batch = self.request_pool.request_prepared(params).await?;
 
         // Get the field column from the response
         let field_col = batch

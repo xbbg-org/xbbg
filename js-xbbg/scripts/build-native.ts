@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { nativeBinaryName } from './platform-map';
+
 const packageDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(packageDir, '..');
 
@@ -235,7 +237,7 @@ function patchDarwinNativeAddon(binaryPath: string, sdkLibDir: string): void {
   }
 
   installNameTool(
-    ['-id', '@rpath/napi_xbbg.node', binaryPath],
+    ['-id', `@rpath/${nativeBinaryName}`, binaryPath],
     `Failed to set portable install name for ${binaryPath}`,
   );
 
@@ -277,7 +279,7 @@ function patchDarwinNativeAddon(binaryPath: string, sdkLibDir: string): void {
 
 const profile: 'debug' | 'release' = process.argv.includes('--release') ? 'release' : 'debug';
 const artifactPath = resolveBuildArtifact(profile);
-const outputPath = path.join(packageDir, 'napi_xbbg.node');
+const outputPath = path.join(packageDir, nativeBinaryName);
 
 const sdkLayout = resolveSdkRoot();
 if (!sdkLayout) {

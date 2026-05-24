@@ -4,11 +4,16 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { platformKey, platformPackages } from './platform-map';
+import {
+  nativeBinaryName,
+  nativePackageSpecForKey,
+  platformKey,
+  type NativePackageSpec,
+} from './platform-map';
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const packageDir = path.resolve(repoRoot, 'js-xbbg');
-const sourceBinary = path.join(packageDir, 'napi_xbbg.node');
+const sourceBinary = path.join(packageDir, nativeBinaryName);
 
 interface StageOptions {
   build: boolean;
@@ -37,11 +42,6 @@ function fail(message: string): never {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function resolvePlatformPackageName(key: string): string | null {
-  const match = Object.entries(platformPackages).find(([platformName]) => platformName === key);
-  return match?.[1] ?? null;
 }
 
 function parseArgs(argv: readonly string[]): StageOptions {
@@ -100,14 +100,65 @@ function ensurePlatformLoader(localPackageDir: string): void {
   }
 }
 
+function tempPathFor(destPath: string, suffix: string): string {
+  return path.join(
+    path.dirname(destPath),
+    `.${path.basename(destPath)}.${process.pid}.${Date.now()}.${suffix}.tmp`,
+  );
+}
+
+function replaceWithPreparedFile(tempPath: string, destPath: string): void {
+  if (process.platform !== 'win32' || !fs.existsSync(destPath)) {
+    fs.renameSync(tempPath, destPath);
+    return;
+  }
+
+  // Windows does not reliably replace an existing file with renameSync. Keep
+  // the current artifact in place while copying the already-validated temp file
+  // over it, rather than moving the destination aside and creating an absence
+  // window on the release platform.
+  fs.copyFileSync(tempPath, destPath);
+  fs.rmSync(tempPath, { force: true });
+}
+
+function copyBinaryAtomically(sourcePath: string, destPath: string): void {
+  const tempPath = tempPathFor(destPath, 'binary');
+  try {
+    fs.copyFileSync(sourcePath, tempPath);
+    fs.chmodSync(tempPath, 0o755);
+    const stat = fs.statSync(tempPath);
+    if (!stat.isFile() || stat.size === 0) {
+      fail(`prepared native addon is empty: ${tempPath}`);
+    }
+    replaceWithPreparedFile(tempPath, destPath);
+  } finally {
+    fs.rmSync(tempPath, { force: true });
+  }
+}
+
+function writePackageJsonAtomically(
+  packageJsonPath: string,
+  packageJson: Record<string, unknown>,
+): void {
+  const tempPath = tempPathFor(packageJsonPath, 'json');
+  try {
+    const serialized = `${JSON.stringify(packageJson, null, 2)}\n`;
+    fs.writeFileSync(tempPath, serialized);
+    JSON.parse(fs.readFileSync(tempPath, 'utf8'));
+    replaceWithPreparedFile(tempPath, packageJsonPath);
+  } finally {
+    fs.rmSync(tempPath, { force: true });
+  }
+}
+
 function stagePackage(version: string | null = null): StagePackageResult {
   const key = platformKey();
-  const packageName = resolvePlatformPackageName(key);
-  if (packageName === null) {
+  const spec: NativePackageSpec | null = nativePackageSpecForKey(key);
+  if (spec === null) {
     fail(`unsupported platform for packaged @xbbg/core native addon: ${key}`);
   }
 
-  const localPackageDir = path.join(packageDir, 'packages', packageName.replace('@xbbg/', 'xbbg-'));
+  const localPackageDir = path.join(packageDir, spec.packageDir);
   if (!fs.existsSync(localPackageDir)) {
     fail(`local platform package directory not found: ${localPackageDir}`);
   }
@@ -119,8 +170,8 @@ function stagePackage(version: string | null = null): StagePackageResult {
     );
   }
 
-  const destBinary = path.join(localPackageDir, 'napi_xbbg.node');
-  fs.copyFileSync(sourceBinary, destBinary);
+  const destBinary = path.join(localPackageDir, spec.binaryName);
+  copyBinaryAtomically(sourceBinary, destBinary);
 
   if (version !== null) {
     const normalizedVersion = version.replace(/^v/u, '');
@@ -129,12 +180,11 @@ function stagePackage(version: string | null = null): StagePackageResult {
     if (!isRecord(packageJson)) {
       fail(`expected package.json object at ${packageJsonPath}`);
     }
-    packageJson.version = normalizedVersion;
-    fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+    writePackageJsonAtomically(packageJsonPath, { ...packageJson, version: normalizedVersion });
   }
 
   console.log(`Staged ${sourceBinary} -> ${destBinary}`);
-  return { destBinary, key, localPackageDir, packageName };
+  return { destBinary, key, localPackageDir, packageName: spec.packageName };
 }
 
 function npmCommand(args: readonly string[]): NpmInvocation {

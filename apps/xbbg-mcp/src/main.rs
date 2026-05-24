@@ -1,7 +1,5 @@
-use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use arrow::array::{
@@ -11,66 +9,29 @@ use arrow::array::{
 use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
 use arrow::util::display::array_value_to_string;
-use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Implementation, ServerCapabilities, ServerInfo};
 use rmcp::transport::stdio;
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
-use schemars::JsonSchema;
-use serde::Deserialize;
 use serde_json::{json, Map, Number, Value};
 use tokio::sync::OnceCell;
-use xbbg_async::engine::{
-    Engine, EngineConfig, ExtractorType, RequestParams, RetryPolicy, ServerAddr, Transport,
-};
-use xbbg_async::services::{Operation, Service};
+use xbbg_async::engine::{Engine, EngineConfig, RequestParams, RetryPolicy, ServerAddr, Transport};
 use xbbg_async::BlpAsyncError;
 use xbbg_core::{AuthConfig, BlpError};
+
+mod request_adapter;
+
+use request_adapter::{
+    bdh_request_params, bdib_request_params, bdp_request_params, bds_request_params,
+    bflds_request_params, bql_request_params, bsrch_request_params, generic_request_params,
+    BdhArgs, BdibArgs, BdpArgs, BdsArgs, BfldsArgs, BqlArgs, BsrchArgs, RequestArgs,
+};
 
 #[derive(Clone, Debug)]
 struct ResultLimits {
     max_rows: usize,
     max_string_chars: usize,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-enum ReferenceFormat {
-    Long,
-    LongTyped,
-    LongMetadata,
-}
-
-impl ReferenceFormat {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Long => "long",
-            Self::LongTyped => "long_typed",
-            Self::LongMetadata => "long_metadata",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-enum HistoricalFormat {
-    Long,
-    LongTyped,
-    LongMetadata,
-    #[serde(alias = "semi_long")]
-    Wide,
-}
-
-impl HistoricalFormat {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Long => "long",
-            Self::LongTyped => "long_typed",
-            Self::LongMetadata => "long_metadata",
-            Self::Wide => "wide",
-        }
-    }
 }
 
 struct XbbgMcpServer {
@@ -79,147 +40,6 @@ struct XbbgMcpServer {
     engine: OnceCell<Arc<Engine>>,
     engine_config: EngineConfig,
     result_limits: ResultLimits,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct BdpArgs {
-    tickers: Vec<String>,
-    fields: Vec<String>,
-    #[serde(default)]
-    overrides: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    options: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    field_types: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    format: Option<ReferenceFormat>,
-    #[serde(default)]
-    include_security_errors: bool,
-    #[serde(default)]
-    validate_fields: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct BdhArgs {
-    tickers: Vec<String>,
-    fields: Vec<String>,
-    start_date: String,
-    end_date: String,
-    #[serde(default)]
-    overrides: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    options: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    field_types: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    format: Option<HistoricalFormat>,
-    #[serde(default)]
-    validate_fields: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct BdsArgs {
-    tickers: Vec<String>,
-    field: String,
-    #[serde(default)]
-    overrides: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    options: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    validate_fields: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct BdibArgs {
-    ticker: String,
-    start_datetime: String,
-    end_datetime: String,
-    interval: u32,
-    #[serde(default)]
-    event_type: Option<String>,
-    #[serde(default)]
-    request_tz: Option<String>,
-    #[serde(default)]
-    output_tz: Option<String>,
-    #[serde(default)]
-    options: Option<BTreeMap<String, String>>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct BqlArgs {
-    expression: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct BsrchArgs {
-    domain: String,
-    #[serde(default)]
-    parameters: Option<BTreeMap<String, String>>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct BfldsArgs {
-    #[serde(default)]
-    fields: Option<Vec<String>>,
-    #[serde(default)]
-    search_spec: Option<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-struct RequestArgs {
-    service: String,
-    #[serde(default)]
-    operation: Option<String>,
-    #[serde(default)]
-    request_operation: Option<String>,
-    #[serde(default)]
-    request_id: Option<String>,
-    #[serde(default)]
-    extractor: Option<String>,
-    #[serde(default)]
-    securities: Option<Vec<String>>,
-    #[serde(default)]
-    security: Option<String>,
-    #[serde(default)]
-    fields: Option<Vec<String>>,
-    #[serde(default)]
-    overrides: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    elements: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    kwargs: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    start_date: Option<String>,
-    #[serde(default)]
-    end_date: Option<String>,
-    #[serde(default)]
-    start_datetime: Option<String>,
-    #[serde(default)]
-    end_datetime: Option<String>,
-    #[serde(default)]
-    request_tz: Option<String>,
-    #[serde(default)]
-    output_tz: Option<String>,
-    #[serde(default)]
-    event_type: Option<String>,
-    #[serde(default)]
-    event_types: Option<Vec<String>>,
-    #[serde(default)]
-    interval: Option<u32>,
-    #[serde(default)]
-    options: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    field_types: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    include_security_errors: Option<bool>,
-    #[serde(default)]
-    validate_fields: Option<bool>,
-    #[serde(default)]
-    search_spec: Option<String>,
-    #[serde(default)]
-    field_ids: Option<Vec<String>>,
-    #[serde(default)]
-    format: Option<HistoricalFormat>,
 }
 
 impl XbbgMcpServer {
@@ -271,25 +91,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<BdpArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tickers = normalize_nonempty_list("tickers", args.tickers)?;
-        let fields = normalize_nonempty_list("fields", args.fields)?;
-
-        self.execute_request(RequestParams {
-            service: Service::RefData.to_string(),
-            operation: Operation::ReferenceData.to_string(),
-            extractor: ExtractorType::RefData,
-            extractor_set: true,
-            securities: Some(tickers),
-            fields: Some(fields),
-            overrides: map_to_pairs(args.overrides),
-            options: map_to_pairs(args.options),
-            field_types: map_to_hash_map(args.field_types),
-            include_security_errors: args.include_security_errors,
-            validate_fields: args.validate_fields,
-            format: args.format.map(|format| format.as_str().to_string()),
-            ..Default::default()
-        })
-        .await
+        self.execute_request(bdp_request_params(args)?).await
     }
 
     #[tool(
@@ -299,28 +101,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<BdhArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tickers = normalize_nonempty_list("tickers", args.tickers)?;
-        let fields = normalize_nonempty_list("fields", args.fields)?;
-        let start_date = normalize_bloomberg_date("start_date", args.start_date)?;
-        let end_date = normalize_bloomberg_date("end_date", args.end_date)?;
-
-        self.execute_request(RequestParams {
-            service: Service::RefData.to_string(),
-            operation: Operation::HistoricalData.to_string(),
-            extractor: ExtractorType::HistData,
-            extractor_set: true,
-            securities: Some(tickers),
-            fields: Some(fields),
-            start_date: Some(start_date),
-            end_date: Some(end_date),
-            overrides: map_to_pairs(args.overrides),
-            options: map_to_pairs(args.options),
-            field_types: map_to_hash_map(args.field_types),
-            validate_fields: args.validate_fields,
-            format: args.format.map(|format| format.as_str().to_string()),
-            ..Default::default()
-        })
-        .await
+        self.execute_request(bdh_request_params(args)?).await
     }
 
     #[tool(
@@ -330,22 +111,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<BdsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tickers = normalize_nonempty_list("tickers", args.tickers)?;
-        let field = normalize_required_string("field", args.field)?;
-
-        self.execute_request(RequestParams {
-            service: Service::RefData.to_string(),
-            operation: Operation::ReferenceData.to_string(),
-            extractor: ExtractorType::BulkData,
-            extractor_set: true,
-            securities: Some(tickers),
-            fields: Some(vec![field]),
-            overrides: map_to_pairs(args.overrides),
-            options: map_to_pairs(args.options),
-            validate_fields: args.validate_fields,
-            ..Default::default()
-        })
-        .await
+        self.execute_request(bds_request_params(args)?).await
     }
 
     #[tool(
@@ -355,32 +121,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<BdibArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let ticker = normalize_required_string("ticker", args.ticker)?;
-        let start_datetime = validate_datetime_string("start_datetime", args.start_datetime)?;
-        let end_datetime = validate_datetime_string("end_datetime", args.end_datetime)?;
-        if args.interval == 0 {
-            return Err(ErrorData::invalid_params(
-                "interval must be greater than zero",
-                None,
-            ));
-        }
-
-        self.execute_request(RequestParams {
-            service: Service::RefData.to_string(),
-            operation: Operation::IntradayBar.to_string(),
-            extractor: ExtractorType::IntradayBar,
-            extractor_set: true,
-            security: Some(ticker),
-            event_type: Some(trim_optional(args.event_type).unwrap_or_else(|| "TRADE".to_string())),
-            interval: Some(args.interval),
-            start_datetime: Some(start_datetime),
-            end_datetime: Some(end_datetime),
-            request_tz: trim_optional(args.request_tz),
-            output_tz: trim_optional(args.output_tz),
-            options: map_to_pairs(args.options),
-            ..Default::default()
-        })
-        .await
+        self.execute_request(bdib_request_params(args)?).await
     }
 
     #[tool(description = "Bloomberg Query Language request (bql).")]
@@ -388,17 +129,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<BqlArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let expression = normalize_required_string("expression", args.expression)?;
-
-        self.execute_request(RequestParams {
-            service: Service::BqlSvc.to_string(),
-            operation: Operation::BqlSendQuery.to_string(),
-            extractor: ExtractorType::Bql,
-            extractor_set: true,
-            elements: Some(vec![("expression".to_string(), expression)]),
-            ..Default::default()
-        })
-        .await
+        self.execute_request(bql_request_params(args)?).await
     }
 
     #[tool(
@@ -408,21 +139,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<BsrchArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let domain = normalize_required_string("domain", args.domain)?;
-        let mut elements = vec![("Domain".to_string(), domain)];
-        if let Some(parameters) = map_to_pairs(args.parameters) {
-            elements.extend(parameters);
-        }
-
-        self.execute_request(RequestParams {
-            service: Service::ExrSvc.to_string(),
-            operation: Operation::ExcelGetGrid.to_string(),
-            extractor: ExtractorType::Bsrch,
-            extractor_set: true,
-            elements: Some(elements),
-            ..Default::default()
-        })
-        .await
+        self.execute_request(bsrch_request_params(args)?).await
     }
 
     #[tool(
@@ -432,44 +149,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<BfldsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let fields = args
-            .fields
-            .map(|values| normalize_nonempty_list("fields", values))
-            .transpose()?;
-        let search_spec = trim_optional(args.search_spec);
-
-        match (fields, search_spec) {
-            (Some(field_ids), None) => {
-                self.execute_request(RequestParams {
-                    service: Service::ApiFlds.to_string(),
-                    operation: Operation::FieldInfo.to_string(),
-                    extractor: ExtractorType::FieldInfo,
-                    extractor_set: true,
-                    field_ids: Some(field_ids),
-                    ..Default::default()
-                })
-                .await
-            }
-            (None, Some(search_spec)) => {
-                self.execute_request(RequestParams {
-                    service: Service::ApiFlds.to_string(),
-                    operation: Operation::FieldSearch.to_string(),
-                    extractor: ExtractorType::Generic,
-                    extractor_set: true,
-                    search_spec: Some(search_spec),
-                    ..Default::default()
-                })
-                .await
-            }
-            (Some(_), Some(_)) => Err(ErrorData::invalid_params(
-                "bflds accepts either fields or search_spec, not both",
-                None,
-            )),
-            (None, None) => Err(ErrorData::invalid_params(
-                "bflds requires either fields or search_spec",
-                None,
-            )),
-        }
+        self.execute_request(bflds_request_params(args)?).await
     }
 
     #[tool(
@@ -479,134 +159,7 @@ impl XbbgMcpServer {
         &self,
         Parameters(args): Parameters<RequestArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        let service = normalize_required_string("service", args.service)?;
-        let request_operation = trim_optional(args.request_operation);
-        let operation = match trim_optional(args.operation) {
-            Some(operation) => operation,
-            None if request_operation.is_some() => Operation::RawRequest.to_string(),
-            None => {
-                return Err(ErrorData::invalid_params(
-                    "operation is required unless request_operation is used for RawRequest",
-                    None,
-                ))
-            }
-        };
-
-        let operation_kind = match Operation::from_str(&operation) {
-            Ok(kind) => kind,
-            Err(never) => match never {},
-        };
-        let mut fields = args
-            .fields
-            .map(|values| normalize_nonempty_list("fields", values))
-            .transpose()?;
-        let mut field_ids = args
-            .field_ids
-            .map(|values| normalize_nonempty_list("field_ids", values))
-            .transpose()?;
-        let mut search_spec = trim_optional(args.search_spec);
-
-        match operation_kind {
-            Operation::FieldInfo => {
-                if fields.is_some() && field_ids.is_some() {
-                    return Err(ErrorData::invalid_params(
-                        "FieldInfoRequest accepts either fields or field_ids, not both",
-                        None,
-                    ));
-                }
-                if field_ids.is_none() {
-                    field_ids = fields.take();
-                }
-            }
-            Operation::FieldSearch => {
-                if fields.is_some() && search_spec.is_some() {
-                    return Err(ErrorData::invalid_params(
-                        "FieldSearchRequest accepts either fields or search_spec, not both",
-                        None,
-                    ));
-                }
-                if search_spec.is_none() {
-                    if let Some(mut field_values) = fields.take() {
-                        if field_values.len() != 1 {
-                            return Err(ErrorData::invalid_params(
-                                "FieldSearchRequest requires exactly one field value when fields is used as a search alias",
-                                None,
-                            ));
-                        }
-                        search_spec = field_values.pop();
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        let format = match (args.format, &operation_kind) {
-            (Some(HistoricalFormat::Wide), Operation::ReferenceData) => {
-                return Err(ErrorData::invalid_params(
-                    "ReferenceDataRequest does not support format=wide",
-                    None,
-                ));
-            }
-            (Some(format), Operation::ReferenceData | Operation::HistoricalData) => {
-                Some(format.as_str().to_string())
-            }
-            (Some(_), _) => {
-                return Err(ErrorData::invalid_params(
-                    "format is only supported for ReferenceDataRequest and HistoricalDataRequest",
-                    None,
-                ));
-            }
-            (None, _) => None,
-        };
-
-        let extractor_set = args.extractor.is_some();
-        let extractor = match args.extractor.as_deref() {
-            Some(extractor) => parse_extractor(extractor)?,
-            None => ExtractorType::default(),
-        };
-
-        self.execute_request(RequestParams {
-            service,
-            operation,
-            request_operation,
-            request_id: trim_optional(args.request_id),
-            extractor,
-            extractor_set,
-            securities: args
-                .securities
-                .map(|values| normalize_nonempty_list("securities", values))
-                .transpose()?,
-            security: args
-                .security
-                .map(|value| normalize_required_string("security", value))
-                .transpose()?,
-            fields,
-            overrides: map_to_pairs(args.overrides),
-            elements: map_to_pairs(args.elements),
-            kwargs: map_to_hash_map(args.kwargs),
-            // The generic tool intentionally preserves caller-supplied request strings instead of
-            // normalizing them to one wrapper opinion; power users may rely on raw/custom semantics.
-            start_date: trim_optional(args.start_date),
-            end_date: trim_optional(args.end_date),
-            start_datetime: trim_optional(args.start_datetime),
-            end_datetime: trim_optional(args.end_datetime),
-            request_tz: trim_optional(args.request_tz),
-            output_tz: trim_optional(args.output_tz),
-            event_type: trim_optional(args.event_type),
-            event_types: args
-                .event_types
-                .map(|values| normalize_nonempty_list("event_types", values))
-                .transpose()?,
-            interval: args.interval,
-            options: map_to_pairs(args.options),
-            field_types: map_to_hash_map(args.field_types),
-            include_security_errors: args.include_security_errors.unwrap_or(false),
-            validate_fields: args.validate_fields,
-            search_spec,
-            field_ids,
-            format,
-        })
-        .await
+        self.execute_request(generic_request_params(args)?).await
     }
 }
 
@@ -848,103 +401,6 @@ fn parse_bool(value: &str) -> Result<bool, String> {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
         _ => Err(format!("expected true/false style boolean, got '{value}'")),
-    }
-}
-
-fn normalize_required_string(field: &str, value: String) -> Result<String, ErrorData> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(ErrorData::invalid_params(
-            format!("{field} must be a non-empty string"),
-            None,
-        ));
-    }
-    Ok(trimmed.to_string())
-}
-
-fn normalize_nonempty_list(field: &str, values: Vec<String>) -> Result<Vec<String>, ErrorData> {
-    let normalized = values
-        .into_iter()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    if normalized.is_empty() {
-        return Err(ErrorData::invalid_params(
-            format!("{field} must contain at least one non-empty value"),
-            None,
-        ));
-    }
-    Ok(normalized)
-}
-
-fn trim_optional(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn normalize_bloomberg_date(field: &str, value: String) -> Result<String, ErrorData> {
-    let trimmed = normalize_required_string(field, value)?;
-    let parsed = NaiveDate::parse_from_str(&trimmed, "%Y%m%d")
-        .or_else(|_| NaiveDate::parse_from_str(&trimmed, "%Y-%m-%d"))
-        .map_err(|_| {
-            ErrorData::invalid_params(format!("{field} must be YYYYMMDD or YYYY-MM-DD"), None)
-        })?;
-    Ok(parsed.format("%Y%m%d").to_string())
-}
-
-fn validate_datetime_string(field: &str, value: String) -> Result<String, ErrorData> {
-    let trimmed = normalize_required_string(field, value)?;
-    let valid = DateTime::parse_from_rfc3339(&trimmed).is_ok()
-        || NaiveDateTime::parse_from_str(&trimmed, "%Y-%m-%dT%H:%M:%S").is_ok()
-        || NaiveDateTime::parse_from_str(&trimmed, "%Y-%m-%d %H:%M:%S").is_ok()
-        || NaiveDateTime::parse_from_str(&trimmed, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
-        || NaiveDateTime::parse_from_str(&trimmed, "%Y-%m-%d %H:%M:%S%.f").is_ok();
-
-    if !valid {
-        return Err(ErrorData::invalid_params(
-            format!("{field} must be an ISO-8601 datetime string"),
-            None,
-        ));
-    }
-
-    Ok(trimmed)
-}
-
-fn parse_extractor(value: &str) -> Result<ExtractorType, ErrorData> {
-    ExtractorType::parse(value.trim()).ok_or_else(|| {
-        ErrorData::invalid_params(
-            format!("unknown extractor '{value}'"),
-            Some(json!({
-                "expected": [
-                    "bql",
-                    "bsrch",
-                    "bulk",
-                    "fieldinfo",
-                    "generic",
-                    "histdata",
-                    "intraday_bar",
-                    "intraday_tick",
-                    "refdata"
-                ]
-            })),
-        )
-    })
-}
-
-fn map_to_pairs(map: Option<BTreeMap<String, String>>) -> Option<Vec<(String, String)>> {
-    match map {
-        Some(entries) if !entries.is_empty() => Some(entries.into_iter().collect::<Vec<_>>()),
-        _ => None,
-    }
-}
-
-fn map_to_hash_map(map: Option<BTreeMap<String, String>>) -> Option<HashMap<String, String>> {
-    match map {
-        Some(entries) if !entries.is_empty() => {
-            Some(entries.into_iter().collect::<HashMap<_, _>>())
-        }
-        _ => None,
     }
 }
 
@@ -1198,6 +654,48 @@ fn display_error(error: arrow::error::ArrowError) -> ErrorData {
     ErrorData::internal_error(format!("failed to format Arrow value: {error}"), None)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn mcp_tool_names_and_input_schemas_are_stable() {
+        let tools = XbbgMcpServer::tool_router().list_all();
+        let names = tools
+            .iter()
+            .map(|tool| tool.name.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["bdh", "bdib", "bdp", "bds", "bflds", "bql", "bsrch", "request"]
+        );
+
+        let tool_by_name = tools
+            .iter()
+            .map(|tool| (tool.name.as_ref(), tool))
+            .collect::<HashMap<_, _>>();
+        let bdp_schema = tool_by_name
+            .get("bdp")
+            .expect("bdp tool")
+            .input_schema
+            .get("properties")
+            .expect("bdp properties");
+        assert!(bdp_schema.get("tickers").is_some());
+        assert!(bdp_schema.get("fields").is_some());
+        assert!(bdp_schema.get("validate_fields").is_some());
+
+        let generic_schema = tool_by_name
+            .get("request")
+            .expect("generic request tool")
+            .input_schema
+            .get("properties")
+            .expect("request properties");
+        assert!(generic_schema.get("request_operation").is_some());
+        assert!(generic_schema.get("request_id").is_some());
+        assert!(generic_schema.get("jsonElements").is_none());
+    }
+}
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = XbbgMcpServer::new_from_env()?;

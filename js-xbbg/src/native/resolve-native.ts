@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { platformKey, platformPackages } from './platform-map';
+import { nativePackageSpecForKey, platformKey } from './platform-map';
 
 const nodeRequire = createRequire(__filename);
 
@@ -19,6 +19,7 @@ export interface NativeAddonResolution {
 export interface NativeResolverOptions {
   readonly key: string;
   readonly packageName: string | null;
+  readonly packageDir?: string | null;
   readonly repoRoot: string;
   readonly requirePackage: (id: string) => unknown;
   readonly exists: (target: string) => boolean;
@@ -50,9 +51,8 @@ function validateNativePackage(packageName: string, resolved: unknown): NativePa
   return resolved;
 }
 
-function localPackageIndex(repoRoot: string, packageName: string): string {
-  const dirName = packageName.replace('@xbbg/', 'xbbg-');
-  return path.join(repoRoot, 'packages', dirName, 'index.js');
+function localPackageIndex(repoRoot: string, packageDir: string): string {
+  return path.join(repoRoot, packageDir, 'index.js');
 }
 
 function isOptionalPackageMissing(err: unknown, packageName: string): boolean {
@@ -94,11 +94,12 @@ function resolveInstalledPackage(
 
 function resolveLocalPackage(
   repoRoot: string,
+  packageDir: string,
   packageName: string,
   requirePackage: (id: string) => unknown,
   existsFile: (target: string) => boolean,
 ): NativePackageResolution | null {
-  const localIndex = localPackageIndex(repoRoot, packageName);
+  const localIndex = localPackageIndex(repoRoot, packageDir);
   if (!existsFile(localIndex)) {
     return null;
   }
@@ -117,13 +118,17 @@ export function resolveNativeAddonCore(options: NativeResolverOptions): NativeAd
   if (packageName === null) {
     return { binaryPath: null, key, packageName: null };
   }
-
   const installed = resolveInstalledPackage(packageName, requirePackage, existsFile);
   if (installed !== null) {
     return { binaryPath: installed.binaryPath, key, packageName };
   }
 
-  const local = resolveLocalPackage(repoRoot, packageName, requirePackage, existsFile);
+  const packageDir = options.packageDir ?? nativePackageSpecForKey(key)?.packageDir ?? null;
+  if (packageDir === null) {
+    return { binaryPath: null, key, packageName };
+  }
+
+  const local = resolveLocalPackage(repoRoot, packageDir, packageName, requirePackage, existsFile);
   if (local !== null) {
     return { binaryPath: local.binaryPath, key, packageName };
   }
@@ -133,11 +138,12 @@ export function resolveNativeAddonCore(options: NativeResolverOptions): NativeAd
 
 export function resolveNativeAddon(repoRoot: string): NativeAddonResolution {
   const key = platformKey();
-  const packageName = (platformPackages as Readonly<Record<string, string>>)[key] ?? null;
+  const spec = nativePackageSpecForKey(key);
   return resolveNativeAddonCore({
     exists,
     key,
-    packageName,
+    packageDir: spec?.packageDir ?? null,
+    packageName: spec?.packageName ?? null,
     repoRoot,
     requirePackage: (id: string): unknown => nodeRequire(id) as unknown,
   });
