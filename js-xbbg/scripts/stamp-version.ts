@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { platformPackages as corePlatformPackages } from './platform-map';
+import { nativePackageSpecs } from './platform-map';
 
 interface PackageJson {
   optionalDependencies?: Record<string, unknown>;
@@ -17,10 +17,6 @@ const packageDir = path.join(repoRoot, 'js-xbbg');
 function fail(message: string): never {
   console.error(`js package version stamp failed: ${message}`);
   process.exit(1);
-}
-
-function packageDirName(packageName: string): string {
-  return packageName.replace('@xbbg/', 'xbbg-');
 }
 
 function isPackageJson(value: unknown): value is PackageJson {
@@ -39,11 +35,7 @@ function writePackageJson(packageJsonPath: string, packageJson: PackageJson): vo
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
-function stampPackageFamily(
-  wrapperPackageJsonPath: string,
-  platformPackages: Readonly<Record<string, string>>,
-  version: string,
-): void {
+function stampPackageFamily(wrapperPackageJsonPath: string, version: string): void {
   const wrapperPackageJson = readPackageJson(wrapperPackageJsonPath);
   wrapperPackageJson.version = version;
   if (wrapperPackageJson.optionalDependencies) {
@@ -56,13 +48,8 @@ function stampPackageFamily(
   }
   writePackageJson(wrapperPackageJsonPath, wrapperPackageJson);
 
-  for (const packageName of Object.values(platformPackages)) {
-    const platformPackageJsonPath = path.join(
-      packageDir,
-      'packages',
-      packageDirName(packageName),
-      'package.json',
-    );
+  for (const spec of nativePackageSpecs) {
+    const platformPackageJsonPath = path.join(packageDir, spec.packageDir, 'package.json');
     const packageJson = readPackageJson(platformPackageJsonPath);
     packageJson.version = version;
     writePackageJson(platformPackageJsonPath, packageJson);
@@ -79,6 +66,6 @@ if (version.length === 0) {
   fail('version must not be empty');
 }
 
-stampPackageFamily(path.join(packageDir, 'package.json'), corePlatformPackages, version);
+stampPackageFamily(path.join(packageDir, 'package.json'), version);
 
 console.log(`Stamped JS package versions with ${version}`);

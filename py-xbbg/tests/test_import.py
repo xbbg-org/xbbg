@@ -20,6 +20,57 @@ def test_imports():
     assert hasattr(xbbg._core, "__version__")
 
 
+def test_public_python_surface_remains_importable():
+    """Public package and blp facade names stay importable across internal splits."""
+    import xbbg
+    from xbbg import blp
+    from xbbg._exports import (
+        BLP_MODULE_EXPORTS,
+        PACKAGE_ASYNC_EXPORTS,
+        PACKAGE_BLP_SCHEMA_EXPORTS,
+        PACKAGE_CONFIG_EXPORTS,
+        PACKAGE_LIFECYCLE_EXPORTS,
+        PACKAGE_MIDDLEWARE_EXPORTS,
+        PACKAGE_STREAMING_EXPORTS,
+        PACKAGE_SYNC_EXPORTS,
+        PACKAGE_TA_EXPORTS,
+    )
+
+    package_groups = (
+        PACKAGE_SYNC_EXPORTS,
+        PACKAGE_ASYNC_EXPORTS,
+        PACKAGE_STREAMING_EXPORTS,
+        PACKAGE_TA_EXPORTS,
+        PACKAGE_CONFIG_EXPORTS,
+        PACKAGE_MIDDLEWARE_EXPORTS,
+        PACKAGE_LIFECYCLE_EXPORTS,
+        PACKAGE_BLP_SCHEMA_EXPORTS,
+    )
+    for group in package_groups:
+        for name in group:
+            assert name in xbbg.__all__
+            assert getattr(xbbg, name) is not None
+
+    for name in BLP_MODULE_EXPORTS:
+        assert name in blp.__all__
+        assert getattr(blp, name) is not None
+
+    assert blp.bfld is blp.bflds
+    assert blp.abfld is blp.abflds
+    assert callable(blp.fieldInfo)
+    assert callable(blp.fieldSearch)
+    assert callable(blp.bops)
+    assert callable(blp.bschema)
+    assert blp.RequestContext is xbbg.RequestContext
+    assert blp.RequestEnvironment is xbbg.RequestEnvironment
+    assert blp.RequestContext.__module__ == "xbbg.blp"
+    assert blp.RequestEnvironment.__module__ == "xbbg.blp"
+
+    for name in PACKAGE_MIDDLEWARE_EXPORTS:
+        assert getattr(blp, name).__module__ == "xbbg.blp"
+        assert getattr(xbbg, name).__module__ == "xbbg.blp"
+
+
 def test_markets_modules_do_not_require_pandas(monkeypatch: pytest.MonkeyPatch):
     """Loading market metadata helpers is valid without optional pandas installed."""
     spec = importlib.util.find_spec("xbbg")

@@ -80,40 +80,38 @@ fn local_iana_timezone() -> String {
 
 fn intraday_operation(params: &RequestParams) -> bool {
     matches!(
-        Operation::from_str(params.operation.as_str()),
+        Operation::from_str(params.effective_operation()),
         Ok(Operation::IntradayBar | Operation::IntradayTick)
     )
 }
 
 /// If `request_tz` is set, interpret naive `start_datetime` / `end_datetime` in that zone and
-/// rewrite as UTC ISO strings for Bloomberg.
-pub(crate) async fn apply_intraday_request_timezone(
+/// return UTC ISO strings for Bloomberg.
+pub(crate) async fn resolve_intraday_request_datetimes(
     engine: &Engine,
-    params: &mut RequestParams,
-) -> Result<(), BlpAsyncError> {
+    params: &RequestParams,
+) -> Result<Option<(String, String)>, BlpAsyncError> {
     if !intraday_operation(params) {
-        return Ok(());
+        return Ok(None);
     }
-    let Some(start) = params.start_datetime.clone() else {
-        return Ok(());
+    let Some(start) = params.start_datetime.as_ref() else {
+        return Ok(None);
     };
-    let Some(end) = params.end_datetime.clone() else {
-        return Ok(());
+    let Some(end) = params.end_datetime.as_ref() else {
+        return Ok(None);
     };
 
     let label = match params.request_tz.as_deref() {
-        None | Some("") => return Ok(()),
-        Some(s) if s.eq_ignore_ascii_case("utc") => return Ok(()),
+        None | Some("") => return Ok(None),
+        Some(s) if s.eq_ignore_ascii_case("utc") => return Ok(None),
         Some(s) => s,
     };
 
     let iana = resolve_tz_label(engine, label, params.security.as_deref()).await?;
 
-    let start_utc = wall_to_utc_iso(&start, &iana)?;
-    let end_utc = wall_to_utc_iso(&end, &iana)?;
-    params.start_datetime = Some(start_utc);
-    params.end_datetime = Some(end_utc);
-    Ok(())
+    let start_utc = wall_to_utc_iso(start, &iana)?;
+    let end_utc = wall_to_utc_iso(end, &iana)?;
+    Ok(Some((start_utc, end_utc)))
 }
 
 fn wall_to_utc_iso(input: &str, wall_tz_iana: &str) -> Result<String, BlpAsyncError> {
@@ -327,5 +325,15 @@ mod tests {
     fn aware_input_preserves_instant() {
         let s = wall_to_utc_iso("2026-04-28T06:00:00+08:00", "America/New_York").unwrap();
         assert_eq!(s, "2026-04-27T22:00:00");
+    }
+
+    #[test]
+    fn raw_intraday_request_operation_is_intraday() {
+        let params = RequestParams {
+            operation: Operation::RawRequest.to_string(),
+            request_operation: Some(Operation::IntradayBar.to_string()),
+            ..Default::default()
+        };
+        assert!(intraday_operation(&params));
     }
 }

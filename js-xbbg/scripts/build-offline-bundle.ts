@@ -20,6 +20,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { nativePackageSpecForKey } from './platform-map';
+
 interface OfflineBundleArgs {
   readonly label: string;
   readonly 'out-dir': string;
@@ -82,15 +84,19 @@ function run(cmd: string, cmdArgs: readonly string[], opts: SpawnSyncOptions = {
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const { label } = args;
+  const spec = nativePackageSpecForKey(label);
+  if (spec === null) {
+    throw new Error(`Unsupported platform label: ${label}`);
+  }
   const jsPackageDir = path.resolve(__dirname, '..');
   const outDir = path.resolve(args['out-dir']);
-  const corePkgDir = path.join(jsPackageDir, 'packages', `xbbg-core-${label}`);
+  const corePkgDir = path.join(jsPackageDir, spec.packageDir);
 
   const corePkg = readVersionedPackageJson(path.join(jsPackageDir, 'package.json'));
   const platPkg = readVersionedPackageJson(path.join(corePkgDir, 'package.json'));
   if (corePkg.version !== platPkg.version) {
     throw new Error(
-      `Version mismatch: @xbbg/core is ${corePkg.version} but @xbbg/core-${label} is ${platPkg.version}`,
+      `Version mismatch: @xbbg/core is ${corePkg.version} but ${spec.packageName} is ${platPkg.version}`,
     );
   }
   const { version } = corePkg;
@@ -106,7 +112,7 @@ function main(): void {
   run('npm', ['pack', corePkgDir, '--pack-destination', tarballs]);
 
   const coreTgz = `xbbg-core-${version}.tgz`;
-  const platTgz = `xbbg-core-${label}-${version}.tgz`;
+  const platTgz = `${spec.dirName}-${version}.tgz`;
   for (const name of [coreTgz, platTgz]) {
     if (!fs.existsSync(path.join(tarballs, name))) {
       throw new Error(`Expected tarball not produced: ${name}`);
@@ -119,7 +125,7 @@ function main(): void {
       {
         dependencies: {
           '@xbbg/core': `file:../tarballs/${coreTgz}`,
-          [`@xbbg/core-${label}`]: `file:../tarballs/${platTgz}`,
+          [spec.packageName]: `file:../tarballs/${platTgz}`,
         },
         name: `xbbg-offline-${label}-bundle`,
         private: true,

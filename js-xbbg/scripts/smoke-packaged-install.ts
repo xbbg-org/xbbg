@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { platformKey, platformPackages } from './platform-map';
+import { nativePackageSpecForKey, platformKey } from './platform-map';
 
 interface RunOptions {
   readonly cwd?: string;
@@ -24,10 +24,6 @@ const packedMode = process.argv.includes('--packed');
 function fail(message: string): never {
   console.error(`js-xbbg packaged-install smoke failed: ${message}`);
   process.exit(1);
-}
-
-function packageDirName(packageName: string): string {
-  return packageName.replace('@xbbg/', 'xbbg-');
 }
 
 function outputText(output: string | Buffer | null | undefined): string {
@@ -68,11 +64,6 @@ function runCapture(command: string, args: readonly string[], options: RunOption
     .map((line) => line.trim())
     .filter(Boolean);
   return lines.at(-1) ?? '';
-}
-
-function resolvePlatformPackageName(key: string): string | null {
-  const match = Object.entries(platformPackages).find(([platformName]) => platformName === key);
-  return match?.[1] ?? null;
 }
 
 function npmCommand(args: readonly string[]): NpmInvocation {
@@ -180,18 +171,14 @@ function smokePackedInstall(jsPackageDir: string, platformPackageDir: string): v
 
 function main(): void {
   const currentKey = platformKey();
-  const currentPackageName = resolvePlatformPackageName(currentKey);
-  if (currentPackageName === null) {
+  const currentSpec = nativePackageSpecForKey(currentKey);
+  if (currentSpec === null) {
     fail(`unsupported platform for smoke test: ${currentKey}`);
   }
 
   const jsPackageDir = path.join(repoRoot, 'js-xbbg');
-  const platformPackageDir = path.join(
-    jsPackageDir,
-    'packages',
-    packageDirName(currentPackageName),
-  );
-  const stagedBinary = path.join(platformPackageDir, 'napi_xbbg.node');
+  const platformPackageDir = path.join(jsPackageDir, currentSpec.packageDir);
+  const stagedBinary = path.join(platformPackageDir, currentSpec.binaryName);
 
   if (!fs.existsSync(stagedBinary)) {
     fail(

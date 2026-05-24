@@ -13,14 +13,18 @@ Ported from ``release/0.x`` ``xbbg/backend.py``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 import logging
 import sys
-from typing import Any
+import warnings
+from typing import Any, TypeAlias
 
+import narwhals.stable.v1 as nw
 from xbbg.services import Format
 
 logger = logging.getLogger(__name__)
+DataFrameResult: TypeAlias = Any
 
 
 # =============================================================================
@@ -85,92 +89,191 @@ class Backend(str, Enum):
 
 
 # =============================================================================
-# Version Requirements & Package Mappings
+# Backend Descriptors
 # =============================================================================
 
-# Minimum version requirements per backend.
-# Format: ``(major, minor)`` or ``(major, minor, patch)``.
+
+class BackendConversion(str, Enum):
+    """Conversion strategy for xbbg native Arrow carriers."""
+
+    NATIVE = "native"
+    PYARROW = "pyarrow"
+    PANDAS = "pandas"
+    POLARS = "polars"
+    POLARS_LAZY = "polars_lazy"
+    NARWHALS = "narwhals"
+    NARWHALS_LAZY = "narwhals_lazy"
+    DUCKDB = "duckdb"
+    PLANNED = "planned"
+
+
+@dataclass(frozen=True)
+class BackendDescriptor:
+    """Single source of truth for backend metadata and conversion status."""
+
+    backend: Backend
+    package_name: str | None
+    module_name: str | None
+    extra_name: str | None
+    min_version: tuple[int, ...] | None
+    supported_formats: frozenset[Format]
+    conversion: BackendConversion
+
+    @property
+    def implemented(self) -> bool:
+        return self.conversion is not BackendConversion.PLANNED
+
+
+_ALL_FORMATS = frozenset(
+    {
+        Format.LONG,
+        Format.SEMI_LONG,
+        Format.LONG_TYPED,
+        Format.LONG_WITH_METADATA,
+    }
+)
+
+
+def _descriptor(
+    backend: Backend,
+    *,
+    package_name: str | None = None,
+    module_name: str | None = None,
+    extra_name: str | None = None,
+    min_version: tuple[int, ...] | None = None,
+    conversion: BackendConversion,
+) -> BackendDescriptor:
+    return BackendDescriptor(
+        backend=backend,
+        package_name=package_name,
+        module_name=module_name,
+        extra_name=extra_name,
+        min_version=min_version,
+        supported_formats=_ALL_FORMATS,
+        conversion=conversion,
+    )
+
+
+BACKEND_DESCRIPTORS: dict[Backend, BackendDescriptor] = {
+    Backend.NATIVE: _descriptor(Backend.NATIVE, conversion=BackendConversion.NATIVE),
+    Backend.PYARROW: _descriptor(
+        Backend.PYARROW,
+        package_name="pyarrow",
+        module_name="pyarrow",
+        extra_name="pyarrow",
+        min_version=(22, 0),
+        conversion=BackendConversion.PYARROW,
+    ),
+    Backend.NARWHALS: _descriptor(
+        Backend.NARWHALS,
+        package_name="narwhals",
+        module_name="narwhals",
+        conversion=BackendConversion.NARWHALS,
+    ),
+    Backend.NARWHALS_LAZY: _descriptor(
+        Backend.NARWHALS_LAZY,
+        package_name="narwhals",
+        module_name="narwhals",
+        conversion=BackendConversion.NARWHALS_LAZY,
+    ),
+    Backend.PANDAS: _descriptor(
+        Backend.PANDAS,
+        package_name="pandas",
+        module_name="pandas",
+        extra_name="pandas",
+        min_version=(2, 0),
+        conversion=BackendConversion.PANDAS,
+    ),
+    Backend.POLARS: _descriptor(
+        Backend.POLARS,
+        package_name="polars",
+        module_name="polars",
+        extra_name="polars",
+        min_version=(0, 20),
+        conversion=BackendConversion.POLARS,
+    ),
+    Backend.POLARS_LAZY: _descriptor(
+        Backend.POLARS_LAZY,
+        package_name="polars",
+        module_name="polars",
+        extra_name="polars",
+        min_version=(0, 20),
+        conversion=BackendConversion.POLARS_LAZY,
+    ),
+    Backend.DUCKDB: _descriptor(
+        Backend.DUCKDB,
+        package_name="duckdb",
+        module_name="duckdb",
+        extra_name="duckdb",
+        min_version=(1, 0),
+        conversion=BackendConversion.DUCKDB,
+    ),
+    Backend.CUDF: _descriptor(
+        Backend.CUDF,
+        package_name="cudf-cu12",
+        module_name="cudf",
+        min_version=(24, 10),
+        conversion=BackendConversion.PLANNED,
+    ),
+    Backend.MODIN: _descriptor(
+        Backend.MODIN,
+        package_name="modin[all]",
+        module_name="modin",
+        min_version=(0, 25),
+        conversion=BackendConversion.PLANNED,
+    ),
+    Backend.DASK: _descriptor(
+        Backend.DASK,
+        package_name="dask[dataframe]",
+        module_name="dask",
+        min_version=(2024, 1),
+        conversion=BackendConversion.PLANNED,
+    ),
+    Backend.IBIS: _descriptor(
+        Backend.IBIS,
+        package_name="ibis-framework",
+        module_name="ibis",
+        min_version=(6, 0),
+        conversion=BackendConversion.PLANNED,
+    ),
+    Backend.PYSPARK: _descriptor(
+        Backend.PYSPARK,
+        package_name="pyspark",
+        module_name="pyspark",
+        min_version=(3, 5),
+        conversion=BackendConversion.PLANNED,
+    ),
+    Backend.SQLFRAME: _descriptor(
+        Backend.SQLFRAME,
+        package_name="sqlframe",
+        module_name="sqlframe",
+        min_version=(3, 22),
+        conversion=BackendConversion.PLANNED,
+    ),
+}
+
 MIN_VERSIONS: dict[Backend, tuple[int, ...]] = {
-    Backend.PYARROW: (22, 0),
-    Backend.PANDAS: (2, 0),
-    Backend.POLARS: (0, 20),
-    Backend.POLARS_LAZY: (0, 20),
-    Backend.DUCKDB: (1, 0),
-    Backend.CUDF: (24, 10),
-    Backend.MODIN: (0, 25),
-    Backend.DASK: (2024, 1),
-    Backend.IBIS: (6, 0),
-    Backend.PYSPARK: (3, 5),
-    Backend.SQLFRAME: (3, 22),
+    backend: descriptor.min_version
+    for backend, descriptor in BACKEND_DESCRIPTORS.items()
+    if descriptor.min_version is not None
 }
-
-# Package names for ``pip install`` instructions.
 PACKAGE_NAMES: dict[Backend, str] = {
-    Backend.PYARROW: "pyarrow",
-    Backend.PANDAS: "pandas",
-    Backend.POLARS: "polars",
-    Backend.POLARS_LAZY: "polars",
-    Backend.DUCKDB: "duckdb",
-    Backend.CUDF: "cudf-cu12",
-    Backend.MODIN: "modin[all]",
-    Backend.DASK: "dask[dataframe]",
-    Backend.IBIS: "ibis-framework",
-    Backend.PYSPARK: "pyspark",
-    Backend.SQLFRAME: "sqlframe",
+    backend: descriptor.package_name
+    for backend, descriptor in BACKEND_DESCRIPTORS.items()
+    if descriptor.package_name is not None
 }
-
-# xbbg extras exposed by pyproject. Some backend enum values share one extra.
 EXTRA_NAMES: dict[Backend, str] = {
-    Backend.PYARROW: "pyarrow",
-    Backend.PANDAS: "pandas",
-    Backend.POLARS: "polars",
-    Backend.POLARS_LAZY: "polars",
-    Backend.DUCKDB: "duckdb",
+    backend: descriptor.extra_name
+    for backend, descriptor in BACKEND_DESCRIPTORS.items()
+    if descriptor.extra_name is not None
 }
-
-# Module names to ``import`` (may differ from the PyPI package name).
 MODULE_NAMES: dict[Backend, str] = {
-    Backend.PYARROW: "pyarrow",
-    Backend.PANDAS: "pandas",
-    Backend.POLARS: "polars",
-    Backend.POLARS_LAZY: "polars",
-    Backend.DUCKDB: "duckdb",
-    Backend.CUDF: "cudf",
-    Backend.MODIN: "modin",
-    Backend.DASK: "dask",
-    Backend.IBIS: "ibis",
-    Backend.PYSPARK: "pyspark",
-    Backend.SQLFRAME: "sqlframe",
-    Backend.NARWHALS: "narwhals",
-    Backend.NARWHALS_LAZY: "narwhals",
+    backend: descriptor.module_name
+    for backend, descriptor in BACKEND_DESCRIPTORS.items()
+    if descriptor.module_name is not None
 }
-
-
-# =============================================================================
-# Format Compatibility
-# =============================================================================
-
-# Which ``Format`` variants each backend supports.
-#
-# * LONG / SEMI_LONG / LONG_TYPED / LONG_WITH_METADATA — universally supported
-#   for all backends.
 SUPPORTED_FORMATS: dict[Backend, frozenset[Format]] = {
-    # Eager backends — full format support
-    Backend.NATIVE: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.PYARROW: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.PANDAS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.POLARS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.NARWHALS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.CUDF: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.MODIN: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    # Lazy backends
-    Backend.NARWHALS_LAZY: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.POLARS_LAZY: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.DUCKDB: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.DASK: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.IBIS: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.PYSPARK: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
-    Backend.SQLFRAME: frozenset({Format.LONG, Format.SEMI_LONG, Format.LONG_TYPED, Format.LONG_WITH_METADATA}),
+    backend: descriptor.supported_formats for backend, descriptor in BACKEND_DESCRIPTORS.items()
 }
 
 
@@ -376,6 +479,132 @@ def _import_backend_module(backend: Backend | str, *, feature: str | None = None
     if module_name is None:
         raise ValueError(f"Unknown backend: {backend.value}")
     return __import__(module_name)
+
+
+def _is_arrow_table(value: Any) -> bool:
+    return value.__class__.__name__ == "ArrowTable" and hasattr(value, "__arrow_c_stream__")
+
+
+def _is_arrow_record_batch(value: Any) -> bool:
+    return value.__class__.__name__ == "ArrowRecordBatch" and hasattr(value, "__arrow_c_array__")
+
+
+def _is_pyarrow_table(value: Any) -> bool:
+    return value.__class__.__module__.startswith("pyarrow.") and value.__class__.__name__ == "Table"
+
+
+def _is_pyarrow_record_batch(value: Any) -> bool:
+    return value.__class__.__module__.startswith("pyarrow.") and value.__class__.__name__ == "RecordBatch"
+
+
+def _ensure_arrow_table(frame: Any) -> Any:
+    if _is_arrow_table(frame) or _is_pyarrow_table(frame):
+        return frame
+    if _is_arrow_record_batch(frame):
+        return frame.to_table()
+    if _is_pyarrow_record_batch(frame):
+        import pyarrow as pa
+
+        return pa.Table.from_batches([frame])
+    raise TypeError(f"Expected xbbg ArrowTable or ArrowRecordBatch, got {type(frame).__name__}")
+
+
+def _to_pyarrow_table(table: Any) -> Any:
+    pa = _import_backend_module(Backend.PYARROW)
+    return pa.table(table)
+
+
+def _to_pandas_frame(table: Any) -> Any:
+    pd = _import_backend_module(Backend.PANDAS)
+    return pd.DataFrame.from_records(table.to_pylist(), columns=table.column_names)
+
+
+def _to_polars_frame(table: Any) -> Any:
+    pl = _import_backend_module(Backend.POLARS)
+
+    if is_backend_available(Backend.PYARROW) and check_backend(Backend.PYARROW, raise_on_error=False):
+        pa = _import_backend_module(Backend.PYARROW)
+        return pl.from_arrow(pa.table(table))
+
+    return pl.DataFrame(table.to_pylist(), schema=table.column_names)
+
+
+_native_narwhals_fallback_warned = False
+
+
+def _warn_native_narwhals_fallback() -> None:
+    global _native_narwhals_fallback_warned
+    if _native_narwhals_fallback_warned:
+        return
+    _native_narwhals_fallback_warned = True
+    warnings.warn(
+        "No optional dataframe backend is installed for xbbg's Narwhals output; "
+        "falling back to the limited xbbg native ArrowTable plugin. "
+        "Install `xbbg[pyarrow]`, `xbbg[pandas]`, or `xbbg[polars]` for full dataframe behavior, "
+        "or request `backend='native'` explicitly if the raw xbbg ArrowTable is intended.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+
+
+def _best_narwhals_native(table: Any) -> Any:
+    """Return the richest installed native object for Narwhals wrapping."""
+    candidates = (
+        (Backend.PYARROW, _to_pyarrow_table),
+        (Backend.PANDAS, _to_pandas_frame),
+        (Backend.POLARS, _to_polars_frame),
+    )
+    for candidate, convert in candidates:
+        if not is_backend_available(candidate):
+            continue
+        if not check_backend(candidate, raise_on_error=False):
+            continue
+        try:
+            return convert(table)
+        except ImportError:
+            continue
+    _warn_native_narwhals_fallback()
+    return table
+
+
+def convert_backend_frame(frame: Any, backend: Backend | str) -> DataFrameResult:
+    """Convert an xbbg ArrowTable to the requested public backend."""
+    effective = Backend(backend) if isinstance(backend, str) else backend
+    descriptor = BACKEND_DESCRIPTORS[effective]
+    table = _ensure_arrow_table(frame)
+
+    if effective not in (Backend.NATIVE, Backend.NARWHALS, Backend.NARWHALS_LAZY):
+        check_backend(effective)
+
+    match descriptor.conversion:
+        case BackendConversion.NATIVE:
+            return table
+        case BackendConversion.PYARROW:
+            return _to_pyarrow_table(table)
+        case BackendConversion.PANDAS:
+            return _to_pandas_frame(table)
+        case BackendConversion.POLARS:
+            return _to_polars_frame(table)
+        case BackendConversion.POLARS_LAZY:
+            return _to_polars_frame(table).lazy()
+        case BackendConversion.NARWHALS:
+            return nw.from_native(_best_narwhals_native(table))
+        case BackendConversion.NARWHALS_LAZY:
+            return nw.from_native(_best_narwhals_native(table)).lazy()
+        case BackendConversion.DUCKDB:
+            import duckdb
+
+            con = duckdb.connect()
+            con.register("xbbg_arrow", table)
+            return con.sql("select * from xbbg_arrow")
+        case BackendConversion.PLANNED:
+            raise NotImplementedError(
+                f"Backend '{effective.value}' is selectable but conversion from xbbg native Arrow "
+                "is not implemented yet. Choose one of: native, pyarrow, pandas, polars, "
+                "polars_lazy, narwhals, narwhals_lazy, duckdb."
+            )
+
+    return nw.from_native(table)
 
 
 def get_available_backends() -> list[Backend]:

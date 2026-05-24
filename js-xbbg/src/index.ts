@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import { tableFromNativeArrowBatch } from './arrow-zero-copy';
+import { Backend, Format } from './backends';
 // Date / datetime helpers (#317): isolated module so they can be tested
 // Without loading the native NAPI addon. Re-exported as public API below.
 import { formatDate, formatDateTime, hasToJSDate } from './dates';
@@ -280,19 +281,7 @@ function loadNative(): NativeAddon {
 const native = loadNative();
 
 // ── Constants ───────────────────────────────────────────────────────────
-
-export const Backend = Object.freeze({
-  ARROW: 'arrow',
-  JSON: 'json',
-  POLARS: 'polars',
-}) satisfies Readonly<Record<string, BackendKind>>;
-
-export const Format = Object.freeze({
-  LONG: 'long',
-  LONG_TYPED: 'long_typed',
-  LONG_WITH_METADATA: 'long_with_metadata',
-  SEMI_LONG: 'semi_long',
-}) satisfies Readonly<Record<string, FormatKind>>;
+export { Backend, Format };
 
 const CDX_INFO_FIELDS = Object.freeze([
   'ROLLING_SERIES',
