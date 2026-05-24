@@ -70,8 +70,7 @@ async def test_arequest_passes_validate_fields_to_engine(monkeypatch):
 @pytest.mark.asyncio
 async def test_arequest_maps_native_validation_error_to_public_exception(monkeypatch):
     """Native validation errors should be catchable via xbbg.exceptions."""
-    from xbbg import blp
-    from xbbg import _core
+    from xbbg import _core, blp
     from xbbg.exceptions import BlpValidationError
 
     class FakeEngine:
