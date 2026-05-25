@@ -6,9 +6,11 @@ import {
   BDH_DESCRIPTION,
   BDS_DESCRIPTION,
   BDIB_DESCRIPTION,
+  BDTICK_DESCRIPTION,
   BFLDS_DESCRIPTION,
   BQL_DESCRIPTION,
   BSRCH_DESCRIPTION,
+  BQR_DESCRIPTION,
 } from "./descriptions";
 import type { BloombergToolsOptions, BloombergToolName } from "./options";
 import { isToolDisabled } from "./options";
@@ -16,18 +18,22 @@ import { stringifyToolResult, throwWithToolContext } from "./result-limits";
 import {
   createBdhSchema,
   createBdibSchema,
+  createBdtickSchema,
   createBdpSchema,
   createBdsSchema,
   createBfldsSchema,
   createBqlSchema,
   createBsrchSchema,
+  createBqrSchema,
   type BdhInput,
   type BdibInput,
+  type BdtickInput,
   type BdpInput,
   type BdsInput,
   type BfldsInput,
   type BqlInput,
   type BsrchInput,
+  type BqrInput,
 } from "./schemas";
 
 export type BloombergTool = StructuredToolInterface;
@@ -168,6 +174,41 @@ function bdibWithResolver(resolver: CoreResolver): BloombergTool {
   );
 }
 
+function bdtickWithResolver(resolver: CoreResolver): BloombergTool {
+  const name = "xbbg_bdtick" satisfies BloombergToolName;
+  return tool(
+    async (input: BdtickInput): Promise<string> => {
+      try {
+        const engine = await resolver.getEngine();
+        const result = await engine.bdtick(input.ticker, {
+          backend: "json",
+          end: input.end,
+          eventTypes: input.eventTypes,
+          includeBicMicCodes: input.includeBicMicCodes,
+          includeBloombergStandardConditionCodes: input.includeBloombergStandardConditionCodes,
+          includeBrokerCodes: input.includeBrokerCodes,
+          includeConditionCodes: input.includeConditionCodes,
+          includeExchangeCodes: input.includeExchangeCodes,
+          includeNonPlottableEvents: input.includeNonPlottableEvents,
+          includeRpsCodes: input.includeRpsCodes,
+          kwargs: input.kwargs,
+          outputTz: input.outputTz,
+          requestTz: input.requestTz,
+          start: input.start,
+        });
+        return resultString(resolver, name, result);
+      } catch (error) {
+        throwWithToolContext(name, error);
+      }
+    },
+    {
+      description: BDTICK_DESCRIPTION,
+      name,
+      schema: createBdtickSchema(resolver.options),
+    },
+  );
+}
+
 function bqlWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bql" satisfies BloombergToolName;
   return tool(
@@ -217,6 +258,32 @@ function bsrchWithResolver(resolver: CoreResolver): BloombergTool {
   );
 }
 
+function bqrWithResolver(resolver: CoreResolver): BloombergTool {
+  const name = "xbbg_bqr" satisfies BloombergToolName;
+  return tool(
+    async (input: BqrInput): Promise<string> => {
+      try {
+        const engine = await resolver.getEngine();
+        const result = await engine.bqr(input.ticker, {
+          backend: "json",
+          endDatetime: input.end,
+          eventTypes: input.eventTypes,
+          includeBrokerCodes: input.includeBrokerCodes,
+          startDatetime: input.start,
+        });
+        return resultString(resolver, name, result);
+      } catch (error) {
+        throwWithToolContext(name, error);
+      }
+    },
+    {
+      description: BQR_DESCRIPTION,
+      name,
+      schema: createBqrSchema(resolver.options),
+    },
+  );
+}
+
 function bfldsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bflds" satisfies BloombergToolName;
   return tool(
@@ -259,12 +326,20 @@ export function createBdibTool(options: BloombergToolsOptions = {}): BloombergTo
   return bdibWithResolver(createCoreResolver(options));
 }
 
+export function createBdtickTool(options: BloombergToolsOptions = {}): BloombergTool {
+  return bdtickWithResolver(createCoreResolver(options));
+}
+
 export function createBqlTool(options: BloombergToolsOptions = {}): BloombergTool {
   return bqlWithResolver(createCoreResolver(options));
 }
 
 export function createBsrchTool(options: BloombergToolsOptions = {}): BloombergTool {
   return bsrchWithResolver(createCoreResolver(options));
+}
+
+export function createBqrTool(options: BloombergToolsOptions = {}): BloombergTool {
+  return bqrWithResolver(createCoreResolver(options));
 }
 
 export function createBfldsTool(options: BloombergToolsOptions = {}): BloombergTool {
@@ -277,8 +352,10 @@ export function createBloombergToolsForResolver(resolver: CoreResolver): Bloombe
     ...enabledTool(resolver, "xbbg_bdh", bdhWithResolver),
     ...enabledTool(resolver, "xbbg_bds", bdsWithResolver),
     ...enabledTool(resolver, "xbbg_bdib", bdibWithResolver),
+    ...enabledTool(resolver, "xbbg_bdtick", bdtickWithResolver),
     ...enabledTool(resolver, "xbbg_bql", bqlWithResolver),
     ...enabledTool(resolver, "xbbg_bsrch", bsrchWithResolver),
+    ...enabledTool(resolver, "xbbg_bqr", bqrWithResolver),
     ...enabledTool(resolver, "xbbg_bflds", bfldsWithResolver),
   ];
 }

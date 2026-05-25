@@ -8,10 +8,12 @@ function engine(): XbbgEngineLike {
     bdp: vi.fn(async () => [{ ticker: "CDX IG CDSI GEN 5Y Corp", value: 1 }]),
     bdh: vi.fn(async () => []),
     bdib: vi.fn(async () => []),
+    bdtick: vi.fn(async () => []),
     bds: vi.fn(async () => []),
     bflds: vi.fn(async () => []),
     bql: vi.fn(async () => []),
     bsrch: vi.fn(async () => []),
+    bqr: vi.fn(async () => []),
   };
 }
 

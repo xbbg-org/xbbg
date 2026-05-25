@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Added
 
-- **`@xbbg/langgraph` npm package**: Added a publishable LangChain/LangGraph tools package backed by `@xbbg/core`, with lazy Bloomberg engine loading, bounded JSON tool outputs, request tools for `bdp`/`bdh`/`bds`/`bdib`/`bql`/`bsrch`/`bflds`, grouped `xbbg.ext` helper tools, agent prompt guidance, unit tests with injected fake engines, and npm/GitHub release workflow integration.
+- **`@xbbg/langgraph` npm package**: Added a publishable LangChain/LangGraph tools package backed by `@xbbg/core`, with lazy Bloomberg engine loading, bounded JSON tool outputs, request tools for `bdp`/`bdh`/`bds`/`bdib`/`bdtick`/`bql`/`bsrch`/`bqr`/`bflds`, grouped `xbbg.ext` helper tools, detailed Bloomberg agent prompt guidance, unit tests with injected fake engines, and npm/GitHub release workflow integration.
 
 ### Fixed
 
@@ -84,6 +84,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - **Retired mock crates removed from the workspace**: The old C++ mock stack and Cargo mock feature forwarding were removed so the Rust workspace has a single live Bloomberg SDK FFI path.
 
 ### Fixed
+
 - **`xbbg.ext` sync helpers now respect async contexts**: Extension convenience wrappers such as `bond_info()`, `yas()`, `fut_ticker()`, `dividend()`, `option_info()`, and `convert_ccy()` now share the core `bdp()` sync boundary: normal synchronous calls still run, notebook/IPykernel loops use the one-shot background bridge, and other running event loops fail clearly with the corresponding async helper name instead of calling `asyncio.run()` and leaking unawaited coroutines.
 
 - **BQL schema introspection no longer stack-overflows**: `aget_schema("//blp/bqlsvc")`, `get_schema("//blp/bqlsvc")`, and schema-driven request-parameter routing against the BQL service now terminate recursive Bloomberg schema definitions with a path-scoped cycle guard while preserving top-level `sendQuery` elements such as `expression`, `appName`, `clientContext`, and `bqlRequestId`.
@@ -125,7 +126,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - **`bdtick` / `bdib` silently dropped `overrides=` kwargs (#295)**: `_build_abdtick_plan` and `_build_abdib_plan` in `py-xbbg/src/xbbg/blp.py` were doing `elements, _ = await _aroute_kwargs(...)` — the `_` threw away the overrides list before the request reached the Rust engine. Other endpoints (`bdp`/`bdh`/`bds`/`beqs`/`bport`) capture both; only the two intraday builders discarded overrides. Now forwarded. Note that Bloomberg's `IntradayTickRequest` / `IntradayBarRequest` schemas have no `overrides` sub-element, so forwarded overrides now surface as a Bloomberg `element-not-found` error instead of being silently no-oped; for response-size limits use the top-level `maxDataPoints` kwarg instead.
 
-- **`bdib` + `maxDataPoints` fell back to the generic flattener, losing the typed schema**: `crates/xbbg-async/src/engine/worker.rs` routed intraday-bar / tick requests through `GenericState` whenever *any* user-supplied element was set, on the assumption that extra elements imply extra response columns. That holds for tick `include*` flags (condition codes, exchange codes, etc. which add per-tick columns), but not for behavior-only elements like `maxDataPoints`, `maxDataPointsOrigin`, `gapFillInitialBar`, or `adjustment*` — those don't change the response shape. Consequence: `blp.bdib(..., maxDataPoints=1)` returned `[path, type, value_str, value_num]` instead of the typed `[ticker, time, open, high, low, close, volume, numEvents]`, and `blp.bdtick(..., maxDataPoints=1)` returned 6 rows instead of 1 (the generic extractor exploded one tick into per-field rows). Fallback removed entirely for `IntradayBar` (no column-adding elements exist on `IntradayBarRequest`); narrowed to `include*` keys on `IntradayTick`.
+- **`bdib` + `maxDataPoints` fell back to the generic flattener, losing the typed schema**: `crates/xbbg-async/src/engine/worker.rs` routed intraday-bar / tick requests through `GenericState` whenever _any_ user-supplied element was set, on the assumption that extra elements imply extra response columns. That holds for tick `include*` flags (condition codes, exchange codes, etc. which add per-tick columns), but not for behavior-only elements like `maxDataPoints`, `maxDataPointsOrigin`, `gapFillInitialBar`, or `adjustment*` — those don't change the response shape. Consequence: `blp.bdib(..., maxDataPoints=1)` returned `[path, type, value_str, value_num]` instead of the typed `[ticker, time, open, high, low, close, volume, numEvents]`, and `blp.bdtick(..., maxDataPoints=1)` returned 6 rows instead of 1 (the generic extractor exploded one tick into per-field rows). Fallback removed entirely for `IntradayBar` (no column-adding elements exist on `IntradayBarRequest`); narrowed to `include*` keys on `IntradayTick`.
 
 - **Offline-bundle packing rejected by npm with `EBADPLATFORM`**: `npm install` in the `pack-offline-bundles` job runs on a Linux runner but pulls in `@xbbg/core-<label>` packages that declare `os`/`cpu` for their target platform (e.g. `win32`/`x64`). `scripts/build-offline-bundle.js` now passes `--force` so the cross-platform install succeeds; the bundle is never executed on the install host, so the platform check is safe to skip.
 
@@ -155,14 +156,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - **`xbbg-async` cache hot paths: `RwLock<HashMap>` → `ArcSwap<HashMap>` (schema) and `DashMap` (field)**: `SchemaCache` reads are now lock-free atomic pointer loads; writes publish a new snapshot via RCU. `FieldTypeResolver` uses `DashMap`'s sharded internal locking (plus `OnceLock` for the lazy disk-load flag). Public API unchanged; all 100 `xbbg-async` lib tests pass. Measured via `benches/cache_contention.rs` (2s run, 1 writer inserting every 5ms, artifacts in `target/bench_cache/`):
 
-  | Scenario               | p50             | p99             | **p99.9**                 | throughput |
-  |------------------------|-----------------|-----------------|---------------------------|------------|
-  | schema, 1000 readers   | 1.96µs → 125ns  | 17.1µs → 667ns  | **22.5ms → 1.2µs (~19 000×)** | 22× more samples |
-  | schema, 100 readers    | 1.71µs → 166ns  | 19.8µs → 667ns  | **6.5ms  → 1.2µs (~5 400×)**  | 14× more samples |
-  | schema, 10 readers     | 1.75µs → 166ns  | 16.1µs → 500ns  | **56µs   → 750ns (75×)**      | 14× more samples |
-  | field,  1000 readers   | 2.67µs → 125ns  | 19.2µs → 583ns  | **30.4ms → 1.2µs (~25 000×)** | 20× more samples |
-  | field,  100 readers    | 2.58µs → 125ns  | 20.4µs → 583ns  | **11.1ms → 1.2µs (~9 200×)**  | 20× more samples |
-  | field,  10 readers     | 2.50µs → 125ns  | 18.4µs → 583ns  | **52µs   → 1.1µs (46×)**      | 19× more samples |
+  | Scenario             | p50            | p99            | **p99.9**                     | throughput       |
+  | -------------------- | -------------- | -------------- | ----------------------------- | ---------------- |
+  | schema, 1000 readers | 1.96µs → 125ns | 17.1µs → 667ns | **22.5ms → 1.2µs (~19 000×)** | 22× more samples |
+  | schema, 100 readers  | 1.71µs → 166ns | 19.8µs → 667ns | **6.5ms → 1.2µs (~5 400×)**   | 14× more samples |
+  | schema, 10 readers   | 1.75µs → 166ns | 16.1µs → 500ns | **56µs → 750ns (75×)**        | 14× more samples |
+  | field, 1000 readers  | 2.67µs → 125ns | 19.2µs → 583ns | **30.4ms → 1.2µs (~25 000×)** | 20× more samples |
+  | field, 100 readers   | 2.58µs → 125ns | 20.4µs → 583ns | **11.1ms → 1.2µs (~9 200×)**  | 20× more samples |
+  | field, 10 readers    | 2.50µs → 125ns | 18.4µs → 583ns | **52µs → 1.1µs (46×)**        | 19× more samples |
 
   Eliminates the writer-thundering-herd pathology where a `~1µs` write-lock window would queue hundreds of readers and blow out p99.9 into the millisecond range. Relevant under burst load — e.g. many parallel `//blp/refdata` requests landing during a `//blp/apiflds` introspection, where schema/field lookups are on every critical-path hop. p50 and p99 also improve because the RwLock acquire/release was the dominant cost of an uncontended cache hit. `max` is still OS-scheduler jitter (threads can be preempted for a full quantum) and unrelated to cache design.
 
@@ -236,7 +237,6 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Removed
 
 - **Legacy `configure()` kwarg aliases**: `xbbg.configure()` no longer accepts the legacy connection-style aliases carried over from xbbg 0.x: `server`, `server_host`, `server_port`, `max_attempt`, `auto_restart`, `max_recovery`, `retry_max`, `retry_delay`, `retry_backoff`. The `NotImplementedError` placeholders for `sess` and `tls_options` are likewise gone — unknown kwargs now raise a uniform `TypeError`. Use the canonical `EngineConfig` field names instead: `host`, `port`, `num_start_attempts`, `auto_restart_on_disconnection`, `max_recovery_attempts`, `retry_max_retries`, `retry_initial_delay_ms`, `retry_backoff_factor`.
-
 
 ## [1.0.0] - 2026-03-31
 
@@ -1095,7 +1095,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Fixed
 
 - Fix BQL to use correct service name and handle JSON response format
-- Normalize UX* Index symbols; fix pandas 'M' deprecation to 'ME' in fut_ticker
+- Normalize UX\* Index symbols; fix pandas 'M' deprecation to 'ME' in fut_ticker
 
 ## [0.7.10] - 2025-11-05
 

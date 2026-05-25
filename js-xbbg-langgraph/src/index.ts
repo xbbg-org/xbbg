@@ -31,12 +31,14 @@ export type { ToolEnvelope } from "./result-limits";
 export {
   createBdhTool,
   createBdibTool,
+  createBdtickTool,
   createBdpTool,
   createBdsTool,
   createBfldsTool,
   createBloombergTools,
   createBqlTool,
   createBsrchTool,
+  createBqrTool,
   type BloombergTool,
 } from "./tools";
 

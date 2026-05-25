@@ -57,6 +57,23 @@ export interface BdibInput {
   readonly kwargs?: PrimitiveMap;
 }
 
+export interface BdtickInput {
+  readonly ticker: string;
+  readonly start: string;
+  readonly end: string;
+  readonly eventTypes?: readonly string[];
+  readonly includeConditionCodes?: boolean;
+  readonly includeExchangeCodes?: boolean;
+  readonly includeBrokerCodes?: boolean;
+  readonly includeRpsCodes?: boolean;
+  readonly includeBicMicCodes?: boolean;
+  readonly includeNonPlottableEvents?: boolean;
+  readonly includeBloombergStandardConditionCodes?: boolean;
+  readonly requestTz?: string;
+  readonly outputTz?: string;
+  readonly kwargs?: PrimitiveMap;
+}
+
 export interface BqlInput {
   readonly query: string;
   readonly kwargs?: PrimitiveMap;
@@ -68,6 +85,14 @@ export interface BsrchInput {
   readonly overrides?: PrimitiveMap;
   readonly kwargs?: PrimitiveMap;
   readonly format?: ReferenceFormat;
+}
+
+export interface BqrInput {
+  readonly ticker: string;
+  readonly start: string;
+  readonly end: string;
+  readonly eventTypes?: readonly string[];
+  readonly includeBrokerCodes?: boolean;
 }
 
 export interface BfldsInput {
@@ -278,7 +303,7 @@ export function createBdpSchema(options: NormalizedBloombergToolsOptions): z.Zod
       options.maxStringChars,
       '["AAPL US Equity"]',
     ).describe(
-      'Fully qualified Bloomberg securities, for example ["AAPL US Equity"]. Do not invent tickers.',
+      'Fully qualified Bloomberg securities, for example ["AAPL US Equity"]; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs. Do not invent tickers.',
     ),
     validateFields: z.boolean().optional().describe("Override field validation for this request."),
   });
@@ -311,7 +336,9 @@ export function createBdhSchema(options: NormalizedBloombergToolsOptions): z.Zod
         options.maxSecurities,
         options.maxStringChars,
         '["AAPL US Equity"]',
-      ).describe('Fully qualified Bloomberg securities, for example ["AAPL US Equity"].'),
+      ).describe(
+        'Fully qualified Bloomberg securities, for example ["AAPL US Equity"]; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.',
+      ),
       start: dateField(tool, "start").describe("Required start date. Use YYYY-MM-DD or YYYYMMDD."),
       validateFields: z
         .boolean()
@@ -348,7 +375,9 @@ export function createBdsSchema(options: NormalizedBloombergToolsOptions): z.Zod
       options.maxSecurities,
       options.maxStringChars,
       '["SPX Index"]',
-    ).describe('Fully qualified Bloomberg securities, for example ["SPX Index"].'),
+    ).describe(
+      'Fully qualified Bloomberg securities, for example ["SPX Index"]; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.',
+    ),
     validateFields: z.boolean().optional().describe("Override field validation for this request."),
   });
 }
@@ -380,7 +409,50 @@ export function createBdibSchema(options: NormalizedBloombergToolsOptions): z.Zo
       "Required intraday start datetime. Use ISO 8601 with timezone when possible.",
     ),
     ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
-      "One fully qualified Bloomberg security, for example AAPL US Equity.",
+      "One fully qualified Bloomberg security, for example AAPL US Equity; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.",
+    ),
+  });
+}
+
+export function createBdtickSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<BdtickInput> {
+  const tool = "xbbg_bdtick";
+  const includeFlag = z.boolean().optional().describe("Optional IntradayTickRequest include flag.");
+  return z.object({
+    end: dateTimeField(tool, "end").describe(
+      "Required intraday tick end datetime. Use ISO 8601 with timezone when possible.",
+    ),
+    eventTypes: stringArray(
+      tool,
+      "eventTypes",
+      options.maxFields,
+      options.maxStringChars,
+      '["TRADE"]',
+    )
+      .optional()
+      .describe('Bloomberg tick event types, for example ["TRADE"] or ["BID", "ASK"].'),
+    includeBicMicCodes: includeFlag,
+    includeBloombergStandardConditionCodes: includeFlag,
+    includeBrokerCodes: includeFlag,
+    includeConditionCodes: includeFlag,
+    includeExchangeCodes: includeFlag,
+    includeNonPlottableEvents: includeFlag,
+    includeRpsCodes: includeFlag,
+    kwargs: primitiveMap(tool, "kwargs").describe(
+      "Advanced IntradayTickRequest kwargs as flat string/number/boolean values only.",
+    ),
+    outputTz: nonEmptyString(tool, "outputTz", options.maxStringChars, "America/New_York")
+      .optional()
+      .describe("Optional output timezone, for example America/New_York."),
+    requestTz: nonEmptyString(tool, "requestTz", options.maxStringChars, "America/New_York")
+      .optional()
+      .describe("Timezone for naive start/end datetimes, for example America/New_York."),
+    start: dateTimeField(tool, "start").describe(
+      "Required intraday tick start datetime. Use ISO 8601 with timezone when possible.",
+    ),
+    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
+      "One fully qualified Bloomberg security, for example AAPL US Equity; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.",
     ),
   });
 }
@@ -396,9 +468,42 @@ export function createBqlSchema(options: NormalizedBloombergToolsOptions): z.Zod
       tool,
       "query",
       options.maxBqlQueryChars,
-      "get(px_last) for([AAPL US Equity])",
+      "get(px_last) for('AAPL US Equity')",
     ).describe(
-      "BQL expression. Use only when the user asks for BQL or the request is naturally a BQL query.",
+      "Complete BQL expression string. Use get(...) for(...) with an explicit bounded universe; prefer BDP/BDH for simple reference or historical requests.",
+    ),
+  });
+}
+
+export function createBqrSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BqrInput> {
+  const tool = "xbbg_bqr";
+  return z.object({
+    end: dateTimeField(tool, "end").describe(
+      "Required BQR end datetime. Use ISO 8601 with timezone when possible.",
+    ),
+    eventTypes: stringArray(
+      tool,
+      "eventTypes",
+      options.maxFields,
+      options.maxStringChars,
+      '["BID", "ASK"]',
+    )
+      .optional()
+      .describe('BQR event types. Usually ["BID", "ASK"].'),
+    includeBrokerCodes: z
+      .boolean()
+      .optional()
+      .describe("Include broker/dealer attribution columns. Defaults to true in @xbbg/core."),
+    start: dateTimeField(tool, "start").describe(
+      "Required BQR start datetime. Use ISO 8601 with timezone when possible.",
+    ),
+    ticker: nonEmptyString(
+      tool,
+      "ticker",
+      options.maxStringChars,
+      "/isin/US037833FB15@MSG1 Corp",
+    ).describe(
+      "Fixed-income ticker or identifier with dealer quote source, for example /isin/US037833FB15@MSG1 Corp.",
     ),
   });
 }
