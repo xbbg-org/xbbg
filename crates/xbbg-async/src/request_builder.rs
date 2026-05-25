@@ -856,7 +856,7 @@ mod tests {
     }
 
     #[test]
-    fn request_builder_with_defaults_keeps_non_default_extractor_hint() {
+    fn request_builder_with_defaults_marks_non_default_extractor_hint_explicit() {
         let params = RequestParams {
             service: "//blp/refdata".to_string(),
             operation: Operation::ReferenceData.to_string(),
@@ -867,6 +867,7 @@ mod tests {
 
         let resolved = params.with_defaults();
         assert_eq!(resolved.extractor, ExtractorType::BulkData);
+        assert!(resolved.extractor_set);
     }
 
     #[test]

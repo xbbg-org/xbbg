@@ -1888,7 +1888,7 @@ mod tests {
     fn request_input_preserves_all_request_fields() {
         let params = RequestParams::try_from(RequestInput {
             service: "//blp/refdata".to_string(),
-            operation: "RawRequest".to_string(),
+            operation: String::new(),
             request_operation: Some("ReferenceDataRequest".to_string()),
             request_id: Some("req-123".to_string()),
             extractor: Some("refdata".to_string()),
@@ -1919,7 +1919,7 @@ mod tests {
         .expect("request input");
 
         assert_eq!(params.service, "//blp/refdata");
-        assert_eq!(params.operation, "RawRequest");
+        assert_eq!(params.operation, "");
         assert_eq!(
             params.request_operation.as_deref(),
             Some("ReferenceDataRequest")

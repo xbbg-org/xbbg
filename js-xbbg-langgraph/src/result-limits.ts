@@ -19,6 +19,13 @@ interface LimitState {
   truncated: boolean;
 }
 
+const MAX_RESULT_DEPTH = 32;
+
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function truncateString(value: string, maxStringChars: number, state: LimitState): string {
   if (value.length <= maxStringChars) {
     return value;
@@ -32,21 +39,43 @@ function limitValue(
   maxRows: number,
   maxStringChars: number,
   state: LimitState,
+  depth = 0,
+  seen: WeakSet<object> = new WeakSet<object>(),
 ): unknown {
   if (typeof value === "string") {
     return truncateString(value, maxStringChars, state);
   }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (depth > MAX_RESULT_DEPTH) {
+    state.truncated = true;
+    return "[Max result depth exceeded]";
+  }
   if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      state.truncated = true;
+      return "[Circular]";
+    }
+    seen.add(value);
     const capped = value.length > maxRows ? value.slice(0, maxRows) : value;
     if (capped.length !== value.length) {
       state.truncated = true;
     }
-    return capped.map((item) => limitValue(item, maxRows, maxStringChars, state));
+    return capped.map((item) => limitValue(item, maxRows, maxStringChars, state, depth + 1, seen));
   }
   if (typeof value === "object" && value !== null) {
+    if (seen.has(value)) {
+      state.truncated = true;
+      return "[Circular]";
+    }
+    if (!isPlainObject(value)) {
+      return value;
+    }
+    seen.add(value);
     const output: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value)) {
-      output[key] = limitValue(entry, maxRows, maxStringChars, state);
+      output[key] = limitValue(entry, maxRows, maxStringChars, state, depth + 1, seen);
     }
     return output;
   }

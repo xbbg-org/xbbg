@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use xbbg_async::engine::{ExtractorType, RequestParams};
+use xbbg_async::engine::{RequestParams, RequestParamsInput};
 
 /// Convert a Python dictionary to Rust RequestParams.
 pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
@@ -18,16 +18,10 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
         .ok_or_else(|| PyRuntimeError::new_err("missing required field: operation"))?
         .extract()?;
 
-    let (extractor, extractor_set) = match dict.get_item("extractor")? {
-        Some(value) => {
-            let extractor_str: String = value.extract()?;
-            let extractor = ExtractorType::parse(&extractor_str).ok_or_else(|| {
-                PyRuntimeError::new_err(format!("invalid extractor type: {}", extractor_str))
-            })?;
-            (extractor, true)
-        }
-        None => (ExtractorType::default(), false),
-    };
+    let extractor: Option<String> = dict
+        .get_item("extractor")?
+        .map(|v| v.extract())
+        .transpose()?;
 
     let request_operation: Option<String> = dict
         .get_item("request_operation")?
@@ -108,11 +102,10 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
         .map(|v| v.extract())
         .transpose()?;
 
-    let include_security_errors: bool = dict
+    let include_security_errors: Option<bool> = dict
         .get_item("include_security_errors")?
         .map(|v| v.extract())
-        .transpose()?
-        .unwrap_or(false);
+        .transpose()?;
 
     let validate_fields: Option<bool> = dict
         .get_item("validate_fields")?
@@ -140,13 +133,12 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
         .map(|v| v.extract())
         .transpose()?;
 
-    Ok(RequestParams {
+    RequestParamsInput {
         service,
-        operation,
+        operation: Some(operation),
         request_operation,
         request_id,
         extractor,
-        extractor_set,
         securities,
         security,
         fields,
@@ -169,5 +161,7 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
         search_spec,
         field_ids,
         format,
-    })
+    }
+    .into_request_params()
+    .map_err(|err| PyRuntimeError::new_err(err.to_string()))
 }

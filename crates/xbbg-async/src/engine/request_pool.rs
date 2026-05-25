@@ -41,6 +41,11 @@ impl Drop for RequestCancelGuard {
 }
 
 /// Pool of request workers with round-robin dispatch.
+///
+/// The public surface is limited to construction, health/introspection, and
+/// shutdown. Request dispatch is intentionally crate-private because correct
+/// preparation depends on [`super::Engine`]-owned schema, field-cache, and
+/// intraday-timezone state.
 pub struct RequestWorkerPool {
     /// Worker handles.
     workers: Vec<WorkerHandle>,

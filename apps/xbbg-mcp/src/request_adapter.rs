@@ -4,9 +4,8 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use rmcp::ErrorData;
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
-use xbbg_async::engine::{ExtractorType, RequestParams};
-use xbbg_async::services::{Operation, Service};
+use xbbg_async::engine::{RequestParams, RequestParamsInput};
+use xbbg_async::services::Operation;
 
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -188,18 +187,21 @@ pub(crate) struct RequestArgs {
     format: Option<HistoricalFormat>,
 }
 
+fn build_request_params(input: RequestParamsInput) -> Result<RequestParams, ErrorData> {
+    input
+        .into_request_params()
+        .map_err(|err| ErrorData::invalid_params(err.to_string(), None))
+}
 pub(crate) fn bdp_request_params(args: BdpArgs) -> Result<RequestParams, ErrorData> {
-    Ok(RequestParams {
-        service: Service::RefData.to_string(),
-        operation: Operation::ReferenceData.to_string(),
-        extractor: ExtractorType::RefData,
-        extractor_set: true,
+    build_request_params(RequestParamsInput {
+        service: String::new(),
+        operation: Some(Operation::ReferenceData.to_string()),
         securities: Some(normalize_nonempty_list("tickers", args.tickers)?),
         fields: Some(normalize_nonempty_list("fields", args.fields)?),
         overrides: map_to_pairs(args.overrides),
         options: map_to_pairs(args.options),
         field_types: map_to_hash_map(args.field_types),
-        include_security_errors: args.include_security_errors,
+        include_security_errors: Some(args.include_security_errors),
         validate_fields: args.validate_fields,
         format: args.format.map(|format| format.as_str().to_string()),
         ..Default::default()
@@ -207,11 +209,9 @@ pub(crate) fn bdp_request_params(args: BdpArgs) -> Result<RequestParams, ErrorDa
 }
 
 pub(crate) fn bdh_request_params(args: BdhArgs) -> Result<RequestParams, ErrorData> {
-    Ok(RequestParams {
-        service: Service::RefData.to_string(),
-        operation: Operation::HistoricalData.to_string(),
-        extractor: ExtractorType::HistData,
-        extractor_set: true,
+    build_request_params(RequestParamsInput {
+        service: String::new(),
+        operation: Some(Operation::HistoricalData.to_string()),
         securities: Some(normalize_nonempty_list("tickers", args.tickers)?),
         fields: Some(normalize_nonempty_list("fields", args.fields)?),
         start_date: Some(normalize_bloomberg_date("start_date", args.start_date)?),
@@ -226,11 +226,10 @@ pub(crate) fn bdh_request_params(args: BdhArgs) -> Result<RequestParams, ErrorDa
 }
 
 pub(crate) fn bds_request_params(args: BdsArgs) -> Result<RequestParams, ErrorData> {
-    Ok(RequestParams {
-        service: Service::RefData.to_string(),
-        operation: Operation::ReferenceData.to_string(),
-        extractor: ExtractorType::BulkData,
-        extractor_set: true,
+    build_request_params(RequestParamsInput {
+        service: String::new(),
+        operation: Some(Operation::ReferenceData.to_string()),
+        extractor: Some("bulk".to_string()),
         securities: Some(normalize_nonempty_list("tickers", args.tickers)?),
         fields: Some(vec![normalize_required_string("field", args.field)?]),
         overrides: map_to_pairs(args.overrides),
@@ -248,11 +247,9 @@ pub(crate) fn bdib_request_params(args: BdibArgs) -> Result<RequestParams, Error
         ));
     }
 
-    Ok(RequestParams {
-        service: Service::RefData.to_string(),
-        operation: Operation::IntradayBar.to_string(),
-        extractor: ExtractorType::IntradayBar,
-        extractor_set: true,
+    build_request_params(RequestParamsInput {
+        service: String::new(),
+        operation: Some(Operation::IntradayBar.to_string()),
         security: Some(normalize_required_string("ticker", args.ticker)?),
         event_type: Some(trim_optional(args.event_type).unwrap_or_else(|| "TRADE".to_string())),
         interval: Some(args.interval),
@@ -269,11 +266,9 @@ pub(crate) fn bdib_request_params(args: BdibArgs) -> Result<RequestParams, Error
 }
 
 pub(crate) fn bql_request_params(args: BqlArgs) -> Result<RequestParams, ErrorData> {
-    Ok(RequestParams {
-        service: Service::BqlSvc.to_string(),
-        operation: Operation::BqlSendQuery.to_string(),
-        extractor: ExtractorType::Bql,
-        extractor_set: true,
+    build_request_params(RequestParamsInput {
+        service: String::new(),
+        operation: Some(Operation::BqlSendQuery.to_string()),
         elements: Some(vec![(
             "expression".to_string(),
             normalize_required_string("expression", args.expression)?,
@@ -291,11 +286,9 @@ pub(crate) fn bsrch_request_params(args: BsrchArgs) -> Result<RequestParams, Err
         elements.extend(parameters);
     }
 
-    Ok(RequestParams {
-        service: Service::ExrSvc.to_string(),
-        operation: Operation::ExcelGetGrid.to_string(),
-        extractor: ExtractorType::Bsrch,
-        extractor_set: true,
+    build_request_params(RequestParamsInput {
+        service: String::new(),
+        operation: Some(Operation::ExcelGetGrid.to_string()),
         elements: Some(elements),
         ..Default::default()
     })
@@ -309,19 +302,15 @@ pub(crate) fn bflds_request_params(args: BfldsArgs) -> Result<RequestParams, Err
     let search_spec = trim_optional(args.search_spec);
 
     match (fields, search_spec) {
-        (Some(field_ids), None) => Ok(RequestParams {
-            service: Service::ApiFlds.to_string(),
-            operation: Operation::FieldInfo.to_string(),
-            extractor: ExtractorType::FieldInfo,
-            extractor_set: true,
+        (Some(field_ids), None) => build_request_params(RequestParamsInput {
+            service: String::new(),
+            operation: Some(Operation::FieldInfo.to_string()),
             field_ids: Some(field_ids),
             ..Default::default()
         }),
-        (None, Some(search_spec)) => Ok(RequestParams {
-            service: Service::ApiFlds.to_string(),
-            operation: Operation::FieldSearch.to_string(),
-            extractor: ExtractorType::Generic,
-            extractor_set: true,
+        (None, Some(search_spec)) => build_request_params(RequestParamsInput {
+            service: String::new(),
+            operation: Some(Operation::FieldSearch.to_string()),
             search_spec: Some(search_spec),
             ..Default::default()
         }),
@@ -339,17 +328,7 @@ pub(crate) fn bflds_request_params(args: BfldsArgs) -> Result<RequestParams, Err
 pub(crate) fn generic_request_params(args: RequestArgs) -> Result<RequestParams, ErrorData> {
     let service = normalize_required_string("service", args.service)?;
     let request_operation = trim_optional(args.request_operation);
-    let operation = match trim_optional(args.operation) {
-        Some(operation) => operation,
-        None if request_operation.is_some() => Operation::RawRequest.to_string(),
-        None => {
-            return Err(ErrorData::invalid_params(
-                "operation is required unless request_operation is used for RawRequest",
-                None,
-            ))
-        }
-    };
-
+    let operation = trim_optional(args.operation);
     let fields = args
         .fields
         .map(|values| normalize_nonempty_list("fields", values))
@@ -361,19 +340,12 @@ pub(crate) fn generic_request_params(args: RequestArgs) -> Result<RequestParams,
     let search_spec = trim_optional(args.search_spec);
     let format = args.format.map(|format| format.as_str().to_string());
 
-    let extractor_set = args.extractor.is_some();
-    let extractor = match args.extractor.as_deref() {
-        Some(extractor) => parse_extractor(extractor)?,
-        None => ExtractorType::default(),
-    };
-
-    Ok(RequestParams {
+    build_request_params(RequestParamsInput {
         service,
         operation,
         request_operation,
         request_id: trim_optional(args.request_id),
-        extractor,
-        extractor_set,
+        extractor: args.extractor.and_then(|value| trim_optional(Some(value))),
         securities: args
             .securities
             .map(|values| normalize_nonempty_list("securities", values))
@@ -402,7 +374,7 @@ pub(crate) fn generic_request_params(args: RequestArgs) -> Result<RequestParams,
         interval: args.interval,
         options: map_to_pairs(args.options),
         field_types: map_to_hash_map(args.field_types),
-        include_security_errors: args.include_security_errors.unwrap_or(false),
+        include_security_errors: args.include_security_errors,
         validate_fields: args.validate_fields,
         search_spec,
         field_ids,
@@ -470,27 +442,6 @@ fn validate_datetime_string(field: &str, value: String) -> Result<String, ErrorD
     Ok(trimmed)
 }
 
-fn parse_extractor(value: &str) -> Result<ExtractorType, ErrorData> {
-    ExtractorType::parse(value.trim()).ok_or_else(|| {
-        ErrorData::invalid_params(
-            format!("unknown extractor '{value}'"),
-            Some(json!({
-                "expected": [
-                    "bql",
-                    "bsrch",
-                    "bulk",
-                    "fieldinfo",
-                    "generic",
-                    "histdata",
-                    "intraday_bar",
-                    "intraday_tick",
-                    "refdata"
-                ]
-            })),
-        )
-    })
-}
-
 fn map_to_pairs(map: Option<BTreeMap<String, String>>) -> Option<Vec<(String, String)>> {
     match map {
         Some(entries) if !entries.is_empty() => Some(entries.into_iter().collect::<Vec<_>>()),
@@ -510,6 +461,8 @@ fn map_to_hash_map(map: Option<BTreeMap<String, String>>) -> Option<HashMap<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xbbg_async::engine::ExtractorType;
+    use xbbg_async::services::Service;
 
     fn params(values: &[(&str, &str)]) -> BTreeMap<String, String> {
         values
@@ -566,7 +519,7 @@ mod tests {
         assert_eq!(bdp.service, Service::RefData.to_string());
         assert_eq!(bdp.operation, Operation::ReferenceData.to_string());
         assert_eq!(bdp.extractor, ExtractorType::RefData);
-        assert!(bdp.extractor_set);
+        assert!(!bdp.extractor_set);
         assert_eq!(
             bdp.securities.as_deref(),
             Some(&["IBM US Equity".to_string()][..])
@@ -604,6 +557,7 @@ mod tests {
         })
         .unwrap();
         assert_eq!(bds.extractor, ExtractorType::BulkData);
+        assert!(bds.extractor_set);
         assert_eq!(
             bds.fields.as_deref(),
             Some(&["INDX_MEMBERS".to_string()][..])

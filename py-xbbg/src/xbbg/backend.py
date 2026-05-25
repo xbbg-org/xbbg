@@ -567,6 +567,33 @@ def _best_narwhals_native(table: Any) -> Any:
     return table
 
 
+def resolve_backend(
+    backend: Backend | str | None,
+    default_backend: Backend | str | None = None,
+) -> Backend | None:
+    """Resolve an optional backend selection against an optional configured default."""
+    selected = default_backend if backend is None else backend
+    if selected is None:
+        return None
+    return Backend(selected) if isinstance(selected, str) else selected
+
+
+def effective_backend(
+    backend: Backend | str | None,
+    default_backend: Backend | str | None = None,
+) -> Backend:
+    """Resolve a backend selection, falling back to the package default if unset."""
+    return resolve_backend(backend, default_backend) or get_default_backend()
+
+
+def convert_backend_frame_with_default(
+    frame: Any,
+    backend: Backend | str | None,
+    default_backend: Backend | str | None = None,
+) -> DataFrameResult:
+    """Convert an Arrow-like result using a per-call backend and configured default."""
+    return convert_backend_frame(frame, effective_backend(backend, default_backend))
+
 def convert_backend_frame(frame: Any, backend: Backend | str) -> DataFrameResult:
     """Convert an xbbg ArrowTable to the requested public backend."""
     effective = Backend(backend) if isinstance(backend, str) else backend

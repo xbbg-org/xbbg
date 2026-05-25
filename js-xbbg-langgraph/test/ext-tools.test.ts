@@ -288,4 +288,23 @@ describe("Bloomberg extension tools", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("applies configured input limits to extension schemas", async () => {
+    const tools = createBloombergExtTools({
+      core: core(engine()),
+      maxFields: 1,
+      maxSecurities: 1,
+      maxStringChars: 4,
+    });
+    const ticker = byName(tools, "xbbg_ext_ticker");
+    await expect(
+      ticker.invoke({ operation: "normalize_tickers", tickers: ["A", "B"] }),
+    ).rejects.toThrow();
+    await expect(ticker.invoke({ operation: "parse_ticker", ticker: "ABCDE" })).rejects.toThrow();
+
+    const columns = byName(tools, "xbbg_ext_columns");
+    await expect(
+      columns.invoke({ columns: ["A", "B"], operation: "rename_dividend_columns" }),
+    ).rejects.toThrow();
+  });
 });

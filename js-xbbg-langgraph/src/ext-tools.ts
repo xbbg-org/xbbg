@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
-import { z } from "zod";
 
+import { CDX_INFO_FIELDS, CDX_PRICING_FIELDS, CDX_RISK_FIELDS } from "./cdx-fields";
 import { createCoreResolver, type CoreResolver } from "./core-loader";
 import {
   EXT_BQL_BUILDER_DESCRIPTION,
@@ -22,233 +22,30 @@ import {
   throwWithToolContext,
   type ToolContentAndArtifact,
 } from "./result-limits";
+import {
+  bqlBuilderSchema,
+  calculateSchema,
+  cdxSchema,
+  columnsSchema,
+  constantsSchema,
+  currencySchema,
+  futuresSchema,
+  marketSessionSchema,
+  tickerSchema,
+  yasOverridesSchema,
+  type BqlBuilderInput,
+  type CalculateInput,
+  type CdxInput,
+  type ColumnsInput,
+  type ConstantsInput,
+  type CurrencyInput,
+  type FuturesInput,
+  type MarketSessionInput,
+  type PrimitiveMap,
+  type TickerInput,
+  type YasOverridesInput,
+} from "./ext-schemas";
 
-interface StringPair {
-  readonly key: string;
-  readonly value: string;
-}
-
-interface FuturesCandidate {
-  readonly ticker: string;
-  readonly year: number;
-  readonly month: number;
-}
-
-type PrimitiveMap = Readonly<Record<string, string | number | boolean>>;
-
-type TickerOperation =
-  | "parse_ticker"
-  | "normalize_tickers"
-  | "filter_equity_tickers"
-  | "is_specific_contract"
-  | "validate_generic_ticker";
-
-interface TickerInput {
-  readonly operation: TickerOperation;
-  readonly ticker?: string;
-  readonly tickers?: readonly string[];
-}
-
-type FuturesOperation =
-  | "build_futures_ticker"
-  | "generate_candidates"
-  | "contract_index"
-  | "filter_candidates_by_cycle"
-  | "filter_valid_contracts"
-  | "get_futures_months";
-
-interface FuturesInput {
-  readonly operation: FuturesOperation;
-  readonly prefix?: string;
-  readonly monthCode?: string;
-  readonly year?: string | number;
-  readonly asset?: string;
-  readonly genTicker?: string;
-  readonly month?: number;
-  readonly day?: number;
-  readonly freq?: string;
-  readonly count?: number;
-  readonly candidates?: readonly FuturesCandidate[];
-  readonly cycle?: string;
-  readonly contracts?: readonly StringPair[];
-}
-
-type CdxOperation =
-  | "parse_cdx_ticker"
-  | "previous_cdx_series"
-  | "cdx_gen_to_specific"
-  | "cdx_info"
-  | "cdx_pricing"
-  | "cdx_risk";
-
-interface CdxInput {
-  readonly operation: CdxOperation;
-  readonly ticker?: string;
-  readonly genTicker?: string;
-  readonly series?: number;
-  readonly recoveryRate?: number;
-}
-
-type CurrencyOperation = "build_fx_pair" | "same_currency" | "currencies_needing_conversion";
-
-interface CurrencyInput {
-  readonly operation: CurrencyOperation;
-  readonly fromCcy?: string;
-  readonly toCcy?: string;
-  readonly ccy1?: string;
-  readonly ccy2?: string;
-  readonly currencies?: readonly string[];
-  readonly target?: string;
-}
-
-type BqlBuilderOperation =
-  | "build_preferreds_query"
-  | "build_corporate_bonds_query"
-  | "build_etf_holdings_query";
-
-interface BqlBuilderInput {
-  readonly operation: BqlBuilderOperation;
-  readonly ticker?: string;
-  readonly equityTicker?: string;
-  readonly etfTicker?: string;
-  readonly ccy?: string;
-  readonly extraFields?: readonly string[];
-  readonly activeOnly?: boolean;
-}
-
-type MarketSessionOperation =
-  | "derive_sessions"
-  | "get_market_rule"
-  | "infer_timezone"
-  | "session_times_to_utc"
-  | "default_turnover_dates"
-  | "default_bqr_datetimes"
-  | "get_exchange_override"
-  | "list_exchange_overrides";
-
-interface MarketSessionInput {
-  readonly operation: MarketSessionOperation;
-  readonly dayStart?: string;
-  readonly dayEnd?: string;
-  readonly mic?: string;
-  readonly exchCode?: string;
-  readonly countryIso?: string;
-  readonly startTime?: string;
-  readonly endTime?: string;
-  readonly exchangeTz?: string;
-  readonly date?: string;
-  readonly startDate?: string;
-  readonly endDate?: string;
-  readonly startDatetime?: string;
-  readonly endDatetime?: string;
-  readonly ticker?: string;
-}
-
-interface YasOverridesInput {
-  readonly settleDt?: string;
-  readonly yieldType?: number;
-  readonly spread?: number;
-  readonly yieldVal?: number;
-  readonly price?: number;
-  readonly benchmark?: string;
-}
-
-type ConstantsOperation =
-  | "parse_date"
-  | "fmt_date"
-  | "get_month_code"
-  | "get_month_name"
-  | "get_futures_months"
-  | "get_dvd_type"
-  | "get_dvd_types"
-  | "get_dvd_cols"
-  | "get_etf_cols";
-
-interface ConstantsInput {
-  readonly operation: ConstantsOperation;
-  readonly dateStr?: string;
-  readonly year?: number;
-  readonly month?: number;
-  readonly day?: number;
-  readonly fmt?: string;
-  readonly monthName?: string;
-  readonly code?: string;
-  readonly dvdType?: string;
-}
-
-type ColumnsOperation =
-  | "rename_dividend_columns"
-  | "rename_etf_columns"
-  | "build_earning_header_rename";
-
-interface ColumnsInput {
-  readonly operation: ColumnsOperation;
-  readonly columns?: readonly string[];
-  readonly headerRow?: readonly StringPair[];
-  readonly dataColumns?: readonly string[];
-}
-
-interface CalculateInput {
-  readonly operation: "calculate_level_percentages";
-  readonly values: readonly (number | null)[];
-  readonly levels: readonly (number | null)[];
-}
-
-const CDX_INFO_FIELDS = Object.freeze([
-  "ROLLING_SERIES",
-  "VERSION",
-  "ON_THE_RUN_CURRENT_BD_INDICATOR",
-  "CDS_FIRST_ACCRUAL_START_DATE",
-  "NAME",
-  "NUM_CURRENT_COMPANIES_CCY_TKR",
-  "NUM_ORIG_COMPANIES_CRNCY_TKR",
-  "PX_LAST",
-]);
-
-const CDX_PRICING_FIELDS = Object.freeze([
-  "PX_LAST",
-  "PX_BID",
-  "PX_ASK",
-  "UPFRONT_LAST",
-  "UPFRONT_BID",
-  "UPFRONT_ASK",
-  "CDS_FLAT_SPREAD",
-  "UPFRONT_FEE",
-  "PV_CDS_PREMIUM_LEG",
-  "PV_CDS_DEFAULT_LEG",
-]);
-
-const CDX_RISK_FIELDS = Object.freeze([
-  "SW_CNV_BPV",
-  "SW_EQV_BPV",
-  "CDS_SPREAD_MID_MODIFIED_DURATION",
-  "CDS_SPREAD_MID_CONVEXITY",
-  "RECOVERY_RATE_SEN",
-  "CDS_RECOVERY_RT",
-]);
-
-const stringPairSchema = z.object({
-  key: z.string().trim().min(1).describe("String pair key."),
-  value: z.string().trim().min(1).describe("String pair value."),
-});
-
-const futuresCandidateSchema = z.object({
-  month: z.number().int().min(1).max(12).describe("Contract month number, 1-12."),
-  ticker: z.string().trim().min(1).describe("Specific Bloomberg futures ticker."),
-  year: z.number().int().min(1900).describe("Contract year."),
-});
-
-function nonEmptyString(description: string): z.ZodPipe<z.ZodString, z.ZodString> {
-  return z.string().trim().pipe(z.string().min(1).describe(description));
-}
-
-function stringArray(description: string): z.ZodArray<z.ZodPipe<z.ZodString, z.ZodString>> {
-  return z.array(nonEmptyString(description)).min(1).describe(description);
-}
-
-function optionalString(description: string): z.ZodOptional<z.ZodPipe<z.ZodString, z.ZodString>> {
-  return nonEmptyString(description).optional();
-}
 function asRecord(value: object): Record<string, unknown> {
   return value as unknown as Record<string, unknown>;
 }
@@ -332,215 +129,28 @@ function recoveryOverrides(recoveryRate: number | undefined): PrimitiveMap | und
   return recoveryRate === undefined ? undefined : { CDS_RR: recoveryRate };
 }
 
-function enabledTool(
-  resolver: CoreResolver,
-  name: BloombergToolName,
-  creator: (resolver: CoreResolver) => BloombergTool,
-): BloombergTool[] {
-  return isToolDisabled(resolver.options, name) ? [] : [creator(resolver)];
+interface ExtToolDefinition {
+  readonly create: (resolver: CoreResolver) => BloombergTool;
+  readonly name: BloombergToolName;
 }
 
-function tickerSchema(): z.ZodType<TickerInput> {
-  return z.object({
-    operation: z
-      .enum([
-        "parse_ticker",
-        "normalize_tickers",
-        "filter_equity_tickers",
-        "is_specific_contract",
-        "validate_generic_ticker",
-      ])
-      .describe("Ticker helper operation to run."),
-    ticker: optionalString("One Bloomberg ticker for parse/contract validation operations."),
-    tickers: stringArray("Bloomberg tickers to normalize or filter.").optional(),
-  });
-}
+const EXT_TOOL_DEFINITIONS: readonly ExtToolDefinition[] = Object.freeze([
+  { create: extTickerWithResolver, name: "xbbg_ext_ticker" },
+  { create: extFuturesWithResolver, name: "xbbg_ext_futures" },
+  { create: extCdxWithResolver, name: "xbbg_ext_cdx" },
+  { create: extCurrencyWithResolver, name: "xbbg_ext_currency" },
+  { create: extBqlBuilderWithResolver, name: "xbbg_ext_bql_builder" },
+  { create: extMarketSessionWithResolver, name: "xbbg_ext_market_session" },
+  { create: extYasOverridesWithResolver, name: "xbbg_ext_yas_overrides" },
+  { create: extConstantsWithResolver, name: "xbbg_ext_constants" },
+  { create: extColumnsWithResolver, name: "xbbg_ext_columns" },
+  { create: extCalculateWithResolver, name: "xbbg_ext_calculate" },
+]);
 
-function futuresSchema(): z.ZodType<FuturesInput> {
-  return z.object({
-    asset: optionalString("Bloomberg asset class suffix, for example Comdty."),
-    candidates: z
-      .array(futuresCandidateSchema)
-      .min(1)
-      .optional()
-      .describe("Candidate futures contracts."),
-    contracts: z
-      .array(stringPairSchema)
-      .min(1)
-      .optional()
-      .describe("Contract pairs for validity filtering."),
-    count: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe("Maximum number of futures candidates to generate."),
-    cycle: optionalString("Futures cycle code to filter candidates by."),
-    day: z.number().int().min(1).max(31).optional().describe("Day number for contract filtering."),
-    freq: optionalString("Futures frequency/cycle hint."),
-    genTicker: optionalString("Generic Bloomberg futures ticker."),
-    month: z.number().int().min(1).max(12).optional().describe("Month number, 1-12."),
-    monthCode: optionalString("Bloomberg futures month code, for example H."),
-    operation: z
-      .enum([
-        "build_futures_ticker",
-        "generate_candidates",
-        "contract_index",
-        "filter_candidates_by_cycle",
-        "filter_valid_contracts",
-        "get_futures_months",
-      ])
-      .describe("Futures helper operation to run."),
-    prefix: optionalString("Futures ticker root prefix."),
-    year: z
-      .union([z.string().trim().min(1), z.number().int()])
-      .optional()
-      .describe("Contract year."),
-  });
-}
+export const BLOOMBERG_EXT_TOOL_NAMES = Object.freeze(
+  EXT_TOOL_DEFINITIONS.map((definition) => definition.name),
+);
 
-function cdxSchema(): z.ZodType<CdxInput> {
-  return z.object({
-    genTicker: optionalString("Generic CDX ticker."),
-    operation: z
-      .enum([
-        "parse_cdx_ticker",
-        "previous_cdx_series",
-        "cdx_gen_to_specific",
-        "cdx_info",
-        "cdx_pricing",
-        "cdx_risk",
-      ])
-      .describe("CDX helper operation to run."),
-    recoveryRate: z
-      .number()
-      .optional()
-      .describe("Optional recovery rate override for pricing/risk lookups."),
-    series: z.number().int().positive().optional().describe("Specific CDX series number."),
-    ticker: optionalString("CDX ticker."),
-  });
-}
-
-function currencySchema(): z.ZodType<CurrencyInput> {
-  return z.object({
-    ccy1: optionalString("First ISO currency code."),
-    ccy2: optionalString("Second ISO currency code."),
-    currencies: stringArray("ISO currency codes.").optional(),
-    fromCcy: optionalString("Source ISO currency code."),
-    operation: z
-      .enum(["build_fx_pair", "same_currency", "currencies_needing_conversion"])
-      .describe("Currency helper operation to run."),
-    target: optionalString("Target ISO currency code."),
-    toCcy: optionalString("Destination ISO currency code."),
-  });
-}
-
-function bqlBuilderSchema(): z.ZodType<BqlBuilderInput> {
-  return z.object({
-    activeOnly: z.boolean().optional().describe("Restrict corporate bond query to active bonds."),
-    ccy: optionalString("Currency filter for corporate bond query."),
-    equityTicker: optionalString("Equity ticker for preferreds query."),
-    etfTicker: optionalString("ETF ticker for holdings query."),
-    extraFields: stringArray("Extra BQL fields to include.").optional(),
-    operation: z
-      .enum(["build_preferreds_query", "build_corporate_bonds_query", "build_etf_holdings_query"])
-      .describe("BQL builder operation to run."),
-    ticker: optionalString("Ticker for corporate bond query."),
-  });
-}
-
-function marketSessionSchema(): z.ZodType<MarketSessionInput> {
-  return z.object({
-    countryIso: optionalString("ISO country code for timezone inference."),
-    date: optionalString("Date for UTC session conversion, YYYY-MM-DD or YYYYMMDD."),
-    dayEnd: optionalString("Exchange day end time, for example 16:00."),
-    dayStart: optionalString("Exchange day start time, for example 09:30."),
-    endDate: optionalString("Optional end date."),
-    endDatetime: optionalString("Optional end datetime."),
-    endTime: optionalString("Session end time, for example 16:00."),
-    exchCode: optionalString("Bloomberg exchange code."),
-    exchangeTz: optionalString("IANA exchange timezone."),
-    mic: optionalString("Market Identifier Code."),
-    operation: z
-      .enum([
-        "derive_sessions",
-        "get_market_rule",
-        "infer_timezone",
-        "session_times_to_utc",
-        "default_turnover_dates",
-        "default_bqr_datetimes",
-        "get_exchange_override",
-        "list_exchange_overrides",
-      ])
-      .describe("Market session helper operation to run."),
-    startDate: optionalString("Optional start date."),
-    startDatetime: optionalString("Optional start datetime."),
-    startTime: optionalString("Session start time, for example 09:30."),
-    ticker: optionalString("Ticker for exchange override lookup."),
-  });
-}
-
-function yasOverridesSchema(): z.ZodType<YasOverridesInput> {
-  return z.object({
-    benchmark: optionalString("Optional YAS benchmark."),
-    price: z.number().optional().describe("YAS price override."),
-    settleDt: optionalString("YAS settlement date."),
-    spread: z.number().optional().describe("YAS spread override."),
-    yieldType: z.number().int().optional().describe("YAS yield type override."),
-    yieldVal: z.number().optional().describe("YAS yield value override."),
-  });
-}
-
-function constantsSchema(): z.ZodType<ConstantsInput> {
-  return z.object({
-    code: optionalString("Month code."),
-    dateStr: optionalString("Date string to parse."),
-    day: z.number().int().min(1).max(31).optional().describe("Day number."),
-    dvdType: optionalString("Dividend type code or label."),
-    fmt: optionalString("Date output format."),
-    month: z.number().int().min(1).max(12).optional().describe("Month number."),
-    monthName: optionalString("Month name."),
-    operation: z
-      .enum([
-        "parse_date",
-        "fmt_date",
-        "get_month_code",
-        "get_month_name",
-        "get_futures_months",
-        "get_dvd_type",
-        "get_dvd_types",
-        "get_dvd_cols",
-        "get_etf_cols",
-      ])
-      .describe("Constants helper operation to run."),
-    year: z.number().int().min(1).optional().describe("Year number."),
-  });
-}
-
-function columnsSchema(): z.ZodType<ColumnsInput> {
-  return z.object({
-    columns: stringArray("Column names to rename.").optional(),
-    dataColumns: stringArray("Earnings data column names.").optional(),
-    headerRow: z
-      .array(stringPairSchema)
-      .min(1)
-      .optional()
-      .describe("Earnings header row key/value pairs."),
-    operation: z
-      .enum(["rename_dividend_columns", "rename_etf_columns", "build_earning_header_rename"])
-      .describe("Column helper operation to run."),
-  });
-}
-
-function calculateSchema(): z.ZodType<CalculateInput> {
-  return z.object({
-    levels: z.array(z.number().nullable()).min(1).describe("Reference level values."),
-    operation: z
-      .literal("calculate_level_percentages")
-      .describe("Numeric helper operation to run."),
-    values: z.array(z.number().nullable()).min(1).describe("Observed values."),
-  });
-}
 
 function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_ticker" satisfies BloombergToolName;
@@ -588,7 +198,7 @@ function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_TICKER_DESCRIPTION,
       name,
-      schema: tickerSchema(),
+      schema: tickerSchema(resolver.options),
     },
   );
 }
@@ -668,7 +278,7 @@ function extFuturesWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_FUTURES_DESCRIPTION,
       name,
-      schema: futuresSchema(),
+      schema: futuresSchema(resolver.options),
     },
   );
 }
@@ -730,7 +340,7 @@ function extCdxWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_CDX_DESCRIPTION,
       name,
-      schema: cdxSchema(),
+      schema: cdxSchema(resolver.options),
     },
   );
 }
@@ -779,7 +389,7 @@ function extCurrencyWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_CURRENCY_DESCRIPTION,
       name,
-      schema: currencySchema(),
+      schema: currencySchema(resolver.options),
     },
   );
 }
@@ -830,7 +440,7 @@ function extBqlBuilderWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_BQL_BUILDER_DESCRIPTION,
       name,
-      schema: bqlBuilderSchema(),
+      schema: bqlBuilderSchema(resolver.options),
     },
   );
 }
@@ -902,7 +512,7 @@ function extMarketSessionWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_MARKET_SESSION_DESCRIPTION,
       name,
-      schema: marketSessionSchema(),
+      schema: marketSessionSchema(resolver.options),
     },
   );
 }
@@ -933,7 +543,7 @@ function extYasOverridesWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_YAS_OVERRIDES_DESCRIPTION,
       name,
-      schema: yasOverridesSchema(),
+      schema: yasOverridesSchema(resolver.options),
     },
   );
 }
@@ -998,7 +608,7 @@ function extConstantsWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_CONSTANTS_DESCRIPTION,
       name,
-      schema: constantsSchema(),
+      schema: constantsSchema(resolver.options),
     },
   );
 }
@@ -1044,7 +654,7 @@ function extColumnsWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_COLUMNS_DESCRIPTION,
       name,
-      schema: columnsSchema(),
+      schema: columnsSchema(resolver.options),
     },
   );
 }
@@ -1071,7 +681,7 @@ function extCalculateWithResolver(resolver: CoreResolver): BloombergTool {
       responseFormat: "content_and_artifact",
       description: EXT_CALCULATE_DESCRIPTION,
       name,
-      schema: calculateSchema(),
+      schema: calculateSchema(resolver.options),
     },
   );
 }
@@ -1117,18 +727,9 @@ export function createExtCalculateTool(options: BloombergToolsOptions = {}): Blo
 }
 
 export function createBloombergExtToolsForResolver(resolver: CoreResolver): BloombergTool[] {
-  return [
-    ...enabledTool(resolver, "xbbg_ext_ticker", extTickerWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_futures", extFuturesWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_cdx", extCdxWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_currency", extCurrencyWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_bql_builder", extBqlBuilderWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_market_session", extMarketSessionWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_yas_overrides", extYasOverridesWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_constants", extConstantsWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_columns", extColumnsWithResolver),
-    ...enabledTool(resolver, "xbbg_ext_calculate", extCalculateWithResolver),
-  ];
+  return EXT_TOOL_DEFINITIONS.filter(
+    (definition) => !isToolDisabled(resolver.options, definition.name),
+  ).map((definition) => definition.create(resolver));
 }
 
 export function createBloombergExtTools(options: BloombergToolsOptions = {}): BloombergTool[] {

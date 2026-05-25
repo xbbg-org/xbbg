@@ -284,7 +284,7 @@ const native = loadNative();
 // ── Constants ───────────────────────────────────────────────────────────
 export { Backend, Format };
 
-const CDX_INFO_FIELDS = Object.freeze([
+export const CDX_INFO_FIELDS = Object.freeze([
   'ROLLING_SERIES',
   'VERSION',
   'ON_THE_RUN_CURRENT_BD_INDICATOR',
@@ -295,7 +295,7 @@ const CDX_INFO_FIELDS = Object.freeze([
   'PX_LAST',
 ]);
 
-const CDX_PRICING_FIELDS = Object.freeze([
+export const CDX_PRICING_FIELDS = Object.freeze([
   'PX_LAST',
   'PX_BID',
   'PX_ASK',
@@ -308,7 +308,7 @@ const CDX_PRICING_FIELDS = Object.freeze([
   'PV_CDS_DEFAULT_LEG',
 ]);
 
-const CDX_RISK_FIELDS = Object.freeze([
+export const CDX_RISK_FIELDS = Object.freeze([
   'SW_CNV_BPV',
   'SW_EQV_BPV',
   'CDS_SPREAD_MID_MODIFIED_DURATION',
