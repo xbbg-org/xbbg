@@ -17,7 +17,11 @@ import {
 import type { BloombergToolName, BloombergToolsOptions } from "./options";
 import { isToolDisabled } from "./options";
 import type { BloombergTool } from "./tools";
-import { stringifyToolResult, throwWithToolContext } from "./result-limits";
+import {
+  createToolResult,
+  throwWithToolContext,
+  type ToolContentAndArtifact,
+} from "./result-limits";
 
 interface StringPair {
   readonly key: string;
@@ -316,13 +320,12 @@ function requireStringArray(
   });
 }
 
-function resultString(resolver: CoreResolver, name: BloombergToolName, value: unknown): string {
-  return stringifyToolResult(
-    name,
-    value,
-    resolver.options.maxRows,
-    resolver.options.maxStringChars,
-  );
+function resultString(
+  resolver: CoreResolver,
+  name: BloombergToolName,
+  value: unknown,
+): ToolContentAndArtifact {
+  return createToolResult(name, value, resolver.options.maxRows, resolver.options.maxStringChars);
 }
 
 function recoveryOverrides(recoveryRate: number | undefined): PrimitiveMap | undefined {
@@ -542,7 +545,7 @@ function calculateSchema(): z.ZodType<CalculateInput> {
 function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_ticker" satisfies BloombergToolName;
   return tool(
-    async (input: TickerInput): Promise<string> => {
+    async (input: TickerInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         const args = asRecord(input);
@@ -581,14 +584,19 @@ function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_TICKER_DESCRIPTION, name, schema: tickerSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_TICKER_DESCRIPTION,
+      name,
+      schema: tickerSchema(),
+    },
   );
 }
 
 function extFuturesWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_futures" satisfies BloombergToolName;
   return tool(
-    async (input: FuturesInput): Promise<string> => {
+    async (input: FuturesInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         const args = asRecord(input);
@@ -656,14 +664,19 @@ function extFuturesWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_FUTURES_DESCRIPTION, name, schema: futuresSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_FUTURES_DESCRIPTION,
+      name,
+      schema: futuresSchema(),
+    },
   );
 }
 
 function extCdxWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_cdx" satisfies BloombergToolName;
   return tool(
-    async (input: CdxInput): Promise<string> => {
+    async (input: CdxInput): Promise<ToolContentAndArtifact> => {
       try {
         const args = asRecord(input);
         if (
@@ -713,14 +726,19 @@ function extCdxWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_CDX_DESCRIPTION, name, schema: cdxSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_CDX_DESCRIPTION,
+      name,
+      schema: cdxSchema(),
+    },
   );
 }
 
 function extCurrencyWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_currency" satisfies BloombergToolName;
   return tool(
-    async (input: CurrencyInput): Promise<string> => {
+    async (input: CurrencyInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         const args = asRecord(input);
@@ -757,14 +775,19 @@ function extCurrencyWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_CURRENCY_DESCRIPTION, name, schema: currencySchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_CURRENCY_DESCRIPTION,
+      name,
+      schema: currencySchema(),
+    },
   );
 }
 
 function extBqlBuilderWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_bql_builder" satisfies BloombergToolName;
   return tool(
-    async (input: BqlBuilderInput): Promise<string> => {
+    async (input: BqlBuilderInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         const args = asRecord(input);
@@ -803,14 +826,19 @@ function extBqlBuilderWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_BQL_BUILDER_DESCRIPTION, name, schema: bqlBuilderSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_BQL_BUILDER_DESCRIPTION,
+      name,
+      schema: bqlBuilderSchema(),
+    },
   );
 }
 
 function extMarketSessionWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_market_session" satisfies BloombergToolName;
   return tool(
-    async (input: MarketSessionInput): Promise<string> => {
+    async (input: MarketSessionInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         const args = asRecord(input);
@@ -870,14 +898,19 @@ function extMarketSessionWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_MARKET_SESSION_DESCRIPTION, name, schema: marketSessionSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_MARKET_SESSION_DESCRIPTION,
+      name,
+      schema: marketSessionSchema(),
+    },
   );
 }
 
 function extYasOverridesWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_yas_overrides" satisfies BloombergToolName;
   return tool(
-    async (input: YasOverridesInput): Promise<string> => {
+    async (input: YasOverridesInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         return resultString(
@@ -896,14 +929,19 @@ function extYasOverridesWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_YAS_OVERRIDES_DESCRIPTION, name, schema: yasOverridesSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_YAS_OVERRIDES_DESCRIPTION,
+      name,
+      schema: yasOverridesSchema(),
+    },
   );
 }
 
 function extConstantsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_constants" satisfies BloombergToolName;
   return tool(
-    async (input: ConstantsInput): Promise<string> => {
+    async (input: ConstantsInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         const args = asRecord(input);
@@ -956,14 +994,19 @@ function extConstantsWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_CONSTANTS_DESCRIPTION, name, schema: constantsSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_CONSTANTS_DESCRIPTION,
+      name,
+      schema: constantsSchema(),
+    },
   );
 }
 
 function extColumnsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_columns" satisfies BloombergToolName;
   return tool(
-    async (input: ColumnsInput): Promise<string> => {
+    async (input: ColumnsInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
         const args = asRecord(input);
@@ -997,14 +1040,19 @@ function extColumnsWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_COLUMNS_DESCRIPTION, name, schema: columnsSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_COLUMNS_DESCRIPTION,
+      name,
+      schema: columnsSchema(),
+    },
   );
 }
 
 function extCalculateWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_calculate" satisfies BloombergToolName;
   return tool(
-    async (input: CalculateInput): Promise<string> => {
+    async (input: CalculateInput): Promise<ToolContentAndArtifact> => {
       try {
         if (input.values.length !== input.levels.length) {
           throw new TypeError(`${name}: values and levels must have the same length`);
@@ -1019,7 +1067,12 @@ function extCalculateWithResolver(resolver: CoreResolver): BloombergTool {
         throwWithToolContext(name, error);
       }
     },
-    { description: EXT_CALCULATE_DESCRIPTION, name, schema: calculateSchema() },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_CALCULATE_DESCRIPTION,
+      name,
+      schema: calculateSchema(),
+    },
   );
 }
 

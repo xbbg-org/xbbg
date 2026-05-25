@@ -36,7 +36,7 @@ Append the exported instructions to your system prompt:
 import { BLOOMBERG_TOOL_INSTRUCTIONS } from "@xbbg/langgraph";
 ```
 
-The instructions tell the model to ask clarifying questions for ambiguous tickers, fields, date ranges, currencies, periodicity, overrides, or universes; request `/isin/{isin}` for ISIN identifiers and `/cusip/{cusip}` for CUSIPs; use `xbbg_bflds` for unknown fields; use extension helpers before live Bloomberg calls; keep requests bounded; and report empty, truncated, or errored responses directly.
+The instructions tell the model to ask clarifying questions for ambiguous tickers, fields, date ranges, currencies, periodicity, overrides, or universes; request `/isin/{isin}` for ISIN identifiers and `/cusip/{cusip}` for CUSIPs; use `xbbg_bflds` for unknown fields; prefer finite recipe tools for BEQS/YAS/universe workflows; use bounded snapshot tools instead of open subscriptions; keep requests bounded; and report empty, truncated, or errored responses directly.
 
 ## LangChain `createAgent` example
 
@@ -79,6 +79,8 @@ const agent = createReactAgent({
 
 For custom graphs, pass the returned tools to LangGraph's `ToolNode`.
 
+All tools use LangChain `responseFormat: "content_and_artifact"`. In `ToolNode`, the tool message content is a compact summary for the model, while `artifact` contains the bounded structured envelope for application code.
+
 ## Tool factories
 
 Core Bloomberg request tools:
@@ -92,11 +94,24 @@ Core Bloomberg request tools:
 - `xbbg_bsrch` - Bloomberg search/grid requests, not normal security lookup.
 - `xbbg_bqr` - Bloomberg Quote Request / fixed-income dealer quotes; prefer identifiers such as `/isin/US037833FB15@MSG1 Corp`.
 - `xbbg_bflds` - field metadata/search; use first for uncertain mnemonics.
+- `xbbg_beqs` - named Bloomberg BEQS equity screens.
+- `xbbg_yas` - fixed-income YAS recipe fields such as `YAS_BOND_YLD`, `YAS_MOD_DUR`, `YAS_ZSPREAD`, and `YAS_BOND_PX`.
+- `xbbg_preferreds` - preferred stock discovery for one equity ticker.
+- `xbbg_corporate_bonds` - corporate bond universe query for one issuer/company ticker.
+- `xbbg_index_members` - index constituents through the core index recipe.
+- `xbbg_resolve_isins` - raw ISIN-to-security resolution; pass raw ISIN strings to this recipe only.
+- `xbbg_issuer_isins` - issuer/bond ISIN workflow starting from known bond ISIN strings.
+- `xbbg_etf_holdings` - ETF holdings for one ETF ticker.
+- `xbbg_stream_snapshot` - bounded `//blp/mktdata` live observation that always unsubscribes.
+- `xbbg_mktbar_snapshot` - bounded `//blp/mktbar` live bar observation for one ticker.
+- `xbbg_depth_snapshot` - bounded `//blp/mktdepthdata` market-depth observation for one ticker.
 
 For raw identifiers, ask for or pass Bloomberg's identifier syntax directly: `/isin/US0378331005` for ISINs and `/cusip/037833100` for CUSIPs.
 BQL is passed as one complete expression string. Use shapes such as `get(px_last) for('AAPL US Equity')`, `get(px_last, volume) for(['IBM US Equity', 'AAPL US Equity'])`, `get(id_isin, weights) for(holdings('SPY US Equity'))`, or `get(px_last) for(members('SPX Index')) with(...)`. Prefer `xbbg_bdp`/`xbbg_bdh` for simple reference or historical requests.
 
 Dealer quote / BQR workflows in xbbg use fixed-income identifiers with a quote source, for example `/isin/US037833FB15@MSG1 Corp`; use `xbbg_bqr` for that workflow and `xbbg_bdtick` for raw intraday ticks.
+
+Streaming surfaces are intentionally exposed only as bounded snapshot tools. Each snapshot requires `maxUpdates`, applies the configured `maxStreamUpdates`/`maxStreamWaitMs` caps, stops on count, timeout, or stream completion, and calls `unsubscribe(false)` unless `drain: true` is explicitly provided. The package does not expose open-ended async subscription iterators as agent tools.
 
 ```ts
 import { createBloombergTools, createBdpTool } from "@xbbg/langgraph";
@@ -113,7 +128,7 @@ Extension helper tools:
 - `xbbg_ext_currency` - currency planning: build FX pair metadata, test same-currency requests, and identify currencies needing conversion to a target.
 - `xbbg_ext_bql_builder` - BQL query builders for preferred stocks, corporate bonds, and ETF holdings; prefer these over hand-writing those query shapes.
 - `xbbg_ext_market_session` - exchange sessions and timezones: derive sessions, infer timezone, convert local session times to UTC, fetch market rules, compute turnover/BQR default ranges, and inspect exchange overrides.
-- `xbbg_ext_yas_overrides` - build flat YAS override maps for fixed-income BDP fields such as `YAS_BOND_YLD`, `YAS_MOD_DUR`, `YAS_ZSPREAD`, and `YAS_BOND_PX`.
+- `xbbg_ext_yas_overrides` - build flat YAS override maps for lower-level fixed-income BDP workflows. Prefer `xbbg_yas` when you want the actual YAS recipe result.
 - `xbbg_ext_constants` - static constants and formatting helpers for dates, futures months, dividend types, and ETF/dividend columns.
 - `xbbg_ext_columns` - rename helpers for dividend, ETF, and earnings-shaped Bloomberg responses.
 - `xbbg_ext_calculate` - small numeric helper for level percentage calculations.
@@ -147,11 +162,21 @@ Defaults:
 - `maxFields = 25`
 - `maxRows = 500`
 - `maxStringChars = 2000`
+- `maxStreamUpdates = 10`
+- `maxStreamWaitMs = 15000`
 
-Each request uses `backend: 'json'` and returns a JSON string envelope:
+Each tool uses `backend: "json"` for finite request results and LangChain `content_and_artifact` output. The model-facing content is a short summary, for example:
+
+```text
+xbbg_bdp: 1 row; truncated=false
+```
+
+The artifact is the bounded structured envelope:
 
 ```json
 { "tool": "xbbg_bdp", "rowCount": 1, "truncated": false, "data": [{ "ticker": "AAPL US Equity" }] }
 ```
+
+When invoking tools outside an agent graph and you need the artifact, invoke with a tool-call id (or use LangGraph `ToolNode`) so LangChain returns a `ToolMessage` with `artifact`.
 
 Use smaller factories or `disabledTools` when broad BQL/search helpers are not appropriate for a deployment.

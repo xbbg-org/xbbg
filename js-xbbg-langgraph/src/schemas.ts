@@ -102,6 +102,100 @@ export interface BfldsInput {
   readonly format?: ReferenceFormat;
 }
 
+export interface BeqsInput {
+  readonly screen: string;
+  readonly asof?: string;
+  readonly screenType?: string;
+  readonly group?: string;
+  readonly overrides?: PrimitiveMap;
+  readonly kwargs?: PrimitiveMap;
+  readonly format?: ReferenceFormat;
+}
+
+export interface YasInput {
+  readonly tickers: readonly string[];
+  readonly fields: readonly string[];
+  readonly settleDt?: string;
+  readonly yieldType?: number;
+  readonly spread?: number;
+  readonly yieldVal?: number;
+  readonly price?: number;
+  readonly benchmark?: string;
+}
+
+export interface PreferredsInput {
+  readonly equityTicker: string;
+  readonly fields?: readonly string[];
+}
+
+export interface CorporateBondsInput {
+  readonly ticker: string;
+  readonly ccy?: string;
+  readonly fields?: readonly string[];
+  readonly activeOnly?: boolean;
+}
+
+export interface IndexMembersInput {
+  readonly index: string;
+  readonly field?: "INDX_MWEIGHT" | "INDX_MEMBERS" | "INDX_MEMBERS3";
+  readonly asof?: string;
+}
+
+export interface ResolveIsinsInput {
+  readonly isins: readonly string[];
+}
+
+export interface IssuerIsinsInput {
+  readonly bondIsins: readonly string[];
+}
+
+export interface EtfHoldingsInput {
+  readonly etfTicker: string;
+  readonly fields?: readonly string[];
+}
+
+export interface StreamSnapshotInput {
+  readonly tickers: readonly string[];
+  readonly fields: readonly string[];
+  readonly maxUpdates: number;
+  readonly timeoutMs: number;
+  readonly drain?: boolean;
+  readonly options?: readonly string[];
+  readonly conflate?: boolean;
+  readonly flushThreshold?: number;
+  readonly overflowPolicy?: string;
+  readonly streamCapacity?: number;
+  readonly allFields?: boolean;
+}
+
+export interface MktbarSnapshotInput {
+  readonly ticker: string;
+  readonly fields?: readonly string[];
+  readonly maxUpdates: number;
+  readonly timeoutMs: number;
+  readonly drain?: boolean;
+  readonly options?: readonly string[];
+  readonly conflate?: boolean;
+  readonly flushThreshold?: number;
+  readonly overflowPolicy?: string;
+  readonly streamCapacity?: number;
+  readonly allFields?: boolean;
+}
+
+export interface DepthSnapshotInput {
+  readonly ticker: string;
+  readonly fields?: readonly string[];
+  readonly maxUpdates: number;
+  readonly timeoutMs: number;
+  readonly drain?: boolean;
+  readonly options?: readonly string[];
+  readonly conflate?: boolean;
+  readonly flushThreshold?: number;
+  readonly overflowPolicy?: string;
+  readonly streamCapacity?: number;
+  readonly allFields?: boolean;
+}
+
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/u;
 const BBG_DATE_RE = /^\d{8}$/u;
 const AMBIGUOUS_DATE_RE = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}([T \D]|$)/u;
@@ -559,4 +653,278 @@ export function createBfldsSchema(options: NormalizedBloombergToolsOptions): z.Z
         });
       }
     });
+}
+
+export function createBeqsSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BeqsInput> {
+  const tool = "xbbg_beqs";
+  return z.object({
+    asof: dateField(tool, "asof").optional().describe("Optional as-of date for the screen."),
+    format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
+    group: nonEmptyString(tool, "group", options.maxStringChars, "General")
+      .optional()
+      .describe("Bloomberg BEQS group. Defaults to General in @xbbg/core."),
+    kwargs: primitiveMap(tool, "kwargs").describe(
+      "Advanced BEQS request kwargs as flat string/number/boolean values only.",
+    ),
+    overrides: primitiveMap(tool, "overrides").describe(
+      "BEQS overrides as flat string/number/boolean values only.",
+    ),
+    screen: nonEmptyString(
+      tool,
+      "screen",
+      options.maxStringChars,
+      "Core Capital Goods Makers",
+    ).describe("Existing Bloomberg BEQS screen name."),
+    screenType: nonEmptyString(tool, "screenType", options.maxStringChars, "PRIVATE")
+      .optional()
+      .describe("Bloomberg BEQS screen type. Defaults to PRIVATE in @xbbg/core."),
+  });
+}
+
+export function createYasSchema(options: NormalizedBloombergToolsOptions): z.ZodType<YasInput> {
+  const tool = "xbbg_yas";
+  return z.object({
+    benchmark: nonEmptyString(tool, "benchmark", options.maxStringChars, "USGG10YR Index")
+      .optional()
+      .describe("Optional YAS benchmark."),
+    fields: stringArray(
+      tool,
+      "fields",
+      options.maxFields,
+      options.maxStringChars,
+      '["YAS_BOND_YLD"]',
+    ).describe('YAS field mnemonics, for example ["YAS_BOND_YLD", "YAS_MOD_DUR"].'),
+    price: z.number().optional().describe("Optional YAS price input."),
+    settleDt: dateField(tool, "settleDt").optional().describe("Optional YAS settlement date."),
+    spread: z.number().optional().describe("Optional YAS spread input."),
+    tickers: stringArray(
+      tool,
+      "tickers",
+      options.maxSecurities,
+      options.maxStringChars,
+      '["/isin/US037833FB15 Corp"]',
+    ).describe(
+      'Fully qualified fixed-income Bloomberg securities, for example ["/isin/US037833FB15 Corp"].',
+    ),
+    yieldType: z.number().int().optional().describe("Optional YAS yield type."),
+    yieldVal: z.number().optional().describe("Optional YAS yield value input."),
+  });
+}
+
+export function createPreferredsSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<PreferredsInput> {
+  const tool = "xbbg_preferreds";
+  return z.object({
+    equityTicker: nonEmptyString(
+      tool,
+      "equityTicker",
+      options.maxStringChars,
+      "AAPL US Equity",
+    ).describe("One fully qualified issuer equity ticker."),
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["id"]')
+      .optional()
+      .describe("Optional fields to include in the preferreds recipe result."),
+  });
+}
+
+export function createCorporateBondsSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<CorporateBondsInput> {
+  const tool = "xbbg_corporate_bonds";
+  return z.object({
+    activeOnly: z
+      .boolean()
+      .optional()
+      .describe("Restrict to active bonds. Defaults to true in @xbbg/core."),
+    ccy: nonEmptyString(tool, "ccy", options.maxStringChars, "USD")
+      .optional()
+      .describe("Optional currency filter."),
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["id"]')
+      .optional()
+      .describe("Optional fields to include in the corporate bond result."),
+    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
+      "One fully qualified issuer/company ticker.",
+    ),
+  });
+}
+
+export function createIndexMembersSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<IndexMembersInput> {
+  const tool = "xbbg_index_members";
+  return z.object({
+    asof: dateField(tool, "asof").optional().describe("Optional index membership as-of date."),
+    field: z
+      .enum(["INDX_MWEIGHT", "INDX_MEMBERS", "INDX_MEMBERS3"])
+      .optional()
+      .describe("Bloomberg index members field. Omit for @xbbg/core default."),
+    index: nonEmptyString(tool, "index", options.maxStringChars, "SPX Index").describe(
+      "One fully qualified Bloomberg index ticker.",
+    ),
+  });
+}
+
+export function createResolveIsinsSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<ResolveIsinsInput> {
+  const tool = "xbbg_resolve_isins";
+  return z.object({
+    isins: stringArray(
+      tool,
+      "isins",
+      options.maxSecurities,
+      options.maxStringChars,
+      '["US0378331005"]',
+    ).describe("Raw ISIN strings to resolve. Do not add /isin/ prefixes for this recipe."),
+  });
+}
+
+export function createIssuerIsinsSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<IssuerIsinsInput> {
+  const tool = "xbbg_issuer_isins";
+  return z.object({
+    bondIsins: stringArray(
+      tool,
+      "bondIsins",
+      options.maxSecurities,
+      options.maxStringChars,
+      '["US037833FB15"]',
+    ).describe("Raw bond ISIN strings for issuer-level ISIN discovery."),
+  });
+}
+
+export function createEtfHoldingsSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<EtfHoldingsInput> {
+  const tool = "xbbg_etf_holdings";
+  return z.object({
+    etfTicker: nonEmptyString(tool, "etfTicker", options.maxStringChars, "SPY US Equity").describe(
+      "One fully qualified Bloomberg ETF ticker.",
+    ),
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["id"]')
+      .optional()
+      .describe("Optional fields to include in the ETF holdings recipe result."),
+  });
+}
+
+interface SnapshotControlShape {
+  readonly allFields: z.ZodType<boolean | undefined>;
+  readonly conflate: z.ZodType<boolean | undefined>;
+  readonly drain: z.ZodType<boolean | undefined>;
+  readonly flushThreshold: z.ZodType<number | undefined>;
+  readonly maxUpdates: z.ZodType<number>;
+  readonly options: z.ZodType<string[] | undefined>;
+  readonly overflowPolicy: z.ZodType<string | undefined>;
+  readonly streamCapacity: z.ZodType<number | undefined>;
+  readonly timeoutMs: z.ZodType<number>;
+}
+
+function snapshotControlFields(
+  tool: string,
+  options: NormalizedBloombergToolsOptions,
+): SnapshotControlShape {
+  return {
+    allFields: z.boolean().optional().describe("Request all Bloomberg fields when supported."),
+    conflate: z
+      .boolean()
+      .optional()
+      .describe("Enable Bloomberg conflated streaming when supported."),
+    drain: z
+      .boolean()
+      .optional()
+      .describe(
+        "Pass drain=true to unsubscribe. Defaults to false; collected output remains bounded.",
+      ),
+    flushThreshold: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Optional stream flush threshold."),
+    maxUpdates: z
+      .number()
+      .int(`${tool}: maxUpdates must be a positive integer.`)
+      .positive(`${tool}: maxUpdates must be greater than zero.`)
+      .max(
+        options.maxStreamUpdates,
+        `${tool}: maxUpdates can be at most ${options.maxStreamUpdates}.`,
+      )
+      .describe("Required maximum number of updates to collect before unsubscribing."),
+    options: stringArray(
+      tool,
+      "options",
+      options.maxFields,
+      options.maxStringChars,
+      '["interval=5"]',
+    )
+      .optional()
+      .describe("Advanced Bloomberg subscription options."),
+    overflowPolicy: nonEmptyString(tool, "overflowPolicy", options.maxStringChars, "drop_oldest")
+      .optional()
+      .describe("Optional stream overflow policy."),
+    streamCapacity: z.number().int().positive().optional().describe("Optional stream capacity."),
+    timeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .max(options.maxStreamWaitMs, `${tool}: timeoutMs can be at most ${options.maxStreamWaitMs}.`)
+      .optional()
+      .default(options.maxStreamWaitMs)
+      .describe("Maximum total wait in milliseconds before unsubscribing."),
+  };
+}
+
+export function createStreamSnapshotSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<StreamSnapshotInput> {
+  const tool = "xbbg_stream_snapshot";
+  return z.object({
+    fields: stringArray(
+      tool,
+      "fields",
+      options.maxFields,
+      options.maxStringChars,
+      '["LAST_PRICE"]',
+    ).describe("Bloomberg market-data fields to observe."),
+    tickers: stringArray(
+      tool,
+      "tickers",
+      options.maxSecurities,
+      options.maxStringChars,
+      '["AAPL US Equity"]',
+    ).describe("Fully qualified Bloomberg securities to observe."),
+    ...snapshotControlFields(tool, options),
+  });
+}
+
+export function createMktbarSnapshotSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<MktbarSnapshotInput> {
+  const tool = "xbbg_mktbar_snapshot";
+  return z.object({
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["LAST_PRICE"]')
+      .optional()
+      .describe("Optional market-bar fields. Omit for Bloomberg defaults."),
+    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
+      "One fully qualified Bloomberg security to observe.",
+    ),
+    ...snapshotControlFields(tool, options),
+  });
+}
+
+export function createDepthSnapshotSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<DepthSnapshotInput> {
+  const tool = "xbbg_depth_snapshot";
+  return z.object({
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["BID"]')
+      .optional()
+      .describe("Optional market-depth fields. Omit for Bloomberg defaults."),
+    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
+      "One fully qualified Bloomberg security to observe.",
+    ),
+    ...snapshotControlFields(tool, options),
+  });
 }

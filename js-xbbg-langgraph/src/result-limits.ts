@@ -13,6 +13,8 @@ export interface ToolEnvelope {
   readonly data: unknown;
 }
 
+export type ToolContentAndArtifact = [string, ToolEnvelope];
+
 interface LimitState {
   truncated: boolean;
 }
@@ -51,9 +53,38 @@ function limitValue(
   return value;
 }
 
+function rowCountOf(value: unknown): number | null {
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const rowCount = record.rowCount;
+  if (typeof rowCount === "number" && Number.isInteger(rowCount) && rowCount >= 0) {
+    return rowCount;
+  }
+  const updateCount = record.updateCount;
+  if (typeof updateCount === "number" && Number.isInteger(updateCount) && updateCount >= 0) {
+    return updateCount;
+  }
+  return null;
+}
+
+function hasErrorShape(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    record.error !== undefined || record.errors !== undefined || record.securityError !== undefined
+  );
+}
+
 export function limitResult(value: unknown, maxRows: number, maxStringChars: number): LimitResult {
   const state: LimitState = { truncated: false };
-  const rowCount = Array.isArray(value) ? value.length : null;
+  const rowCount = rowCountOf(value);
   const limitedValue = limitValue(value, maxRows, maxStringChars, state);
   return {
     rowCount,
@@ -62,12 +93,31 @@ export function limitResult(value: unknown, maxRows: number, maxStringChars: num
   };
 }
 
-export function stringifyToolResult(
+function summarizeEnvelope(envelope: ToolEnvelope): string {
+  const rowText =
+    envelope.rowCount === null
+      ? "row count unknown"
+      : `${envelope.rowCount} row${envelope.rowCount === 1 ? "" : "s"}`;
+  const notes: string[] = [];
+  if (envelope.rowCount === 0) {
+    notes.push("empty result");
+  }
+  if (envelope.truncated) {
+    notes.push("artifact truncated to configured limits");
+  }
+  if (hasErrorShape(envelope.data)) {
+    notes.push("inspect artifact for Bloomberg error details");
+  }
+  const noteText = notes.length === 0 ? "" : `; ${notes.join("; ")}`;
+  return `${envelope.tool}: ${rowText}; truncated=${String(envelope.truncated)}${noteText}`;
+}
+
+export function createToolResult(
   tool: BloombergToolName,
   value: unknown,
   maxRows: number,
   maxStringChars: number,
-): string {
+): ToolContentAndArtifact {
   const limited = limitResult(value, maxRows, maxStringChars);
   const envelope: ToolEnvelope = {
     tool,
@@ -75,7 +125,7 @@ export function stringifyToolResult(
     truncated: limited.truncated,
     data: limited.value,
   };
-  return JSON.stringify(envelope);
+  return [summarizeEnvelope(envelope), envelope];
 }
 
 export function throwWithToolContext(tool: BloombergToolName, error: unknown): never {
