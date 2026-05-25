@@ -21,6 +21,17 @@ const REQUIRED_TOOL_INSTRUCTIONS = [
   "- xbbg_bsrch: Bloomberg search-grid or saved-search workflows only, such as ExcelGetGrid-style searches. Do not use it for ordinary security lookup.",
   "- xbbg_bqr: Bloomberg Quote Request / dealer quotes. Prefer fixed-income ISIN inputs with a dealer quote source such as /isin/US037833FB15@MSG1 Corp, explicit start/end datetimes, and BID/ASK event types. includeBrokerCodes defaults to true.",
   "- xbbg_bflds: Bloomberg field metadata/search. Provide exactly one of fields or searchSpec; use searchSpec for natural-language field names and fields for known mnemonics.",
+  "- xbbg_beqs: Bloomberg equity screening by named BEQS screen. Prefer this over hand-written BQL when the user names an existing Bloomberg screen.",
+  "- xbbg_yas: fixed-income YAS recipe fields such as YAS_BOND_YLD, YAS_MOD_DUR, YAS_ZSPREAD, or YAS_BOND_PX. Prefer this over manual YAS_BOND_* BDP requests when the user asks for YAS yield, duration, spread, or price analytics.",
+  "- xbbg_preferreds: preferred stock discovery from an equity ticker. Prefer this over xbbg_ext_bql_builder plus xbbg_bql when the user wants the actual preferreds result.",
+  "- xbbg_corporate_bonds: bounded corporate bond universe query for a company ticker. Prefer this over generic BQL for company debt discovery.",
+  "- xbbg_index_members: index constituents through the core index recipe. Prefer this over generic BDS/BQL members when the user asks for constituents.",
+  "- xbbg_resolve_isins: resolves supplied ISIN strings to Bloomberg securities. Pass raw ISIN strings only for this recipe; otherwise use /isin/{isin} syntax with data tools.",
+  "- xbbg_issuer_isins: issuer/bond ISIN workflow for supplied bond ISIN strings.",
+  "- xbbg_etf_holdings: ETF holdings recipe for a single ETF ticker. Prefer this over generic BQL holdings when the user asks for ETF constituents.",
+  "- xbbg_stream_snapshot: bounded live market-data observation from //blp/mktdata. Requires explicit maxUpdates and always terminates/unsubscribes.",
+  "- xbbg_mktbar_snapshot: bounded live market-bar observation from //blp/mktbar for one ticker. Requires explicit maxUpdates and always terminates/unsubscribes.",
+  "- xbbg_depth_snapshot: bounded market-depth observation from //blp/mktdepthdata for one ticker. Requires explicit maxUpdates and always terminates/unsubscribes.",
   "",
   "## BQL guidance",
   "- BQL is a complete Bloomberg Query Language expression sent as one query string; the tool does not assemble get/for/with clauses for you.",
@@ -30,7 +41,7 @@ const REQUIRED_TOOL_INSTRUCTIONS = [
   "- Do not use BQL just because the user asks for normal reference data; xbbg_bdp is simpler for current fields and xbbg_bdh is simpler for historical time series.",
   "",
   "## Output handling",
-  "- Tool results are JSON envelopes with tool, rowCount, truncated, and data. Inspect rowCount and truncated before summarizing.",
+  "- Tool results use LangChain content_and_artifact output: content is a compact summary, artifact is a bounded envelope with tool, rowCount, truncated, and data. Inspect the artifact before summarizing.",
   "- If a response is empty, truncated, or contains Bloomberg/security errors, say that directly. Do not fill gaps from memory or assumptions.",
 ] as const;
 
@@ -43,7 +54,7 @@ const OPTIONAL_EXTENSION_INSTRUCTIONS = [
   "- xbbg_ext_currency: currency-planning helpers. build_fx_pair constructs the Bloomberg FX pair and conversion factor, same_currency avoids unnecessary conversion, and currencies_needing_conversion identifies which currencies differ from a target before requesting converted values.",
   "- xbbg_ext_bql_builder: safe BQL generators for common xbbg workflows. Use build_preferreds_query for preferred-stock discovery from an equity, build_corporate_bonds_query for company bond universes with optional currency/active filters, and build_etf_holdings_query for ETF constituents. Prefer these builders over hand-writing those BQL shapes.",
   "- xbbg_ext_market_session: exchange calendar/timezone support. derive_sessions turns day session times into session blocks, infer_timezone maps country codes to timezones, session_times_to_utc converts local sessions to UTC, get_market_rule gets MIC/exchange rules, default_turnover_dates and default_bqr_datetimes provide bounded defaults, and get/list_exchange_override inspect configured exchange metadata.",
-  "- xbbg_ext_yas_overrides: builds flat YAS override maps for fixed-income requests. Use settleDt, yieldType, spread, yieldVal, price, and benchmark to request fields such as YAS_BOND_YLD, YAS_MOD_DUR, YAS_ZSPREAD, or YAS_BOND_PX through xbbg_bdp; this package does not expose a standalone YAS tool.",
+  "- xbbg_ext_yas_overrides: builds flat YAS override maps for fixed-income BDP requests when the lower-level BDP workflow is required. Prefer xbbg_yas for actual YAS recipe fields.",
   "- xbbg_ext_constants: static lookup/format helpers for date parsing/formatting, futures month code/name mappings, dividend type mappings, and known dividend/ETF output columns.",
   "- xbbg_ext_columns: post-processing helpers for Bloomberg-shaped tables. Use rename_dividend_columns, rename_etf_columns, or build_earning_header_rename when explaining or normalizing response column names after a request.",
   "- xbbg_ext_calculate: small numeric helper for Bloomberg workflows. calculate_level_percentages pairs observed values with levels; values and levels must have the same length.",
@@ -109,6 +120,39 @@ export const BQR_DESCRIPTION =
 
 export const BFLDS_DESCRIPTION =
   'Bloomberg field metadata and field search. Use first when a field mnemonic is uncertain. Provide exactly one of fields or searchSpec. Example: fields ["PX_LAST"] or searchSpec "last price".';
+
+export const BEQS_DESCRIPTION =
+  "Bloomberg equity screening by named BEQS screen. Use when the user names an existing Bloomberg screen and wants its bounded result set. Prefer this over hand-written BQL for saved Bloomberg screens.";
+
+export const YAS_DESCRIPTION =
+  "Bloomberg fixed-income YAS recipe fields for one or more bonds. Use for YAS yield, duration, spread, benchmark, or price analytics; provide explicit fields and optional settlement/yield/price inputs.";
+
+export const PREFERREDS_DESCRIPTION =
+  "Preferred stock discovery for one equity ticker. Use when the user asks for preferred shares or preferred stock securities related to an issuer.";
+
+export const CORPORATE_BONDS_DESCRIPTION =
+  "Corporate bond universe query for one issuer/company ticker, with optional currency, active-only filter, and result fields. Prefer this over generic BQL for company debt discovery.";
+
+export const INDEX_MEMBERS_DESCRIPTION =
+  "Index constituent recipe for one Bloomberg index. Use for bounded member lists and optional historical/as-of constituent membership.";
+
+export const RESOLVE_ISINS_DESCRIPTION =
+  "Resolve raw ISIN strings to Bloomberg securities through the core ISIN recipe. Do not add /isin/ prefixes in this tool; pass the exact ISIN strings supplied by the user.";
+
+export const ISSUER_ISINS_DESCRIPTION =
+  "Issuer/bond ISIN workflow for supplied bond ISIN strings. Use for issuer-level ISIN discovery starting from known bond ISINs.";
+
+export const ETF_HOLDINGS_DESCRIPTION =
+  "ETF holdings recipe for one ETF ticker. Use when the user asks for ETF constituents or holdings and wants the bounded holdings result.";
+
+export const STREAM_SNAPSHOT_DESCRIPTION =
+  "Bounded live market-data snapshot from //blp/mktdata. Collects at most maxUpdates updates until timeout/done, then always unsubscribes; use for finite observations, not open subscriptions.";
+
+export const MKTBAR_SNAPSHOT_DESCRIPTION =
+  "Bounded live market-bar snapshot from //blp/mktbar for one ticker. Collects at most maxUpdates updates until timeout/done, then always unsubscribes.";
+
+export const DEPTH_SNAPSHOT_DESCRIPTION =
+  "Bounded live market-depth snapshot from //blp/mktdepthdata for one ticker. Collects at most maxUpdates updates until timeout/done, then always unsubscribes.";
 
 export const EXT_TICKER_DESCRIPTION =
   "Ticker hygiene helpers: parse_ticker, normalize_tickers, filter_equity_tickers, is_specific_contract, and validate_generic_ticker.";

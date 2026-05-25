@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Added
 
 - **`@xbbg/langgraph` npm package**: Added a publishable LangChain/LangGraph tools package backed by `@xbbg/core`, with lazy Bloomberg engine loading, bounded JSON tool outputs, request tools for `bdp`/`bdh`/`bds`/`bdib`/`bdtick`/`bql`/`bsrch`/`bqr`/`bflds`, grouped `xbbg.ext` helper tools, detailed Bloomberg agent prompt guidance, unit tests with injected fake engines, and npm/GitHub release workflow integration.
+- **`@xbbg/langgraph` tool surface expansion**: Added finite request/recipe tools for BEQS, YAS, preferreds, corporate bonds, index members, ISIN resolution, issuer ISIN workflows, and ETF holdings. Added bounded streaming snapshot tools for market data, market bars, and market depth that cap updates/timeouts and always unsubscribe instead of exposing open-ended subscriptions.
+
+### Changed
+
+- **`@xbbg/langgraph` output contract**: LangChain tools now use `responseFormat: "content_and_artifact"` so agents receive compact model-facing summaries while applications can read the bounded structured envelope from `ToolMessage.artifact`.
 
 ### Fixed
 

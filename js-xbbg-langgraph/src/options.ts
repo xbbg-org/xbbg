@@ -12,6 +12,17 @@ export const BLOOMBERG_TOOL_NAMES = [
   "xbbg_bsrch",
   "xbbg_bqr",
   "xbbg_bflds",
+  "xbbg_beqs",
+  "xbbg_yas",
+  "xbbg_preferreds",
+  "xbbg_corporate_bonds",
+  "xbbg_index_members",
+  "xbbg_resolve_isins",
+  "xbbg_issuer_isins",
+  "xbbg_etf_holdings",
+  "xbbg_stream_snapshot",
+  "xbbg_mktbar_snapshot",
+  "xbbg_depth_snapshot",
   "xbbg_ext_ticker",
   "xbbg_ext_futures",
   "xbbg_ext_cdx",
@@ -36,6 +47,8 @@ export interface BloombergToolsOptions {
   readonly maxStringChars?: number;
   readonly maxBqlQueryChars?: number;
   readonly maxSearchSpecChars?: number;
+  readonly maxStreamUpdates?: number;
+  readonly maxStreamWaitMs?: number;
   readonly validateFields?: boolean;
   readonly disabledTools?: readonly BloombergToolName[];
 }
@@ -50,6 +63,8 @@ export interface NormalizedBloombergToolsOptions {
   readonly maxStringChars: number;
   readonly maxBqlQueryChars: number;
   readonly maxSearchSpecChars: number;
+  readonly maxStreamUpdates: number;
+  readonly maxStreamWaitMs: number;
   readonly validateFields: boolean | undefined;
   readonly disabledTools: ReadonlySet<BloombergToolName>;
 }
@@ -60,6 +75,8 @@ const DEFAULT_MAX_ROWS = 500;
 const DEFAULT_MAX_STRING_CHARS = 2000;
 const DEFAULT_MAX_BQL_QUERY_CHARS = 4000;
 const DEFAULT_MAX_SEARCH_SPEC_CHARS = 1000;
+const DEFAULT_MAX_STREAM_UPDATES = 10;
+const DEFAULT_MAX_STREAM_WAIT_MS = 15_000;
 
 function positiveInteger(value: number | undefined, fallback: number, name: string): number {
   if (value === undefined) {
@@ -96,6 +113,16 @@ export function normalizeBloombergToolsOptions(
       options.maxSearchSpecChars,
       DEFAULT_MAX_SEARCH_SPEC_CHARS,
       "maxSearchSpecChars",
+    ),
+    maxStreamUpdates: positiveInteger(
+      options.maxStreamUpdates,
+      DEFAULT_MAX_STREAM_UPDATES,
+      "maxStreamUpdates",
+    ),
+    maxStreamWaitMs: positiveInteger(
+      options.maxStreamWaitMs,
+      DEFAULT_MAX_STREAM_WAIT_MS,
+      "maxStreamWaitMs",
     ),
     maxSecurities: positiveInteger(options.maxSecurities, DEFAULT_MAX_SECURITIES, "maxSecurities"),
     maxStringChars: positiveInteger(

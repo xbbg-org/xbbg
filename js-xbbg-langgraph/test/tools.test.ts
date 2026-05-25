@@ -1,4 +1,6 @@
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 import {
   BLOOMBERG_TOOL_INSTRUCTIONS,
@@ -7,6 +9,31 @@ import {
   getBloombergToolInstructions,
 } from "../src";
 import type { XbbgCoreLike, XbbgEngineLike } from "../src/core-loader";
+
+type CoreSubscription = Awaited<ReturnType<XbbgEngineLike["stream"]>>;
+
+function fakeSubscription(updates: readonly unknown[], error?: Error) {
+  let index = 0;
+  const subscription = {
+    next: vi.fn(async () => {
+      if (error !== undefined) {
+        throw error;
+      }
+      if (index >= updates.length) {
+        return { done: true, value: undefined } as IteratorResult<unknown>;
+      }
+      const value = updates[index];
+      index += 1;
+      return { done: false, value } as IteratorResult<unknown>;
+    }),
+    unsubscribe: vi.fn(async () => []),
+  };
+  return {
+    next: subscription.next,
+    subscription: subscription as unknown as CoreSubscription,
+    unsubscribe: subscription.unsubscribe,
+  };
+}
 
 function fakeEngine(): XbbgEngineLike {
   return {
@@ -21,6 +48,17 @@ function fakeEngine(): XbbgEngineLike {
     bql: vi.fn(async () => [{ value: 1 }]),
     bsrch: vi.fn(async () => [{ security: "AAPL US Equity" }]),
     bqr: vi.fn(async () => [{ broker_buy: "DLR", event_type: "BID", price: 99 }]),
+    beqs: vi.fn(async () => [{ security: "AAPL US Equity" }]),
+    yas: vi.fn(async () => [{ field: "YAS_BOND_YLD", value: 5 }]),
+    preferreds: vi.fn(async () => [{ ticker: "AAPL 4.5 Pfd" }]),
+    corporateBonds: vi.fn(async () => [{ ticker: "AAPL 3.25 02/23/26 Corp" }]),
+    indexMembers: vi.fn(async () => [{ member: "AAPL US Equity" }]),
+    resolveIsins: vi.fn(async () => [{ isin: "US0378331005", security: "AAPL US Equity" }]),
+    issuerIsins: vi.fn(async () => [{ issuer: "Apple Inc", isin: "US037833FB15" }]),
+    etfHoldings: vi.fn(async () => [{ ticker: "AAPL US Equity", weight: 0.07 }]),
+    stream: vi.fn(async () => fakeSubscription([]).subscription),
+    mktbar: vi.fn(async () => fakeSubscription([]).subscription),
+    depth: vi.fn(async () => fakeSubscription([]).subscription),
   };
 }
 
@@ -104,8 +142,22 @@ function byName(tools: readonly StructuredToolInterface[], name: string): Struct
   return found;
 }
 
+async function invokeArtifact(tool: StructuredToolInterface, input: unknown) {
+  const result = await tool.invoke(input, {
+    toolCall: { args: {}, id: `call_${tool.name}`, name: tool.name },
+  });
+  if (!ToolMessage.isInstance(result)) {
+    throw new TypeError(`Expected ToolMessage from ${tool.name}`);
+  }
+  if (typeof result.content !== "string") {
+    throw new TypeError(`Expected string content from ${tool.name}`);
+  }
+  return [result.content, result.artifact] as const;
+}
+
 async function invokeJson(tool: StructuredToolInterface, input: unknown) {
-  return JSON.parse(String(await tool.invoke(input)));
+  const [, artifact] = await invokeArtifact(tool, input);
+  return artifact as Record<string, any>;
 }
 
 describe("Bloomberg request tools", () => {
@@ -117,6 +169,20 @@ describe("Bloomberg request tools", () => {
 
     expect(tools.map((entry) => entry.name)).toContain("xbbg_bdp");
     expect(core.connect).not.toHaveBeenCalled();
+  });
+
+  it("honors disabledTools for request and recipe tools", () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({
+      core: fakeCore(engine),
+      disabledTools: ["xbbg_beqs", "xbbg_etf_holdings", "xbbg_stream_snapshot"],
+    });
+
+    const names = tools.map((entry) => entry.name);
+    expect(names).not.toContain("xbbg_beqs");
+    expect(names).not.toContain("xbbg_etf_holdings");
+    expect(names).not.toContain("xbbg_stream_snapshot");
+    expect(names).toContain("xbbg_yas");
   });
 
   it("memoizes lazy engine creation across parallel tool calls", async () => {
@@ -252,6 +318,92 @@ describe("Bloomberg request tools", () => {
     expect(engine.bflds).toHaveBeenCalledWith(
       expect.objectContaining({ backend: "json", fields: ["PX_LAST"] }),
     );
+
+    await invokeJson(byName(tools, "xbbg_beqs"), {
+      asof: "2024-01-02",
+      group: " General ",
+      overrides: { LANG: " EN " },
+      screen: " Capital Goods ",
+      screenType: " PRIVATE ",
+    });
+    expect(engine.beqs).toHaveBeenCalledWith(
+      "Capital Goods",
+      expect.objectContaining({
+        asof: "20240102",
+        backend: "json",
+        group: "General",
+        overrides: { LANG: "EN" },
+        screenType: "PRIVATE",
+      }),
+    );
+
+    await invokeJson(byName(tools, "xbbg_yas"), {
+      fields: [" YAS_BOND_YLD "],
+      price: 99,
+      settleDt: "2024-01-02",
+      tickers: [" IBM Corp "],
+    });
+    expect(engine.yas).toHaveBeenCalledWith(
+      ["IBM Corp"],
+      ["YAS_BOND_YLD"],
+      expect.objectContaining({ backend: "json", price: 99, settleDt: "20240102" }),
+    );
+
+    await invokeJson(byName(tools, "xbbg_preferreds"), {
+      equityTicker: " AAPL US Equity ",
+      fields: [" id "],
+    });
+    expect(engine.preferreds).toHaveBeenCalledWith(
+      "AAPL US Equity",
+      expect.objectContaining({ backend: "json", fields: ["id"] }),
+    );
+
+    await invokeJson(byName(tools, "xbbg_corporate_bonds"), {
+      activeOnly: false,
+      ccy: " USD ",
+      fields: [" id "],
+      ticker: " AAPL US Equity ",
+    });
+    expect(engine.corporateBonds).toHaveBeenCalledWith(
+      "AAPL US Equity",
+      expect.objectContaining({
+        activeOnly: false,
+        backend: "json",
+        ccy: "USD",
+        fields: ["id"],
+      }),
+    );
+
+    await invokeJson(byName(tools, "xbbg_index_members"), {
+      asof: "2024-01-31",
+      field: "INDX_MEMBERS",
+      index: " SPX Index ",
+    });
+    expect(engine.indexMembers).toHaveBeenCalledWith(
+      "SPX Index",
+      expect.objectContaining({ asof: "20240131", backend: "json", field: "INDX_MEMBERS" }),
+    );
+
+    await invokeJson(byName(tools, "xbbg_resolve_isins"), { isins: [" US0378331005 "] });
+    expect(engine.resolveIsins).toHaveBeenCalledWith(
+      ["US0378331005"],
+      expect.objectContaining({ backend: "json" }),
+    );
+
+    await invokeJson(byName(tools, "xbbg_issuer_isins"), { bondIsins: [" US037833FB15 "] });
+    expect(engine.issuerIsins).toHaveBeenCalledWith(
+      ["US037833FB15"],
+      expect.objectContaining({ backend: "json" }),
+    );
+
+    await invokeJson(byName(tools, "xbbg_etf_holdings"), {
+      etfTicker: " SPY US Equity ",
+      fields: [" id "],
+    });
+    expect(engine.etfHoldings).toHaveBeenCalledWith(
+      "SPY US Equity",
+      expect.objectContaining({ backend: "json", fields: ["id"] }),
+    );
   });
 
   it("passes security identifiers unchanged and documents Bloomberg identifier syntax", async () => {
@@ -293,11 +445,134 @@ describe("Bloomberg request tools", () => {
     );
   });
 
+  it("returns compact content and structured artifacts", async () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({ core: fakeCore(engine), maxStringChars: 20 });
+    const bdp = byName(tools, "xbbg_bdp");
+
+    expect((bdp as unknown as { readonly responseFormat?: string }).responseFormat).toBe(
+      "content_and_artifact",
+    );
+
+    const [summary, artifact] = await invokeArtifact(bdp, {
+      fields: ["PX_LAST"],
+      securities: ["AAPL US Equity"],
+    });
+
+    expect(summary).toContain("xbbg_bdp: 1 row");
+    expect(summary).toContain("truncated=true");
+    expect(artifact).toMatchObject({ rowCount: 1, tool: "xbbg_bdp", truncated: true });
+
+    const node = new ToolNode([bdp]);
+    const result = (await node.invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              args: { fields: ["PX_LAST"], securities: ["AAPL US Equity"] },
+              id: "call_bdp",
+              name: "xbbg_bdp",
+              type: "tool_call",
+            },
+          ],
+        }),
+      ],
+    })) as { messages: unknown[] };
+
+    const [message] = result.messages;
+    expect(message).toBeInstanceOf(ToolMessage);
+    expect((message as ToolMessage).content).toContain("xbbg_bdp: 1 row");
+    expect((message as ToolMessage).content).not.toContain("12345678901234567890");
+    expect((message as ToolMessage).artifact).toMatchObject({
+      rowCount: 1,
+      tool: "xbbg_bdp",
+    });
+  });
+
+  it("collects bounded snapshot tools and always unsubscribes", async () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({
+      core: fakeCore(engine),
+      maxStreamUpdates: 3,
+      maxStreamWaitMs: 1_000,
+    });
+
+    const streamSub = fakeSubscription([
+      { toObject: () => ({ LAST_PRICE: 123n, topic: "AAPL US Equity" }) },
+      { toObject: () => ({ LAST_PRICE: 124, topic: "AAPL US Equity" }) },
+    ]);
+    vi.mocked(engine.stream).mockResolvedValueOnce(streamSub.subscription);
+
+    const stream = await invokeJson(byName(tools, "xbbg_stream_snapshot"), {
+      conflate: true,
+      drain: true,
+      fields: [" LAST_PRICE "],
+      maxUpdates: 2,
+      tickers: [" AAPL US Equity "],
+      timeoutMs: 1_000,
+    });
+
+    expect(engine.stream).toHaveBeenCalledWith(
+      ["AAPL US Equity"],
+      ["LAST_PRICE"],
+      expect.objectContaining({ conflate: true }),
+    );
+    expect(stream.data).toMatchObject({ reason: "max_updates", updateCount: 2 });
+    expect(stream.data.updates[0].LAST_PRICE).toBe("123");
+    expect(streamSub.unsubscribe).toHaveBeenCalledWith(true);
+
+    const mktbarSub = fakeSubscription([
+      { toArray: () => [{ close: 1n, time: new Date(Date.UTC(2024, 0, 2)) }] },
+    ]);
+    vi.mocked(engine.mktbar).mockResolvedValueOnce(mktbarSub.subscription);
+
+    const mktbar = await invokeJson(byName(tools, "xbbg_mktbar_snapshot"), {
+      fields: [" LAST_PRICE "],
+      maxUpdates: 1,
+      ticker: " AAPL US Equity ",
+      timeoutMs: 1_000,
+    });
+
+    expect(engine.mktbar).toHaveBeenCalledWith(
+      "AAPL US Equity",
+      expect.objectContaining({ fields: ["LAST_PRICE"] }),
+    );
+    expect(mktbar.data.updates[0]).toEqual([{ close: "1", time: "2024-01-02T00:00:00.000Z" }]);
+    expect(mktbarSub.unsubscribe).toHaveBeenCalledWith(false);
+
+    const depthSub = fakeSubscription([{ toObject: () => ({ BID: 1, topic: "AAPL US Equity" }) }]);
+    vi.mocked(engine.depth).mockResolvedValueOnce(depthSub.subscription);
+
+    const depth = await invokeJson(byName(tools, "xbbg_depth_snapshot"), {
+      maxUpdates: 2,
+      ticker: " AAPL US Equity ",
+      timeoutMs: 1_000,
+    });
+
+    expect(engine.depth).toHaveBeenCalledWith("AAPL US Equity", expect.objectContaining({}));
+    expect(depth.data).toMatchObject({ reason: "done", updateCount: 1 });
+    expect(depthSub.unsubscribe).toHaveBeenCalledWith(false);
+
+    const failingSub = fakeSubscription([], new Error("boom"));
+    vi.mocked(engine.depth).mockResolvedValueOnce(failingSub.subscription);
+
+    await expect(
+      byName(tools, "xbbg_depth_snapshot").invoke({
+        maxUpdates: 1,
+        ticker: "AAPL US Equity",
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow(/xbbg_depth_snapshot failed: boom/u);
+    expect(failingSub.unsubscribe).toHaveBeenCalledWith(false);
+  });
+
   it("rejects unsafe or ambiguous request inputs", async () => {
     const tools = createBloombergTools({
       core: fakeCore(fakeEngine()),
       maxSecurities: 1,
       maxFields: 1,
+      maxStreamUpdates: 1,
     });
 
     await expect(
@@ -340,6 +615,19 @@ describe("Bloomberg request tools", () => {
     await expect(
       byName(tools, "xbbg_bflds").invoke({ fields: ["PX_LAST"], searchSpec: "last price" }),
     ).rejects.toThrow(/exactly one/u);
+    await expect(
+      byName(tools, "xbbg_stream_snapshot").invoke({
+        fields: ["PX"],
+        maxUpdates: 2,
+        tickers: ["A"],
+      }),
+    ).rejects.toThrow(/at most 1/u);
+    await expect(
+      byName(tools, "xbbg_stream_snapshot").invoke({
+        fields: ["PX"],
+        tickers: ["A"],
+      }),
+    ).rejects.toThrow();
   });
 
   it("does not mutate original results while truncating output", async () => {

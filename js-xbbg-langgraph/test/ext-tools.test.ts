@@ -1,7 +1,17 @@
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import { ToolMessage } from "@langchain/core/messages";
 
 import { createBloombergExtTools } from "../src";
 import type { XbbgCoreLike, XbbgEngineLike } from "../src/core-loader";
+
+type CoreSubscription = Awaited<ReturnType<XbbgEngineLike["stream"]>>;
+
+function emptySubscription(): CoreSubscription {
+  return {
+    next: vi.fn(async () => ({ done: true, value: undefined }) as IteratorResult<unknown>),
+    unsubscribe: vi.fn(async () => []),
+  } as unknown as CoreSubscription;
+}
 
 function engine(): XbbgEngineLike {
   return {
@@ -14,6 +24,17 @@ function engine(): XbbgEngineLike {
     bql: vi.fn(async () => []),
     bsrch: vi.fn(async () => []),
     bqr: vi.fn(async () => []),
+    beqs: vi.fn(async () => []),
+    yas: vi.fn(async () => []),
+    preferreds: vi.fn(async () => []),
+    corporateBonds: vi.fn(async () => []),
+    indexMembers: vi.fn(async () => []),
+    resolveIsins: vi.fn(async () => []),
+    issuerIsins: vi.fn(async () => []),
+    etfHoldings: vi.fn(async () => []),
+    stream: vi.fn(async () => emptySubscription()),
+    mktbar: vi.fn(async () => emptySubscription()),
+    depth: vi.fn(async () => emptySubscription()),
   };
 }
 
@@ -87,8 +108,22 @@ function byName(tools: readonly StructuredToolInterface[], name: string): Struct
   return found;
 }
 
+async function invokeArtifact(tool: StructuredToolInterface, input: unknown) {
+  const result = await tool.invoke(input, {
+    toolCall: { args: {}, id: `call_${tool.name}`, name: tool.name },
+  });
+  if (!ToolMessage.isInstance(result)) {
+    throw new TypeError(`Expected ToolMessage from ${tool.name}`);
+  }
+  if (typeof result.content !== "string") {
+    throw new TypeError(`Expected string content from ${tool.name}`);
+  }
+  return [result.content, result.artifact] as const;
+}
+
 async function invokeJson(tool: StructuredToolInterface, input: unknown) {
-  return JSON.parse(String(await tool.invoke(input)));
+  const [, artifact] = await invokeArtifact(tool, input);
+  return artifact as Record<string, any>;
 }
 
 describe("Bloomberg extension tools", () => {
