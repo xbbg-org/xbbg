@@ -1,6 +1,11 @@
 import type { StructuredToolInterface } from "@langchain/core/tools";
 
-import { createAllBloombergTools, createBloombergTools } from "../src";
+import {
+  BLOOMBERG_TOOL_INSTRUCTIONS,
+  createAllBloombergTools,
+  createBloombergTools,
+  getBloombergToolInstructions,
+} from "../src";
 import type { XbbgCoreLike, XbbgEngineLike } from "../src/core-loader";
 
 function fakeEngine(): XbbgEngineLike {
@@ -10,10 +15,12 @@ function fakeEngine(): XbbgEngineLike {
     ]),
     bdh: vi.fn(async () => [{ ticker: "AAPL US Equity", date: "20240102", value: 1 }]),
     bdib: vi.fn(async () => [{ time: "2024-01-02T09:30:00-05:00", close: 1 }]),
+    bdtick: vi.fn(async () => [{ time: "2024-01-02T09:30:00-05:00", type: "TRADE", value: 1 }]),
     bds: vi.fn(async () => [{ member: "AAPL US Equity" }]),
     bflds: vi.fn(async () => [{ id: "PX_LAST" }]),
     bql: vi.fn(async () => [{ value: 1 }]),
     bsrch: vi.fn(async () => [{ security: "AAPL US Equity" }]),
+    bqr: vi.fn(async () => [{ broker_buy: "DLR", event_type: "BID", price: 99 }]),
   };
 }
 
@@ -197,6 +204,22 @@ describe("Bloomberg request tools", () => {
       expect.objectContaining({ backend: "json", interval: 5, start: "2024-01-02T09:30:00" }),
     );
 
+    await invokeJson(byName(tools, "xbbg_bdtick"), {
+      end: "2024-01-02T10:00:00-05:00",
+      eventTypes: [" BID ", "ASK"],
+      includeBrokerCodes: true,
+      start: "2024-01-02T09:30:00-05:00",
+      ticker: "AAPL US Equity",
+    });
+    expect(engine.bdtick).toHaveBeenCalledWith(
+      "AAPL US Equity",
+      expect.objectContaining({
+        backend: "json",
+        eventTypes: ["BID", "ASK"],
+        includeBrokerCodes: true,
+      }),
+    );
+
     await invokeJson(byName(tools, "xbbg_bql"), { query: " get(px_last) for([AAPL US Equity]) " });
     expect(engine.bql).toHaveBeenCalledWith(
       "get(px_last) for([AAPL US Equity])",
@@ -209,9 +232,64 @@ describe("Bloomberg request tools", () => {
       expect.objectContaining({ backend: "json" }),
     );
 
+    await invokeJson(byName(tools, "xbbg_bqr"), {
+      end: "2024-06-03T15:00:00",
+      eventTypes: ["BID", "ASK"],
+      start: "2024-06-03T14:30:00",
+      ticker: "IBM US Equity@MSG1",
+    });
+    expect(engine.bqr).toHaveBeenCalledWith(
+      "IBM US Equity@MSG1",
+      expect.objectContaining({
+        backend: "json",
+        endDatetime: "2024-06-03T15:00:00",
+        eventTypes: ["BID", "ASK"],
+        startDatetime: "2024-06-03T14:30:00",
+      }),
+    );
+
     await invokeJson(byName(tools, "xbbg_bflds"), { fields: [" PX_LAST "] });
     expect(engine.bflds).toHaveBeenCalledWith(
       expect.objectContaining({ backend: "json", fields: ["PX_LAST"] }),
+    );
+  });
+
+  it("passes security identifiers unchanged and documents Bloomberg identifier syntax", async () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/{isin}");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/cusip/{cusip}");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/US037833FB15@MSG1 Corp");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bdtick");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bqr");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("get(px_last) for('AAPL US Equity')");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("holdings('SPY US Equity')");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("members('SPX Index')");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("filter_valid_contracts");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("YAS_BOND_YLD");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("default_bqr_datetimes");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("## Core request tools");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("## Extension helper tools");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("rowCount");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("truncated");
+
+    const requiredOnly = getBloombergToolInstructions({
+      includeExtensionGuidance: false,
+      includeLimitReminder: false,
+    });
+    expect(requiredOnly).toContain("## Core request tools");
+    expect(requiredOnly).not.toContain("## Extension helper tools");
+    expect(requiredOnly).not.toContain("## Request limits and inputs");
+
+    await invokeJson(byName(tools, "xbbg_bdp"), {
+      fields: ["PX_LAST"],
+      securities: [" US0378331005 ", " /isin/US0378331005 "],
+    });
+    expect(engine.bdp).toHaveBeenCalledWith(
+      ["US0378331005", "/isin/US0378331005"],
+      ["PX_LAST"],
+      expect.objectContaining({ backend: "json" }),
     );
   });
 

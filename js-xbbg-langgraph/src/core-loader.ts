@@ -6,7 +6,7 @@ import { normalizeBloombergToolsOptions } from "./options";
 export type XbbgCoreModule = typeof xbbg;
 export type XbbgEngineLike = Pick<
   Awaited<ReturnType<XbbgCoreModule["connect"]>>,
-  "bdp" | "bdh" | "bds" | "bdib" | "bql" | "bsrch" | "bflds"
+  "bdp" | "bdh" | "bds" | "bdib" | "bdtick" | "bql" | "bsrch" | "bqr" | "bflds"
 >;
 export type XbbgCoreLike = Pick<XbbgCoreModule, "connect" | "ext">;
 
