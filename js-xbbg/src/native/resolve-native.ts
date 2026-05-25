@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { nativePackageForKey, platformKey, type NativePackageDescriptor } from './platform-map';
+import { nativePackageForKey, platformKey } from './platform-map';
+import type { NativePackageDescriptor } from './platform-map';
 
 const nodeRequire = createRequire(__filename);
 

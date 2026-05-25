@@ -11,16 +11,16 @@ import {
   nativeBinaryName,
   nativePackageForKey,
   platformPackages,
-  type NativePackageDescriptor,
 } from '../src/native/platform-map';
+import type { NativePackageDescriptor } from '../src/native/platform-map';
 import { resolveNativeAddonCore } from '../src/native/resolve-native';
 
 const key = 'linux-x64';
 const packageName = '@xbbg/core-linux-x64';
-function requireNativePackage(key: string): NativePackageDescriptor {
-  const nativePackage = nativePackageForKey(key);
+function requireNativePackage(nativeKey: string): NativePackageDescriptor {
+  const nativePackage = nativePackageForKey(nativeKey);
   if (nativePackage === null) {
-    throw new Error(`missing test native package descriptor for ${key}`);
+    throw new Error(`missing test native package descriptor for ${nativeKey}`);
   }
   return nativePackage;
 }

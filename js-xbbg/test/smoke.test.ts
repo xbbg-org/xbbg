@@ -107,8 +107,8 @@ describe('@xbbg/core surface', () => {
     const requestOptions: RequestOptions = { backend, format };
     const streamOptions: StreamOptions = { allFields: true };
 
-    expectTypeOf(backend).toMatchTypeOf<BackendKind>();
-    expectTypeOf(format).toMatchTypeOf<FormatKind>();
+    expectTypeOf(backend).toExtend<BackendKind>();
+    expectTypeOf(format).toExtend<FormatKind>();
     expectTypeOf(requestOptions).toEqualTypeOf<RequestOptions>();
     expectTypeOf(streamOptions).toEqualTypeOf<StreamOptions>();
   });

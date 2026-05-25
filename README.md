@@ -188,6 +188,20 @@ const ref = await xbbg.blp.abdp(['AAPL US Equity'], ['PX_LAST', 'SECURITY_NAME']
 
 See [`js-xbbg/README.md`](js-xbbg/README.md) for platform packaging, runtime prerequisites, and the current alpha API surface.
 
+For LangChain and LangGraph agents, use [`@xbbg/langgraph`](js-xbbg-langgraph/README.md). It exposes reusable server-side Bloomberg tools backed by `@xbbg/core` without making MCP, a chat app, or a browser integration the core path:
+
+```bash
+npm install @xbbg/langgraph @xbbg/core @langchain/core
+```
+
+```ts
+import { createAllBloombergTools, BLOOMBERG_TOOL_INSTRUCTIONS } from '@xbbg/langgraph';
+
+const tools = createAllBloombergTools({ maxSecurities: 10, maxFields: 10 });
+```
+
+Use the existing [`apps/xbbg-mcp`](apps/xbbg-mcp/README.md) package only when you specifically need MCP.
+
 ## Configuration and engines
 
 By default, xbbg starts a Rust-backed engine and connects to local Bloomberg Desktop API / DAPI on `localhost:8194`. Configure the engine before the first request when you need a different transport, authentication mode, worker count, timeout policy, field cache, or logging behavior.
@@ -433,6 +447,7 @@ Publishing is handled through GitHub Actions and PyPI Trusted Publishing.
 
 - Documentation: [xbbg.org](https://xbbg.org/)
 - JavaScript/Node bindings: [js-xbbg/README.md](js-xbbg/README.md)
+- LangChain/LangGraph tools: [js-xbbg-langgraph/README.md](js-xbbg-langgraph/README.md)
 - PyPI: [pypi.org/project/xbbg](https://pypi.org/project/xbbg/)
 - Source: [github.com/alpha-xone/xbbg](https://github.com/alpha-xone/xbbg)
 - Issues: [GitHub Issues](https://github.com/alpha-xone/xbbg/issues)

@@ -7,12 +7,14 @@ import { nativePackageSpecs } from './platform-map';
 
 interface PackageJson {
   optionalDependencies?: Record<string, unknown>;
+  dependencies?: Record<string, unknown>;
   version?: string;
   [key: string]: unknown;
 }
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const packageDir = path.join(repoRoot, 'js-xbbg');
+const langgraphPackageDir = path.join(repoRoot, 'js-xbbg-langgraph');
 
 function fail(message: string): never {
   console.error(`js package version stamp failed: ${message}`);
@@ -55,6 +57,15 @@ function stampPackageFamily(wrapperPackageJsonPath: string, version: string): vo
     writePackageJson(platformPackageJsonPath, packageJson);
   }
 }
+function stampLanggraphPackage(packageJsonPath: string, version: string): void {
+  const packageJson = readPackageJson(packageJsonPath);
+  packageJson.version = version;
+  packageJson.dependencies = {
+    ...packageJson.dependencies,
+    '@xbbg/core': version,
+  };
+  writePackageJson(packageJsonPath, packageJson);
+}
 
 const rawVersion = process.argv[2];
 if (rawVersion === undefined || rawVersion.length === 0) {
@@ -67,5 +78,6 @@ if (version.length === 0) {
 }
 
 stampPackageFamily(path.join(packageDir, 'package.json'), version);
+stampLanggraphPackage(path.join(langgraphPackageDir, 'package.json'), version);
 
 console.log(`Stamped JS package versions with ${version}`);

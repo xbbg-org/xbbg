@@ -144,9 +144,15 @@ jobs:
 
       - name: Install JS package dependencies
         run: npm ci --prefix js-xbbg
+      - name: Install LangGraph tools package dependencies
+        run: npm ci --prefix js-xbbg-langgraph
+
 
       - name: Run JS quality suite
         run: npm --prefix js-xbbg run quality
+      - name: Run LangGraph tools quality suite
+        run: npm --prefix js-xbbg-langgraph run quality
+
 
   build-core-native:
     name: Build @xbbg/core native package (${{ matrix.label }})
@@ -280,7 +286,7 @@ jobs:
           retention-days: 7
 
   publish-core:
-    name: Publish @xbbg/core packages
+    name: Publish JS packages
     needs: [release-version, sdk-version, build-core-native]
     if: needs.release-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
@@ -322,18 +328,26 @@ jobs:
 
       - name: Install JS package dependencies
         run: npm ci --prefix js-xbbg
+      - name: Install LangGraph tools package dependencies
+        run: npm ci --prefix js-xbbg-langgraph
+
 
       - name: Stamp JS package versions
         run: npm --prefix js-xbbg run stamp:version -- "${{ needs.release-version.outputs.tag }}"
 
       - name: Build wrapper package artifacts
         run: npm --prefix js-xbbg run build:ts
+      - name: Build LangGraph tools package artifacts
+        run: npm --prefix js-xbbg-langgraph run build
+
 
       - name: Validate package metadata and types
         run: |
           npm --prefix js-xbbg run pack:dry-run -- --all-platforms
           npm --prefix js-xbbg run pack:lint -- --all-platforms
           npm --prefix js-xbbg run types:attw -- --all-platforms
+          npm --prefix js-xbbg-langgraph run pack:dry-run
+
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux
@@ -357,7 +371,7 @@ jobs:
         run: npm --prefix js-xbbg run smoke:packaged-install -- --packed
 
 
-      - name: Publish @xbbg/core packages with trusted publishing
+      - name: Publish JS packages with trusted publishing
         shell: bash
         run: |
           set -euo pipefail
@@ -387,3 +401,4 @@ jobs:
           publish_if_missing js-xbbg/packages/xbbg-core-win32-x64
           publish_if_missing js-xbbg/packages/xbbg-core-darwin-arm64
           publish_if_missing js-xbbg
+          publish_if_missing js-xbbg-langgraph

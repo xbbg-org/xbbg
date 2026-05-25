@@ -1,3 +1,4 @@
+/* oxlint-disable import/max-dependencies -- public entry point intentionally consolidates native and helper modules. */
 import type { Table } from 'apache-arrow';
 
 import { tableFromIPC } from 'apache-arrow';
