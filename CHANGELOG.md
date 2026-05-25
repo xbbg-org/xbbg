@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **`@xbbg/langgraph` npm package**: Added a publishable LangChain/LangGraph tools package backed by `@xbbg/core`, with lazy Bloomberg engine loading, bounded JSON tool outputs, request tools for `bdp`/`bdh`/`bds`/`bdib`/`bql`/`bsrch`/`bflds`, grouped `xbbg.ext` helper tools, agent prompt guidance, unit tests with injected fake engines, and npm/GitHub release workflow integration.
+
+### Fixed
+
+- **JavaScript lint and packaging hygiene**: Cleaned `js-xbbg` TypeScript/Oxlint findings in native package scripts, native platform metadata, and smoke tests so the core JS lint suite passes alongside the new LangGraph package quality checks.
+
 ## [1.2.4] - 2026-05-24
 
 ### Fixed

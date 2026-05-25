@@ -1,6 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {
+  nativeBinaryName,
+  nativePackageForKey,
+  platformPackages,
+} from '../src/native/platform-map';
+import type { NativePackageDescriptor } from '../src/native/platform-map';
+
 export {
   nativeBinaryName,
   nativePackageForKey,
@@ -8,12 +15,6 @@ export {
   platformPackages,
 } from '../src/native/platform-map';
 export type { NativePackageDescriptor, PlatformKey } from '../src/native/platform-map';
-import {
-  nativeBinaryName,
-  nativePackageForKey,
-  platformPackages,
-  type NativePackageDescriptor,
-} from '../src/native/platform-map';
 
 const packageDir = path.resolve(__dirname, '..');
 
@@ -32,8 +33,32 @@ export type NativePackageSpec = NativePackageDescriptor & {
   readonly os: string;
 };
 
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function isNativePackageManifest(value: unknown): value is NativePackageManifest {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const name: unknown = Object.getOwnPropertyDescriptor(value, 'name')?.value;
+  const cpu: unknown = Object.getOwnPropertyDescriptor(value, 'cpu')?.value;
+  const os: unknown = Object.getOwnPropertyDescriptor(value, 'os')?.value;
+  const files: unknown = Object.getOwnPropertyDescriptor(value, 'files')?.value;
+  return (
+    (name === undefined || typeof name === 'string') &&
+    (cpu === undefined || isStringArray(cpu)) &&
+    (os === undefined || isStringArray(os)) &&
+    (files === undefined || isStringArray(files))
+  );
+}
+
 function readManifest(manifestPath: string): NativePackageManifest {
-  return JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as NativePackageManifest;
+  const manifest: unknown = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  if (!isNativePackageManifest(manifest)) {
+    throw new TypeError(`Expected native package manifest shape: ${manifestPath}`);
+  }
+  return manifest;
 }
 
 function singleManifestValue(

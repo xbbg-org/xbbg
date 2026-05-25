@@ -22,14 +22,11 @@ export type PlatformKey = keyof typeof nativePackageDescriptors;
 export type NativePackageDescriptor = (typeof nativePackageDescriptors)[PlatformKey];
 export type NativePackageName = NativePackageDescriptor['packageName'];
 
-export const platformPackages = Object.freeze(
-  Object.fromEntries(
-    Object.entries(nativePackageDescriptors).map(([key, descriptor]) => [
-      key,
-      descriptor.packageName,
-    ]),
-  ),
-) as Readonly<{ [K in PlatformKey]: (typeof nativePackageDescriptors)[K]['packageName'] }>;
+export const platformPackages = Object.freeze({
+  'darwin-arm64': nativePackageDescriptors['darwin-arm64'].packageName,
+  'linux-x64': nativePackageDescriptors['linux-x64'].packageName,
+  'win32-x64': nativePackageDescriptors['win32-x64'].packageName,
+}) satisfies Readonly<{ [K in PlatformKey]: (typeof nativePackageDescriptors)[K]['packageName'] }>;
 
 export function nativePackageForKey(key: string): NativePackageDescriptor | null {
   return (

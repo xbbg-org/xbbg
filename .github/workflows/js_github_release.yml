@@ -89,9 +89,15 @@ jobs:
 
       - name: Install JS package dependencies
         run: npm ci --prefix js-xbbg
+      - name: Install LangGraph tools package dependencies
+        run: npm ci --prefix js-xbbg-langgraph
+
 
       - name: Run JS quality suite
         run: npm --prefix js-xbbg run quality
+      - name: Run LangGraph tools quality suite
+        run: npm --prefix js-xbbg-langgraph run quality
+
 
   sdk-version:
     name: Detect SDK Version
@@ -376,18 +382,26 @@ jobs:
 
       - name: Install JS package dependencies
         run: npm ci --prefix js-xbbg
+      - name: Install LangGraph tools package dependencies
+        run: npm ci --prefix js-xbbg-langgraph
+
 
       - name: Stamp JS package versions
         run: npm --prefix js-xbbg run stamp:version -- "${{ needs.prepare.outputs.version }}"
 
       - name: Build wrapper package artifacts
         run: npm --prefix js-xbbg run build:ts
+      - name: Build LangGraph tools package artifacts
+        run: npm --prefix js-xbbg-langgraph run build
+
 
       - name: Validate package metadata and types
         run: |
           npm --prefix js-xbbg run pack:dry-run -- --all-platforms
           npm --prefix js-xbbg run pack:lint -- --all-platforms
           npm --prefix js-xbbg run types:attw -- --all-platforms
+          npm --prefix js-xbbg-langgraph run pack:dry-run
+
 
       - name: Setup Bloomberg SDK for packed-install smoke tests
         id: sdk-linux
@@ -419,6 +433,8 @@ jobs:
           npm pack ./js-xbbg/packages/xbbg-core-linux-x64 --pack-destination dist
           npm pack ./js-xbbg/packages/xbbg-core-win32-x64 --pack-destination dist
           npm pack ./js-xbbg --pack-destination dist
+          npm pack ./js-xbbg-langgraph --pack-destination dist
+
           ls -1 dist
 
       - name: Upload JS release artifacts
@@ -552,6 +568,7 @@ jobs:
               '',
               '### Included packages',
               '- `@xbbg/core`',
+              '- `@xbbg/langgraph`',
               '- `@xbbg/core-darwin-arm64`',
               '- `@xbbg/core-linux-x64`',
               '- `@xbbg/core-win32-x64`',

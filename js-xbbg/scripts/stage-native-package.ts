@@ -4,12 +4,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {
-  nativeBinaryName,
-  nativePackageSpecForKey,
-  platformKey,
-  type NativePackageSpec,
-} from './platform-map';
+import { nativeBinaryName, nativePackageSpecForKey, platformKey } from './platform-map';
+import type { NativePackageSpec } from './platform-map';
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const packageDir = path.resolve(repoRoot, 'js-xbbg');
