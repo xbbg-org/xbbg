@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{Error, Status};
-use xbbg_async::engine::{ExtractorType, RequestParams};
+use xbbg_async::engine::{RequestParams, RequestParamsInput, RequestParamsInputError};
 
 use crate::{RequestInput, StringPair};
 
@@ -9,18 +9,6 @@ impl TryFrom<RequestInput> for RequestParams {
     type Error = Error;
 
     fn try_from(input: RequestInput) -> Result<Self, Self::Error> {
-        let mut extractor = ExtractorType::default();
-        let mut extractor_set = false;
-        if let Some(name) = input.extractor {
-            extractor = ExtractorType::parse(&name).ok_or_else(|| {
-                Error::new(
-                    Status::InvalidArg,
-                    format!("invalid extractor type: {name}"),
-                )
-            })?;
-            extractor_set = true;
-        }
-
         let mut elements = pairs_to_tuples(input.elements);
         if let Some(raw_json) = input.json_elements {
             let value: serde_json::Value = serde_json::from_str(&raw_json).map_err(|e| {
@@ -33,13 +21,12 @@ impl TryFrom<RequestInput> for RequestParams {
             flatten_json_elements(None, &value, flattened)?;
         }
 
-        Ok(RequestParams {
+        RequestParamsInput {
             service: input.service,
-            operation: input.operation,
+            operation: Some(input.operation),
             request_operation: input.request_operation,
             request_id: input.request_id,
-            extractor,
-            extractor_set,
+            extractor: input.extractor,
             securities: input.securities,
             security: input.security,
             fields: input.fields,
@@ -57,13 +44,19 @@ impl TryFrom<RequestInput> for RequestParams {
             interval: input.interval,
             options: pairs_to_tuples(input.options),
             field_types: pairs_to_map(input.field_types),
-            include_security_errors: input.include_security_errors.unwrap_or(false),
+            include_security_errors: input.include_security_errors,
             validate_fields: input.validate_fields,
             search_spec: input.search_spec,
             field_ids: input.field_ids,
             format: input.format,
-        })
+        }
+        .into_request_params()
+        .map_err(input_error)
     }
+}
+
+fn input_error(error: RequestParamsInputError) -> Error {
+    Error::new(Status::InvalidArg, error.to_string())
 }
 
 fn flatten_json_elements(

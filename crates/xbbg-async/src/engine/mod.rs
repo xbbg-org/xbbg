@@ -41,8 +41,8 @@ use exchange_cache::ExchangeCache;
 // Re-export here so existing `use xbbg_async::engine::ExtractorType` paths keep working.
 pub use crate::services::ExtractorType;
 
-pub(crate) use request_plan::{PreparedRequest, RequestKind};
-use request_pool::RequestWorkerPool;
+pub(crate) use request_plan::{PlannedRequestShape, PreparedRequest, PreparedRequestBuilder};
+pub use request_pool::RequestWorkerPool;
 use state::SubscriptionMetrics;
 pub use state::{
     BqlState, BulkDataState, HistDataState, IntradayTickState, LongMode, OutputFormat,
@@ -889,6 +889,7 @@ impl RequestParams {
 
     /// Apply default values derived from operation semantics.
     pub fn with_defaults(mut self) -> Self {
+        request_plan::normalize_request_params(&mut self);
         request_plan::apply_request_defaults(&mut self);
         self
     }
@@ -898,6 +899,139 @@ impl RequestParams {
         request_plan::validate_request_params(self).map(|_| ())
     }
 }
+#[derive(Clone, Debug, Default)]
+pub struct RequestParamsInput {
+    pub service: String,
+    pub operation: Option<String>,
+    pub request_operation: Option<String>,
+    pub request_id: Option<String>,
+    pub extractor: Option<String>,
+    pub securities: Option<Vec<String>>,
+    pub security: Option<String>,
+    pub fields: Option<Vec<String>>,
+    pub overrides: Option<Vec<(String, String)>>,
+    pub elements: Option<Vec<(String, String)>>,
+    pub kwargs: Option<HashMap<String, String>>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub start_datetime: Option<String>,
+    pub end_datetime: Option<String>,
+    pub request_tz: Option<String>,
+    pub output_tz: Option<String>,
+    pub event_type: Option<String>,
+    pub event_types: Option<Vec<String>>,
+    pub interval: Option<u32>,
+    pub options: Option<Vec<(String, String)>>,
+    pub field_types: Option<HashMap<String, String>>,
+    pub include_security_errors: Option<bool>,
+    pub validate_fields: Option<bool>,
+    pub search_spec: Option<String>,
+    pub field_ids: Option<Vec<String>>,
+    pub format: Option<String>,
+}
+
+impl RequestParamsInput {
+    pub fn into_request_params(self) -> Result<RequestParams, RequestParamsInputError> {
+        let request_operation = normalize_input_string(self.request_operation);
+        let operation = match self.operation {
+            Some(operation) => operation,
+            None if request_operation.is_some() => Operation::RawRequest.to_string(),
+            None => {
+                return Err(RequestParamsInputError::new(
+                    "operation is required unless request_operation is used for RawRequest",
+                ))
+            }
+        };
+
+        let (extractor, extractor_set) = match normalize_input_string(self.extractor) {
+            Some(name) => {
+                let extractor = ExtractorType::parse(&name).ok_or_else(|| {
+                    RequestParamsInputError::new(format!("invalid extractor type: {name}"))
+                })?;
+                (extractor, true)
+            }
+            None => (ExtractorType::default(), false),
+        };
+
+        let mut service = self.service;
+        if service.is_empty() {
+            let default_operation = if parse_operation_lossless(&operation) == Operation::RawRequest
+            {
+                request_operation.as_deref().unwrap_or_default()
+            } else {
+                operation.as_str()
+            };
+            if let Some(default_service) =
+                parse_operation_lossless(default_operation).default_service()
+            {
+                service = default_service.to_string();
+            }
+        }
+
+        let mut params = RequestParams {
+            service,
+            operation,
+            request_operation,
+            request_id: self.request_id,
+            extractor,
+            extractor_set,
+            securities: self.securities,
+            security: self.security,
+            fields: self.fields,
+            overrides: self.overrides,
+            elements: self.elements,
+            kwargs: self.kwargs,
+            start_date: self.start_date,
+            end_date: self.end_date,
+            start_datetime: self.start_datetime,
+            end_datetime: self.end_datetime,
+            request_tz: self.request_tz,
+            output_tz: self.output_tz,
+            event_type: self.event_type,
+            event_types: self.event_types,
+            interval: self.interval,
+            options: self.options,
+            field_types: self.field_types,
+            include_security_errors: self.include_security_errors.unwrap_or(false),
+            validate_fields: self.validate_fields,
+            search_spec: self.search_spec,
+            field_ids: self.field_ids,
+            format: self.format,
+        };
+        request_plan::normalize_request_params(&mut params);
+        request_plan::apply_request_defaults(&mut params);
+        Ok(params)
+    }
+}
+
+fn normalize_input_string(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.is_empty())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RequestParamsInputError {
+    detail: String,
+}
+
+impl RequestParamsInputError {
+    fn new(detail: impl Into<String>) -> Self {
+        Self {
+            detail: detail.into(),
+        }
+    }
+
+    pub fn detail(&self) -> &str {
+        &self.detail
+    }
+}
+
+impl std::fmt::Display for RequestParamsInputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.detail)
+    }
+}
+
+impl std::error::Error for RequestParamsInputError {}
 
 /// Validation mode for request validation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1151,17 +1285,19 @@ impl Engine {
         &self,
         params: RequestParams,
     ) -> Result<RecordBatch, BlpAsyncError> {
-        let prepared = self.prepare_request_params(params)?;
+        let prepared = self.prepare_request_builder(params)?.finalize()?;
         self.maybe_validate_request_fields(&prepared).await?;
         self.request_pool.request(prepared).await
     }
 
     pub async fn request(&self, params: RequestParams) -> Result<RecordBatch, BlpAsyncError> {
-        let mut prepared = self.prepare_request_params(params)?;
-        self.apply_intraday_request_timezone(&mut prepared).await?;
+        let mut builder = self.prepare_request_builder(params)?;
+        self.apply_intraday_request_timezone(&mut builder).await?;
+        let prepared = builder.finalize()?;
         self.maybe_validate_request_fields(&prepared).await?;
-        let batch = self.request_pool.request(prepared.clone()).await?;
-        intraday_timezone::apply_intraday_output_timezone(self, batch, prepared.params()).await
+        let output_params = prepared.params().clone();
+        let batch = self.request_pool.request(prepared).await?;
+        intraday_timezone::apply_intraday_output_timezone(self, batch, &output_params).await
     }
 
     /// Streaming generic request - dispatches to worker pool.
@@ -1169,9 +1305,10 @@ impl Engine {
         &self,
         params: RequestParams,
     ) -> Result<mpsc::Receiver<Result<RecordBatch, BlpError>>, BlpAsyncError> {
-        let mut prepared = self.prepare_request_params(params)?;
-        self.apply_intraday_request_timezone(&mut prepared).await?;
-        let out_iana = intraday_timezone::resolve_output_tz_iana(self, prepared.params()).await?;
+        let mut builder = self.prepare_request_builder(params)?;
+        self.apply_intraday_request_timezone(&mut builder).await?;
+        let out_iana = intraday_timezone::resolve_output_tz_iana(self, builder.params()).await?;
+        let prepared = builder.finalize()?;
         self.maybe_validate_request_fields(&prepared).await?;
         let rx = self.request_pool.request_stream(prepared).await?;
         Ok(intraday_timezone::wrap_batch_stream_with_output_tz(
@@ -1179,27 +1316,30 @@ impl Engine {
         ))
     }
 
-    /// Resolve defaults, validate, and schema-route kwargs before dispatch.
-    fn prepare_request_params(
+    /// Resolve defaults, validate, schema-route kwargs, and apply field-cache hints.
+    fn prepare_request_builder(
         &self,
         params: RequestParams,
-    ) -> Result<PreparedRequest, BlpAsyncError> {
-        let mut prepared = PreparedRequest::prepare(params, &self.schema_cache)?;
-        self.apply_cached_field_types(&mut prepared);
-        Ok(prepared)
+    ) -> Result<PreparedRequestBuilder, BlpAsyncError> {
+        let mut builder = PreparedRequestBuilder::prepare(params, &self.schema_cache)?;
+        self.apply_cached_field_types(&mut builder)?;
+        Ok(builder)
     }
 
-    fn apply_cached_field_types(&self, prepared: &mut PreparedRequest) {
-        let params = prepared.params();
+    fn apply_cached_field_types(
+        &self,
+        builder: &mut PreparedRequestBuilder,
+    ) -> Result<(), BlpAsyncError> {
         if !matches!(
-            params.extractor,
-            ExtractorType::RefData | ExtractorType::HistData
+            builder.shape()?,
+            PlannedRequestShape::RefData(_) | PlannedRequestShape::HistData(_)
         ) {
-            return;
+            return Ok(());
         }
 
+        let params = builder.params();
         let Some(fields) = params.fields.as_ref().filter(|fields| !fields.is_empty()) else {
-            return;
+            return Ok(());
         };
 
         let resolved = crate::field_cache::global_resolver()
@@ -1214,20 +1354,21 @@ impl Engine {
             if added > 0 {
                 xbbg_log::debug!(field_count = added, "using cached field type hints");
             }
-            prepared.set_field_types(resolved);
+            builder.set_field_types(resolved);
         }
+        Ok(())
     }
 
     async fn apply_intraday_request_timezone(
         &self,
-        prepared: &mut PreparedRequest,
+        builder: &mut PreparedRequestBuilder,
     ) -> Result<(), BlpAsyncError> {
         let Some((start_datetime, end_datetime)) =
-            intraday_timezone::resolve_intraday_request_datetimes(self, prepared.params()).await?
+            intraday_timezone::resolve_intraday_request_datetimes(self, builder.params()).await?
         else {
             return Ok(());
         };
-        prepared.set_intraday_datetimes(start_datetime, end_datetime);
+        builder.set_intraday_datetimes(start_datetime, end_datetime);
         Ok(())
     }
 
@@ -1512,7 +1653,7 @@ impl Engine {
             ..Default::default()
         };
 
-        let params = self.prepare_request_params(params)?;
+        let params = self.prepare_request_builder(params)?.finalize()?;
         let batch = self.request_pool.request(params).await?;
 
         // Get the field column from the response
@@ -2114,6 +2255,54 @@ mod tests {
         .with_defaults();
 
         assert_eq!(params.extractor, ExtractorType::Bsrch);
+    }
+
+    #[test]
+    fn request_params_input_centralizes_extractor_and_raw_defaults() {
+        let params = RequestParamsInput {
+            service: String::new(),
+            operation: None,
+            request_operation: Some(Operation::ReferenceData.to_string()),
+            extractor: Some("bulk".to_string()),
+            securities: Some(vec!["INDU Index".to_string()]),
+            fields: Some(vec!["INDX_MEMBERS".to_string()]),
+            include_security_errors: None,
+            ..Default::default()
+        }
+        .into_request_params()
+        .unwrap();
+
+        assert_eq!(params.service, Service::RefData.to_string());
+        assert_eq!(params.operation, Operation::RawRequest.to_string());
+        assert_eq!(
+            params.request_operation.as_deref(),
+            Some(Operation::ReferenceData.as_str())
+        );
+        assert_eq!(params.extractor, ExtractorType::BulkData);
+        assert!(params.extractor_set);
+        assert!(!params.include_security_errors);
+    }
+
+    #[test]
+    fn request_params_input_normalizes_empty_optionals() {
+        let params = RequestParamsInput {
+            service: Service::RefData.to_string(),
+            operation: Some(Operation::ReferenceData.to_string()),
+            extractor: Some(String::new()),
+            securities: Some(Vec::new()),
+            fields: Some(vec!["PX_LAST".to_string()]),
+            kwargs: Some(HashMap::new()),
+            format: Some(String::new()),
+            ..Default::default()
+        }
+        .into_request_params()
+        .unwrap();
+
+        assert_eq!(params.extractor, ExtractorType::RefData);
+        assert!(!params.extractor_set);
+        assert!(params.securities.is_none());
+        assert!(params.kwargs.is_none());
+        assert!(params.format.is_none());
     }
 
     #[test]

@@ -108,6 +108,34 @@ def test_arequest_runs_sync_and_async_middleware_in_order(monkeypatch):
     assert contexts[0].frame is result
 
 
+def test_request_middleware_mutates_canonical_params_before_dispatch(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeEngine:
+        async def request(self, params_dict):
+            captured.update(params_dict)
+            return _sample_batch()
+
+    async def rewrite_fields(context: blp.RequestContext, call_next):
+        context.params.fields = ["PX_OPEN"]
+        return await call_next(context)
+
+    monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
+    blp.add_middleware(rewrite_fields)
+
+    asyncio.run(
+        blp.arequest(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=["IBM US Equity"],
+            fields=["PX_LAST"],
+        )
+    )
+
+    assert captured["fields"] == ["PX_OPEN"]
+    assert str(captured["request_id"]).startswith("req-")
+
+
 def test_request_context_exposes_environment_snapshot(monkeypatch):
     config = DummyConfig(
         host="bpipe-host",
@@ -130,7 +158,7 @@ def test_request_context_exposes_environment_snapshot(monkeypatch):
             {
                 "request_id": context.request_id,
                 "environment": context.environment,
-                "params_request_id": context.params_dict["request_id"],
+                "params_request_id": context.to_dispatch_dict()["request_id"],
             }
         )
         return await call_next(context)
@@ -188,6 +216,35 @@ def test_arequest_middleware_can_short_circuit(monkeypatch):
     assert result is cached_result
     assert called is False
 
+
+def test_middleware_record_batch_result_receives_backend_conversion(monkeypatch):
+    called = False
+
+    class FakeEngine:
+        async def request(self, params_dict):
+            nonlocal called
+            called = True
+            return _sample_batch()
+
+    async def record_batch_middleware(context: blp.RequestContext, _call_next):
+        return _sample_batch()
+
+    monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
+    blp.add_middleware(record_batch_middleware)
+
+    result = asyncio.run(
+        blp.arequest(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=["IBM US Equity"],
+            fields=["PX_LAST"],
+            backend=blp.Backend.NATIVE,
+        )
+    )
+
+    assert called is False
+    assert isinstance(result, ArrowTable)
+    assert result.num_rows == 1
 
 def test_configure_applies_auth_kwargs():
     config = DummyConfig()

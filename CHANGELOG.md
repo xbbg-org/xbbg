@@ -11,14 +11,20 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 - **`@xbbg/langgraph` npm package**: Added a publishable LangChain/LangGraph tools package backed by `@xbbg/core`, with lazy Bloomberg engine loading, bounded JSON tool outputs, request tools for `bdp`/`bdh`/`bds`/`bdib`/`bdtick`/`bql`/`bsrch`/`bqr`/`bflds`, grouped `xbbg.ext` helper tools, detailed Bloomberg agent prompt guidance, unit tests with injected fake engines, and npm/GitHub release workflow integration.
 - **`@xbbg/langgraph` tool surface expansion**: Added finite request/recipe tools for BEQS, YAS, preferreds, corporate bonds, index members, ISIN resolution, issuer ISIN workflows, and ETF holdings. Added bounded streaming snapshot tools for market data, market bars, and market depth that cap updates/timeouts and always unsubscribe instead of exposing open-ended subscriptions.
+- **`@xbbg/core` CDX field bundles exposed**: Exported the shared `CDX_INFO_FIELDS`, `CDX_PRICING_FIELDS`, and `CDX_RISK_FIELDS` field lists so JavaScript and LangGraph CDX helpers can use the same canonical Bloomberg field sets.
 
 ### Changed
 
 - **`@xbbg/langgraph` output contract**: LangChain tools now use `responseFormat: "content_and_artifact"` so agents receive compact model-facing summaries while applications can read the bounded structured envelope from `ToolMessage.artifact`.
+- **Request planning and adapter normalization hardened**: Rust request planning now finalizes immutable prepared requests only after field-cache and intraday datetime preparation, validates operation/extractor compatibility in one place, and keeps raw/custom/generic escape hatches. NAPI, PyO3, and MCP request adapters now build through the shared `RequestParamsInput` boundary so raw operation defaults and extractor parsing stay consistent across surfaces.
+- **Python request dispatch and backend conversion centralized**: Request middleware now mutates canonical request parameters until dispatch, materializes request dictionaries only at the terminal boundary, and routes Arrow-like middleware/backend results through the same backend conversion helpers as normal Bloomberg responses.
+- **`@xbbg/core` native package validation made descriptor-driven**: Native package validation now derives expected binary names, OS/CPU metadata, and packaged files from the source platform descriptor table instead of reverse-engineering package manifests.
+- **`@xbbg/langgraph` extension internals split into bounded registries**: Extension schemas and CDX field bundles moved out of `ext-tools.ts`, input schemas now honor normalized package limits, and extension tool creation is driven by a single registry that also exports `BLOOMBERG_EXT_TOOL_NAMES`.
 
 ### Fixed
 
 - **JavaScript lint and packaging hygiene**: Cleaned `js-xbbg` TypeScript/Oxlint findings in native package scripts, native platform metadata, and smoke tests so the core JS lint suite passes alongside the new LangGraph package quality checks.
+- **`@xbbg/langgraph` result limiting handles pathological structures**: `limitResult` now detects cycles and caps recursion depth so tool artifact bounding cannot overflow on cyclic or deeply nested values.
 
 ## [1.2.4] - 2026-05-24
 

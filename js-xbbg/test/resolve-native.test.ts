@@ -291,7 +291,11 @@ describe('platform map packaging metadata', () => {
         spec.packageName,
       );
       expect(nativePackageForKey(spec.key)).toStrictEqual({
+        binaryName: spec.binaryName,
+        cpu: spec.cpu,
+        files: spec.files,
         key: spec.key,
+        os: spec.os,
         packageDir: spec.packageDir,
         packageName: spec.packageName,
       });

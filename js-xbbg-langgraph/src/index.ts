@@ -9,6 +9,7 @@ export {
   type BloombergToolInstructionsOptions,
 } from "./descriptions";
 export {
+  BLOOMBERG_EXT_TOOL_NAMES,
   createBloombergExtTools,
   createExtBqlBuilderTool,
   createExtCalculateTool,

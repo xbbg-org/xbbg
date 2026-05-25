@@ -38,8 +38,8 @@ use super::state::{
     IntradayTickStreamState, RefDataState,
 };
 use super::{
-    start_configured_session, EngineConfig, PreparedRequest, RequestKind, RequestParams, SlabKey,
-    WorkerHealth,
+    start_configured_session, EngineConfig, PlannedRequestShape, PreparedRequest, RequestParams,
+    SlabKey, WorkerHealth,
 };
 
 fn iter_named_request_parameters(
@@ -576,7 +576,7 @@ impl RequestWorker {
 
         xbbg_log::debug!(
             worker_id = self.id,
-            kind = ?request.kind(),
+            shape = ?request.shape(),
             fields = ?params.fields,
             "creating request state"
         );
@@ -663,8 +663,8 @@ impl RequestWorker {
         let fields = params.fields.clone().unwrap_or_default();
         let field_types = params.field_types.clone();
 
-        match request.kind() {
-            RequestKind::RefData(output) => {
+        match request.shape() {
+            PlannedRequestShape::RefData(output) => {
                 UnifiedRequestState::RefData(RefDataState::with_format(
                     fields,
                     output.format,
@@ -674,7 +674,7 @@ impl RequestWorker {
                     reply,
                 ))
             }
-            RequestKind::HistData(output) => {
+            PlannedRequestShape::HistData(output) => {
                 UnifiedRequestState::HistData(HistDataState::with_format(
                     fields,
                     output.format,
@@ -683,15 +683,17 @@ impl RequestWorker {
                     reply,
                 ))
             }
-            RequestKind::BulkData => {
+            PlannedRequestShape::BulkData => {
                 let field = fields.first().cloned().unwrap_or_default();
                 UnifiedRequestState::BulkData(BulkDataState::new(field, reply))
             }
-            RequestKind::Generic => UnifiedRequestState::Generic(GenericState::new(reply)),
-            RequestKind::Bql => UnifiedRequestState::Bql(BqlState::new(reply)),
-            RequestKind::Bsrch => UnifiedRequestState::Bsrch(BsrchState::new(reply)),
-            RequestKind::FieldInfo => UnifiedRequestState::FieldInfo(FieldInfoState::new(reply)),
-            RequestKind::IntradayBar => {
+            PlannedRequestShape::Generic => UnifiedRequestState::Generic(GenericState::new(reply)),
+            PlannedRequestShape::Bql => UnifiedRequestState::Bql(BqlState::new(reply)),
+            PlannedRequestShape::Bsrch => UnifiedRequestState::Bsrch(BsrchState::new(reply)),
+            PlannedRequestShape::FieldInfo => {
+                UnifiedRequestState::FieldInfo(FieldInfoState::new(reply))
+            }
+            PlannedRequestShape::IntradayBar => {
                 // IntradayBarRequest has no column-adding elements (maxDataPoints,
                 // gapFillInitialBar, adjustment*, etc. are behavior-only). The response
                 // shape is always `barData.barTickData[]` with the same fields.
@@ -705,7 +707,7 @@ impl RequestWorker {
                     ticker, event_type, interval, reply,
                 ))
             }
-            RequestKind::IntradayTick => {
+            PlannedRequestShape::IntradayTick => {
                 let ticker = params.security.clone().unwrap_or_default();
                 UnifiedRequestState::IntradayTick(IntradayTickState::new(ticker, reply))
             }
@@ -722,14 +724,14 @@ impl RequestWorker {
         let fields = params.fields.clone().unwrap_or_default();
         let ticker = params.security.clone().unwrap_or_default();
 
-        let state = match request.kind() {
-            RequestKind::HistData(_) => {
+        let state = match request.shape() {
+            PlannedRequestShape::HistData(_) => {
                 UnifiedRequestState::HistDataStream(HistDataStreamState::new(fields, stream))
             }
-            RequestKind::IntradayBar => {
+            PlannedRequestShape::IntradayBar => {
                 UnifiedRequestState::IntradayBarStream(IntradayBarStreamState::new(ticker, stream))
             }
-            RequestKind::IntradayTick => UnifiedRequestState::IntradayTickStream(
+            PlannedRequestShape::IntradayTick => UnifiedRequestState::IntradayTickStream(
                 IntradayTickStreamState::new(ticker, stream),
             ),
             _ => {

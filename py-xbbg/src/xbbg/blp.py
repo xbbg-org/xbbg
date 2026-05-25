@@ -42,10 +42,10 @@ from ._exports import BLP_MODULE_EXPORTS
 from .backend import (
     Backend,
     check_backend,
-    convert_backend_frame,
-    get_default_backend,
+    convert_backend_frame_with_default,
+    effective_backend as _backend_effective_backend,
     ensure_arrow_table,
-    is_arrow_table,
+    resolve_backend as _backend_resolve_backend,
 )
 from .request_middleware import (
     RequestContext,
@@ -666,19 +666,17 @@ def get_backend() -> Backend | None:
 
 def _resolve_backend(backend: Backend | str | None) -> Backend | None:
     """Resolve per-request backend with global fallback."""
-    if backend is None:
-        return _default_backend
-    return Backend(backend) if isinstance(backend, str) else backend
+    return _backend_resolve_backend(backend, _default_backend)
 
 
 def _effective_backend(backend: Backend | str | None) -> Backend:
     """Resolve backend at the facade boundary, honoring set_backend()."""
-    return _resolve_backend(backend) or get_default_backend()
+    return _backend_effective_backend(backend, _default_backend)
 
 
 def _convert_result_backend(frame: Any, backend: Backend | str | None) -> DataFrameResult:
     """Convert Arrow output after applying the facade-level backend default."""
-    return convert_backend_frame(frame, _effective_backend(backend))
+    return convert_backend_frame_with_default(frame, backend, _default_backend)
 
 
 def _get_engine(*, engine: Engine | None = None):
@@ -1315,7 +1313,7 @@ async def _execute_request_terminal(context: RequestContext) -> DataFrameResult:
     started = time.perf_counter()
 
     try:
-        batch = await engine.request(context.params_dict)
+        batch = await engine.request(context.to_dispatch_dict())
     except Exception as exc:
         mapped = _normalize_engine_exception(exc)
         context.elapsed_ms = (time.perf_counter() - started) * 1000
@@ -1537,13 +1535,10 @@ async def arequest(
     )
     params.validate()
 
-    params_dict = params.to_dict()
     request_id = f"req-{time.time_ns()}"
-    params_dict["request_id"] = request_id
     context = RequestContext(
         request_id=request_id,
         params=params,
-        params_dict=params_dict,
         backend=backend,
         raw=_raw,
         securities=list(securities_list or []),
@@ -1559,13 +1554,17 @@ async def arequest(
     # Low-level arequest() defaults to the raw Arrow output requested by OutputMode.ARROW.
     # High-level generated endpoints call arequest(_raw=True) and then apply their own
     # public backend conversion, so their default remains the Narwhals dataframe contract.
-    if _raw or not is_arrow_table(result):
+    if _raw:
+        return result
+    try:
+        table_result = ensure_arrow_table(result)
+    except TypeError:
         return result
     effective_backend = _resolve_backend(backend)
     if effective_backend is None and params.output == OutputMode.ARROW:
-        context.frame = result
-        return result
-    context.frame = _convert_result_backend(result, effective_backend)
+        context.frame = table_result
+        return table_result
+    context.frame = _convert_result_backend(table_result, effective_backend)
     return context.frame
 
 

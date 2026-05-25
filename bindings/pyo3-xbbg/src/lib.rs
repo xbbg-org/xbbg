@@ -2673,7 +2673,7 @@ mod tests {
         Python::attach(|py| {
             let dict = PyDict::new(py);
             dict.set_item("service", "//blp/refdata").expect("service");
-            dict.set_item("operation", "RawRequest").expect("operation");
+            dict.set_item("operation", "").expect("operation");
             dict.set_item("request_operation", "ReferenceDataRequest")
                 .expect("request_operation");
             dict.set_item("request_id", "req-123").expect("request_id");
@@ -2723,7 +2723,7 @@ mod tests {
             let params = dict_to_request_params(&dict).expect("request params");
 
             assert_eq!(params.service, "//blp/refdata");
-            assert_eq!(params.operation, "RawRequest");
+            assert_eq!(params.operation, "");
             assert_eq!(
                 params.request_operation.as_deref(),
                 Some("ReferenceDataRequest")

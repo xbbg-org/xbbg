@@ -1,18 +1,39 @@
 export const nativeBinaryName = 'napi_xbbg.node';
 
+export const nativePackageFiles = Object.freeze([
+  'index.js',
+  'index.d.ts',
+  'README.md',
+  'LICENSE',
+  'package.json',
+  nativeBinaryName,
+] as const);
+
 export const nativePackageDescriptors = Object.freeze({
   'darwin-arm64': Object.freeze({
+    binaryName: nativeBinaryName,
+    cpu: 'arm64',
+    files: nativePackageFiles,
     key: 'darwin-arm64',
+    os: 'darwin',
     packageDir: 'packages/xbbg-core-darwin-arm64',
     packageName: '@xbbg/core-darwin-arm64',
   }),
   'linux-x64': Object.freeze({
+    binaryName: nativeBinaryName,
+    cpu: 'x64',
+    files: nativePackageFiles,
     key: 'linux-x64',
+    os: 'linux',
     packageDir: 'packages/xbbg-core-linux-x64',
     packageName: '@xbbg/core-linux-x64',
   }),
   'win32-x64': Object.freeze({
+    binaryName: nativeBinaryName,
+    cpu: 'x64',
+    files: nativePackageFiles,
     key: 'win32-x64',
+    os: 'win32',
     packageDir: 'packages/xbbg-core-win32-x64',
     packageName: '@xbbg/core-win32-x64',
   }),

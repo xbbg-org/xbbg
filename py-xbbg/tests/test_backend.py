@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from xbbg.backend import Backend, BackendConversion, BACKEND_DESCRIPTORS, validate_backend_format
+from xbbg.backend import (
+    Backend,
+    BackendConversion,
+    BACKEND_DESCRIPTORS,
+    effective_backend,
+    resolve_backend,
+    validate_backend_format,
+)
 from xbbg.services import Format
 
 
@@ -111,6 +118,11 @@ class TestBackendEnum:
         backend, fmt = validate_backend_format(None, Format.LONG)
         assert backend == Backend.NARWHALS
         assert fmt == Format.LONG
+
+    def test_backend_resolution_honors_configured_default(self):
+        assert resolve_backend(None, Backend.NATIVE) == Backend.NATIVE
+        assert resolve_backend("pyarrow", Backend.NATIVE) == Backend.PYARROW
+        assert effective_backend(None, Backend.NATIVE) == Backend.NATIVE
 
     def test_descriptor_exists_for_every_backend(self):
         assert set(BACKEND_DESCRIPTORS) == set(Backend)

@@ -18,13 +18,18 @@ interface NpmInvocation {
   readonly command: string;
 }
 
-interface PackageSpec {
+interface BasePackageSpec {
   readonly dir: string;
   readonly expectedFiles: readonly string[];
   readonly forbiddenFiles?: readonly string[];
   readonly name: string;
-  readonly native?: NativePackageSpec;
 }
+
+type NativeValidationSpec = BasePackageSpec & {
+  readonly native: NativePackageSpec;
+};
+
+type PackageSpec = BasePackageSpec | NativeValidationSpec;
 
 interface PackFile {
   readonly path?: unknown;
@@ -35,7 +40,10 @@ interface PackResult {
 }
 
 interface PackageManifest {
+  readonly cpu?: readonly string[];
+  readonly files?: readonly string[];
   readonly name: string;
+  readonly os?: readonly string[];
   readonly version: string;
 }
 
@@ -152,7 +160,7 @@ function runLocalBin(command: string, args: readonly string[], cwd: string): voi
   runNpm(['exec', '--', command, ...args], cwd);
 }
 
-function platformSpec(native: NativePackageSpec): PackageSpec {
+function platformSpec(native: NativePackageSpec): NativeValidationSpec {
   return {
     dir: path.join(packageDir, native.packageDir),
     expectedFiles: native.expectedFiles,
@@ -175,8 +183,7 @@ function packageSpecs(allPlatforms: boolean): PackageSpec[] {
   const selectedPlatformSpecs = allPlatforms
     ? allPlatformSpecs
     : allPlatformSpecs.filter((spec) => {
-        const binaryName = spec.native?.binaryName ?? nativeBinaryName;
-        return fs.existsSync(path.join(spec.dir, binaryName));
+        return fs.existsSync(path.join(spec.dir, spec.native.binaryName));
       });
 
   if (selectedPlatformSpecs.length === 0) {
@@ -197,6 +204,14 @@ function parsePackJson(raw: string, spec: PackageSpec): PackResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function isNativeValidationSpec(spec: PackageSpec): spec is NativeValidationSpec {
+  return 'native' in spec;
 }
 
 function packFiles(result: PackResult, spec: PackageSpec): Set<string> {
@@ -253,7 +268,46 @@ function readPackageManifest(spec: PackageSpec): PackageManifest {
   if (!isRecord(parsed) || typeof parsed.name !== 'string' || typeof parsed.version !== 'string') {
     fail(`${spec.name}: package.json must contain string name and version fields`);
   }
-  return { name: parsed.name, version: parsed.version };
+  const files = Object.getOwnPropertyDescriptor(parsed, 'files')?.value;
+  const os = Object.getOwnPropertyDescriptor(parsed, 'os')?.value;
+  const cpu = Object.getOwnPropertyDescriptor(parsed, 'cpu')?.value;
+  if (
+    (files !== undefined && !isStringArray(files)) ||
+    (os !== undefined && !isStringArray(os)) ||
+    (cpu !== undefined && !isStringArray(cpu))
+  ) {
+    fail(`${spec.name}: package.json files, os, and cpu must be string arrays when present`);
+  }
+  return { cpu, files, name: parsed.name, os, version: parsed.version };
+}
+
+function assertArrayEqual(
+  spec: PackageSpec,
+  field: 'cpu' | 'files' | 'os',
+  actual: readonly string[] | undefined,
+  expected: readonly string[],
+): void {
+  if (actual === undefined || actual.length !== expected.length) {
+    fail(`${spec.name}: package.json ${field} must be ${JSON.stringify(expected)}`);
+  }
+  for (const [index, expectedValue] of expected.entries()) {
+    if (actual[index] !== expectedValue) {
+      fail(`${spec.name}: package.json ${field} must be ${JSON.stringify(expected)}`);
+    }
+  }
+}
+
+function validatePackageManifest(spec: PackageSpec): PackageManifest {
+  const manifest = readPackageManifest(spec);
+  if (manifest.name !== spec.name) {
+    fail(`${spec.name}: package.json name is ${manifest.name}`);
+  }
+  if (isNativeValidationSpec(spec)) {
+    assertArrayEqual(spec, 'os', manifest.os, [spec.native.os]);
+    assertArrayEqual(spec, 'cpu', manifest.cpu, [spec.native.cpu]);
+    assertArrayEqual(spec, 'files', manifest.files, spec.native.files);
+  }
+  return manifest;
 }
 
 function readSourcePackageFileMap(
@@ -281,7 +335,7 @@ function describeAttwProblem(problem: AttwProblem): string {
 
 async function validateAttw(spec: PackageSpec): Promise<void> {
   const { Package, checkPackage } = await import('@arethetypeswrong/core');
-  const manifest = readPackageManifest(spec);
+  const manifest = validatePackageManifest(spec);
   const files = dryRunFiles(spec);
   const pkg = new Package(
     readSourcePackageFileMap(spec, files, manifest.name),
@@ -304,6 +358,7 @@ async function validateAttw(spec: PackageSpec): Promise<void> {
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   for (const spec of packageSpecs(options.allPlatforms)) {
+    validatePackageManifest(spec);
     switch (options.mode) {
       case 'attw': {
         await validateAttw(spec);

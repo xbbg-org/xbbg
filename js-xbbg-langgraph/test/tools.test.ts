@@ -8,6 +8,7 @@ import {
   createBloombergTools,
   getBloombergToolInstructions,
 } from "../src";
+import { limitResult } from "../src/result-limits";
 import type { XbbgCoreLike, XbbgEngineLike } from "../src/core-loader";
 
 type CoreSubscription = Awaited<ReturnType<XbbgEngineLike["stream"]>>;
@@ -645,5 +646,24 @@ describe("Bloomberg request tools", () => {
     expect(output.data).toHaveLength(1);
     expect(output.data[0].text).toBe("1234…[truncated 6 chars]");
     expect(original).toEqual([{ text: "1234567890" }, { text: "second" }]);
+  });
+  it("limits cyclic and excessively deep artifacts without recursion failure", () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    const cyclicResult = limitResult(cyclic, 10, 100);
+    expect(cyclicResult).toMatchObject({
+      truncated: true,
+      value: { self: "[Circular]" },
+    });
+
+    let deep: Record<string, unknown> = { leaf: "ok" };
+    for (let index = 0; index < 40; index += 1) {
+      deep = { child: deep };
+    }
+
+    const deepResult = limitResult(deep, 10, 100);
+    expect(deepResult.truncated).toBe(true);
+    expect(JSON.stringify(deepResult.value)).toContain("Max result depth");
   });
 });

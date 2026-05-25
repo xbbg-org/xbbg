@@ -77,7 +77,7 @@ impl PlannedOutput {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RequestKind {
+pub(crate) enum PlannedRequestShape {
     RefData(PlannedOutput),
     HistData(PlannedOutput),
     BulkData,
@@ -89,53 +89,137 @@ pub(crate) enum RequestKind {
     IntradayTick,
 }
 
-impl RequestKind {
-    fn from_params(params: &RequestParams) -> Result<Self, BlpAsyncError> {
-        match params.extractor {
+impl PlannedRequestShape {
+    fn from_params(
+        operation: &Operation,
+        raw: bool,
+        params: &RequestParams,
+    ) -> Result<Self, BlpAsyncError> {
+        let extractor = selected_extractor(operation, raw, params)?;
+        match extractor {
             ExtractorType::RefData => Ok(Self::RefData(PlannedOutput::parse(
                 params.format.as_deref(),
             )?)),
             ExtractorType::HistData => Ok(Self::HistData(PlannedOutput::parse(
                 params.format.as_deref(),
             )?)),
-            ExtractorType::BulkData => Ok(Self::BulkData),
-            ExtractorType::Generic => Ok(Self::Generic),
-            ExtractorType::Bql => Ok(Self::Bql),
-            ExtractorType::Bsrch => Ok(Self::Bsrch),
-            ExtractorType::FieldInfo => Ok(Self::FieldInfo),
-            ExtractorType::IntradayBar => Ok(Self::IntradayBar),
-            ExtractorType::IntradayTick => Ok(Self::IntradayTick),
+            ExtractorType::BulkData => {
+                reject_format_for_shape(params, "BulkData")?;
+                Ok(Self::BulkData)
+            }
+            ExtractorType::Generic => {
+                reject_format_for_shape(params, "Generic")?;
+                Ok(Self::Generic)
+            }
+            ExtractorType::Bql => {
+                reject_format_for_shape(params, "Bql")?;
+                Ok(Self::Bql)
+            }
+            ExtractorType::Bsrch => {
+                reject_format_for_shape(params, "Bsrch")?;
+                Ok(Self::Bsrch)
+            }
+            ExtractorType::FieldInfo => {
+                reject_format_for_shape(params, "FieldInfo")?;
+                Ok(Self::FieldInfo)
+            }
+            ExtractorType::IntradayBar => {
+                reject_format_for_shape(params, "IntradayBar")?;
+                Ok(Self::IntradayBar)
+            }
+            ExtractorType::IntradayTick => {
+                reject_format_for_shape(params, "IntradayTick")?;
+                Ok(Self::IntradayTick)
+            }
         }
     }
+}
+
+fn selected_extractor(
+    operation: &Operation,
+    raw: bool,
+    params: &RequestParams,
+) -> Result<ExtractorType, BlpAsyncError> {
+    let extractor = if params.extractor_set {
+        params.extractor
+    } else {
+        operation.default_extractor()
+    };
+    validate_extractor_compatibility(operation, raw, extractor)?;
+    Ok(extractor)
+}
+
+fn validate_extractor_compatibility(
+    operation: &Operation,
+    raw: bool,
+    extractor: ExtractorType,
+) -> Result<(), BlpAsyncError> {
+    if raw || matches!(operation, Operation::Custom(_)) {
+        return Ok(());
+    }
+
+    if extractor == operation.default_extractor()
+        || matches!(extractor, ExtractorType::Generic)
+        || matches!(
+            (operation, extractor),
+            (Operation::ReferenceData, ExtractorType::BulkData)
+        )
+    {
+        return Ok(());
+    }
+
+    Err(BlpAsyncError::ConfigError {
+        detail: format!(
+            "extractor {:?} is not compatible with operation {}",
+            extractor,
+            operation.as_str()
+        ),
+    })
+}
+
+fn reject_format_for_shape(params: &RequestParams, shape: &str) -> Result<(), BlpAsyncError> {
+    if params.format.is_some() {
+        return Err(BlpAsyncError::ConfigError {
+            detail: format!("format is not supported for {shape} output"),
+        });
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedRequest {
     params: RequestParams,
-    kind: RequestKind,
+    shape: PlannedRequestShape,
     operation: Operation,
     raw: bool,
 }
 
-impl PreparedRequest {
+#[derive(Clone, Debug)]
+pub(crate) struct PreparedRequestBuilder {
+    params: RequestParams,
+    operation: Operation,
+    raw: bool,
+}
+
+impl PreparedRequestBuilder {
     pub(crate) fn prepare(
         mut params: RequestParams,
         schema_cache: &SchemaCache,
     ) -> Result<Self, BlpAsyncError> {
-        apply_request_defaults(&mut params);
-        let (operation, raw) = validate_request_params(&params)?;
+        normalize_request_params(&mut params);
+        let (operation, raw) = effective_operation(&params)?;
+        apply_request_defaults_for_operation(&mut params, &operation);
+        validate_request_params_with_operation(&params, &operation, raw)?;
         route_request_params(&mut params, schema_cache, &operation)?;
-        let kind = RequestKind::from_params(&params)?;
         Ok(Self {
             params,
-            kind,
             operation,
             raw,
         })
     }
 
-    pub(crate) fn kind(&self) -> RequestKind {
-        self.kind
+    pub(crate) fn shape(&self) -> Result<PlannedRequestShape, BlpAsyncError> {
+        PlannedRequestShape::from_params(&self.operation, self.raw, &self.params)
     }
 
     pub(crate) fn params(&self) -> &RequestParams {
@@ -149,6 +233,33 @@ impl PreparedRequest {
     pub(crate) fn set_intraday_datetimes(&mut self, start_datetime: String, end_datetime: String) {
         self.params.start_datetime = Some(start_datetime);
         self.params.end_datetime = Some(end_datetime);
+    }
+
+    pub(crate) fn finalize(self) -> Result<PreparedRequest, BlpAsyncError> {
+        let shape = self.shape()?;
+        Ok(PreparedRequest {
+            params: self.params,
+            shape,
+            operation: self.operation,
+            raw: self.raw,
+        })
+    }
+}
+
+impl PreparedRequest {
+    #[cfg(test)]
+    pub(crate) fn prepare(
+        params: RequestParams,
+        schema_cache: &SchemaCache,
+    ) -> Result<Self, BlpAsyncError> {
+        PreparedRequestBuilder::prepare(params, schema_cache)?.finalize()
+    }
+    pub(crate) fn shape(&self) -> PlannedRequestShape {
+        self.shape
+    }
+
+    pub(crate) fn params(&self) -> &RequestParams {
+        &self.params
     }
 
     pub(crate) fn operation(&self) -> &Operation {
@@ -171,42 +282,61 @@ impl PreparedRequest {
     }
 
     pub(crate) fn is_excel_get_grid_request(&self) -> bool {
-        self.params.is_excel_get_grid_request()
+        matches!(self.operation(), Operation::ExcelGetGrid)
     }
 }
 
 pub(crate) fn apply_request_defaults(params: &mut RequestParams) {
-    if !params.extractor_set && params.extractor == ExtractorType::default() {
-        let operation = parse_operation(params.effective_operation());
-        params.extractor = operation.default_extractor();
+    if let Ok((operation, _)) = effective_operation(params) {
+        apply_request_defaults_for_operation(params, &operation);
     }
+}
+
+fn apply_request_defaults_for_operation(params: &mut RequestParams, operation: &Operation) {
+    if params.extractor_set {
+        return;
+    }
+
+    if params.extractor != ExtractorType::default() {
+        params.extractor_set = true;
+        return;
+    }
+
+    params.extractor = operation.default_extractor();
 }
 
 pub(crate) fn validate_request_params(
     params: &RequestParams,
 ) -> Result<(Operation, bool), BlpAsyncError> {
+    let (operation, raw) = effective_operation(params)?;
+    validate_request_params_with_operation(params, &operation, raw)?;
+    Ok((operation, raw))
+}
+
+fn validate_request_params_with_operation(
+    params: &RequestParams,
+    operation: &Operation,
+    raw: bool,
+) -> Result<(), BlpAsyncError> {
     if params.service.is_empty() {
         return Err(BlpAsyncError::ConfigError {
             detail: "service is required".to_string(),
         });
     }
 
-    let (operation, raw) = effective_operation(params)?;
-    validate_field_metadata_aliases(params, &operation)?;
-    validate_format_compatibility(params, &operation)?;
+    validate_field_metadata_aliases(params, operation)?;
+    PlannedRequestShape::from_params(operation, raw, params)?;
 
     if raw {
-        return Ok((operation, true));
+        return Ok(());
     }
 
-    match &operation {
+    match operation {
         Operation::ReferenceData => validate_reference_data(params)?,
         Operation::HistoricalData => validate_historical_data(params)?,
         Operation::IntradayBar => validate_intraday_bar(params)?,
         Operation::IntradayTick => validate_intraday_tick(params)?,
-        Operation::FieldInfo | Operation::FieldSearch => {
-            validate_field_request(params, &operation)?
-        }
+        Operation::FieldInfo | Operation::FieldSearch => validate_field_request(params, operation)?,
         // Unknown/custom operations run in power-user mode.
         Operation::Beqs
         | Operation::PortfolioData
@@ -219,7 +349,7 @@ pub(crate) fn validate_request_params(
         | Operation::RawRequest
         | Operation::Custom(_) => {}
     }
-    Ok((operation, false))
+    Ok(())
 }
 
 fn route_request_params(
@@ -278,7 +408,7 @@ fn validate_field_metadata_aliases(
 ) -> Result<(), BlpAsyncError> {
     match operation {
         Operation::FieldInfo => {
-            if params.fields.is_some() && params.field_ids.is_some() {
+            if has_fields(params) && params.field_ids.as_ref().is_some_and(|ids| !ids.is_empty()) {
                 return Err(BlpAsyncError::ConfigError {
                     detail: "FieldInfoRequest accepts either fields or field_ids, not both"
                         .to_string(),
@@ -286,14 +416,20 @@ fn validate_field_metadata_aliases(
             }
         }
         Operation::FieldSearch => {
-            if params.fields.is_some() && params.search_spec.is_some() {
+            let has_search_spec = params
+                .search_spec
+                .as_ref()
+                .is_some_and(|spec| !spec.is_empty());
+            if has_fields(params) && has_search_spec {
                 return Err(BlpAsyncError::ConfigError {
                     detail: "FieldSearchRequest accepts either fields or search_spec, not both"
                         .to_string(),
                 });
             }
-            if params.search_spec.is_none() {
-                if let Some(field_values) = params.fields.as_ref() {
+            if !has_search_spec {
+                if let Some(field_values) =
+                    params.fields.as_ref().filter(|values| !values.is_empty())
+                {
                     if field_values.len() != 1 {
                         return Err(BlpAsyncError::ConfigError {
                             detail: "FieldSearchRequest requires exactly one field value when fields is used as a search alias".to_string(),
@@ -307,28 +443,52 @@ fn validate_field_metadata_aliases(
     Ok(())
 }
 
-fn validate_format_compatibility(
-    params: &RequestParams,
-    operation: &Operation,
-) -> Result<(), BlpAsyncError> {
-    let format = params.format.as_deref();
-    if format.is_none() {
-        return Ok(());
-    }
+pub(crate) fn normalize_request_params(params: &mut RequestParams) {
+    normalize_vec(&mut params.securities);
+    normalize_vec(&mut params.fields);
+    normalize_vec(&mut params.event_types);
+    normalize_vec(&mut params.field_ids);
+    normalize_pairs(&mut params.overrides);
+    normalize_pairs(&mut params.elements);
+    normalize_pairs(&mut params.options);
+    normalize_map(&mut params.kwargs);
+    normalize_map(&mut params.field_types);
+    normalize_string(&mut params.request_operation);
+    normalize_string(&mut params.request_id);
+    normalize_string(&mut params.security);
+    normalize_string(&mut params.start_date);
+    normalize_string(&mut params.end_date);
+    normalize_string(&mut params.start_datetime);
+    normalize_string(&mut params.end_datetime);
+    normalize_string(&mut params.request_tz);
+    normalize_string(&mut params.output_tz);
+    normalize_string(&mut params.event_type);
+    normalize_string(&mut params.search_spec);
+    normalize_string(&mut params.format);
+}
 
-    match operation {
-        Operation::ReferenceData | Operation::HistoricalData => {
-            PlannedOutput::parse(format)?;
-        }
-        _ => {
-            return Err(BlpAsyncError::ConfigError {
-                detail:
-                    "format is only supported for ReferenceDataRequest and HistoricalDataRequest"
-                        .to_string(),
-            });
-        }
+fn normalize_vec<T>(value: &mut Option<Vec<T>>) {
+    if value.as_ref().is_some_and(Vec::is_empty) {
+        *value = None;
     }
-    Ok(())
+}
+
+fn normalize_pairs(value: &mut Option<Vec<(String, String)>>) {
+    if value.as_ref().is_some_and(Vec::is_empty) {
+        *value = None;
+    }
+}
+
+fn normalize_map(value: &mut Option<HashMap<String, String>>) {
+    if value.as_ref().is_some_and(HashMap::is_empty) {
+        *value = None;
+    }
+}
+
+fn normalize_string(value: &mut Option<String>) {
+    if value.as_ref().is_some_and(|value| value.is_empty()) {
+        *value = None;
+    }
 }
 
 fn normalize_field_metadata_aliases(params: &mut RequestParams, operation: &Operation) {
@@ -625,8 +785,8 @@ mod tests {
         let prepared = PreparedRequest::prepare(params, &empty_schema()).unwrap();
 
         assert!(matches!(
-            prepared.kind(),
-            RequestKind::RefData(PlannedOutput {
+            prepared.shape(),
+            PlannedRequestShape::RefData(PlannedOutput {
                 format: OutputFormat::Long,
                 long_mode: LongMode::Typed,
             })
@@ -679,8 +839,8 @@ mod tests {
 
             let prepared = PreparedRequest::prepare(params, &empty_schema()).unwrap();
             assert_eq!(
-                prepared.kind(),
-                RequestKind::HistData(PlannedOutput {
+                prepared.shape(),
+                PlannedRequestShape::HistData(PlannedOutput {
                     format: expected.0,
                     long_mode: expected.1,
                 })
@@ -703,7 +863,7 @@ mod tests {
             ..Default::default()
         };
         let prepared = PreparedRequest::prepare(bar, &empty_schema()).unwrap();
-        assert_eq!(prepared.kind(), RequestKind::IntradayBar);
+        assert_eq!(prepared.shape(), PlannedRequestShape::IntradayBar);
         assert_eq!(prepared.params().request_tz.as_deref(), Some("NY"));
         assert_eq!(prepared.params().output_tz.as_deref(), Some("UTC"));
 
@@ -721,7 +881,7 @@ mod tests {
             ..Default::default()
         };
         let prepared = PreparedRequest::prepare(tick, &empty_schema()).unwrap();
-        assert_eq!(prepared.kind(), RequestKind::IntradayTick);
+        assert_eq!(prepared.shape(), PlannedRequestShape::IntradayTick);
         assert_eq!(
             prepared.params().event_types.as_ref().unwrap(),
             &["TRADE".to_string(), "BID".to_string()]
@@ -741,7 +901,7 @@ mod tests {
             ..Default::default()
         };
         let prepared = PreparedRequest::prepare(info, &empty_schema()).unwrap();
-        assert_eq!(prepared.kind(), RequestKind::FieldInfo);
+        assert_eq!(prepared.shape(), PlannedRequestShape::FieldInfo);
         assert_eq!(
             prepared.params().field_ids.as_ref().unwrap(),
             &["PX_LAST".to_string()]
@@ -754,7 +914,7 @@ mod tests {
             ..Default::default()
         };
         let prepared = PreparedRequest::prepare(search, &empty_schema()).unwrap();
-        assert_eq!(prepared.kind(), RequestKind::Generic);
+        assert_eq!(prepared.shape(), PlannedRequestShape::Generic);
         assert_eq!(prepared.params().search_spec.as_deref(), Some("price"));
 
         let invalid = RequestParams {
@@ -786,7 +946,7 @@ mod tests {
             prepared.effective_operation(),
             Operation::ReferenceData.to_string()
         );
-        assert!(matches!(prepared.kind(), RequestKind::RefData(_)));
+        assert!(matches!(prepared.shape(), PlannedRequestShape::RefData(_)));
         assert_eq!(
             prepared.params().elements.as_ref().unwrap(),
             &[("rawElement".to_string(), "1".to_string())]
@@ -802,7 +962,7 @@ mod tests {
             ..Default::default()
         };
         let prepared = PreparedRequest::prepare(bql, &empty_schema()).unwrap();
-        assert_eq!(prepared.kind(), RequestKind::Bql);
+        assert_eq!(prepared.shape(), PlannedRequestShape::Bql);
         assert_eq!(
             prepared.params().elements.as_ref().unwrap(),
             &[("expression".to_string(), "get(px_last)".to_string())]
@@ -816,7 +976,7 @@ mod tests {
             ..Default::default()
         };
         let prepared = PreparedRequest::prepare(grid, &empty_schema()).unwrap();
-        assert_eq!(prepared.kind(), RequestKind::Bsrch);
+        assert_eq!(prepared.shape(), PlannedRequestShape::Bsrch);
         assert_eq!(
             prepared.params().elements.as_ref().unwrap(),
             &[("Domain".to_string(), "FI".to_string())]
@@ -959,5 +1119,52 @@ mod tests {
             ..refdata_params()
         };
         assert!(validate_request_params(&unknown_format).is_err());
+    }
+
+    #[test]
+    fn explicit_extractor_must_match_planned_request_shape() {
+        let bds = RequestParams {
+            extractor: ExtractorType::BulkData,
+            extractor_set: true,
+            ..refdata_params()
+        };
+        let prepared = PreparedRequest::prepare(bds, &empty_schema()).unwrap();
+        assert_eq!(prepared.shape(), PlannedRequestShape::BulkData);
+
+        let invalid = RequestParams {
+            extractor: ExtractorType::HistData,
+            extractor_set: true,
+            ..refdata_params()
+        };
+        let err = PreparedRequest::prepare(invalid, &empty_schema()).unwrap_err();
+        assert!(err.to_string().contains("not compatible"));
+    }
+
+    #[test]
+    fn empty_optional_collections_do_not_create_alias_conflicts() {
+        let info = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldInfo.to_string(),
+            fields: Some(Vec::new()),
+            field_ids: Some(vec!["PX_LAST".to_string()]),
+            ..Default::default()
+        };
+        let prepared = PreparedRequest::prepare(info, &empty_schema()).unwrap();
+        assert_eq!(
+            prepared.params().field_ids.as_deref(),
+            Some(&["PX_LAST".to_string()][..])
+        );
+        assert!(prepared.params().fields.is_none());
+
+        let search = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldSearch.to_string(),
+            fields: Some(Vec::new()),
+            search_spec: Some("price".to_string()),
+            ..Default::default()
+        };
+        let prepared = PreparedRequest::prepare(search, &empty_schema()).unwrap();
+        assert_eq!(prepared.params().search_spec.as_deref(), Some("price"));
+        assert!(prepared.params().fields.is_none());
     }
 }
