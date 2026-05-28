@@ -407,13 +407,13 @@ fn validate_field_metadata_aliases(
     operation: &Operation,
 ) -> Result<(), BlpAsyncError> {
     match operation {
-        Operation::FieldInfo => {
-            if has_fields(params) && params.field_ids.as_ref().is_some_and(|ids| !ids.is_empty()) {
-                return Err(BlpAsyncError::ConfigError {
-                    detail: "FieldInfoRequest accepts either fields or field_ids, not both"
-                        .to_string(),
-                });
-            }
+        Operation::FieldInfo
+            if has_fields(params)
+                && params.field_ids.as_ref().is_some_and(|ids| !ids.is_empty()) =>
+        {
+            return Err(BlpAsyncError::ConfigError {
+                detail: "FieldInfoRequest accepts either fields or field_ids, not both".to_string(),
+            });
         }
         Operation::FieldSearch => {
             let has_search_spec = params
@@ -493,17 +493,13 @@ fn normalize_string(value: &mut Option<String>) {
 
 fn normalize_field_metadata_aliases(params: &mut RequestParams, operation: &Operation) {
     match operation {
-        Operation::FieldInfo => {
-            if params.field_ids.is_none() {
-                params.field_ids = params.fields.take();
-            }
+        Operation::FieldInfo if params.field_ids.is_none() => {
+            params.field_ids = params.fields.take();
         }
-        Operation::FieldSearch => {
-            if params.search_spec.is_none() {
-                if let Some(mut field_values) = params.fields.take() {
-                    debug_assert_eq!(field_values.len(), 1);
-                    params.search_spec = field_values.pop();
-                }
+        Operation::FieldSearch if params.search_spec.is_none() => {
+            if let Some(mut field_values) = params.fields.take() {
+                debug_assert_eq!(field_values.len(), 1);
+                params.search_spec = field_values.pop();
             }
         }
         _ => {}

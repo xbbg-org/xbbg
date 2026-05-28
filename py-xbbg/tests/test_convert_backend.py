@@ -9,8 +9,8 @@ from typing import Any
 import narwhals.stable.v1 as nw
 import pytest
 
-from xbbg._core import ArrowTable
 from xbbg import blp
+from xbbg._core import ArrowTable
 from xbbg.backend import check_backend, convert_backend_frame
 from xbbg.blp import Backend
 

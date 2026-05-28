@@ -54,12 +54,12 @@ class RequestContext:
     frame: DataFrameResult | None = None
     error: Exception | None = None
 
-
     def to_dispatch_dict(self) -> dict[str, Any]:
         """Materialize the current request state immediately before engine dispatch."""
         params_dict = self.params.to_dict()
         params_dict["request_id"] = self.request_id
         return params_dict
+
 
 _request_middleware: list[RequestMiddleware] = []
 

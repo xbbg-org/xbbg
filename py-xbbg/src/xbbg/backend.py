@@ -17,10 +17,11 @@ from dataclasses import dataclass
 from enum import Enum
 import logging
 import sys
-import warnings
 from typing import Any, TypeAlias
+import warnings
 
 import narwhals.stable.v1 as nw
+
 from xbbg.services import Format
 
 logger = logging.getLogger(__name__)
@@ -593,6 +594,7 @@ def convert_backend_frame_with_default(
 ) -> DataFrameResult:
     """Convert an Arrow-like result using a per-call backend and configured default."""
     return convert_backend_frame(frame, effective_backend(backend, default_backend))
+
 
 def convert_backend_frame(frame: Any, backend: Backend | str) -> DataFrameResult:
     """Convert an xbbg ArrowTable to the requested public backend."""

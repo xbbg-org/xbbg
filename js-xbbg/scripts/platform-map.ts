@@ -1,10 +1,6 @@
 import path from 'node:path';
 
-import {
-  nativeBinaryName,
-  nativePackageForKey,
-  platformPackages,
-} from '../src/native/platform-map';
+import { nativePackageForKey, platformPackages } from '../src/native/platform-map';
 import type { NativePackageDescriptor } from '../src/native/platform-map';
 
 export {

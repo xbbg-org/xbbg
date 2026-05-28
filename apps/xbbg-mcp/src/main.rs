@@ -654,6 +654,13 @@ fn display_error(error: arrow::error::ArrowError) -> ErrorData {
     ErrorData::internal_error(format!("failed to format Arrow value: {error}"), None)
 }
 
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let server = XbbgMcpServer::new_from_env()?;
+    server.serve(stdio()).await?.waiting().await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -695,10 +702,4 @@ mod tests {
         assert!(generic_schema.get("request_id").is_some());
         assert!(generic_schema.get("jsonElements").is_none());
     }
-}
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let server = XbbgMcpServer::new_from_env()?;
-    server.serve(stdio()).await?.waiting().await?;
-    Ok(())
 }

@@ -17,7 +17,7 @@ import atexit
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 import concurrent.futures
 import contextvars
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 import functools
 import inspect
@@ -27,7 +27,6 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 import warnings
-
 
 from xbbg.services import (
     ExtractorHint,
@@ -50,14 +49,12 @@ from .backend import (
 from .request_middleware import (
     RequestContext,
     RequestEnvironment,
-    RequestHandler,
-    RequestMiddleware,
-    add_middleware,
-    clear_middleware,
-    get_middleware,
-    remove_middleware,
+    add_middleware as add_middleware,
+    clear_middleware as clear_middleware,
+    get_middleware as get_middleware,
+    remove_middleware as remove_middleware,
     run_request_middleware as _run_request_middleware,
-    set_middleware,
+    set_middleware as set_middleware,
 )
 
 # Type alias for backend conversion return types.

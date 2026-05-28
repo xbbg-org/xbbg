@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from xbbg.backend import (
+    BACKEND_DESCRIPTORS,
     Backend,
     BackendConversion,
-    BACKEND_DESCRIPTORS,
     effective_backend,
     resolve_backend,
     validate_backend_format,

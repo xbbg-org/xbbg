@@ -246,6 +246,7 @@ def test_middleware_record_batch_result_receives_backend_conversion(monkeypatch)
     assert isinstance(result, ArrowTable)
     assert result.num_rows == 1
 
+
 def test_configure_applies_auth_kwargs():
     config = DummyConfig()
 

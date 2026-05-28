@@ -182,9 +182,7 @@ function packageSpecs(allPlatforms: boolean): PackageSpec[] {
   const allPlatformSpecs = nativePackageSpecs.map(platformSpec);
   const selectedPlatformSpecs = allPlatforms
     ? allPlatformSpecs
-    : allPlatformSpecs.filter((spec) => {
-        return fs.existsSync(path.join(spec.dir, spec.native.binaryName));
-      });
+    : allPlatformSpecs.filter((spec) => fs.existsSync(path.join(spec.dir, spec.native.binaryName)));
 
   if (selectedPlatformSpecs.length === 0) {
     fail('no staged platform package found; run npm run stage:native-package first');
@@ -268,9 +266,9 @@ function readPackageManifest(spec: PackageSpec): PackageManifest {
   if (!isRecord(parsed) || typeof parsed.name !== 'string' || typeof parsed.version !== 'string') {
     fail(`${spec.name}: package.json must contain string name and version fields`);
   }
-  const files = Object.getOwnPropertyDescriptor(parsed, 'files')?.value;
-  const os = Object.getOwnPropertyDescriptor(parsed, 'os')?.value;
-  const cpu = Object.getOwnPropertyDescriptor(parsed, 'cpu')?.value;
+  const files = parsed.files;
+  const os = parsed.os;
+  const cpu = parsed.cpu;
   if (
     (files !== undefined && !isStringArray(files)) ||
     (os !== undefined && !isStringArray(os)) ||
