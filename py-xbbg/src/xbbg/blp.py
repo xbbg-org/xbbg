@@ -41,7 +41,7 @@ from ._exports import BLP_MODULE_EXPORTS
 from .backend import (
     Backend,
     check_backend,
-    convert_backend_frame_with_default,
+    convert_backend_frame,
     effective_backend as _backend_effective_backend,
     ensure_arrow_table,
     resolve_backend as _backend_resolve_backend,
@@ -673,7 +673,7 @@ def _effective_backend(backend: Backend | str | None) -> Backend:
 
 def _convert_result_backend(frame: Any, backend: Backend | str | None) -> DataFrameResult:
     """Convert Arrow output after applying the facade-level backend default."""
-    return convert_backend_frame_with_default(frame, backend, _default_backend)
+    return convert_backend_frame(frame, _effective_backend(backend))
 
 
 def _get_engine(*, engine: Engine | None = None):
