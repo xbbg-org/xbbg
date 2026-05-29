@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-05-29
+
 ### Added
 
 - **`@xbbg/langgraph` npm package**: Added a publishable LangChain/LangGraph tools package backed by `@xbbg/core`, with lazy Bloomberg engine loading, bounded JSON tool outputs, request tools for `bdp`/`bdh`/`bds`/`bdib`/`bdtick`/`bql`/`bsrch`/`bqr`/`bflds`, grouped `xbbg.ext` helper tools, detailed Bloomberg agent prompt guidance, unit tests with injected fake engines, and npm/GitHub release workflow integration.
@@ -1376,7 +1378,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.4...HEAD
+[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.5...HEAD
+[1.2.5]: https://github.com/alpha-xone/xbbg/compare/v1.2.4...v1.2.5
 [1.2.4]: https://github.com/alpha-xone/xbbg/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/alpha-xone/xbbg/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/alpha-xone/xbbg/compare/v1.2.1...v1.2.2
