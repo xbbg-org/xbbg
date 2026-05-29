@@ -199,8 +199,24 @@ pub fn calculate_level_percentages(
         }
     }
 
-    // Calculate level 2 percentages (% of parent level 1 group)
-    // Iterate backwards to group level 2 rows by their level 1 parent
+    // Calculate level 2 percentages (% of parent level 1 group).
+    //
+    // Each level-2 row's share is computed relative to the sum of its group.
+    fn flush_group(group: &[usize], values: &[Option<f64>], out: &mut [Option<f64>]) {
+        if group.is_empty() {
+            return;
+        }
+        let group_sum: f64 = group.iter().filter_map(|&j| values[j]).sum();
+        if group_sum != 0.0 {
+            for &j in group {
+                if let Some(val) = values[j] {
+                    out[j] = Some(100.0 * val / group_sum);
+                }
+            }
+        }
+    }
+
+    // Iterate backwards to group level 2 rows by their level 1 parent.
     let mut level_2_group: Vec<usize> = Vec::new();
 
     for i in (0..levels.len()).rev() {
@@ -209,23 +225,15 @@ pub fn calculate_level_percentages(
                 level_2_group.push(i);
             }
             Some(1) => {
-                // Calculate percentage for this level 2 group
-                if !level_2_group.is_empty() {
-                    let group_sum: f64 = level_2_group.iter().filter_map(|&j| values[j]).sum();
-
-                    if group_sum != 0.0 {
-                        for &j in &level_2_group {
-                            if let Some(val) = values[j] {
-                                percentages[j] = Some(100.0 * val / group_sum);
-                            }
-                        }
-                    }
-                }
+                flush_group(&level_2_group, values, &mut percentages);
                 level_2_group.clear();
             }
             _ => {}
         }
     }
+
+    // Flush any leading level-2 rows that precede the first level-1 parent.
+    flush_group(&level_2_group, values, &mut percentages);
 
     percentages
 }
@@ -369,5 +377,20 @@ mod tests {
         assert!((pcts[0].unwrap() - 33.333).abs() < 0.01);
         assert!(pcts[1].is_none());
         assert!((pcts[2].unwrap() - 66.667).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_calculate_level_percentages_leading_level_2_group() {
+        // Level-2 rows that precede the first level-1 parent must still be
+        // computed relative to their group total (regression for dropped group).
+        let values = vec![Some(30.0), Some(70.0), Some(100.0)];
+        let levels = vec![Some(2), Some(2), Some(1)];
+
+        let pcts = calculate_level_percentages(&values, &levels);
+
+        assert!((pcts[0].unwrap() - 30.0).abs() < 0.01);
+        assert!((pcts[1].unwrap() - 70.0).abs() < 0.01);
+        // The lone level-1 row is 100% of the level-1 total.
+        assert!((pcts[2].unwrap() - 100.0).abs() < 0.01);
     }
 }
