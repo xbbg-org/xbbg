@@ -21,7 +21,6 @@ pub mod event;
 pub mod ffi;
 pub mod message;
 pub mod name;
-pub mod simd;
 pub mod value;
 
 // Session API

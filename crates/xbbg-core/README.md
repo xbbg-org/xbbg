@@ -18,8 +18,7 @@ src/
 │   ├── name.rs      Name interning with FxHashMap cache
 │   ├── value.rs     Dynamic Value enum (replaces JSON serialization)
 │   ├── datatype.rs  DataType enum mapping Bloomberg type codes
-│   ├── datetime.rs  HighPrecisionDatetime ↔ Arrow timestamp conversion
-│   └── simd.rs      SIMD-accelerated bitmap packing, ASCII detection
+│   └── datetime.rs  HighPrecisionDatetime ↔ Arrow timestamp conversion
 │
 ├── Session API
 │   ├── session.rs      Session lifecycle (create, start, stop, events)
