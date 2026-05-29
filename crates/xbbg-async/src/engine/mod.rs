@@ -490,10 +490,22 @@ impl SubscriptionStatusState {
 
     pub fn remove_topic(&mut self, topic: &str) -> Option<SlabKey> {
         let key = self.topic_to_key.remove(topic)?;
+        self.key_to_topic.remove(&key);
         self.topics.retain(|existing| existing != topic);
         self.keys.retain(|existing| *existing != key);
         self.metrics.remove(&key);
         Some(key)
+    }
+
+    /// Fully remove a topic at the user's request, including its status history.
+    ///
+    /// Unlike [`Self::remove_topic`] (which keeps the `topic_states` entry so the SDK
+    /// terminal path can report a final lifecycle state), this also drops the
+    /// `topic_states` entry so the topic disappears from [`Self::topic_statuses`].
+    pub fn drop_topic(&mut self, topic: &str) -> Option<SlabKey> {
+        let key = self.remove_topic(topic);
+        self.topic_states.remove(topic);
+        key
     }
 
     pub fn topic_for_key(&self, key: SlabKey) -> Option<&str> {
@@ -2042,7 +2054,7 @@ impl SubscriptionStream {
         self.status.rcu(|current| {
             let mut next = (**current).clone();
             for topic in &topics_to_remove {
-                next.remove_topic(topic);
+                next.drop_topic(topic);
             }
             Arc::new(next)
         });
@@ -2375,5 +2387,40 @@ mod tests {
                 .map(|event| event.message_type.as_str()),
             Some("DataLoss"),
         );
+    }
+
+    #[test]
+    fn subscription_status_drop_topic_removes_all_state_and_blocks_resurrection() {
+        let metric = Arc::new(SubscriptionMetrics {
+            messages_received: Arc::new(AtomicU64::new(0)),
+            dropped_batches: Arc::new(AtomicU64::new(0)),
+            batches_sent: Arc::new(AtomicU64::new(0)),
+            slow_consumer: Arc::new(AtomicBool::new(false)),
+            data_loss_events: Arc::new(AtomicU64::new(0)),
+            last_message_us: Arc::new(AtomicU64::new(0)),
+            last_data_loss_us: Arc::new(AtomicU64::new(0)),
+        });
+        let mut status = SubscriptionStatusState::from_active(
+            vec!["SPY US Equity".to_string(), "IBM US Equity".to_string()],
+            vec![10, 11],
+            HashMap::from([(10, metric.clone()), (11, metric)]),
+        );
+
+        let key = status.drop_topic("IBM US Equity");
+
+        assert_eq!(key, Some(11));
+        // topic_to_key invariant: gone from both directions.
+        assert!(!status.topic_to_key().contains_key("IBM US Equity"));
+        assert_eq!(status.topic_for_key(11), None);
+        // Active lists, metrics, and status history no longer reference the topic/key.
+        assert_eq!(status.topics(), &["SPY US Equity".to_string()]);
+        assert_eq!(status.keys(), &[10]);
+        assert!(!status.fields_metrics().contains_key(&11));
+        assert!(!status.topic_statuses().contains_key("IBM US Equity"));
+        // A late tick for the dropped key cannot resurrect the topic.
+        assert_eq!(status.mark_topic_streaming(11), None);
+        assert!(!status.topic_statuses().contains_key("IBM US Equity"));
+        // The surviving topic is untouched.
+        assert!(status.topic_statuses().contains_key("SPY US Equity"));
     }
 }
