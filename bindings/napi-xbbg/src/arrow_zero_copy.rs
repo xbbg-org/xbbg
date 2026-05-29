@@ -426,17 +426,32 @@ fn unsupported_array_reason(array: &dyn Array) -> Option<String> {
     }
 }
 
+/// Expose an Arrow buffer to JS as a zero-copy V8 `Buffer`.
+///
+/// The returned `Buffer` aliases the Arrow allocation directly — no bytes are
+/// copied. The Arrow buffer is logically **immutable**: JS must treat the
+/// resulting `Buffer` as read-only. Mutating it would corrupt the shared Arrow
+/// data (and violate Arrow's immutability invariants for any other holder of
+/// the same `RecordBatch`).
 fn external_buffer(env: &Env, batch: Arc<RecordBatch>, buffer: ArrowBuffer) -> Result<Buffer> {
     let len = buffer.len();
     if len == 0 {
         return Ok(Buffer::from(Vec::<u8>::new()));
     }
 
+    // `from_external` takes `*mut u8`, so the `*const` from `as_ptr()` must be
+    // cast. The pointer is never written through: the buffer is treated as
+    // immutable on both the Rust and JS sides (see the doc comment above).
     let data = buffer.as_ptr() as *mut u8;
     let owner = ExternalBufferOwner {
         _batch: batch,
         _buffer: buffer,
     };
+    // SAFETY: `data`/`len` describe the live Arrow allocation, and `owner`
+    // holds the `Arc<RecordBatch>` plus the backing `Buffer` for the entire V8
+    // lifetime of the slice. The finalizer below drops `owner` only after V8 is
+    // done with the buffer, so the pointer can never dangle. The data is never
+    // mutated through `data`, satisfying Arrow's immutability requirement.
     let slice = unsafe {
         BufferSlice::from_external(env, data, len, owner, |_env, _owner| {
             // Dropping the owner releases the Arrow buffer/RecordBatch once V8 is done.
