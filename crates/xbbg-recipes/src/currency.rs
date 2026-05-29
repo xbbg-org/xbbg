@@ -358,9 +358,20 @@ fn apply_fx_conversion(
         };
 
         let fx_rate_array = build_fx_rate_array(values.len(), date_keys, rates_by_date);
-        if fx_rate_array.null_count() == fx_rate_array.len() {
+        let null_count = fx_rate_array.null_count();
+        let len = fx_rate_array.len();
+        if null_count == len {
             new_columns.push(input_col);
             continue;
+        }
+        if null_count > 0 {
+            xbbg_log::warn!(
+                ticker = ticker.as_str(),
+                fx_pair = fx_info.fx_pair.as_str(),
+                missing = null_count,
+                total = len,
+                "FX rates missing for some dates; converted values are null for those rows"
+            );
         }
 
         let denominator: ArrayRef = if (fx_info.factor - 1.0).abs() > f64::EPSILON {
@@ -631,5 +642,55 @@ mod tests {
         // 72.5 / (1.25 * 100) = 0.58, 73.0 / 125 = 0.584
         assert!((values.value(0) - 0.58).abs() < 1e-10);
         assert!((values.value(1) - 0.584).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_apply_fx_conversion_partial_rates_nulls_missing_rows() {
+        let d1 = parse_date_key("2024-01-01").unwrap();
+        let d2 = parse_date_key("2024-01-02").unwrap();
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("date", DataType::Date32, true),
+            Field::new("VOD LN Equity|PX_LAST", DataType::Float64, true),
+        ]));
+
+        let data = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Date32Array::from(vec![Some(d1), Some(d2)])),
+                Arc::new(Float64Array::from(vec![Some(72.5), Some(73.0)])),
+            ],
+        )
+        .unwrap();
+
+        let column_tickers = HashMap::from([(1usize, "VOD LN Equity".to_string())]);
+        let fx_by_ticker =
+            HashMap::from([("VOD LN Equity".to_string(), build_fx_pair("GBp", "USD"))]);
+        // Only d1 has a rate; d2 is missing so its converted value must be null.
+        let fx_rates = HashMap::from([("USDGBP Curncy".to_string(), HashMap::from([(d1, 1.25)]))]);
+
+        let converted = apply_fx_conversion(
+            data,
+            &column_tickers,
+            &[Some(d1), Some(d2)],
+            &fx_by_ticker,
+            &fx_rates,
+        )
+        .unwrap();
+
+        // Shape is preserved: same row and column count as the input.
+        assert_eq!(converted.num_rows(), 2);
+        assert_eq!(converted.num_columns(), 2);
+
+        let values = converted
+            .column(1)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+
+        // 72.5 / (1.25 * 100) = 0.58 for d1; d2 has no rate and is null.
+        assert!(!values.is_null(0));
+        assert!((values.value(0) - 0.58).abs() < 1e-10);
+        assert!(values.is_null(1));
     }
 }

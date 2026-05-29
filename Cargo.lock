@@ -3107,6 +3107,7 @@ dependencies = [
  "tokio",
  "xbbg-async",
  "xbbg-ext",
+ "xbbg-log",
 ]
 
 [[package]]
