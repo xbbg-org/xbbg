@@ -173,7 +173,6 @@ export interface CalculateInput {
   readonly levels: readonly (number | null)[];
 }
 
-
 const stringPairSchema = z.object({
   key: z.string().trim().min(1).describe("String pair key."),
   value: z.string().trim().min(1).describe("String pair value."),
@@ -220,8 +219,15 @@ export function tickerSchema(options: NormalizedBloombergToolsOptions): z.ZodTyp
         "validate_generic_ticker",
       ])
       .describe("Ticker helper operation to run."),
-    ticker: optionalString(options, "One Bloomberg ticker for parse/contract validation operations."),
-    tickers: stringArray(options, "Bloomberg tickers to normalize or filter.", options.maxSecurities).optional(),
+    ticker: optionalString(
+      options,
+      "One Bloomberg ticker for parse/contract validation operations.",
+    ),
+    tickers: stringArray(
+      options,
+      "Bloomberg tickers to normalize or filter.",
+      options.maxSecurities,
+    ).optional(),
   });
 }
 
@@ -306,7 +312,9 @@ export function currencySchema(options: NormalizedBloombergToolsOptions): z.ZodT
   });
 }
 
-export function bqlBuilderSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BqlBuilderInput> {
+export function bqlBuilderSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<BqlBuilderInput> {
   return z.object({
     activeOnly: z.boolean().optional().describe("Restrict corporate bond query to active bonds."),
     ccy: optionalString(options, "Currency filter for corporate bond query."),
@@ -320,7 +328,9 @@ export function bqlBuilderSchema(options: NormalizedBloombergToolsOptions): z.Zo
   });
 }
 
-export function marketSessionSchema(options: NormalizedBloombergToolsOptions): z.ZodType<MarketSessionInput> {
+export function marketSessionSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<MarketSessionInput> {
   return z.object({
     countryIso: optionalString(options, "ISO country code for timezone inference."),
     date: optionalString(options, "Date for UTC session conversion, YYYY-MM-DD or YYYYMMDD."),
@@ -351,7 +361,9 @@ export function marketSessionSchema(options: NormalizedBloombergToolsOptions): z
   });
 }
 
-export function yasOverridesSchema(options: NormalizedBloombergToolsOptions): z.ZodType<YasOverridesInput> {
+export function yasOverridesSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<YasOverridesInput> {
   return z.object({
     benchmark: optionalString(options, "Optional YAS benchmark."),
     price: z.number().optional().describe("YAS price override."),
@@ -362,7 +374,9 @@ export function yasOverridesSchema(options: NormalizedBloombergToolsOptions): z.
   });
 }
 
-export function constantsSchema(options: NormalizedBloombergToolsOptions): z.ZodType<ConstantsInput> {
+export function constantsSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<ConstantsInput> {
   return z.object({
     code: optionalString(options, "Month code."),
     dateStr: optionalString(options, "Date string to parse."),
@@ -404,12 +418,22 @@ export function columnsSchema(options: NormalizedBloombergToolsOptions): z.ZodTy
   });
 }
 
-export function calculateSchema(options: NormalizedBloombergToolsOptions): z.ZodType<CalculateInput> {
+export function calculateSchema(
+  options: NormalizedBloombergToolsOptions,
+): z.ZodType<CalculateInput> {
   return z.object({
-    levels: z.array(z.number().nullable()).min(1).max(options.maxFields).describe("Reference level values."),
+    levels: z
+      .array(z.number().nullable())
+      .min(1)
+      .max(options.maxFields)
+      .describe("Reference level values."),
     operation: z
       .literal("calculate_level_percentages")
       .describe("Numeric helper operation to run."),
-    values: z.array(z.number().nullable()).min(1).max(options.maxFields).describe("Observed values."),
+    values: z
+      .array(z.number().nullable())
+      .min(1)
+      .max(options.maxFields)
+      .describe("Observed values."),
   });
 }

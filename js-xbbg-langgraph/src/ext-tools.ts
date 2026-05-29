@@ -151,7 +151,6 @@ export const BLOOMBERG_EXT_TOOL_NAMES = Object.freeze(
   EXT_TOOL_DEFINITIONS.map((definition) => definition.name),
 );
 
-
 function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_ticker" satisfies BloombergToolName;
   return tool(
