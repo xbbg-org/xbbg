@@ -1,14 +1,18 @@
-import * as xbbgCore from "@xbbg/core";
+// Canonical CDX field bundles for the LangGraph CDX helpers.
+//
+// These mirror the field sets exported by @xbbg/core (CDX_INFO_FIELDS /
+// CDX_PRICING_FIELDS / CDX_RISK_FIELDS). They are defined locally rather than
+// imported from @xbbg/core because importing the core module eagerly loads its
+// native addon, which requires the Bloomberg SDK runtime (libblpapi). That side
+// effect breaks SDK-less environments such as unit tests and the npm publish
+// validation gate. The current dependency range (@xbbg/core@^1.2.4) does not yet
+// export these constants, so this list is the effective source of truth.
+//
+// Keep in sync with @xbbg/core's CDX field bundles. To source them from core
+// directly in the future, bump the @xbbg/core dependency and load it lazily
+// (e.g. via the async core-loader) so module evaluation never forces a native load.
 
-interface CoreCdxFields {
-  readonly CDX_INFO_FIELDS?: readonly string[];
-  readonly CDX_PRICING_FIELDS?: readonly string[];
-  readonly CDX_RISK_FIELDS?: readonly string[];
-}
-
-const coreCdxFields = xbbgCore as CoreCdxFields;
-
-const FALLBACK_CDX_INFO_FIELDS = Object.freeze([
+export const CDX_INFO_FIELDS: readonly string[] = Object.freeze([
   "ROLLING_SERIES",
   "VERSION",
   "ON_THE_RUN_CURRENT_BD_INDICATOR",
@@ -19,7 +23,7 @@ const FALLBACK_CDX_INFO_FIELDS = Object.freeze([
   "PX_LAST",
 ]);
 
-const FALLBACK_CDX_PRICING_FIELDS = Object.freeze([
+export const CDX_PRICING_FIELDS: readonly string[] = Object.freeze([
   "PX_LAST",
   "PX_BID",
   "PX_ASK",
@@ -32,7 +36,7 @@ const FALLBACK_CDX_PRICING_FIELDS = Object.freeze([
   "PV_CDS_DEFAULT_LEG",
 ]);
 
-const FALLBACK_CDX_RISK_FIELDS = Object.freeze([
+export const CDX_RISK_FIELDS: readonly string[] = Object.freeze([
   "SW_CNV_BPV",
   "SW_EQV_BPV",
   "CDS_SPREAD_MID_MODIFIED_DURATION",
@@ -40,15 +44,3 @@ const FALLBACK_CDX_RISK_FIELDS = Object.freeze([
   "RECOVERY_RATE_SEN",
   "CDS_RECOVERY_RT",
 ]);
-
-export const CDX_INFO_FIELDS = Object.freeze(
-  coreCdxFields.CDX_INFO_FIELDS ?? FALLBACK_CDX_INFO_FIELDS,
-);
-
-export const CDX_PRICING_FIELDS = Object.freeze(
-  coreCdxFields.CDX_PRICING_FIELDS ?? FALLBACK_CDX_PRICING_FIELDS,
-);
-
-export const CDX_RISK_FIELDS = Object.freeze(
-  coreCdxFields.CDX_RISK_FIELDS ?? FALLBACK_CDX_RISK_FIELDS,
-);
