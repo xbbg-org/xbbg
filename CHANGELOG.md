@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-05-31
+
 ### Fixed
 
 - **`bflds(search_spec=...)` field searches restored**: `FieldSearchRequest` may again use the normalized `FieldInfo` extractor path, so free-text Bloomberg field searches such as implied volatility, historical volatility, debt, enterprise value, net debt, and cash fields no longer fail request planning with an extractor compatibility error.
@@ -1382,7 +1384,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/alpha-xone/xbbg/compare/v1.2.5...HEAD
+[Unreleased]: https://github.com/xbbg-org/xbbg/compare/v1.2.6...HEAD
+[1.2.6]: https://github.com/xbbg-org/xbbg/compare/v1.2.5...v1.2.6
 [1.2.5]: https://github.com/alpha-xone/xbbg/compare/v1.2.4...v1.2.5
 [1.2.4]: https://github.com/alpha-xone/xbbg/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/alpha-xone/xbbg/compare/v1.2.2...v1.2.3

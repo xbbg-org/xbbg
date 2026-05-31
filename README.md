@@ -21,7 +21,7 @@
 ---
 
 <!-- xbbg:latest-release-start -->
-Latest release: xbbg==1.2.5 (release: [notes](https://github.com/alpha-xone/xbbg/releases/tag/v1.2.5))
+Latest release: xbbg==1.2.6 (release: [notes](https://github.com/xbbg-org/xbbg/releases/tag/v1.2.6))
 <!-- xbbg:latest-release-end -->
 
 > This `main` branch is the Rust-powered v1 release. For the legacy pure-Python line, use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
