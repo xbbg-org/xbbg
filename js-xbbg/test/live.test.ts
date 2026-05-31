@@ -187,6 +187,7 @@ function maybeSkipEntitlement(t: any, err: any): boolean {
     'failed to encode',
     'Channel closed',
     'Timed out',
+    'Problem accessing the saved search',
   ];
   if (markers.some((marker) => message.includes(marker))) {
     t.skip(`Entitlement/unavailable: ${message}`);

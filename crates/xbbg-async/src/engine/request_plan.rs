@@ -163,6 +163,7 @@ fn validate_extractor_compatibility(
         || matches!(
             (operation, extractor),
             (Operation::ReferenceData, ExtractorType::BulkData)
+                | (Operation::FieldSearch, ExtractorType::FieldInfo)
         )
     {
         return Ok(());
@@ -911,6 +912,18 @@ mod tests {
         };
         let prepared = PreparedRequest::prepare(search, &empty_schema()).unwrap();
         assert_eq!(prepared.shape(), PlannedRequestShape::Generic);
+        assert_eq!(prepared.params().search_spec.as_deref(), Some("price"));
+
+        let normalized_search = RequestParams {
+            service: Service::ApiFlds.to_string(),
+            operation: Operation::FieldSearch.to_string(),
+            search_spec: Some("price".to_string()),
+            extractor: ExtractorType::FieldInfo,
+            extractor_set: true,
+            ..Default::default()
+        };
+        let prepared = PreparedRequest::prepare(normalized_search, &empty_schema()).unwrap();
+        assert_eq!(prepared.shape(), PlannedRequestShape::FieldInfo);
         assert_eq!(prepared.params().search_spec.as_deref(), Some("price"));
 
         let invalid = RequestParams {
