@@ -53,8 +53,8 @@ test = [
 [project.urls]
 Homepage = "https://xbbg.org/"
 Documentation = "https://xbbg.org/"
-Source = "https://github.com/alpha-xone/xbbg"
-Issues = "https://github.com/alpha-xone/xbbg/issues"
+Source = "https://github.com/xbbg-org/xbbg"
+Issues = "https://github.com/xbbg-org/xbbg/issues"
 
 [project.entry-points."narwhals.plugins"]
 xbbg = "xbbg._narwhals_plugin"

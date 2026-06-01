@@ -24,13 +24,13 @@ Responses are returned as bounded structured JSON with Arrow schema metadata so 
 For macOS arm64 and Linux amd64, install the latest wrapper + binary pair with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alpha-xone/xbbg/main/scripts/install-xbbg-mcp.sh | sh
+curl -fsSL https://raw.githubusercontent.com/xbbg-org/xbbg/main/scripts/install-xbbg-mcp.sh | sh
 ```
 
 To install a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alpha-xone/xbbg/main/scripts/install-xbbg-mcp.sh | sh -s -- 1.0.0
+curl -fsSL https://raw.githubusercontent.com/xbbg-org/xbbg/main/scripts/install-xbbg-mcp.sh | sh -s -- 1.0.0
 ```
 
 The installer places two files in `~/.local/bin/` by default:

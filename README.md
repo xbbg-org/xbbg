@@ -11,7 +11,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/xbbg.svg)](https://pypi.org/project/xbbg/)
 [![Conda version](https://anaconda.org/conda-forge/xbbg/badges/version.svg)](https://anaconda.org/conda-forge/xbbg)
 [![Downloads](https://pepy.tech/badge/xbbg)](https://pepy.tech/project/xbbg)
-[![CI](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/alpha-xone/xbbg/actions/workflows/ci-rust.yml)
+[![CI](https://github.com/xbbg-org/xbbg/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/xbbg-org/xbbg/actions/workflows/ci-rust.yml)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/P34uMwgCjC)
 
 **Links:** [Documentation](https://xbbg.org/) · [Quickstart](#quickstart) · [Configuration](#configuration-and-engines) · [Examples notebook](py-xbbg/examples/xbbg_jupyter_examples.ipynb) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
@@ -24,7 +24,7 @@
 Latest release: xbbg==1.2.6 (release: [notes](https://github.com/xbbg-org/xbbg/releases/tag/v1.2.6))
 <!-- xbbg:latest-release-end -->
 
-> This `main` branch is the Rust-powered v1 release. For the legacy pure-Python line, use [`release/0.x`](https://github.com/alpha-xone/xbbg/tree/release/0.x).
+> This `main` branch is the Rust-powered v1 release. For the legacy pure-Python line, use [`release/0.x`](https://github.com/xbbg-org/xbbg/tree/release/0.x).
 
 > **Important:** xbbg is an independent open-source project. It is not affiliated with, endorsed by, sponsored by, or approved by Bloomberg Finance L.P. or its affiliates. Bloomberg, Bloomberg Terminal, B-PIPE, BQL, and related names are trademarks or service marks of their respective owners. xbbg does not grant access to Bloomberg services, data, software, licenses, credentials, or entitlements; users must obtain and use those separately under their own Bloomberg agreements and applicable policies.
 
@@ -449,8 +449,8 @@ Publishing is handled through GitHub Actions and PyPI Trusted Publishing.
 - JavaScript/Node bindings: [js-xbbg/README.md](js-xbbg/README.md)
 - LangChain/LangGraph tools: [js-xbbg-langgraph/README.md](js-xbbg-langgraph/README.md)
 - PyPI: [pypi.org/project/xbbg](https://pypi.org/project/xbbg/)
-- Source: [github.com/alpha-xone/xbbg](https://github.com/alpha-xone/xbbg)
-- Issues: [GitHub Issues](https://github.com/alpha-xone/xbbg/issues)
+- Source: [github.com/xbbg-org/xbbg](https://github.com/xbbg-org/xbbg)
+- Issues: [GitHub Issues](https://github.com/xbbg-org/xbbg/issues)
 - Discord: [Join the community](https://discord.gg/P34uMwgCjC)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
