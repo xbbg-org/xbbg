@@ -35,7 +35,7 @@ resolver = "2"
 [workspace.package]
 version = "0.0.0"
 license = "Apache-2.0"
-repository = "https://github.com/alpha-xone/xbbg"
+repository = "https://github.com/xbbg-org/xbbg"
 edition = "2021"
 
 # =============================================================================

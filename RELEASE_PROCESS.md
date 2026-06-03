@@ -184,7 +184,7 @@ Go to **GitHub Actions** > **Publish JS Packages** > **Run workflow**.
 5. Publishes missing packages in dependency order: platform packages first, then `@xbbg/core`
 6. Uses npm trusted publishing/OIDC with provenance from GitHub Actions; no npm token is required for normal releases
 
-The npm Trusted Publisher configuration must match the workflow filename exactly: `npm-publish.yml`, repository `alpha-xone/xbbg`, and blank environment unless a matching GitHub environment is intentionally added.
+The npm Trusted Publisher configuration must match the workflow filename exactly: `npm-publish.yml`, repository `xbbg-org/xbbg`, and blank environment unless a matching GitHub environment is intentionally added.
 
 ## Local Development
 
