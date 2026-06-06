@@ -200,7 +200,7 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/u;
 const BBG_DATE_RE = /^\d{8}$/u;
 const AMBIGUOUS_DATE_RE = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}([T \D]|$)/u;
 const ISO_DATE_TIME_RE =
-  /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/u;
+  /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/u;
 
 const primitiveSchema = z.union([
   z.string().transform((value) => value.trim()),
@@ -268,8 +268,10 @@ function normalizeDateTime(value: string | Date | number): string {
   if (AMBIGUOUS_DATE_RE.test(text)) {
     throw new TypeError(`Ambiguous datetime ${JSON.stringify(text)}; use ISO 8601`);
   }
-  if (BBG_DATE_RE.test(text)) {
-    return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}T00:00:00`;
+  if (BBG_DATE_RE.test(text) || ISO_DATE_RE.test(text)) {
+    throw new TypeError(
+      `Invalid datetime ${JSON.stringify(text)}; include an explicit time component such as YYYY-MM-DDT09:30:00`,
+    );
   }
   if (!ISO_DATE_TIME_RE.test(text)) {
     throw new TypeError(`Invalid datetime ${JSON.stringify(text)}; use ISO 8601`);
@@ -345,8 +347,20 @@ function dateField(tool: string, field: string): z.ZodType<string> {
 function dateTimeField(tool: string, field: string): z.ZodType<string> {
   return z
     .union([z.string(), z.date(), z.number()])
+    .superRefine((value, context) => {
+      if (typeof value !== "string") {
+        return;
+      }
+      const text = value.trim();
+      if (BBG_DATE_RE.test(text) || ISO_DATE_RE.test(text)) {
+        context.addIssue({
+          code: "custom",
+          message: `${tool}: ${field} datetime requires an explicit time component; use ISO 8601 such as YYYY-MM-DDT09:30:00`,
+        });
+      }
+    })
     .transform((value) => normalizeDateTime(value))
-    .describe(`${field} datetime. Use ISO 8601, for example 2024-01-31T09:30:00-05:00.`);
+    .describe(`${field} datetime. Use ISO 8601 with an explicit time component.`);
 }
 
 function referenceFormat(tool: string): z.ZodType<ReferenceFormat | undefined> {
@@ -373,10 +387,8 @@ export function createBdpSchema(options: NormalizedBloombergToolsOptions): z.Zod
       "fields",
       options.maxFields,
       options.maxStringChars,
-      '["PX_LAST"]',
-    ).describe(
-      'Bloomberg field mnemonics to retrieve, for example ["PX_LAST", "NAME"]. Use xbbg_bflds first if uncertain.',
-    ),
+      '["<FIELD>"]',
+    ).describe("Bloomberg field mnemonics to retrieve. Use xbbg_bflds first if uncertain."),
     format: referenceFormat(tool).describe(
       "JSON output shape. Usually omit; use long_typed if downstream needs Bloomberg value types.",
     ),
@@ -395,9 +407,9 @@ export function createBdpSchema(options: NormalizedBloombergToolsOptions): z.Zod
       "securities",
       options.maxSecurities,
       options.maxStringChars,
-      '["AAPL US Equity"]',
+      '["<TICKER> <MARKET_SECTOR>"]',
     ).describe(
-      'Fully qualified Bloomberg securities, for example ["AAPL US Equity"]; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs. Do not invent tickers.',
+      "Fully qualified Bloomberg securities supplied by the user; use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs. Do not invent tickers.",
     ),
     validateFields: z.boolean().optional().describe("Override field validation for this request."),
   });
@@ -413,8 +425,8 @@ export function createBdhSchema(options: NormalizedBloombergToolsOptions): z.Zod
         "fields",
         options.maxFields,
         options.maxStringChars,
-        '["PX_LAST"]',
-      ).describe('Bloomberg historical field mnemonics, for example ["PX_LAST"].'),
+        '["<FIELD>"]',
+      ).describe("Bloomberg historical field mnemonics supplied by the user."),
       format: historicalFormat(tool).describe(
         "Historical JSON output shape. Use wide only when the user asks for a table by date.",
       ),
@@ -429,9 +441,9 @@ export function createBdhSchema(options: NormalizedBloombergToolsOptions): z.Zod
         "securities",
         options.maxSecurities,
         options.maxStringChars,
-        '["AAPL US Equity"]',
+        '["<TICKER> <MARKET_SECTOR>"]',
       ).describe(
-        'Fully qualified Bloomberg securities, for example ["AAPL US Equity"]; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.',
+        "Fully qualified Bloomberg securities supplied by the user; use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs.",
       ),
       start: dateField(tool, "start").describe("Required start date. Use YYYY-MM-DD or YYYYMMDD."),
       validateFields: z
@@ -443,7 +455,7 @@ export function createBdhSchema(options: NormalizedBloombergToolsOptions): z.Zod
       if (value.start > value.end) {
         ctx.addIssue({
           code: "custom",
-          message: `${tool}: start must be on or before end. Example: start "2024-01-01", end "2024-01-31"`,
+          message: `${tool}: start must be on or before end. Use an explicit start/end date range.`,
           path: ["start"],
         });
       }
@@ -453,8 +465,8 @@ export function createBdhSchema(options: NormalizedBloombergToolsOptions): z.Zod
 export function createBdsSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BdsInput> {
   const tool = "xbbg_bds";
   return z.object({
-    field: nonEmptyString(tool, "field", options.maxStringChars, "INDX_MEMBERS").describe(
-      "Exactly one Bloomberg bulk/table field, for example INDX_MEMBERS.",
+    field: nonEmptyString(tool, "field", options.maxStringChars, "<BULK_FIELD>").describe(
+      "Exactly one Bloomberg bulk/table field supplied by the user.",
     ),
     format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
     kwargs: primitiveMap(tool, "kwargs").describe(
@@ -468,9 +480,9 @@ export function createBdsSchema(options: NormalizedBloombergToolsOptions): z.Zod
       "securities",
       options.maxSecurities,
       options.maxStringChars,
-      '["SPX Index"]',
+      '["<INDEX_TICKER> <MARKET_SECTOR>"]',
     ).describe(
-      'Fully qualified Bloomberg securities, for example ["SPX Index"]; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.',
+      "Fully qualified Bloomberg securities supplied by the user; use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs.",
     ),
     validateFields: z.boolean().optional().describe("Override field validation for this request."),
   });
@@ -482,9 +494,9 @@ export function createBdibSchema(options: NormalizedBloombergToolsOptions): z.Zo
     end: dateTimeField(tool, "end").describe(
       "Required intraday end datetime. Use ISO 8601 with timezone when possible.",
     ),
-    eventType: nonEmptyString(tool, "eventType", options.maxStringChars, "TRADE")
+    eventType: nonEmptyString(tool, "eventType", options.maxStringChars, "<EVENT_TYPE>")
       .optional()
-      .describe("Bloomberg event type. Usually TRADE."),
+      .describe("Bloomberg event type supplied by the user."),
     interval: z
       .number()
       .int(`${tool}: interval must be a positive integer number of minutes. Example: 5`)
@@ -493,17 +505,22 @@ export function createBdibSchema(options: NormalizedBloombergToolsOptions): z.Zo
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
     ),
-    outputTz: nonEmptyString(tool, "outputTz", options.maxStringChars, "America/New_York")
+    outputTz: nonEmptyString(tool, "outputTz", options.maxStringChars, "<TIMEZONE>")
       .optional()
-      .describe("Optional output timezone, for example America/New_York."),
-    requestTz: nonEmptyString(tool, "requestTz", options.maxStringChars, "America/New_York")
+      .describe("Optional output timezone."),
+    requestTz: nonEmptyString(tool, "requestTz", options.maxStringChars, "<TIMEZONE>")
       .optional()
-      .describe("Timezone for naive start/end datetimes, for example America/New_York."),
+      .describe("Timezone for naive start/end datetimes."),
     start: dateTimeField(tool, "start").describe(
       "Required intraday start datetime. Use ISO 8601 with timezone when possible.",
     ),
-    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
-      "One fully qualified Bloomberg security, for example AAPL US Equity; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.",
+    ticker: nonEmptyString(
+      tool,
+      "ticker",
+      options.maxStringChars,
+      "<TICKER> <MARKET_SECTOR>",
+    ).describe(
+      "One fully qualified Bloomberg security supplied by the user; use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs.",
     ),
   });
 }
@@ -522,10 +539,10 @@ export function createBdtickSchema(
       "eventTypes",
       options.maxFields,
       options.maxStringChars,
-      '["TRADE"]',
+      '["<EVENT_TYPE>"]',
     )
       .optional()
-      .describe('Bloomberg tick event types, for example ["TRADE"] or ["BID", "ASK"].'),
+      .describe('Bloomberg tick event types, for example ["<EVENT_TYPE>"].'),
     includeBicMicCodes: includeFlag,
     includeBloombergStandardConditionCodes: includeFlag,
     includeBrokerCodes: includeFlag,
@@ -536,17 +553,22 @@ export function createBdtickSchema(
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced IntradayTickRequest kwargs as flat string/number/boolean values only.",
     ),
-    outputTz: nonEmptyString(tool, "outputTz", options.maxStringChars, "America/New_York")
+    outputTz: nonEmptyString(tool, "outputTz", options.maxStringChars, "<TIMEZONE>")
       .optional()
-      .describe("Optional output timezone, for example America/New_York."),
-    requestTz: nonEmptyString(tool, "requestTz", options.maxStringChars, "America/New_York")
+      .describe("Optional output timezone."),
+    requestTz: nonEmptyString(tool, "requestTz", options.maxStringChars, "<TIMEZONE>")
       .optional()
-      .describe("Timezone for naive start/end datetimes, for example America/New_York."),
+      .describe("Timezone for naive start/end datetimes."),
     start: dateTimeField(tool, "start").describe(
       "Required intraday tick start datetime. Use ISO 8601 with timezone when possible.",
     ),
-    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
-      "One fully qualified Bloomberg security, for example AAPL US Equity; use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs.",
+    ticker: nonEmptyString(
+      tool,
+      "ticker",
+      options.maxStringChars,
+      "<TICKER> <MARKET_SECTOR>",
+    ).describe(
+      "One fully qualified Bloomberg security supplied by the user; use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs.",
     ),
   });
 }
@@ -558,13 +580,8 @@ export function createBqlSchema(options: NormalizedBloombergToolsOptions): z.Zod
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
     ),
-    query: nonEmptyString(
-      tool,
-      "query",
-      options.maxBqlQueryChars,
-      "get(px_last) for('AAPL US Equity')",
-    ).describe(
-      "Complete BQL expression string. Use get(...) for(...) with an explicit bounded universe; prefer BDP/BDH for simple reference or historical requests.",
+    query: nonEmptyString(tool, "query", options.maxBqlQueryChars, "<BQL_QUERY>").describe(
+      "Complete BQL expression string with an explicit bounded universe; prefer BDP/BDH for simple reference or historical requests.",
     ),
   });
 }
@@ -580,10 +597,10 @@ export function createBqrSchema(options: NormalizedBloombergToolsOptions): z.Zod
       "eventTypes",
       options.maxFields,
       options.maxStringChars,
-      '["BID", "ASK"]',
+      '["<EVENT_TYPE>"]',
     )
       .optional()
-      .describe('BQR event types. Usually ["BID", "ASK"].'),
+      .describe('BQR event types, for example ["<EVENT_TYPE>"].'),
     includeBrokerCodes: z
       .boolean()
       .optional()
@@ -595,9 +612,9 @@ export function createBqrSchema(options: NormalizedBloombergToolsOptions): z.Zod
       tool,
       "ticker",
       options.maxStringChars,
-      "/isin/US037833FB15@MSG1 Corp",
+      "/isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>",
     ).describe(
-      "Fixed-income ticker or identifier with dealer quote source, for example /isin/US037833FB15@MSG1 Corp.",
+      "Fixed-income ticker or identifier with dealer quote source, for example /isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>.",
     ),
   });
 }
@@ -616,7 +633,7 @@ export function createBsrchSchema(options: NormalizedBloombergToolsOptions): z.Z
       tool,
       "searchSpec",
       options.maxSearchSpecChars,
-      "COMDTY:NG",
+      "<SEARCH_SPEC>",
     ).describe(
       "Bloomberg search/grid domain or saved-search spec. Not for normal security lookup.",
     ),
@@ -627,16 +644,21 @@ export function createBfldsSchema(options: NormalizedBloombergToolsOptions): z.Z
   const tool = "xbbg_bflds";
   return z
     .object({
-      fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["PX_LAST"]')
+      fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
         .optional()
         .describe(
-          'Specific field mnemonics to inspect, for example ["PX_LAST"]. Provide either fields or searchSpec, not both.',
+          "Specific field mnemonics to inspect. Provide either fields or searchSpec, not both.",
         ),
       format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
       kwargs: primitiveMap(tool, "kwargs").describe(
         "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
       ),
-      searchSpec: nonEmptyString(tool, "searchSpec", options.maxSearchSpecChars, "last price")
+      searchSpec: nonEmptyString(
+        tool,
+        "searchSpec",
+        options.maxSearchSpecChars,
+        "<FIELD_SEARCH_TEXT>",
+      )
         .optional()
         .describe(
           "Field search text when the field mnemonic is unknown. Provide either searchSpec or fields, not both.",
@@ -648,7 +670,7 @@ export function createBfldsSchema(options: NormalizedBloombergToolsOptions): z.Z
       if (hasFields === hasSearchSpec) {
         ctx.addIssue({
           code: "custom",
-          message: `${tool}: provide exactly one of fields or searchSpec. Example: {"fields":["PX_LAST"]}`,
+          message: `${tool}: provide exactly one of fields or searchSpec. Example: {"fields":["<FIELD>"]}`,
           path: ["fields"],
         });
       }
@@ -660,40 +682,37 @@ export function createBeqsSchema(options: NormalizedBloombergToolsOptions): z.Zo
   return z.object({
     asof: dateField(tool, "asof").optional().describe("Optional as-of date for the screen."),
     format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
-    group: nonEmptyString(tool, "group", options.maxStringChars, "General")
+    group: nonEmptyString(tool, "group", options.maxStringChars, "<BEQS_GROUP>")
       .optional()
-      .describe("Bloomberg BEQS group. Defaults to General in @xbbg/core."),
+      .describe("Bloomberg BEQS group when required by the screen."),
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced BEQS request kwargs as flat string/number/boolean values only.",
     ),
     overrides: primitiveMap(tool, "overrides").describe(
       "BEQS overrides as flat string/number/boolean values only.",
     ),
-    screen: nonEmptyString(
-      tool,
-      "screen",
-      options.maxStringChars,
-      "Core Capital Goods Makers",
-    ).describe("Existing Bloomberg BEQS screen name."),
-    screenType: nonEmptyString(tool, "screenType", options.maxStringChars, "PRIVATE")
+    screen: nonEmptyString(tool, "screen", options.maxStringChars, "<BEQS_SCREEN>").describe(
+      "Existing Bloomberg BEQS screen name supplied by the user.",
+    ),
+    screenType: nonEmptyString(tool, "screenType", options.maxStringChars, "<SCREEN_TYPE>")
       .optional()
-      .describe("Bloomberg BEQS screen type. Defaults to PRIVATE in @xbbg/core."),
+      .describe("Bloomberg BEQS screen type when required by the screen."),
   });
 }
 
 export function createYasSchema(options: NormalizedBloombergToolsOptions): z.ZodType<YasInput> {
   const tool = "xbbg_yas";
   return z.object({
-    benchmark: nonEmptyString(tool, "benchmark", options.maxStringChars, "USGG10YR Index")
+    benchmark: nonEmptyString(tool, "benchmark", options.maxStringChars, "<BENCHMARK_TICKER>")
       .optional()
-      .describe("Optional YAS benchmark."),
+      .describe("Optional YAS benchmark supplied by the user."),
     fields: stringArray(
       tool,
       "fields",
       options.maxFields,
       options.maxStringChars,
-      '["YAS_BOND_YLD"]',
-    ).describe('YAS field mnemonics, for example ["YAS_BOND_YLD", "YAS_MOD_DUR"].'),
+      '["<YAS_FIELD>"]',
+    ).describe("YAS field mnemonics supplied by the user."),
     price: z.number().optional().describe("Optional YAS price input."),
     settleDt: dateField(tool, "settleDt").optional().describe("Optional YAS settlement date."),
     spread: z.number().optional().describe("Optional YAS spread input."),
@@ -702,10 +721,8 @@ export function createYasSchema(options: NormalizedBloombergToolsOptions): z.Zod
       "tickers",
       options.maxSecurities,
       options.maxStringChars,
-      '["/isin/US037833FB15 Corp"]',
-    ).describe(
-      'Fully qualified fixed-income Bloomberg securities, for example ["/isin/US037833FB15 Corp"].',
-    ),
+      '["/isin/<ISIN> <MARKET_SECTOR>"]',
+    ).describe("Fully qualified fixed-income Bloomberg securities supplied by the user."),
     yieldType: z.number().int().optional().describe("Optional YAS yield type."),
     yieldVal: z.number().optional().describe("Optional YAS yield value input."),
   });
@@ -720,9 +737,9 @@ export function createPreferredsSchema(
       tool,
       "equityTicker",
       options.maxStringChars,
-      "AAPL US Equity",
-    ).describe("One fully qualified issuer equity ticker."),
-    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["id"]')
+      "<ISSUER_TICKER> <MARKET_SECTOR>",
+    ).describe("One fully qualified issuer equity ticker supplied by the user."),
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
       .optional()
       .describe("Optional fields to include in the preferreds recipe result."),
   });
@@ -737,15 +754,18 @@ export function createCorporateBondsSchema(
       .boolean()
       .optional()
       .describe("Restrict to active bonds. Defaults to true in @xbbg/core."),
-    ccy: nonEmptyString(tool, "ccy", options.maxStringChars, "USD")
+    ccy: nonEmptyString(tool, "ccy", options.maxStringChars, "<CCY>")
       .optional()
-      .describe("Optional currency filter."),
-    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["id"]')
+      .describe("Optional currency filter supplied by the user."),
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
       .optional()
       .describe("Optional fields to include in the corporate bond result."),
-    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
-      "One fully qualified issuer/company ticker.",
-    ),
+    ticker: nonEmptyString(
+      tool,
+      "ticker",
+      options.maxStringChars,
+      "<ISSUER_TICKER> <MARKET_SECTOR>",
+    ).describe("One fully qualified issuer/company ticker supplied by the user."),
   });
 }
 
@@ -759,9 +779,12 @@ export function createIndexMembersSchema(
       .enum(["INDX_MWEIGHT", "INDX_MEMBERS", "INDX_MEMBERS3"])
       .optional()
       .describe("Bloomberg index members field. Omit for @xbbg/core default."),
-    index: nonEmptyString(tool, "index", options.maxStringChars, "SPX Index").describe(
-      "One fully qualified Bloomberg index ticker.",
-    ),
+    index: nonEmptyString(
+      tool,
+      "index",
+      options.maxStringChars,
+      "<INDEX_TICKER> <MARKET_SECTOR>",
+    ).describe("One fully qualified Bloomberg index ticker supplied by the user."),
   });
 }
 
@@ -775,7 +798,7 @@ export function createResolveIsinsSchema(
       "isins",
       options.maxSecurities,
       options.maxStringChars,
-      '["US0378331005"]',
+      '["<ISIN>"]',
     ).describe("Raw ISIN strings to resolve. Do not add /isin/ prefixes for this recipe."),
   });
 }
@@ -790,7 +813,7 @@ export function createIssuerIsinsSchema(
       "bondIsins",
       options.maxSecurities,
       options.maxStringChars,
-      '["US037833FB15"]',
+      '["<BOND_ISIN>"]',
     ).describe("Raw bond ISIN strings for issuer-level ISIN discovery."),
   });
 }
@@ -800,10 +823,13 @@ export function createEtfHoldingsSchema(
 ): z.ZodType<EtfHoldingsInput> {
   const tool = "xbbg_etf_holdings";
   return z.object({
-    etfTicker: nonEmptyString(tool, "etfTicker", options.maxStringChars, "SPY US Equity").describe(
-      "One fully qualified Bloomberg ETF ticker.",
-    ),
-    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["id"]')
+    etfTicker: nonEmptyString(
+      tool,
+      "etfTicker",
+      options.maxStringChars,
+      "<ETF_TICKER> <MARKET_SECTOR>",
+    ).describe("One fully qualified Bloomberg ETF ticker supplied by the user."),
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
       .optional()
       .describe("Optional fields to include in the ETF holdings recipe result."),
   });
@@ -886,15 +912,15 @@ export function createStreamSnapshotSchema(
       "fields",
       options.maxFields,
       options.maxStringChars,
-      '["LAST_PRICE"]',
+      '["<FIELD>"]',
     ).describe("Bloomberg market-data fields to observe."),
     tickers: stringArray(
       tool,
       "tickers",
       options.maxSecurities,
       options.maxStringChars,
-      '["AAPL US Equity"]',
-    ).describe("Fully qualified Bloomberg securities to observe."),
+      '["<TICKER> <MARKET_SECTOR>"]',
+    ).describe("Fully qualified Bloomberg securities supplied by the user to observe."),
     ...snapshotControlFields(tool, options),
   });
 }
@@ -904,12 +930,15 @@ export function createMktbarSnapshotSchema(
 ): z.ZodType<MktbarSnapshotInput> {
   const tool = "xbbg_mktbar_snapshot";
   return z.object({
-    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["LAST_PRICE"]')
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
       .optional()
       .describe("Optional market-bar fields. Omit for Bloomberg defaults."),
-    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
-      "One fully qualified Bloomberg security to observe.",
-    ),
+    ticker: nonEmptyString(
+      tool,
+      "ticker",
+      options.maxStringChars,
+      "<TICKER> <MARKET_SECTOR>",
+    ).describe("One fully qualified Bloomberg security supplied by the user to observe."),
     ...snapshotControlFields(tool, options),
   });
 }
@@ -919,12 +948,15 @@ export function createDepthSnapshotSchema(
 ): z.ZodType<DepthSnapshotInput> {
   const tool = "xbbg_depth_snapshot";
   return z.object({
-    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["BID"]')
+    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
       .optional()
       .describe("Optional market-depth fields. Omit for Bloomberg defaults."),
-    ticker: nonEmptyString(tool, "ticker", options.maxStringChars, "AAPL US Equity").describe(
-      "One fully qualified Bloomberg security to observe.",
-    ),
+    ticker: nonEmptyString(
+      tool,
+      "ticker",
+      options.maxStringChars,
+      "<TICKER> <MARKET_SECTOR>",
+    ).describe("One fully qualified Bloomberg security supplied by the user to observe."),
     ...snapshotControlFields(tool, options),
   });
 }

@@ -101,14 +101,46 @@ function rowCountOf(value: unknown): number | null {
   return null;
 }
 
+const ERROR_SHAPE_KEYS = new Set([
+  "error",
+  "errors",
+  "fielderrors",
+  "fieldexception",
+  "fieldexceptions",
+  "responseerror",
+  "securityerror",
+]);
+
 function hasErrorShape(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) {
-    return false;
+  const pending: unknown[] = [value];
+  const seen = new WeakSet<object>();
+
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    if (seen.has(entry)) {
+      continue;
+    }
+    seen.add(entry);
+
+    if (Array.isArray(entry)) {
+      for (const child of entry as readonly unknown[]) {
+        pending.push(child);
+      }
+      continue;
+    }
+
+    for (const [key, child] of Object.entries(entry as Record<string, unknown>)) {
+      if (ERROR_SHAPE_KEYS.has(key.toLowerCase()) && child !== undefined) {
+        return true;
+      }
+      pending.push(child);
+    }
   }
-  const record = value as Record<string, unknown>;
-  return (
-    record.error !== undefined || record.errors !== undefined || record.securityError !== undefined
-  );
+
+  return false;
 }
 
 export function limitResult(value: unknown, maxRows: number, maxStringChars: number): LimitResult {
@@ -135,10 +167,27 @@ function summarizeEnvelope(envelope: ToolEnvelope): string {
     notes.push("artifact truncated to configured limits");
   }
   if (hasErrorShape(envelope.data)) {
-    notes.push("inspect artifact for Bloomberg error details");
+    notes.push("inspect result payload for Bloomberg error details");
   }
   const noteText = notes.length === 0 ? "" : `; ${notes.join("; ")}`;
   return `${envelope.tool}: ${rowText}; truncated=${String(envelope.truncated)}${noteText}`;
+}
+
+function resultJsonReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  return value;
+}
+
+function formatToolContent(envelope: ToolEnvelope): string {
+  const payload = {
+    tool: envelope.tool,
+    rowCount: envelope.rowCount,
+    truncated: envelope.truncated,
+    data: envelope.data,
+  };
+  return `${summarizeEnvelope(envelope)}\n${JSON.stringify(payload, resultJsonReplacer)}`;
 }
 
 export function createToolResult(
@@ -154,7 +203,7 @@ export function createToolResult(
     truncated: limited.truncated,
     data: limited.value,
   };
-  return [summarizeEnvelope(envelope), envelope];
+  return [formatToolContent(envelope), envelope];
 }
 
 export function throwWithToolContext(tool: BloombergToolName, error: unknown): never {

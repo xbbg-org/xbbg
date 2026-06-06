@@ -1,6 +1,8 @@
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { ChatOpenAI } from "@langchain/openai";
+import { createAgent } from "langchain";
 
 import {
   BLOOMBERG_TOOL_INSTRUCTIONS,
@@ -172,6 +174,24 @@ describe("Bloomberg request tools", () => {
     expect(core.connect).not.toHaveBeenCalled();
   });
 
+  it("constructs LangChain agent and bindTools workflows without provider calls", () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+    const model = new ChatOpenAI({ apiKey: "test-api-key", model: "gpt-4.1" });
+    const boundModel = model.bindTools(tools);
+    const toolNode = new ToolNode(tools);
+    const agent = createAgent({
+      model,
+      systemPrompt: BLOOMBERG_TOOL_INSTRUCTIONS,
+      tools,
+    });
+
+    expect(typeof boundModel.invoke).toBe("function");
+    expect(toolNode).toBeInstanceOf(ToolNode);
+    expect(typeof agent.invoke).toBe("function");
+    expect(engine.bdp).not.toHaveBeenCalled();
+  });
+
   it("honors disabledTools for request and recipe tools", () => {
     const engine = fakeEngine();
     const tools = createBloombergTools({
@@ -213,6 +233,31 @@ describe("Bloomberg request tools", () => {
     release();
     await Promise.all([bdpPromise, bdhPromise]);
     expect(connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries lazy engine creation after a rejected connect", async () => {
+    const engine = fakeEngine();
+    let attempts = 0;
+    const connect = vi.fn(async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("temporary connect failure");
+      }
+      return engine;
+    });
+    const core = { ...fakeCore(engine), connect } as unknown as XbbgCoreLike;
+    const tools = createBloombergTools({ core });
+    const bdp = byName(tools, "xbbg_bdp");
+
+    await expect(
+      bdp.invoke({ fields: ["PX_LAST"], securities: ["AAPL US Equity"] }),
+    ).rejects.toThrow(/temporary connect failure/u);
+
+    const result = await invokeJson(bdp, { fields: ["PX_LAST"], securities: ["AAPL US Equity"] });
+
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(engine.bdp).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ rowCount: 1, tool: "xbbg_bdp" });
   });
 
   it("calls every request method with json backend and normalized inputs", async () => {
@@ -411,19 +456,20 @@ describe("Bloomberg request tools", () => {
     const engine = fakeEngine();
     const tools = createBloombergTools({ core: fakeCore(engine) });
 
-    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/{isin}");
-    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/cusip/{cusip}");
-    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/US037833FB15@MSG1 Corp");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/<ISIN>");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/cusip/<CUSIP>");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bdtick");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bqr");
-    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("get(px_last) for('AAPL US Equity')");
-    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("holdings('SPY US Equity')");
-    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("members('SPX Index')");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("get(<FIELD_1>, <FIELD_2>) for(<UNIVERSE>)");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("holdings('<ETF_TICKER> <MARKET_SECTOR>')");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("members('<INDEX_TICKER> <MARKET_SECTOR>')");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("filter_valid_contracts");
-    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("YAS_BOND_YLD");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("fixed-income YAS recipe fields");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("default_bqr_datetimes");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("## Core request tools");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("## Extension helper tools");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("bounded model-readable JSON");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("rowCount");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("truncated");
 
@@ -436,17 +482,17 @@ describe("Bloomberg request tools", () => {
     expect(requiredOnly).not.toContain("## Request limits and inputs");
 
     await invokeJson(byName(tools, "xbbg_bdp"), {
-      fields: ["PX_LAST"],
-      securities: [" US0378331005 ", " /isin/US0378331005 "],
+      fields: ["<FIELD>"],
+      securities: [" SYNTHETIC_ID ", " /isin/<ISIN> "],
     });
     expect(engine.bdp).toHaveBeenCalledWith(
-      ["US0378331005", "/isin/US0378331005"],
-      ["PX_LAST"],
+      ["SYNTHETIC_ID", "/isin/<ISIN>"],
+      ["<FIELD>"],
       expect.objectContaining({ backend: "json" }),
     );
   });
 
-  it("returns compact content and structured artifacts", async () => {
+  it("returns bounded model content and structured artifacts", async () => {
     const engine = fakeEngine();
     const tools = createBloombergTools({ core: fakeCore(engine), maxStringChars: 20 });
     const bdp = byName(tools, "xbbg_bdp");
@@ -455,13 +501,22 @@ describe("Bloomberg request tools", () => {
       "content_and_artifact",
     );
 
-    const [summary, artifact] = await invokeArtifact(bdp, {
+    const [content, artifact] = await invokeArtifact(bdp, {
       fields: ["PX_LAST"],
       securities: ["AAPL US Equity"],
     });
+    const [summaryLine, payloadLine] = content.split("\n");
+    const payload = JSON.parse(payloadLine ?? "") as Record<string, any>;
 
-    expect(summary).toContain("xbbg_bdp: 1 row");
-    expect(summary).toContain("truncated=true");
+    expect(summaryLine).toContain("xbbg_bdp: 1 row");
+    expect(summaryLine).toContain("truncated=true");
+    expect(payload).toMatchObject({
+      rowCount: 1,
+      tool: "xbbg_bdp",
+      truncated: true,
+    });
+    expect(payload.data[0].value).toBe("12345678901234567890…[truncated 5 chars]");
+    expect(content).not.toContain("1234567890123456789012345");
     expect(artifact).toMatchObject({ rowCount: 1, tool: "xbbg_bdp", truncated: true });
 
     const node = new ToolNode([bdp]);
@@ -483,12 +538,35 @@ describe("Bloomberg request tools", () => {
 
     const [message] = result.messages;
     expect(message).toBeInstanceOf(ToolMessage);
-    expect((message as ToolMessage).content).toContain("xbbg_bdp: 1 row");
-    expect((message as ToolMessage).content).not.toContain("12345678901234567890");
-    expect((message as ToolMessage).artifact).toMatchObject({
+    const toolMessage = message as ToolMessage;
+    expect(toolMessage.content).toContain("xbbg_bdp: 1 row");
+    expect(toolMessage.content).toContain("12345678901234567890…[truncated 5 chars]");
+    expect(toolMessage.content).not.toContain("1234567890123456789012345");
+    expect(toolMessage.artifact).toMatchObject({
       rowCount: 1,
       tool: "xbbg_bdp",
     });
+  });
+
+  it("surfaces row-level Bloomberg errors in model content", async () => {
+    const engine = fakeEngine();
+    vi.mocked(engine.bdp).mockResolvedValueOnce([
+      {
+        security: "<ERROR_TICKER> <MARKET_SECTOR>",
+        securityError: { message: "synthetic row failure" },
+      },
+    ]);
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+
+    const [content, artifact] = await invokeArtifact(byName(tools, "xbbg_bdp"), {
+      fields: ["<FIELD>"],
+      securities: ["<ERROR_TICKER> <MARKET_SECTOR>"],
+    });
+
+    expect(content.split("\n")[0]).toContain("inspect result payload for Bloomberg error details");
+    expect(content).toContain("securityError");
+    expect(content).toContain("synthetic row failure");
+    expect(artifact).toMatchObject({ rowCount: 1, tool: "xbbg_bdp", truncated: false });
   });
 
   it("collects bounded snapshot tools and always unsubscribes", async () => {
@@ -613,6 +691,28 @@ describe("Bloomberg request tools", () => {
         ticker: "AAPL US Equity",
       }),
     ).rejects.toThrow(/greater than zero/u);
+    await expect(
+      byName(tools, "xbbg_bdib").invoke({
+        end: "2024-01-02T10:00:00",
+        interval: 1,
+        start: "2024-01-02",
+        ticker: "AAPL US Equity",
+      }),
+    ).rejects.toThrow(/explicit time component/u);
+    await expect(
+      byName(tools, "xbbg_bdtick").invoke({
+        end: "20240102",
+        start: "2024-01-02T09:30:00",
+        ticker: "AAPL US Equity",
+      }),
+    ).rejects.toThrow(/explicit time component/u);
+    await expect(
+      byName(tools, "xbbg_bqr").invoke({
+        end: "2024-06-03T15:00:00",
+        start: "2024-06-03",
+        ticker: "FAKE US Equity@MSG1",
+      }),
+    ).rejects.toThrow(/explicit time component/u);
     await expect(
       byName(tools, "xbbg_bflds").invoke({ fields: ["PX_LAST"], searchSpec: "last price" }),
     ).rejects.toThrow(/exactly one/u);

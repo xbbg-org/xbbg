@@ -274,6 +274,27 @@ describe("Bloomberg extension tools", () => {
     expect(calculate).toMatchObject({ data: [0.1, null], tool: "xbbg_ext_calculate" });
   });
 
+  it("requires ticker inputs by ticker operation branch", async () => {
+    const fakeCore = core(engine());
+    const tools = createBloombergExtTools({ core: fakeCore });
+    const ticker = byName(tools, "xbbg_ext_ticker");
+
+    await expect(ticker.invoke({ operation: "parse_ticker" })).rejects.toThrow();
+    await expect(
+      ticker.invoke({ operation: "parse_ticker", tickers: ["ZZZ1 Test"] }),
+    ).rejects.toThrow();
+    await expect(ticker.invoke({ operation: "normalize_tickers" })).rejects.toThrow();
+    await expect(
+      ticker.invoke({ operation: "normalize_tickers", ticker: "ZZZ1 Test" }),
+    ).rejects.toThrow();
+
+    await invokeJson(ticker, { operation: "parse_ticker", ticker: "ZZZ1 Test" });
+    await invokeJson(ticker, { operation: "normalize_tickers", tickers: ["ZZZ1 Test"] });
+
+    expect(fakeCore.ext.parseTicker).toHaveBeenCalledWith("ZZZ1 Test");
+    expect(fakeCore.ext.normalizeTickers).toHaveBeenCalledWith(["ZZZ1 Test"]);
+  });
+
   it("honors disabledTools and rejects mutating operation names", async () => {
     const tools = createBloombergExtTools({
       core: core(engine()),

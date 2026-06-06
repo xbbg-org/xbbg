@@ -1,4 +1,4 @@
-import { tool } from "@langchain/core/tools";
+import { createBloombergStructuredTool } from "./langchain-tool";
 
 import { CDX_INFO_FIELDS, CDX_PRICING_FIELDS, CDX_RISK_FIELDS } from "./cdx-fields";
 import { createCoreResolver, type CoreResolver } from "./core-loader";
@@ -153,7 +153,7 @@ export const BLOOMBERG_EXT_TOOL_NAMES = Object.freeze(
 
 function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_ticker" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: TickerInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -204,7 +204,7 @@ function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extFuturesWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_futures" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: FuturesInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -284,7 +284,7 @@ function extFuturesWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extCdxWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_cdx" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: CdxInput): Promise<ToolContentAndArtifact> => {
       try {
         const args = asRecord(input);
@@ -346,7 +346,7 @@ function extCdxWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extCurrencyWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_currency" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: CurrencyInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -395,7 +395,7 @@ function extCurrencyWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extBqlBuilderWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_bql_builder" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BqlBuilderInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -446,7 +446,7 @@ function extBqlBuilderWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extMarketSessionWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_market_session" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: MarketSessionInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -518,7 +518,7 @@ function extMarketSessionWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extYasOverridesWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_yas_overrides" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: YasOverridesInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -549,7 +549,7 @@ function extYasOverridesWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extConstantsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_constants" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: ConstantsInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -614,7 +614,7 @@ function extConstantsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extColumnsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_columns" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: ColumnsInput): Promise<ToolContentAndArtifact> => {
       try {
         const core = await resolver.getCore();
@@ -660,7 +660,7 @@ function extColumnsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function extCalculateWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_calculate" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: CalculateInput): Promise<ToolContentAndArtifact> => {
       try {
         if (input.values.length !== input.levels.length) {

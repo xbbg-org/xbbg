@@ -44,23 +44,43 @@ export function createCoreResolver(options: BloombergToolsOptions = {}): CoreRes
   let corePromise: Promise<XbbgCoreLike> | undefined;
   let enginePromise: Promise<XbbgEngineLike> | undefined;
 
+  async function cacheCoreImport(): Promise<XbbgCoreLike> {
+    const promise = importCore();
+    corePromise = promise;
+    promise.catch(() => {
+      if (corePromise === promise) {
+        corePromise = undefined;
+      }
+    });
+    return await promise;
+  }
+
+  async function cacheEngineConnect(): Promise<XbbgEngineLike> {
+    const promise = (async (): Promise<XbbgEngineLike> => {
+      const core = await getCore();
+      return await core.connect(normalized.engineConfig);
+    })();
+    enginePromise = promise;
+    promise.catch(() => {
+      if (enginePromise === promise) {
+        enginePromise = undefined;
+      }
+    });
+    return await promise;
+  }
+
   async function getCore(): Promise<XbbgCoreLike> {
     if (normalized.core !== undefined) {
       return normalized.core;
     }
-    corePromise ??= importCore();
-    return await corePromise;
+    return await (corePromise ?? cacheCoreImport());
   }
 
   async function getEngine(): Promise<XbbgEngineLike> {
     if (normalized.engine !== undefined) {
       return normalized.engine;
     }
-    enginePromise ??= (async (): Promise<XbbgEngineLike> => {
-      const core = await getCore();
-      return await core.connect(normalized.engineConfig);
-    })();
-    return await enginePromise;
+    return await (enginePromise ?? cacheEngineConnect());
   }
 
   return {

@@ -1,4 +1,4 @@
-import { tool, type StructuredToolInterface } from "@langchain/core/tools";
+import type { StructuredToolInterface } from "@langchain/core/tools";
 
 import { createCoreResolver, type CoreResolver } from "./core-loader";
 import {
@@ -23,6 +23,7 @@ import {
   STREAM_SNAPSHOT_DESCRIPTION,
   YAS_DESCRIPTION,
 } from "./descriptions";
+import { createBloombergStructuredTool } from "./langchain-tool";
 import type { BloombergToolsOptions, BloombergToolName } from "./options";
 import { isToolDisabled } from "./options";
 import {
@@ -279,7 +280,7 @@ function enabledTool(
 
 function bdpWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bdp" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BdpInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -307,7 +308,7 @@ function bdpWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bdhWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bdh" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BdhInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -336,7 +337,7 @@ function bdhWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bdsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bds" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BdsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -363,7 +364,7 @@ function bdsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bdibWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bdib" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BdibInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -393,7 +394,7 @@ function bdibWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bdtickWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bdtick" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BdtickInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -429,7 +430,7 @@ function bdtickWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bqlWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bql" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BqlInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -454,7 +455,7 @@ function bqlWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bsrchWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bsrch" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BsrchInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -480,7 +481,7 @@ function bsrchWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bqrWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bqr" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BqrInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -507,7 +508,7 @@ function bqrWithResolver(resolver: CoreResolver): BloombergTool {
 
 function bfldsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_bflds" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BfldsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -534,7 +535,7 @@ function bfldsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function beqsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_beqs" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: BeqsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -563,7 +564,7 @@ function beqsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function yasWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_yas" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: YasInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -592,7 +593,7 @@ function yasWithResolver(resolver: CoreResolver): BloombergTool {
 
 function preferredsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_preferreds" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: PreferredsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -616,7 +617,7 @@ function preferredsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function corporateBondsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_corporate_bonds" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: CorporateBondsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -642,7 +643,7 @@ function corporateBondsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function indexMembersWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_index_members" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: IndexMembersInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -667,7 +668,7 @@ function indexMembersWithResolver(resolver: CoreResolver): BloombergTool {
 
 function resolveIsinsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_resolve_isins" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: ResolveIsinsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -688,7 +689,7 @@ function resolveIsinsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function issuerIsinsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_issuer_isins" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: IssuerIsinsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -709,7 +710,7 @@ function issuerIsinsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function etfHoldingsWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_etf_holdings" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: EtfHoldingsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -733,7 +734,7 @@ function etfHoldingsWithResolver(resolver: CoreResolver): BloombergTool {
 
 function streamSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_stream_snapshot" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: StreamSnapshotInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -755,7 +756,7 @@ function streamSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
 
 function mktbarSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_mktbar_snapshot" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: MktbarSnapshotInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
@@ -777,7 +778,7 @@ function mktbarSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
 
 function depthSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_depth_snapshot" satisfies BloombergToolName;
-  return tool(
+  return createBloombergStructuredTool(
     async (input: DepthSnapshotInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();

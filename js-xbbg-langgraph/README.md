@@ -19,13 +19,13 @@ npm install @xbbg/langgraph @xbbg/core @langchain/core
 LangGraph app:
 
 ```bash
-npm install @xbbg/langgraph @xbbg/core @langchain/core @langchain/langgraph
+npm install @xbbg/langgraph @xbbg/core @langchain/core @langchain/langgraph @langchain/openai
 ```
 
 Current LangChain agent app:
 
 ```bash
-npm install @xbbg/langgraph @xbbg/core @langchain/core langchain
+npm install @xbbg/langgraph @xbbg/core @langchain/core langchain @langchain/openai
 ```
 
 ## Agent guidance
@@ -57,7 +57,7 @@ const agent = createAgent({
 });
 
 const result = await agent.invoke({
-  messages: [{ role: "user", content: "Get PX_LAST for AAPL US Equity." }],
+  messages: [{ role: "user", content: "Get <FIELD> for <TICKER> <MARKET_SECTOR>." }],
 });
 ```
 
@@ -77,25 +77,59 @@ const agent = createReactAgent({
 });
 ```
 
-For custom graphs, pass the returned tools to LangGraph's `ToolNode`.
+For custom graphs, bind the tools to your model and route tool calls through LangGraph's `ToolNode`:
 
-All tools use LangChain `responseFormat: "content_and_artifact"`. In `ToolNode`, the tool message content is a compact summary for the model, while `artifact` contains the bounded structured envelope for application code.
+```ts
+import { AIMessage } from "@langchain/core/messages";
+import { END, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { ChatOpenAI } from "@langchain/openai";
+import { createBloombergTools, BLOOMBERG_TOOL_INSTRUCTIONS } from "@xbbg/langgraph";
+
+const tools = createBloombergTools({ maxSecurities: 5, maxFields: 5 });
+const model = new ChatOpenAI({ model: "gpt-4.1" }).bindTools(tools);
+const toolNode = new ToolNode(tools);
+
+const callModel = async (state: typeof MessagesAnnotation.State) => ({
+  messages: [
+    await model.invoke([
+      { role: "system", content: BLOOMBERG_TOOL_INSTRUCTIONS },
+      ...state.messages,
+    ]),
+  ],
+});
+
+const route = (state: typeof MessagesAnnotation.State) => {
+  const last = state.messages.at(-1);
+  return last instanceof AIMessage && last.tool_calls?.length ? "tools" : END;
+};
+
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode("model", callModel)
+  .addNode("tools", toolNode)
+  .addEdge(START, "model")
+  .addConditionalEdges("model", route)
+  .addEdge("tools", "model")
+  .compile();
+```
+
+All tools use LangChain `responseFormat: "content_and_artifact"`. In `ToolNode`, the tool message content starts with a compact summary and then includes bounded model-readable JSON; `artifact` contains the structured bounded envelope for application code.
 
 ## Tool factories
 
 Core Bloomberg request tools:
 
-- `xbbg_bdp` - reference/current fields such as `PX_LAST`, `NAME`, `CUR_MKT_CAP`.
+- `xbbg_bdp` - reference/current fields for a bounded securities list and explicit fields list.
 - `xbbg_bdh` - historical time series; requires explicit `start` and `end`.
-- `xbbg_bds` - one Bloomberg bulk/table field such as index members.
+- `xbbg_bds` - one Bloomberg bulk/table field.
 - `xbbg_bdib` - intraday bars; requires explicit `start`, `end`, and `interval`.
-- `xbbg_bdtick` - intraday ticks; requires explicit `start`, `end`, and event types when not using `TRADE`.
+- `xbbg_bdtick` - intraday ticks; requires explicit `start`, `end`, and event types when the default stream is not intended.
 - `xbbg_bql` - BQL expressions only.
 - `xbbg_bsrch` - Bloomberg search/grid requests, not normal security lookup.
-- `xbbg_bqr` - Bloomberg Quote Request / fixed-income dealer quotes; prefer identifiers such as `/isin/US037833FB15@MSG1 Corp`.
+- `xbbg_bqr` - Bloomberg Quote Request / fixed-income dealer quotes; prefer identifiers such as `/isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>`.
 - `xbbg_bflds` - field metadata/search; use first for uncertain mnemonics.
 - `xbbg_beqs` - named Bloomberg BEQS equity screens.
-- `xbbg_yas` - fixed-income YAS recipe fields such as `YAS_BOND_YLD`, `YAS_MOD_DUR`, `YAS_ZSPREAD`, and `YAS_BOND_PX`.
+- `xbbg_yas` - fixed-income YAS recipe fields for yield, duration, spread, benchmark, or price analytics.
 - `xbbg_preferreds` - preferred stock discovery for one equity ticker.
 - `xbbg_corporate_bonds` - corporate bond universe query for one issuer/company ticker.
 - `xbbg_index_members` - index constituents through the core index recipe.
@@ -106,10 +140,10 @@ Core Bloomberg request tools:
 - `xbbg_mktbar_snapshot` - bounded `//blp/mktbar` live bar observation for one ticker.
 - `xbbg_depth_snapshot` - bounded `//blp/mktdepthdata` market-depth observation for one ticker.
 
-For raw identifiers, ask for or pass Bloomberg's identifier syntax directly: `/isin/US0378331005` for ISINs and `/cusip/037833100` for CUSIPs.
-BQL is passed as one complete expression string. Use shapes such as `get(px_last) for('AAPL US Equity')`, `get(px_last, volume) for(['IBM US Equity', 'AAPL US Equity'])`, `get(id_isin, weights) for(holdings('SPY US Equity'))`, or `get(px_last) for(members('SPX Index')) with(...)`. Prefer `xbbg_bdp`/`xbbg_bdh` for simple reference or historical requests.
+For raw identifiers, ask for or pass Bloomberg's identifier syntax directly: `/isin/<ISIN>` for ISINs and `/cusip/<CUSIP>` for CUSIPs.
+BQL is passed as one complete expression string. Use placeholder shapes such as `get(<FIELD>) for('<TICKER> <MARKET_SECTOR>')`, `get(<FIELD_1>, <FIELD_2>) for(['<TICKER_1> <MARKET_SECTOR>', '<TICKER_2> <MARKET_SECTOR>'])`, `get(<FIELD>, <WEIGHT_FIELD>) for(holdings('<ETF_TICKER> <MARKET_SECTOR>'))`, or `get(<FIELD>) for(members('<INDEX_TICKER> <MARKET_SECTOR>')) with(...)`. Prefer `xbbg_bdp`/`xbbg_bdh` for simple reference or historical requests.
 
-Dealer quote / BQR workflows in xbbg use fixed-income identifiers with a quote source, for example `/isin/US037833FB15@MSG1 Corp`; use `xbbg_bqr` for that workflow and `xbbg_bdtick` for raw intraday ticks.
+Dealer quote / BQR workflows in xbbg use fixed-income identifiers with a quote source, for example `/isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>`; use `xbbg_bqr` for that workflow and `xbbg_bdtick` for raw intraday ticks.
 
 Streaming surfaces are intentionally exposed only as bounded snapshot tools. Each snapshot requires `maxUpdates`, applies the configured `maxStreamUpdates`/`maxStreamWaitMs` caps, stops on count, timeout, or stream completion, and calls `unsubscribe(false)` unless `drain: true` is explicitly provided. The package does not expose open-ended async subscription iterators as agent tools.
 
@@ -165,16 +199,22 @@ Defaults:
 - `maxStreamUpdates = 10`
 - `maxStreamWaitMs = 15000`
 
-Each tool uses `backend: "json"` for finite request results and LangChain `content_and_artifact` output. The model-facing content is a short summary, for example:
+Each tool uses `backend: "json"` for finite request results and LangChain `content_and_artifact` output. The model-facing content starts with a short summary and then includes bounded JSON data:
 
 ```text
 xbbg_bdp: 1 row; truncated=false
+{"tool":"xbbg_bdp","rowCount":1,"truncated":false,"data":[{"security":"<TICKER> <MARKET_SECTOR>","field":"<FIELD>","value":"<VALUE>"}]}
 ```
 
-The artifact is the bounded structured envelope:
+The artifact is the same bounded structured envelope for application code:
 
 ```json
-{ "tool": "xbbg_bdp", "rowCount": 1, "truncated": false, "data": [{ "ticker": "AAPL US Equity" }] }
+{
+  "tool": "xbbg_bdp",
+  "rowCount": 1,
+  "truncated": false,
+  "data": [{ "security": "<TICKER> <MARKET_SECTOR>", "field": "<FIELD>", "value": "<VALUE>" }]
+}
 ```
 
 When invoking tools outside an agent graph and you need the artifact, invoke with a tool-call id (or use LangGraph `ToolNode`) so LangChain returns a `ToolMessage` with `artifact`.

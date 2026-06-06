@@ -6,27 +6,27 @@ const REQUIRED_TOOL_INSTRUCTIONS = [
   "- Do not invent Bloomberg tickers, field mnemonics, overrides, or BQL functions. If the user gives a field description rather than a confident mnemonic, call xbbg_bflds first.",
   "",
   "## Security identifiers",
-  "- Prefer fully qualified Bloomberg securities such as AAPL US Equity, SPX Index, or CDX IG CDSI GEN 5Y Corp when the user provides them.",
-  "- For raw security identifiers, request or pass Bloomberg identifier syntax directly: /isin/{isin} for ISINs, for example /isin/US0378331005; /cusip/{cusip} for CUSIPs, for example /cusip/037833100.",
+  "- Prefer fully qualified Bloomberg securities supplied by the user, such as <TICKER> <MARKET_SECTOR>, <INDEX_TICKER> <MARKET_SECTOR>, or <CREDIT_INDEX_TICKER> <MARKET_SECTOR>.",
+  "- For raw security identifiers, request or pass Bloomberg identifier syntax directly: /isin/<ISIN> for ISINs or /cusip/<CUSIP> for CUSIPs.",
   "- Do not pass raw ISIN or CUSIP strings when the request is meant to identify a security. Do not use xbbg_bsrch as a replacement for a known ticker, ISIN, or CUSIP.",
-  "- For dealer quote / BQR workflows, use xbbg_bqr with a fixed-income identifier plus a dealer quote source such as /isin/US037833FB15@MSG1 Corp. For raw intraday ticks, use xbbg_bdtick.",
+  "- For dealer quote / BQR workflows, use xbbg_bqr with a fixed-income identifier plus a dealer quote source such as /isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>. For raw intraday ticks, use xbbg_bdtick.",
   "",
   "## Core request tools",
-  "- xbbg_bdp: current or reference point-in-time fields, e.g. PX_LAST, NAME, CUR_MKT_CAP. Use a small explicit securities list and a small explicit fields list. Use includeSecurityErrors only when the caller wants Bloomberg security errors in the response.",
+  "- xbbg_bdp: current or reference point-in-time fields. Use a small explicit securities list and a small explicit fields list. Use includeSecurityErrors only when the caller wants Bloomberg security errors in the response.",
   "- xbbg_bdh: historical daily or periodic time series. Always provide explicit start and end dates in YYYY-MM-DD or YYYYMMDD form. Ask before choosing periodicity, currency, fill behavior, adjustment overrides, or a wide output table.",
-  "- xbbg_bds: Bloomberg bulk/table fields such as index members. Provide exactly one bulk field; do not use bds for ordinary multi-field reference data.",
-  "- xbbg_bdib: intraday bars only. Provide one ticker, explicit ISO start/end datetimes, a positive interval in minutes, and timezone context when datetimes are naive. TRADE is the usual event type unless the user asks otherwise.",
-  "- xbbg_bdtick: intraday tick data. Provide one ticker, explicit ISO start/end datetimes, and explicit eventTypes when not asking for TRADE ticks. Use includeBrokerCodes or includeConditionCodes only when those columns are needed.",
+  "- xbbg_bds: Bloomberg bulk/table fields. Provide exactly one bulk field; do not use bds for ordinary multi-field reference data.",
+  "- xbbg_bdib: intraday bars only. Provide one ticker, explicit ISO start/end datetimes with time components, a positive interval in minutes, and timezone context when datetimes are naive.",
+  "- xbbg_bdtick: intraday tick data. Provide one ticker, explicit ISO start/end datetimes with time components, and explicit eventTypes unless the default event stream is intended. Use includeBrokerCodes or includeConditionCodes only when those columns are needed.",
   "- xbbg_bql: BQL expressions only when the user asks for BQL or the request is naturally expressed as a bounded BQL query. Keep queries short, explicit, and scoped to the requested universe.",
-  "- xbbg_bsrch: Bloomberg search-grid or saved-search workflows only, such as ExcelGetGrid-style searches. Do not use it for ordinary security lookup.",
-  "- xbbg_bqr: Bloomberg Quote Request / dealer quotes. Prefer fixed-income ISIN inputs with a dealer quote source such as /isin/US037833FB15@MSG1 Corp, explicit start/end datetimes, and BID/ASK event types. includeBrokerCodes defaults to true.",
+  "- xbbg_bsrch: Bloomberg search-grid or saved-search workflows only. Do not use it for ordinary security lookup.",
+  "- xbbg_bqr: Bloomberg Quote Request / dealer quotes. Prefer fixed-income identifier inputs with a dealer quote source such as /isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>, explicit start/end datetimes with time components, and explicit event types.",
   "- xbbg_bflds: Bloomberg field metadata/search. Provide exactly one of fields or searchSpec; use searchSpec for natural-language field names and fields for known mnemonics.",
   "- xbbg_beqs: Bloomberg equity screening by named BEQS screen. Prefer this over hand-written BQL when the user names an existing Bloomberg screen.",
-  "- xbbg_yas: fixed-income YAS recipe fields such as YAS_BOND_YLD, YAS_MOD_DUR, YAS_ZSPREAD, or YAS_BOND_PX. Prefer this over manual YAS_BOND_* BDP requests when the user asks for YAS yield, duration, spread, or price analytics.",
+  "- xbbg_yas: fixed-income YAS recipe fields. Prefer this over manual YAS-style BDP requests when the user asks for yield, duration, spread, or price analytics.",
   "- xbbg_preferreds: preferred stock discovery from an equity ticker. Prefer this over xbbg_ext_bql_builder plus xbbg_bql when the user wants the actual preferreds result.",
   "- xbbg_corporate_bonds: bounded corporate bond universe query for a company ticker. Prefer this over generic BQL for company debt discovery.",
   "- xbbg_index_members: index constituents through the core index recipe. Prefer this over generic BDS/BQL members when the user asks for constituents.",
-  "- xbbg_resolve_isins: resolves supplied ISIN strings to Bloomberg securities. Pass raw ISIN strings only for this recipe; otherwise use /isin/{isin} syntax with data tools.",
+  "- xbbg_resolve_isins: resolves supplied ISIN strings to Bloomberg securities. Pass raw ISIN strings only for this recipe; otherwise use /isin/<ISIN> syntax with data tools.",
   "- xbbg_issuer_isins: issuer/bond ISIN workflow for supplied bond ISIN strings.",
   "- xbbg_etf_holdings: ETF holdings recipe for a single ETF ticker. Prefer this over generic BQL holdings when the user asks for ETF constituents.",
   "- xbbg_stream_snapshot: bounded live market-data observation from //blp/mktdata. Requires explicit maxUpdates and always terminates/unsubscribes.",
@@ -35,13 +35,13 @@ const REQUIRED_TOOL_INSTRUCTIONS = [
   "",
   "## BQL guidance",
   "- BQL is a complete Bloomberg Query Language expression sent as one query string; the tool does not assemble get/for/with clauses for you.",
-  "- Basic shape: get(field1, field2) for(universe). Examples: get(px_last) for('AAPL US Equity') and get(px_last, volume) for(['IBM US Equity', 'AAPL US Equity']).",
-  "- Use BQL for universe-oriented analytics and screens such as holdings('SPY US Equity'), members('SPX Index'), debt universes, filters with with(...), and date ranges such as with(dates=range(-5d, 0d)).",
+  "- Basic shape: get(<FIELD_1>, <FIELD_2>) for(<UNIVERSE>). Use placeholders such as '<TICKER> <MARKET_SECTOR>', holdings('<ETF_TICKER> <MARKET_SECTOR>'), or members('<INDEX_TICKER> <MARKET_SECTOR>') until the user supplies real inputs.",
+  "- Use BQL for universe-oriented analytics and screens only when the user provides a bounded universe, filters, and date range.",
   "- Prefer xbbg_ext_bql_builder instead of hand-writing BQL for supported workflows: preferred stocks, corporate bonds, and ETF holdings.",
   "- Do not use BQL just because the user asks for normal reference data; xbbg_bdp is simpler for current fields and xbbg_bdh is simpler for historical time series.",
   "",
   "## Output handling",
-  "- Tool results use LangChain content_and_artifact output: content is a compact summary, artifact is a bounded envelope with tool, rowCount, truncated, and data. Inspect the artifact before summarizing.",
+  "- Tool results use LangChain content_and_artifact output: content starts with a compact summary and then includes bounded model-readable JSON; artifact is the structured bounded envelope with tool, rowCount, truncated, and data for application code.",
   "- If a response is empty, truncated, or contains Bloomberg/security errors, say that directly. Do not fill gaps from memory or assumptions.",
 ] as const;
 
@@ -95,37 +95,37 @@ export function getBloombergToolInstructions(
 }
 
 export const BDP_DESCRIPTION =
-  'Bloomberg reference data for current or point-in-time fields such as PX_LAST, NAME, or CUR_MKT_CAP. Use for a small bounded list of fully qualified securities. Use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs. Example: securities ["AAPL US Equity"], fields ["PX_LAST"].';
+  'Bloomberg reference data for current or point-in-time fields. Use for a small bounded list of fully qualified securities. Use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs. Example: securities ["<TICKER> <MARKET_SECTOR>"], fields ["<FIELD>"].';
 
 export const BDH_DESCRIPTION =
-  'Bloomberg historical time series. Requires explicit start and end dates; ask before using if the date range or periodicity is ambiguous. Use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs. Example: securities ["AAPL US Equity"], fields ["PX_LAST"], start "2024-01-01", end "2024-01-31".';
+  'Bloomberg historical time series. Requires explicit start and end dates; ask before using if the date range or periodicity is ambiguous. Use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs. Example: securities ["<TICKER> <MARKET_SECTOR>"], fields ["<FIELD>"], start "<START_DATE>", end "<END_DATE>".';
 
 export const BDS_DESCRIPTION =
-  'Bloomberg bulk/table reference data such as index members. Requires exactly one bulk field, not a field list. Use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs. Example: securities ["SPX Index"], field "INDX_MEMBERS".';
+  'Bloomberg bulk/table reference data. Requires exactly one bulk field, not a field list. Use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs. Example: securities ["<INDEX_TICKER> <MARKET_SECTOR>"], field "<BULK_FIELD>".';
 
 export const BDIB_DESCRIPTION =
-  'Bloomberg intraday bars. Requires one ticker plus explicit ISO start/end datetimes and a positive interval in minutes. Use /isin/{isin} for ISINs and /cusip/{cusip} for CUSIPs. Example: ticker "AAPL US Equity", start "2024-01-31T09:30:00-05:00", end "2024-01-31T16:00:00-05:00", interval 5.';
+  'Bloomberg intraday bars. Requires one ticker plus explicit ISO start/end datetimes with time components and a positive interval in minutes. Use /isin/<ISIN> for ISINs and /cusip/<CUSIP> for CUSIPs. Example: ticker "<TICKER> <MARKET_SECTOR>", start "<START_DATETIME>", end "<END_DATETIME>", interval <MINUTES>.';
 
 export const BDTICK_DESCRIPTION =
-  'Bloomberg intraday tick data. Requires one ticker plus explicit ISO start/end datetimes. Defaults eventTypes to ["TRADE"]; use ["BID", "ASK"] for quote ticks and includeBrokerCodes/includeConditionCodes only when needed.';
+  'Bloomberg intraday tick data. Requires one ticker plus explicit ISO start/end datetimes with time components. Set eventTypes explicitly, for example ["<EVENT_TYPE>"], and includeBrokerCodes/includeConditionCodes only when needed.';
 
 export const BQL_DESCRIPTION =
-  "Bloomberg Query Language expression sent as one complete query string. Use for bounded universe analytics such as get(px_last) for('AAPL US Equity'), get(px_last, volume) for(['IBM US Equity', 'AAPL US Equity']), holdings('SPY US Equity'), members('SPX Index'), filters with with(...), or dates=range(...). Prefer xbbg_bdp/xbbg_bdh for simple reference or historical requests.";
+  "Bloomberg Query Language expression sent as one complete query string. Use for bounded universe analytics with placeholder-shaped syntax such as get(<FIELD>) for('<TICKER> <MARKET_SECTOR>'), holdings('<ETF_TICKER> <MARKET_SECTOR>'), members('<INDEX_TICKER> <MARKET_SECTOR>'), filters with with(...), or dates=range(...). Prefer xbbg_bdp/xbbg_bdh for simple reference or historical requests.";
 
 export const BSRCH_DESCRIPTION =
-  'Bloomberg search/grid request. Use for saved-search or ExcelGetGrid-style Bloomberg searches, not ordinary security lookup. Example searchSpec "COMDTY:NG".';
+  'Bloomberg search/grid request. Use for saved-search or ExcelGetGrid-style Bloomberg searches, not ordinary security lookup. Example searchSpec "<SEARCH_SPEC>".';
 
 export const BQR_DESCRIPTION =
-  'Bloomberg Quote Request / dealer quotes. Use for fixed-income dealer quote ticks, preferably with an ISIN plus dealer source such as "/isin/US037833FB15@MSG1 Corp"; requires explicit ISO start/end datetimes. Defaults eventTypes to ["BID", "ASK"] and includeBrokerCodes to true.';
+  'Bloomberg Quote Request / dealer quotes. Use for fixed-income dealer quote ticks, preferably with an ISIN plus dealer source such as "/isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>"; requires explicit ISO start/end datetimes with time components. Set eventTypes explicitly, for example ["<EVENT_TYPE>"].';
 
 export const BFLDS_DESCRIPTION =
-  'Bloomberg field metadata and field search. Use first when a field mnemonic is uncertain. Provide exactly one of fields or searchSpec. Example: fields ["PX_LAST"] or searchSpec "last price".';
+  'Bloomberg field metadata and field search. Use first when a field mnemonic is uncertain. Provide exactly one of fields or searchSpec. Example: fields ["<FIELD>"] or searchSpec "<FIELD_SEARCH_TEXT>".';
 
 export const BEQS_DESCRIPTION =
   "Bloomberg equity screening by named BEQS screen. Use when the user names an existing Bloomberg screen and wants its bounded result set. Prefer this over hand-written BQL for saved Bloomberg screens.";
 
 export const YAS_DESCRIPTION =
-  "Bloomberg fixed-income YAS recipe fields for one or more bonds. Use for YAS yield, duration, spread, benchmark, or price analytics; provide explicit fields and optional settlement/yield/price inputs.";
+  "Bloomberg fixed-income YAS recipe fields for one or more bonds. Use for yield, duration, spread, benchmark, or price analytics; provide explicit fields and optional settlement/yield/price inputs.";
 
 export const PREFERREDS_DESCRIPTION =
   "Preferred stock discovery for one equity ticker. Use when the user asks for preferred shares or preferred stock securities related to an issuer.";
@@ -173,7 +173,7 @@ export const EXT_MARKET_SESSION_DESCRIPTION =
   "Market session and timezone helpers for deriving sessions, UTC windows, market rules, exchange metadata, turnover defaults, and BQR datetime defaults.";
 
 export const EXT_YAS_OVERRIDES_DESCRIPTION =
-  "Build flat Bloomberg YAS override maps for fixed income fields such as YAS_BOND_YLD, YAS_MOD_DUR, YAS_ZSPREAD, or YAS_BOND_PX.";
+  "Build flat Bloomberg YAS override maps for fixed-income analytics fields.";
 
 export const EXT_CONSTANTS_DESCRIPTION =
   "Static Bloomberg helper constants for date parsing/formatting, futures months, dividend types, and ETF/dividend columns.";

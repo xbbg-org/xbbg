@@ -22,11 +22,22 @@ export type TickerOperation =
   | "is_specific_contract"
   | "validate_generic_ticker";
 
-export interface TickerInput {
-  readonly operation: TickerOperation;
-  readonly ticker?: string;
-  readonly tickers?: readonly string[];
+export type SingleTickerOperation = Exclude<
+  TickerOperation,
+  "normalize_tickers" | "filter_equity_tickers"
+>;
+
+export interface SingleTickerInput {
+  readonly operation: SingleTickerOperation;
+  readonly ticker: string;
 }
+
+export interface TickerListInput {
+  readonly operation: "normalize_tickers" | "filter_equity_tickers";
+  readonly tickers: readonly string[];
+}
+
+export type TickerInput = SingleTickerInput | TickerListInput;
 
 export type FuturesOperation =
   | "build_futures_ticker"
@@ -209,31 +220,27 @@ function optionalString(
   return nonEmptyString(options, description).optional();
 }
 export function tickerSchema(options: NormalizedBloombergToolsOptions): z.ZodType<TickerInput> {
-  return z.object({
-    operation: z
-      .enum([
-        "parse_ticker",
-        "normalize_tickers",
-        "filter_equity_tickers",
-        "is_specific_contract",
-        "validate_generic_ticker",
-      ])
-      .describe("Ticker helper operation to run."),
-    ticker: optionalString(
-      options,
-      "One Bloomberg ticker for parse/contract validation operations.",
-    ),
-    tickers: stringArray(
-      options,
-      "Bloomberg tickers to normalize or filter.",
-      options.maxSecurities,
-    ).optional(),
-  });
+  const ticker = nonEmptyString(
+    options,
+    "One Bloomberg ticker for parse/contract validation operations.",
+  );
+  const tickers = stringArray(
+    options,
+    "Bloomberg tickers to normalize or filter.",
+    options.maxSecurities,
+  );
+  return z.discriminatedUnion("operation", [
+    z.object({ operation: z.literal("parse_ticker"), ticker }).strict(),
+    z.object({ operation: z.literal("is_specific_contract"), ticker }).strict(),
+    z.object({ operation: z.literal("validate_generic_ticker"), ticker }).strict(),
+    z.object({ operation: z.literal("normalize_tickers"), tickers }).strict(),
+    z.object({ operation: z.literal("filter_equity_tickers"), tickers }).strict(),
+  ]);
 }
 
 export function futuresSchema(options: NormalizedBloombergToolsOptions): z.ZodType<FuturesInput> {
   return z.object({
-    asset: optionalString(options, "Bloomberg asset class suffix, for example Comdty."),
+    asset: optionalString(options, "Bloomberg asset class suffix supplied by the user."),
     candidates: z
       .array(futuresCandidateSchema)
       .min(1)
