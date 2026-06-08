@@ -107,7 +107,7 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | Workflow | File | Purpose |
 |----------|------|---------|
 | Release | `pypi_upload.yml` | Build wheels (Linux + Windows × Python 3.10–3.14), sdist, publish to PyPI, attach to GitHub release |
-| Release | `npm-publish.yml` | Build and publish stable `@xbbg/core` prebuilt native packages for supported platforms, then publish the `@xbbg/core` wrapper package via npm trusted publishing |
+| Release | `npm-publish.yml` | Build and publish stable `@xbbg/core` prebuilt native packages for supported platforms, then publish the `@xbbg/core` wrapper and `@xbbg/langgraph` package via npm trusted publishing |
 
 ### npm trusted publishing setup
 
@@ -119,6 +119,7 @@ Go to **GitHub Actions** > **Bump Version and Create Release** > **Run workflow*
 | `@xbbg/core-linux-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
 | `@xbbg/core-win32-x64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
 | `@xbbg/core-darwin-arm64` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
+| `@xbbg/langgraph` | GitHub Actions | `alpha-xone` | `xbbg` | `npm-publish.yml` | leave blank |
 
 GitHub environment `npm` is intentionally not required because current repository credentials cannot create it. Add an environment only if an admin wants reviewer-based release approvals; if you do, update both the workflow `environment:` and all npm trusted publisher entries to the exact same environment name.
 
