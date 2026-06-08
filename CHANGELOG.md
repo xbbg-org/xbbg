@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bdib` intraday bars include Bloomberg trade value (#336)**: The Rust intraday bar extractor now preserves `barTickData.value` alongside OHLC, volume, and `numEvents` for Python and JavaScript callers, enabling bar VWAP calculations from Bloomberg's emitted trading amount.
+
 ## [1.2.6] - 2026-05-31
 
 ### Fixed

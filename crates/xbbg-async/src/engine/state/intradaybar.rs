@@ -41,6 +41,7 @@ impl IntradayBarState {
         columns.set_type_hint("close", ArrowType::Float64);
         columns.set_type_hint("volume", ArrowType::Float64);
         columns.set_type_hint("numEvents", ArrowType::Int32);
+        columns.set_type_hint("value", ArrowType::Float64);
 
         Self {
             event_type,
@@ -79,6 +80,7 @@ impl IntradayBarState {
             "close",
             "volume",
             "numEvents",
+            "value",
         ]);
         if let Ok(ref batch) = result {
             xbbg_log::debug!(rows = batch.num_rows(), "intradaybar finish");
@@ -100,6 +102,7 @@ impl IntradayBarState {
     ///       close: 150.5
     ///       volume: 1000000
     ///       numEvents: 500
+    ///       value: 150500000.0
     ///     }
     ///   }
     /// }
@@ -146,6 +149,7 @@ impl IntradayBarState {
             self.append_field(&bar, "close");
             self.append_field(&bar, "volume");
             self.append_field(&bar, "numEvents");
+            self.append_field(&bar, "value");
 
             self.columns.end_row();
         }

@@ -281,12 +281,12 @@ def _assert_bdh_raw(frame: Any) -> None:
 
 
 def _assert_bdib_raw(frame: Any) -> None:
-    rows = _assert_raw_rows(frame, ["ticker", "time", "open", "high", "low", "close", "volume", "numEvents"])
+    rows = _assert_raw_rows(frame, ["ticker", "time", "open", "high", "low", "close", "volume", "numEvents", "value"])
     assert len(rows) == 1, f"Points=1 should cap BDIB to one row, got {len(rows)}"
     row = rows[0]
     assert row["ticker"] == _INTRADAY_TICKER
     assert row["time"] is not None
-    for column in ("open", "high", "low", "close", "volume"):
+    for column in ("open", "high", "low", "close", "volume", "value"):
         assert isinstance(row[column], int | float), f"{column}={row[column]!r}"
     assert row["low"] <= row["high"]
     assert row["numEvents"] is None or row["numEvents"] >= 0

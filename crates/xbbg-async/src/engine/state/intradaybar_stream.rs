@@ -70,6 +70,7 @@ impl IntradayBarStreamState {
     ///       close: 150.5
     ///       volume: 1000000
     ///       numEvents: 500
+    ///       value: 150500000.0
     ///     }
     ///   }
     /// }
@@ -96,6 +97,7 @@ impl IntradayBarStreamState {
         let mut close_builder = Float64Builder::new();
         let mut volume_builder = Float64Builder::new();
         let mut num_events_builder = Int32Builder::new();
+        let mut value_builder = Float64Builder::new();
 
         for i in 0..n {
             let Some(bar) = bar_tick_data.get_element(i) else {
@@ -134,6 +136,8 @@ impl IntradayBarStreamState {
             } else {
                 num_events_builder.append_null();
             }
+
+            append_f64_field(&bar, "value", &mut value_builder);
         }
 
         // Build schema if not cached
@@ -151,6 +155,7 @@ impl IntradayBarStreamState {
                 Field::new("close", DataType::Float64, true),
                 Field::new("volume", DataType::Float64, true),
                 Field::new("numEvents", DataType::Int32, true),
+                Field::new("value", DataType::Float64, true),
             ]))
         });
 
@@ -163,6 +168,7 @@ impl IntradayBarStreamState {
             Arc::new(close_builder.finish()),
             Arc::new(volume_builder.finish()),
             Arc::new(num_events_builder.finish()),
+            Arc::new(value_builder.finish()),
         ];
 
         RecordBatch::try_new(schema.clone(), columns).ok()
