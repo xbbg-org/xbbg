@@ -59,7 +59,8 @@
   },
   "dependencies": {
     "@xbbg/core": "^1.2.4",
-    "zod": "^4.4.3"
+    "zod": "^3.25.32 || ^4.2.0",
+    "zod-to-json-schema": "^3.25.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

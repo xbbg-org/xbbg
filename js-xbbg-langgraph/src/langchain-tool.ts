@@ -1,22 +1,27 @@
 import { tool, type StructuredToolInterface } from "@langchain/core/tools";
-import * as z from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import type * as z from "zod/v3";
 
 import type { BloombergToolName } from "./options";
 import type { ToolContentAndArtifact } from "./result-limits";
+
+type ZodOutput<T> = z.ZodType<T, z.ZodTypeDef, unknown>;
 
 interface BloombergStructuredToolFields<Input> {
   readonly description: string;
   readonly name: BloombergToolName;
   readonly responseFormat: "content_and_artifact";
-  readonly schema: z.ZodType<Input>;
+  readonly schema: ZodOutput<Input>;
 }
 
-function inputJsonSchema(schema: z.ZodType): Record<string, unknown> {
-  const jsonSchema = z.toJSONSchema(schema, {
-    io: "input",
-    unrepresentable: "any",
+function inputJsonSchema(schema: ZodOutput<unknown>): Record<string, unknown> {
+  const jsonSchema = zodToJsonSchema(schema, {
+    $refStrategy: "none",
+    effectStrategy: "input",
+    pipeStrategy: "input",
   }) as Record<string, unknown>;
   delete jsonSchema.$schema;
+  delete jsonSchema.definitions;
   return jsonSchema;
 }
 

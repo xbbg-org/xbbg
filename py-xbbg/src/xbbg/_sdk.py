@@ -32,7 +32,18 @@ def _find_sdk_lib(sdk_path: Path) -> Path | None:
     import sys
 
     if sys.platform == "win32":
-        candidates = ["blpapi3_64.dll", "blpapi3_32.dll", "lib/blpapi3_64.dll", "lib/blpapi3_32.dll"]
+        candidates = [
+            "blpapi3_64.dll",
+            "blpapi3_32.dll",
+            "bin/blpapi3_64.dll",
+            "bin/blpapi3_32.dll",
+            "lib/blpapi3_64.dll",
+            "lib/blpapi3_32.dll",
+            "Lib/blpapi3_64.dll",
+            "Lib/blpapi3_32.dll",
+            "lib/win64/blpapi3_64.dll",
+            "lib/win32/blpapi3_32.dll",
+        ]
     else:  # macOS and Linux
         candidates = ["libblpapi3_64.so", "libblpapi3.so", "lib/libblpapi3_64.so", "lib/libblpapi3.so"]
 
@@ -41,6 +52,55 @@ def _find_sdk_lib(sdk_path: Path) -> Path | None:
         if full_path.is_file():
             return full_path
     return None
+
+
+def _dapi_candidate_paths() -> list[Path]:
+    """Return likely Bloomberg Terminal/DAPI runtime directories in priority order."""
+    import os
+    import sys
+
+    candidates: list[Path] = []
+
+    def add(candidate: Path | None) -> None:
+        if candidate is None:
+            return
+        key = str(candidate).casefold() if sys.platform == "win32" else str(candidate)
+        if any(
+            (str(existing).casefold() if sys.platform == "win32" else str(existing)) == key for existing in candidates
+        ):
+            return
+        candidates.append(candidate)
+
+    if sys.platform == "win32":
+        system_drive = os.environ.get("SYSTEMDRIVE", "C:")
+        if len(system_drive) < 2 or system_drive[1] != ":":
+            system_drive = "C:"
+        system_drive = system_drive[:2]
+
+        add(Path(f"{system_drive}\\blp\\DAPI"))
+        if system_drive.casefold() != "c:":
+            add(Path("C:\\blp\\DAPI"))
+
+        for root in (
+            os.environ.get("PROGRAMFILES"),
+            f"{system_drive}\\Program Files",
+            os.environ.get("PROGRAMFILES(X86)"),
+            f"{system_drive}\\Program Files (x86)",
+        ):
+            if root:
+                add(Path(root) / "Bloomberg" / "Blp" / "DAPI")
+
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if not local_app_data and os.environ.get("USERPROFILE"):
+            local_app_data = str(Path(os.environ["USERPROFILE"]) / "AppData" / "Local")
+        if local_app_data:
+            add(Path(local_app_data) / "Bloomberg" / "DAPI")
+            add(Path(local_app_data) / "Bloomberg" / "Blp" / "DAPI")
+    else:
+        add(Path.home() / "blp" / "DAPI")
+        add(Path("/opt/bloomberg/DAPI"))
+
+    return candidates
 
 
 def get_sdk_info() -> dict:
@@ -61,7 +121,6 @@ def get_sdk_info() -> dict:
         {'sources': [{'name': 'blpapi_python', 'version': '3.25.11.1', ...}], 'active': 'blpapi_python'}
     """
     import os
-    import sys
 
     global _sdk_info
     if _sdk_info is not None:
@@ -99,31 +158,30 @@ def get_sdk_info() -> dict:
         pass
 
     # Check 2: DAPI (Bloomberg Terminal installation)
-    if sys.platform == "win32":
-        dapi_paths = [
-            Path(r"C:\blp\DAPI"),
-            Path(os.path.expandvars(r"%LOCALAPPDATA%\Bloomberg\DAPI")),
-        ]
-    else:  # Linux
-        dapi_paths = [
-            Path.home() / "blp" / "DAPI",
-            Path("/opt/bloomberg/DAPI"),
-        ]
+    first_existing_dapi_path = None
+    first_existing_dapi_version = None
+    for dapi_path in _dapi_candidate_paths():
+        try:
+            if not dapi_path.is_dir():
+                continue
+        except (OSError, PermissionError):
+            continue
+        lib_path = _find_sdk_lib(dapi_path)
+        if lib_path:
+            first_existing_dapi_path = dapi_path
+            first_existing_dapi_version = _get_lib_version(lib_path)
+            break
+        if first_existing_dapi_path is None:
+            first_existing_dapi_path = dapi_path
 
-    for dapi_path in dapi_paths:
-        if dapi_path.is_dir():
-            dapi_version = None
-            lib_path = _find_sdk_lib(dapi_path)
-            if lib_path:
-                dapi_version = _get_lib_version(lib_path)
-            sources.append(
-                {
-                    "name": "dapi",
-                    "version": dapi_version,
-                    "path": dapi_path,
-                }
-            )
-            break  # Only add first found DAPI path
+    if first_existing_dapi_path is not None:
+        sources.append(
+            {
+                "name": "dapi",
+                "version": first_existing_dapi_version,
+                "path": first_existing_dapi_path,
+            }
+        )
 
     # Check 3: BLPAPI_ROOT environment variable
     blpapi_root = os.environ.get("BLPAPI_ROOT")
@@ -212,7 +270,6 @@ def _collect_sdk_candidate_dirs() -> list[Path]:
     Duplicates (by resolved path) are removed.
     """
     import os
-    import sys
 
     seen: set[str] = set()
     result: list[Path] = []
@@ -246,23 +303,8 @@ def _collect_sdk_candidate_dirs() -> list[Path]:
         pass
 
     # 3. DAPI (Bloomberg Terminal)
-    if sys.platform == "win32":
-        dapi_paths = [
-            Path(r"C:\blp\DAPI"),
-            Path(os.path.expandvars(r"%LOCALAPPDATA%\Bloomberg\DAPI")),
-        ]
-    else:
-        dapi_paths = [
-            Path.home() / "blp" / "DAPI",
-            Path("/opt/bloomberg/DAPI"),
-        ]
-    for dapi_path in dapi_paths:
-        try:
-            if dapi_path.is_dir():
-                add(dapi_path)
-                break
-        except (OSError, PermissionError):
-            continue
+    for dapi_path in _dapi_candidate_paths():
+        add(dapi_path)
 
     # 4. BLPAPI_ROOT environment variable
     blpapi_root = os.environ.get("BLPAPI_ROOT")

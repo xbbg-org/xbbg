@@ -93,6 +93,60 @@ def test_set_sdk_path_prepares_manual_sdk(monkeypatch, tmp_path):
     _CASE.assertEqual(calls, ["prepare"])
 
 
+def test_find_sdk_lib_checks_windows_bin_dir(monkeypatch, tmp_path):
+    from xbbg import _sdk
+
+    sdk_dir = tmp_path / "sdk"
+    bin_dir = sdk_dir / "bin"
+    bin_dir.mkdir(parents=True)
+    lib_path = bin_dir / "blpapi3_64.dll"
+    lib_path.write_text("placeholder")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    _CASE.assertEqual(_sdk._find_sdk_lib(sdk_dir), lib_path)
+
+
+def test_dapi_candidate_paths_include_windows_terminal_roots(monkeypatch):
+    from xbbg import _sdk
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("SYSTEMDRIVE", "C:")
+    monkeypatch.setenv("PROGRAMFILES", r"C:\Program Files")
+    monkeypatch.setenv("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\analyst\AppData\Local")
+
+    paths = _sdk._dapi_candidate_paths()
+
+    _CASE.assertIn(Path(r"C:\blp\DAPI"), paths)
+    _CASE.assertIn(Path(r"C:\Program Files (x86)") / "Bloomberg" / "Blp" / "DAPI", paths)
+    _CASE.assertIn(Path(r"C:\Program Files") / "Bloomberg" / "Blp" / "DAPI", paths)
+
+
+def test_get_sdk_info_prefers_dapi_path_with_runtime(monkeypatch, tmp_path):
+    from xbbg import _sdk
+
+    empty_dapi = tmp_path / "empty-dapi"
+    empty_dapi.mkdir()
+    program_files_dapi = tmp_path / "Program Files (x86)" / "Bloomberg" / "Blp" / "DAPI"
+    program_files_dapi.mkdir(parents=True)
+    lib_path = program_files_dapi / "blpapi3_64.dll"
+    lib_path.write_text("placeholder")
+
+    monkeypatch.setattr(_sdk, "_sdk_info", None)
+    monkeypatch.setattr(_sdk, "_manual_sdk_path", None)
+    monkeypatch.setattr(_sdk, "_dapi_candidate_paths", lambda: [empty_dapi, program_files_dapi])
+    monkeypatch.setattr(_sdk, "_get_lib_version", lambda _lib_path: "3.0.0.0")
+    monkeypatch.delenv("BLPAPI_ROOT", raising=False)
+
+    info = _sdk.get_sdk_info()
+    dapi_sources = [source for source in info["sources"] if source["name"] == "dapi"]
+
+    _CASE.assertEqual(len(dapi_sources), 1)
+    _CASE.assertEqual(dapi_sources[0]["path"], program_files_dapi)
+    _CASE.assertEqual(dapi_sources[0]["version"], "3.0.0.0")
+
+
 def test_windows_dll_directory_handles_are_retained(monkeypatch, tmp_path):
     from xbbg import _sdk
 

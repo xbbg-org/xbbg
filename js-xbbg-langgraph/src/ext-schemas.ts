@@ -1,6 +1,7 @@
-import * as z from "zod";
+import * as z from "zod/v3";
 
 import type { NormalizedBloombergToolsOptions } from "./options";
+type ZodOutput<T> = z.ZodType<T, z.ZodTypeDef, unknown>;
 
 export interface StringPair {
   readonly key: string;
@@ -198,7 +199,7 @@ const futuresCandidateSchema = z.object({
 function nonEmptyString(
   options: NormalizedBloombergToolsOptions,
   description: string,
-): z.ZodPipe<z.ZodString, z.ZodString> {
+): ZodOutput<string> {
   return z
     .string()
     .trim()
@@ -209,17 +210,17 @@ function stringArray(
   options: NormalizedBloombergToolsOptions,
   description: string,
   maxItems = options.maxFields,
-): z.ZodArray<z.ZodPipe<z.ZodString, z.ZodString>> {
+): ZodOutput<string[]> {
   return z.array(nonEmptyString(options, description)).min(1).max(maxItems).describe(description);
 }
 
 function optionalString(
   options: NormalizedBloombergToolsOptions,
   description: string,
-): z.ZodOptional<z.ZodPipe<z.ZodString, z.ZodString>> {
+): ZodOutput<string | undefined> {
   return nonEmptyString(options, description).optional();
 }
-export function tickerSchema(options: NormalizedBloombergToolsOptions): z.ZodType<TickerInput> {
+export function tickerSchema(options: NormalizedBloombergToolsOptions): ZodOutput<TickerInput> {
   const ticker = nonEmptyString(
     options,
     "One Bloomberg ticker for parse/contract validation operations.",
@@ -238,7 +239,7 @@ export function tickerSchema(options: NormalizedBloombergToolsOptions): z.ZodTyp
   ]);
 }
 
-export function futuresSchema(options: NormalizedBloombergToolsOptions): z.ZodType<FuturesInput> {
+export function futuresSchema(options: NormalizedBloombergToolsOptions): ZodOutput<FuturesInput> {
   return z.object({
     asset: optionalString(options, "Bloomberg asset class suffix supplied by the user."),
     candidates: z
@@ -283,7 +284,7 @@ export function futuresSchema(options: NormalizedBloombergToolsOptions): z.ZodTy
   });
 }
 
-export function cdxSchema(options: NormalizedBloombergToolsOptions): z.ZodType<CdxInput> {
+export function cdxSchema(options: NormalizedBloombergToolsOptions): ZodOutput<CdxInput> {
   return z.object({
     genTicker: optionalString(options, "Generic CDX ticker."),
     operation: z
@@ -305,7 +306,7 @@ export function cdxSchema(options: NormalizedBloombergToolsOptions): z.ZodType<C
   });
 }
 
-export function currencySchema(options: NormalizedBloombergToolsOptions): z.ZodType<CurrencyInput> {
+export function currencySchema(options: NormalizedBloombergToolsOptions): ZodOutput<CurrencyInput> {
   return z.object({
     ccy1: optionalString(options, "First ISO currency code."),
     ccy2: optionalString(options, "Second ISO currency code."),
@@ -321,7 +322,7 @@ export function currencySchema(options: NormalizedBloombergToolsOptions): z.ZodT
 
 export function bqlBuilderSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<BqlBuilderInput> {
+): ZodOutput<BqlBuilderInput> {
   return z.object({
     activeOnly: z.boolean().optional().describe("Restrict corporate bond query to active bonds."),
     ccy: optionalString(options, "Currency filter for corporate bond query."),
@@ -337,7 +338,7 @@ export function bqlBuilderSchema(
 
 export function marketSessionSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<MarketSessionInput> {
+): ZodOutput<MarketSessionInput> {
   return z.object({
     countryIso: optionalString(options, "ISO country code for timezone inference."),
     date: optionalString(options, "Date for UTC session conversion, YYYY-MM-DD or YYYYMMDD."),
@@ -370,7 +371,7 @@ export function marketSessionSchema(
 
 export function yasOverridesSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<YasOverridesInput> {
+): ZodOutput<YasOverridesInput> {
   return z.object({
     benchmark: optionalString(options, "Optional YAS benchmark."),
     price: z.number().optional().describe("YAS price override."),
@@ -383,7 +384,7 @@ export function yasOverridesSchema(
 
 export function constantsSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<ConstantsInput> {
+): ZodOutput<ConstantsInput> {
   return z.object({
     code: optionalString(options, "Month code."),
     dateStr: optionalString(options, "Date string to parse."),
@@ -409,7 +410,7 @@ export function constantsSchema(
   });
 }
 
-export function columnsSchema(options: NormalizedBloombergToolsOptions): z.ZodType<ColumnsInput> {
+export function columnsSchema(options: NormalizedBloombergToolsOptions): ZodOutput<ColumnsInput> {
   return z.object({
     columns: stringArray(options, "Column names to rename.").optional(),
     dataColumns: stringArray(options, "Earnings data column names.").optional(),
@@ -427,7 +428,7 @@ export function columnsSchema(options: NormalizedBloombergToolsOptions): z.ZodTy
 
 export function calculateSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<CalculateInput> {
+): ZodOutput<CalculateInput> {
   return z.object({
     levels: z
       .array(z.number().nullable())

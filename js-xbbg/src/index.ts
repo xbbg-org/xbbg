@@ -28,6 +28,7 @@ import type {
   NativeSubscriptionUpdate,
 } from './napi';
 import { resolveNativeAddon } from './native/resolve-native';
+import { configureRuntimeSearchPath } from './runtime-search-path';
 import type {
   ActiveCdxOptions,
   AuthConfig,
@@ -141,111 +142,6 @@ function isBdibOptionsInput(
 }
 
 const packageJson = parsePackageJsonShape(nodeRequire('../package.json'));
-
-function containsBlpapiRuntime(dir: string): boolean {
-  if (dir.length === 0 || !fs.existsSync(dir)) {
-    return false;
-  }
-  return [
-    'blpapi3_64.dll',
-    'blpapi3_32.dll',
-    'libblpapi3.dylib',
-    'libblpapi3_64.so',
-    'libblpapi3.so',
-  ].some((name) => fs.existsSync(path.join(dir, name)));
-}
-
-function parseVersionParts(name: string): number[] | null {
-  const parts = name.split('.').map((part) => Number(part));
-  return parts.every((part) => Number.isInteger(part) && part >= 0) ? parts : null;
-}
-
-function compareSdkRoots(left: string, right: string): number {
-  const leftParts = parseVersionParts(path.basename(left));
-  const rightParts = parseVersionParts(path.basename(right));
-  if (leftParts !== null && rightParts !== null) {
-    const length = Math.max(leftParts.length, rightParts.length);
-    for (let index = 0; index < length; index += 1) {
-      const leftPart = leftParts[index] ?? 0;
-      const rightPart = rightParts[index] ?? 0;
-      if (leftPart !== rightPart) {
-        return rightPart - leftPart;
-      }
-    }
-  }
-  if (leftParts !== null) {
-    return -1;
-  }
-  if (rightParts !== null) {
-    return 1;
-  }
-  return right.localeCompare(left);
-}
-
-function pushSdkRuntimeCandidates(candidates: string[], sdkRoot: string): void {
-  const resolved = path.resolve(sdkRoot);
-  candidates.push(resolved, path.join(resolved, 'bin'), path.join(resolved, 'lib'));
-}
-
-function resolveVendorSdkRoot(repoRoot: string): string | null {
-  const vendorDir = path.join(repoRoot, 'vendor', 'blpapi-sdk');
-  if (!fs.existsSync(vendorDir)) {
-    return null;
-  }
-  const candidates = [vendorDir];
-  for (const entry of fs.readdirSync(vendorDir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      candidates.push(path.join(vendorDir, entry.name));
-    }
-  }
-  candidates.sort(compareSdkRoots);
-  return (
-    candidates.find((candidate) => {
-      const dirs = [candidate, path.join(candidate, 'bin'), path.join(candidate, 'lib')];
-      return dirs.some(containsBlpapiRuntime);
-    }) ?? null
-  );
-}
-
-function configureRuntimeSearchPath(): void {
-  if (process.platform !== 'win32') {
-    return;
-  }
-
-  const candidates: string[] = [];
-  const libDir = process.env.BLPAPI_LIB_DIR;
-  if (libDir !== undefined && libDir.length > 0) {
-    candidates.push(path.resolve(libDir));
-  }
-  const root = process.env.BLPAPI_ROOT;
-  if (root !== undefined && root.length > 0) {
-    pushSdkRuntimeCandidates(candidates, root);
-  }
-  const repoRoot = path.resolve(__dirname, '..', '..');
-  const devRoot = process.env.XBBG_DEV_SDK_ROOT;
-  if (devRoot !== undefined && devRoot.length > 0) {
-    pushSdkRuntimeCandidates(
-      candidates,
-      path.isAbsolute(devRoot) ? devRoot : path.resolve(repoRoot, devRoot),
-    );
-  }
-  const vendorRoot = resolveVendorSdkRoot(repoRoot);
-  if (vendorRoot !== null) {
-    pushSdkRuntimeCandidates(candidates, vendorRoot);
-  }
-
-  for (const candidate of candidates) {
-    if (!containsBlpapiRuntime(candidate)) {
-      continue;
-    }
-    const currentPath = process.env.PATH ?? '';
-    const parts = currentPath.split(';').filter((part) => part.length > 0);
-    if (!parts.includes(candidate)) {
-      process.env.PATH = currentPath.length > 0 ? `${candidate};${currentPath}` : candidate;
-    }
-    break;
-  }
-}
 
 configureRuntimeSearchPath();
 

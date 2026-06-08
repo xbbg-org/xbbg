@@ -1,6 +1,7 @@
-import * as z from "zod";
+import * as z from "zod/v3";
 
 import type { NormalizedBloombergToolsOptions } from "./options";
+type ZodOutput<T> = z.ZodType<T, z.ZodTypeDef, unknown>;
 
 export type PrimitiveValue = string | number | boolean;
 export type PrimitiveMap = Record<string, PrimitiveValue>;
@@ -284,7 +285,7 @@ function nonEmptyString(
   field: string,
   maxChars: number,
   example: string,
-): z.ZodType<string> {
+): ZodOutput<string> {
   return z
     .string()
     .transform((value) => value.trim())
@@ -305,14 +306,14 @@ function stringArray(
   maxItems: number,
   maxChars: number,
   example: string,
-): z.ZodType<string[]> {
+): ZodOutput<string[]> {
   return z
     .array(nonEmptyString(tool, field, maxChars, example))
     .min(1, `${tool}: ${field} must contain at least one non-empty string. Example: ${example}`)
     .max(maxItems, `${tool}: ${field} can contain at most ${maxItems} values`);
 }
 
-function primitiveMap(tool: string, field: string): z.ZodType<PrimitiveMap | undefined> {
+function primitiveMap(tool: string, field: string): ZodOutput<PrimitiveMap | undefined> {
   return z
     .record(z.string().min(1), primitiveSchema)
     .optional()
@@ -335,7 +336,7 @@ function primitiveMap(tool: string, field: string): z.ZodType<PrimitiveMap | und
     });
 }
 
-function dateField(tool: string, field: string): z.ZodType<string> {
+function dateField(tool: string, field: string): ZodOutput<string> {
   return z
     .union([z.string(), z.date(), z.number()])
     .transform((value) => normalizeDate(value))
@@ -344,7 +345,7 @@ function dateField(tool: string, field: string): z.ZodType<string> {
     );
 }
 
-function dateTimeField(tool: string, field: string): z.ZodType<string> {
+function dateTimeField(tool: string, field: string): ZodOutput<string> {
   return z
     .union([z.string(), z.date(), z.number()])
     .superRefine((value, context) => {
@@ -363,23 +364,27 @@ function dateTimeField(tool: string, field: string): z.ZodType<string> {
     .describe(`${field} datetime. Use ISO 8601 with an explicit time component.`);
 }
 
-function referenceFormat(tool: string): z.ZodType<ReferenceFormat | undefined> {
+function referenceFormat(tool: string): ZodOutput<ReferenceFormat | undefined> {
   return z
     .enum(REFERENCE_FORMATS, {
-      error: `${tool}: format must be one of ${REFERENCE_FORMATS.join(", ")}`,
+      errorMap: () => ({
+        message: `${tool}: format must be one of ${REFERENCE_FORMATS.join(", ")}`,
+      }),
     })
     .optional();
 }
 
-function historicalFormat(tool: string): z.ZodType<HistoricalFormat | undefined> {
+function historicalFormat(tool: string): ZodOutput<HistoricalFormat | undefined> {
   return z
     .enum(HISTORICAL_FORMATS, {
-      error: `${tool}: format must be one of ${HISTORICAL_FORMATS.join(", ")}`,
+      errorMap: () => ({
+        message: `${tool}: format must be one of ${HISTORICAL_FORMATS.join(", ")}`,
+      }),
     })
     .optional();
 }
 
-export function createBdpSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BdpInput> {
+export function createBdpSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BdpInput> {
   const tool = "xbbg_bdp";
   return z.object({
     fields: stringArray(
@@ -415,7 +420,7 @@ export function createBdpSchema(options: NormalizedBloombergToolsOptions): z.Zod
   });
 }
 
-export function createBdhSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BdhInput> {
+export function createBdhSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BdhInput> {
   const tool = "xbbg_bdh";
   return z
     .object({
@@ -462,7 +467,7 @@ export function createBdhSchema(options: NormalizedBloombergToolsOptions): z.Zod
     });
 }
 
-export function createBdsSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BdsInput> {
+export function createBdsSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BdsInput> {
   const tool = "xbbg_bds";
   return z.object({
     field: nonEmptyString(tool, "field", options.maxStringChars, "<BULK_FIELD>").describe(
@@ -488,7 +493,7 @@ export function createBdsSchema(options: NormalizedBloombergToolsOptions): z.Zod
   });
 }
 
-export function createBdibSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BdibInput> {
+export function createBdibSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BdibInput> {
   const tool = "xbbg_bdib";
   return z.object({
     end: dateTimeField(tool, "end").describe(
@@ -527,7 +532,7 @@ export function createBdibSchema(options: NormalizedBloombergToolsOptions): z.Zo
 
 export function createBdtickSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<BdtickInput> {
+): ZodOutput<BdtickInput> {
   const tool = "xbbg_bdtick";
   const includeFlag = z.boolean().optional().describe("Optional IntradayTickRequest include flag.");
   return z.object({
@@ -573,7 +578,7 @@ export function createBdtickSchema(
   });
 }
 
-export function createBqlSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BqlInput> {
+export function createBqlSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BqlInput> {
   const tool = "xbbg_bql";
   return z.object({
     format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
@@ -586,7 +591,7 @@ export function createBqlSchema(options: NormalizedBloombergToolsOptions): z.Zod
   });
 }
 
-export function createBqrSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BqrInput> {
+export function createBqrSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BqrInput> {
   const tool = "xbbg_bqr";
   return z.object({
     end: dateTimeField(tool, "end").describe(
@@ -619,7 +624,7 @@ export function createBqrSchema(options: NormalizedBloombergToolsOptions): z.Zod
   });
 }
 
-export function createBsrchSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BsrchInput> {
+export function createBsrchSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BsrchInput> {
   const tool = "xbbg_bsrch";
   return z.object({
     format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
@@ -640,7 +645,7 @@ export function createBsrchSchema(options: NormalizedBloombergToolsOptions): z.Z
   });
 }
 
-export function createBfldsSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BfldsInput> {
+export function createBfldsSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BfldsInput> {
   const tool = "xbbg_bflds";
   return z
     .object({
@@ -677,7 +682,7 @@ export function createBfldsSchema(options: NormalizedBloombergToolsOptions): z.Z
     });
 }
 
-export function createBeqsSchema(options: NormalizedBloombergToolsOptions): z.ZodType<BeqsInput> {
+export function createBeqsSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BeqsInput> {
   const tool = "xbbg_beqs";
   return z.object({
     asof: dateField(tool, "asof").optional().describe("Optional as-of date for the screen."),
@@ -700,7 +705,7 @@ export function createBeqsSchema(options: NormalizedBloombergToolsOptions): z.Zo
   });
 }
 
-export function createYasSchema(options: NormalizedBloombergToolsOptions): z.ZodType<YasInput> {
+export function createYasSchema(options: NormalizedBloombergToolsOptions): ZodOutput<YasInput> {
   const tool = "xbbg_yas";
   return z.object({
     benchmark: nonEmptyString(tool, "benchmark", options.maxStringChars, "<BENCHMARK_TICKER>")
@@ -730,7 +735,7 @@ export function createYasSchema(options: NormalizedBloombergToolsOptions): z.Zod
 
 export function createPreferredsSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<PreferredsInput> {
+): ZodOutput<PreferredsInput> {
   const tool = "xbbg_preferreds";
   return z.object({
     equityTicker: nonEmptyString(
@@ -747,7 +752,7 @@ export function createPreferredsSchema(
 
 export function createCorporateBondsSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<CorporateBondsInput> {
+): ZodOutput<CorporateBondsInput> {
   const tool = "xbbg_corporate_bonds";
   return z.object({
     activeOnly: z
@@ -771,7 +776,7 @@ export function createCorporateBondsSchema(
 
 export function createIndexMembersSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<IndexMembersInput> {
+): ZodOutput<IndexMembersInput> {
   const tool = "xbbg_index_members";
   return z.object({
     asof: dateField(tool, "asof").optional().describe("Optional index membership as-of date."),
@@ -790,7 +795,7 @@ export function createIndexMembersSchema(
 
 export function createResolveIsinsSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<ResolveIsinsInput> {
+): ZodOutput<ResolveIsinsInput> {
   const tool = "xbbg_resolve_isins";
   return z.object({
     isins: stringArray(
@@ -805,7 +810,7 @@ export function createResolveIsinsSchema(
 
 export function createIssuerIsinsSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<IssuerIsinsInput> {
+): ZodOutput<IssuerIsinsInput> {
   const tool = "xbbg_issuer_isins";
   return z.object({
     bondIsins: stringArray(
@@ -820,7 +825,7 @@ export function createIssuerIsinsSchema(
 
 export function createEtfHoldingsSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<EtfHoldingsInput> {
+): ZodOutput<EtfHoldingsInput> {
   const tool = "xbbg_etf_holdings";
   return z.object({
     etfTicker: nonEmptyString(
@@ -836,15 +841,15 @@ export function createEtfHoldingsSchema(
 }
 
 interface SnapshotControlShape {
-  readonly allFields: z.ZodType<boolean | undefined>;
-  readonly conflate: z.ZodType<boolean | undefined>;
-  readonly drain: z.ZodType<boolean | undefined>;
-  readonly flushThreshold: z.ZodType<number | undefined>;
-  readonly maxUpdates: z.ZodType<number>;
-  readonly options: z.ZodType<string[] | undefined>;
-  readonly overflowPolicy: z.ZodType<string | undefined>;
-  readonly streamCapacity: z.ZodType<number | undefined>;
-  readonly timeoutMs: z.ZodType<number>;
+  readonly allFields: ZodOutput<boolean | undefined>;
+  readonly conflate: ZodOutput<boolean | undefined>;
+  readonly drain: ZodOutput<boolean | undefined>;
+  readonly flushThreshold: ZodOutput<number | undefined>;
+  readonly maxUpdates: ZodOutput<number>;
+  readonly options: ZodOutput<string[] | undefined>;
+  readonly overflowPolicy: ZodOutput<string | undefined>;
+  readonly streamCapacity: ZodOutput<number | undefined>;
+  readonly timeoutMs: ZodOutput<number>;
 }
 
 function snapshotControlFields(
@@ -904,7 +909,7 @@ function snapshotControlFields(
 
 export function createStreamSnapshotSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<StreamSnapshotInput> {
+): ZodOutput<StreamSnapshotInput> {
   const tool = "xbbg_stream_snapshot";
   return z.object({
     fields: stringArray(
@@ -927,7 +932,7 @@ export function createStreamSnapshotSchema(
 
 export function createMktbarSnapshotSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<MktbarSnapshotInput> {
+): ZodOutput<MktbarSnapshotInput> {
   const tool = "xbbg_mktbar_snapshot";
   return z.object({
     fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
@@ -945,7 +950,7 @@ export function createMktbarSnapshotSchema(
 
 export function createDepthSnapshotSchema(
   options: NormalizedBloombergToolsOptions,
-): z.ZodType<DepthSnapshotInput> {
+): ZodOutput<DepthSnapshotInput> {
   const tool = "xbbg_depth_snapshot";
   return z.object({
     fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')

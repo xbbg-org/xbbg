@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Changed
 
 - **Release process documents `@xbbg/langgraph` npm publishing**: The npm trusted publishing checklist now includes the LangGraph package and notes that `npm-publish.yml` publishes it alongside `@xbbg/core`.
+- **`@xbbg/langgraph` supports Zod 3 and 4 runtimes**: Replaced direct Zod 4 JSON Schema conversion with `zod-to-json-schema` over the `zod/v3` compatibility surface, and relaxed the direct `zod` dependency to `^3.25.32 || ^4.2.0`.
 
 ### Fixed
 
 - **`bdib` intraday bars include Bloomberg trade value (#336)**: The Rust intraday bar extractor now preserves `barTickData.value` alongside OHLC, volume, and `numEvents` for Python and JavaScript callers, enabling bar VWAP calculations from Bloomberg's emitted trading amount.
+- **Windows Bloomberg DAPI runtime auto-detection widened**: Python and `@xbbg/core` now detect standard Terminal runtime roots including `C:\blp\DAPI` and `C:\Program Files (x86)\Bloomberg\Blp\DAPI`; Windows SDK roots are also checked under `bin/` before requiring manual `BLPAPI_ROOT` / `BLPAPI_LIB_DIR` setup.
 
 ## [1.2.6] - 2026-05-31
 

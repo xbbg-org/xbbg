@@ -28,6 +28,8 @@ If no packaged addon is available for your platform, build from source locally i
 
 Using the API requires Bloomberg Terminal, B-PIPE, or ZFP access and Bloomberg SDK runtime libraries available on the target system. Configure Bloomberg connectivity and credentials according to your Bloomberg deployment before making requests.
 
+On Windows, `@xbbg/core` prepends the first detected Bloomberg runtime DLL directory before loading the native addon. Explicit `BLPAPI_LIB_DIR` / `BLPAPI_ROOT` values win; otherwise it probes local SDK roots plus standard Terminal DAPI installs including `C:\blp\DAPI` and `C:\Program Files (x86)\Bloomberg\Blp\DAPI`.
+
 `@xbbg/core` is not affiliated with, endorsed by, sponsored by, or approved by Bloomberg Finance L.P. or its affiliates. It does not provide Bloomberg access, credentials, entitlements, data rights, or SDK licenses; users must supply and use those under their own Bloomberg agreements and policies.
 
 ## Release integrity
