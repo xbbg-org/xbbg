@@ -480,7 +480,11 @@ describe('js-xbbg live Bloomberg API', () => {
           interval: 5,
           start: `${day}T14:30:00`,
         });
-        assertArrowTable(table, ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents', 'value'], 1);
+        assertArrowTable(
+          table,
+          ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents', 'value'],
+          1,
+        );
         console.log(`  day=${day}, rows=${table.numRows}`);
       }));
 
@@ -492,7 +496,11 @@ describe('js-xbbg live Bloomberg API', () => {
           interval: 5,
           start: `${day}T14:30:00`,
         });
-        assertArrowTable(table, ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents', 'value'], 1);
+        assertArrowTable(
+          table,
+          ['time', 'open', 'high', 'low', 'close', 'volume', 'numEvents', 'value'],
+          1,
+        );
         console.log(`  ${day} 14:30-15:30 UTC rows=${table.numRows}`);
       }));
 
