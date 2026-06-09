@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-06-09
+
 ### Changed
 
 - **Release process documents `@xbbg/langgraph` npm publishing**: The npm trusted publishing checklist now includes the LangGraph package and notes that `npm-publish.yml` publishes it alongside `@xbbg/core`.
@@ -1394,7 +1396,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/xbbg-org/xbbg/compare/v1.2.6...HEAD
+[Unreleased]: https://github.com/xbbg-org/xbbg/compare/v1.2.7...HEAD
+[1.2.7]: https://github.com/xbbg-org/xbbg/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/xbbg-org/xbbg/compare/v1.2.5...v1.2.6
 [1.2.5]: https://github.com/xbbg-org/xbbg/compare/v1.2.4...v1.2.5
 [1.2.4]: https://github.com/xbbg-org/xbbg/compare/v1.2.3...v1.2.4
