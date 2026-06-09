@@ -136,6 +136,7 @@ def test_get_sdk_info_prefers_dapi_path_with_runtime(monkeypatch, tmp_path):
     monkeypatch.setattr(_sdk, "_sdk_info", None)
     monkeypatch.setattr(_sdk, "_manual_sdk_path", None)
     monkeypatch.setattr(_sdk, "_dapi_candidate_paths", lambda: [empty_dapi, program_files_dapi])
+    monkeypatch.setattr(_sdk, "_find_sdk_lib", lambda path: lib_path if path == program_files_dapi else None)
     monkeypatch.setattr(_sdk, "_get_lib_version", lambda _lib_path: "3.0.0.0")
     monkeypatch.delenv("BLPAPI_ROOT", raising=False)
 
