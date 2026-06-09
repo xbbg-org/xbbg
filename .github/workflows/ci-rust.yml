@@ -17,6 +17,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  UV_VERSION: "0.11.19"
 
 jobs:
   # ════════════════════════════════════════════════════════════════════════════
@@ -696,6 +697,8 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
 
       - name: Build wheel (setuptools-rust via uv)
         run: uv build --wheel --out-dir dist/
@@ -733,6 +736,8 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
 
       - name: Download wheel
         uses: actions/download-artifact@v8
