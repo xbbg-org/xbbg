@@ -105,8 +105,8 @@ pub fn currencies_needing_conversion(currencies: &[&str], target: &str) -> Vec<S
     let target_upper = target.to_uppercase();
     let mut unique: Vec<String> = currencies
         .iter()
-        .filter(|c| c.to_uppercase() != target_upper)
-        .map(|c| c.to_string())
+        .map(|c| c.to_uppercase())
+        .filter(|c| *c != target_upper)
         .collect();
 
     unique.sort();

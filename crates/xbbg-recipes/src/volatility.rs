@@ -45,6 +45,12 @@ pub(crate) struct SurfaceRow {
 }
 
 /// Build a tidy historical implied-volatility surface.
+///
+/// `as_decimal` (default true) divides percent-quoted Bloomberg fields
+/// (implied vols, dividend yields) by 100 unconditionally — Bloomberg quotes
+/// these in percent regardless of magnitude, so a 0.5% yield arrives as `0.5`
+/// and must still be scaled. `risk_free_rate` is a user input: values with
+/// `abs() > 1` are treated as percent, smaller values as decimal.
 #[allow(clippy::too_many_arguments)]
 pub async fn recipe_vol_surface(
     engine: &Engine,
@@ -334,7 +340,10 @@ pub(crate) fn build_vol_surface_rows(
             continue;
         }
         if include_derived && field.eq_ignore_ascii_case(dividend_yield_field) {
-            let value = if as_decimal && raw_value.abs() > 1.0 {
+            // Bloomberg quotes yields in percent regardless of magnitude:
+            // 0.5% arrives as 0.5 and still needs scaling. A magnitude
+            // heuristic here turned sub-1% yields into ~100x errors.
+            let value = if as_decimal {
                 raw_value / 100.0
             } else {
                 raw_value
@@ -346,7 +355,7 @@ pub(crate) fn build_vol_surface_rows(
         let Some(spec) = spec_by_field.get(&field_key) else {
             continue;
         };
-        let value = if as_decimal && spec.scale_decimal && raw_value.abs() > 1.0 {
+        let value = if as_decimal && spec.scale_decimal {
             raw_value / 100.0
         } else {
             raw_value
@@ -390,6 +399,11 @@ pub(crate) fn build_vol_surface_rows(
     Ok(rows)
 }
 
+/// Normalize the user-supplied risk-free rate.
+///
+/// Unlike Bloomberg fields (always percent-quoted), this is a caller-provided
+/// number with an explicitly documented dual convention: `abs() > 1` is
+/// percent (5.0 -> 0.05), otherwise already decimal (0.005 stays 0.5%).
 fn normalize_rate(rate: Option<f64>) -> Option<f64> {
     rate.map(|value| {
         if value.abs() > 1.0 {
@@ -607,5 +621,40 @@ mod tests {
             .any(|row| row.metric == "implied_volatility" && row.value == 0.20));
         assert!(rows.iter().any(|row| row.metric == "forward"));
         assert!(rows.iter().any(|row| row.metric == "discount_factor"));
+    }
+
+    #[test]
+    fn sub_one_percent_dividend_yield_still_scales_to_decimal() {
+        // Regression: a 0.5% yield arrives from Bloomberg as raw 0.5; the old
+        // magnitude heuristic (`abs() > 1.0`) skipped scaling and fed 50% into
+        // the forward calculation.
+        let date = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
+        let date32 = naive_to_date32(date);
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("ticker", DataType::Utf8, false),
+            Field::new("date", DataType::Date32, false),
+            Field::new("field", DataType::Utf8, false),
+            Field::new("value", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec!["SPX Index", "SPX Index"])),
+                Arc::new(Date32Array::from(vec![date32, date32])),
+                Arc::new(StringArray::from(vec!["PX_LAST", "EQY_DVD_YLD_12M"])),
+                Arc::new(StringArray::from(vec!["5000", "0.5"])),
+            ],
+        )
+        .unwrap();
+        let specs = vec![parse_field_spec(
+            "30DAY_IMPVOL_100.0%MNY_DF|implied_volatility|30D|moneyness|100",
+        )];
+        let rows = build_vol_surface_rows(&batch, &specs, true, true, Some(5.0), "EQY_DVD_YLD_12M")
+            .unwrap();
+        let yield_row = rows
+            .iter()
+            .find(|row| row.metric == "dividend_yield")
+            .expect("dividend_yield row");
+        assert!((yield_row.value - 0.005).abs() < 1e-12);
     }
 }

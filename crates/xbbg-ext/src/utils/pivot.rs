@@ -94,15 +94,15 @@ pub fn pivot_to_wide(batch: &RecordBatch) -> Result<RecordBatch> {
     let mut field_to_idx: HashMap<String, usize> = HashMap::new();
 
     for i in 0..batch.num_rows() {
-        if let Some(ticker) = ticker_col.value(i).into() {
-            let ticker: &str = ticker;
+        if !ticker_col.is_null(i) {
+            let ticker = ticker_col.value(i);
             if !ticker_to_idx.contains_key(ticker) {
                 ticker_to_idx.insert(ticker.to_string(), unique_tickers.len());
                 unique_tickers.push(ticker.to_string());
             }
         }
-        if let Some(field) = field_col.value(i).into() {
-            let field: &str = field;
+        if !field_col.is_null(i) {
+            let field = field_col.value(i);
             if !field_to_idx.contains_key(field) {
                 field_to_idx.insert(field.to_string(), unique_fields.len());
                 unique_fields.push(field.to_string());
@@ -118,6 +118,9 @@ pub fn pivot_to_wide(batch: &RecordBatch) -> Result<RecordBatch> {
 
     // Second pass: fill in values
     for i in 0..batch.num_rows() {
+        if ticker_col.is_null(i) || field_col.is_null(i) {
+            continue;
+        }
         let ticker = ticker_col.value(i);
         let field = field_col.value(i);
         let value = if value_col.is_null(i) {

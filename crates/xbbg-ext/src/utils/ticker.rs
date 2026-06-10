@@ -161,6 +161,12 @@ pub fn is_specific_contract(ticker: &str) -> bool {
         }
     }
 
+    // All-digit token (e.g. "1" from "1 Index"): nothing before the digits
+    // can be a month code, and `len - digit_count - 1` below would underflow.
+    if len <= digit_count {
+        return false;
+    }
+
     // Need exactly 1 or 2 trailing digits
     if digit_count == 0 || digit_count > 2 {
         return false;

@@ -37,6 +37,13 @@ type FxRatesByPair = HashMap<String, HashMap<i32, f64>>;
 /// 3. Build FX pair requirements with `xbbg-ext` helpers.
 /// 4. Query FX history for the batch date range.
 /// 5. Convert value columns with Arrow compute (`div` + optional `mul` factor).
+///
+/// # Errors
+/// Propagates Bloomberg/engine failures from the currency and FX-rate
+/// queries: a conversion that cannot be performed errors out instead of
+/// silently returning unconverted (mixed-currency) data. Tickers whose
+/// currency already matches the target pass through unchanged; missing FX
+/// rows convert to null and log a warning.
 pub async fn recipe_adjust_ccy(
     engine: &Engine,
     data: RecordBatch,
@@ -57,10 +64,9 @@ pub async fn recipe_adjust_ccy(
         return Ok(data);
     }
 
-    let ticker_currencies = match fetch_ticker_currencies(engine, &tickers).await {
-        Ok(currencies) => currencies,
-        Err(_) => return Ok(data),
-    };
+    // Propagate fetch failures: silently returning the original batch here
+    // would hand the caller local-currency values labeled as converted.
+    let ticker_currencies = fetch_ticker_currencies(engine, &tickers).await?;
 
     if ticker_currencies.is_empty() {
         return Ok(data);
@@ -80,10 +86,7 @@ pub async fn recipe_adjust_ccy(
     }
 
     let (fx_start, fx_end) = resolve_fx_query_dates(&date_keys, &start_date, &end_date);
-    let fx_rates = match fetch_fx_rates(engine, &fx_pairs, &fx_start, &fx_end).await {
-        Ok(rates) => rates,
-        Err(_) => return Ok(data),
-    };
+    let fx_rates = fetch_fx_rates(engine, &fx_pairs, &fx_start, &fx_end).await?;
 
     if fx_rates.is_empty() {
         return Ok(data);
@@ -353,6 +356,11 @@ fn apply_fx_conversion(
         };
 
         let Some(rates_by_date) = fx_rates.get(&fx_info.fx_pair) else {
+            xbbg_log::warn!(
+                ticker = ticker.as_str(),
+                fx_pair = fx_info.fx_pair.as_str(),
+                "no FX rates returned for pair; column left in local currency"
+            );
             new_columns.push(input_col);
             continue;
         };
@@ -361,6 +369,11 @@ fn apply_fx_conversion(
         let null_count = fx_rate_array.null_count();
         let len = fx_rate_array.len();
         if null_count == len {
+            xbbg_log::warn!(
+                ticker = ticker.as_str(),
+                fx_pair = fx_info.fx_pair.as_str(),
+                "FX rates missing for every row date; column left in local currency"
+            );
             new_columns.push(input_col);
             continue;
         }

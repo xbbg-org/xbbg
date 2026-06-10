@@ -9,7 +9,9 @@ use tokio::sync::oneshot;
 use xbbg_log::trace;
 
 use super::typed_builder::ColumnSet;
-use super::value_utils::{arrow_type_for_element, should_emit_scalar_field};
+use super::value_utils::{
+    arrow_type_for_element, should_emit_scalar_field, top_level_response_error,
+};
 use xbbg_core::{BlpError, Element, Message};
 
 /// State for a bulk data request (bds).
@@ -45,6 +47,12 @@ impl BulkDataState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/refdata", "ReferenceDataRequest")
+        {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.process_message(msg);
         let reply = self.reply;
         // Include "field" column to identify which bulk field was queried

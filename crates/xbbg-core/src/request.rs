@@ -161,24 +161,25 @@ impl Request {
         Ok(())
     }
 
-    /// Set a string value on an element
+    /// Set a string value on an element.
+    ///
+    /// Passes the interned [`Name`] pointer directly (the C++
+    /// `setElement(const Name&, ...)` fast path): no per-call allocation and
+    /// no Bloomberg-side name re-hash.
     pub fn set_string(&mut self, name: &Name, value: &str) -> Result<()> {
         let root = self.elements();
-
-        let c_name = CString::new(name.as_str()).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid name: {}", e),
-        })?;
 
         let c_value = CString::new(value).map_err(|e| BlpError::InvalidArgument {
             detail: format!("invalid string value: {}", e),
         })?;
 
-        // SAFETY: We're calling the Bloomberg API with valid pointers
+        // SAFETY: root and name are valid handles; nameString is null because
+        // the interned Name pointer identifies the element (blpapi_element.h).
         let rc = unsafe {
             crate::ffi::blpapi_Element_setElementString(
                 root.as_ptr(),
-                c_name.as_ptr(),
                 std::ptr::null(),
+                name.as_ptr(),
                 c_value.as_ptr(),
             )
         };
@@ -233,20 +234,17 @@ impl Request {
         Ok(())
     }
 
-    /// Set an i32 value on an element
+    /// Set an i32 value on an element via the interned [`Name`] pointer.
     pub fn set_i32(&mut self, name: &Name, value: i32) -> Result<()> {
         let root = self.elements();
 
-        let c_name = CString::new(name.as_str()).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid name: {}", e),
-        })?;
-
-        // SAFETY: We're calling the Bloomberg API with valid pointers
+        // SAFETY: root and name are valid handles; nameString is null because
+        // the interned Name pointer identifies the element.
         let rc = unsafe {
             crate::ffi::blpapi_Element_setElementInt32(
                 root.as_ptr(),
-                c_name.as_ptr(),
                 std::ptr::null(),
+                name.as_ptr(),
                 value,
             )
         };
@@ -287,20 +285,17 @@ impl Request {
         Ok(())
     }
 
-    /// Set an f64 value on an element
+    /// Set an f64 value on an element via the interned [`Name`] pointer.
     pub fn set_f64(&mut self, name: &Name, value: f64) -> Result<()> {
         let root = self.elements();
 
-        let c_name = CString::new(name.as_str()).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid name: {}", e),
-        })?;
-
-        // SAFETY: We're calling the Bloomberg API with valid pointers
+        // SAFETY: root and name are valid handles; nameString is null because
+        // the interned Name pointer identifies the element.
         let rc = unsafe {
             crate::ffi::blpapi_Element_setElementFloat64(
                 root.as_ptr(),
-                c_name.as_ptr(),
                 std::ptr::null(),
+                name.as_ptr(),
                 value,
             )
         };
@@ -322,19 +317,15 @@ impl Request {
     pub fn set_bool(&mut self, name: &Name, value: bool) -> Result<()> {
         let root = self.elements();
 
-        let c_name = CString::new(name.as_str()).map_err(|e| BlpError::InvalidArgument {
-            detail: format!("invalid name: {}", e),
-        })?;
+        let c_value: &std::ffi::CStr = if value { c"true" } else { c"false" };
 
-        let bool_str = if value { "true" } else { "false" };
-        let c_value = CString::new(bool_str).unwrap();
-
-        // SAFETY: We're calling the Bloomberg API with valid pointers
+        // SAFETY: root and name are valid handles; nameString is null because
+        // the interned Name pointer identifies the element.
         let rc = unsafe {
             crate::ffi::blpapi_Element_setElementString(
                 root.as_ptr(),
-                c_name.as_ptr(),
                 std::ptr::null(),
+                name.as_ptr(),
                 c_value.as_ptr(),
             )
         };

@@ -26,6 +26,7 @@ use arrow_schema::{DataType, Field, Schema};
 use chrono::{Duration, NaiveDate};
 use xbbg_async::engine::{Engine, ExtractorType, RequestParams};
 use xbbg_async::services::{Operation, Service};
+use xbbg_ext::transforms::bql::build_etf_holdings_query;
 use xbbg_ext::transforms::historical::{apply_column_renames, calculate_level_percentages};
 use xbbg_ext::{fmt_date, parse_date};
 
@@ -353,16 +354,30 @@ pub(crate) fn build_dividend_yield_rows(
             .push(event);
     }
 
+    // Pre-group prices once: scanning every (ticker, date) price key per
+    // ticker is O(tickers x total entries), and the tuple lookup below would
+    // clone the ticker String per row.
+    let mut prices_by_ticker: HashMap<&str, HashMap<NaiveDate, f64>> = HashMap::new();
+    for ((price_ticker, date), price) in prices {
+        prices_by_ticker
+            .entry(price_ticker.as_str())
+            .or_default()
+            .insert(*date, *price);
+    }
+
     let mut rows = Vec::new();
     for ticker in tickers {
         let ticker_events = events_by_ticker
             .get(ticker.as_str())
             .cloned()
             .unwrap_or_default();
+        let ticker_prices = prices_by_ticker.get(ticker.as_str());
         let mut dates = BTreeSet::new();
-        for (price_ticker, date) in prices.keys() {
-            if price_ticker == ticker && *date >= start && *date <= end {
-                dates.insert(*date);
+        if let Some(ticker_prices) = ticker_prices {
+            for date in ticker_prices.keys() {
+                if *date >= start && *date <= end {
+                    dates.insert(*date);
+                }
             }
         }
         for event in &ticker_events {
@@ -385,7 +400,7 @@ pub(crate) fn build_dividend_yield_rows(
                     .then_some(event.amount)
                     .flatten()
             }));
-            let price = prices.get(&(ticker.clone(), date)).copied();
+            let price = ticker_prices.and_then(|prices| prices.get(&date)).copied();
             let dividend_yield = match (trailing_dividend_amount, price) {
                 (Some(amount), Some(price)) if price != 0.0 => Some(amount / price),
                 _ => None,
@@ -1049,24 +1064,12 @@ pub async fn recipe_etf_holdings(
     etf_ticker: String,
     fields: Option<Vec<String>>,
 ) -> Result<RecordBatch> {
-    // Default fields for ETF holdings
-    let mut all_fields = vec![
-        "id_isin".to_string(),
-        "weights".to_string(),
-        "id().position".to_string(),
-    ];
-
-    // Append additional fields if provided
-    if let Some(extra) = fields {
-        for f in extra {
-            if !all_fields.contains(&f) {
-                all_fields.push(f);
-            }
-        }
-    }
-
-    let fields_str = all_fields.join(", ");
-    let bql_query = format!("get({fields_str}) for(holdings('{etf_ticker}'))");
+    // Query construction lives in xbbg-ext (single source of truth). Note:
+    // the builder appends " US Equity" to bare tickers, matching the other
+    // BQL recipes (previously this recipe passed bare tickers through).
+    let extra = fields.unwrap_or_default();
+    let extra_refs: Vec<&str> = extra.iter().map(String::as_str).collect();
+    let bql_query = build_etf_holdings_query(&etf_ticker, &extra_refs);
 
     let params = RequestParams {
         service: Service::BqlSvc.to_string(),

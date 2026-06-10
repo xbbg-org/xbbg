@@ -200,6 +200,7 @@ fn subscription_metrics_totals(
 pyo3::create_exception!(xbbg._core, BlpErrorBase, pyo3::exceptions::PyException);
 pyo3::create_exception!(xbbg._core, BlpSessionError, BlpErrorBase);
 pyo3::create_exception!(xbbg._core, BlpRequestError, BlpErrorBase);
+pyo3::create_exception!(xbbg._core, BlpLimitError, BlpRequestError);
 pyo3::create_exception!(xbbg._core, BlpSecurityError, BlpRequestError);
 pyo3::create_exception!(xbbg._core, BlpFieldError, BlpRequestError);
 pyo3::create_exception!(xbbg._core, BlpValidationError, BlpErrorBase);
@@ -210,6 +211,14 @@ pyo3::create_exception!(xbbg._core, BlpInternalError, BlpErrorBase);
 ///
 /// Maps each BlpError variant to the corresponding Python exception class,
 /// preserving all structured error context (service, operation, cid, etc.).
+fn request_failure_is_limit(label: Option<&str>) -> bool {
+    label.is_some_and(|label| {
+        label.contains("category=LIMIT")
+            || label.contains("DAILY_CAPACITY_REACHED")
+            || label.contains("subcategory=DAILY_CAPACITY_REACHED")
+    })
+}
+
 fn blp_error_to_pyerr(e: BlpError) -> PyErr {
     match e {
         BlpError::SessionStart { source, label } => {
@@ -252,7 +261,11 @@ fn blp_error_to_pyerr(e: BlpError) -> PyErr {
             if let Some(s) = &source {
                 msg.push_str(&format!(": {}", s));
             }
-            BlpRequestError::new_err(msg)
+            if request_failure_is_limit(label.as_deref()) {
+                BlpLimitError::new_err(msg)
+            } else {
+                BlpRequestError::new_err(msg)
+            }
         }
         BlpError::InvalidArgument { detail } => {
             BlpValidationError::new_err(format!("Invalid argument: {}", detail))
@@ -714,6 +727,51 @@ fn require_auth_value(value: &Option<String>, field: &str, method: &str) -> PyRe
         })
 }
 
+/// Reject negative millisecond fields (mirrors napi's
+/// `require_non_negative_duration`); `None` keeps the engine/SDK default.
+fn require_non_negative_ms(value: Option<i32>, field: &str) -> PyResult<()> {
+    match value {
+        Some(v) if v < 0 => Err(PyValueError::new_err(format!(
+            "{field} must be non-negative"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Reject negative TLS timeout fields (mirrors napi's
+/// `require_non_negative_timeout` wording).
+fn require_non_negative_tls_timeout(value: Option<i32>, field: &str) -> PyResult<()> {
+    match value {
+        Some(v) if v < 0 => Err(PyValueError::new_err(format!(
+            "{field} must be a non-negative integer number of milliseconds"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Reject out-of-range slow-consumer watermarks. `inclusive_high` matches
+/// napi: hi accepts 1.0, lo does not.
+fn require_watermark_range(value: Option<f32>, field: &str, inclusive_high: bool) -> PyResult<()> {
+    let Some(v) = value else {
+        return Ok(());
+    };
+    let in_range = if inclusive_high {
+        (0.0..=1.0).contains(&v)
+    } else {
+        (0.0..1.0).contains(&v)
+    };
+    if in_range {
+        Ok(())
+    } else {
+        let range = if inclusive_high {
+            "0.0..=1.0"
+        } else {
+            "0.0..1.0"
+        };
+        Err(PyValueError::new_err(format!("{field} must be in {range}")))
+    }
+}
+
 fn build_auth_config(py_config: &PyEngineConfig) -> PyResult<Option<AuthConfig>> {
     let method = match py_config.auth_method.as_deref() {
         None => {
@@ -754,7 +812,7 @@ fn build_auth_config(py_config: &PyEngineConfig) -> PyResult<Option<AuthConfig>>
         }),
         other => {
             return Err(PyValueError::new_err(format!(
-                "Invalid auth_method: {other}. Must be one of ['none', 'user', 'app', 'userapp', 'dir', 'manual', 'token']",
+                "Invalid auth_method: {other}. Must be one of ['none', 'user', 'app', 'userapp', 'dir', 'directory', 'manual', 'token']",
             )));
         }
     };
@@ -832,6 +890,8 @@ fn resolve_transport(py: &PyEngineConfig) -> PyResult<Transport> {
 }
 
 fn resolve_tls(py: &PyEngineConfig) -> PyResult<Option<TlsConfig>> {
+    require_non_negative_tls_timeout(py.tls_handshake_timeout_ms, "tls_handshake_timeout_ms")?;
+    require_non_negative_tls_timeout(py.tls_crl_fetch_timeout_ms, "tls_crl_fetch_timeout_ms")?;
     match (
         py.tls_client_credentials.as_deref(),
         py.tls_trust_material.as_deref(),
@@ -870,6 +930,29 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             .parse()
             .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?;
 
+        if py_config.subscription_stream_capacity == 0 {
+            return Err(PyValueError::new_err(
+                "subscription_stream_capacity must be greater than zero",
+            ));
+        }
+        require_non_negative_ms(
+            py_config.keep_alive_inactivity_ms,
+            "keep_alive_inactivity_ms",
+        )?;
+        require_non_negative_ms(
+            py_config.keep_alive_response_timeout_ms,
+            "keep_alive_response_timeout_ms",
+        )?;
+        require_watermark_range(
+            py_config.slow_consumer_hi_water_mark,
+            "slow_consumer_hi_water_mark",
+            true,
+        )?;
+        require_watermark_range(
+            py_config.slow_consumer_lo_water_mark,
+            "slow_consumer_lo_water_mark",
+            false,
+        )?;
         let auth = build_auth_config(py_config)?;
         let transport = resolve_transport(py_config)?;
         let tls = resolve_tls(py_config)?;
@@ -1383,10 +1466,13 @@ impl PyEngine {
         let tickers_clone = tickers.clone();
         let fields_clone = fields.clone();
 
-        let op = overflow_policy.as_deref().map(|s| match s {
-            "block" => OverflowPolicy::Block,
-            _ => OverflowPolicy::DropNewest,
-        });
+        let op = overflow_policy
+            .as_deref()
+            .map(|s| {
+                s.parse::<OverflowPolicy>()
+                    .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))
+            })
+            .transpose()?;
 
         debug!(
             tickers = ?tickers,
@@ -1484,10 +1570,13 @@ impl PyEngine {
         let options_clone = options.clone().unwrap_or_default();
         let service_clone = service.clone();
 
-        let op = overflow_policy.as_deref().map(|s| match s {
-            "block" => OverflowPolicy::Block,
-            _ => OverflowPolicy::DropNewest,
-        });
+        let op = overflow_policy
+            .as_deref()
+            .map(|s| {
+                s.parse::<OverflowPolicy>()
+                    .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))
+            })
+            .transpose()?;
 
         debug!(
             service = %service,
@@ -2425,6 +2514,7 @@ fn _core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("BlpError", _py.get_type::<BlpErrorBase>())?;
     m.add("BlpSessionError", _py.get_type::<BlpSessionError>())?;
     m.add("BlpRequestError", _py.get_type::<BlpRequestError>())?;
+    m.add("BlpLimitError", _py.get_type::<BlpLimitError>())?;
     m.add("BlpSecurityError", _py.get_type::<BlpSecurityError>())?;
     m.add("BlpFieldError", _py.get_type::<BlpFieldError>())?;
     m.add("BlpValidationError", _py.get_type::<BlpValidationError>())?;
@@ -2588,6 +2678,84 @@ mod tests {
     }
 
     #[test]
+    fn py_engine_config_rejects_zero_subscription_stream_capacity() {
+        let mut config = PyEngineConfig::new(None).expect("default config");
+        config.subscription_stream_capacity = 0;
+        let err = match EngineConfig::try_from(&config) {
+            Ok(_) => panic!("zero capacity should fail"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("subscription_stream_capacity must be greater than zero"));
+    }
+
+    #[test]
+    fn py_engine_config_rejects_negative_keep_alive_inactivity() {
+        let mut config = PyEngineConfig::new(None).expect("default config");
+        config.keep_alive_inactivity_ms = Some(-1);
+        let err = match EngineConfig::try_from(&config) {
+            Ok(_) => panic!("negative keep-alive should fail"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("keep_alive_inactivity_ms must be non-negative"));
+    }
+
+    #[test]
+    fn py_engine_config_rejects_out_of_range_watermarks() {
+        let mut config = PyEngineConfig::new(None).expect("default config");
+        config.slow_consumer_hi_water_mark = Some(1.5);
+        let err = match EngineConfig::try_from(&config) {
+            Ok(_) => panic!("hi watermark above 1.0 should fail"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("slow_consumer_hi_water_mark must be in 0.0..=1.0"));
+
+        // The hi watermark accepts exactly 1.0; the lo watermark is half-open
+        // and rejects it (mirrors napi).
+        let mut config = PyEngineConfig::new(None).expect("default config");
+        config.slow_consumer_hi_water_mark = Some(1.0);
+        config.slow_consumer_lo_water_mark = Some(1.0);
+        let err = match EngineConfig::try_from(&config) {
+            Ok(_) => panic!("lo watermark of 1.0 should fail"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("slow_consumer_lo_water_mark must be in 0.0..1.0"));
+    }
+
+    #[test]
+    fn py_engine_config_rejects_negative_tls_timeouts() {
+        let mut config = PyEngineConfig::new(None).expect("default config");
+        config.tls_handshake_timeout_ms = Some(-5);
+        let err = match EngineConfig::try_from(&config) {
+            Ok(_) => panic!("negative tls timeout should fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains(
+            "tls_handshake_timeout_ms must be a non-negative integer number of milliseconds"
+        ));
+    }
+
+    #[test]
+    fn build_auth_config_accepts_directory_alias() {
+        let mut config = PyEngineConfig::new(None).expect("default config");
+        config.auth_method = Some("directory".to_string());
+        config.dir_property = Some("mail".to_string());
+        assert_eq!(
+            build_auth_config(&config).expect("directory auth"),
+            Some(AuthConfig::Directory {
+                property_name: "mail".to_string(),
+            })
+        );
+    }
+
+    #[test]
     fn build_auth_config_supports_all_auth_methods() {
         let mut config = PyEngineConfig::new(None).expect("default config");
 
@@ -2653,6 +2821,7 @@ mod tests {
                 "BlpError",
                 "BlpSessionError",
                 "BlpRequestError",
+                "BlpLimitError",
                 "BlpSecurityError",
                 "BlpFieldError",
                 "BlpValidationError",

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Date32Array, Float32Array, Float64Array, Int32Array, Int64Array,
-    LargeStringArray, StringArray, TimestampMicrosecondArray, UInt32Array, UInt64Array,
+    LargeStringArray, StringArray, UInt32Array, UInt64Array,
 };
 use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
@@ -552,14 +552,6 @@ fn array_cell_to_json(
         )?,
         DataType::Date32 => {
             let array = downcast::<Date32Array>(column, "Date32")?;
-            truncate_json_string(
-                array_value_to_string(array, row_index).map_err(display_error)?,
-                max_string_chars,
-                value_truncated,
-            )
-        }
-        DataType::Timestamp(_, _) => {
-            let array = downcast::<TimestampMicrosecondArray>(column, "TimestampMicrosecond")?;
             truncate_json_string(
                 array_value_to_string(array, row_index).map_err(display_error)?,
                 max_string_chars,

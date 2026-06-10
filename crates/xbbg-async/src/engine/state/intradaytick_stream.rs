@@ -15,6 +15,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use tokio::sync::mpsc;
 
+use super::value_utils::top_level_response_error;
 use xbbg_core::{BlpError, Message};
 
 /// Streaming state for an intraday tick request (bdtick).
@@ -46,6 +47,11 @@ impl IntradayTickStreamState {
 
     /// Process the final RESPONSE message and close the stream.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/refdata", "IntradayTickRequest") {
+            let _ = self.stream.try_send(Err(error));
+            return;
+        }
+
         if let Some(batch) = self.process_message(msg) {
             let _ = self.stream.try_send(Ok(batch));
         }

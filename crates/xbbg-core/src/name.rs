@@ -98,9 +98,28 @@ pub fn name_cache_size() -> usize {
 /// - `as_str()`: O(1) pointer dereference
 ///
 /// # Thread Safety
-/// Names are `Send + Sync` because they're globally interned and immutable after creation.
+/// `Name` is `Send + Sync`. Cross-thread use of `blpapi_Name_t` is the SDK's
+/// own documented pattern: `blpapi_names.h` ships process-wide static
+/// `blpapi::Name` instances ("Provide static blpapi::Name instances for
+/// common message types") constructed lazily on whichever thread first
+/// touches them and then read — and duplicated into messages — from SDK
+/// dispatcher threads inside event handlers. Names are interned in a global,
+/// process-lifetime table; `clone`/`drop` adjust the SDK-managed reference
+/// count exactly as those vendor statics do across threads.
+///
+/// `get_or_intern` additionally keeps a thread-local cache so repeated
+/// lookups stay allocation-free; the cached `Name`s themselves may move
+/// freely between threads.
 #[repr(transparent)]
 pub struct Name(NonNull<ffi::blpapi_Name_t>);
+
+// SAFETY: see "Thread Safety" above — the SDK's `blpapi::Names` statics are
+// constructed, read, duplicated, and destroyed across threads by design
+// (blpapi_names.h:23-59,188,445-539), which requires `blpapi_Name_t` handles
+// and their reference counting to be thread-safe. `Name` adds no thread-local
+// state of its own.
+unsafe impl Send for Name {}
+unsafe impl Sync for Name {}
 
 impl Name {
     /// Intern a string. **Expensive** - do at startup only.

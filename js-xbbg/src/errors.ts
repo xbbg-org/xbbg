@@ -34,6 +34,8 @@ export class BlpRequestError extends BlpError {
   }
 }
 
+export class BlpLimitError extends BlpRequestError {}
+
 export class BlpValidationError extends BlpError {
   public readonly element?: string;
   public readonly suggestion?: string;
@@ -49,12 +51,46 @@ export class BlpTimeoutError extends BlpError {}
 
 export class BlpInternalError extends BlpError {}
 
+/**
+ * Machine-readable code prefix emitted by the native layer:
+ * `[XBBG:<CODE>] <message>`. Parsed first; the legacy message-pattern
+ * heuristics below remain as a fallback for non-coded errors.
+ */
+const CODE_PREFIX = /^\[XBBG:([A-Z]+)\]\s*/u;
+
+function fromCode(code: string, msg: string): BlpError {
+  switch (code) {
+    case 'SESSION':
+      return new BlpSessionError(msg);
+    case 'REQUEST':
+      return new BlpRequestError(msg, parseRequestOptions(msg));
+    case 'LIMIT':
+      return new BlpLimitError(msg, parseRequestOptions(msg));
+    case 'VALIDATION':
+      return new BlpValidationError(msg, parseValidationOptions(msg));
+    case 'TIMEOUT':
+      return new BlpTimeoutError(msg);
+    case 'CANCELLED':
+    case 'INTERNAL':
+      return new BlpInternalError(msg);
+    default:
+      return new BlpError(msg);
+  }
+}
+
 export function wrapError(napiError: unknown): BlpError {
   if (napiError instanceof BlpError) {
     return napiError;
   }
   const msg =
     napiError instanceof Error ? napiError.message : typeof napiError === 'string' ? napiError : '';
+
+  const codeMatch = CODE_PREFIX.exec(msg);
+  const nativeCode = codeMatch?.[1];
+  const matchedPrefix = codeMatch?.[0];
+  if (nativeCode !== undefined && matchedPrefix !== undefined) {
+    return fromCode(nativeCode, msg.slice(matchedPrefix.length));
+  }
 
   // Session errors
   if (

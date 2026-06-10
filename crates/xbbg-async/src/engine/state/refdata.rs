@@ -11,8 +11,8 @@ use xbbg_log::trace;
 
 use super::typed_builder::{ArrowType, ColumnSet};
 use super::value_utils::{
-    append_long_value_row, common_value_type, get_value_cached_datatype, LongStringColumns,
-    WideColumns,
+    append_long_value_row, common_value_type, get_value_cached_datatype, top_level_response_error,
+    LongStringColumns, WideColumns,
 };
 use xbbg_core::{BlpError, DataType as BlpDataType, Element, Message, Name, Value};
 
@@ -177,6 +177,12 @@ impl RefDataState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/refdata", "ReferenceDataRequest")
+        {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.process_message(msg);
 
         if !self.failed_securities.is_empty() {

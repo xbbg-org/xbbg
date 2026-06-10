@@ -8,7 +8,68 @@ use arrow_array::builder::{Date32Builder, StringBuilder};
 use arrow_array::ArrayRef;
 use arrow_array::RecordBatch;
 use arrow_schema::{Field, Schema};
-use xbbg_core::{BlpError, DataType as BlpDataType, Element, Name, Value};
+use xbbg_core::{BlpError, DataType as BlpDataType, Element, Message, Name, Value};
+
+/// Extract a top-level Bloomberg `responseError` from a response message.
+///
+/// Bloomberg can reject the whole request (daily capacity, entitlement,
+/// malformed request, service-side throttling) while still delivering a
+/// syntactically valid `RESPONSE` event. Without this guard the state machines
+/// simply find no `securityData`/payload and return an empty batch, hiding the
+/// actual vendor error.
+pub(crate) fn top_level_response_error(
+    msg: &Message<'_>,
+    service: &'static str,
+    operation: &'static str,
+) -> Option<BlpError> {
+    let response_error = msg.elements().get_by_str("responseError")?;
+
+    let source = response_error
+        .get_by_str("source")
+        .and_then(|e| e.get_str(0));
+    let code = response_error.get_by_str("code").and_then(|e| e.get_i32(0));
+    let category = response_error
+        .get_by_str("category")
+        .and_then(|e| e.get_str(0));
+    let subcategory = response_error
+        .get_by_str("subcategory")
+        .and_then(|e| e.get_str(0));
+    let message = response_error
+        .get_by_str("message")
+        .and_then(|e| e.get_str(0));
+
+    let mut parts = Vec::with_capacity(5);
+    if let Some(source) = source {
+        parts.push(format!("source={source}"));
+    }
+    if let Some(category) = category {
+        parts.push(format!("category={category}"));
+    }
+    if let Some(code) = code {
+        parts.push(format!("code={code}"));
+    }
+    if let Some(subcategory) = subcategory {
+        parts.push(format!("subcategory={subcategory}"));
+    }
+    if let Some(message) = message {
+        parts.push(format!("message={}", message.trim()));
+    }
+
+    let label = if parts.is_empty() {
+        Some("Bloomberg responseError".to_string())
+    } else {
+        Some(format!("Bloomberg responseError: {}", parts.join("; ")))
+    };
+
+    Some(BlpError::RequestFailure {
+        service: service.to_string(),
+        operation: Some(operation.to_string()),
+        cid: None,
+        label,
+        request_id: None,
+        source: None,
+    })
+}
 
 pub(crate) fn should_emit_scalar_field(element: &Element<'_>) -> bool {
     !element.is_array()

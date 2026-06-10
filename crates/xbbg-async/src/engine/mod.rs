@@ -49,7 +49,7 @@ pub use state::{
     RefDataState, SubscriptionState, SubscriptionUpdate,
 };
 pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, SubscriptionSessionPool};
-pub use worker::{UnifiedRequestState, WorkerHandle};
+pub use worker::UnifiedRequestState;
 
 const SESSION_STARTUP_TIMEOUT_MS: u32 = 30_000;
 
@@ -117,10 +117,12 @@ fn configure_session_behavior(
     Ok(())
 }
 
-fn start_configured_session(
+/// Build fully-configured `SessionOptions` for this engine config: transport
+/// endpoints (direct/ZFP, SOCKS5, TLS) plus behavioral knobs.
+fn build_session_options(
     config: &EngineConfig,
     record_subscription_receive_times: bool,
-) -> Result<Session, BlpError> {
+) -> Result<SessionOptions, BlpError> {
     config.transport.validate()?;
 
     let mut options = SessionOptions::new()?;
@@ -148,6 +150,18 @@ fn start_configured_session(
     }
 
     configure_session_behavior(&mut options, config, record_subscription_receive_times)?;
+
+    Ok(options)
+}
+
+/// Build options, then create and start a synchronous session (blocking until
+/// `SessionStarted`). Used by the subscription pool; request workers use
+/// asynchronous sessions via [`worker::AsyncRequestWorker`].
+fn start_configured_session(
+    config: &EngineConfig,
+    record_subscription_receive_times: bool,
+) -> Result<Session, BlpError> {
+    let options = build_session_options(config, record_subscription_receive_times)?;
 
     let session = Session::new(&options)?;
     session
@@ -1503,8 +1517,18 @@ impl Engine {
         let (tx, rx) = mpsc::channel(capacity);
         let status = Arc::new(ArcSwap::from_pointee(SubscriptionStatusState::default()));
 
-        // Claim a session from the pool (uses Arc-based claim for 'static lifetime)
-        let mut claim = self.subscription_pool.claim()?;
+        // Claim a session from the pool (uses Arc-based claim for 'static
+        // lifetime). Run on the blocking pool: when the pool is exhausted,
+        // claim() spawns a fresh worker and blocks on a full Bloomberg session
+        // startup (seconds), which must not occupy an async executor thread.
+        let pool = Arc::clone(&self.subscription_pool);
+        let mut claim = tokio::task::spawn_blocking(move || pool.claim())
+            .await
+            .map_err(|join_error| {
+                BlpAsyncError::BlpError(BlpError::Internal {
+                    detail: format!("subscription pool claim task failed: {join_error}"),
+                })
+            })??;
 
         // Start the subscription
         let (keys, raw_metrics) = claim

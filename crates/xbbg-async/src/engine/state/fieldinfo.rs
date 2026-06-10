@@ -16,6 +16,7 @@ use arrow_schema::{DataType, Field, Schema};
 use tokio::sync::oneshot;
 use xbbg_log::trace;
 
+use super::value_utils::top_level_response_error;
 use crate::field_cache::BlpFieldType;
 use xbbg_core::{BlpError, Message};
 
@@ -52,6 +53,11 @@ impl FieldInfoState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/apiflds", "FieldInfoRequest") {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.process_message(msg);
         let result = self.build_batch();
         if let Ok(ref batch) = result {

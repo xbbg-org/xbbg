@@ -24,6 +24,7 @@ pub mod name;
 pub mod value;
 
 // Session API
+pub mod async_session;
 pub mod correlation;
 pub mod errors;
 pub mod identity;
@@ -38,6 +39,7 @@ pub mod tls;
 pub mod zfp;
 
 // Re-exports for convenience
+pub use async_session::AsyncSession;
 pub use auth::{
     apply_session_identity_options, AuthApplication, AuthConfig, AuthOptions, AuthToken, AuthUser,
 };

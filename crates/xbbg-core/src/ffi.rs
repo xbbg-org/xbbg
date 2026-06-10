@@ -68,8 +68,8 @@ pub use xbbg_sys::{
     blpapi_Session_destroy, blpapi_Session_generateToken, blpapi_Session_getService,
     blpapi_Session_nextEvent, blpapi_Session_openService, blpapi_Session_openServiceAsync,
     blpapi_Session_sendAuthorizationRequest, blpapi_Session_sendRequest, blpapi_Session_start,
-    blpapi_Session_stop, blpapi_Session_subscribe, blpapi_Session_tryNextEvent,
-    blpapi_Session_unsubscribe,
+    blpapi_Session_stop, blpapi_Session_stopAsync, blpapi_Session_subscribe,
+    blpapi_Session_tryNextEvent, blpapi_Session_unsubscribe,
 };
 
 // --- Service functions ---
@@ -169,6 +169,7 @@ pub use xbbg_sys::blpapi_SessionOptions_setServerAddressWithProxy;
 // --- Identity functions ---
 pub use xbbg_sys::{
     blpapi_Identity_getSeatType, blpapi_Identity_hasEntitlements, blpapi_Identity_isAuthorized,
+    blpapi_Identity_release,
 };
 
 // --- Logging functions ---

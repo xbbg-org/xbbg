@@ -343,7 +343,9 @@ fn scalar_to_py(py: Python<'_>, array: &dyn Array, row: usize) -> PyResult<Py<Py
                 * 1_000,
             timezone.as_deref(),
         ),
-        _ => format!("{array:?}").into_py_any(py),
+        // Unsupported dtype: surface None (absent) instead of Debug-dumping
+        // the entire array into every cell.
+        _ => Ok(py.None()),
     }
 }
 

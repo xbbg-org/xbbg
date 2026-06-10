@@ -8,6 +8,7 @@ use tokio::sync::oneshot;
 use xbbg_log::trace;
 
 use super::typed_builder::{ArrowType, ColumnSet};
+use super::value_utils::top_level_response_error;
 use xbbg_core::{BlpError, Message};
 
 /// State for an intraday bar request (bdib).
@@ -69,6 +70,11 @@ impl IntradayBarState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/refdata", "IntradayBarRequest") {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.process_message(msg);
         let reply = self.reply;
         let result = self.columns.finish_with_order(&[

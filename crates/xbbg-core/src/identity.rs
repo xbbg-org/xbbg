@@ -45,6 +45,14 @@ impl Identity {
         rc != 0
     }
 
+    /// Return whether this identity is entitled to ALL of the given
+    /// entitlement IDs for `service`.
+    ///
+    /// Mirrors the C++ `Identity::hasEntitlements` contract: the FFI return
+    /// value is the boolean answer (nonzero = entitled), not an error code.
+    /// The `failedEntitlements` out-array is optional and we don't request it;
+    /// its count parameter is in/out (input = array capacity), so it must be 0
+    /// when no array is supplied.
     pub fn has_entitlements(&self, service: &crate::Service<'_>, eids: &[i32]) -> Result<bool> {
         let mut failed_count: i32 = 0;
         let rc = unsafe {
@@ -58,12 +66,7 @@ impl Identity {
                 &mut failed_count,
             )
         };
-        if rc < 0 {
-            return Err(BlpError::Internal {
-                detail: format!("hasEntitlements failed: rc={rc}"),
-            });
-        }
-        Ok(failed_count == 0)
+        Ok(rc != 0)
     }
 
     pub fn seat_type(&self) -> Result<SeatType> {
@@ -105,9 +108,13 @@ impl SeatType {
 
 impl Drop for Identity {
     fn drop(&mut self) {
-        // Note: Bloomberg API does not provide an explicit destroy function for Identity
-        // The identity is managed by the session and will be cleaned up when the session is destroyed
-        // We just null out the pointer to prevent use-after-free
-        self.ptr = std::ptr::null_mut();
+        if !self.ptr.is_null() {
+            // SAFETY: `blpapi_Session_createIdentity` hands the caller an owned
+            // reference (the C++ `Identity(handle)` ctor takes ownership without
+            // addRef and its destructor calls release; blpapi_identity.h:279-290).
+            // Releasing exactly once here balances that reference.
+            unsafe { crate::ffi::blpapi_Identity_release(self.ptr) };
+            self.ptr = std::ptr::null_mut();
+        }
     }
 }

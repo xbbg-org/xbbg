@@ -583,11 +583,32 @@ fn update_value_to_json(value: &UpdateValue) -> serde_json::Value {
     }
 }
 
+/// Stable machine-readable error code embedded in every native error message
+/// as a `[XBBG:<CODE>] ` prefix. The js-xbbg wrapper parses this prefix to
+/// construct typed error classes; the human-readable message follows it.
+/// Codes: SESSION, REQUEST, VALIDATION, TIMEOUT, CANCELLED, INTERNAL.
+fn coded(status: Status, code: &str, msg: impl AsRef<str>) -> Error {
+    Error::new(status, format!("[XBBG:{code}] {}", msg.as_ref()))
+}
+
+fn request_failure_code(label: Option<&str>) -> &'static str {
+    match label {
+        Some(label)
+            if label.contains("category=LIMIT")
+                || label.contains("DAILY_CAPACITY_REACHED")
+                || label.contains("subcategory=DAILY_CAPACITY_REACHED") =>
+        {
+            "LIMIT"
+        }
+        _ => "REQUEST",
+    }
+}
+
 fn blp_error_to_napi(e: BlpError) -> Error {
     match e {
         BlpError::SessionStart { source, label } => {
             let msg = format_error_msg("Session start failed", label.as_deref(), source.as_deref());
-            Error::new(Status::GenericFailure, msg)
+            coded(Status::GenericFailure, "SESSION", msg)
         }
         BlpError::OpenService {
             service,
@@ -598,7 +619,7 @@ fn blp_error_to_napi(e: BlpError) -> Error {
                 "Failed to open service '{service}': {}",
                 format_error_msg("", label.as_deref(), source.as_deref())
             );
-            Error::new(Status::GenericFailure, msg)
+            coded(Status::GenericFailure, "SESSION", msg)
         }
         BlpError::RequestFailure {
             service,
@@ -618,24 +639,27 @@ fn blp_error_to_napi(e: BlpError) -> Error {
             if let Some(rid) = request_id {
                 msg.push_str(&format!(" [request_id={rid}]"));
             }
+            let code = request_failure_code(label.as_deref());
             if let Some(l) = label {
                 msg.push_str(&format!(" - {l}"));
             }
             if let Some(s) = source {
                 msg.push_str(&format!(": {s}"));
             }
-            Error::new(Status::GenericFailure, msg)
+            coded(Status::GenericFailure, code, msg)
         }
-        BlpError::InvalidArgument { detail } => {
-            Error::new(Status::InvalidArg, format!("Invalid argument: {detail}"))
-        }
-        BlpError::Timeout => Error::new(Status::GenericFailure, "Request timed out"),
+        BlpError::InvalidArgument { detail } => coded(
+            Status::InvalidArg,
+            "VALIDATION",
+            format!("Invalid argument: {detail}"),
+        ),
+        BlpError::Timeout => coded(Status::GenericFailure, "TIMEOUT", "Request timed out"),
         BlpError::TemplateTerminated { cid } => {
             let msg = match cid {
                 Some(c) => format!("Request template terminated (cid={c})"),
                 None => "Request template terminated".to_string(),
             };
-            Error::new(Status::GenericFailure, msg)
+            coded(Status::GenericFailure, "REQUEST", msg)
         }
         BlpError::SubscriptionFailure { cid, label } => {
             let mut msg = "Subscription failed".to_string();
@@ -645,40 +669,43 @@ fn blp_error_to_napi(e: BlpError) -> Error {
             if let Some(l) = label {
                 msg.push_str(&format!(": {l}"));
             }
-            Error::new(Status::GenericFailure, msg)
+            coded(Status::GenericFailure, "REQUEST", msg)
         }
-        BlpError::Internal { detail } => {
-            Error::new(Status::GenericFailure, format!("Internal error: {detail}"))
-        }
-        BlpError::SchemaOperationNotFound { service, operation } => Error::new(
+        BlpError::Internal { detail } => coded(
+            Status::GenericFailure,
+            "INTERNAL",
+            format!("Internal error: {detail}"),
+        ),
+        BlpError::SchemaOperationNotFound { service, operation } => coded(
             Status::InvalidArg,
+            "VALIDATION",
             format!("Operation not found: {service}::{operation}"),
         ),
-        BlpError::SchemaElementNotFound { parent, name } => Error::new(
+        BlpError::SchemaElementNotFound { parent, name } => coded(
             Status::InvalidArg,
+            "VALIDATION",
             format!("Schema element not found: {parent}.{name}"),
         ),
         BlpError::SchemaTypeMismatch {
             element,
             expected,
             found,
-        } => Error::new(
+        } => coded(
             Status::InvalidArg,
+            "VALIDATION",
             format!("Schema type mismatch at {element}: expected {expected}, found {found}"),
         ),
-        BlpError::SchemaUnsupported { element, detail } => Error::new(
+        BlpError::SchemaUnsupported { element, detail } => coded(
             Status::InvalidArg,
+            "VALIDATION",
             format!("Unsupported schema construct at {element}: {detail}"),
         ),
         BlpError::Validation { message, errors } => {
             let details: Vec<String> = errors
                 .iter()
-                .map(|e| {
-                    if let Some(ref suggestion) = e.suggestion {
-                        format!("{e} (did you mean '{suggestion}'?)")
-                    } else {
-                        e.to_string()
-                    }
+                .map(|e| match &e.suggestion {
+                    Some(suggestion) => format!("{e} (did you mean '{suggestion}'?)"),
+                    None => e.to_string(),
                 })
                 .collect();
             let msg = if details.is_empty() {
@@ -686,7 +713,7 @@ fn blp_error_to_napi(e: BlpError) -> Error {
             } else {
                 format!("{message}: {}", details.join("; "))
             };
-            Error::new(Status::InvalidArg, msg)
+            coded(Status::InvalidArg, "VALIDATION", msg)
         }
     }
 }
@@ -695,37 +722,55 @@ fn blp_async_error_to_napi(e: BlpAsyncError) -> Error {
     match e {
         BlpAsyncError::Blp(blp_err) => blp_error_to_napi(blp_err),
         BlpAsyncError::BlpError(blp_err) => blp_error_to_napi(blp_err),
-        BlpAsyncError::ConfigError { detail } => {
-            Error::new(Status::InvalidArg, format!("Configuration error: {detail}"))
-        }
-        BlpAsyncError::ChannelClosed => {
-            Error::new(Status::GenericFailure, "Channel closed unexpectedly")
-        }
-        BlpAsyncError::StreamFull => Error::new(
+        BlpAsyncError::ConfigError { detail } => coded(
+            Status::InvalidArg,
+            "VALIDATION",
+            format!("Configuration error: {detail}"),
+        ),
+        BlpAsyncError::ChannelClosed => coded(
             Status::GenericFailure,
+            "INTERNAL",
+            "Channel closed unexpectedly",
+        ),
+        BlpAsyncError::StreamFull => coded(
+            Status::GenericFailure,
+            "INTERNAL",
             "Stream buffer full - consumer too slow",
         ),
-        BlpAsyncError::Cancelled => Error::new(Status::GenericFailure, "Request was cancelled"),
-        BlpAsyncError::Timeout => Error::new(Status::GenericFailure, "Request timed out"),
+        BlpAsyncError::Cancelled => {
+            coded(Status::GenericFailure, "CANCELLED", "Request was cancelled")
+        }
+        BlpAsyncError::Timeout => coded(Status::GenericFailure, "TIMEOUT", "Request timed out"),
         BlpAsyncError::SessionLost {
             worker_id,
             in_flight_count,
-        } => Error::new(
+        } => coded(
             Status::GenericFailure,
+            "SESSION",
             format!(
                 "Session lost on worker {worker_id}; {in_flight_count} in-flight requests failed"
             ),
         ),
-        BlpAsyncError::AllWorkersDown { pool_size } => Error::new(
+        BlpAsyncError::AllWorkersDown { pool_size } => coded(
             Status::GenericFailure,
+            "SESSION",
             format!("All {pool_size} request workers are down"),
         ),
-        BlpAsyncError::Internal(msg) => Error::new(Status::GenericFailure, msg),
+        BlpAsyncError::Internal(msg) => coded(Status::GenericFailure, "INTERNAL", msg),
     }
 }
 
 fn recipe_error_to_napi(e: xbbg_recipes::RecipeError) -> Error {
-    Error::new(Status::GenericFailure, e.to_string())
+    match e {
+        // Delegate engine errors so they carry their precise code.
+        xbbg_recipes::RecipeError::Engine(inner) => blp_async_error_to_napi(*inner),
+        xbbg_recipes::RecipeError::InvalidArgument(detail) => coded(
+            Status::InvalidArg,
+            "VALIDATION",
+            format!("Invalid argument: {detail}"),
+        ),
+        other => coded(Status::GenericFailure, "INTERNAL", other.to_string()),
+    }
 }
 
 fn format_error_msg(
@@ -803,6 +848,30 @@ impl JsEngine {
     #[napi(factory)]
     pub fn with_config(config: EngineConfigInput) -> napi::Result<Self> {
         Self::start_engine(config.try_into()?)
+    }
+
+    /// Connect asynchronously with host/port defaults.
+    ///
+    /// Engine startup (Bloomberg session connect plus service warmup —
+    /// seconds, up to the 30s session timeout) runs on the blocking pool
+    /// instead of the JS thread. Prefer this over `new JsEngine(...)`, which
+    /// freezes the Node event loop for the duration of the connect.
+    #[napi(factory)]
+    pub async fn connect(host: Option<String>, port: Option<u16>) -> napi::Result<Self> {
+        let host = host.unwrap_or_else(|| "localhost".to_string());
+        let port = port.unwrap_or(8194);
+        let config = EngineConfig {
+            transport: Transport::Direct(vec![ServerAddr::new(host, port)]),
+            ..Default::default()
+        };
+        Self::start_engine_async(config).await
+    }
+
+    /// Connect asynchronously from a full configuration.
+    /// See [`JsEngine::connect`].
+    #[napi(factory)]
+    pub async fn connect_with_config(config: EngineConfigInput) -> napi::Result<Self> {
+        Self::start_engine_async(config.try_into()?).await
     }
 
     #[napi]
@@ -1031,9 +1100,15 @@ impl JsEngine {
         self.engine.signal_shutdown();
     }
 
+    /// Whether at least one request worker session is healthy.
+    ///
+    /// Mirrors pyo3's `is_connected()`; previously hardcoded `true`.
     #[napi]
     pub fn is_available(&self) -> bool {
-        true
+        self.engine
+            .request_pool_health()
+            .iter()
+            .any(|(_, health)| *health == xbbg_async::engine::WorkerHealth::Healthy)
     }
 
     #[napi]
@@ -1346,6 +1421,23 @@ impl JsEngine {
 
     fn start_engine(config: EngineConfig) -> napi::Result<Self> {
         let engine = Engine::start(config).map_err(blp_async_error_to_napi)?;
+        Ok(Self {
+            engine: Arc::new(engine),
+        })
+    }
+
+    async fn start_engine_async(config: EngineConfig) -> napi::Result<Self> {
+        let engine =
+            napi::tokio::task::spawn_blocking(move || Engine::start(config).map_err(Box::new))
+                .await
+                .map_err(|join_error| {
+                    coded(
+                        Status::GenericFailure,
+                        "INTERNAL",
+                        format!("engine startup task failed: {join_error}"),
+                    )
+                })?
+                .map_err(|error| blp_async_error_to_napi(*error))?;
         Ok(Self {
             engine: Arc::new(engine),
         })

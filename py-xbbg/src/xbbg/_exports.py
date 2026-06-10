@@ -58,6 +58,7 @@ EXCEPTION_EXPORTS = (
     "BlpError",
     "BlpSessionError",
     "BlpRequestError",
+    "BlpLimitError",
     "BlpSecurityError",
     "BlpFieldError",
     "BlpValidationError",

@@ -212,6 +212,10 @@ export interface NativeEngine {
 export interface NativeEngineConstructor {
   new (host: string, port: number): NativeEngine;
   withConfig(config: EngineConfig): NativeEngine;
+  /** Async factory: engine startup runs off the JS thread. */
+  connect(host?: string, port?: number): Promise<NativeEngine>;
+  /** Async factory from a full configuration. */
+  connectWithConfig(config: EngineConfig): Promise<NativeEngine>;
 }
 
 export interface NativeAddon {

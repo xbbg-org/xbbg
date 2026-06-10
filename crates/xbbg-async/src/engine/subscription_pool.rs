@@ -15,15 +15,10 @@ use tokio::sync::{mpsc, oneshot};
 use xbbg_core::session::Session;
 use xbbg_core::{BlpError, CorrelationId, EventType, SubscriptionList};
 
-/// High-bit tag for CorrelationIds we generate for async `open_service` calls.
-/// Slab-key-derived subscription CIDs are small non-negative integers, so tagging
-/// service-open CIDs with bit 62 set keeps them disjoint.
-const SERVICE_OPEN_CID_TAG: i64 = 1_i64 << 62;
-
 /// Max wall time for an async open_service reply before we give up.
 const SERVICE_OPEN_TIMEOUT_MS: u64 = 10_000;
 
-use super::dispatch::DispatchKey;
+use super::dispatch::{DispatchKey, SERVICE_OPEN_CID_TAG};
 use super::state::{SubscriptionMetrics, SubscriptionState, SubscriptionUpdate};
 use super::{
     start_configured_session, BlpAsyncError, EngineConfig, OverflowPolicy, SessionLifecycleState,
@@ -353,8 +348,9 @@ impl SubscriptionWorker {
                 }
             }
 
-            // 2. Poll Bloomberg (short timeout for responsiveness)
-            if let Ok(ev) = self.session.next_event(Some(10)) {
+            // 2. Poll Bloomberg (1ms timeout: bounds command-dispatch latency
+            //    while queued ticks still return immediately)
+            if let Ok(ev) = self.session.next_event(Some(1)) {
                 self.dispatch_event(ev);
             }
 

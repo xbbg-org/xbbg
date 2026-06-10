@@ -145,10 +145,14 @@ impl<'a> Element<'a> {
         (rc == 0).then(|| Element::new(unsafe { out.assume_init() }))
     }
 
-    /// Get child by index without bounds checking.
+    /// Get child by index without checking the Bloomberg return code.
     ///
     /// # Safety
-    /// Caller must ensure `i < self.num_children()`.
+    /// Caller must ensure this element is a sequence or choice and that
+    /// `i < self.num_children()`. If Bloomberg rejects the access for any
+    /// reason (out of range, scalar element), the returned handle is
+    /// uninitialized memory and using it is undefined behavior. Prefer
+    /// [`Element::get_at`]; the checked branch is free next to the FFI call.
     #[inline(always)]
     pub unsafe fn get_at_unchecked(&self, i: usize) -> Element<'a> {
         let mut out = MaybeUninit::uninit();
@@ -430,17 +434,6 @@ impl<'a> Element<'a> {
         (rc == 0).then(|| Element::new(unsafe { out.assume_init() }))
     }
 
-    /// Get element at index without bounds checking.
-    ///
-    /// # Safety
-    /// Caller must ensure `i < self.len()`.
-    #[inline(always)]
-    pub unsafe fn get_element_unchecked(&self, i: usize) -> Element<'a> {
-        let mut out = MaybeUninit::uninit();
-        ffi::blpapi_Element_getValueAsElement(self.ptr, out.as_mut_ptr(), i);
-        Element::new(out.assume_init())
-    }
-
     /// Iterator over child elements.
     ///
     /// Use for sequences (structured types with named children).
@@ -458,7 +451,9 @@ impl<'a> Element<'a> {
 
     /// Iterator over array values as elements.
     ///
-    /// Use for arrays of complex types.
+    /// Use for arrays of complex types (sequences/choices). On scalar arrays
+    /// Bloomberg rejects element access and the iterator terminates early
+    /// instead of yielding values; use the typed getters for scalar arrays.
     ///
     /// # Performance
     /// Returns a concrete iterator struct for better inlining (~10-20% faster iteration).
@@ -699,8 +694,14 @@ impl<'a> Iterator for ChildrenIter<'a> {
         if self.idx < self.len {
             let i = self.idx;
             self.idx += 1;
-            // SAFETY: idx < len verified above, len came from num_children()
-            Some(unsafe { self.elem.get_at_unchecked(i) })
+            let item = self.elem.get_at(i);
+            if item.is_none() {
+                // Bloomberg rejected the index (non-sequence element or
+                // schema drift). Fuse the iterator instead of touching the
+                // uninitialized out-pointer.
+                self.idx = self.len;
+            }
+            item
         } else {
             None
         }
@@ -732,8 +733,14 @@ impl<'a> Iterator for ValuesIter<'a> {
         if self.idx < self.len {
             let i = self.idx;
             self.idx += 1;
-            // SAFETY: idx < len verified above, len came from self.len()
-            Some(unsafe { self.elem.get_element_unchecked(i) })
+            let item = self.elem.get_element(i);
+            if item.is_none() {
+                // Bloomberg rejected the index (scalar array or type
+                // mismatch). Fuse instead of reading the uninitialized
+                // out-pointer the unchecked path used to assume_init.
+                self.idx = self.len;
+            }
+            item
         } else {
             None
         }

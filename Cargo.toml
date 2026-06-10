@@ -39,19 +39,19 @@ repository = "https://github.com/xbbg-org/xbbg"
 edition = "2021"
 
 # =============================================================================
-# Size-first Release Profile
+# Performance-first Release Profile
 # =============================================================================
-# Python wheels ship the Rust extension to every user, so release builds optimize
-# primarily for install size while preserving LTO and single-codegen-unit output.
-# Performance-sensitive benchmarking can override opt-level with CARGO_PROFILE_* or
-# a dedicated benchmark profile.
+# Shipped artifacts (wheels, napi addon, xbbg-mcp) build with this profile, so it
+# optimizes for speed: measured 1.25-1.46x on columnar row loops vs opt-level "z"
+# (probe over xbbg-arrow build_array/cell_from_array/cell_matches, same LTO/CGU).
+# Size-sensitive builds can override with CARGO_PROFILE_RELEASE_OPT_LEVEL=z.
 
 [profile.release]
 lto = "fat"           # Full link-time optimization across all crates
 codegen-units = 1     # Single codegen unit = better optimization opportunities
 panic = "abort"       # No unwinding = smaller/faster code (can't catch panics)
 strip = "symbols"     # Remove debug symbols for smaller binary
-opt-level = "z"       # Size-first wheels; keep explicit benchmark profiles for speed checks
+opt-level = 3         # Speed-first; size delta on wheels is small vs the 25-45% perf cost of "z"
 
 # Optimize all deps in dev builds (many are unusably slow at opt-level 0)
 [profile.dev.package."*"]

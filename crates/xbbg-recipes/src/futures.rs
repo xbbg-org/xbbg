@@ -27,7 +27,7 @@ use xbbg_ext::{fmt_date, parse_date, parse_ticker_parts};
 use crate::error::{RecipeError, Result};
 use crate::utils::{
     array_value_as_date, array_value_as_f64, array_value_as_string, as_string_col, canonical_name,
-    date32_to_naive, naive_to_date32,
+    date32_to_naive, naive_to_date32, parse_any_date,
 };
 
 /// Resolve a generic futures ticker to a specific contract ticker for a date.
@@ -1045,18 +1045,6 @@ fn parse_series_number(value: &str) -> Option<u32> {
     }
 
     Some(parsed as u32)
-}
-
-fn parse_any_date(value: &str) -> Option<NaiveDate> {
-    let value = value.trim();
-
-    if value.is_empty() {
-        return None;
-    }
-
-    parse_date(value)
-        .ok()
-        .or_else(|| value.get(..10).and_then(|prefix| parse_date(prefix).ok()))
 }
 
 #[cfg(test)]

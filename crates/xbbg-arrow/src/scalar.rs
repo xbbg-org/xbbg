@@ -155,8 +155,11 @@ pub fn date_from_days(days: i32) -> Option<NaiveDate> {
 }
 
 /// Convert an Arrow scalar at `row` to xbbg's carrier scalar representation.
+///
+/// Out-of-range rows, nulls, and unsupported data types all yield
+/// [`CellValue::Null`] (absent) rather than a fabricated value.
 pub fn cell_from_array(array: &dyn Array, row: usize) -> CellValue {
-    if array.is_null(row) {
+    if row >= array.len() || array.is_null(row) {
         return CellValue::Null;
     }
     match array.data_type() {
@@ -248,7 +251,9 @@ pub fn cell_from_array(array: &dyn Array, row: usize) -> CellValue {
                 .expect("TimestampMillisecondArray")
                 .value(row),
         ),
-        _ => CellValue::Text(format!("{array:?}")),
+        // Unsupported dtype: report absent instead of fabricating a value
+        // (the old behavior Debug-dumped the entire array into every cell).
+        _ => CellValue::Null,
     }
 }
 
@@ -265,9 +270,9 @@ pub fn cell_has_value(cell: &CellValue) -> bool {
 pub fn date_from_cell(cell: &CellValue) -> Option<NaiveDate> {
     match cell {
         CellValue::Date(value) => Some(*value),
-        CellValue::Text(value) if value.len() >= 10 => {
-            NaiveDate::parse_from_str(&value[..10], "%Y-%m-%d").ok()
-        }
+        CellValue::Text(value) if value.len() >= 10 => value
+            .get(..10)
+            .and_then(|prefix| NaiveDate::parse_from_str(prefix, "%Y-%m-%d").ok()),
         CellValue::Text(value) if value.len() == 8 => {
             NaiveDate::parse_from_str(value, "%Y%m%d").ok()
         }
@@ -277,7 +282,7 @@ pub fn date_from_cell(cell: &CellValue) -> Option<NaiveDate> {
 
 /// Parse an Arrow scalar at `row` as a date when possible.
 pub fn date_from_array(array: &dyn Array, row: usize) -> Option<NaiveDate> {
-    if array.is_null(row) {
+    if row >= array.len() || array.is_null(row) {
         return None;
     }
     match array.data_type() {
@@ -294,6 +299,9 @@ pub fn date_from_array(array: &dyn Array, row: usize) -> Option<NaiveDate> {
 
 /// Compare an Arrow scalar at `row` with a carrier scalar.
 pub fn cell_matches(array: &dyn Array, row: usize, needle: &CellValue) -> bool {
+    if row >= array.len() {
+        return false;
+    }
     if array.is_null(row) {
         return matches!(needle, CellValue::Null);
     }

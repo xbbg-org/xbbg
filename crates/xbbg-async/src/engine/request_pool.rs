@@ -1,28 +1,43 @@
 //! Request worker pool with round-robin dispatch.
 //!
-//! The pool manages a collection of pre-warmed workers and distributes
-//! incoming requests across them using round-robin scheduling.
+//! The pool manages a collection of pre-warmed async-session workers and
+//! distributes incoming requests across them using round-robin scheduling.
+//! Submissions call straight into the chosen worker (async Bloomberg
+//! sessions are thread-safe), so there is no command queue; a single
+//! timeout-scanner thread enforces `request_timeout_ms` across all workers.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use arrow_array::RecordBatch;
 use tokio::sync::{mpsc, oneshot};
 
 use xbbg_core::BlpError;
 
-use super::worker::{WorkerCommand, WorkerHandle};
+use super::worker::{AsyncRequestWorker, RequestTicket};
 use super::{BlpAsyncError, EngineConfig, PreparedRequest, WorkerHealth};
 
+/// How often the scanner thread sweeps workers for slow/expired requests.
+const TIMEOUT_SCAN_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Polling granularity for scanner shutdown responsiveness.
+const TIMEOUT_SCAN_TICK: Duration = Duration::from_millis(100);
+
+/// Cancels the in-flight request when the caller's future is dropped before
+/// the reply arrives.
 struct RequestCancelGuard {
-    cancelled: Arc<AtomicBool>,
+    worker: Arc<AsyncRequestWorker>,
+    ticket: RequestTicket,
     armed: bool,
 }
 
 impl RequestCancelGuard {
-    fn new(cancelled: Arc<AtomicBool>) -> Self {
+    fn new(worker: Arc<AsyncRequestWorker>, ticket: RequestTicket) -> Self {
         Self {
-            cancelled,
+            worker,
+            ticket,
             armed: true,
         }
     }
@@ -35,8 +50,67 @@ impl RequestCancelGuard {
 impl Drop for RequestCancelGuard {
     fn drop(&mut self) {
         if self.armed {
-            self.cancelled.store(true, Ordering::Release);
+            self.worker.cancel_request(self.ticket);
         }
+    }
+}
+
+/// Background thread enforcing slow-request warnings and hard timeouts.
+struct TimeoutScanner {
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl TimeoutScanner {
+    fn spawn(workers: Vec<Weak<AsyncRequestWorker>>, request_timeout_ms: u64) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_flag = Arc::clone(&stop);
+        let thread = std::thread::Builder::new()
+            .name("xbbg-request-timeouts".to_string())
+            .spawn(move || {
+                let hard_timeout =
+                    (request_timeout_ms > 0).then(|| Duration::from_millis(request_timeout_ms));
+                let ticks_per_scan =
+                    (TIMEOUT_SCAN_INTERVAL.as_millis() / TIMEOUT_SCAN_TICK.as_millis()).max(1);
+                loop {
+                    for _ in 0..ticks_per_scan {
+                        if stop_flag.load(Ordering::Acquire) {
+                            return;
+                        }
+                        std::thread::sleep(TIMEOUT_SCAN_TICK);
+                    }
+                    for worker in &workers {
+                        let Some(worker) = worker.upgrade() else {
+                            continue;
+                        };
+                        for ticket in worker.scan_timeouts(hard_timeout) {
+                            worker.timeout_request(ticket, request_timeout_ms);
+                        }
+                    }
+                }
+            })
+            .ok();
+        if thread.is_none() {
+            xbbg_log::error!("failed to spawn request timeout scanner thread");
+        }
+        Self { stop, thread }
+    }
+
+    fn signal_stop(&self) {
+        self.stop.store(true, Ordering::Release);
+    }
+
+    fn join(&mut self) {
+        self.signal_stop();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl Drop for TimeoutScanner {
+    fn drop(&mut self) {
+        self.signal_stop();
     }
 }
 
@@ -47,19 +121,23 @@ impl Drop for RequestCancelGuard {
 /// preparation depends on [`super::Engine`]-owned schema, field-cache, and
 /// intraday-timezone state.
 pub struct RequestWorkerPool {
-    /// Worker handles.
-    workers: Vec<WorkerHandle>,
+    /// Workers; `Arc` so cancel guards and the scanner can address them
+    /// after the submitting borrow ends.
+    workers: Vec<Arc<AsyncRequestWorker>>,
     /// Round-robin counter.
     next_worker: AtomicUsize,
     /// Configuration.
     config: Arc<EngineConfig>,
+    /// Slow-request / hard-timeout enforcement. `None` only in unit tests.
+    scanner: Option<TimeoutScanner>,
 }
 
 impl RequestWorkerPool {
     /// Create a new pool with the specified number of workers.
     ///
-    /// Each worker is spawned on a dedicated thread with a pre-warmed
-    /// Bloomberg session.
+    /// Each worker owns a pre-warmed asynchronous Bloomberg session; creation
+    /// blocks until every session has started (parity with the previous
+    /// thread-per-worker design, which also blocked on session startup).
     pub fn new(size: usize, config: Arc<EngineConfig>) -> Result<Self, BlpAsyncError> {
         if size == 0 {
             return Err(BlpAsyncError::ConfigError {
@@ -71,13 +149,18 @@ impl RequestWorkerPool {
 
         let mut workers = Vec::with_capacity(size);
         for id in 0..size {
-            let handle = WorkerHandle::spawn(id, config.clone()).map_err(|e| {
+            let worker = AsyncRequestWorker::new(id, config.clone()).map_err(|e| {
                 BlpAsyncError::BlpError(BlpError::Internal {
                     detail: format!("failed to spawn worker {}: {}", id, e),
                 })
             })?;
-            workers.push(handle);
+            workers.push(Arc::new(worker));
         }
+
+        let scanner = TimeoutScanner::spawn(
+            workers.iter().map(Arc::downgrade).collect(),
+            config.request_timeout_ms,
+        );
 
         xbbg_log::info!(pool_size = size, "request worker pool ready");
 
@@ -85,10 +168,11 @@ impl RequestWorkerPool {
             workers,
             next_worker: AtomicUsize::new(0),
             config,
+            scanner: Some(scanner),
         })
     }
 
-    fn next_healthy_worker(&self) -> Result<&WorkerHandle, BlpAsyncError> {
+    fn next_healthy_worker(&self) -> Result<&Arc<AsyncRequestWorker>, BlpAsyncError> {
         let len = self.workers.len();
         let start = self.next_worker.fetch_add(1, Ordering::Relaxed) % len;
 
@@ -149,7 +233,7 @@ impl RequestWorkerPool {
             }
 
             let worker = match self.next_healthy_worker() {
-                Ok(worker) => worker,
+                Ok(worker) => Arc::clone(worker),
                 Err(error) => {
                     last_error = Some(error);
                     continue;
@@ -157,7 +241,6 @@ impl RequestWorkerPool {
             };
 
             let (reply_tx, reply_rx) = oneshot::channel();
-            let cancelled = Arc::new(AtomicBool::new(false));
 
             xbbg_log::debug!(
                 worker_id = worker.id,
@@ -166,28 +249,17 @@ impl RequestWorkerPool {
                 attempt = attempt,
                 "dispatching request"
             );
-            let worker_request = request.clone();
 
-            if worker
-                .cmd_tx
-                .send(WorkerCommand::PreparedRequest {
-                    request: worker_request,
-                    reply: reply_tx,
-                    cancelled: cancelled.clone(),
-                })
-                .await
-                .is_err()
-            {
-                if attempt + 1 < max_attempts {
-                    last_error = Some(BlpAsyncError::ChannelClosed);
-                    continue;
-                }
-                return Err(BlpAsyncError::ChannelClosed);
-            }
+            // Failures inside submit are routed through the reply channel;
+            // a ticket means the request is in flight and cancellable.
+            let ticket = worker.submit(request.clone(), reply_tx).await;
+            let mut cancel_guard =
+                ticket.map(|ticket| RequestCancelGuard::new(Arc::clone(&worker), ticket));
 
-            let mut cancel_guard = RequestCancelGuard::new(cancelled);
             let reply_result = reply_rx.await;
-            cancel_guard.disarm();
+            if let Some(guard) = &mut cancel_guard {
+                guard.disarm();
+            }
 
             match reply_result {
                 Ok(Ok(batch)) => return Ok(batch),
@@ -224,14 +296,10 @@ impl RequestWorkerPool {
             operation = %params.operation,
             "dispatching stream request"
         );
-        worker
-            .cmd_tx
-            .send(WorkerCommand::PreparedRequestStream {
-                request,
-                stream: stream_tx,
-            })
-            .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?;
+        // Stream errors (including submit failures) arrive through the
+        // stream itself; stream requests are not cancel-guarded (parity with
+        // the previous design).
+        let _ticket = worker.submit_stream(request, stream_tx).await;
 
         Ok(stream_rx)
     }
@@ -253,39 +321,31 @@ impl RequestWorkerPool {
         &self,
         service: String,
     ) -> Result<crate::schema::ServiceSchema, BlpAsyncError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
         let worker = self.next_healthy_worker()?;
         worker
-            .cmd_tx
-            .send(WorkerCommand::IntrospectSchema {
-                service,
-                reply: reply_tx,
-            })
+            .introspect_schema(&service)
             .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?;
-
-        reply_rx
-            .await
-            .map_err(|_| BlpAsyncError::ChannelClosed)?
             .map_err(BlpAsyncError::BlpError)
     }
 
     /// Signal shutdown to all workers (non-blocking).
     ///
-    /// Workers will terminate when they see the shutdown signal.
-    /// Used by Drop to avoid blocking during interpreter shutdown.
+    /// Sessions begin stopping asynchronously; used by Drop to avoid blocking
+    /// during interpreter shutdown.
     pub fn signal_shutdown(&self) {
         xbbg_log::info!(
             pool_size = self.workers.len(),
             "signaling request pool shutdown"
         );
+        if let Some(scanner) = &self.scanner {
+            scanner.signal_stop();
+        }
         for worker in &self.workers {
             worker.signal_shutdown();
         }
     }
 
-    /// Graceful shutdown - waits for all workers to finish (blocking).
+    /// Graceful shutdown - waits for all workers' sessions to stop (blocking).
     ///
     /// Use this for clean shutdown when you can afford to wait.
     pub fn shutdown_blocking(&mut self) {
@@ -293,7 +353,10 @@ impl RequestWorkerPool {
             pool_size = self.workers.len(),
             "shutting down request pool (blocking)"
         );
-        for worker in &mut self.workers {
+        if let Some(scanner) = &mut self.scanner {
+            scanner.join();
+        }
+        for worker in &self.workers {
             worker.shutdown_blocking();
         }
     }
@@ -301,7 +364,8 @@ impl RequestWorkerPool {
 
 impl Drop for RequestWorkerPool {
     fn drop(&mut self) {
-        // Non-blocking: just signal, don't wait
+        // Non-blocking: signal sessions to stop; AsyncSession::drop completes
+        // the (already-initiated, hence brief) stop before destroying.
         self.signal_shutdown();
     }
 }
@@ -321,6 +385,7 @@ mod tests {
             workers: Vec::new(),
             next_worker: AtomicUsize::new(0),
             config,
+            scanner: None,
         }
     }
 

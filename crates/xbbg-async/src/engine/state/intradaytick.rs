@@ -12,7 +12,9 @@ use tokio::sync::oneshot;
 use xbbg_log::trace;
 
 use super::typed_builder::{ArrowType, TypedBuilder};
-use super::value_utils::{arrow_type_for_element, should_emit_scalar_field};
+use super::value_utils::{
+    arrow_type_for_element, should_emit_scalar_field, top_level_response_error,
+};
 use xbbg_core::{BlpError, Element, Message, Name};
 
 const TICKER_COLUMN: &str = "ticker";
@@ -92,6 +94,11 @@ impl IntradayTickState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/refdata", "IntradayTickRequest") {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.process_message(msg);
         let result = self.finish_batch();
         if let Ok(ref batch) = result {

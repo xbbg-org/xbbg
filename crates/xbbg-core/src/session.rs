@@ -158,11 +158,7 @@ impl Session {
                 .as_millis() as u32;
 
             let poll_timeout = poll_timeout.max(1);
-            let event = match self.next_event(Some(poll_timeout)) {
-                Ok(event) => event,
-                Err(BlpError::Timeout) => continue,
-                Err(err) => return Err(err),
-            };
+            let event = self.next_event(Some(poll_timeout))?;
             let mut saw_session_started = false;
             for msg in event.messages() {
                 match msg.message_type().as_str() {
@@ -223,7 +219,9 @@ impl Session {
     /// * `timeout_ms` - Optional timeout in milliseconds. None means wait indefinitely.
     ///
     /// # Returns
-    /// The next Event, or an error if the timeout expires or an error occurs
+    /// The next Event. When the timeout expires Bloomberg returns an event of
+    /// type [`EventType::Timeout`](crate::EventType::Timeout), not an error;
+    /// `Err` means the call itself failed (e.g. session in an invalid state).
     pub fn next_event(&self, timeout_ms: Option<u32>) -> Result<Event> {
         let mut event_ptr: *mut crate::ffi::blpapi_Event_t = std::ptr::null_mut();
 
@@ -233,7 +231,9 @@ impl Session {
         };
 
         if rc != 0 {
-            return Err(BlpError::Timeout);
+            return Err(BlpError::Internal {
+                detail: format!("blpapi_Session_nextEvent failed: rc={rc}"),
+            });
         }
 
         if event_ptr.is_null() {

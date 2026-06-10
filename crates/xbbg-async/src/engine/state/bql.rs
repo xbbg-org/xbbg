@@ -16,6 +16,7 @@ use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 use tokio::sync::oneshot;
 
 use super::typed_builder::ColumnSet;
+use super::value_utils::top_level_response_error;
 use xbbg_core::{BlpError, Message};
 
 const BQL_TYPED_JSON_MAX_BYTES: usize = 32 * 1024;
@@ -134,6 +135,11 @@ impl BqlState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/bqlsvc", "sendQuery") {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.process_message(msg);
 
         // If we accumulated JSON, try to parse it

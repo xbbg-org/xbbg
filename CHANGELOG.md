@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Async JavaScript Bloomberg connection factories**: `@xbbg/core` now exposes `Engine.connect()` and top-level `connect()` so Bloomberg session startup runs off the Node event loop; the existing synchronous constructor remains available for compatibility.
+- **Dedicated Bloomberg capacity-limit exceptions**: JavaScript now exports `BlpLimitError`, and Python now exports `xbbg.BlpLimitError`, for Bloomberg `LIMIT` / `DAILY_CAPACITY_REACHED` responses.
+
+### Changed
+
+- **Bloomberg request workers use SDK push-mode sessions by default**: The Rust async engine now creates callback-mode Bloomberg sessions, sends requests directly from submitting tasks, and routes pushed SDK events by generation-tagged correlation IDs. This removes the 1ms command-queue poll loop for request dispatch while preserving multi-worker request pools, request cancellation, service-open coalescing, timeout scanning, and safe shutdown ordering.
+- **Rust hot paths tightened for high-throughput Bloomberg workloads**: Request setters now use interned Bloomberg `Name` handles instead of allocating field-name C strings, release builds optimize for speed, field/exchange caches avoid stale disk entries, Arrow extraction avoids unchecked row/string access, and iterator/error paths now fail closed on Bloomberg SDK return codes.
+
+### Fixed
+
+- **Bloomberg top-level `responseError` payloads are surfaced consistently**: Refdata, historical, bulk, generic, intraday, BQL, field-info, and search extractors now propagate Bloomberg `responseError` details such as `category=LIMIT`, `code=-4001`, and `subcategory=DAILY_CAPACITY_REACHED` instead of returning empty successful batches or generic request failures.
+- **Binding error mapping preserves Bloomberg failure classes**: NAPI and PyO3 now translate Bloomberg limit responses into the new limit exception classes while keeping validation, timeout, cancellation, session, and generic request errors distinct.
+- **Rust Bloomberg SDK ownership and entitlement handling hardened**: Identity handles are released correctly, entitlement checks now preserve the SDK boolean result, `Session::next_event` maps non-timeout SDK failures to errors, and async session shutdown waits for Bloomberg callbacks to drain before dropping callback state.
+
 ## [1.2.7] - 2026-06-09
 
 ### Changed

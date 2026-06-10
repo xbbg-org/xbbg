@@ -5,6 +5,7 @@
 use arrow_array::RecordBatch;
 use xbbg_async::engine::{Engine, RequestParams};
 use xbbg_async::services::{Operation, Service};
+use xbbg_ext::transforms::bql::{build_corporate_bonds_query, build_preferreds_query};
 use xbbg_ext::transforms::fixed_income::{build_yas_overrides, YieldType};
 
 use crate::error::Result;
@@ -100,23 +101,12 @@ pub async fn recipe_preferreds(
     equity_ticker: String,
     fields: Option<Vec<String>>,
 ) -> Result<RecordBatch> {
-    // Build field list with defaults
-    let all_fields = match fields {
-        Some(mut flds) => {
-            let mut defaults = vec!["id".to_string(), "name".to_string()];
-            defaults.append(&mut flds);
-            defaults
-        }
-        None => vec!["id".to_string(), "name".to_string()],
-    };
-
-    let fields_str = all_fields.join(", ");
-
-    // Build BQL query using debt filter with Preferreds asset class
-    let bql_query = format!(
-        "get({fields_str}) for(filter(debt(['{equity_ticker}'], CONSOLIDATEDUPLICATES='N'), \
-         SRCH_ASSET_CLASS=='Preferreds'))"
-    );
+    // Query construction lives in xbbg-ext (single source of truth). The
+    // builder appends " US Equity" to bare tickers and dedupes extra fields
+    // against the defaults (id, name).
+    let extra = fields.unwrap_or_default();
+    let extra_refs: Vec<&str> = extra.iter().map(String::as_str).collect();
+    let bql_query = build_preferreds_query(&equity_ticker, &extra_refs);
 
     let params = RequestParams {
         service: Service::BqlSvc.to_string(),
@@ -152,37 +142,13 @@ pub async fn recipe_corporate_bonds(
     fields: Option<Vec<String>>,
     active_only: bool,
 ) -> Result<RecordBatch> {
-    let _ = active_only; // TODO: add active filter condition when supported by debt()
-
-    // Normalize ticker
-    let equity_ticker = if ticker.contains(' ') {
-        ticker
-    } else {
-        format!("{} US Equity", ticker)
-    };
-
-    // Build field list with defaults
-    let all_fields = match fields {
-        Some(mut flds) => {
-            let mut defaults = vec!["id".to_string()];
-            defaults.append(&mut flds);
-            defaults
-        }
-        None => vec!["id".to_string()],
-    };
-
-    let fields_str = all_fields.join(", ");
-
-    // Build filter conditions
-    let mut conditions = vec!["SRCH_ASSET_CLASS=='Corporates'".to_string()];
-    if let Some(c) = ccy {
-        conditions.push(format!("CRNCY=='{c}'"));
-    }
-    let filter_str = conditions.join(" AND ");
-
-    let bql_query = format!(
-        "get({fields_str}) for(filter(debt(['{equity_ticker}'], CONSOLIDATEDUPLICATES='N'), {filter_str}))"
-    );
+    // Query construction lives in xbbg-ext (single source of truth). The
+    // builder normalizes bare tickers, dedupes extra fields against the
+    // default (id), and applies the optional CRNCY filter. `active_only`
+    // remains a no-op pending debt() support.
+    let extra = fields.unwrap_or_default();
+    let extra_refs: Vec<&str> = extra.iter().map(String::as_str).collect();
+    let bql_query = build_corporate_bonds_query(&ticker, ccy.as_deref(), &extra_refs, active_only);
 
     let params = RequestParams {
         service: Service::BqlSvc.to_string(),

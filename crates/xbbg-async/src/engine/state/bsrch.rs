@@ -29,6 +29,7 @@ use xbbg_core::{BlpError, Element, Message, Value};
 use xbbg_log::debug;
 
 use super::typed_builder::ColumnSet;
+use super::value_utils::top_level_response_error;
 
 #[derive(Default)]
 struct ProcessedGridPage {
@@ -82,6 +83,11 @@ impl BsrchState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "//blp/exrsvc", "ExcelGetGridRequest") {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.on_response(msg);
         self.finish_processed();
     }

@@ -15,7 +15,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::{DataType as ArrowDataType, Field, Schema};
 use tokio::sync::oneshot;
 
-use super::value_utils::{format_date32, format_timestamp_micros};
+use super::value_utils::{format_date32, format_timestamp_micros, top_level_response_error};
 use xbbg_core::{BlpError, DataType, Element, Message, Value};
 
 /// State for a generic request that flattens elements to tabular format.
@@ -51,6 +51,11 @@ impl GenericState {
 
     /// Process the final RESPONSE message and send the result via reply channel.
     pub fn finish(mut self, msg: &Message) {
+        if let Some(error) = top_level_response_error(msg, "<generic>", "GenericRequest") {
+            let _ = self.reply.send(Err(error));
+            return;
+        }
+
         self.process_message(msg);
 
         let result = self.build_batch();

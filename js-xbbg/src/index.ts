@@ -13,6 +13,7 @@ import { Backend, Format } from './backends';
 import { formatDate, formatDateTime, hasToJSDate } from './dates';
 import {
   BlpError,
+  BlpLimitError,
   BlpInternalError,
   BlpRequestError,
   BlpSessionError,
@@ -951,18 +952,40 @@ export class Engine {
     }
   }
 
-  public static withConfig(config: EngineConfig = {}): Engine {
+  /** Allocate an Engine around an already-constructed native engine. */
+  private static fromInner(inner: NativeEngine): Engine {
     const maybeEngine: unknown = Object.create(Engine.prototype);
     if (!(maybeEngine instanceof Engine)) {
       throw new TypeError('Failed to allocate Engine instance');
     }
-    const engine = maybeEngine;
+    maybeEngine.inner = inner;
+    return maybeEngine;
+  }
+
+  public static withConfig(config: EngineConfig = {}): Engine {
     try {
-      engine.inner = native.JsEngine.withConfig(config);
+      return Engine.fromInner(native.JsEngine.withConfig(config));
     } catch (error) {
       throw wrapError(error);
     }
-    return engine;
+  }
+
+  /**
+   * Connect asynchronously: the Bloomberg session connect and service warmup
+   * run off the JS thread. The sync constructor and `withConfig` block the
+   * Node event loop for the duration of the connect (seconds, up to the 30s
+   * session timeout) — prefer this factory in servers.
+   */
+  public static async connect(config?: EngineConfig): Promise<Engine> {
+    try {
+      const inner =
+        config === undefined
+          ? await native.JsEngine.connect()
+          : await native.JsEngine.connectWithConfig(config);
+      return Engine.fromInner(inner);
+    } catch (error) {
+      throw wrapError(error);
+    }
   }
 
   public async request(params: RequestInput): Promise<unknown> {
@@ -1785,7 +1808,7 @@ export class Engine {
 // ── Top-level wrappers ──────────────────────────────────────────────────
 
 export async function connect(config?: EngineConfig): Promise<Engine> {
-  return await Promise.resolve(config === undefined ? new Engine() : Engine.withConfig(config));
+  return await Engine.connect(config);
 }
 
 export function configure(config?: EngineConfig): EngineConfig | undefined;
@@ -2050,6 +2073,7 @@ export { formatDate, formatDateTime } from './dates';
 export {
   BlpError,
   BlpSessionError,
+  BlpLimitError,
   BlpRequestError,
   BlpValidationError,
   BlpTimeoutError,
