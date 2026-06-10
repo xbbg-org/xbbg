@@ -24,7 +24,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -274,6 +274,9 @@ pub(super) struct WorkerShared {
     startup: Mutex<StartupLatch>,
     startup_cv: Condvar,
     health: Arc<AtomicU8>,
+    /// Set before an intentional stop so terminal SDK status events are logged
+    /// as normal teardown instead of unexpected worker death.
+    shutting_down: AtomicBool,
 }
 
 impl WorkerShared {
@@ -288,6 +291,7 @@ impl WorkerShared {
             startup: Mutex::new(StartupLatch::default()),
             startup_cv: Condvar::new(),
             health,
+            shutting_down: AtomicBool::new(false),
         }
     }
 
@@ -553,11 +557,19 @@ impl WorkerShared {
                 self.drain_in_flight(reason.as_deref().unwrap_or("Bloomberg session terminated"));
                 self.fail_pending_service_opens("Bloomberg session terminated");
                 self.health.store(2, Ordering::Release);
-                xbbg_log::error!(
-                    worker_id = self.id,
-                    reason = %reason.as_deref().unwrap_or(""),
-                    "SessionTerminated — worker is dead"
-                );
+                if self.shutting_down.load(Ordering::Acquire) {
+                    xbbg_log::info!(
+                        worker_id = self.id,
+                        reason = %reason.as_deref().unwrap_or(""),
+                        "SessionTerminated during requested shutdown"
+                    );
+                } else {
+                    xbbg_log::error!(
+                        worker_id = self.id,
+                        reason = %reason.as_deref().unwrap_or(""),
+                        "SessionTerminated — worker is dead"
+                    );
+                }
             }
             "AuthorizationFailure" => {
                 let reason = extract_reason_description(msg);
@@ -604,11 +616,19 @@ impl WorkerShared {
                         .unwrap_or("Bloomberg session connection lost (transient)"),
                 );
                 self.health.store(1, Ordering::Release);
-                xbbg_log::warn!(
-                    worker_id = self.id,
-                    reason = %reason.as_deref().unwrap_or(""),
-                    "SessionConnectionDown — failing in-flight requests; SDK will auto-reconnect"
-                );
+                if self.shutting_down.load(Ordering::Acquire) {
+                    xbbg_log::info!(
+                        worker_id = self.id,
+                        reason = %reason.as_deref().unwrap_or(""),
+                        "SessionConnectionDown during requested shutdown"
+                    );
+                } else {
+                    xbbg_log::warn!(
+                        worker_id = self.id,
+                        reason = %reason.as_deref().unwrap_or(""),
+                        "SessionConnectionDown — failing in-flight requests; SDK will auto-reconnect"
+                    );
+                }
             }
             "SessionConnectionUp" => {
                 self.health.store(0, Ordering::Release);
@@ -1042,12 +1062,14 @@ impl AsyncRequestWorker {
 
     /// Begin stopping the session without blocking (Drop-friendly).
     pub(crate) fn signal_shutdown(&self) {
+        self.shared.shutting_down.store(true, Ordering::Release);
         self.session.stop_async();
     }
 
     /// Stop the session (blocks until in-flight callbacks drain) and fail
     /// anything still registered.
     pub(crate) fn shutdown_blocking(&self) {
+        self.shared.shutting_down.store(true, Ordering::Release);
         xbbg_log::info!(worker_id = self.id, "AsyncRequestWorker shutting down");
         self.session.stop();
         self.shared.fail_pending_service_opens("worker shutdown");
