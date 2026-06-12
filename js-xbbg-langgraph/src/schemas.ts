@@ -21,13 +21,13 @@ export type HistoricalFormat = (typeof HISTORICAL_FORMATS)[number];
 export interface ReferenceCallOptions {
   readonly overrides?: PrimitiveMap;
   readonly kwargs?: PrimitiveMap;
-  readonly format?: ReferenceFormat;
   readonly validateFields?: boolean;
 }
 
 export interface BdpInput extends ReferenceCallOptions {
   readonly securities: readonly string[];
   readonly fields: readonly string[];
+  readonly format?: ReferenceFormat;
   readonly includeSecurityErrors?: boolean;
 }
 
@@ -78,14 +78,12 @@ export interface BdtickInput {
 export interface BqlInput {
   readonly query: string;
   readonly kwargs?: PrimitiveMap;
-  readonly format?: ReferenceFormat;
 }
 
 export interface BsrchInput {
   readonly searchSpec: string;
   readonly overrides?: PrimitiveMap;
   readonly kwargs?: PrimitiveMap;
-  readonly format?: ReferenceFormat;
 }
 
 export interface BqrInput {
@@ -100,7 +98,6 @@ export interface BfldsInput {
   readonly fields?: readonly string[];
   readonly searchSpec?: string;
   readonly kwargs?: PrimitiveMap;
-  readonly format?: ReferenceFormat;
 }
 
 export interface BeqsInput {
@@ -110,7 +107,6 @@ export interface BeqsInput {
   readonly group?: string;
   readonly overrides?: PrimitiveMap;
   readonly kwargs?: PrimitiveMap;
-  readonly format?: ReferenceFormat;
 }
 
 export interface YasInput {
@@ -255,16 +251,18 @@ function numericDateToBbg(value: number, unit: "date" | "datetime"): Date {
   );
 }
 
-function normalizeDate(value: string | Date | number): string {
+/**
+ * JSON tool calls can only carry strings and numbers, and `z.date()` is
+ * unrepresentable in JSON Schema (zod v4's toJSONSchema throws on it), so the
+ * wire contract is string | number only.
+ */
+function normalizeDate(value: string | number): string {
   if (typeof value === "number") {
     if (Number.isInteger(value) && value >= MIN_NUMERIC_BBG_DATE && value <= MAX_NUMERIC_BBG_DATE) {
       const text = String(value);
       return dateFromParts(text.slice(0, 4), text.slice(4, 6), text.slice(6, 8));
     }
     return dateToBbg(numericDateToBbg(value, "date"));
-  }
-  if (value instanceof Date) {
-    return dateToBbg(value);
   }
   const text = value.trim();
   if (text.length === 0) {
@@ -282,7 +280,7 @@ function normalizeDate(value: string | Date | number): string {
   throw new TypeError(`Invalid date ${JSON.stringify(text)}; use YYYY-MM-DD or YYYYMMDD`);
 }
 
-function normalizeDateTime(value: string | Date | number): string {
+function normalizeDateTime(value: string | number): string {
   if (typeof value === "number") {
     if (Number.isInteger(value) && value >= MIN_NUMERIC_BBG_DATE && value <= MAX_NUMERIC_BBG_DATE) {
       throw new TypeError(
@@ -290,12 +288,6 @@ function normalizeDateTime(value: string | Date | number): string {
       );
     }
     return numericDateToBbg(value, "datetime").toISOString();
-  }
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) {
-      throw new TypeError("Invalid datetime value; expected ISO 8601 datetime, Date, or epoch ms");
-    }
-    return value.toISOString();
   }
   const text = value.trim();
   if (text.length === 0) {
@@ -397,7 +389,7 @@ function primitiveMap(tool: string, field: string): ZodOutput<PrimitiveMap | und
 
 function dateField(tool: string, field: string): ZodOutput<string> {
   return z
-    .union([z.string(), z.date(), z.number()])
+    .union([z.string(), z.number()])
     .transform((value, context) => {
       try {
         return normalizeDate(value);
@@ -412,7 +404,7 @@ function dateField(tool: string, field: string): ZodOutput<string> {
 
 function dateTimeField(tool: string, field: string): ZodOutput<string> {
   return z
-    .union([z.string(), z.date(), z.number()])
+    .union([z.string(), z.number()])
     .superRefine((value, context) => {
       if (typeof value !== "string") {
         return;
@@ -544,7 +536,6 @@ export function createBdsSchema(options: NormalizedBloombergToolsOptions): ZodOu
     field: nonEmptyString(tool, "field", options.maxStringChars, "<BULK_FIELD>").describe(
       "Exactly one Bloomberg bulk/table field supplied by the user.",
     ),
-    format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
     ),
@@ -652,7 +643,6 @@ export function createBdtickSchema(
 export function createBqlSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BqlInput> {
   const tool = "xbbg_bql";
   return z.object({
-    format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
     ),
@@ -698,7 +688,6 @@ export function createBqrSchema(options: NormalizedBloombergToolsOptions): ZodOu
 export function createBsrchSchema(options: NormalizedBloombergToolsOptions): ZodOutput<BsrchInput> {
   const tool = "xbbg_bsrch";
   return z.object({
-    format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Search-grid kwargs as flat string/number/boolean values only.",
     ),
@@ -725,7 +714,6 @@ export function createBfldsSchema(options: NormalizedBloombergToolsOptions): Zod
         .describe(
           "Specific field mnemonics to inspect. Provide either fields or searchSpec, not both.",
         ),
-      format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
       kwargs: primitiveMap(tool, "kwargs").describe(
         "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
       ),
@@ -757,7 +745,6 @@ export function createBeqsSchema(options: NormalizedBloombergToolsOptions): ZodO
   const tool = "xbbg_beqs";
   return z.object({
     asof: dateField(tool, "asof").optional().describe("Optional as-of date for the screen."),
-    format: referenceFormat(tool).describe("JSON output shape. Usually omit."),
     group: nonEmptyString(tool, "group", options.maxStringChars, "<BEQS_GROUP>")
       .optional()
       .describe("Bloomberg BEQS group when required by the screen."),

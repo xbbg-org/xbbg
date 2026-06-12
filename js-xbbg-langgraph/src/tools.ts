@@ -373,7 +373,6 @@ function bdsWithResolver(resolver: CoreResolver): BloombergTool {
         const engine = await resolver.getEngine();
         const result = await engine.bds(input.securities, [input.field], {
           backend: "json",
-          format: input.format,
           kwargs: input.kwargs,
           overrides: input.overrides,
           validateFields: validationSetting(resolver, input.validateFields),
@@ -466,7 +465,6 @@ function bqlWithResolver(resolver: CoreResolver): BloombergTool {
         const engine = await resolver.getEngine();
         const result = await engine.bql(input.query, {
           backend: "json",
-          format: input.format,
           kwargs: input.kwargs,
         });
         return resultString(resolver, name, result);
@@ -491,7 +489,6 @@ function bsrchWithResolver(resolver: CoreResolver): BloombergTool {
         const engine = await resolver.getEngine();
         const result = await engine.bsrch(input.searchSpec, {
           backend: "json",
-          format: input.format,
           kwargs: input.kwargs,
           overrides: input.overrides,
         });
@@ -545,7 +542,6 @@ function bfldsWithResolver(resolver: CoreResolver): BloombergTool {
         const result = await engine.bflds({
           backend: "json",
           fields: input.fields,
-          format: input.format,
           kwargs: input.kwargs,
           searchSpec: input.searchSpec,
         });
@@ -572,7 +568,6 @@ function beqsWithResolver(resolver: CoreResolver): BloombergTool {
         const result = await engine.beqs(input.screen, {
           asof: input.asof,
           backend: "json",
-          format: input.format,
           group: input.group,
           kwargs: input.kwargs,
           overrides: input.overrides,

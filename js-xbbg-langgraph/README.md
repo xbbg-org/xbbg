@@ -205,7 +205,9 @@ Defaults:
 - `maxStreamUpdates = 10`
 - `maxStreamWaitMs = 15000`
 
-Date inputs accept `YYYY-MM-DD` or `YYYYMMDD` strings, `Date` objects, integer `YYYYMMDD` values (parsed as calendar dates), and epoch milliseconds; ambiguous numbers between those ranges and ambiguous `MM/DD/YYYY` strings are rejected with actionable schema errors.
+Date inputs accept `YYYY-MM-DD` or `YYYYMMDD` strings, integer `YYYYMMDD` values (parsed as calendar dates), and epoch milliseconds; ambiguous numbers between those ranges and ambiguous `MM/DD/YYYY` strings are rejected with actionable schema errors. `Date` instances are deliberately not part of the wire contract: JSON tool calls cannot carry them and `z.date()` breaks JSON Schema conversion in zod v4.
+
+Schemas only advertise parameters the engine accepts: `format` exists on `xbbg_bdp`/`xbbg_bdh` only, because the engine rejects it for BulkData (`xbbg_bds`), BQL, search, field-info, and BEQS output; a model-sent `format` on those tools is stripped rather than forwarded. The exported `toolParameterJsonSchema(tool)` returns the provider-ready `$ref`-free JSON Schema used in each tool's embedded provider definition.
 
 Empty results are called out in the model-facing summary (`empty result; verify identifiers, fields, and date range before concluding no data exists`) so agents distinguish "no rows" from silent failure instead of inventing data.
 

@@ -34,6 +34,23 @@ function inputJsonSchema(schema: ZodOutput<unknown>): Record<string, unknown> {
   return jsonSchema;
 }
 
+/**
+ * Provider-ready JSON Schema for a Bloomberg tool's input parameters, using
+ * the same conversion settings as the embedded provider tool definition
+ * ($ref-free, input-side of transforms). Exposed so consumers do not each
+ * reinvent zod -> JSON Schema conversion and sanitization.
+ */
+export function toolParameterJsonSchema(
+  toolInstance: StructuredToolInterface,
+): Record<string, unknown> {
+  const schema: unknown = toolInstance.schema;
+  if (schema !== null && typeof schema === "object" && !("safeParse" in schema)) {
+    // Already a JSON Schema object.
+    return schema as Record<string, unknown>;
+  }
+  return inputJsonSchema(schema as ZodOutput<unknown>);
+}
+
 export function createBloombergStructuredTool<Input>(
   func: (input: Input, config?: ToolInvocationConfig) => Promise<ToolContentAndArtifact>,
   fields: BloombergStructuredToolFields<Input>,

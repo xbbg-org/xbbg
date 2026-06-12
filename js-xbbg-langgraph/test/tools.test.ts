@@ -10,6 +10,7 @@ import {
   createAllBloombergTools,
   createBloombergTools,
   getBloombergToolInstructions,
+  toolParameterJsonSchema,
 } from "../src";
 import { limitResult } from "../src/result-limits";
 import type { XbbgCoreLike, XbbgEngineLike } from "../src/core-loader";
@@ -1002,5 +1003,64 @@ describe("Bloomberg tool hardening", () => {
 
     expect(limited.truncated).toBe(true);
     expect((limited.value as Record<string, unknown>).blob).toBe("[binary data: 2048 bytes]");
+  });
+
+  it("does not forward format to tools whose engine output rejects it", async () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+
+    // The engine rejects format for BulkData/FieldInfo output; the schema no
+    // longer advertises it and a model-sent value is stripped, not forwarded.
+    await invokeJson(byName(tools, "xbbg_bds"), {
+      field: "TOP_20_HOLDERS_PUBLIC_FILINGS",
+      format: "long",
+      securities: ["/isin/US0000000000"],
+    });
+    const bdsOptions = vi.mocked(engine.bds).mock.calls[0]?.[2] as Record<string, unknown>;
+    expect("format" in bdsOptions).toBe(false);
+
+    await invokeJson(byName(tools, "xbbg_bflds"), {
+      fields: ["PX_LAST"],
+      format: "long",
+    });
+    const bfldsOptions = vi.mocked(engine.bflds).mock.calls[0]?.[0] as Record<string, unknown>;
+    expect("format" in bfldsOptions).toBe(false);
+
+    // Reference output still supports format; bdp keeps forwarding it.
+    await invokeJson(byName(tools, "xbbg_bdp"), {
+      fields: ["PX_LAST"],
+      format: "long_typed",
+      securities: ["AAPL US Equity"],
+    });
+    expect(engine.bdp).toHaveBeenCalledWith(
+      ["AAPL US Equity"],
+      ["PX_LAST"],
+      expect.objectContaining({ format: "long_typed" }),
+    );
+  });
+
+  it("keeps Date instances off the wire contract and out of JSON schemas", async () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+    const bdh = byName(tools, "xbbg_bdh");
+
+    await expect(
+      bdh.invoke({
+        end: "2024-01-31",
+        fields: ["PX_LAST"],
+        securities: ["AAPL US Equity"],
+        start: new Date(Date.UTC(2024, 0, 1)),
+      }),
+    ).rejects.toThrow();
+
+    const parameters = toolParameterJsonSchema(bdh);
+    const serialized = JSON.stringify(parameters);
+    expect(serialized).toContain('"start"');
+    expect(serialized).not.toContain("date-time");
+  });
+
+  it("instructs one call per dataset without parameter probing", () => {
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("Issue one tool call per dataset");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("never probe parameter variants in parallel");
   });
 });

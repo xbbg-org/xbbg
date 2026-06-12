@@ -4,6 +4,7 @@ const REQUIRED_TOOL_INSTRUCTIONS = [
   "- Use these tools only for server-side Bloomberg data access through @xbbg/core. Never imply Bloomberg data was retrieved unless a tool call actually returned it.",
   "- Ask a clarifying question before calling a tool when any security identity, field mnemonic, date range, currency, periodicity, intraday interval, timezone, override, or universe is ambiguous.",
   "- Do not invent Bloomberg tickers, field mnemonics, overrides, or BQL functions. If the user gives a field description rather than a confident mnemonic, call xbbg_bflds first.",
+  "- Issue one tool call per dataset and read any error before retrying; never probe parameter variants in parallel. Omit optional output-shape parameters such as format unless the user asked for a specific shape.",
   "",
   "## Security identifiers",
   "- Pass each security in the form the user supplied it; never translate between identifier kinds on your own.",
