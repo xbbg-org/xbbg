@@ -295,6 +295,54 @@ describe("Bloomberg extension tools", () => {
     expect(fakeCore.ext.normalizeTickers).toHaveBeenCalledWith(["ZZZ1 Test"]);
   });
 
+  it("rejects stray keys and missing required fields per operation branch", async () => {
+    const tools = createBloombergExtTools({ core: core(engine()) });
+
+    const constants = byName(tools, "xbbg_ext_constants");
+    await expect(
+      constants.invoke({ bogus: 1, dateStr: "2024-01-02", operation: "parse_date" }),
+    ).rejects.toThrow();
+
+    const cdx = byName(tools, "xbbg_ext_cdx");
+    await expect(
+      cdx.invoke({ genTicker: "CDX IG CDSI GEN 5Y Corp", operation: "cdx_gen_to_specific" }),
+    ).rejects.toThrow();
+    await expect(
+      cdx.invoke({
+        operation: "cdx_pricing",
+        recoveryRate: 1.5,
+        ticker: "CDX IG CDSI GEN 5Y Corp",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("coerces an integer year to a string for build_futures_ticker", async () => {
+    const fakeCore = core(engine());
+    const tools = createBloombergExtTools({ core: fakeCore });
+
+    await invokeJson(byName(tools, "xbbg_ext_futures"), {
+      asset: "Index",
+      monthCode: "H",
+      operation: "build_futures_ticker",
+      prefix: "ES",
+      year: 2024,
+    });
+
+    expect(fakeCore.ext.buildFuturesTicker).toHaveBeenCalledWith("ES", "H", "2024", "Index");
+  });
+
+  it("rejects mismatched values and levels lengths", async () => {
+    const tools = createBloombergExtTools({ core: core(engine()) });
+
+    await expect(
+      byName(tools, "xbbg_ext_calculate").invoke({
+        levels: [10],
+        operation: "calculate_level_percentages",
+        values: [11, 12],
+      }),
+    ).rejects.toThrow(/same length/);
+  });
+
   it("honors disabledTools and rejects mutating operation names", async () => {
     const tools = createBloombergExtTools({
       core: core(engine()),

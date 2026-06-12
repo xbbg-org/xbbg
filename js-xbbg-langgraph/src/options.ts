@@ -55,7 +55,7 @@ export interface BloombergToolsOptions {
 
 export interface NormalizedBloombergToolsOptions {
   readonly engine?: XbbgEngineLike;
-  readonly engineConfig?: xbbg.EngineConfig;
+  readonly engineConfig: xbbg.EngineConfig;
   readonly core?: XbbgCoreLike;
   readonly maxSecurities: number;
   readonly maxFields: number;
@@ -77,6 +77,21 @@ const DEFAULT_MAX_BQL_QUERY_CHARS = 4000;
 const DEFAULT_MAX_SEARCH_SPEC_CHARS = 1000;
 const DEFAULT_MAX_STREAM_UPDATES = 10;
 const DEFAULT_MAX_STREAM_WAIT_MS = 15_000;
+
+/**
+ * Default hard per-request timeout applied to lazily connected engines.
+ * @xbbg/core disables request timeouts by default (`requestTimeoutMs: 0`),
+ * which would let a wedged Terminal session hang tool calls forever. An
+ * explicit `engineConfig.requestTimeoutMs` (including 0) always wins.
+ */
+export const DEFAULT_ENGINE_REQUEST_TIMEOUT_MS = 60_000;
+
+function engineConfigWithDefaults(config: xbbg.EngineConfig | undefined): xbbg.EngineConfig {
+  if (config?.requestTimeoutMs !== undefined) {
+    return config;
+  }
+  return { ...config, requestTimeoutMs: DEFAULT_ENGINE_REQUEST_TIMEOUT_MS };
+}
 
 function positiveInteger(value: number | undefined, fallback: number, name: string): number {
   if (value === undefined) {
@@ -101,7 +116,7 @@ export function normalizeBloombergToolsOptions(
     core: options.core,
     disabledTools: disabledToolSet(options.disabledTools),
     engine: options.engine,
-    engineConfig: options.engineConfig,
+    engineConfig: engineConfigWithDefaults(options.engineConfig),
     maxBqlQueryChars: positiveInteger(
       options.maxBqlQueryChars,
       DEFAULT_MAX_BQL_QUERY_CHARS,

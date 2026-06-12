@@ -23,7 +23,7 @@ import {
   STREAM_SNAPSHOT_DESCRIPTION,
   YAS_DESCRIPTION,
 } from "./descriptions";
-import { createBloombergStructuredTool } from "./langchain-tool";
+import { createBloombergStructuredTool, type ToolInvocationConfig } from "./langchain-tool";
 import type { BloombergToolsOptions, BloombergToolName } from "./options";
 import { isToolDisabled } from "./options";
 import {
@@ -105,6 +105,8 @@ interface SnapshotResult {
   readonly timeoutMs: number;
   readonly reason: SnapshotReason;
   readonly updates: readonly unknown[];
+  /** Set when collection succeeded but releasing the subscription failed. */
+  readonly unsubscribeError?: string;
 }
 
 interface StreamOptionsInput {
@@ -118,17 +120,27 @@ interface StreamOptionsInput {
 }
 
 const STREAM_TIMEOUT = Symbol("stream_timeout");
+const STREAM_ABORTED = Symbol("stream_aborted");
+
+function abortError(signal: AbortSignal | undefined): Error {
+  const reason: unknown = signal?.reason;
+  return reason instanceof Error ? reason : new Error("Tool call aborted");
+}
 
 function streamOptions(input: StreamOptionsInput): StreamOptionsInput {
   return {
     allFields: input.allFields,
     conflate: input.conflate,
-    fields: input.fields,
     flushThreshold: input.flushThreshold,
     options: input.options,
     overflowPolicy: input.overflowPolicy,
     streamCapacity: input.streamCapacity,
   };
+}
+
+/** mktbar/depth take fields through options; stream() takes them positionally. */
+function singleTickerStreamOptions(input: StreamOptionsInput): StreamOptionsInput {
+  return { ...streamOptions(input), fields: input.fields };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -193,51 +205,63 @@ function normalizeStreamUpdate(value: unknown): unknown {
 async function nextWithinTimeout(
   iterator: SnapshotSubscriptionLike,
   deadlineMs: number,
-): Promise<IteratorResult<unknown> | typeof STREAM_TIMEOUT> {
+  signal: AbortSignal | undefined,
+): Promise<IteratorResult<unknown> | typeof STREAM_TIMEOUT | typeof STREAM_ABORTED> {
+  if (signal?.aborted === true) {
+    return STREAM_ABORTED;
+  }
   const remainingMs = deadlineMs - Date.now();
   if (remainingMs <= 0) {
     return STREAM_TIMEOUT;
   }
   const nextPromise = iterator.next();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<typeof STREAM_TIMEOUT>((resolve) => {
-    timer = setTimeout(() => resolve(STREAM_TIMEOUT), remainingMs);
-  });
-  const result = await Promise.race([nextPromise, timeoutPromise]);
+  let onAbort: (() => void) | undefined;
+  const racers: Promise<IteratorResult<unknown> | typeof STREAM_TIMEOUT | typeof STREAM_ABORTED>[] =
+    [
+      nextPromise,
+      new Promise<typeof STREAM_TIMEOUT>((resolve) => {
+        timer = setTimeout(() => resolve(STREAM_TIMEOUT), remainingMs);
+      }),
+    ];
+  if (signal !== undefined) {
+    racers.push(
+      new Promise<typeof STREAM_ABORTED>((resolve) => {
+        onAbort = () => resolve(STREAM_ABORTED);
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    );
+  }
+  const result = await Promise.race(racers);
   if (timer !== undefined) {
     clearTimeout(timer);
   }
-  if (result === STREAM_TIMEOUT) {
+  if (signal !== undefined && onAbort !== undefined) {
+    signal.removeEventListener("abort", onAbort);
+  }
+  if (result === STREAM_TIMEOUT || result === STREAM_ABORTED) {
+    // The abandoned next() settles later (unsubscribe wakes it); swallow it.
     void nextPromise.catch(() => undefined);
   }
   return result;
 }
 
-async function unsubscribeSnapshot(
-  subscription: SnapshotSubscriptionLike,
-  drain: boolean,
-  priorError: unknown,
-): Promise<void> {
-  try {
-    await subscription.unsubscribe(drain);
-  } catch (error) {
-    if (priorError === undefined) {
-      throw error;
-    }
-  }
-}
-
 async function collectSnapshot(
   subscription: SnapshotSubscriptionLike,
   input: SnapshotControlInput,
+  signal: AbortSignal | undefined,
 ): Promise<SnapshotResult> {
   const updates: unknown[] = [];
   const deadlineMs = Date.now() + input.timeoutMs;
   let reason: SnapshotReason = "max_updates";
+  let failed = false;
   let caught: unknown;
   try {
     while (updates.length < input.maxUpdates) {
-      const next = await nextWithinTimeout(subscription, deadlineMs);
+      const next = await nextWithinTimeout(subscription, deadlineMs, signal);
+      if (next === STREAM_ABORTED) {
+        throw abortError(signal);
+      }
       if (next === STREAM_TIMEOUT) {
         reason = "timeout";
         break;
@@ -248,19 +272,33 @@ async function collectSnapshot(
       }
       updates.push(normalizeStreamUpdate(next.value));
     }
-    return {
-      maxUpdates: input.maxUpdates,
-      reason,
-      timeoutMs: input.timeoutMs,
-      updateCount: updates.length,
-      updates,
-    };
   } catch (error) {
+    failed = true;
     caught = error;
-    throw error;
-  } finally {
-    await unsubscribeSnapshot(subscription, input.drain === true, caught);
   }
+  // Never drain on abort: release the subscription as fast as possible.
+  const drain = input.drain === true && signal?.aborted !== true;
+  let unsubscribeError: string | undefined;
+  try {
+    await subscription.unsubscribe(drain);
+  } catch (error) {
+    // A collection error outranks a cleanup error; a cleanup-only failure is
+    // reported in the result instead of discarding the collected updates.
+    if (!failed) {
+      unsubscribeError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (failed) {
+    throw caught;
+  }
+  return {
+    maxUpdates: input.maxUpdates,
+    reason,
+    timeoutMs: input.timeoutMs,
+    updateCount: updates.length,
+    updates,
+    ...(unsubscribeError === undefined ? {} : { unsubscribeError }),
+  };
 }
 
 function validationSetting(
@@ -268,14 +306,6 @@ function validationSetting(
   value: boolean | undefined,
 ): boolean | undefined {
   return value ?? resolver.options.validateFields;
-}
-
-function enabledTool(
-  resolver: CoreResolver,
-  name: BloombergToolName,
-  creator: ToolCreator,
-): BloombergTool[] {
-  return isToolDisabled(resolver.options, name) ? [] : [creator(resolver)];
 }
 
 function bdpWithResolver(resolver: CoreResolver): BloombergTool {
@@ -735,11 +765,17 @@ function etfHoldingsWithResolver(resolver: CoreResolver): BloombergTool {
 function streamSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_stream_snapshot" satisfies BloombergToolName;
   return createBloombergStructuredTool(
-    async (input: StreamSnapshotInput): Promise<ToolContentAndArtifact> => {
+    async (
+      input: StreamSnapshotInput,
+      config?: ToolInvocationConfig,
+    ): Promise<ToolContentAndArtifact> => {
+      const signal = config?.signal;
       try {
         const engine = await resolver.getEngine();
+        // Connecting may have outlived the caller; never open a doomed subscription.
+        signal?.throwIfAborted();
         const subscription = await engine.stream(input.tickers, input.fields, streamOptions(input));
-        const result = await collectSnapshot(subscription, input);
+        const result = await collectSnapshot(subscription, input, signal);
         return resultString(resolver, name, result);
       } catch (error) {
         throwWithToolContext(name, error);
@@ -757,11 +793,16 @@ function streamSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
 function mktbarSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_mktbar_snapshot" satisfies BloombergToolName;
   return createBloombergStructuredTool(
-    async (input: MktbarSnapshotInput): Promise<ToolContentAndArtifact> => {
+    async (
+      input: MktbarSnapshotInput,
+      config?: ToolInvocationConfig,
+    ): Promise<ToolContentAndArtifact> => {
+      const signal = config?.signal;
       try {
         const engine = await resolver.getEngine();
-        const subscription = await engine.mktbar(input.ticker, streamOptions(input));
-        const result = await collectSnapshot(subscription, input);
+        signal?.throwIfAborted();
+        const subscription = await engine.mktbar(input.ticker, singleTickerStreamOptions(input));
+        const result = await collectSnapshot(subscription, input, signal);
         return resultString(resolver, name, result);
       } catch (error) {
         throwWithToolContext(name, error);
@@ -779,11 +820,16 @@ function mktbarSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
 function depthSnapshotWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_depth_snapshot" satisfies BloombergToolName;
   return createBloombergStructuredTool(
-    async (input: DepthSnapshotInput): Promise<ToolContentAndArtifact> => {
+    async (
+      input: DepthSnapshotInput,
+      config?: ToolInvocationConfig,
+    ): Promise<ToolContentAndArtifact> => {
+      const signal = config?.signal;
       try {
         const engine = await resolver.getEngine();
-        const subscription = await engine.depth(input.ticker, streamOptions(input));
-        const result = await collectSnapshot(subscription, input);
+        signal?.throwIfAborted();
+        const subscription = await engine.depth(input.ticker, singleTickerStreamOptions(input));
+        const result = await collectSnapshot(subscription, input, signal);
         return resultString(resolver, name, result);
       } catch (error) {
         throwWithToolContext(name, error);
@@ -878,29 +924,38 @@ export function createDepthSnapshotTool(options: BloombergToolsOptions = {}): Bl
   return depthSnapshotWithResolver(createCoreResolver(options));
 }
 
+interface CoreToolDefinition {
+  readonly create: ToolCreator;
+  readonly name: BloombergToolName;
+}
+
+const CORE_TOOL_DEFINITIONS: readonly CoreToolDefinition[] = Object.freeze([
+  { create: bdpWithResolver, name: "xbbg_bdp" },
+  { create: bdhWithResolver, name: "xbbg_bdh" },
+  { create: bdsWithResolver, name: "xbbg_bds" },
+  { create: bdibWithResolver, name: "xbbg_bdib" },
+  { create: bdtickWithResolver, name: "xbbg_bdtick" },
+  { create: bqlWithResolver, name: "xbbg_bql" },
+  { create: bsrchWithResolver, name: "xbbg_bsrch" },
+  { create: bqrWithResolver, name: "xbbg_bqr" },
+  { create: bfldsWithResolver, name: "xbbg_bflds" },
+  { create: beqsWithResolver, name: "xbbg_beqs" },
+  { create: yasWithResolver, name: "xbbg_yas" },
+  { create: preferredsWithResolver, name: "xbbg_preferreds" },
+  { create: corporateBondsWithResolver, name: "xbbg_corporate_bonds" },
+  { create: indexMembersWithResolver, name: "xbbg_index_members" },
+  { create: resolveIsinsWithResolver, name: "xbbg_resolve_isins" },
+  { create: issuerIsinsWithResolver, name: "xbbg_issuer_isins" },
+  { create: etfHoldingsWithResolver, name: "xbbg_etf_holdings" },
+  { create: streamSnapshotWithResolver, name: "xbbg_stream_snapshot" },
+  { create: mktbarSnapshotWithResolver, name: "xbbg_mktbar_snapshot" },
+  { create: depthSnapshotWithResolver, name: "xbbg_depth_snapshot" },
+]);
+
 export function createBloombergToolsForResolver(resolver: CoreResolver): BloombergTool[] {
-  return [
-    ...enabledTool(resolver, "xbbg_bdp", bdpWithResolver),
-    ...enabledTool(resolver, "xbbg_bdh", bdhWithResolver),
-    ...enabledTool(resolver, "xbbg_bds", bdsWithResolver),
-    ...enabledTool(resolver, "xbbg_bdib", bdibWithResolver),
-    ...enabledTool(resolver, "xbbg_bdtick", bdtickWithResolver),
-    ...enabledTool(resolver, "xbbg_bql", bqlWithResolver),
-    ...enabledTool(resolver, "xbbg_bsrch", bsrchWithResolver),
-    ...enabledTool(resolver, "xbbg_bqr", bqrWithResolver),
-    ...enabledTool(resolver, "xbbg_bflds", bfldsWithResolver),
-    ...enabledTool(resolver, "xbbg_beqs", beqsWithResolver),
-    ...enabledTool(resolver, "xbbg_yas", yasWithResolver),
-    ...enabledTool(resolver, "xbbg_preferreds", preferredsWithResolver),
-    ...enabledTool(resolver, "xbbg_corporate_bonds", corporateBondsWithResolver),
-    ...enabledTool(resolver, "xbbg_index_members", indexMembersWithResolver),
-    ...enabledTool(resolver, "xbbg_resolve_isins", resolveIsinsWithResolver),
-    ...enabledTool(resolver, "xbbg_issuer_isins", issuerIsinsWithResolver),
-    ...enabledTool(resolver, "xbbg_etf_holdings", etfHoldingsWithResolver),
-    ...enabledTool(resolver, "xbbg_stream_snapshot", streamSnapshotWithResolver),
-    ...enabledTool(resolver, "xbbg_mktbar_snapshot", mktbarSnapshotWithResolver),
-    ...enabledTool(resolver, "xbbg_depth_snapshot", depthSnapshotWithResolver),
-  ];
+  return CORE_TOOL_DEFINITIONS.filter(
+    (definition) => !isToolDisabled(resolver.options, definition.name),
+  ).map((definition) => definition.create(resolver));
 }
 
 export function createBloombergTools(options: BloombergToolsOptions = {}): BloombergTool[] {

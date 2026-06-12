@@ -140,12 +140,12 @@ Core Bloomberg request tools:
 - `xbbg_mktbar_snapshot` - bounded `//blp/mktbar` live bar observation for one ticker.
 - `xbbg_depth_snapshot` - bounded `//blp/mktdepthdata` market-depth observation for one ticker.
 
-For raw identifiers, ask for or pass Bloomberg's identifier syntax directly: `/isin/<ISIN>` for ISINs and `/cusip/<CUSIP>` for CUSIPs.
+Securities are passed through in the form the user supplied them: Bloomberg tickers as `<TICKER> <MARKET_SECTOR>` (`AAPL US Equity`, `SPX Index`, `EUR Curncy`), raw ISINs as `/isin/<ISIN>`, raw CUSIPs as `/cusip/<CUSIP>`. The agent guidance and every securities/ticker field description instruct the model that the ticker format is a template, not authorization to construct one — identifiers are never converted into guessed tickers; `xbbg_resolve_isins` exists for explicit resolution.
 BQL is passed as one complete expression string. Use placeholder shapes such as `get(<FIELD>) for('<TICKER> <MARKET_SECTOR>')`, `get(<FIELD_1>, <FIELD_2>) for(['<TICKER_1> <MARKET_SECTOR>', '<TICKER_2> <MARKET_SECTOR>'])`, `get(<FIELD>, <WEIGHT_FIELD>) for(holdings('<ETF_TICKER> <MARKET_SECTOR>'))`, or `get(<FIELD>) for(members('<INDEX_TICKER> <MARKET_SECTOR>')) with(...)`. Prefer `xbbg_bdp`/`xbbg_bdh` for simple reference or historical requests.
 
 Dealer quote / BQR workflows in xbbg use fixed-income identifiers with a quote source, for example `/isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>`; use `xbbg_bqr` for that workflow and `xbbg_bdtick` for raw intraday ticks.
 
-Streaming surfaces are intentionally exposed only as bounded snapshot tools. Each snapshot requires `maxUpdates`, applies the configured `maxStreamUpdates`/`maxStreamWaitMs` caps, stops on count, timeout, or stream completion, and calls `unsubscribe(false)` unless `drain: true` is explicitly provided. The package does not expose open-ended async subscription iterators as agent tools.
+Streaming surfaces are intentionally exposed only as bounded snapshot tools. Each snapshot requires `maxUpdates`, applies the configured `maxStreamUpdates`/`maxStreamWaitMs` caps, stops on count, timeout, or stream completion, and calls `unsubscribe(false)` unless `drain: true` is explicitly provided. The package does not expose open-ended async subscription iterators as agent tools. If collection succeeds but releasing the subscription fails, the snapshot result still returns the collected updates and reports the failure in an `unsubscribeError` field instead of discarding data.
 
 ```ts
 import { createBloombergTools, createBdpTool } from "@xbbg/langgraph";
@@ -180,6 +180,8 @@ const allTools = createAllBloombergTools({
 
 By default the first tool invocation lazily imports `@xbbg/core`, calls `connect(engineConfig)`, and reuses the resulting engine across the tool set. Parallel LangGraph tool calls share the same in-flight initialization promise.
 
+Lazily connected engines get a hard per-request timeout (`DEFAULT_ENGINE_REQUEST_TIMEOUT_MS`, 60s) because `@xbbg/core` disables request timeouts by default, which would let a wedged Terminal session hang tool calls forever. Pass `engineConfig: { requestTimeoutMs: ... }` to change it, or `0` to disable. A user-supplied `engine` is used as-is — its configuration and lifecycle (including disconnect) stay with the caller.
+
 ```ts
 import * as xbbg from "@xbbg/core";
 import { createBloombergTools } from "@xbbg/langgraph";
@@ -187,6 +189,10 @@ import { createBloombergTools } from "@xbbg/langgraph";
 const engine = await xbbg.connect({ host: "localhost", port: 8194 });
 const tools = createBloombergTools({ engine });
 ```
+
+### Cancellation
+
+Tools honor the LangChain/LangGraph `AbortSignal` (`graph.invoke(input, { signal })`): an aborted call rejects immediately, already-cancelled calls never start Bloomberg work, and snapshot tools stop collecting and unsubscribe right away (skipping `drain`) instead of running out their timeout. In-flight Bloomberg request/response calls cannot be cancelled mid-flight; they are bounded by the engine request timeout above.
 
 ## Limits and outputs
 
@@ -198,6 +204,10 @@ Defaults:
 - `maxStringChars = 2000`
 - `maxStreamUpdates = 10`
 - `maxStreamWaitMs = 15000`
+
+Date inputs accept `YYYY-MM-DD` or `YYYYMMDD` strings, `Date` objects, integer `YYYYMMDD` values (parsed as calendar dates), and epoch milliseconds; ambiguous numbers between those ranges and ambiguous `MM/DD/YYYY` strings are rejected with actionable schema errors.
+
+Empty results are called out in the model-facing summary (`empty result; verify identifiers, fields, and date range before concluding no data exists`) so agents distinguish "no rows" from silent failure instead of inventing data.
 
 Each tool uses `backend: "json"` for finite request results and LangChain `content_and_artifact` output. The model-facing content starts with a short summary and then includes bounded JSON data:
 

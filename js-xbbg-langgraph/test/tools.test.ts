@@ -6,6 +6,7 @@ import { createAgent } from "langchain";
 
 import {
   BLOOMBERG_TOOL_INSTRUCTIONS,
+  BLOOMBERG_TOOL_NAMES,
   createAllBloombergTools,
   createBloombergTools,
   getBloombergToolInstructions,
@@ -459,6 +460,12 @@ describe("Bloomberg request tools", () => {
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/<ISIN>");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/cusip/<CUSIP>");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("/isin/<ISIN>@<QUOTE_SOURCE> <MARKET_SECTOR>");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain(
+      "format template, not authorization to construct a ticker",
+    );
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain(
+      "Pass each security in the form the user supplied it",
+    );
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bdtick");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bqr");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("get(<FIELD_1>, <FIELD_2>) for(<UNIVERSE>)");
@@ -765,5 +772,227 @@ describe("Bloomberg request tools", () => {
     const deepResult = limitResult(deep, 10, 100);
     expect(deepResult.truncated).toBe(true);
     expect(JSON.stringify(deepResult.value)).toContain("Max result depth");
+  });
+});
+
+describe("Bloomberg tool hardening", () => {
+  it("exposes every registered tool name exactly once", () => {
+    const tools = createAllBloombergTools({ core: fakeCore(fakeEngine()) });
+
+    expect(tools.map((entry) => entry.name).sort()).toEqual([...BLOOMBERG_TOOL_NAMES].sort());
+  });
+
+  it("treats integer YYYYMMDD dates as calendar dates, not epoch milliseconds", async () => {
+    const engine = fakeEngine();
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+    const bdh = byName(tools, "xbbg_bdh");
+
+    await invokeJson(bdh, {
+      end: 20240131,
+      fields: ["PX_LAST"],
+      securities: ["AAPL US Equity"],
+      start: 20240101,
+    });
+    expect(engine.bdh).toHaveBeenCalledWith(
+      ["AAPL US Equity"],
+      ["PX_LAST"],
+      expect.objectContaining({ end: "20240131", start: "20240101" }),
+    );
+
+    await invokeJson(bdh, {
+      end: Date.UTC(2024, 0, 31),
+      fields: ["PX_LAST"],
+      securities: ["AAPL US Equity"],
+      start: Date.UTC(2024, 0, 1),
+    });
+    expect(engine.bdh).toHaveBeenLastCalledWith(
+      ["AAPL US Equity"],
+      ["PX_LAST"],
+      expect.objectContaining({ end: "20240131", start: "20240101" }),
+    );
+
+    await expect(
+      bdh.invoke({
+        end: "2024-01-31",
+        fields: ["PX_LAST"],
+        securities: ["AAPL US Equity"],
+        start: 99999999,
+      }),
+    ).rejects.toThrow(/Ambiguous numeric date/u);
+    await expect(
+      bdh.invoke({
+        end: "2024-01-31",
+        fields: ["PX_LAST"],
+        securities: ["AAPL US Equity"],
+        start: 20241385,
+      }),
+    ).rejects.toThrow(/Invalid date/u);
+    await expect(
+      byName(tools, "xbbg_bdib").invoke({
+        end: "2024-01-02T16:00:00",
+        interval: 5,
+        start: 20240102,
+        ticker: "AAPL US Equity",
+      }),
+    ).rejects.toThrow(/time component/u);
+  });
+
+  it("rejects already-aborted tool calls before issuing Bloomberg requests", async () => {
+    const engine = fakeEngine();
+    const core = fakeCore(engine);
+    const tools = createBloombergTools({ core });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      byName(tools, "xbbg_bdp").invoke(
+        { fields: ["PX_LAST"], securities: ["AAPL US Equity"] },
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow();
+
+    expect(core.connect).not.toHaveBeenCalled();
+    expect(engine.bdp).not.toHaveBeenCalled();
+  });
+
+  it("stops snapshot collection and unsubscribes promptly on abort", async () => {
+    const engine = fakeEngine();
+    let resolveNext!: (value: IteratorResult<unknown>) => void;
+    const pending = new Promise<IteratorResult<unknown>>((resolve) => {
+      resolveNext = resolve;
+    });
+    const subscription = {
+      next: vi.fn(() => pending),
+      unsubscribe: vi.fn(async () => []),
+    };
+    vi.mocked(engine.stream).mockResolvedValueOnce(subscription as unknown as CoreSubscription);
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+    const controller = new AbortController();
+
+    const invocation = byName(tools, "xbbg_stream_snapshot").invoke(
+      {
+        drain: true,
+        fields: ["LAST_PRICE"],
+        maxUpdates: 5,
+        tickers: ["AAPL US Equity"],
+        timeoutMs: 10_000,
+      },
+      { signal: controller.signal },
+    );
+    await vi.waitFor(() => {
+      expect(subscription.next).toHaveBeenCalled();
+    });
+    controller.abort();
+
+    await expect(invocation).rejects.toThrow();
+    // Abort overrides drain so the subscription closes immediately.
+    await vi.waitFor(() => {
+      expect(subscription.unsubscribe).toHaveBeenCalledWith(false);
+    });
+    resolveNext({ done: true, value: undefined });
+  });
+
+  it("applies a default request timeout to lazily connected engines", async () => {
+    const engine = fakeEngine();
+    const core = fakeCore(engine);
+    const tools = createBloombergTools({ core });
+
+    await invokeJson(byName(tools, "xbbg_bdp"), {
+      fields: ["PX_LAST"],
+      securities: ["AAPL US Equity"],
+    });
+    const config = vi.mocked(core.connect).mock.calls[0]?.[0];
+    expect(config?.requestTimeoutMs).toBeGreaterThan(0);
+
+    const explicitCore = fakeCore(fakeEngine());
+    const explicitTools = createBloombergTools({
+      core: explicitCore,
+      engineConfig: { requestTimeoutMs: 0 },
+    });
+    await invokeJson(byName(explicitTools, "xbbg_bdp"), {
+      fields: ["PX_LAST"],
+      securities: ["AAPL US Equity"],
+    });
+    expect(explicitCore.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ requestTimeoutMs: 0 }),
+    );
+  });
+
+  it("does not cross-contaminate tool error prefixes on a shared connect failure", async () => {
+    const failure = new Error("connect refused");
+    const connect = vi.fn(async () => {
+      throw failure;
+    });
+    const core = { ...fakeCore(fakeEngine()), connect } as unknown as XbbgCoreLike;
+    const tools = createBloombergTools({ core });
+
+    const [bdpResult, bdhResult] = await Promise.allSettled([
+      byName(tools, "xbbg_bdp").invoke({ fields: ["PX_LAST"], securities: ["AAPL US Equity"] }),
+      byName(tools, "xbbg_bdh").invoke({
+        end: "2024-01-02",
+        fields: ["PX_LAST"],
+        securities: ["AAPL US Equity"],
+        start: "2024-01-01",
+      }),
+    ]);
+
+    expect(bdpResult.status).toBe("rejected");
+    expect(bdhResult.status).toBe("rejected");
+    const bdpMessage = ((bdpResult as PromiseRejectedResult).reason as Error).message;
+    const bdhMessage = ((bdhResult as PromiseRejectedResult).reason as Error).message;
+    expect(bdpMessage).toBe("xbbg_bdp failed: connect refused");
+    expect(bdhMessage).toBe("xbbg_bdh failed: connect refused");
+    expect(failure.message).toBe("connect refused");
+  });
+
+  it("returns collected snapshot data when only unsubscribe fails", async () => {
+    const engine = fakeEngine();
+    const subscription = {
+      next: vi.fn(async () => ({
+        done: false,
+        value: { toObject: () => ({ LAST_PRICE: 1 }) },
+      })),
+      unsubscribe: vi.fn(async () => {
+        throw new Error("close failed");
+      }),
+    };
+    vi.mocked(engine.stream).mockResolvedValueOnce(subscription as unknown as CoreSubscription);
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+
+    const result = await invokeJson(byName(tools, "xbbg_stream_snapshot"), {
+      fields: ["LAST_PRICE"],
+      maxUpdates: 1,
+      tickers: ["AAPL US Equity"],
+      timeoutMs: 1_000,
+    });
+
+    expect(result.data).toMatchObject({
+      reason: "max_updates",
+      unsubscribeError: "close failed",
+      updateCount: 1,
+    });
+  });
+
+  it("flags empty results with verification guidance in model content", async () => {
+    const engine = fakeEngine();
+    vi.mocked(engine.bdp).mockResolvedValueOnce([]);
+    const tools = createBloombergTools({ core: fakeCore(engine) });
+
+    const [content] = await invokeArtifact(byName(tools, "xbbg_bdp"), {
+      fields: ["PX_LAST"],
+      securities: ["ZZZZ US Equity"],
+    });
+    const [summary] = content.split("\n");
+
+    expect(summary).toContain("0 rows");
+    expect(summary).toContain("empty result");
+    expect(summary).toContain("verify identifiers, fields, and date range");
+  });
+
+  it("bounds binary payloads instead of serializing raw bytes", () => {
+    const limited = limitResult({ blob: new Uint8Array(2048) }, 10, 100);
+
+    expect(limited.truncated).toBe(true);
+    expect((limited.value as Record<string, unknown>).blob).toBe("[binary data: 2048 bytes]");
   });
 });

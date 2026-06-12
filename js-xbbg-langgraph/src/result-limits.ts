@@ -69,7 +69,16 @@ function limitValue(
       state.truncated = true;
       return "[Circular]";
     }
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+      state.truncated = true;
+      return `[binary data: ${value.byteLength} bytes]`;
+    }
     if (!isPlainObject(value)) {
+      const toJSON = (value as Record<string, unknown>).toJSON;
+      if (typeof toJSON === "function") {
+        seen.add(value);
+        return limitValue(toJSON.call(value), maxRows, maxStringChars, state, depth + 1, seen);
+      }
       return value;
     }
     seen.add(value);
@@ -160,8 +169,10 @@ function summarizeEnvelope(envelope: ToolEnvelope): string {
       ? "row count unknown"
       : `${envelope.rowCount} row${envelope.rowCount === 1 ? "" : "s"}`;
   const notes: string[] = [];
-  if (envelope.rowCount === 0) {
-    notes.push("empty result");
+  if (envelope.rowCount === 0 || envelope.data === null || envelope.data === undefined) {
+    notes.push(
+      "empty result; verify identifiers, fields, and date range before concluding no data exists",
+    );
   }
   if (envelope.truncated) {
     notes.push("artifact truncated to configured limits");
@@ -209,13 +220,14 @@ export function createToolResult(
 export function throwWithToolContext(tool: BloombergToolName, error: unknown): never {
   const prefix = `${tool} failed`;
   if (error instanceof Error) {
-    if (!error.message.startsWith(prefix)) {
-      Object.defineProperty(error, "message", {
-        configurable: true,
-        value: `${prefix}: ${error.message}`,
-      });
+    if (error.message.startsWith(prefix)) {
+      throw error;
     }
-    throw error;
+    // Never mutate the original: a memoized connect rejection delivers the
+    // same Error instance to every concurrently pending tool call.
+    const wrapped = new Error(`${prefix}: ${error.message}`, { cause: error });
+    wrapped.name = error.name;
+    throw wrapped;
   }
   throw new Error(`${prefix}: ${String(error)}`);
 }
