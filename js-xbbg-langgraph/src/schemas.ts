@@ -798,7 +798,9 @@ export function createYasSchema(options: NormalizedBloombergToolsOptions): ZodOu
       options.maxSecurities,
       options.maxStringChars,
       '["/isin/<ISIN> <MARKET_SECTOR>"]',
-    ).describe("Fully qualified fixed-income Bloomberg securities supplied by the user."),
+    ).describe(
+      "Fixed-income securities exactly as the user supplied them: '<TICKER> <MARKET_SECTOR>' or identifier syntax such as '/isin/<ISIN> <MARKET_SECTOR>'. Never invent or guess tickers.",
+    ),
     yieldType: z.number().int().optional().describe("Optional YAS yield type."),
     yieldVal: z.number().optional().describe("Optional YAS yield value input."),
   });
@@ -814,7 +816,9 @@ export function createPreferredsSchema(
       "equityTicker",
       options.maxStringChars,
       "<ISSUER_TICKER> <MARKET_SECTOR>",
-    ).describe("One fully qualified issuer equity ticker supplied by the user."),
+    ).describe(
+      "The issuer's common equity ticker as '<TICKER> <MARKET_SECTOR>', never a preferred ('Pfd') ticker and never a guessed one. Resolve a supplied ISIN/CUSIP with xbbg_resolve_isins first.",
+    ),
     fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
       .optional()
       .describe("Optional fields to include in the preferreds recipe result."),
@@ -841,7 +845,9 @@ export function createCorporateBondsSchema(
       "ticker",
       options.maxStringChars,
       "<ISSUER_TICKER> <MARKET_SECTOR>",
-    ).describe("One fully qualified issuer/company ticker supplied by the user."),
+    ).describe(
+      "The issuer/company equity ticker as '<TICKER> <MARKET_SECTOR>' supplied by the user. Resolve a supplied ISIN/CUSIP with xbbg_resolve_isins first; never guess tickers.",
+    ),
   });
 }
 
@@ -860,7 +866,9 @@ export function createIndexMembersSchema(
       "index",
       options.maxStringChars,
       "<INDEX_TICKER> <MARKET_SECTOR>",
-    ).describe("One fully qualified Bloomberg index ticker supplied by the user."),
+    ).describe(
+      "One Bloomberg index ticker as '<INDEX_TICKER> <MARKET_SECTOR>' supplied by the user; never guess index tickers.",
+    ),
   });
 }
 
@@ -904,7 +912,9 @@ export function createEtfHoldingsSchema(
       "etfTicker",
       options.maxStringChars,
       "<ETF_TICKER> <MARKET_SECTOR>",
-    ).describe("One fully qualified Bloomberg ETF ticker supplied by the user."),
+    ).describe(
+      "One Bloomberg ETF ticker as '<ETF_TICKER> <MARKET_SECTOR>' supplied by the user. Resolve a supplied ISIN/CUSIP with xbbg_resolve_isins first; never guess tickers.",
+    ),
     fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
       .optional()
       .describe("Optional fields to include in the ETF holdings recipe result."),

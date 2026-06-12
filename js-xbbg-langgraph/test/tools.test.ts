@@ -466,6 +466,10 @@ describe("Bloomberg request tools", () => {
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain(
       "Pass each security in the form the user supplied it",
     );
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain(
+      "resolve it with xbbg_resolve_isins first and use the returned Bloomberg security",
+    );
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("never a guessed preferred ('Pfd') ticker");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bdtick");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bqr");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("get(<FIELD_1>, <FIELD_2>) for(<UNIVERSE>)");
