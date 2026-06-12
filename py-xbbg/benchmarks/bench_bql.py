@@ -33,7 +33,7 @@ class BenchmarkResult:
     iterations: int
 
 
-def benchmark_bql(package_name: str, bql_func, query: str) -> BenchmarkResult:
+def benchmark_bql(package_name: str, bql_func, query: str) -> BenchmarkResult | None:
     """Benchmark BQL operation.
 
     Args:
@@ -50,9 +50,12 @@ def benchmark_bql(package_name: str, bql_func, query: str) -> BenchmarkResult:
     # Start memory tracking
     tracemalloc.start()
 
-    # Warmup iterations (discarded)
+    # Warmup (discarded). A None result means the package is not installed
+    # (or errored) - skip the lane instead of timing a no-op.
     for _ in range(WARMUP_ITERATIONS):
-        bql_func(query)
+        if bql_func(query) is None:
+            tracemalloc.stop()
+            return None
 
     # Measured iterations
     for _i in range(ITERATIONS):
@@ -163,10 +166,11 @@ def main():
         logger.info("\nRunning xbbg (Rust)...")
         try:
             result = benchmark_bql("xbbg-rust", run_xbbg_rust, BQL_SIMPLE)
-            results.append(result)
-            logger.info(
-                f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
-            )
+            if result:
+                results.append(result)
+                logger.info(
+                    f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
+                )
         except Exception as e:
             logger.error(f"  ✗ Error: {e}")
 
@@ -191,10 +195,11 @@ def main():
         logger.info("\nRunning xbbg (Rust)...")
         try:
             result = benchmark_bql("xbbg-rust", run_xbbg_rust, BQL_MULTI)
-            results.append(result)
-            logger.info(
-                f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
-            )
+            if result:
+                results.append(result)
+                logger.info(
+                    f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
+                )
         except Exception as e:
             logger.error(f"  ✗ Error: {e}")
 

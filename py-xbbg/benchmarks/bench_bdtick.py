@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 from config import (
     BDTICK_DATE,
+    BENCH_TZ,
     BDTICK_END_TIME,
     BDTICK_START_TIME,
     ITERATIONS,
@@ -42,7 +43,7 @@ class BenchmarkResult:
 
 def benchmark_bdtick(
     package_name: str, bdtick_func, ticker, event_types, date, start_time, end_time
-) -> BenchmarkResult:
+) -> BenchmarkResult | None:
     """Benchmark BDTICK operation.
 
     Args:
@@ -63,9 +64,12 @@ def benchmark_bdtick(
     # Start memory tracking
     tracemalloc.start()
 
-    # Warmup iterations (discarded)
+    # Warmup (discarded). A None result means the package is not installed
+    # (or errored) - skip the lane instead of timing a no-op.
     for _ in range(WARMUP_ITERATIONS):
-        bdtick_func(ticker, event_types, date, start_time, end_time)
+        if bdtick_func(ticker, event_types, date, start_time, end_time) is None:
+            tracemalloc.stop()
+            return None
 
     # Measured iterations
     for _i in range(ITERATIONS):
@@ -122,7 +126,13 @@ def run_xbbg_rust(ticker, event_types, date, start_time, end_time):
     """Benchmark xbbg Rust version."""
     import xbbg
 
-    return xbbg.bdtick(ticker, event_types, date, start_time, end_time)
+    return xbbg.bdtick(
+        ticker,
+        f"{date} {start_time}",
+        f"{date} {end_time}",
+        event_types=event_types,
+        request_tz=BENCH_TZ,
+    )
 
 
 def run_xbbg_legacy(ticker, event_types, date, start_time, end_time):
@@ -202,10 +212,11 @@ def main():
                     BDTICK_START_TIME,
                     BDTICK_END_TIME,
                 )
-                results.append(result)
-                logger.info(
-                    f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
-                )
+                if result:
+                    results.append(result)
+                    logger.info(
+                        f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
+                    )
             except Exception as e:
                 logger.error(f"  ✗ Error: {e}")
 

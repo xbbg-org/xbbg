@@ -18,20 +18,36 @@ FIELDS_MULTI = ["PX_LAST", "VOLUME", "TRADING_DT_REALTIME"]
 BDH_START = "2025-01-02"
 BDH_END = "2025-01-06"  # ~3-4 trading days
 
-# Intraday data
-BDIB_DATE = "2025-01-06"
+
+def _recent_trading_day() -> str:
+    """Most recent weekday at least one day back (intraday data is only
+    retained for ~6 months, so a fixed date rots)."""
+    from datetime import date, timedelta
+
+    day = date.today() - timedelta(days=1)
+    while day.weekday() >= 5:  # Sat/Sun
+        day -= timedelta(days=1)
+    return day.isoformat()
+
+
+# Intraday data (dynamic date: Bloomberg retains intraday history ~6 months)
+BDIB_DATE = _recent_trading_day()
 BDIB_START_TIME = "09:30"
 BDIB_END_TIME = "10:00"  # 30 minutes
 BDIB_INTERVAL = 5  # 5-minute bars
 
 # Tick data
-BDTICK_DATE = "2025-01-06"
+BDTICK_DATE = _recent_trading_day()
 BDTICK_START_TIME = "09:30:00"
 BDTICK_END_TIME = "09:35:00"  # 5 minutes
 
+# Intraday request times above are New York wall times; naive datetimes are
+# otherwise interpreted as UTC (09:30 UTC = pre-market ET = empty results).
+BENCH_TZ = "America/New_York"
+
 # BQL query
 BQL_SIMPLE = "get(px_last) for(['IBM US Equity'])"
-BQL_MULTI = "get(px_last, volume) for(['IBM US Equity', 'AAPL US Equity'])"
+BQL_MULTI = "get(px_last, px_volume) for(['IBM US Equity', 'AAPL US Equity'])"
 
 # ============================================================================
 # Benchmark Settings

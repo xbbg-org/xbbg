@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 from config import (
     BDIB_DATE,
+    BENCH_TZ,
     BDIB_END_TIME,
     BDIB_INTERVAL,
     BDIB_START_TIME,
@@ -43,7 +44,7 @@ class BenchmarkResult:
 
 def benchmark_bdib(
     package_name: str, bdib_func, ticker, event_type, date, start_time, end_time, interval
-) -> BenchmarkResult:
+) -> BenchmarkResult | None:
     """Benchmark BDIB operation.
 
     Args:
@@ -65,9 +66,12 @@ def benchmark_bdib(
     # Start memory tracking
     tracemalloc.start()
 
-    # Warmup iterations (discarded)
+    # Warmup (discarded). A None result means the package is not installed
+    # (or errored) - skip the lane instead of timing a no-op.
     for _ in range(WARMUP_ITERATIONS):
-        bdib_func(ticker, event_type, date, start_time, end_time, interval)
+        if bdib_func(ticker, event_type, date, start_time, end_time, interval) is None:
+            tracemalloc.stop()
+            return None
 
     # Measured iterations
     for _i in range(ITERATIONS):
@@ -122,7 +126,14 @@ def run_xbbg_rust(ticker, event_type, date, start_time, end_time, interval):
     """Benchmark xbbg Rust version."""
     import xbbg
 
-    return xbbg.bdib(ticker, event_type, date, start_time, end_time, interval)
+    return xbbg.bdib(
+        ticker,
+        typ=event_type,
+        start_datetime=f"{date} {start_time}",
+        end_datetime=f"{date} {end_time}",
+        interval=interval,
+        request_tz=BENCH_TZ,
+    )
 
 
 def run_xbbg_legacy(ticker, event_type, date, start_time, end_time, interval):
@@ -193,10 +204,11 @@ def main():
                     BDIB_END_TIME,
                     BDIB_INTERVAL,
                 )
-                results.append(result)
-                logger.info(
-                    f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
-                )
+                if result:
+                    results.append(result)
+                    logger.info(
+                        f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB, shape={result.data_shape}"
+                    )
             except Exception as e:
                 logger.error(f"  ✗ Error: {e}")
 

@@ -44,7 +44,7 @@ class BenchmarkResult:
     iterations: int
 
 
-def benchmark_bdp(package_name: str, bdp_func, tickers, fields) -> BenchmarkResult:
+def benchmark_bdp(package_name: str, bdp_func, tickers, fields) -> BenchmarkResult | None:
     """Benchmark BDP operation.
 
     Args:
@@ -62,9 +62,12 @@ def benchmark_bdp(package_name: str, bdp_func, tickers, fields) -> BenchmarkResu
     # Start memory tracking
     tracemalloc.start()
 
-    # Warmup iterations (discarded)
+    # Warmup (discarded). A None result means the package is not installed
+    # (or errored) - skip the lane instead of timing a no-op.
     for _ in range(WARMUP_ITERATIONS):
-        bdp_func(tickers, fields)
+        if bdp_func(tickers, fields) is None:
+            tracemalloc.stop()
+            return None
 
     # Measured iterations
     for _i in range(ITERATIONS):
@@ -228,8 +231,9 @@ def main():
         logger.info("Running xbbg (Rust)...")
         try:
             result = benchmark_bdp("xbbg-rust", run_xbbg_rust, TICKERS_SINGLE[0], FIELDS_SINGLE[0])
-            results.append(result)
-            logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+            if result:
+                results.append(result)
+                logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
             logger.error(f"  ✗ Error: {e}")
 
@@ -261,8 +265,9 @@ def main():
         logger.info("Running xbbg (Rust)...")
         try:
             result = benchmark_bdp("xbbg-rust", run_xbbg_rust, TICKERS_MULTI, FIELDS_MULTI)
-            results.append(result)
-            logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
+            if result:
+                results.append(result)
+                logger.info(f"  ✓ {result.warm_mean_ms:.2f}ms (mean), {result.memory_peak_mb:.2f}MB")
         except Exception as e:
             logger.error(f"  ✗ Error: {e}")
 
