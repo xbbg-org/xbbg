@@ -7,7 +7,8 @@ const REQUIRED_TOOL_INSTRUCTIONS = [
   "",
   "## Security identifiers",
   "- Pass each security in the form the user supplied it; never translate between identifier kinds on your own.",
-  "- User supplied a Bloomberg ticker: pass it through fully qualified as <TICKER> <MARKET_SECTOR>, for example AAPL US Equity, SPX Index, or EUR Curncy.",
+  "- User supplied a Bloomberg ticker: pass it through fully qualified as <TICKER> <MARKET_SECTOR>, for example <TICKER> <EXCHANGE> Equity, <INDEX_TICKER> Index, or <CCY_PAIR> Curncy.",
+  "- The market sector ending (Bloomberg yellow key) is part of the security string. The sectors are: Equity, Index, Curncy, Comdty, Corp, Govt, Muni, Mtge, M-Mkt, and Pfd. Equity securities carry an exchange or composite code before the sector (<TICKER> <EXCHANGE> Equity); preferred securities use the Pfd sector; corporate and government bonds use Corp and Govt. Request tools pass the security through to Bloomberg without validating the sector, so copy it exactly as the user supplied it.",
   "- User supplied a raw ISIN or CUSIP: pass Bloomberg identifier syntax directly: /isin/<ISIN> or /cusip/<CUSIP>. Never pass the bare identifier without its prefix, except to xbbg_resolve_isins and xbbg_issuer_isins, which take raw ISIN strings.",
   "- <TICKER> <MARKET_SECTOR> is a format template, not authorization to construct a ticker. Never invent, recall from memory, or guess the Bloomberg ticker behind an identifier the user gave; identifier syntax is already a complete, valid security input. Use xbbg_resolve_isins only when the user wants the resolved Bloomberg security itself.",
   "- Recipe tools that take tickers (xbbg_preferreds, xbbg_corporate_bonds, xbbg_index_members, xbbg_etf_holdings) do not accept identifier syntax. When the user supplied an ISIN or CUSIP for those workflows, resolve it with xbbg_resolve_isins first and use the returned Bloomberg security; never guess the ticker.",
@@ -51,7 +52,7 @@ const REQUIRED_TOOL_INSTRUCTIONS = [
 const OPTIONAL_EXTENSION_INSTRUCTIONS = [
   "",
   "## Extension helper tools",
-  "- xbbg_ext_ticker: ticker hygiene before live calls. parse_ticker splits a Bloomberg ticker, normalize_tickers trims/canonicalizes lists, filter_equity_tickers keeps equity-like tickers, is_specific_contract checks futures specificity, and validate_generic_ticker rejects malformed generic futures tickers.",
+  "- xbbg_ext_ticker: ticker hygiene before live calls. parse_ticker splits generic futures-style tickers only — asset endings Index, Curncy, Comdty, or Corp as <ROOT><N> <ASSET>, or <ROOT><N> <EXCHANGE> Equity — and rejects other market sectors (Pfd, Govt, Muni, Mtge, M-Mkt) and non-futures securities. normalize_tickers trims/canonicalizes lists, filter_equity_tickers keeps equity-like tickers, is_specific_contract checks futures specificity, and validate_generic_ticker rejects malformed generic futures tickers.",
   "- xbbg_ext_futures: futures contract construction and selection. Use build_futures_ticker for root/month/year/asset assembly, get_futures_months for month-code lookup, generate_candidates for generic-to-specific candidates, contract_index for generic contract rank, filter_candidates_by_cycle for HMUZ/quarterly cycles, and filter_valid_contracts to keep contracts valid for a date.",
   "- xbbg_ext_cdx: CDX ticker workflow support. Use parse_cdx_ticker to understand a CDX ticker, previous_cdx_series to roll back a series, cdx_gen_to_specific to resolve a generic CDX to a target series, and cdx_info/cdx_pricing/cdx_risk for predefined BDP field bundles. cdx_pricing and cdx_risk accept recoveryRate, which becomes the CDS_RR override.",
   "- xbbg_ext_currency: currency-planning helpers. build_fx_pair constructs the Bloomberg FX pair and conversion factor, same_currency avoids unnecessary conversion, and currencies_needing_conversion identifies which currencies differ from a target before requesting converted values.",
@@ -158,7 +159,7 @@ export const DEPTH_SNAPSHOT_DESCRIPTION =
   "Bounded live market-depth snapshot from //blp/mktdepthdata for one ticker. Collects at most maxUpdates updates until timeout/done, then always unsubscribes.";
 
 export const EXT_TICKER_DESCRIPTION =
-  "Ticker hygiene helpers: parse_ticker, normalize_tickers, filter_equity_tickers, is_specific_contract, and validate_generic_ticker.";
+  "Ticker hygiene helpers: parse_ticker (generic futures-style tickers ending in Index, Curncy, Comdty, or Corp, or <ROOT><N> <EXCHANGE> Equity; other market sectors are rejected), normalize_tickers, filter_equity_tickers, is_specific_contract, and validate_generic_ticker.";
 
 export const EXT_FUTURES_DESCRIPTION =
   "Futures helpers for contract construction and selection: build_futures_ticker, generate_candidates, contract_index, filter_candidates_by_cycle, filter_valid_contracts, and get_futures_months.";

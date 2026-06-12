@@ -470,6 +470,10 @@ describe("Bloomberg request tools", () => {
       "resolve it with xbbg_resolve_isins first and use the returned Bloomberg security",
     );
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("never a guessed preferred ('Pfd') ticker");
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain(
+      "Equity, Index, Curncy, Comdty, Corp, Govt, Muni, Mtge, M-Mkt, and Pfd",
+    );
+    expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("parse_ticker splits generic futures-style");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bdtick");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("xbbg_bqr");
     expect(BLOOMBERG_TOOL_INSTRUCTIONS).toContain("get(<FIELD_1>, <FIELD_2>) for(<UNIVERSE>)");

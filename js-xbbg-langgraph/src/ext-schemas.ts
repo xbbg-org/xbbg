@@ -366,7 +366,7 @@ function optionalString(
 export function tickerSchema(options: NormalizedBloombergToolsOptions): ZodOutput<TickerInput> {
   const ticker = nonEmptyString(
     options,
-    "One Bloomberg ticker for parse/contract validation operations.",
+    "One generic futures-style Bloomberg ticker: <ROOT><N> ending in Index, Curncy, Comdty, or Corp, or <ROOT><N> <EXCHANGE> Equity. parse_ticker rejects other market sectors (Pfd, Govt, Muni, Mtge, M-Mkt) and non-futures securities.",
   );
   const tickers = stringArray(
     options,
