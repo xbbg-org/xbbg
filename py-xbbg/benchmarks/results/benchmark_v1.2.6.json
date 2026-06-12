@@ -1,0 +1,366 @@
+{
+  "version": "1.2.6",
+  "timestamp": "2026-06-11 20:25:50",
+  "benchmarks": {
+    "BDP - Reference Data": [
+      {
+        "package": "xbbg-rust",
+        "operation": "bdp(1t, 1f)",
+        "cold_start_ms": 171.02079999995112,
+        "warm_mean_ms": 195.4595249999329,
+        "warm_median_ms": 190.2444499999092,
+        "warm_p95_ms": 238.3002999999917,
+        "warm_p99_ms": 238.3002999999917,
+        "warm_std_ms": 31.330938329665646,
+        "memory_peak_mb": 45.590599060058594,
+        "data_shape": [
+          1,
+          3
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdp(1t, 1f)",
+        "cold_start_ms": 0.5504000000655651,
+        "warm_mean_ms": 0.40062500011117663,
+        "warm_median_ms": 0.3915500003586203,
+        "warm_p95_ms": 0.44029999980921275,
+        "warm_p99_ms": 0.44029999980921275,
+        "warm_std_ms": 0.027115724070608735,
+        "memory_peak_mb": 0.0021734237670898438,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdp(1t, 1f)",
+        "cold_start_ms": 0.3915000002052693,
+        "warm_mean_ms": 0.38982499984285823,
+        "warm_median_ms": 0.38944999982959416,
+        "warm_p95_ms": 0.40549999994254904,
+        "warm_p99_ms": 0.40549999994254904,
+        "warm_std_ms": 0.01308774879599571,
+        "memory_peak_mb": 0.0022897720336914062,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-rust",
+        "operation": "bdp(3t, 3f)",
+        "cold_start_ms": 424.8050000001058,
+        "warm_mean_ms": 389.38117500003955,
+        "warm_median_ms": 390.0133500001175,
+        "warm_p95_ms": 410.10359999972934,
+        "warm_p99_ms": 410.10359999972934,
+        "warm_std_ms": 18.48776350519082,
+        "memory_peak_mb": 0.033111572265625,
+        "data_shape": [
+          9,
+          3
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdp(3t, 3f)",
+        "cold_start_ms": 0.5565999999816995,
+        "warm_mean_ms": 0.39787499997601117,
+        "warm_median_ms": 0.4011000000900822,
+        "warm_p95_ms": 0.409399999625748,
+        "warm_p99_ms": 0.409399999625748,
+        "warm_std_ms": 0.012733256828197965,
+        "memory_peak_mb": 0.0021963119506835938,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdp(3t, 3f)",
+        "cold_start_ms": 0.3965999999309133,
+        "warm_mean_ms": 0.3840499998659652,
+        "warm_median_ms": 0.38104999998722633,
+        "warm_p95_ms": 0.39969999988898053,
+        "warm_p99_ms": 0.39969999988898053,
+        "warm_std_ms": 0.010894800050074403,
+        "memory_peak_mb": 0.0022897720336914062,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      }
+    ],
+    "BDH - Historical Data": [
+      {
+        "package": "xbbg-rust",
+        "operation": "bdh(1t, 1f, 2025-01-02 to 2025-01-06)",
+        "cold_start_ms": 264.7271000000728,
+        "warm_mean_ms": 254.73534999991898,
+        "warm_median_ms": 256.8898500001069,
+        "warm_p95_ms": 295.3138999996554,
+        "warm_p99_ms": 295.3138999996554,
+        "warm_std_ms": 37.69369375188968,
+        "memory_peak_mb": 0.047966957092285156,
+        "data_shape": [
+          3,
+          4
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdh(1t, 1f, 2025-01-02 to 2025-01-06)",
+        "cold_start_ms": 0.45439999985319446,
+        "warm_mean_ms": 0.39927499994973914,
+        "warm_median_ms": 0.3965999999309133,
+        "warm_p95_ms": 0.41439999995418475,
+        "warm_p99_ms": 0.41439999995418475,
+        "warm_std_ms": 0.011352642865763889,
+        "memory_peak_mb": 0.0022039413452148438,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdh(1t, 1f, 2025-01-02 to 2025-01-06)",
+        "cold_start_ms": 0.3971000001001812,
+        "warm_mean_ms": 0.3909749998456391,
+        "warm_median_ms": 0.3900499998508167,
+        "warm_p95_ms": 0.40820000003805035,
+        "warm_p99_ms": 0.40820000003805035,
+        "warm_std_ms": 0.014605107685206307,
+        "memory_peak_mb": 0.0023202896118164062,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-rust",
+        "operation": "bdh(3t, 3f, 2025-01-02 to 2025-01-06)",
+        "cold_start_ms": 544.1364999996949,
+        "warm_mean_ms": 654.4427000000042,
+        "warm_median_ms": 633.6244999999963,
+        "warm_p95_ms": 777.797400000054,
+        "warm_p99_ms": 777.797400000054,
+        "warm_std_ms": 93.79005903168147,
+        "memory_peak_mb": 0.046776771545410156,
+        "data_shape": [
+          27,
+          4
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdh(3t, 3f, 2025-01-02 to 2025-01-06)",
+        "cold_start_ms": 0.4308000002311019,
+        "warm_mean_ms": 0.4375999999410851,
+        "warm_median_ms": 0.4131999999117397,
+        "warm_p95_ms": 0.5329999999048596,
+        "warm_p99_ms": 0.5329999999048596,
+        "warm_std_ms": 0.06481913293107634,
+        "memory_peak_mb": 0.0022268295288085938,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdh(3t, 3f, 2025-01-02 to 2025-01-06)",
+        "cold_start_ms": 0.4063999999743828,
+        "warm_mean_ms": 0.38167500008512434,
+        "warm_median_ms": 0.3767000000607368,
+        "warm_p95_ms": 0.4011000000900822,
+        "warm_p99_ms": 0.4011000000900822,
+        "warm_std_ms": 0.013447769312008978,
+        "memory_peak_mb": 0.0023202896118164062,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      }
+    ],
+    "BDIB - Intraday Bars": [
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdib(IBM US Equity, TRADE, 5m bars)",
+        "cold_start_ms": 0.3997000003437279,
+        "warm_mean_ms": 0.3892499997846244,
+        "warm_median_ms": 0.3881999998611718,
+        "warm_p95_ms": 0.4083999997419596,
+        "warm_p99_ms": 0.4083999997419596,
+        "warm_std_ms": 0.016106002958090622,
+        "memory_peak_mb": 0.003253936767578125,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdib(IBM US Equity, TRADE, 5m bars)",
+        "cold_start_ms": 0.4039000000375381,
+        "warm_mean_ms": 0.4168499999650521,
+        "warm_median_ms": 0.3811000001405773,
+        "warm_p95_ms": 0.5272999997032457,
+        "warm_p99_ms": 0.5272999997032457,
+        "warm_std_ms": 0.07367484854601311,
+        "memory_peak_mb": 0.0023603439331054688,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      }
+    ],
+    "BDTICK - Tick Data": [
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdtick(IBM US Equity, [TRADE])",
+        "cold_start_ms": 0.41499999997540726,
+        "warm_mean_ms": 0.3877249999959531,
+        "warm_median_ms": 0.3871500000514061,
+        "warm_p95_ms": 0.40300000000570435,
+        "warm_p99_ms": 0.40300000000570435,
+        "warm_std_ms": 0.015079207623383736,
+        "memory_peak_mb": 0.0032148361206054688,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdtick(IBM US Equity, [TRADE])",
+        "cold_start_ms": 0.4119999998692947,
+        "warm_mean_ms": 0.38460000007489725,
+        "warm_median_ms": 0.38385000016205595,
+        "warm_p95_ms": 0.3922999999304011,
+        "warm_p99_ms": 0.3922999999304011,
+        "warm_std_ms": 0.006430655765999474,
+        "memory_peak_mb": 0.0023488998413085938,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdtick(IBM US Equity, [BID,ASK])",
+        "cold_start_ms": 0.39359999982480076,
+        "warm_mean_ms": 0.38104999998722633,
+        "warm_median_ms": 0.3778499999498308,
+        "warm_p95_ms": 0.39390000029015937,
+        "warm_p99_ms": 0.39390000029015937,
+        "warm_std_ms": 0.008702681793414206,
+        "memory_peak_mb": 0.0032148361206054688,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdtick(IBM US Equity, [BID,ASK])",
+        "cold_start_ms": 0.38700000004610047,
+        "warm_mean_ms": 0.3877999998849191,
+        "warm_median_ms": 0.3849999998237763,
+        "warm_p95_ms": 0.4036999998788815,
+        "warm_p99_ms": 0.4036999998788815,
+        "warm_std_ms": 0.012267300650774535,
+        "memory_peak_mb": 0.0023488998413085938,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bdtick(IBM US Equity, [TRADE,BID,ASK])",
+        "cold_start_ms": 0.3786999996009399,
+        "warm_mean_ms": 0.3842500001383087,
+        "warm_median_ms": 0.38230000018302235,
+        "warm_p95_ms": 0.39790000028006034,
+        "warm_p99_ms": 0.39790000028006034,
+        "warm_std_ms": 0.01139897665803588,
+        "memory_peak_mb": 0.0032148361206054688,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "pdblp",
+        "operation": "bdtick(IBM US Equity, [TRADE,BID,ASK])",
+        "cold_start_ms": 0.5197999998927116,
+        "warm_mean_ms": 0.38597499997194973,
+        "warm_median_ms": 0.3859999999349384,
+        "warm_p95_ms": 0.39930000002641464,
+        "warm_p99_ms": 0.39930000002641464,
+        "warm_std_ms": 0.01117210065996968,
+        "memory_peak_mb": 0.0023488998413085938,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      }
+    ],
+    "BQL - Query Language": [
+      {
+        "package": "xbbg-rust",
+        "operation": "bql(get(px_last) for(['IBM US Equity']))",
+        "cold_start_ms": 195.66030000032697,
+        "warm_mean_ms": 260.11529999993854,
+        "warm_median_ms": 195.8348499999829,
+        "warm_p95_ms": 502.9967000000397,
+        "warm_p99_ms": 502.9967000000397,
+        "warm_std_ms": 163.63754356995017,
+        "memory_peak_mb": 0.028850555419921875,
+        "data_shape": [
+          1,
+          4
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bql(get(px_last) for(['IBM US Equity']))",
+        "cold_start_ms": 0.44430000025386107,
+        "warm_mean_ms": 0.4462499998680869,
+        "warm_median_ms": 0.43574999995144026,
+        "warm_p95_ms": 0.5252999999356689,
+        "warm_p99_ms": 0.5252999999356689,
+        "warm_std_ms": 0.05911460630683596,
+        "memory_peak_mb": 0.0021657943725585938,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      },
+      {
+        "package": "xbbg-legacy",
+        "operation": "bql(get(px_last, volume) for(['IBM US Equ...)",
+        "cold_start_ms": 0.45999999974810635,
+        "warm_mean_ms": 0.42682500020418956,
+        "warm_median_ms": 0.41970000029323273,
+        "warm_p95_ms": 0.4787000002579589,
+        "warm_p99_ms": 0.4787000002579589,
+        "warm_std_ms": 0.03786232744555853,
+        "memory_peak_mb": 0.020130157470703125,
+        "data_shape": [
+          1
+        ],
+        "iterations": 5
+      }
+    ]
+  }
+}
