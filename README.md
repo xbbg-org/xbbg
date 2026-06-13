@@ -465,3 +465,18 @@ Publishing is handled through GitHub Actions and PyPI Trusted Publishing.
 - Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - Security: [SECURITY.md](SECURITY.md)
 - License: [LICENSE](LICENSE)
+
+## Citation
+
+If you use xbbg in research or published work, please cite:
+
+```bibtex
+@software{xbbg,
+  author = {{Alpha x1 and xbbg contributors}},
+  title = {{xbbg}: Independent client for Bloomberg-connected data workflows},
+  year = {2026},
+  publisher = {GitHub},
+  url = {https://github.com/xbbg-org/xbbg},
+  version = {1.3.0}
+}
+```
