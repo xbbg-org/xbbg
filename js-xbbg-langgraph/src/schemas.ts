@@ -806,7 +806,10 @@ export function createPreferredsSchema(
     ).describe(
       "The issuer's common equity ticker as '<TICKER> <MARKET_SECTOR>', never a preferred ('Pfd') ticker and never a guessed one. Resolve a supplied ISIN/CUSIP with xbbg_resolve_isins first.",
     ),
-    fields: stringArray(tool, "fields", options.maxFields, options.maxStringChars, '["<FIELD>"]')
+    fields: z
+      .array(nonEmptyString(tool, "fields", options.maxStringChars, '["<FIELD>"]'))
+      .max(options.maxFields, `${tool}: fields can contain at most ${options.maxFields} values`)
+      .transform((fields) => (fields.length === 0 ? undefined : fields))
       .optional()
       .describe("Optional fields to include in the preferreds recipe result."),
   });

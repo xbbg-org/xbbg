@@ -328,6 +328,37 @@ export interface CalculateInput {
   readonly levels: readonly (number | null)[];
 }
 
+export type BloombergChartSource = "bdh" | "bdib" | "holdings" | "depth" | "rows";
+
+export type ChartKind = "line" | "area" | "bar" | "scatter" | "candlestick" | "depth";
+
+export type ChartRenderer = "vega-lite";
+
+export type ChartScalar = string | number | boolean | null;
+
+export type ChartRow = Readonly<Record<string, ChartScalar>>;
+
+export interface ChartSpecInput {
+  readonly source: BloombergChartSource;
+  readonly rows: readonly ChartRow[];
+  readonly renderer?: ChartRenderer;
+  readonly chart?: ChartKind;
+  readonly title?: string;
+  readonly xField?: string;
+  readonly yFields?: readonly string[];
+  readonly seriesField?: string;
+  readonly labelField?: string;
+  readonly valueField?: string;
+  readonly openField?: string;
+  readonly highField?: string;
+  readonly lowField?: string;
+  readonly closeField?: string;
+  readonly sideField?: string;
+  readonly priceField?: string;
+  readonly sizeField?: string;
+  readonly maxPoints?: number;
+}
+
 const stringPairSchema = z.object({
   key: z.string().trim().min(1).describe("String pair key."),
   value: z.string().trim().min(1).describe("String pair value."),
@@ -701,4 +732,56 @@ export function calculateSchema(
         });
       }
     });
+}
+
+export function chartSpecSchema(
+  options: NormalizedBloombergToolsOptions,
+): ZodOutput<ChartSpecInput> {
+  const chartScalar = z.union([
+    z.string().trim().max(options.maxStringChars),
+    z.number(),
+    z.boolean(),
+    z.null(),
+  ]);
+  const fieldName = nonEmptyString(options, "Input row field name.");
+  return z
+    .object({
+      chart: z
+        .enum(["line", "area", "bar", "scatter", "candlestick", "depth"])
+        .optional()
+        .describe("Chart shape to generate. Defaults from source."),
+      closeField: fieldName.optional().describe("Candlestick close-value field."),
+      highField: fieldName.optional().describe("Candlestick high-value field."),
+      labelField: fieldName.optional().describe("Categorical label field for bar charts."),
+      lowField: fieldName.optional().describe("Candlestick low-value field."),
+      maxPoints: z
+        .number()
+        .int()
+        .positive()
+        .max(options.maxRows)
+        .optional()
+        .describe("Maximum rows to include in the frontend spec; defaults to all provided rows."),
+      openField: fieldName.optional().describe("Candlestick open-value field."),
+      priceField: fieldName.optional().describe("Market-depth price field."),
+      renderer: z
+        .literal("vega-lite")
+        .optional()
+        .describe("Visualization spec renderer. Currently only vega-lite is generated."),
+      rows: z
+        .array(z.record(chartScalar))
+        .min(1)
+        .max(options.maxRows)
+        .describe("Chart data rows copied from a bounded Bloomberg tool result."),
+      seriesField: fieldName.optional().describe("Optional series/color field."),
+      sideField: fieldName.optional().describe("Market-depth bid/ask side field."),
+      sizeField: fieldName.optional().describe("Market-depth size field."),
+      source: z
+        .enum(["bdh", "bdib", "holdings", "depth", "rows"])
+        .describe("Bloomberg result shape that produced rows."),
+      title: nonEmptyString(options, "Chart title.").optional(),
+      valueField: fieldName.optional().describe("Primary numeric value field."),
+      xField: fieldName.optional().describe("X-axis field."),
+      yFields: stringArray(options, "Numeric value fields to plot.").optional(),
+    })
+    .strict();
 }

@@ -58,6 +58,7 @@ const OPTIONAL_EXTENSION_INSTRUCTIONS = [
   "- xbbg_ext_cdx: CDX ticker workflow support. Use parse_cdx_ticker to understand a CDX ticker, previous_cdx_series to roll back a series, cdx_gen_to_specific to resolve a generic CDX to a target series, and cdx_info/cdx_pricing/cdx_risk for predefined BDP field bundles. cdx_pricing and cdx_risk accept recoveryRate, which becomes the CDS_RR override.",
   "- xbbg_ext_currency: currency-planning helpers. build_fx_pair constructs the Bloomberg FX pair and conversion factor, same_currency avoids unnecessary conversion, and currencies_needing_conversion identifies which currencies differ from a target before requesting converted values.",
   "- xbbg_ext_bql_builder: safe BQL generators for common xbbg workflows. Use build_preferreds_query for preferred-stock discovery from an equity, build_corporate_bonds_query for company bond universes with optional currency/active filters, and build_etf_holdings_query for ETF constituents. Prefer these builders over hand-writing those BQL shapes.",
+  "- xbbg_ext_chart_spec: renderer-neutral chart spec helper. Convert bounded rows from xbbg_bdh, xbbg_bdib, holdings, depth, or already-shaped row data into a Vega-Lite JSON spec for frontend rendering; do not use it as proof that Bloomberg data was fetched.",
   "- xbbg_ext_market_session: exchange calendar/timezone support. derive_sessions turns day session times into session blocks, infer_timezone maps country codes to timezones, session_times_to_utc converts local sessions to UTC, get_market_rule gets MIC/exchange rules, default_turnover_dates and default_bqr_datetimes provide bounded defaults, and get/list_exchange_override inspect configured exchange metadata.",
   "- xbbg_ext_yas_overrides: builds flat YAS override maps for fixed-income BDP requests when the lower-level BDP workflow is required. Prefer xbbg_yas for actual YAS recipe fields.",
   "- xbbg_ext_constants: static lookup/format helpers for date parsing/formatting, futures month code/name mappings, dividend type mappings, and known dividend/ETF output columns.",
@@ -173,6 +174,8 @@ export const EXT_CURRENCY_DESCRIPTION =
 
 export const EXT_BQL_BUILDER_DESCRIPTION =
   "BQL builders for preferred stocks, corporate bonds, and ETF holdings. Prefer to construct those bounded BQL shapes before xbbg_bql.";
+export const EXT_CHART_SPEC_DESCRIPTION =
+  "Renderer-neutral chart spec helper for frontend generative UI. Converts bounded Bloomberg rows from bdh, bdib, holdings, depth, or already-shaped row data into a Vega-Lite JSON spec; it does not fetch Bloomberg data or render images.";
 
 export const EXT_MARKET_SESSION_DESCRIPTION =
   "Market session and timezone helpers for deriving sessions, UTC windows, market rules, exchange metadata, turnover defaults, and BQR datetime defaults.";

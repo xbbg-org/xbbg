@@ -166,6 +166,7 @@ Extension helper tools:
 - `xbbg_ext_constants` - static constants and formatting helpers for dates, futures months, dividend types, and ETF/dividend columns.
 - `xbbg_ext_columns` - rename helpers for dividend, ETF, and earnings-shaped Bloomberg responses.
 - `xbbg_ext_calculate` - small numeric helper for level percentage calculations.
+- `xbbg_ext_chart_spec` - renderer-neutral chart specs for frontend generative UI; converts bounded rows from `xbbg_bdh`, `xbbg_bdib`, holdings, depth, or already-shaped row data into Vega-Lite JSON.
 
 ```ts
 import { createBloombergExtTools, createAllBloombergTools } from "@xbbg/langgraph";
@@ -174,6 +175,34 @@ const helperTools = createBloombergExtTools();
 const allTools = createAllBloombergTools({
   disabledTools: ["xbbg_bql", "xbbg_bsrch"],
 });
+```
+
+### Chart specs and generative UI frontends
+
+`xbbg_ext_chart_spec` does not fetch Bloomberg data and does not render images. Use a data tool first, then pass its bounded rows into the chart-spec helper. The result is a portable visualization payload:
+
+```json
+{
+  "kind": "xbbg.visualization",
+  "component": "xbbg_chart",
+  "renderer": "vega-lite",
+  "spec": { "data": { "values": [] }, "mark": { "type": "line" } }
+}
+```
+
+Frontend runtimes should register their own `xbbg_chart` component and render `data.spec` with their preferred Vega-Lite React wrapper. This keeps `@xbbg/langgraph` dependency-free and works with CopilotKit `useRenderTool`, assistant-ui data/generative UI renderers, Vercel AI SDK tool parts, or LangGraph `typedUi()` adapters.
+
+Example tool input after a historical request:
+
+```json
+{
+  "source": "bdh",
+  "rows": [{ "ticker": "AAPL US Equity", "date": "20240102", "value": 190.1 }],
+  "xField": "date",
+  "yFields": ["value"],
+  "seriesField": "ticker",
+  "title": "AAPL PX_LAST"
+}
 ```
 
 ## Engine handling

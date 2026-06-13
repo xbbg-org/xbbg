@@ -406,6 +406,16 @@ describe("Bloomberg request tools", () => {
       expect.objectContaining({ backend: "json", fields: ["id"] }),
     );
 
+    await invokeJson(byName(tools, "xbbg_preferreds"), {
+      equityTicker: " JPM US Equity ",
+      fields: [],
+    });
+    expect(engine.preferreds).toHaveBeenLastCalledWith(
+      "JPM US Equity",
+      expect.objectContaining({ backend: "json" }),
+    );
+    expect(vi.mocked(engine.preferreds).mock.calls.at(-1)?.[1]?.fields).toBeUndefined();
+
     await invokeJson(byName(tools, "xbbg_corporate_bonds"), {
       activeOnly: false,
       ccy: " USD ",

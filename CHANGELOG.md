@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+
+### Added
+
+- **`@xbbg/langgraph` chart-spec helper for generative UI**: Added `xbbg_ext_chart_spec` and `createExtChartSpecTool()` to convert bounded Bloomberg result rows into dependency-free Vega-Lite visualization payloads for CopilotKit, assistant-ui, Vercel AI SDK, LangGraph UI, or other frontend renderers.
+
+### Fixed
+
+- **`@xbbg/langgraph` preferreds fields are optional in tool calls**: `xbbg_preferreds` now treats `fields: []` as omitted so the preferred-stock recipe can use its default field set instead of rejecting model/frontend calls that send an empty optional list.
+
 ## [1.3.0] - 2026-06-13
 
 ### Added

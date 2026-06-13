@@ -28,6 +28,7 @@ export const BLOOMBERG_TOOL_NAMES = [
   "xbbg_ext_cdx",
   "xbbg_ext_currency",
   "xbbg_ext_bql_builder",
+  "xbbg_ext_chart_spec",
   "xbbg_ext_market_session",
   "xbbg_ext_yas_overrides",
   "xbbg_ext_constants",

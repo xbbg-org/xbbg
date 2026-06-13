@@ -1,7 +1,7 @@
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import { ToolMessage } from "@langchain/core/messages";
 
-import { createBloombergExtTools } from "../src";
+import { createBloombergExtTools, createExtChartSpecTool } from "../src";
 import type { XbbgCoreLike, XbbgEngineLike } from "../src/core-loader";
 
 type CoreSubscription = Awaited<ReturnType<XbbgEngineLike["stream"]>>;
@@ -206,6 +206,42 @@ describe("Bloomberg extension tools", () => {
     expect(fakeCore.ext.currenciesNeedingConversion).toHaveBeenCalledWith(["USD", "EUR"], "USD");
 
     const bql = byName(tools, "xbbg_ext_bql_builder");
+
+    const chartSpec = await invokeJson(byName(tools, "xbbg_ext_chart_spec"), {
+      rows: [
+        { date: "20240102", ticker: "AAPL US Equity", value: 190.1 },
+        { date: "20240103", ticker: "AAPL US Equity", value: 191.2 },
+      ],
+      seriesField: "ticker",
+      source: "bdh",
+      title: "AAPL PX_LAST",
+      xField: "date",
+      yFields: ["value"],
+    });
+    expect(chartSpec).toMatchObject({
+      data: {
+        component: "xbbg_chart",
+        kind: "xbbg.visualization",
+        renderer: "vega-lite",
+        spec: {
+          data: {
+            values: [
+              { date: "2024-01-02", ticker: "AAPL US Equity", value: 190.1 },
+              { date: "2024-01-03", ticker: "AAPL US Equity", value: 191.2 },
+            ],
+          },
+          title: "AAPL PX_LAST",
+        },
+        summary: {
+          chart: "line",
+          seriesField: "ticker",
+          xField: "date",
+          yFields: ["value"],
+        },
+      },
+      rowCount: 2,
+      tool: "xbbg_ext_chart_spec",
+    });
     await invokeJson(bql, { equityTicker: "AAPL US Equity", operation: "build_preferreds_query" });
     await invokeJson(bql, {
       activeOnly: true,
@@ -314,6 +350,42 @@ describe("Bloomberg extension tools", () => {
         ticker: "CDX IG CDSI GEN 5Y Corp",
       }),
     ).rejects.toThrow();
+
+    const chart = byName(tools, "xbbg_ext_chart_spec");
+    await expect(
+      chart.invoke({ bogus: true, rows: [{ date: "20240102", value: 1 }], source: "bdh" }),
+    ).rejects.toThrow();
+    await expect(
+      chart.invoke({ rows: [{ date: "20240102", value: "not numeric" }], source: "bdh" }),
+    ).rejects.toThrow(/finite numeric/);
+  });
+
+  it("creates chart specs without loading Bloomberg core", async () => {
+    const chart = createExtChartSpecTool({ maxRows: 3 });
+
+    const output = await invokeJson(chart, {
+      chart: "bar",
+      labelField: "ticker",
+      rows: [
+        { ticker: "AAPL US Equity", weight: 0.07 },
+        { ticker: "MSFT US Equity", weight: 0.06 },
+      ],
+      source: "holdings",
+      valueField: "weight",
+    });
+
+    expect(output).toMatchObject({
+      data: {
+        chart: "bar",
+        component: "xbbg_chart",
+        rowCount: 2,
+        spec: {
+          mark: { type: "bar" },
+          title: "holdings bar",
+        },
+      },
+      rowCount: 2,
+    });
   });
 
   it("coerces an integer year to a string for build_futures_ticker", async () => {
@@ -346,10 +418,11 @@ describe("Bloomberg extension tools", () => {
   it("honors disabledTools and rejects mutating operation names", async () => {
     const tools = createBloombergExtTools({
       core: core(engine()),
-      disabledTools: ["xbbg_ext_cdx", "xbbg_ext_bql_builder"],
+      disabledTools: ["xbbg_ext_cdx", "xbbg_ext_bql_builder", "xbbg_ext_chart_spec"],
     });
 
     expect(tools.map((entry) => entry.name)).not.toContain("xbbg_ext_cdx");
+    expect(tools.map((entry) => entry.name)).not.toContain("xbbg_ext_chart_spec");
     await expect(
       byName(tools, "xbbg_ext_market_session").invoke({
         operation: "set_exchange_override",
@@ -362,6 +435,7 @@ describe("Bloomberg extension tools", () => {
     const tools = createBloombergExtTools({
       core: core(engine()),
       maxFields: 1,
+      maxRows: 1,
       maxSecurities: 1,
       maxStringChars: 4,
     });
@@ -374,6 +448,27 @@ describe("Bloomberg extension tools", () => {
     const columns = byName(tools, "xbbg_ext_columns");
     await expect(
       columns.invoke({ columns: ["A", "B"], operation: "rename_dividend_columns" }),
+    ).rejects.toThrow();
+
+    const chart = byName(tools, "xbbg_ext_chart_spec");
+    await expect(
+      chart.invoke({
+        rows: [
+          { v: 1, x: "A" },
+          { v: 2, x: "B" },
+        ],
+        source: "rows",
+        xField: "x",
+        yFields: ["v"],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      chart.invoke({
+        rows: [{ a: 1, b: 2, x: "A" }],
+        source: "rows",
+        xField: "x",
+        yFields: ["a", "b"],
+      }),
     ).rejects.toThrow();
   });
 });

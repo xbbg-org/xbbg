@@ -13,6 +13,7 @@ export {
   createBloombergExtTools,
   createExtBqlBuilderTool,
   createExtCalculateTool,
+  createExtChartSpecTool,
   createExtCdxTool,
   createExtColumnsTool,
   createExtConstantsTool,
@@ -32,6 +33,15 @@ export {
   type NormalizedBloombergToolsOptions,
 } from "./options";
 export type { ToolEnvelope } from "./result-limits";
+export type { ChartSpecOutput, ChartSpecSummary, VegaLiteSpec } from "./chart-spec";
+export type {
+  BloombergChartSource,
+  ChartKind,
+  ChartRenderer,
+  ChartRow,
+  ChartScalar,
+  ChartSpecInput,
+} from "./ext-schemas";
 export {
   createBdhTool,
   createBdibTool,

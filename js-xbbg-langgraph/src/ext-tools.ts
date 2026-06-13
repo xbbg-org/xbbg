@@ -1,4 +1,5 @@
 import { createBloombergStructuredTool, type ToolInvocationConfig } from "./langchain-tool";
+import { createChartSpec } from "./chart-spec";
 
 import { CDX_INFO_FIELDS, CDX_PRICING_FIELDS, CDX_RISK_FIELDS } from "./cdx-fields";
 import { createCoreResolver, type CoreResolver } from "./core-loader";
@@ -6,6 +7,7 @@ import {
   EXT_BQL_BUILDER_DESCRIPTION,
   EXT_CALCULATE_DESCRIPTION,
   EXT_CDX_DESCRIPTION,
+  EXT_CHART_SPEC_DESCRIPTION,
   EXT_COLUMNS_DESCRIPTION,
   EXT_CONSTANTS_DESCRIPTION,
   EXT_CURRENCY_DESCRIPTION,
@@ -26,6 +28,7 @@ import {
   bqlBuilderSchema,
   calculateSchema,
   cdxSchema,
+  chartSpecSchema,
   columnsSchema,
   constantsSchema,
   currencySchema,
@@ -36,6 +39,7 @@ import {
   type BqlBuilderInput,
   type CalculateInput,
   type CdxInput,
+  type ChartSpecInput,
   type ColumnsInput,
   type ConstantsInput,
   type CurrencyInput,
@@ -45,7 +49,6 @@ import {
   type TickerInput,
   type YasOverridesInput,
 } from "./ext-schemas";
-
 function resultString(
   resolver: CoreResolver,
   name: BloombergToolName,
@@ -69,6 +72,7 @@ const EXT_TOOL_DEFINITIONS: readonly ExtToolDefinition[] = Object.freeze([
   { create: extCdxWithResolver, name: "xbbg_ext_cdx" },
   { create: extCurrencyWithResolver, name: "xbbg_ext_currency" },
   { create: extBqlBuilderWithResolver, name: "xbbg_ext_bql_builder" },
+  { create: extChartSpecWithResolver, name: "xbbg_ext_chart_spec" },
   { create: extMarketSessionWithResolver, name: "xbbg_ext_market_session" },
   { create: extYasOverridesWithResolver, name: "xbbg_ext_yas_overrides" },
   { create: extConstantsWithResolver, name: "xbbg_ext_constants" },
@@ -79,6 +83,25 @@ const EXT_TOOL_DEFINITIONS: readonly ExtToolDefinition[] = Object.freeze([
 export const BLOOMBERG_EXT_TOOL_NAMES = Object.freeze(
   EXT_TOOL_DEFINITIONS.map((definition) => definition.name),
 );
+
+function extChartSpecWithResolver(resolver: CoreResolver): BloombergTool {
+  const name = "xbbg_ext_chart_spec" satisfies BloombergToolName;
+  return createBloombergStructuredTool(
+    async (input: ChartSpecInput): Promise<ToolContentAndArtifact> => {
+      try {
+        return await Promise.resolve(resultString(resolver, name, createChartSpec(input)));
+      } catch (error) {
+        throwWithToolContext(name, error);
+      }
+    },
+    {
+      responseFormat: "content_and_artifact",
+      description: EXT_CHART_SPEC_DESCRIPTION,
+      name,
+      schema: chartSpecSchema(resolver.options),
+    },
+  );
+}
 
 function extTickerWithResolver(resolver: CoreResolver): BloombergTool {
   const name = "xbbg_ext_ticker" satisfies BloombergToolName;
@@ -522,6 +545,10 @@ export function createExtColumnsTool(options: BloombergToolsOptions = {}): Bloom
 
 export function createExtCalculateTool(options: BloombergToolsOptions = {}): BloombergTool {
   return extCalculateWithResolver(createCoreResolver(options));
+}
+
+export function createExtChartSpecTool(options: BloombergToolsOptions = {}): BloombergTool {
+  return extChartSpecWithResolver(createCoreResolver(options));
 }
 
 export function createBloombergExtToolsForResolver(resolver: CoreResolver): BloombergTool[] {
