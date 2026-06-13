@@ -51,6 +51,11 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
         .map(|v| v.extract())
         .transpose()?;
 
+    let security_overrides: Option<Vec<(String, Vec<(String, String)>)>> = dict
+        .get_item("security_overrides")?
+        .map(|v| v.extract())
+        .transpose()?;
+
     let elements: Option<Vec<(String, String)>> = dict
         .get_item("elements")?
         .map(|v| v.extract())
@@ -143,6 +148,7 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
         security,
         fields,
         overrides,
+        security_overrides,
         elements,
         kwargs,
         start_date,

@@ -314,14 +314,15 @@ function bdpWithResolver(resolver: CoreResolver): BloombergTool {
     async (input: BdpInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
-        const result = await engine.bdp(input.securities, input.fields, {
-          backend: "json",
+        const options = {
+          backend: "json" as const,
           format: input.format,
           includeSecurityErrors: input.includeSecurityErrors,
           kwargs: input.kwargs,
-          overrides: input.overrides,
+          overrides: input.overrides as never,
           validateFields: validationSetting(resolver, input.validateFields),
-        });
+        };
+        const result = await engine.bdp(input.securities, input.fields, options);
         return resultString(resolver, name, result);
       } catch (error) {
         throwWithToolContext(name, error);
@@ -342,15 +343,16 @@ function bdhWithResolver(resolver: CoreResolver): BloombergTool {
     async (input: BdhInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
-        const result = await engine.bdh(input.securities, input.fields, {
-          backend: "json",
+        const options = {
+          backend: "json" as const,
           end: input.end,
           format: input.format,
           kwargs: input.kwargs,
-          overrides: input.overrides,
+          overrides: input.overrides as never,
           start: input.start,
           validateFields: validationSetting(resolver, input.validateFields),
-        });
+        };
+        const result = await engine.bdh(input.securities, input.fields, options);
         return resultString(resolver, name, result);
       } catch (error) {
         throwWithToolContext(name, error);
@@ -371,12 +373,13 @@ function bdsWithResolver(resolver: CoreResolver): BloombergTool {
     async (input: BdsInput): Promise<ToolContentAndArtifact> => {
       try {
         const engine = await resolver.getEngine();
-        const result = await engine.bds(input.securities, [input.field], {
-          backend: "json",
+        const options = {
+          backend: "json" as const,
           kwargs: input.kwargs,
-          overrides: input.overrides,
+          overrides: input.overrides as never,
           validateFields: validationSetting(resolver, input.validateFields),
-        });
+        };
+        const result = await engine.bds(input.securities, [input.field], options);
         return resultString(resolver, name, result);
       } catch (error) {
         throwWithToolContext(name, error);

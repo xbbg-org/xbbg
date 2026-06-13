@@ -4,7 +4,7 @@
 //! boundary that applies operation defaults, validates required fields, routes
 //! kwargs, and classifies the request shape consumed by workers.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 use crate::errors::BlpAsyncError;
@@ -262,6 +262,22 @@ impl PreparedRequest {
     pub(crate) fn params(&self) -> &RequestParams {
         &self.params
     }
+    pub(crate) fn with_securities(&self, securities: Vec<String>) -> Self {
+        let mut cloned = self.clone();
+        cloned.params.securities = Some(securities);
+        cloned
+    }
+    pub(crate) fn with_securities_and_overrides(
+        &self,
+        securities: Vec<String>,
+        overrides: Option<Vec<(String, String)>>,
+    ) -> Self {
+        let mut cloned = self.clone();
+        cloned.params.securities = Some(securities);
+        cloned.params.overrides = overrides;
+        cloned.params.security_overrides = None;
+        cloned
+    }
 
     pub(crate) fn operation(&self) -> &Operation {
         &self.operation
@@ -326,6 +342,7 @@ fn validate_request_params_with_operation(
     }
 
     validate_field_metadata_aliases(params, operation)?;
+    validate_security_overrides(params, operation, raw)?;
     PlannedRequestShape::from_params(operation, raw, params)?;
 
     if raw {
@@ -450,6 +467,7 @@ pub(crate) fn normalize_request_params(params: &mut RequestParams) {
     normalize_vec(&mut params.event_types);
     normalize_vec(&mut params.field_ids);
     normalize_pairs(&mut params.overrides);
+    normalize_security_overrides(&mut params.security_overrides);
     normalize_pairs(&mut params.elements);
     normalize_pairs(&mut params.options);
     normalize_map(&mut params.kwargs);
@@ -477,6 +495,31 @@ fn normalize_vec<T>(value: &mut Option<Vec<T>>) {
 fn normalize_pairs(value: &mut Option<Vec<(String, String)>>) {
     if value.as_ref().is_some_and(Vec::is_empty) {
         *value = None;
+    }
+}
+
+fn normalize_security_overrides(value: &mut Option<Vec<(String, Vec<(String, String)>)>>) {
+    let Some(entries) = value else {
+        return;
+    };
+
+    for (security, overrides) in entries.iter_mut() {
+        trim_string(security);
+        for (key, _) in overrides.iter_mut() {
+            trim_string(key);
+        }
+        overrides.retain(|(key, _)| !key.is_empty());
+    }
+    entries.retain(|(security, overrides)| !security.is_empty() && !overrides.is_empty());
+    if entries.is_empty() {
+        *value = None;
+    }
+}
+
+fn trim_string(value: &mut String) {
+    let trimmed = value.trim();
+    if trimmed.len() != value.len() {
+        *value = trimmed.to_string();
     }
 }
 
@@ -558,6 +601,63 @@ fn merge_raw_kwargs_into_elements(params: &mut RequestParams, kwargs: HashMap<St
             elements.push((key, value.clone()));
         }
     }
+}
+
+fn validate_security_overrides(
+    params: &RequestParams,
+    operation: &Operation,
+    raw: bool,
+) -> Result<(), BlpAsyncError> {
+    let Some(security_overrides) = params
+        .security_overrides
+        .as_ref()
+        .filter(|entries| !entries.is_empty())
+    else {
+        return Ok(());
+    };
+
+    if raw {
+        return Err(BlpAsyncError::ConfigError {
+            detail: "security_overrides are not supported for RawRequest".to_string(),
+        });
+    }
+
+    if !matches!(
+        operation,
+        Operation::ReferenceData | Operation::HistoricalData
+    ) {
+        return Err(BlpAsyncError::ConfigError {
+            detail: "security_overrides are supported only for ReferenceDataRequest and HistoricalDataRequest".to_string(),
+        });
+    }
+
+    let securities = params
+        .securities
+        .as_ref()
+        .ok_or_else(|| BlpAsyncError::ConfigError {
+            detail: "securities are required when security_overrides are provided".to_string(),
+        })?;
+    let requested: HashSet<&str> = securities.iter().map(String::as_str).collect();
+    let mut seen = HashSet::with_capacity(security_overrides.len());
+    for (security, overrides) in security_overrides {
+        if overrides.is_empty() {
+            return Err(BlpAsyncError::ConfigError {
+                detail: format!("security_overrides entry for {security} has no overrides"),
+            });
+        }
+        if !requested.contains(security.as_str()) {
+            return Err(BlpAsyncError::ConfigError {
+                detail: format!("security_overrides contains security not in request: {security}"),
+            });
+        }
+        if !seen.insert(security.as_str()) {
+            return Err(BlpAsyncError::ConfigError {
+                detail: format!("security_overrides contains duplicate security: {security}"),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_reference_data(params: &RequestParams) -> Result<(), BlpAsyncError> {

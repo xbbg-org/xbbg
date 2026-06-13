@@ -77,10 +77,7 @@ The short version: if all you need is a tiny one-off `bdp()` wrapper, several pa
 | Rust request/parsing engine with Arrow-shaped output | yes | no | no | no | no |
 | Output backends beyond pandas | Narwhals, native, PyArrow, pandas, Polars, DuckDB | application-owned | pandas-first | pandas-first | Polars-first |
 | Typed errors, diagnostics, field cache, testing helpers | yes | application-owned | limited | limited | limited |
-| Usable install footprint (Windows x64, Python 3.14) | xbbg 1.2.2 + narwhals 2.21.0 + blpapi 3.26.3.1 = 22.076 MiB | blpapi 3.26.3.1 = 13.653 MiB | pdblp 0.1.8 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.139 MiB / blp 0.0.4 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.246 MiB | bbg-fetch 2.0.2 + numpy 2.4.4 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.156 MiB | polars-bloomberg 0.5.4 + polars 1.40.1 + blpapi 3.26.3.1 = 191.547 MiB |
-
-Install footprints were measured in clean target directories on this workstation with the usable install recipe for each column: `xbbg + blpapi`, raw `blpapi`, `pdblp + pandas + blpapi`, `blp + pandas + blpapi`, `bbg-fetch + blpapi`, and `polars-bloomberg` (which pulls `blpapi` transitively).
-That makes xbbg the best fit in this comparison for teams that want one Bloomberg-connected Python client that can start with simple BDP/BDH calls and scale into institutional transport, async, streaming, diagnostics, and multi-backend data workflows.
+| Usable install footprint (Windows x64, Python 3.14) | xbbg 1.3.0 + narwhals 2.22.1, no `blpapi` = 16.933 MiB | blpapi 3.26.5.1 = 14.401 MiB | pdblp 0.1.8 + pandas 3.0.3 + numpy 2.4.6 + blpapi 3.26.5.1 = 129.344 MiB / blp 0.0.4 + pandas 3.0.3 + numpy 2.4.6 + blpapi 3.26.5.1 = 129.530 MiB | bbg-fetch 2.0.2 + pandas 3.0.3 + numpy 2.4.6 + blpapi 3.26.5.1 = 129.360 MiB | polars-bloomberg 0.6.0 + polars 1.41.2 + blpapi 3.26.5.1 = 197.296 MiB |
 
 ## Installation
 
@@ -94,7 +91,10 @@ Conda users can install the conda-forge build:
 conda install -c conda-forge xbbg
 ```
 
-Most users should also install Bloomberg's official Python package so xbbg can locate the Bloomberg SDK/runtime:
+`blpapi` is **not** required as a Python dependency. xbbg only needs Bloomberg's shared runtime library
+(`blpapi3_64.dll` on Windows, `libblpapi3_64.so` on macOS/Linux), which can come from Bloomberg
+Terminal/DAPI, a managed Bloomberg C++ SDK install, or Bloomberg's official `blpapi` wheel. Installing
+the wheel is just the easiest discovery path for many users:
 
 ```cmd
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
@@ -137,13 +137,25 @@ bars = blp.bdib("TSLA US Equity", dt="2024-01-15", interval=5)
 Common request patterns:
 
 ```python
-from xbbg import blp
+from xbbg import blp, ovr
 
 # Multiple fields
 info = blp.bdp("NVDA US Equity", ["Security_Name", "GICS_Sector_Name", "PX_LAST"])
 
 # Bloomberg-style overrides
 vwap = blp.bdp("AAPL US Equity", "Eqy_Weighted_Avg_Px", VWAP_Dt="20240115")
+adj = blp.bdp("AAPL US Equity", "CRNCY_ADJ_PX_LAST", overrides=ovr(EQY_FUND_CRNCY="EUR"))
+per_sec = blp.bdp(
+    ["AAPL US Equity", "MSFT US Equity"],
+    "CRNCY_ADJ_PX_LAST",
+    overrides=ovr(
+        {
+            "EQY_FUND_CRNCY": "USD",
+            "AAPL US Equity": ovr(EQY_FUND_CRNCY="EUR"),
+            "MSFT US Equity": ovr(EQY_FUND_CRNCY="JPY"),
+        }
+    ),
+)
 
 # Bulk data
 holders = blp.bds("AAPL US Equity", "DVD_Hist_All", DVD_Start_Dt="20240101")
@@ -236,6 +248,11 @@ configure(
     auth_method="app",
     app_name="my-app",
     request_pool_size=4,
+    # Opt-in sharding for wide multi-security BDP/BDH requests:
+    # shard_requests=True,
+    # shard_threshold=20,
+    # shard_chunk_size=16,
+    # shard_max_concurrent=4,
     subscription_pool_size=2,
     num_start_attempts=5,
 )
@@ -394,6 +411,7 @@ Timeouts and large responses:
 
 - increase per-request timeout where appropriate
 - split large historical/tick requests into smaller date ranges
+- enable opt-in sharding for wide multi-security `bdp`/`bdh` requests with `shard_requests=True`
 - tune `request_pool_size`, `subscription_pool_size`, queue sizes, and keep-alive settings for managed infrastructure
 
 When reporting issues, include:
@@ -458,3 +476,18 @@ Publishing is handled through GitHub Actions and PyPI Trusted Publishing.
 - Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - Security: [SECURITY.md](SECURITY.md)
 - License: [LICENSE](LICENSE)
+
+## Citation
+
+If you use xbbg in research or published work, please cite:
+
+```bibtex
+@software{xbbg,
+  author = {{Alpha x1 and xbbg contributors}},
+  title = {{xbbg}: Independent client for Bloomberg-connected data workflows},
+  year = {2026},
+  publisher = {GitHub},
+  url = {https://github.com/xbbg-org/xbbg},
+  version = {1.3.0}
+}
+```

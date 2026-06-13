@@ -48,6 +48,12 @@ pub struct StringPair {
 }
 
 #[napi(object)]
+pub struct SecurityOverridesInput {
+    pub security: String,
+    pub overrides: Vec<StringPair>,
+}
+
+#[napi(object)]
 pub struct ServerAddressInput {
     pub host: String,
     pub port: u16,
@@ -94,6 +100,10 @@ pub struct EngineConfigInput {
     pub zfp_remote: Option<String>,
     pub request_pool_size: Option<u32>,
     pub subscription_pool_size: Option<u32>,
+    pub shard_requests: Option<bool>,
+    pub shard_threshold: Option<u32>,
+    pub shard_chunk_size: Option<u32>,
+    pub shard_max_concurrent: Option<u32>,
     pub validation_mode: Option<String>,
     pub subscription_flush_threshold: Option<u32>,
     pub max_event_queue_size: Option<u32>,
@@ -129,6 +139,7 @@ pub struct RequestInput {
     pub security: Option<String>,
     pub fields: Option<Vec<String>>,
     pub overrides: Option<Vec<StringPair>>,
+    pub security_overrides: Option<Vec<SecurityOverridesInput>>,
     pub elements: Option<Vec<StringPair>>,
     pub kwargs: Option<Vec<StringPair>>,
     pub json_elements: Option<String>,
@@ -384,6 +395,18 @@ impl TryFrom<EngineConfigInput> for EngineConfig {
         }
         if let Some(size) = input.subscription_pool_size {
             config.subscription_pool_size = size as usize;
+        }
+        if let Some(enabled) = input.shard_requests {
+            config.shard_requests = enabled;
+        }
+        if let Some(size) = input.shard_threshold {
+            config.shard_threshold = size as usize;
+        }
+        if let Some(size) = input.shard_chunk_size {
+            config.shard_chunk_size = size as usize;
+        }
+        if let Some(size) = input.shard_max_concurrent {
+            config.shard_max_concurrent = size as usize;
         }
         if let Some(size) = input.subscription_flush_threshold {
             config.subscription_flush_threshold = size as usize;
@@ -1938,6 +1961,10 @@ mod tests {
             zfp_remote: None,
             request_pool_size: None,
             subscription_pool_size: None,
+            shard_requests: None,
+            shard_threshold: None,
+            shard_chunk_size: None,
+            shard_max_concurrent: None,
             validation_mode: None,
             subscription_flush_threshold: None,
             max_event_queue_size: None,
@@ -2119,6 +2146,10 @@ mod tests {
             ]),
             request_pool_size: Some(4),
             subscription_pool_size: Some(2),
+            shard_requests: Some(true),
+            shard_threshold: Some(5),
+            shard_chunk_size: Some(3),
+            shard_max_concurrent: Some(2),
             validation_mode: Some("strict".to_string()),
             subscription_flush_threshold: Some(8),
             max_event_queue_size: Some(16_000),
@@ -2186,6 +2217,10 @@ mod tests {
         );
         assert_eq!(config.num_start_attempts, 5);
         assert!(!config.auto_restart_on_disconnection);
+        assert!(config.shard_requests);
+        assert_eq!(config.shard_threshold, 5);
+        assert_eq!(config.shard_chunk_size, 3);
+        assert_eq!(config.shard_max_concurrent, 2);
         assert_eq!(config.retry_policy.max_retries, 3);
         assert_eq!(config.retry_policy.initial_delay_ms, 250);
         assert_eq!(config.retry_policy.backoff_factor, 1.5);

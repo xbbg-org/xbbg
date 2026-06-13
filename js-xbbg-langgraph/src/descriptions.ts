@@ -71,7 +71,7 @@ const OPTIONAL_LIMIT_INSTRUCTIONS = [
   "## Request limits and inputs",
   "- Keep Bloomberg requests bounded: explicit securities, explicit fields, explicit dates, limited rows, and no broad exploratory pulls unless the user narrows the universe.",
   "- Respect configured tool limits for securities, fields, rows, string size, BQL length, and search spec length. Ask the user to narrow the request rather than exceeding them.",
-  "- Use flat primitive overrides and kwargs only: string, number, or boolean values. Do not send nested objects, arrays, or inferred defaults as overrides.",
+  "- Use primitive kwargs only: string, number, or boolean values. For overrides on xbbg_bdp/xbbg_bdh/xbbg_bds, use primitive values for global overrides and nested primitive maps keyed by exact security for per-security overrides. Do not send other nested objects, arrays, or inferred defaults.",
 ] as const;
 
 export const BLOOMBERG_TOOL_INSTRUCTIONS = [

@@ -154,6 +154,11 @@ PACKAGE_CONFIG_EXPORTS = (
     "get_backend",
 )
 
+PACKAGE_OVERRIDE_EXPORTS = (
+    "OverrideSpec",
+    "ovr",
+)
+
 PACKAGE_MIDDLEWARE_EXPORTS = (
     "RequestEnvironment",
     "RequestContext",
@@ -185,6 +190,7 @@ PACKAGE_BLP_EXPORTS = (
     *PACKAGE_STREAMING_EXPORTS,
     *PACKAGE_TA_EXPORTS,
     *PACKAGE_CONFIG_EXPORTS,
+    *PACKAGE_OVERRIDE_EXPORTS,
     *PACKAGE_MIDDLEWARE_EXPORTS,
     *PACKAGE_LIFECYCLE_EXPORTS,
     *PACKAGE_BLP_SCHEMA_EXPORTS,
@@ -202,6 +208,7 @@ PACKAGE_EXPORTS = (
     *PACKAGE_STREAMING_EXPORTS,
     *PACKAGE_TA_EXPORTS,
     *PACKAGE_CONFIG_EXPORTS,
+    *PACKAGE_OVERRIDE_EXPORTS,
     *PACKAGE_MIDDLEWARE_EXPORTS,
     *PACKAGE_LIFECYCLE_EXPORTS,
     *CORE_EXPORTS,
@@ -275,6 +282,8 @@ BLP_MODULE_EXPORTS = (
     "configure",
     "set_backend",
     "get_backend",
+    "OverrideSpec",
+    "ovr",
     "RequestEnvironment",
     "RequestContext",
     "add_middleware",
