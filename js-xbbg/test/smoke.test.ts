@@ -2,7 +2,13 @@ import { expectTypeOf } from 'vitest';
 
 import { tableFromNativeArrowBatch } from '../src/arrow-zero-copy';
 import * as api from '../src/index';
-import type { BackendKind, FormatKind, OverridesInput, RequestOptions, StreamOptions } from '../src/index';
+import type {
+  BackendKind,
+  FormatKind,
+  OverridesInput,
+  RequestOptions,
+  StreamOptions,
+} from '../src/index';
 import type { NativeArrowZeroCopyBatch } from '../src/napi';
 import type { RequestInput } from '../src/types';
 
@@ -110,7 +116,6 @@ describe('@xbbg/core surface', () => {
     const streamOptions: StreamOptions = { allFields: true };
     const overrides: OverridesInput = api.ovr({ EQY_FUND_CRNCY: 'EUR' });
     const requestWithOverrides: RequestOptions = { backend, format, overrides };
-
 
     expectTypeOf(backend).toExtend<BackendKind>();
     expectTypeOf(format).toExtend<FormatKind>();
@@ -631,12 +636,8 @@ describe('engine wrapper request plumbing', () => {
       start: '2024-01-01',
     });
 
-    expect(engine.calls[0]?.overrides).toStrictEqual([
-      { key: 'EQY_FUND_CRNCY', value: 'EUR' },
-    ]);
-    expect(engine.calls[1]?.overrides).toStrictEqual([
-      { key: 'EQY_FUND_CRNCY', value: 'USD' },
-    ]);
+    expect(engine.calls[0]?.overrides).toStrictEqual([{ key: 'EQY_FUND_CRNCY', value: 'EUR' }]);
+    expect(engine.calls[1]?.overrides).toStrictEqual([{ key: 'EQY_FUND_CRNCY', value: 'USD' }]);
   });
 
   it('forwards intraday timezone controls and typed tick include options', async () => {

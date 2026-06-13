@@ -297,6 +297,7 @@ def test_configure_accepts_sharding_kwargs():
     assert blp._config.shard_chunk_size == 2
     assert blp._config.shard_max_concurrent == 2
 
+
 def test_configure_rejects_unknown_kwargs():
     with pytest.raises(TypeError, match="unexpected keyword argument"):
         blp.configure(hots="bpipe-host")

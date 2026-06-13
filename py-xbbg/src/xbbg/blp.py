@@ -1220,12 +1220,9 @@ def _normalize_override_value(value: Any) -> str:
             return formatted
     return str(value)
 
-_OVR_SOURCE_TYPE_ERROR = (
-    "ovr() expects mappings, OverrideSpec, or iterables of (name, value) pairs"
-)
-_OVERRIDES_TYPE_ERROR = (
-    "overrides must be a mapping, OverrideSpec, or a sequence of (name, value) pairs"
-)
+
+_OVR_SOURCE_TYPE_ERROR = "ovr() expects mappings, OverrideSpec, or iterables of (name, value) pairs"
+_OVERRIDES_TYPE_ERROR = "overrides must be a mapping, OverrideSpec, or a sequence of (name, value) pairs"
 
 
 @dataclass(frozen=True)

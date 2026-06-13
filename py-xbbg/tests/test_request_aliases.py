@@ -470,6 +470,7 @@ async def test_explicit_overrides_route_request_aliases_to_elements(endpoint_cap
     assert kwargs["elements"] == [("maxDataPoints", 1)]
     assert kwargs["overrides"] == [("EQY_FUND_CRNCY", "EUR")]
 
+
 @pytest.mark.asyncio
 async def test_ovr_routes_through_existing_override_path(endpoint_capture):
     await blp.abdtick(
@@ -482,4 +483,3 @@ async def test_ovr_routes_through_existing_override_path(endpoint_capture):
     kwargs = endpoint_capture["kwargs"]
     assert kwargs["elements"] == [("maxDataPoints", 1)]
     assert kwargs["overrides"] == [("EQY_FUND_CRNCY", "EUR")]
-
