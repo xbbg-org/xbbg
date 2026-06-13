@@ -94,7 +94,10 @@ Conda users can install the conda-forge build:
 conda install -c conda-forge xbbg
 ```
 
-Most users should also install Bloomberg's official Python package so xbbg can locate the Bloomberg SDK/runtime:
+`blpapi` is **not** required as a Python dependency. xbbg only needs Bloomberg's shared runtime library
+(`blpapi3_64.dll` on Windows, `libblpapi3_64.so` on macOS/Linux), which can come from Bloomberg
+Terminal/DAPI, a managed Bloomberg C++ SDK install, or Bloomberg's official `blpapi` wheel. Installing
+the wheel is just the easiest discovery path for many users:
 
 ```cmd
 pip install blpapi --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/
