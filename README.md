@@ -77,10 +77,7 @@ The short version: if all you need is a tiny one-off `bdp()` wrapper, several pa
 | Rust request/parsing engine with Arrow-shaped output | yes | no | no | no | no |
 | Output backends beyond pandas | Narwhals, native, PyArrow, pandas, Polars, DuckDB | application-owned | pandas-first | pandas-first | Polars-first |
 | Typed errors, diagnostics, field cache, testing helpers | yes | application-owned | limited | limited | limited |
-| Usable install footprint (Windows x64, Python 3.14) | xbbg 1.2.2 + narwhals 2.21.0 + blpapi 3.26.3.1 = 22.076 MiB | blpapi 3.26.3.1 = 13.653 MiB | pdblp 0.1.8 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.139 MiB / blp 0.0.4 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.246 MiB | bbg-fetch 2.0.2 + numpy 2.4.4 + pandas 3.0.3 + blpapi 3.26.3.1 = 88.156 MiB | polars-bloomberg 0.5.4 + polars 1.40.1 + blpapi 3.26.3.1 = 191.547 MiB |
-
-Install footprints were measured in clean target directories on this workstation with the usable install recipe for each column: `xbbg + blpapi`, raw `blpapi`, `pdblp + pandas + blpapi`, `blp + pandas + blpapi`, `bbg-fetch + blpapi`, and `polars-bloomberg` (which pulls `blpapi` transitively).
-That makes xbbg the best fit in this comparison for teams that want one Bloomberg-connected Python client that can start with simple BDP/BDH calls and scale into institutional transport, async, streaming, diagnostics, and multi-backend data workflows.
+| Usable install footprint (Windows x64, Python 3.14) | xbbg 1.3.0 + narwhals 2.22.1, no `blpapi` = 16.933 MiB | blpapi 3.26.5.1 = 14.401 MiB | pdblp 0.1.8 + pandas 3.0.3 + numpy 2.4.6 + blpapi 3.26.5.1 = 129.344 MiB / blp 0.0.4 + pandas 3.0.3 + numpy 2.4.6 + blpapi 3.26.5.1 = 129.530 MiB | bbg-fetch 2.0.2 + pandas 3.0.3 + numpy 2.4.6 + blpapi 3.26.5.1 = 129.360 MiB | polars-bloomberg 0.6.0 + polars 1.41.2 + blpapi 3.26.5.1 = 197.296 MiB |
 
 ## Installation
 
