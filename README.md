@@ -137,13 +137,14 @@ bars = blp.bdib("TSLA US Equity", dt="2024-01-15", interval=5)
 Common request patterns:
 
 ```python
-from xbbg import blp
+from xbbg import blp, ovr
 
 # Multiple fields
 info = blp.bdp("NVDA US Equity", ["Security_Name", "GICS_Sector_Name", "PX_LAST"])
 
 # Bloomberg-style overrides
 vwap = blp.bdp("AAPL US Equity", "Eqy_Weighted_Avg_Px", VWAP_Dt="20240115")
+adj = blp.bdp("AAPL US Equity", "CRNCY_ADJ_PX_LAST", overrides=ovr(EQY_FUND_CRNCY="EUR"))
 
 # Bulk data
 holders = blp.bds("AAPL US Equity", "DVD_Hist_All", DVD_Start_Dt="20240101")
@@ -236,6 +237,11 @@ configure(
     auth_method="app",
     app_name="my-app",
     request_pool_size=4,
+    # Opt-in sharding for wide multi-security BDP/BDH requests:
+    # shard_requests=True,
+    # shard_threshold=20,
+    # shard_chunk_size=16,
+    # shard_max_concurrent=4,
     subscription_pool_size=2,
     num_start_attempts=5,
 )
@@ -394,6 +400,7 @@ Timeouts and large responses:
 
 - increase per-request timeout where appropriate
 - split large historical/tick requests into smaller date ranges
+- enable opt-in sharding for wide multi-security `bdp`/`bdh` requests with `shard_requests=True`
 - tune `request_pool_size`, `subscription_pool_size`, queue sizes, and keep-alive settings for managed infrastructure
 
 When reporting issues, include:

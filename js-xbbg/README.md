@@ -104,6 +104,7 @@ npm run bench:subscription-replay -- --fixture tmp/xbtusd-ticks.jsonl --iteratio
 
 ```typescript
 import * as xbbg from '@xbbg/core';
+import { bdp, ovr } from '@xbbg/core';
 
 xbbg.configure({
   host: 'localhost',
@@ -138,6 +139,11 @@ const zfpEngine = await xbbg.connect({
 const hist = await xbbg.blp.abdh(['AAPL US Equity'], ['PX_LAST'], '2024-01-01', '2024-12-31');
 const ref = await xbbg.blp.abdp(['AAPL US Equity'], ['PX_LAST', 'SECURITY_NAME']);
 const bulk = await xbbg.blp.abds(['ES1 Index'], ['FUT_CHAIN_LAST_TRADE_DATES']);
+
+// Composable override helper
+await bdp(['AAPL US Equity'], ['CRNCY_ADJ_PX_LAST'], {
+  overrides: ovr({ EQY_FUND_CRNCY: 'EUR' }),
+});
 const bars = await xbbg.blp.abdib('AAPL US Equity', '2024-12-01', 5);
 const ticks = await xbbg.blp.abdtick(
   'AAPL US Equity',
@@ -230,6 +236,7 @@ const px = await engine.currencyConversion('700 HK Equity', 'USD', '20240101', '
 - `zfpRemote` (`'8194'` or `'8196'`) for Bloomberg-assigned ZFP endpoints in an entitled environment; do not combine it with `host`/`port`/`servers`/`socks5`
 - `socks5` for proxied access to already-provisioned direct Bloomberg endpoints
 - `retryPolicy`, `numStartAttempts`, and recovery settings for reconnect behavior
+- `shardRequests`, `shardThreshold`, `shardChunkSize`, and `shardMaxConcurrent` for opt-in sharding of wide multi-security `bdp`/`bdh` requests
 
 The JS binding forwards these fields directly to the Rust engine, so Node can configure the same auth and transport features already available in the core runtime. Invalid transport combinations such as `zfpRemote` plus direct hosts fail during configuration instead of silently connecting to `localhost:8194`.
 

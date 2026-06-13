@@ -2,7 +2,7 @@ import { expectTypeOf } from 'vitest';
 
 import { tableFromNativeArrowBatch } from '../src/arrow-zero-copy';
 import * as api from '../src/index';
-import type { BackendKind, FormatKind, RequestOptions, StreamOptions } from '../src/index';
+import type { BackendKind, FormatKind, OverridesInput, RequestOptions, StreamOptions } from '../src/index';
 import type { NativeArrowZeroCopyBatch } from '../src/napi';
 import type { RequestInput } from '../src/types';
 
@@ -72,6 +72,7 @@ describe('@xbbg/core surface', () => {
       'ext',
       'Backend',
       'Format',
+      'OverrideSpec',
       'bdp',
       'bdh',
       'bds',
@@ -96,6 +97,7 @@ describe('@xbbg/core surface', () => {
       'getLogLevel',
       'formatDate',
       'formatDateTime',
+      'ovr',
     ] as const;
     for (const key of required) {
       expect(api).toHaveProperty(key);
@@ -106,11 +108,37 @@ describe('@xbbg/core surface', () => {
     const format: FormatKind = api.Format.LONG_TYPED;
     const requestOptions: RequestOptions = { backend, format };
     const streamOptions: StreamOptions = { allFields: true };
+    const overrides: OverridesInput = api.ovr({ EQY_FUND_CRNCY: 'EUR' });
+    const requestWithOverrides: RequestOptions = { backend, format, overrides };
+
 
     expectTypeOf(backend).toExtend<BackendKind>();
     expectTypeOf(format).toExtend<FormatKind>();
     expectTypeOf(requestOptions).toEqualTypeOf<RequestOptions>();
     expectTypeOf(streamOptions).toEqualTypeOf<StreamOptions>();
+    expectTypeOf(overrides).toExtend<OverridesInput>();
+    expectTypeOf(requestWithOverrides).toEqualTypeOf<RequestOptions>();
+  });
+
+  it('normalizes JavaScript override specs', () => {
+    const spec = api
+      .ovr({
+        EQY_FUND_CRNCY: 'EUR',
+        USER_LOCAL_TRADE_DATE: new Date(Date.UTC(2023, 0, 17)),
+      })
+      .merge({ EQY_FUND_CRNCY: 'USD' });
+
+    expect(spec.toPairs()).toStrictEqual([
+      { key: 'EQY_FUND_CRNCY', value: 'USD' },
+      { key: 'USER_LOCAL_TRADE_DATE', value: '20230117' },
+    ]);
+    expect(spec.toObject()).toStrictEqual({
+      EQY_FUND_CRNCY: 'USD',
+      USER_LOCAL_TRADE_DATE: '20230117',
+    });
+    expect(() => api.ovr('BAD' as never)).toThrow(
+      'ovr() expects objects, OverrideSpec, or arrays of override entries',
+    );
   });
 
   it('backend enum is frozen with correct values', () => {
@@ -220,6 +248,10 @@ describe('@xbbg/core surface', () => {
         clientCredentials: '/secure/client.p12',
         trustMaterial: '/secure/trust.p7',
       },
+      shardChunkSize: 3,
+      shardMaxConcurrent: 2,
+      shardRequests: true,
+      shardThreshold: 5,
       zfpRemote: '8194' as const,
     };
     expect(api.configure(advanced)).toStrictEqual(advanced);
@@ -585,6 +617,26 @@ describe('engine wrapper request plumbing', () => {
     expect(engine.calls[0]?.validateFields).toBeTruthy();
     expect(engine.calls[1]?.validateFields).toBeFalsy();
     expect(engine.calls[2]?.validateFields).toBeTruthy();
+  });
+
+  it('forwards JavaScript override specs through bdp and bdh', async () => {
+    const engine = captureRequests();
+
+    await engine.bdp(['IBM US Equity'], ['PX_LAST'], {
+      overrides: api.ovr({ EQY_FUND_CRNCY: 'EUR' }),
+    });
+    await engine.bdh(['IBM US Equity'], ['PX_LAST'], {
+      end: '2024-01-02',
+      overrides: api.ovr([['EQY_FUND_CRNCY', 'USD']]),
+      start: '2024-01-01',
+    });
+
+    expect(engine.calls[0]?.overrides).toStrictEqual([
+      { key: 'EQY_FUND_CRNCY', value: 'EUR' },
+    ]);
+    expect(engine.calls[1]?.overrides).toStrictEqual([
+      { key: 'EQY_FUND_CRNCY', value: 'USD' },
+    ]);
   });
 
   it('forwards intraday timezone controls and typed tick include options', async () => {

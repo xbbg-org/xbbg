@@ -459,6 +459,10 @@ _VALID_CONFIG_KEYS: frozenset[str] = frozenset(
         "zfp_remote",
         "request_pool_size",
         "subscription_pool_size",
+        "shard_requests",
+        "shard_threshold",
+        "shard_chunk_size",
+        "shard_max_concurrent",
         "validation_mode",
         "subscription_flush_threshold",
         "max_event_queue_size",
@@ -531,8 +535,9 @@ def configure(
     Args:
         config: An EngineConfig object with all settings.
         **kwargs: Override individual fields (host, port, request_pool_size,
-            subscription_pool_size, field_cache_path, auth_method, app_name,
-            user_id, ip_address, token, etc.).
+            subscription_pool_size, shard_requests, shard_threshold,
+            shard_chunk_size, shard_max_concurrent, field_cache_path,
+            auth_method, app_name, user_id, ip_address, token, etc.).
 
     Raises:
         TypeError: If an unknown keyword argument is passed.
@@ -546,6 +551,15 @@ def configure(
 
         # Option 1: Using keyword arguments (most common)
         xbbg.configure(request_pool_size=4, subscription_pool_size=2)
+        # Opt-in sharding for wide multi-security BDP/BDH requests
+        xbbg.configure(
+            request_pool_size=6,
+            shard_requests=True,
+            shard_threshold=20,
+            shard_chunk_size=16,
+            shard_max_concurrent=4,
+        )
+
 
         # Option 2: Using EngineConfig object
         from xbbg import EngineConfig
@@ -1029,6 +1043,11 @@ def _normalize_element_alias(key: str, value: Any) -> tuple[str, Any]:
         routed_value = value_aliases.get(value, value)
     except TypeError:
         routed_value = value
+    if canonical_key == "maxDataPoints" and isinstance(routed_value, str):
+        try:
+            routed_value = int(routed_value)
+        except ValueError:
+            pass
     return canonical_key, routed_value
 
 
@@ -1201,6 +1220,88 @@ def _normalize_override_value(value: Any) -> str:
             return formatted
     return str(value)
 
+_OVR_SOURCE_TYPE_ERROR = (
+    "ovr() expects mappings, OverrideSpec, or iterables of (name, value) pairs"
+)
+_OVERRIDES_TYPE_ERROR = (
+    "overrides must be a mapping, OverrideSpec, or a sequence of (name, value) pairs"
+)
+
+
+@dataclass(frozen=True)
+class OverrideSpec(Mapping[str, str]):
+    pairs: tuple[tuple[str, str], ...]
+
+    def __iter__(self):
+        return (key for key, _value in self.pairs)
+
+    def __len__(self) -> int:
+        return len(self.pairs)
+
+    def __getitem__(self, key: str) -> str:
+        for pair_key, pair_value in self.pairs:
+            if pair_key == key:
+                return pair_value
+        raise KeyError(key)
+
+    def items(self):
+        return self.pairs
+
+    def to_pairs(self) -> list[tuple[str, str]]:
+        return list(self.pairs)
+
+    def to_dict(self) -> dict[str, str]:
+        return dict(self.pairs)
+
+    def __or__(self, other: Any) -> OverrideSpec:
+        try:
+            return ovr(self, other)
+        except TypeError:
+            return cast("Any", NotImplemented)
+
+    def __ror__(self, other: Any) -> OverrideSpec:
+        try:
+            return ovr(other, self)
+        except TypeError:
+            return cast("Any", NotImplemented)
+
+
+def _iter_source_pairs(value: Any, error_message: str) -> Iterable[tuple[Any, Any]]:
+    if isinstance(value, OverrideSpec):
+        return value.pairs
+    if isinstance(value, Mapping):
+        return value.items()
+    if isinstance(value, (str, bytes, bytearray)):
+        raise TypeError(error_message)
+    if isinstance(value, Iterable):
+        return _validated_source_pairs(value, error_message)
+    raise TypeError(error_message)
+
+
+def _validated_source_pairs(value: Iterable[Any], error_message: str) -> Iterable[tuple[Any, Any]]:
+    for entry in value:
+        if isinstance(entry, (str, bytes, bytearray)):
+            raise TypeError(error_message)
+        try:
+            key, item_value = entry
+        except (TypeError, ValueError):
+            raise TypeError(error_message) from None
+        yield key, item_value
+
+
+def ovr(*sources: Any, **kwargs: Any) -> OverrideSpec:
+    merged: dict[str, str] = {}
+    for source in sources:
+        for key, value in _iter_source_pairs(source, _OVR_SOURCE_TYPE_ERROR):
+            merged[str(key)] = _normalize_override_value(value)
+    for key, value in kwargs.items():
+        merged[str(key)] = _normalize_override_value(value)
+    return OverrideSpec(tuple(merged.items()))
+
+
+def _iter_override_pairs(value: Any) -> Iterable[tuple[Any, Any]]:
+    return _iter_source_pairs(value, _OVERRIDES_TYPE_ERROR)
+
 
 async def _aroute_kwargs(
     service: str | Service,
@@ -1269,12 +1370,8 @@ async def _aroute_kwargs(
     # aliases (for example Points -> maxDataPoints) are routed as elements, matching 0.x.
     if "overrides" in kwargs:
         ovrd = kwargs.pop("overrides")
-        if isinstance(ovrd, dict):
-            for key, value in ovrd.items():
-                route_candidate(key, value)
-        elif isinstance(ovrd, list):
-            for key, value in ovrd:
-                route_candidate(key, value)
+        for key, value in _iter_override_pairs(ovrd):
+            route_candidate(key, value)
 
     # Route remaining kwargs
     for key in list(kwargs.keys()):

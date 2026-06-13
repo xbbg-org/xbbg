@@ -66,6 +66,14 @@ export interface EngineConfig {
   zfpRemote?: '8194' | '8196';
   requestPoolSize?: number;
   subscriptionPoolSize?: number;
+  /** Enable request sharding for eligible multi-security bdp/bdh requests. Default false. */
+  shardRequests?: boolean;
+  /** Minimum securities before request sharding applies. Default 20. */
+  shardThreshold?: number;
+  /** Maximum securities per sharded request. Default 16. */
+  shardChunkSize?: number;
+  /** Maximum concurrent shard requests per user request. Default 4. */
+  shardMaxConcurrent?: number;
   validationMode?: string;
   subscriptionFlushThreshold?: number;
   maxEventQueueSize?: number;
@@ -145,9 +153,22 @@ export interface FieldInfo {
 
 export type PrimitiveValue = string | number | boolean;
 export type OverridesMap = Record<string, PrimitiveValue>;
+export type OverrideValue = PrimitiveValue | Date | { toJSDate: () => Date };
+export type OverrideObject = Record<string, OverrideValue>;
+export interface OverrideSpecLike {
+  readonly pairs: readonly StringPair[];
+  toPairs(): StringPair[];
+  toObject(): OverridesMap;
+  merge(...sources: OverrideSource[]): OverrideSpecLike;
+}
+export type OverrideEntry =
+  | { readonly key: string; readonly value: OverrideValue }
+  | readonly [string, OverrideValue];
+export type OverrideSource = OverrideObject | OverrideSpecLike | readonly OverrideEntry[];
+export type OverridesInput = OverrideSource;
 
 export interface BdpOptions {
-  overrides?: OverridesMap;
+  overrides?: OverridesInput;
   kwargs?: OverridesMap;
   format?: string;
   backend?: BackendKind;
@@ -158,7 +179,7 @@ export interface BdpOptions {
 export interface BdhOptions {
   start?: DateLike;
   end?: DateLike;
-  overrides?: OverridesMap;
+  overrides?: OverridesInput;
   kwargs?: OverridesMap;
   format?: string;
   backend?: BackendKind;
@@ -208,14 +229,14 @@ export interface BeqsOptions {
   asof?: DateLike;
   screenType?: string;
   group?: string;
-  overrides?: OverridesMap;
+  overrides?: OverridesInput;
   kwargs?: OverridesMap;
   format?: string;
   backend?: BackendKind;
 }
 
 export interface BsrchOptions {
-  overrides?: OverridesMap;
+  overrides?: OverridesInput;
   kwargs?: OverridesMap;
   format?: string;
   backend?: BackendKind;
@@ -249,7 +270,7 @@ export interface BlkpOptions {
 }
 
 export interface RequestOptions {
-  overrides?: OverridesMap;
+  overrides?: OverridesInput;
   kwargs?: OverridesMap;
   format?: string;
   backend?: BackendKind;

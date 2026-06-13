@@ -421,6 +421,10 @@ async def test_bdh_presentation_aliases_shape_before_backend_conversion(
 ):
     if required_module is not None:
         pytest.importorskip(required_module)
+        from xbbg.backend import check_backend
+
+        if backend is not None and not check_backend(backend, raise_on_error=False):
+            pytest.skip(f"backend {backend} is not usable")
 
     result = await _call_async(
         blp.abdh,
@@ -465,3 +469,17 @@ async def test_explicit_overrides_route_request_aliases_to_elements(endpoint_cap
     kwargs = endpoint_capture["kwargs"]
     assert kwargs["elements"] == [("maxDataPoints", 1)]
     assert kwargs["overrides"] == [("EQY_FUND_CRNCY", "EUR")]
+
+@pytest.mark.asyncio
+async def test_ovr_routes_through_existing_override_path(endpoint_capture):
+    await blp.abdtick(
+        "ESM6 Index",
+        "2026-04-17T08:00:00",
+        "2026-04-17T18:23:33",
+        overrides=blp.ovr(Points=1, EQY_FUND_CRNCY="EUR"),
+    )
+
+    kwargs = endpoint_capture["kwargs"]
+    assert kwargs["elements"] == [("maxDataPoints", 1)]
+    assert kwargs["overrides"] == [("EQY_FUND_CRNCY", "EUR")]
+

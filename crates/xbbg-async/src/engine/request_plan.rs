@@ -262,6 +262,11 @@ impl PreparedRequest {
     pub(crate) fn params(&self) -> &RequestParams {
         &self.params
     }
+    pub(crate) fn with_securities(&self, securities: Vec<String>) -> Self {
+        let mut cloned = self.clone();
+        cloned.params.securities = Some(securities);
+        cloned
+    }
 
     pub(crate) fn operation(&self) -> &Operation {
         &self.operation

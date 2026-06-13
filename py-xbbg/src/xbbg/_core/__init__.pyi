@@ -377,6 +377,46 @@ class PyEngineConfig:
         Number of pre-warmed subscription sessions (default: 1)
         """
     @property
+    def shard_requests(self) -> builtins.bool:
+        r"""
+        Enable request sharding for eligible multi-security reference/history requests.
+        """
+    @shard_requests.setter
+    def shard_requests(self, value: builtins.bool) -> None:
+        r"""
+        Enable request sharding for eligible multi-security reference/history requests.
+        """
+    @property
+    def shard_threshold(self) -> builtins.int:
+        r"""
+        Minimum securities before request sharding applies (default: 20).
+        """
+    @shard_threshold.setter
+    def shard_threshold(self, value: builtins.int) -> None:
+        r"""
+        Minimum securities before request sharding applies (default: 20).
+        """
+    @property
+    def shard_chunk_size(self) -> builtins.int:
+        r"""
+        Maximum securities per sharded request (default: 16).
+        """
+    @shard_chunk_size.setter
+    def shard_chunk_size(self, value: builtins.int) -> None:
+        r"""
+        Maximum securities per sharded request (default: 16).
+        """
+    @property
+    def shard_max_concurrent(self) -> builtins.int:
+        r"""
+        Maximum concurrent shard requests per user request (default: 4).
+        """
+    @shard_max_concurrent.setter
+    def shard_max_concurrent(self, value: builtins.int) -> None:
+        r"""
+        Maximum concurrent shard requests per user request (default: 4).
+        """
+    @property
     def validation_mode(self) -> builtins.str:
         r"""
         Validation mode: "disabled" (default), "strict", or "lenient"
