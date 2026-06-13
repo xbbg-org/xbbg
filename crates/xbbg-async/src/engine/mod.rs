@@ -54,6 +54,8 @@ pub use subscription_pool::{SessionClaim, SubscriptionCommandHandle, Subscriptio
 pub use worker::UnifiedRequestState;
 
 const SESSION_STARTUP_TIMEOUT_MS: u32 = 30_000;
+pub type OverridePairs = Vec<(String, String)>;
+pub type SecurityOverridePairs = Vec<(String, OverridePairs)>;
 
 fn parse_operation_lossless(operation: &str) -> Operation {
     match Operation::from_str(operation) {
@@ -847,8 +849,10 @@ pub struct RequestParams {
     pub security: Option<String>,
     /// Fields to retrieve
     pub fields: Option<Vec<String>>,
-    /// Field overrides (for standard Bloomberg override format)
-    pub overrides: Option<Vec<(String, String)>>,
+    /// Global field overrides applied to every security.
+    pub overrides: Option<OverridePairs>,
+    /// Per-security field overrides. Each entry applies only to matching securities.
+    pub security_overrides: Option<SecurityOverridePairs>,
     /// Generic request elements (for BQL expression, bsrch domain, etc.)
     pub elements: Option<Vec<(String, String)>>,
     /// Raw kwargs to route into elements/overrides using schema-driven logic.
@@ -937,7 +941,8 @@ pub struct RequestParamsInput {
     pub securities: Option<Vec<String>>,
     pub security: Option<String>,
     pub fields: Option<Vec<String>>,
-    pub overrides: Option<Vec<(String, String)>>,
+    pub overrides: Option<OverridePairs>,
+    pub security_overrides: Option<SecurityOverridePairs>,
     pub elements: Option<Vec<(String, String)>>,
     pub kwargs: Option<HashMap<String, String>>,
     pub start_date: Option<String>,
@@ -1007,6 +1012,7 @@ impl RequestParamsInput {
             security: self.security,
             fields: self.fields,
             overrides: self.overrides,
+            security_overrides: self.security_overrides,
             elements: self.elements,
             kwargs: self.kwargs,
             start_date: self.start_date,
@@ -1258,11 +1264,116 @@ fn shard_security_chunks(securities: &[String], chunk_size: usize) -> Vec<Vec<St
         .collect()
 }
 
+fn merge_override_pairs(
+    global: Option<&OverridePairs>,
+    security: Option<&OverridePairs>,
+) -> Option<OverridePairs> {
+    let capacity = global.map_or(0, Vec::len) + security.map_or(0, Vec::len);
+    if capacity == 0 {
+        return None;
+    }
+
+    let mut merged = Vec::with_capacity(capacity);
+    if let Some(global) = global {
+        merged.extend(global.iter().cloned());
+    }
+    if let Some(security) = security {
+        for (key, value) in security {
+            if let Some((_, existing_value)) = merged
+                .iter_mut()
+                .find(|(existing_key, _)| existing_key == key)
+            {
+                *existing_value = value.clone();
+            } else {
+                merged.push((key.clone(), value.clone()));
+            }
+        }
+    }
+
+    Some(merged)
+}
+
+fn push_security_override_shard(
+    shards: &mut Vec<PreparedRequest>,
+    prepared: &PreparedRequest,
+    securities: &mut Vec<String>,
+    security_overrides: Option<&OverridePairs>,
+) {
+    if securities.is_empty() {
+        return;
+    }
+    let merged_overrides =
+        merge_override_pairs(prepared.params().overrides.as_ref(), security_overrides);
+    shards
+        .push(prepared.with_securities_and_overrides(std::mem::take(securities), merged_overrides));
+}
+
+fn security_override_shards(
+    config: &EngineConfig,
+    prepared: &PreparedRequest,
+) -> Option<Vec<PreparedRequest>> {
+    let security_overrides = prepared
+        .params()
+        .security_overrides
+        .as_ref()
+        .filter(|entries| !entries.is_empty())?;
+    let securities = prepared.params().securities.as_ref()?;
+    if securities.is_empty() {
+        return None;
+    }
+
+    let lookup: HashMap<&str, &OverridePairs> = security_overrides
+        .iter()
+        .map(|(security, overrides)| (security.as_str(), overrides))
+        .collect();
+    let max_chunk = if config.shard_requests {
+        config.shard_chunk_size
+    } else {
+        usize::MAX
+    };
+
+    let mut shards = Vec::new();
+    let mut current_securities = Vec::new();
+    let mut current_overrides: Option<&OverridePairs> = None;
+    let mut have_current = false;
+
+    for security in securities {
+        let next_overrides = lookup.get(security.as_str()).copied();
+        if have_current
+            && (current_overrides != next_overrides || current_securities.len() >= max_chunk)
+        {
+            push_security_override_shard(
+                &mut shards,
+                prepared,
+                &mut current_securities,
+                current_overrides,
+            );
+            have_current = false;
+        }
+        if !have_current {
+            current_overrides = next_overrides;
+            have_current = true;
+        }
+        current_securities.push(security.clone());
+    }
+
+    if have_current {
+        push_security_override_shard(
+            &mut shards,
+            prepared,
+            &mut current_securities,
+            current_overrides,
+        );
+    }
+
+    Some(shards)
+}
+
 fn sharded_requests(
     config: &EngineConfig,
     prepared: &PreparedRequest,
 ) -> Option<Vec<PreparedRequest>> {
-    if !config.shard_requests || prepared.is_raw() {
+    if prepared.is_raw() {
         return None;
     }
     if !matches!(
@@ -1277,6 +1388,13 @@ fn sharded_requests(
     ) {
         return None;
     }
+    if let Some(shards) = security_override_shards(config, prepared) {
+        return Some(shards);
+    }
+    if !config.shard_requests {
+        return None;
+    }
+
     let securities = prepared.params().securities.as_ref()?;
     if securities.is_empty() || securities.len() < config.shard_threshold {
         return None;
@@ -2567,6 +2685,152 @@ mod tests {
         assert!(err.contains("subscription_stream_capacity must be greater than zero"));
     }
 
+    #[test]
+    fn test_security_overrides_shard_by_contiguous_override_set_and_merge_globals() {
+        let prepared = PreparedRequest::prepare(
+            RequestParams {
+                service: Service::RefData.to_string(),
+                operation: Operation::ReferenceData.to_string(),
+                securities: Some(vec![
+                    "A".to_string(),
+                    "B".to_string(),
+                    "C".to_string(),
+                    "D".to_string(),
+                ]),
+                fields: Some(vec!["PX_LAST".to_string()]),
+                overrides: Some(vec![("CRNCY".to_string(), "USD".to_string())]),
+                security_overrides: Some(vec![
+                    (
+                        "A".to_string(),
+                        vec![("CRNCY".to_string(), "EUR".to_string())],
+                    ),
+                    (
+                        "C".to_string(),
+                        vec![("CRNCY".to_string(), "JPY".to_string())],
+                    ),
+                    (
+                        "D".to_string(),
+                        vec![("CRNCY".to_string(), "JPY".to_string())],
+                    ),
+                ]),
+                ..Default::default()
+            },
+            &empty_schema(),
+        )
+        .expect("prepared refdata with per-security overrides");
+
+        let shards = sharded_requests(&EngineConfig::default(), &prepared).expect("shards");
+        assert_eq!(shards.len(), 3);
+        assert_eq!(
+            shards[0].params().securities.as_deref(),
+            Some(&["A".to_string()][..])
+        );
+        assert_eq!(
+            shards[0].params().overrides.as_deref(),
+            Some(&[("CRNCY".to_string(), "EUR".to_string())][..])
+        );
+        assert_eq!(
+            shards[1].params().securities.as_deref(),
+            Some(&["B".to_string()][..])
+        );
+        assert_eq!(
+            shards[1].params().overrides.as_deref(),
+            Some(&[("CRNCY".to_string(), "USD".to_string())][..])
+        );
+        assert_eq!(
+            shards[2].params().securities.as_deref(),
+            Some(&["C".to_string(), "D".to_string()][..])
+        );
+        assert_eq!(
+            shards[2].params().overrides.as_deref(),
+            Some(&[("CRNCY".to_string(), "JPY".to_string())][..])
+        );
+        assert!(shards
+            .iter()
+            .all(|shard| shard.params().security_overrides.is_none()));
+    }
+
+    #[test]
+    fn test_security_overrides_honor_enabled_shard_chunk_size() {
+        let prepared = PreparedRequest::prepare(
+            RequestParams {
+                service: Service::RefData.to_string(),
+                operation: Operation::ReferenceData.to_string(),
+                securities: Some(vec!["A".to_string(), "B".to_string(), "C".to_string()]),
+                fields: Some(vec!["PX_LAST".to_string()]),
+                security_overrides: Some(vec![
+                    (
+                        "A".to_string(),
+                        vec![("EQY_FUND_CRNCY".to_string(), "EUR".to_string())],
+                    ),
+                    (
+                        "B".to_string(),
+                        vec![("EQY_FUND_CRNCY".to_string(), "EUR".to_string())],
+                    ),
+                    (
+                        "C".to_string(),
+                        vec![("EQY_FUND_CRNCY".to_string(), "EUR".to_string())],
+                    ),
+                ]),
+                ..Default::default()
+            },
+            &empty_schema(),
+        )
+        .expect("prepared refdata with same per-security overrides");
+
+        let shards = sharded_requests(
+            &EngineConfig {
+                shard_requests: true,
+                shard_threshold: 2,
+                shard_chunk_size: 2,
+                shard_max_concurrent: 2,
+                ..Default::default()
+            },
+            &prepared,
+        )
+        .expect("shards");
+
+        assert_eq!(shards.len(), 2);
+        assert_eq!(
+            shards[0].params().securities.as_deref(),
+            Some(&["A".to_string(), "B".to_string()][..])
+        );
+        assert_eq!(
+            shards[1].params().securities.as_deref(),
+            Some(&["C".to_string()][..])
+        );
+        for shard in shards {
+            assert_eq!(
+                shard.params().overrides.as_deref(),
+                Some(&[("EQY_FUND_CRNCY".to_string(), "EUR".to_string())][..])
+            );
+        }
+    }
+
+    #[test]
+    fn test_security_overrides_reject_unknown_security() {
+        let err = PreparedRequest::prepare(
+            RequestParams {
+                service: Service::RefData.to_string(),
+                operation: Operation::ReferenceData.to_string(),
+                securities: Some(vec!["A".to_string()]),
+                fields: Some(vec!["PX_LAST".to_string()]),
+                security_overrides: Some(vec![(
+                    "B".to_string(),
+                    vec![("CRNCY".to_string(), "EUR".to_string())],
+                )]),
+                ..Default::default()
+            },
+            &empty_schema(),
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            err.contains("security_overrides contains security not in request: B"),
+            "unexpected error: {err}"
+        );
+    }
     #[test]
     fn test_engine_config_defaults_disable_sharding() {
         let config = EngineConfig::default();

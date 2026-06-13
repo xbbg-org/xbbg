@@ -5,6 +5,7 @@ type ZodOutput<T> = z.ZodType<T, z.ZodTypeDef, unknown>;
 
 export type PrimitiveValue = string | number | boolean;
 export type PrimitiveMap = Record<string, PrimitiveValue>;
+export type OverrideMap = Record<string, PrimitiveValue | PrimitiveMap>;
 
 export const REFERENCE_FORMATS = ["long", "long_typed", "long_metadata"] as const;
 export const HISTORICAL_FORMATS = [
@@ -17,9 +18,8 @@ export const HISTORICAL_FORMATS = [
 
 export type ReferenceFormat = (typeof REFERENCE_FORMATS)[number];
 export type HistoricalFormat = (typeof HISTORICAL_FORMATS)[number];
-
 export interface ReferenceCallOptions {
-  readonly overrides?: PrimitiveMap;
+  readonly overrides?: OverrideMap;
   readonly kwargs?: PrimitiveMap;
   readonly validateFields?: boolean;
 }
@@ -41,7 +41,7 @@ export interface BdhInput {
   readonly fields: readonly string[];
   readonly start: string;
   readonly end: string;
-  readonly overrides?: PrimitiveMap;
+  readonly overrides?: OverrideMap;
   readonly kwargs?: PrimitiveMap;
   readonly format?: HistoricalFormat;
   readonly validateFields?: boolean;
@@ -387,6 +387,65 @@ function primitiveMap(tool: string, field: string): ZodOutput<PrimitiveMap | und
     });
 }
 
+function overridesMap(tool: string, field: string): ZodOutput<OverrideMap | undefined> {
+  return z
+    .record(
+      z.string().min(1),
+      z.union([primitiveSchema, z.record(z.string().min(1), primitiveSchema)]),
+    )
+    .optional()
+    .transform((value, context) => {
+      if (value === undefined) {
+        return undefined;
+      }
+      const normalized: OverrideMap = {};
+      for (const [key, entry] of Object.entries(value)) {
+        const normalizedKey = key.trim();
+        if (normalizedKey.length === 0) {
+          return normalizationIssue(context, tool, field, new TypeError("contains an empty key"));
+        }
+        if (typeof entry !== "object" || entry === null) {
+          if (typeof entry === "string" && entry.length === 0) {
+            return normalizationIssue(
+              context,
+              tool,
+              field,
+              new TypeError(`${normalizedKey} must not be an empty string`),
+            );
+          }
+          normalized[normalizedKey] = entry;
+          continue;
+        }
+
+        const normalizedOverrides: PrimitiveMap = {};
+        for (const [overrideKey, overrideValue] of Object.entries(entry)) {
+          const normalizedOverrideKey = overrideKey.trim();
+          if (normalizedOverrideKey.length === 0) {
+            return normalizationIssue(
+              context,
+              tool,
+              field,
+              new TypeError(`${normalizedKey} contains an empty override key`),
+            );
+          }
+          if (typeof overrideValue === "string" && overrideValue.length === 0) {
+            return normalizationIssue(
+              context,
+              tool,
+              field,
+              new TypeError(
+                `${normalizedKey}.${normalizedOverrideKey} must not be an empty string`,
+              ),
+            );
+          }
+          normalizedOverrides[normalizedOverrideKey] = overrideValue;
+        }
+        normalized[normalizedKey] = normalizedOverrides;
+      }
+      return normalized;
+    });
+}
+
 function dateField(tool: string, field: string): ZodOutput<string> {
   return z
     .union([z.string(), z.number()])
@@ -467,8 +526,8 @@ export function createBdpSchema(options: NormalizedBloombergToolsOptions): ZodOu
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
     ),
-    overrides: primitiveMap(tool, "overrides").describe(
-      "Bloomberg field overrides as flat string/number/boolean values only.",
+    overrides: overridesMap(tool, "overrides").describe(
+      "Bloomberg field overrides. Use primitive values for global overrides and nested primitive maps keyed by exact security for per-security overrides.",
     ),
     securities: stringArray(
       tool,
@@ -501,8 +560,8 @@ export function createBdhSchema(options: NormalizedBloombergToolsOptions): ZodOu
       kwargs: primitiveMap(tool, "kwargs").describe(
         "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
       ),
-      overrides: primitiveMap(tool, "overrides").describe(
-        "Bloomberg overrides as flat string/number/boolean values only.",
+      overrides: overridesMap(tool, "overrides").describe(
+        "Bloomberg overrides. Use primitive values for global overrides and nested primitive maps keyed by exact security for per-security overrides.",
       ),
       securities: stringArray(
         tool,
@@ -539,8 +598,8 @@ export function createBdsSchema(options: NormalizedBloombergToolsOptions): ZodOu
     kwargs: primitiveMap(tool, "kwargs").describe(
       "Advanced Bloomberg request kwargs as flat string/number/boolean values only.",
     ),
-    overrides: primitiveMap(tool, "overrides").describe(
-      "Bloomberg overrides as flat string/number/boolean values only.",
+    overrides: overridesMap(tool, "overrides").describe(
+      "Bloomberg overrides. Use primitive values for global overrides and nested primitive maps keyed by exact security for per-security overrides.",
     ),
     securities: stringArray(
       tool,

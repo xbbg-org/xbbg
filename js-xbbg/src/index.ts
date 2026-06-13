@@ -65,6 +65,7 @@ import type {
   MarketRule,
   OverridesMap,
   OverrideEntry,
+  OverrideNestedSource,
   OverrideObject,
   OverrideSource,
   OverrideSpecLike,
@@ -77,6 +78,7 @@ import type {
   RequestInput,
   RequestOptions,
   ServerAddress,
+  SecurityOverrideSpec,
   SessionWindowsInfo,
   Socks5Config,
   StreamOptions,
@@ -390,41 +392,131 @@ function normalizeOverrideEntry(entry: unknown): readonly [string, unknown] {
   throw new TypeError(OVR_SOURCE_TYPE_ERROR);
 }
 
-function addOverrideSource(source: OverrideSource, merged: Map<string, string>): void {
+interface OverrideState {
+  readonly merged: Map<string, string>;
+  readonly securityMerged: Map<string, Map<string, string>>;
+  readonly securityOrder: string[];
+}
+
+function createOverrideState(): OverrideState {
+  return {
+    merged: new Map<string, string>(),
+    securityMerged: new Map<string, Map<string, string>>(),
+    securityOrder: [],
+  };
+}
+
+function isPerSecurityOverrideValue(value: unknown): value is OverrideSource {
+  return isOverrideSpecLike(value) || Array.isArray(value) || isOverrideObject(value);
+}
+
+function addSecurityOverrideSource(
+  security: string,
+  source: OverrideSource,
+  state: OverrideState,
+): void {
+  const spec = ovr(source);
+  const pairs = spec.toPairs();
+  if (pairs.length === 0) {
+    return;
+  }
+  let merged = state.securityMerged.get(security);
+  if (merged === undefined) {
+    merged = new Map<string, string>();
+    state.securityMerged.set(security, merged);
+    state.securityOrder.push(security);
+  }
+  for (const pair of pairs) {
+    merged.set(pair.key, pair.value);
+  }
+}
+
+function addOverridePair(key: string, value: unknown, state: OverrideState): void {
+  if (isPerSecurityOverrideValue(value)) {
+    addSecurityOverrideSource(key, value, state);
+    return;
+  }
+  state.merged.set(key, normalizeOverrideValue(value));
+}
+
+function addOverrideSource(source: OverrideSource, state: OverrideState): void {
   if (typeof source === 'string' || ArrayBuffer.isView(source)) {
     throw new TypeError(OVR_SOURCE_TYPE_ERROR);
   }
   if (isOverrideSpecLike(source)) {
     for (const pair of source.toPairs()) {
-      merged.set(pair.key, normalizeOverrideValue(pair.value));
+      state.merged.set(pair.key, normalizeOverrideValue(pair.value));
+    }
+    const securityOverrides =
+      typeof source.toSecurityOverrides === 'function'
+        ? source.toSecurityOverrides()
+        : ((source as { securityOverrides?: readonly SecurityOverrideSpec[] }).securityOverrides ??
+          []);
+    for (const entry of securityOverrides) {
+      addSecurityOverrideSource(entry.security, entry.overrides as OverrideSource, state);
     }
     return;
   }
   if (Array.isArray(source)) {
     for (const entry of source) {
       const [key, value] = normalizeOverrideEntry(entry);
-      merged.set(key, normalizeOverrideValue(value));
+      addOverridePair(key, value, state);
     }
     return;
   }
   if (isOverrideObject(source)) {
     for (const [key, value] of Object.entries(source)) {
-      merged.set(key, normalizeOverrideValue(value));
+      addOverridePair(key, value, state);
     }
     return;
   }
   throw new TypeError(OVR_SOURCE_TYPE_ERROR);
 }
 
+function securityOverridesFromState(state: OverrideState): SecurityOverrideSpec[] {
+  return state.securityOrder.flatMap((security) => {
+    const pairs = state.securityMerged.get(security);
+    if (pairs === undefined || pairs.size === 0) {
+      return [];
+    }
+    return [
+      {
+        overrides: [...pairs].map(([key, value]) => ({ key, value })),
+        security,
+      },
+    ];
+  });
+}
+
 export class OverrideSpec implements OverrideSpecLike {
   public readonly pairs: readonly StringPair[];
 
-  public constructor(pairs: readonly StringPair[]) {
+  public readonly securityOverrides: readonly SecurityOverrideSpec[];
+
+  public constructor(
+    pairs: readonly StringPair[],
+    securityOverrides: readonly SecurityOverrideSpec[] = [],
+  ) {
     this.pairs = Object.freeze(
       pairs.map((pair) =>
         Object.freeze({
           key: pair.key,
           value: pair.value,
+        }),
+      ),
+    );
+    this.securityOverrides = Object.freeze(
+      securityOverrides.map((entry) =>
+        Object.freeze({
+          overrides: Object.freeze(
+            entry.overrides.map((pair) =>
+              Object.freeze({
+                key: pair.key,
+                value: pair.value,
+              }),
+            ),
+          ),
+          security: entry.security,
         }),
       ),
     );
@@ -442,21 +534,60 @@ export class OverrideSpec implements OverrideSpecLike {
     return Object.fromEntries(this.pairs.map((pair) => [pair.key, pair.value]));
   }
 
+  public toSecurityOverrides(): SecurityOverrideSpec[] {
+    return this.securityOverrides.map((entry) => ({
+      overrides: entry.overrides.map((pair) => ({ key: pair.key, value: pair.value })),
+      security: entry.security,
+    }));
+  }
+
   public merge(...sources: OverrideSource[]): OverrideSpec {
     return ovr(this, ...sources);
+  }
+
+  public forSecurity(security: string, ...sources: OverrideSource[]): OverrideSpec {
+    return ovr(this, { [security]: ovr(...sources) });
   }
 }
 
 export function ovr(...sources: OverrideSource[]): OverrideSpec {
-  const merged = new Map<string, string>();
+  const state = createOverrideState();
   for (const source of sources) {
-    addOverrideSource(source, merged);
+    addOverrideSource(source, state);
   }
-  return new OverrideSpec([...merged].map(([key, value]) => ({ key, value })));
+  return new OverrideSpec(
+    [...state.merged].map(([key, value]) => ({ key, value })),
+    securityOverridesFromState(state),
+  );
 }
 
 function mapOverridesToPairs(input: OverridesInput | undefined): StringPair[] | undefined {
-  return input === undefined ? undefined : ovr(input).toPairs();
+  if (input === undefined) {
+    return undefined;
+  }
+  const spec = ovr(input);
+  if (spec.toSecurityOverrides().length > 0) {
+    throw new TypeError('Per-security overrides are only supported by bdp(), bdh(), and bds()');
+  }
+  return spec.toPairs();
+}
+
+interface RequestOverrideParts {
+  readonly overrides?: StringPair[];
+  readonly securityOverrides?: SecurityOverrideSpec[];
+}
+
+function mapOverridesToRequestParts(input: OverridesInput | undefined): RequestOverrideParts {
+  if (input === undefined) {
+    return {};
+  }
+  const spec = ovr(input);
+  const overrides = spec.toPairs();
+  const securityOverrides = spec.toSecurityOverrides();
+  return {
+    ...(overrides.length === 0 ? {} : { overrides }),
+    ...(securityOverrides.length === 0 ? {} : { securityOverrides }),
+  };
 }
 
 type BdtickBooleanOption =
@@ -1106,7 +1237,18 @@ export class Engine {
 
   public async request(params: RequestInput): Promise<unknown> {
     const backend = normalizeBackend(params.backend);
-    const { backend: _discarded, ...nativeParams } = params;
+    const {
+      backend: _discarded,
+      overrides,
+      securityOverrides: legacySecurityOverrides,
+      ...rest
+    } = params as RequestInput & { readonly securityOverrides?: unknown };
+    if (legacySecurityOverrides !== undefined) {
+      throw new TypeError(
+        'Use overrides: ovr({ "<SECURITY>": { ... } }) for per-security overrides',
+      );
+    }
+    const nativeParams = { ...rest, ...mapOverridesToRequestParts(overrides) };
     try {
       const buffer = await this.inner.request(nativeParams);
       return ipcToBackend(buffer, backend);
@@ -1116,8 +1258,18 @@ export class Engine {
   }
 
   public async requestRaw(params: RequestInput): Promise<Buffer> {
+    const {
+      overrides,
+      securityOverrides: legacySecurityOverrides,
+      ...rest
+    } = params as RequestInput & { readonly securityOverrides?: unknown };
+    if (legacySecurityOverrides !== undefined) {
+      throw new TypeError(
+        'Use overrides: ovr({ "<SECURITY>": { ... } }) for per-security overrides',
+      );
+    }
     try {
-      return await this.inner.request(params);
+      return await this.inner.request({ ...rest, ...mapOverridesToRequestParts(overrides) });
     } catch (error) {
       throw wrapError(error);
     }
@@ -1136,7 +1288,7 @@ export class Engine {
       includeSecurityErrors: Boolean(options.includeSecurityErrors),
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'ReferenceDataRequest',
-      overrides: mapOverridesToPairs(options.overrides),
+      overrides: options.overrides,
       securities: tickers,
       service: '//blp/refdata',
       validateFields: options.validateFields,
@@ -1155,7 +1307,7 @@ export class Engine {
       format: options.format,
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'ReferenceDataRequest',
-      overrides: mapOverridesToPairs(options.overrides),
+      overrides: options.overrides,
       securities: tickers,
       service: '//blp/refdata',
       validateFields: options.validateFields,
@@ -1175,7 +1327,7 @@ export class Engine {
       format: options.format,
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'HistoricalDataRequest',
-      overrides: mapOverridesToPairs(options.overrides),
+      overrides: options.overrides,
       securities: tickers,
       service: '//blp/refdata',
       startDate: formatDate(options.start),
@@ -2232,6 +2384,7 @@ export type {
   MarketRule,
   OverridesMap,
   OverrideEntry,
+  OverrideNestedSource,
   OverrideObject,
   OverrideSource,
   OverrideSpecLike,
@@ -2244,6 +2397,7 @@ export type {
   RequestInput,
   RequestOptions,
   ServerAddress,
+  SecurityOverrideSpec,
   SessionWindowsInfo,
   Socks5Config,
   StreamOptions,

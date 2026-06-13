@@ -1228,6 +1228,7 @@ _OVERRIDES_TYPE_ERROR = "overrides must be a mapping, OverrideSpec, or a sequenc
 @dataclass(frozen=True)
 class OverrideSpec(Mapping[str, str]):
     pairs: tuple[tuple[str, str], ...]
+    security_pairs: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
 
     def __iter__(self):
         return (key for key, _value in self.pairs)
@@ -1249,6 +1250,12 @@ class OverrideSpec(Mapping[str, str]):
 
     def to_dict(self) -> dict[str, str]:
         return dict(self.pairs)
+
+    def to_security_pairs(self) -> list[tuple[str, list[tuple[str, str]]]]:
+        return [(security, list(overrides)) for security, overrides in self.security_pairs]
+
+    def for_security(self, security: str, *sources: Any, **kwargs: Any) -> OverrideSpec:
+        return ovr(self, {security: ovr(*sources, **kwargs)})
 
     def __or__(self, other: Any) -> OverrideSpec:
         try:
@@ -1286,18 +1293,72 @@ def _validated_source_pairs(value: Iterable[Any], error_message: str) -> Iterabl
         yield key, item_value
 
 
+def _is_per_security_override_source(value: Any) -> bool:
+    if isinstance(value, OverrideSpec):
+        return True
+    if isinstance(value, Mapping):
+        return True
+    if isinstance(value, (str, bytes, bytearray)):
+        return False
+    return isinstance(value, Iterable)
+
+
+def _merge_security_pairs(
+    merged: dict[str, dict[str, str]],
+    order: list[str],
+    security: str,
+    source: Any,
+) -> None:
+    spec = ovr(source)
+    pairs = spec.to_pairs()
+    if not pairs:
+        return
+    if security not in merged:
+        merged[security] = {}
+        order.append(security)
+    merged[security].update(pairs)
+
+
 def ovr(*sources: Any, **kwargs: Any) -> OverrideSpec:
     merged: dict[str, str] = {}
+    security_merged: dict[str, dict[str, str]] = {}
+    security_order: list[str] = []
+
     for source in sources:
+        if isinstance(source, OverrideSpec):
+            merged.update(source.pairs)
+            for security, overrides in source.security_pairs:
+                _merge_security_pairs(security_merged, security_order, security, overrides)
+            continue
         for key, value in _iter_source_pairs(source, _OVR_SOURCE_TYPE_ERROR):
-            merged[str(key)] = _normalize_override_value(value)
+            key_str = str(key)
+            if _is_per_security_override_source(value):
+                _merge_security_pairs(security_merged, security_order, key_str, value)
+            else:
+                merged[key_str] = _normalize_override_value(value)
+
     for key, value in kwargs.items():
         merged[str(key)] = _normalize_override_value(value)
-    return OverrideSpec(tuple(merged.items()))
+
+    security_pairs = tuple((security, tuple(security_merged[security].items())) for security in security_order)
+    return OverrideSpec(tuple(merged.items()), security_pairs)
 
 
 def _iter_override_pairs(value: Any) -> Iterable[tuple[Any, Any]]:
+    if isinstance(value, OverrideSpec) and value.security_pairs:
+        raise TypeError("per-security overrides are only supported by bdp(), bdh(), and bds()")
     return _iter_source_pairs(value, _OVERRIDES_TYPE_ERROR)
+
+
+def _normalize_request_overrides(
+    value: Any,
+) -> tuple[list[tuple[str, str]] | None, list[tuple[str, list[tuple[str, str]]]] | None]:
+    if value is None:
+        return None, None
+    spec = ovr(value)
+    pairs = spec.to_pairs()
+    security_pairs = spec.to_security_pairs()
+    return pairs or None, security_pairs or None
 
 
 async def _aroute_kwargs(
@@ -1445,7 +1506,7 @@ async def arequest(
     securities: str | Sequence[str] | None = None,
     security: str | None = None,
     fields: str | Sequence[str] | None = None,
-    overrides: dict[str, Any] | Sequence[tuple[str, str]] | None = None,
+    overrides: Mapping[str, Any] | Sequence[tuple[str, Any]] | OverrideSpec | None = None,
     elements: Sequence[tuple[str, Any]] | None = None,
     start_date: DateLike = None,
     end_date: DateLike = None,
@@ -1483,7 +1544,9 @@ async def arequest(
         securities: List of security identifiers (for multi-security requests).
         security: Single security identifier (for intraday requests).
         fields: List of field names to retrieve.
-        overrides: Field overrides as dict or list of (name, value) tuples.
+        overrides: Field overrides as dict, OverrideSpec, or list of (name, value)
+            tuples. Nested override mappings inside ``ovr()`` are per-security
+            overrides; global pairs are merged first.
         elements: Additional request elements as list of (name, value) tuples.
             Used for schema-driven parameters like intervalHasSeconds, periodicitySelection.
         start_date: Start date for historical requests. Accepts ISO 8601 string,
@@ -1560,6 +1623,7 @@ async def arequest(
     fields_list = _normalize_fields(fields) if fields is not None else None
 
     overrides_list: list[tuple[str, str]] | None = None
+    security_overrides_list: list[tuple[str, list[tuple[str, str]]]] | None = None
     elements_list: list[tuple[str, Any]] | None = None
 
     # Handle explicit elements parameter
@@ -1569,17 +1633,16 @@ async def arequest(
         elements_list = [(str(k), str(v).lower() if isinstance(v, bool) else str(v)) for k, v in elements]
 
     if overrides is not None:
-        override_tuples: list[tuple[str, str]] = (
-            [(str(k), str(v)) for k, v in overrides.items()] if isinstance(overrides, dict) else list(overrides)
-        )
+        override_tuples, security_overrides_list = _normalize_request_overrides(overrides)
         # BQL accepts query parameters as request elements. Other services keep
         # overrides as Bloomberg override tuples unless an endpoint builder says otherwise.
         service_str = service.value if isinstance(service, Service) else service
         if service_str == Service.BQLSVC.value:
-            if elements_list:
-                elements_list.extend(override_tuples)
-            else:
-                elements_list = override_tuples
+            if override_tuples:
+                if elements_list:
+                    elements_list.extend(override_tuples)
+                else:
+                    elements_list = override_tuples
         else:
             overrides_list = override_tuples
 
@@ -1606,6 +1669,7 @@ async def arequest(
         security=security,
         fields=fields_list,
         overrides=overrides_list,
+        security_overrides=security_overrides_list,
         elements=elements_list,
         start_date=_fmt_date(start_date),
         end_date=_fmt_date(end_date),
@@ -3973,6 +4037,9 @@ async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
     ticker_list = _normalize_tickers(args["tickers"])
     field_list = _normalize_fields(args.get("flds"))
     kwargs = dict(args.get("kwargs", {}))
+    override_pairs, security_overrides = _normalize_request_overrides(kwargs.pop("overrides", None))
+    if override_pairs is not None:
+        kwargs["overrides"] = override_pairs
 
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
     fmt = Format(args["format"]) if isinstance(args.get("format"), str) else args.get("format")
@@ -3988,6 +4055,7 @@ async def _build_abdp_plan(args: dict[str, Any]) -> _EndpointPlan:
             "securities": ticker_list,
             "fields": field_list,
             "overrides": overrides if overrides else None,
+            "security_overrides": security_overrides,
             "elements": elements if elements else None,
             "field_types": resolved_types,
             "format": fmt,
@@ -4003,6 +4071,9 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
     ticker_list = _normalize_tickers(args["tickers"])
     field_list = _normalize_fields(args.get("flds"))
     kwargs = dict(args.get("kwargs", {}))
+    override_pairs, security_overrides = _normalize_request_overrides(kwargs.pop("overrides", None))
+    if override_pairs is not None:
+        kwargs["overrides"] = override_pairs
     presentation = _pop_presentation_aliases(kwargs)
 
     fmt = Format(args["format"]) if isinstance(args.get("format"), str) else args.get("format")
@@ -4072,6 +4143,7 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
             "start_date": s_dt,
             "end_date": e_dt,
             "overrides": overrides if overrides else None,
+            "security_overrides": security_overrides,
             "elements": elements if elements else None,
             "options": options if options else None,
             "field_types": resolved_types,
@@ -4086,6 +4158,9 @@ async def _build_abdh_plan(args: dict[str, Any]) -> _EndpointPlan:
 async def _build_abds_plan(args: dict[str, Any]) -> _EndpointPlan:
     ticker_list = _normalize_tickers(args["tickers"])
     kwargs = dict(args.get("kwargs", {}))
+    override_pairs, security_overrides = _normalize_request_overrides(kwargs.pop("overrides", None))
+    if override_pairs is not None:
+        kwargs["overrides"] = override_pairs
     elements, overrides = await _aroute_kwargs(Service.REFDATA, Operation.REFERENCE_DATA, kwargs)
 
     return _EndpointPlan(
@@ -4093,6 +4168,7 @@ async def _build_abds_plan(args: dict[str, Any]) -> _EndpointPlan:
             "securities": ticker_list,
             "fields": [args["flds"]],
             "overrides": overrides if overrides else None,
+            "security_overrides": security_overrides,
             "elements": elements if elements else None,
             "validate_fields": args.get("validate_fields"),
         },

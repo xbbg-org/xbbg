@@ -114,7 +114,7 @@ export interface RequestInput {
   securities?: readonly string[];
   security?: string;
   fields?: readonly string[];
-  overrides?: readonly StringPair[];
+  overrides?: OverridesInput;
   elements?: readonly StringPair[];
   kwargs?: readonly StringPair[];
   jsonElements?: string;
@@ -154,16 +154,26 @@ export interface FieldInfo {
 export type PrimitiveValue = string | number | boolean;
 export type OverridesMap = Record<string, PrimitiveValue>;
 export type OverrideValue = PrimitiveValue | Date | { toJSDate: () => Date };
-export type OverrideObject = Record<string, OverrideValue>;
+export interface OverrideObject {
+  readonly [key: string]: OverrideValue | OverrideNestedSource;
+}
+export type OverrideNestedSource = OverrideObject | OverrideSpecLike | readonly OverrideEntry[];
+export interface SecurityOverrideSpec {
+  readonly security: string;
+  readonly overrides: readonly StringPair[];
+}
 export interface OverrideSpecLike {
   readonly pairs: readonly StringPair[];
+  readonly securityOverrides: readonly SecurityOverrideSpec[];
   toPairs(): StringPair[];
   toObject(): OverridesMap;
+  toSecurityOverrides(): SecurityOverrideSpec[];
   merge(...sources: OverrideSource[]): OverrideSpecLike;
+  forSecurity(security: string, ...sources: OverrideSource[]): OverrideSpecLike;
 }
 export type OverrideEntry =
-  | { readonly key: string; readonly value: OverrideValue }
-  | readonly [string, OverrideValue];
+  | { readonly key: string; readonly value: OverrideValue | OverrideNestedSource }
+  | readonly [string, OverrideValue | OverrideNestedSource];
 export type OverrideSource = OverrideObject | OverrideSpecLike | readonly OverrideEntry[];
 export type OverridesInput = OverrideSource;
 

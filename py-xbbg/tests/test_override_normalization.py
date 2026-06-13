@@ -87,6 +87,32 @@ def test_ovr_composition_right_wins() -> None:
     assert (blp.ovr(A=1) | blp.ovr(A=2, B=3)).to_pairs() == [("A", "2"), ("B", "3")]
 
 
+def test_ovr_normalizes_per_security_specs() -> None:
+    spec = blp.ovr(
+        {
+            "EQY_FUND_CRNCY": "USD",
+            "IBM US Equity": blp.ovr(EQY_FUND_CRNCY="EUR"),
+            "MSFT US Equity": {"USER_LOCAL_TRADE_DATE": date(2024, 1, 2)},
+        }
+    ).for_security("TSLA US Equity", CRNCY="CAD")
+
+    assert spec.to_pairs() == [("EQY_FUND_CRNCY", "USD")]
+    assert spec.to_security_pairs() == [
+        ("IBM US Equity", [("EQY_FUND_CRNCY", "EUR")]),
+        ("MSFT US Equity", [("USER_LOCAL_TRADE_DATE", "20240102")]),
+        ("TSLA US Equity", [("CRNCY", "CAD")]),
+    ]
+
+
+def test_request_overrides_split_global_and_security_pairs() -> None:
+    assert blp._normalize_request_overrides(
+        blp.ovr({"EQY_FUND_CRNCY": "USD", "IBM US Equity": {"EQY_FUND_CRNCY": "EUR"}})
+    ) == (
+        [("EQY_FUND_CRNCY", "USD")],
+        [("IBM US Equity", [("EQY_FUND_CRNCY", "EUR")])],
+    )
+
+
 def test_ovr_rejects_invalid_source() -> None:
     with pytest.raises(
         TypeError,

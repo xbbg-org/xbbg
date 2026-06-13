@@ -144,6 +144,14 @@ const bulk = await xbbg.blp.abds(['ES1 Index'], ['FUT_CHAIN_LAST_TRADE_DATES']);
 await bdp(['AAPL US Equity'], ['CRNCY_ADJ_PX_LAST'], {
   overrides: ovr({ EQY_FUND_CRNCY: 'EUR' }),
 });
+await bdp(['AAPL US Equity', 'MSFT US Equity'], ['CRNCY_ADJ_PX_LAST'], {
+  overrides: ovr({
+    EQY_FUND_CRNCY: 'USD',
+    'AAPL US Equity': ovr({ EQY_FUND_CRNCY: 'EUR' }),
+    'MSFT US Equity': ovr({ EQY_FUND_CRNCY: 'JPY' }),
+  }),
+});
+
 const bars = await xbbg.blp.abdib('AAPL US Equity', '2024-12-01', 5);
 const ticks = await xbbg.blp.abdtick(
   'AAPL US Equity',

@@ -483,3 +483,39 @@ async def test_ovr_routes_through_existing_override_path(endpoint_capture):
     kwargs = endpoint_capture["kwargs"]
     assert kwargs["elements"] == [("maxDataPoints", 1)]
     assert kwargs["overrides"] == [("EQY_FUND_CRNCY", "EUR")]
+
+
+@pytest.mark.asyncio
+async def test_bdp_forwards_per_security_overrides_inside_ovr(endpoint_capture):
+    await blp.abdp(
+        ["IBM US Equity", "MSFT US Equity"],
+        "PX_LAST",
+        overrides=blp.ovr(
+            {
+                "EQY_FUND_CRNCY": "USD",
+                "IBM US Equity": blp.ovr(EQY_FUND_CRNCY="EUR"),
+                "MSFT US Equity": {"USER_LOCAL_TRADE_DATE": date(2024, 1, 2)},
+            }
+        ),
+    )
+
+    kwargs = endpoint_capture["kwargs"]
+    assert kwargs["overrides"] == [("EQY_FUND_CRNCY", "USD")]
+    assert kwargs["security_overrides"] == [
+        ("IBM US Equity", [("EQY_FUND_CRNCY", "EUR")]),
+        ("MSFT US Equity", [("USER_LOCAL_TRADE_DATE", "20240102")]),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bdh_forwards_per_security_override_specs(endpoint_capture):
+    await blp.abdh(
+        ["IBM US Equity"],
+        "PX_LAST",
+        start_date="2024-01-01",
+        end_date="2024-01-02",
+        overrides=blp.ovr().for_security("IBM US Equity", CRNCY="EUR"),
+    )
+
+    kwargs = endpoint_capture["kwargs"]
+    assert kwargs["security_overrides"] == [("IBM US Equity", [("CRNCY", "EUR")])]

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use napi::bindgen_prelude::{Error, Status};
 use xbbg_async::engine::{RequestParams, RequestParamsInput, RequestParamsInputError};
 
-use crate::{RequestInput, StringPair};
+use crate::{RequestInput, SecurityOverridesInput, StringPair};
 
 impl TryFrom<RequestInput> for RequestParams {
     type Error = Error;
@@ -31,6 +31,7 @@ impl TryFrom<RequestInput> for RequestParams {
             security: input.security,
             fields: input.fields,
             overrides: pairs_to_tuples(input.overrides),
+            security_overrides: security_overrides_to_tuples(input.security_overrides),
             elements,
             kwargs: pairs_to_map(input.kwargs),
             start_date: input.start_date,
@@ -138,6 +139,22 @@ fn pairs_to_tuples(input: Option<Vec<StringPair>>) -> Option<Vec<(String, String
         pairs
             .into_iter()
             .map(|pair| (pair.key, pair.value))
+            .collect()
+    })
+}
+
+fn security_overrides_to_tuples(
+    input: Option<Vec<SecurityOverridesInput>>,
+) -> Option<Vec<(String, Vec<(String, String)>)>> {
+    input.map(|entries| {
+        entries
+            .into_iter()
+            .map(|entry| {
+                (
+                    entry.security,
+                    pairs_to_tuples(Some(entry.overrides)).unwrap_or_default(),
+                )
+            })
             .collect()
     })
 }

@@ -274,13 +274,23 @@ describe("Bloomberg request tools", () => {
 
     const bdp = await invokeJson(byName(tools, "xbbg_bdp"), {
       fields: [" PX_LAST "],
-      overrides: { EQY_FUND_CRNCY: " USD " },
+      overrides: {
+        "AAPL US Equity": { EQY_FUND_CRNCY: " EUR " },
+        EQY_FUND_CRNCY: " USD ",
+      },
       securities: [" AAPL US Equity "],
     });
     expect(engine.bdp).toHaveBeenCalledWith(
       ["AAPL US Equity"],
       ["PX_LAST"],
-      expect.objectContaining({ backend: "json", validateFields: true }),
+      expect.objectContaining({
+        backend: "json",
+        overrides: {
+          "AAPL US Equity": { EQY_FUND_CRNCY: "EUR" },
+          EQY_FUND_CRNCY: "USD",
+        },
+        validateFields: true,
+      }),
     );
     expect(bdp).toMatchObject({ rowCount: 1, tool: "xbbg_bdp", truncated: true });
     expect(bdp.data[0].value).toContain("[truncated");
@@ -689,7 +699,7 @@ describe("Bloomberg request tools", () => {
     await expect(
       byName(tools, "xbbg_bdp").invoke({
         fields: ["PX_LAST"],
-        overrides: { bad: { nested: true } },
+        overrides: { "AAPL US Equity": { bad: { nested: true } } },
         securities: ["AAPL US Equity"],
       }),
     ).rejects.toThrow();

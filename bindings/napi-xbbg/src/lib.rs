@@ -48,6 +48,12 @@ pub struct StringPair {
 }
 
 #[napi(object)]
+pub struct SecurityOverridesInput {
+    pub security: String,
+    pub overrides: Vec<StringPair>,
+}
+
+#[napi(object)]
 pub struct ServerAddressInput {
     pub host: String,
     pub port: u16,
@@ -133,6 +139,7 @@ pub struct RequestInput {
     pub security: Option<String>,
     pub fields: Option<Vec<String>>,
     pub overrides: Option<Vec<StringPair>>,
+    pub security_overrides: Option<Vec<SecurityOverridesInput>>,
     pub elements: Option<Vec<StringPair>>,
     pub kwargs: Option<Vec<StringPair>>,
     pub json_elements: Option<String>,

@@ -145,6 +145,17 @@ info = blp.bdp("NVDA US Equity", ["Security_Name", "GICS_Sector_Name", "PX_LAST"
 # Bloomberg-style overrides
 vwap = blp.bdp("AAPL US Equity", "Eqy_Weighted_Avg_Px", VWAP_Dt="20240115")
 adj = blp.bdp("AAPL US Equity", "CRNCY_ADJ_PX_LAST", overrides=ovr(EQY_FUND_CRNCY="EUR"))
+per_sec = blp.bdp(
+    ["AAPL US Equity", "MSFT US Equity"],
+    "CRNCY_ADJ_PX_LAST",
+    overrides=ovr(
+        {
+            "EQY_FUND_CRNCY": "USD",
+            "AAPL US Equity": ovr(EQY_FUND_CRNCY="EUR"),
+            "MSFT US Equity": ovr(EQY_FUND_CRNCY="JPY"),
+        }
+    ),
+)
 
 # Bulk data
 holders = blp.bds("AAPL US Equity", "DVD_Hist_All", DVD_Start_Dt="20240101")
