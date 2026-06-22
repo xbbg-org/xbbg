@@ -16,8 +16,6 @@ BlpSessionError = _core.BlpSessionError
 BlpTimeoutError = _core.BlpTimeoutError
 BlpInternalError = _core.BlpInternalError
 
-BlpLimitError = _core.BlpLimitError
-
 
 class BlpRequestError(_core.BlpRequestError):
     """Bloomberg request-level error with extended request context attributes."""
@@ -36,6 +34,10 @@ class BlpRequestError(_core.BlpRequestError):
         self.operation = operation
         self.request_id = request_id
         self.code = code
+
+
+class BlpLimitError(BlpRequestError):
+    """Bloomberg request limit error."""
 
 
 class BlpSecurityError(BlpRequestError):
