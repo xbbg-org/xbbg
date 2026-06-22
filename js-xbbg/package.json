@@ -107,6 +107,9 @@
     "@xbbg/core-linux-x64": "0.0.0",
     "@xbbg/core-win32-x64": "0.0.0"
   },
+  "overrides": {
+    "esbuild": "0.28.1"
+  },
   "engines": {
     "node": ">=24"
   },

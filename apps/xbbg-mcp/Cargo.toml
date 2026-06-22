@@ -12,7 +12,7 @@ name = "xbbg-mcp"
 path = "src/main.rs"
 
 [dependencies]
-arrow = { version = "58.1.0", default-features = false }
+arrow = { version = "59.0.0", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 rmcp = { version = "1.4.0", features = ["server", "macros", "transport-io", "schemars"] }
 schemars = "1"

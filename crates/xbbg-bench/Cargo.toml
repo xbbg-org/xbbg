@@ -17,8 +17,8 @@ xbbg_core = { path = "../xbbg-core" }
 xbbg-async = { path = "../xbbg-async", features = ["bench-internals"] }
 
 # Benchmark runner/runtime
-arrow-array = { version = "58.1.0", default-features = false }
-arrow-schema = "58.1.0"
+arrow-array = { version = "59.0.0", default-features = false }
+arrow-schema = "59.0.0"
 chrono = "0.4"
 tokio = { version = "1.48", features = ["rt-multi-thread", "time"] }
 
