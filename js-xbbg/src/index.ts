@@ -453,7 +453,7 @@ function addOverrideSource(source: OverrideSource, state: OverrideState): void {
         : ((source as { securityOverrides?: readonly SecurityOverrideSpec[] }).securityOverrides ??
           []);
     for (const entry of securityOverrides) {
-      addSecurityOverrideSource(entry.security, entry.overrides as OverrideSource, state);
+      addSecurityOverrideSource(entry.security, entry.overrides, state);
     }
     return;
   }

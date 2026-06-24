@@ -13,7 +13,7 @@ use crate::schema::SchemaCache;
 use crate::services::{ExtractorType, Operation};
 
 use super::state::{LongMode, OutputFormat};
-use super::RequestParams;
+use super::{RequestParams, SecurityOverridePairs};
 
 fn parse_operation(operation: &str) -> Operation {
     match Operation::from_str(operation) {
@@ -498,7 +498,7 @@ fn normalize_pairs(value: &mut Option<Vec<(String, String)>>) {
     }
 }
 
-fn normalize_security_overrides(value: &mut Option<Vec<(String, Vec<(String, String)>)>>) {
+fn normalize_security_overrides(value: &mut Option<SecurityOverridePairs>) {
     let Some(entries) = value else {
         return;
     };

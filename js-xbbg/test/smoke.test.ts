@@ -655,10 +655,15 @@ describe('engine wrapper request plumbing', () => {
       start: '2024-01-01',
     });
 
-    expect((engine.calls[0]?.overrides as api.OverrideSpec).toPairs()).toStrictEqual([
+    const bdpOverrides = engine.calls[0]?.overrides;
+    const bdhOverrides = engine.calls[1]?.overrides;
+
+    expect(bdpOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((bdpOverrides as api.OverrideSpec).toPairs()).toStrictEqual([
       { key: 'EQY_FUND_CRNCY', value: 'EUR' },
     ]);
-    expect((engine.calls[1]?.overrides as api.OverrideSpec).toPairs()).toStrictEqual([
+    expect(bdhOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((bdhOverrides as api.OverrideSpec).toPairs()).toStrictEqual([
       { key: 'EQY_FUND_CRNCY', value: 'USD' },
     ]);
   });
@@ -684,10 +689,15 @@ describe('engine wrapper request plumbing', () => {
       start: '2024-01-01',
     });
 
-    expect((engine.calls[0]?.overrides as api.OverrideSpec).toPairs()).toStrictEqual([
+    const refOverrides = engine.calls[0]?.overrides;
+    const bulkOverrides = engine.calls[1]?.overrides;
+    const histOverrides = engine.calls[2]?.overrides;
+
+    expect(refOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((refOverrides as api.OverrideSpec).toPairs()).toStrictEqual([
       { key: 'EQY_FUND_CRNCY', value: 'USD' },
     ]);
-    expect((engine.calls[0]?.overrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
+    expect((refOverrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
       {
         overrides: [{ key: 'EQY_FUND_CRNCY', value: 'EUR' }],
         security: 'IBM US Equity',
@@ -697,13 +707,15 @@ describe('engine wrapper request plumbing', () => {
         security: 'MSFT US Equity',
       },
     ]);
-    expect((engine.calls[1]?.overrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
+    expect(bulkOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((bulkOverrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
       {
         overrides: [{ key: 'DVD_Start_Dt', value: '20240101' }],
         security: 'IBM US Equity',
       },
     ]);
-    expect((engine.calls[2]?.overrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
+    expect(histOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((histOverrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
       {
         overrides: [{ key: 'CRNCY', value: 'EUR' }],
         security: 'IBM US Equity',
