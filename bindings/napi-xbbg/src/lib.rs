@@ -2015,6 +2015,10 @@ mod tests {
             security: Some("IBM US Equity".to_string()),
             fields: Some(vec!["PX_LAST".to_string()]),
             overrides: Some(vec![pair("EQY_FUND_CRNCY", "USD")]),
+            security_overrides: Some(vec![SecurityOverridesInput {
+                security: "IBM US Equity".to_string(),
+                overrides: vec![pair("CRNCY", "EUR")],
+            }]),
             elements: Some(vec![pair("returnEids", "true")]),
             kwargs: Some(vec![pair("Period", "D")]),
             json_elements: Some(r#"{"nested":{"flag":true},"count":3}"#.to_string()),
@@ -2055,6 +2059,15 @@ mod tests {
         assert_eq!(
             params.overrides.as_deref(),
             Some(&[("EQY_FUND_CRNCY".to_string(), "USD".to_string())][..])
+        );
+        assert_eq!(
+            params.security_overrides.as_deref(),
+            Some(
+                &[(
+                    "IBM US Equity".to_string(),
+                    vec![("CRNCY".to_string(), "EUR".to_string())]
+                )][..]
+            )
         );
         let elements = params.elements.as_ref().expect("elements");
         assert!(elements.contains(&("returnEids".to_string(), "true".to_string())));

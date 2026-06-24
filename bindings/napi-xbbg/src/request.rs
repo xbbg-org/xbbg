@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{Error, Status};
-use xbbg_async::engine::{RequestParams, RequestParamsInput, RequestParamsInputError};
+use xbbg_async::engine::{
+    RequestParams, RequestParamsInput, RequestParamsInputError, SecurityOverridePairs,
+};
 
 use crate::{RequestInput, SecurityOverridesInput, StringPair};
 
@@ -145,7 +147,7 @@ fn pairs_to_tuples(input: Option<Vec<StringPair>>) -> Option<Vec<(String, String
 
 fn security_overrides_to_tuples(
     input: Option<Vec<SecurityOverridesInput>>,
-) -> Option<Vec<(String, Vec<(String, String)>)>> {
+) -> Option<SecurityOverridePairs> {
     input.map(|entries| {
         entries
             .into_iter()
