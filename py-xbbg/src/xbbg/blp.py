@@ -1507,6 +1507,7 @@ async def arequest(
     security: str | None = None,
     fields: str | Sequence[str] | None = None,
     overrides: Mapping[str, Any] | Sequence[tuple[str, Any]] | OverrideSpec | None = None,
+    security_overrides: Sequence[tuple[str, Sequence[tuple[str, Any]]]] | None = None,
     elements: Sequence[tuple[str, Any]] | None = None,
     start_date: DateLike = None,
     end_date: DateLike = None,
@@ -1547,6 +1548,8 @@ async def arequest(
         overrides: Field overrides as dict, OverrideSpec, or list of (name, value)
             tuples. Nested override mappings inside ``ovr()`` are per-security
             overrides; global pairs are merged first.
+        security_overrides: Low-level per-security overrides, usually supplied by typed
+            wrappers after normalizing ``ovr()`` inputs.
         elements: Additional request elements as list of (name, value) tuples.
             Used for schema-driven parameters like intervalHasSeconds, periodicitySelection.
         start_date: Start date for historical requests. Accepts ISO 8601 string,
@@ -1625,6 +1628,17 @@ async def arequest(
     overrides_list: list[tuple[str, str]] | None = None
     security_overrides_list: list[tuple[str, list[tuple[str, str]]]] | None = None
     elements_list: list[tuple[str, Any]] | None = None
+    if security_overrides is not None:
+        security_overrides_list = [
+            (
+                str(security_name),
+                [
+                    (str(key), _normalize_override_value(value))
+                    for key, value in _validated_source_pairs(security_values, _OVERRIDES_TYPE_ERROR)
+                ],
+            )
+            for security_name, security_values in security_overrides
+        ]
 
     # Handle explicit elements parameter
     # Convert all element values to strings because the PyO3 boundary expects Vec<(String, String)>.
@@ -1633,7 +1647,7 @@ async def arequest(
         elements_list = [(str(k), str(v).lower() if isinstance(v, bool) else str(v)) for k, v in elements]
 
     if overrides is not None:
-        override_tuples, security_overrides_list = _normalize_request_overrides(overrides)
+        override_tuples, override_security_overrides = _normalize_request_overrides(overrides)
         # BQL accepts query parameters as request elements. Other services keep
         # overrides as Bloomberg override tuples unless an endpoint builder says otherwise.
         service_str = service.value if isinstance(service, Service) else service
@@ -1645,6 +1659,11 @@ async def arequest(
                     elements_list = override_tuples
         else:
             overrides_list = override_tuples
+        if override_security_overrides is not None:
+            if security_overrides_list is None:
+                security_overrides_list = override_security_overrides
+            else:
+                security_overrides_list.extend(override_security_overrides)
 
     options_list: list[tuple[str, str]] | None = None
     if options is not None:
