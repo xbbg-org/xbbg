@@ -37,6 +37,12 @@ class TestPythonExceptionHierarchy:
 
         assert issubclass(BlpRequestError, BlpError)
 
+    def test_blp_limit_error_inherits_from_blp_request_error(self):
+        """BlpLimitError should inherit from BlpRequestError."""
+        from xbbg.exceptions import BlpLimitError, BlpRequestError
+
+        assert issubclass(BlpLimitError, BlpRequestError)
+
     def test_blp_security_error_inherits_from_blp_request_error(self):
         """BlpSecurityError should inherit from BlpRequestError."""
         from xbbg.exceptions import BlpRequestError, BlpSecurityError
@@ -91,6 +97,7 @@ class TestPythonExceptionHierarchy:
             BlpError,
             BlpFieldError,
             BlpInternalError,
+            BlpLimitError,
             BlpRequestError,
             BlpSecurityError,
             BlpSessionError,
@@ -103,6 +110,7 @@ class TestPythonExceptionHierarchy:
             BlpRequestError("request error"),
             BlpSecurityError("security error"),
             BlpFieldError("field error"),
+            BlpLimitError("limit error"),
             BlpValidationError("validation error"),
             BlpTimeoutError("timeout error"),
             BlpInternalError("internal error"),
@@ -208,6 +216,14 @@ class TestRustCoreExceptions:
         _core = xbbg._core
 
         assert issubclass(_core.BlpFieldError, _core.BlpRequestError)
+
+    def test_core_limit_error_inherits_from_request_error(self):
+        """Rust BlpLimitError should inherit from BlpRequestError."""
+        import xbbg
+
+        _core = xbbg._core
+
+        assert issubclass(_core.BlpLimitError, _core.BlpRequestError)
 
     def test_core_exceptions_can_be_raised_and_caught(self):
         """Rust _core exceptions should be raisable and catchable."""
@@ -548,6 +564,7 @@ class TestExceptionHierarchyComplete:
             BlpError,
             BlpFieldError,
             BlpInternalError,
+            BlpLimitError,
             BlpRequestError,
             BlpSecurityError,
             BlpSessionError,
@@ -558,6 +575,7 @@ class TestExceptionHierarchyComplete:
         exceptions = [
             BlpSessionError,
             BlpRequestError,
+            BlpLimitError,
             BlpSecurityError,
             BlpFieldError,
             BlpValidationError,
@@ -568,10 +586,11 @@ class TestExceptionHierarchyComplete:
         for exc in exceptions:
             assert issubclass(exc, BlpError), f"{exc.__name__} should inherit from BlpError"
 
-    def test_security_and_field_errors_inherit_from_request_error(self):
-        """BlpSecurityError and BlpFieldError should inherit from BlpRequestError."""
-        from xbbg.exceptions import BlpFieldError, BlpRequestError, BlpSecurityError
+    def test_request_family_errors_inherit_from_request_error(self):
+        """Request-family exceptions should inherit from BlpRequestError."""
+        from xbbg.exceptions import BlpFieldError, BlpLimitError, BlpRequestError, BlpSecurityError
 
+        assert issubclass(BlpLimitError, BlpRequestError)
         assert issubclass(BlpSecurityError, BlpRequestError)
         assert issubclass(BlpFieldError, BlpRequestError)
 

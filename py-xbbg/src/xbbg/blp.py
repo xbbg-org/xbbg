@@ -1453,10 +1453,26 @@ def _core_arrow_table_class() -> type[Any]:
 
 def _normalize_engine_exception(exc: Exception) -> Exception:
     from . import _core
-    from .exceptions import BlpValidationError
+    from .exceptions import (
+        BlpFieldError,
+        BlpLimitError,
+        BlpRequestError,
+        BlpSecurityError,
+        BlpValidationError,
+    )
 
     if isinstance(exc, _core.BlpValidationError) and not isinstance(exc, BlpValidationError):
         return BlpValidationError.from_rust_error(str(exc))
+
+    for native_cls, public_cls in (
+        (_core.BlpLimitError, BlpLimitError),
+        (_core.BlpSecurityError, BlpSecurityError),
+        (_core.BlpFieldError, BlpFieldError),
+        (_core.BlpRequestError, BlpRequestError),
+    ):
+        if isinstance(exc, native_cls) and not isinstance(exc, public_cls):
+            return public_cls(str(exc))
+
     return exc
 
 

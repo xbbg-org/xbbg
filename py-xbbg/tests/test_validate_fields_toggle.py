@@ -90,6 +90,63 @@ async def test_arequest_maps_native_validation_error_to_public_exception(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_arequest_maps_native_request_error_to_public_exception(monkeypatch):
+    """Native request errors should be catchable via the top-level public export."""
+    from xbbg import BlpRequestError, _core, blp
+
+    class FakeEngine:
+        async def request(self, _params_dict):
+            raise _core.BlpRequestError("Request failed: All securities failed")
+
+    monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
+
+    with pytest.raises(BlpRequestError, match="All securities failed") as exc_info:
+        await blp.arequest(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=["BADSECURITY"],
+            fields=["PX_LAST"],
+        )
+
+    assert type(exc_info.value) is BlpRequestError
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("native_name", "public_name"),
+    [
+        ("BlpLimitError", "BlpLimitError"),
+        ("BlpSecurityError", "BlpSecurityError"),
+        ("BlpFieldError", "BlpFieldError"),
+    ],
+)
+async def test_arequest_preserves_native_request_subclasses(monkeypatch, native_name, public_name):
+    """Native request subclasses should normalize to matching public subclasses."""
+    from xbbg import _core, blp
+    import xbbg.exceptions as public_exceptions
+
+    native_cls = getattr(_core, native_name)
+    public_cls = getattr(public_exceptions, public_name)
+
+    class FakeEngine:
+        async def request(self, _params_dict):
+            raise native_cls(f"{native_name}: specific request failure")
+
+    monkeypatch.setattr(blp, "_get_engine", lambda: FakeEngine())
+
+    with pytest.raises(public_cls, match="specific request failure") as exc_info:
+        await blp.arequest(
+            service=Service.REFDATA,
+            operation=Operation.REFERENCE_DATA,
+            securities=["BADSECURITY"],
+            fields=["PX_LAST"],
+        )
+
+    assert type(exc_info.value) is public_cls
+    assert isinstance(exc_info.value, public_exceptions.BlpRequestError)
+
+
+@pytest.mark.asyncio
 async def test_abdp_forwards_validate_fields(monkeypatch):
     """abdp() should forward validate_fields to arequest()."""
     from xbbg import blp

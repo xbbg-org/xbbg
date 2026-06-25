@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-06-22
+
 
 ### Added
 
@@ -19,7 +21,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### Fixed
 
+- **Python request failures catch public `BlpRequestError` (#341)**: Native Rust request-family errors are normalized to the public Python exception classes at the request boundary, so `except xbbg.BlpRequestError` catches all-security request failures while preserving `BlpLimitError`, `BlpSecurityError`, and `BlpFieldError` specificity.
 - **`@xbbg/langgraph` preferreds fields are optional in tool calls**: `xbbg_preferreds` now treats `fields: []` as omitted so the preferred-stock recipe can use its default field set instead of rejecting model/frontend calls that send an empty optional list.
+
+### Security
+
+- **Security dependency updates for PyO3, esbuild, and LangGraph tooling**: Updated the Rust PyO3 binding stack to the patched `0.29` line, upgraded Arrow integration accordingly, and refreshed JavaScript development dependencies/overrides so Dependabot alerts for PyO3, `esbuild`, and transitive `uuid` are resolved.
 
 ## [1.3.0] - 2026-06-13
 
@@ -1433,7 +1440,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/xbbg-org/xbbg/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/xbbg-org/xbbg/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/xbbg-org/xbbg/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/xbbg-org/xbbg/compare/v1.2.7...v1.3.0
 [1.2.7]: https://github.com/xbbg-org/xbbg/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/xbbg-org/xbbg/compare/v1.2.5...v1.2.6
