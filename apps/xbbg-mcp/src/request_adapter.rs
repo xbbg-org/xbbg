@@ -356,6 +356,7 @@ pub(crate) fn generic_request_params(args: RequestArgs) -> Result<RequestParams,
             .transpose()?,
         fields,
         overrides: map_to_pairs(args.overrides),
+        security_overrides: None,
         elements: map_to_pairs(args.elements),
         kwargs: map_to_hash_map(args.kwargs),
         // The generic tool intentionally preserves caller-supplied request strings instead of

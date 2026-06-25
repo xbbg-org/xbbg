@@ -417,6 +417,18 @@ pub struct PyEngineConfig {
     /// Number of pre-warmed subscription sessions (default: 1)
     #[pyo3(get, set)]
     pub subscription_pool_size: usize,
+    /// Enable request sharding for eligible multi-security reference/history requests.
+    #[pyo3(get, set)]
+    pub shard_requests: bool,
+    /// Minimum securities before request sharding applies (default: 20).
+    #[pyo3(get, set)]
+    pub shard_threshold: usize,
+    /// Maximum securities per sharded request (default: 16).
+    #[pyo3(get, set)]
+    pub shard_chunk_size: usize,
+    /// Maximum concurrent shard requests per user request (default: 4).
+    #[pyo3(get, set)]
+    pub shard_max_concurrent: usize,
     /// Validation mode: "disabled" (default), "strict", or "lenient"
     #[pyo3(get, set)]
     pub validation_mode: String,
@@ -514,7 +526,6 @@ pub struct PyEngineConfig {
     #[pyo3(get, set)]
     pub socks5_port: Option<u16>,
 }
-
 #[cfg_attr(feature = "stub-gen", gen_stub_pymethods)]
 #[pymethods]
 impl PyEngineConfig {
@@ -533,6 +544,10 @@ impl PyEngineConfig {
             zfp_remote: None,
             request_pool_size: defaults.request_pool_size,
             subscription_pool_size: defaults.subscription_pool_size,
+            shard_requests: defaults.shard_requests,
+            shard_threshold: defaults.shard_threshold,
+            shard_chunk_size: defaults.shard_chunk_size,
+            shard_max_concurrent: defaults.shard_max_concurrent,
             validation_mode: defaults.validation_mode.to_string(),
             subscription_flush_threshold: defaults.subscription_flush_threshold,
             max_event_queue_size: defaults.max_event_queue_size,
@@ -588,6 +603,18 @@ impl PyEngineConfig {
             }
             if let Some(v) = kw.get_item("subscription_pool_size")? {
                 config.subscription_pool_size = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("shard_requests")? {
+                config.shard_requests = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("shard_threshold")? {
+                config.shard_threshold = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("shard_chunk_size")? {
+                config.shard_chunk_size = v.extract()?;
+            }
+            if let Some(v) = kw.get_item("shard_max_concurrent")? {
+                config.shard_max_concurrent = v.extract()?;
             }
             if let Some(v) = kw.get_item("validation_mode")? {
                 config.validation_mode = v.extract()?;
@@ -704,11 +731,16 @@ impl PyEngineConfig {
         let auth_method = self.auth_method.as_deref().unwrap_or("none");
         format!(
             "EngineConfig(host='{}', port={}, request_pool_size={}, subscription_pool_size={}, \
+             shard_requests={}, shard_threshold={}, shard_chunk_size={}, shard_max_concurrent={}, \
              validation_mode='{}', overflow_policy='{}', auth_method='{}', field_cache_path='{}', warmup_services={:?})",
             self.host,
             self.port,
             self.request_pool_size,
             self.subscription_pool_size,
+            self.shard_requests,
+            self.shard_threshold,
+            self.shard_chunk_size,
+            self.shard_max_concurrent,
             self.validation_mode,
             self.overflow_policy,
             auth_method,
@@ -962,6 +994,10 @@ impl TryFrom<&PyEngineConfig> for EngineConfig {
             tls,
             request_pool_size: py_config.request_pool_size,
             subscription_pool_size: py_config.subscription_pool_size,
+            shard_requests: py_config.shard_requests,
+            shard_threshold: py_config.shard_threshold,
+            shard_chunk_size: py_config.shard_chunk_size,
+            shard_max_concurrent: py_config.shard_max_concurrent,
             validation_mode,
             subscription_flush_threshold: py_config.subscription_flush_threshold,
             max_event_queue_size: py_config.max_event_queue_size,
@@ -2631,6 +2667,38 @@ mod tests {
         assert_eq!(config.auth_method, None);
         assert_eq!(config.num_start_attempts, 3);
         assert!(config.auto_restart_on_disconnection);
+        assert!(!config.shard_requests);
+        assert_eq!(config.shard_threshold, 20);
+        assert_eq!(config.shard_chunk_size, 16);
+        assert_eq!(config.shard_max_concurrent, 4);
+    }
+
+    #[test]
+    fn py_engine_config_maps_sharding_fields() {
+        Python::initialize();
+        Python::attach(|py| {
+            let kwargs = PyDict::new(py);
+            kwargs
+                .set_item("shard_requests", true)
+                .expect("shard_requests");
+            kwargs
+                .set_item("shard_threshold", 5)
+                .expect("shard_threshold");
+            kwargs
+                .set_item("shard_chunk_size", 3)
+                .expect("shard_chunk_size");
+            kwargs
+                .set_item("shard_max_concurrent", 2)
+                .expect("shard_max_concurrent");
+
+            let config = PyEngineConfig::new(Some(&kwargs)).expect("sharding config");
+            let engine_config: EngineConfig = (&config).try_into().expect("engine config");
+
+            assert!(engine_config.shard_requests);
+            assert_eq!(engine_config.shard_threshold, 5);
+            assert_eq!(engine_config.shard_chunk_size, 3);
+            assert_eq!(engine_config.shard_max_concurrent, 2);
+        });
     }
 
     #[test]

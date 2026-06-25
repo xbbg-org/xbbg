@@ -16,6 +16,7 @@ import pytest
 # time is the lazy ``_fmt_date`` import already covered by other tests.
 pytest.importorskip("xbbg")
 
+from xbbg import blp
 from xbbg.blp import _normalize_override_value
 
 
@@ -66,3 +67,61 @@ class TestNormalizeOverrideValue:
     def test_bool_preserved(self) -> None:
         assert _normalize_override_value(True) == "True"
         assert _normalize_override_value(False) == "False"
+
+
+def test_ovr_normalizes_values_and_is_hashable() -> None:
+    spec = blp.ovr(EQY_FUND_CRNCY="EUR", USER_LOCAL_TRADE_DATE=date(2023, 1, 17))
+
+    _ = hash(spec)
+    assert spec.to_pairs() == [
+        ("EQY_FUND_CRNCY", "EUR"),
+        ("USER_LOCAL_TRADE_DATE", "20230117"),
+    ]
+    assert dict(spec.items()) == {
+        "EQY_FUND_CRNCY": "EUR",
+        "USER_LOCAL_TRADE_DATE": "20230117",
+    }
+
+
+def test_ovr_composition_right_wins() -> None:
+    assert (blp.ovr(A=1) | blp.ovr(A=2, B=3)).to_pairs() == [("A", "2"), ("B", "3")]
+
+
+def test_ovr_normalizes_per_security_specs() -> None:
+    spec = blp.ovr(
+        {
+            "EQY_FUND_CRNCY": "USD",
+            "IBM US Equity": blp.ovr(EQY_FUND_CRNCY="EUR"),
+            "MSFT US Equity": {"USER_LOCAL_TRADE_DATE": date(2024, 1, 2)},
+        }
+    ).for_security("TSLA US Equity", CRNCY="CAD")
+
+    assert spec.to_pairs() == [("EQY_FUND_CRNCY", "USD")]
+    assert spec.to_security_pairs() == [
+        ("IBM US Equity", [("EQY_FUND_CRNCY", "EUR")]),
+        ("MSFT US Equity", [("USER_LOCAL_TRADE_DATE", "20240102")]),
+        ("TSLA US Equity", [("CRNCY", "CAD")]),
+    ]
+
+
+def test_request_overrides_split_global_and_security_pairs() -> None:
+    assert blp._normalize_request_overrides(
+        blp.ovr({"EQY_FUND_CRNCY": "USD", "IBM US Equity": {"EQY_FUND_CRNCY": "EUR"}})
+    ) == (
+        [("EQY_FUND_CRNCY", "USD")],
+        [("IBM US Equity", [("EQY_FUND_CRNCY", "EUR")])],
+    )
+
+
+def test_ovr_rejects_invalid_source() -> None:
+    with pytest.raises(
+        TypeError,
+        match=r"ovr\(\) expects mappings, OverrideSpec, or iterables of \(name, value\) pairs",
+    ):
+        blp.ovr("EQY_FUND_CRNCY")
+
+
+def test_ovr_is_exported_from_package() -> None:
+    from xbbg import OverrideSpec, ovr
+
+    assert isinstance(ovr(A=1), OverrideSpec)

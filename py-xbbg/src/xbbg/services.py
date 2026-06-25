@@ -57,7 +57,9 @@ class RequestParams:
         securities: List of security identifiers (for multi-security requests).
         security: Single security identifier (for intraday requests).
         fields: List of field names to retrieve.
-        overrides: List of (field, value) tuples for field overrides.
+        overrides: List of (field, value) tuples for global field overrides.
+        security_overrides: Internal normalized per-security overrides derived
+            from ``OverrideSpec``.
         elements: List of (name, value) tuples for generic request elements (for example BQL or BSRCH Domain).
         start_date: Start date for historical requests. Accepts ISO 8601 /
             ``YYYYMMDD`` string, ``"today"``, ``datetime.date``,
@@ -95,6 +97,7 @@ class RequestParams:
     security: str | None = None
     fields: Sequence[str] | None = None
     overrides: Sequence[tuple[str, str]] | None = None
+    security_overrides: Sequence[tuple[str, Sequence[tuple[str, str]]]] | None = None
     elements: Sequence[tuple[str, str]] | None = None
     start_date: str | None = None
     end_date: str | None = None
@@ -238,6 +241,10 @@ class RequestParams:
                 result["fields"] = list(self.fields)
         if self.overrides is not None:
             result["overrides"] = list(self.overrides)
+        if self.security_overrides is not None:
+            result["security_overrides"] = [
+                (security, list(overrides)) for security, overrides in self.security_overrides
+            ]
         if self.elements is not None:
             result["elements"] = list(self.elements)
         if self.start_date is not None:

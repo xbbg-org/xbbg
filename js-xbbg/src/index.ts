@@ -64,6 +64,13 @@ import type {
   FxPairInfo,
   MarketRule,
   OverridesMap,
+  OverrideEntry,
+  OverrideNestedSource,
+  OverrideObject,
+  OverrideSource,
+  OverrideSpecLike,
+  OverrideValue,
+  OverridesInput,
   IndexMembersOptions,
   PreferredsOptions,
   PrimitiveValue,
@@ -71,6 +78,7 @@ import type {
   RequestInput,
   RequestOptions,
   ServerAddress,
+  SecurityOverrideSpec,
   SessionWindowsInfo,
   Socks5Config,
   StreamOptions,
@@ -342,6 +350,246 @@ function mapObjectToPairs(obj: OverridesMap | undefined): StringPair[] | undefin
   }));
 }
 
+const OVR_SOURCE_TYPE_ERROR = 'ovr() expects objects, OverrideSpec, or arrays of override entries';
+
+function normalizeOverrideValue(value: unknown): string {
+  if (value instanceof Date || hasToJSDate(value)) {
+    return formatDate(value) ?? '';
+  }
+  return String(value);
+}
+
+function isOverrideSpecLike(value: unknown): value is OverrideSpecLike {
+  return (
+    isPlainObject(value) &&
+    Array.isArray((value as { pairs?: unknown }).pairs) &&
+    typeof (value as { toPairs?: unknown }).toPairs === 'function' &&
+    typeof (value as { toObject?: unknown }).toObject === 'function' &&
+    typeof (value as { merge?: unknown }).merge === 'function'
+  );
+}
+
+function isOverrideObject(value: unknown): value is OverrideObject {
+  return (
+    isPlainObject(value) &&
+    !(value instanceof Date) &&
+    !hasToJSDate(value) &&
+    !isOverrideSpecLike(value) &&
+    !ArrayBuffer.isView(value)
+  );
+}
+
+function normalizeOverrideEntry(entry: unknown): readonly [string, unknown] {
+  if (Array.isArray(entry)) {
+    if (entry.length !== 2) {
+      throw new TypeError(OVR_SOURCE_TYPE_ERROR);
+    }
+    return [String(entry[0]), entry[1]];
+  }
+  if (isPlainObject(entry) && 'key' in entry && 'value' in entry) {
+    return [String(entry.key), entry.value];
+  }
+  throw new TypeError(OVR_SOURCE_TYPE_ERROR);
+}
+
+interface OverrideState {
+  readonly merged: Map<string, string>;
+  readonly securityMerged: Map<string, Map<string, string>>;
+  readonly securityOrder: string[];
+}
+
+function createOverrideState(): OverrideState {
+  return {
+    merged: new Map<string, string>(),
+    securityMerged: new Map<string, Map<string, string>>(),
+    securityOrder: [],
+  };
+}
+
+function isPerSecurityOverrideValue(value: unknown): value is OverrideSource {
+  return isOverrideSpecLike(value) || Array.isArray(value) || isOverrideObject(value);
+}
+
+function addSecurityOverrideSource(
+  security: string,
+  source: OverrideSource,
+  state: OverrideState,
+): void {
+  const spec = ovr(source);
+  const pairs = spec.toPairs();
+  if (pairs.length === 0) {
+    return;
+  }
+  let merged = state.securityMerged.get(security);
+  if (merged === undefined) {
+    merged = new Map<string, string>();
+    state.securityMerged.set(security, merged);
+    state.securityOrder.push(security);
+  }
+  for (const pair of pairs) {
+    merged.set(pair.key, pair.value);
+  }
+}
+
+function addOverridePair(key: string, value: unknown, state: OverrideState): void {
+  if (isPerSecurityOverrideValue(value)) {
+    addSecurityOverrideSource(key, value, state);
+    return;
+  }
+  state.merged.set(key, normalizeOverrideValue(value));
+}
+
+function addOverrideSource(source: OverrideSource, state: OverrideState): void {
+  if (typeof source === 'string' || ArrayBuffer.isView(source)) {
+    throw new TypeError(OVR_SOURCE_TYPE_ERROR);
+  }
+  if (isOverrideSpecLike(source)) {
+    for (const pair of source.toPairs()) {
+      state.merged.set(pair.key, normalizeOverrideValue(pair.value));
+    }
+    const securityOverrides =
+      typeof source.toSecurityOverrides === 'function'
+        ? source.toSecurityOverrides()
+        : ((source as { securityOverrides?: readonly SecurityOverrideSpec[] }).securityOverrides ??
+          []);
+    for (const entry of securityOverrides) {
+      addSecurityOverrideSource(entry.security, entry.overrides, state);
+    }
+    return;
+  }
+  if (Array.isArray(source)) {
+    for (const entry of source) {
+      const [key, value] = normalizeOverrideEntry(entry);
+      addOverridePair(key, value, state);
+    }
+    return;
+  }
+  if (isOverrideObject(source)) {
+    for (const [key, value] of Object.entries(source)) {
+      addOverridePair(key, value, state);
+    }
+    return;
+  }
+  throw new TypeError(OVR_SOURCE_TYPE_ERROR);
+}
+
+function securityOverridesFromState(state: OverrideState): SecurityOverrideSpec[] {
+  return state.securityOrder.flatMap((security) => {
+    const pairs = state.securityMerged.get(security);
+    if (pairs === undefined || pairs.size === 0) {
+      return [];
+    }
+    return [
+      {
+        overrides: [...pairs].map(([key, value]) => ({ key, value })),
+        security,
+      },
+    ];
+  });
+}
+
+export class OverrideSpec implements OverrideSpecLike {
+  public readonly pairs: readonly StringPair[];
+
+  public readonly securityOverrides: readonly SecurityOverrideSpec[];
+
+  public constructor(
+    pairs: readonly StringPair[],
+    securityOverrides: readonly SecurityOverrideSpec[] = [],
+  ) {
+    this.pairs = Object.freeze(
+      pairs.map((pair) =>
+        Object.freeze({
+          key: pair.key,
+          value: pair.value,
+        }),
+      ),
+    );
+    this.securityOverrides = Object.freeze(
+      securityOverrides.map((entry) =>
+        Object.freeze({
+          overrides: Object.freeze(
+            entry.overrides.map((pair) =>
+              Object.freeze({
+                key: pair.key,
+                value: pair.value,
+              }),
+            ),
+          ),
+          security: entry.security,
+        }),
+      ),
+    );
+  }
+
+  public [Symbol.iterator](): Iterator<StringPair> {
+    return this.toPairs()[Symbol.iterator]();
+  }
+
+  public toPairs(): StringPair[] {
+    return this.pairs.map((pair) => ({ key: pair.key, value: pair.value }));
+  }
+
+  public toObject(): OverridesMap {
+    return Object.fromEntries(this.pairs.map((pair) => [pair.key, pair.value]));
+  }
+
+  public toSecurityOverrides(): SecurityOverrideSpec[] {
+    return this.securityOverrides.map((entry) => ({
+      overrides: entry.overrides.map((pair) => ({ key: pair.key, value: pair.value })),
+      security: entry.security,
+    }));
+  }
+
+  public merge(...sources: OverrideSource[]): OverrideSpec {
+    return ovr(this, ...sources);
+  }
+
+  public forSecurity(security: string, ...sources: OverrideSource[]): OverrideSpec {
+    return ovr(this, { [security]: ovr(...sources) });
+  }
+}
+
+export function ovr(...sources: OverrideSource[]): OverrideSpec {
+  const state = createOverrideState();
+  for (const source of sources) {
+    addOverrideSource(source, state);
+  }
+  return new OverrideSpec(
+    [...state.merged].map(([key, value]) => ({ key, value })),
+    securityOverridesFromState(state),
+  );
+}
+
+function mapOverridesToPairs(input: OverridesInput | undefined): StringPair[] | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+  const spec = ovr(input);
+  if (spec.toSecurityOverrides().length > 0) {
+    throw new TypeError('Per-security overrides are only supported by bdp(), bdh(), and bds()');
+  }
+  return spec.toPairs();
+}
+
+interface RequestOverrideParts {
+  readonly overrides?: StringPair[];
+  readonly securityOverrides?: SecurityOverrideSpec[];
+}
+
+function mapOverridesToRequestParts(input: OverridesInput | undefined): RequestOverrideParts {
+  if (input === undefined) {
+    return {};
+  }
+  const spec = ovr(input);
+  const overrides = spec.toPairs();
+  const securityOverrides = spec.toSecurityOverrides();
+  return {
+    ...(overrides.length === 0 ? {} : { overrides }),
+    ...(securityOverrides.length === 0 ? {} : { securityOverrides }),
+  };
+}
+
 type BdtickBooleanOption =
   | 'includeConditionCodes'
   | 'includeExchangeCodes'
@@ -511,10 +759,9 @@ function normalizeRecoveryOptions(options: CdxOptions = {}): BdpOptions {
   delete normalized.recoveryRate;
   delete normalized.recovery_rate;
   if (recoveryRate !== undefined) {
-    normalized.overrides = {
-      ...normalized.overrides,
+    normalized.overrides = ovr(normalized.overrides ?? {}, {
       CDS_RR: toRequestString(recoveryRate),
-    };
+    });
   }
   return normalized;
 }
@@ -990,7 +1237,18 @@ export class Engine {
 
   public async request(params: RequestInput): Promise<unknown> {
     const backend = normalizeBackend(params.backend);
-    const { backend: _discarded, ...nativeParams } = params;
+    const {
+      backend: _discarded,
+      overrides,
+      securityOverrides: legacySecurityOverrides,
+      ...rest
+    } = params as RequestInput & { readonly securityOverrides?: unknown };
+    if (legacySecurityOverrides !== undefined) {
+      throw new TypeError(
+        'Use overrides: ovr({ "<SECURITY>": { ... } }) for per-security overrides',
+      );
+    }
+    const nativeParams = { ...rest, ...mapOverridesToRequestParts(overrides) };
     try {
       const buffer = await this.inner.request(nativeParams);
       return ipcToBackend(buffer, backend);
@@ -1000,8 +1258,18 @@ export class Engine {
   }
 
   public async requestRaw(params: RequestInput): Promise<Buffer> {
+    const {
+      overrides,
+      securityOverrides: legacySecurityOverrides,
+      ...rest
+    } = params as RequestInput & { readonly securityOverrides?: unknown };
+    if (legacySecurityOverrides !== undefined) {
+      throw new TypeError(
+        'Use overrides: ovr({ "<SECURITY>": { ... } }) for per-security overrides',
+      );
+    }
     try {
-      return await this.inner.request(params);
+      return await this.inner.request({ ...rest, ...mapOverridesToRequestParts(overrides) });
     } catch (error) {
       throw wrapError(error);
     }
@@ -1020,7 +1288,7 @@ export class Engine {
       includeSecurityErrors: Boolean(options.includeSecurityErrors),
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'ReferenceDataRequest',
-      overrides: mapObjectToPairs(options.overrides),
+      overrides: options.overrides,
       securities: tickers,
       service: '//blp/refdata',
       validateFields: options.validateFields,
@@ -1039,7 +1307,7 @@ export class Engine {
       format: options.format,
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'ReferenceDataRequest',
-      overrides: mapObjectToPairs(options.overrides),
+      overrides: options.overrides,
       securities: tickers,
       service: '//blp/refdata',
       validateFields: options.validateFields,
@@ -1059,7 +1327,7 @@ export class Engine {
       format: options.format,
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'HistoricalDataRequest',
-      overrides: mapObjectToPairs(options.overrides),
+      overrides: options.overrides,
       securities: tickers,
       service: '//blp/refdata',
       startDate: formatDate(options.start),
@@ -1124,7 +1392,6 @@ export class Engine {
         elements.push({ key: 'asOfDate', value: asofFormatted });
       }
     }
-    const overrides: OverridesMap = { ...options.overrides };
     return await this.request({
       backend: options.backend,
       elements,
@@ -1132,20 +1399,20 @@ export class Engine {
       format: options.format,
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'BeqsRequest',
-      overrides: mapObjectToPairs(overrides),
+      overrides: mapOverridesToPairs(options.overrides),
       service: '//blp/refdata',
     });
   }
 
   public async bsrch(searchSpec: string, options: BsrchOptions = {}): Promise<unknown> {
-    const elements: OverridesMap = {
-      Domain: toRequestString(searchSpec),
-      ...options.overrides,
-      ...options.kwargs,
-    };
+    const elements: StringPair[] = [
+      { key: 'Domain', value: toRequestString(searchSpec) },
+      ...(mapOverridesToPairs(options.overrides) ?? []),
+      ...(mapObjectToPairs(options.kwargs) ?? []),
+    ];
     return await this.request({
       backend: options.backend,
-      elements: mapObjectToPairs(elements),
+      elements,
       extractor: 'bsrch',
       format: options.format,
       operation: 'ExcelGetGridRequest',
@@ -1212,7 +1479,7 @@ export class Engine {
       format: options.format,
       kwargs: mapObjectToPairs(options.kwargs),
       operation: 'PortfolioDataRequest',
-      overrides: mapObjectToPairs(options.overrides),
+      overrides: mapOverridesToPairs(options.overrides),
       security: toRequestString(portfolio),
       service: '//blp/refdata',
     });
@@ -1873,13 +2140,14 @@ export async function bdh(
 export async function abds(
   tickers: string | readonly string[],
   fields: string | readonly string[],
-  overrides?: OverridesMap,
+  overrides?: OverridesInput,
   options: BdpOptions = {},
 ): Promise<unknown> {
   const engine = await getConfiguredEngine();
-  const normalizedOptions: BdpOptions = isPlainObject(overrides)
-    ? { ...options, overrides: { ...options.overrides, ...overrides } }
-    : options;
+  const normalizedOptions: BdpOptions =
+    overrides === undefined
+      ? options
+      : { ...options, overrides: ovr(options.overrides ?? {}, overrides) };
   return await engine.bds(toStringArray(tickers), toStringArray(fields), normalizedOptions);
 }
 
@@ -2115,6 +2383,13 @@ export type {
   FxPairInfo,
   MarketRule,
   OverridesMap,
+  OverrideEntry,
+  OverrideNestedSource,
+  OverrideObject,
+  OverrideSource,
+  OverrideSpecLike,
+  OverrideValue,
+  OverridesInput,
   IndexMembersOptions,
   PreferredsOptions,
   PrimitiveValue,
@@ -2122,6 +2397,7 @@ export type {
   RequestInput,
   RequestOptions,
   ServerAddress,
+  SecurityOverrideSpec,
   SessionWindowsInfo,
   Socks5Config,
   StreamOptions,

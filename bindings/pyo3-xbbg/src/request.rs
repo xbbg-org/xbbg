@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use xbbg_async::engine::{RequestParams, RequestParamsInput};
+use xbbg_async::engine::{RequestParams, RequestParamsInput, SecurityOverridePairs};
 
 /// Convert a Python dictionary to Rust RequestParams.
 pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<RequestParams> {
@@ -48,6 +48,11 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
 
     let overrides: Option<Vec<(String, String)>> = dict
         .get_item("overrides")?
+        .map(|v| v.extract())
+        .transpose()?;
+
+    let security_overrides: Option<SecurityOverridePairs> = dict
+        .get_item("security_overrides")?
         .map(|v| v.extract())
         .transpose()?;
 
@@ -143,6 +148,7 @@ pub(crate) fn dict_to_request_params(dict: &Bound<'_, PyDict>) -> PyResult<Reque
         security,
         fields,
         overrides,
+        security_overrides,
         elements,
         kwargs,
         start_date,

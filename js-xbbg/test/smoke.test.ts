@@ -2,7 +2,13 @@ import { expectTypeOf } from 'vitest';
 
 import { tableFromNativeArrowBatch } from '../src/arrow-zero-copy';
 import * as api from '../src/index';
-import type { BackendKind, FormatKind, RequestOptions, StreamOptions } from '../src/index';
+import type {
+  BackendKind,
+  FormatKind,
+  OverridesInput,
+  RequestOptions,
+  StreamOptions,
+} from '../src/index';
 import type { NativeArrowZeroCopyBatch } from '../src/napi';
 import type { RequestInput } from '../src/types';
 
@@ -72,6 +78,7 @@ describe('@xbbg/core surface', () => {
       'ext',
       'Backend',
       'Format',
+      'OverrideSpec',
       'bdp',
       'bdh',
       'bds',
@@ -96,6 +103,7 @@ describe('@xbbg/core surface', () => {
       'getLogLevel',
       'formatDate',
       'formatDateTime',
+      'ovr',
     ] as const;
     for (const key of required) {
       expect(api).toHaveProperty(key);
@@ -106,11 +114,55 @@ describe('@xbbg/core surface', () => {
     const format: FormatKind = api.Format.LONG_TYPED;
     const requestOptions: RequestOptions = { backend, format };
     const streamOptions: StreamOptions = { allFields: true };
+    const overrides: OverridesInput = api.ovr({
+      EQY_FUND_CRNCY: 'USD',
+      'IBM US Equity': api.ovr({ EQY_FUND_CRNCY: 'EUR' }),
+    });
+    const requestWithOverrides: RequestOptions = { backend, format, overrides };
 
     expectTypeOf(backend).toExtend<BackendKind>();
     expectTypeOf(format).toExtend<FormatKind>();
     expectTypeOf(requestOptions).toEqualTypeOf<RequestOptions>();
     expectTypeOf(streamOptions).toEqualTypeOf<StreamOptions>();
+    expectTypeOf(overrides).toExtend<OverridesInput>();
+    expectTypeOf(requestWithOverrides).toEqualTypeOf<RequestOptions>();
+  });
+
+  it('normalizes JavaScript override specs', () => {
+    const spec = api
+      .ovr({
+        EQY_FUND_CRNCY: 'EUR',
+        USER_LOCAL_TRADE_DATE: new Date(Date.UTC(2023, 0, 17)),
+      })
+      .merge({ EQY_FUND_CRNCY: 'USD' });
+
+    expect(spec.toPairs()).toStrictEqual([
+      { key: 'EQY_FUND_CRNCY', value: 'USD' },
+      { key: 'USER_LOCAL_TRADE_DATE', value: '20230117' },
+    ]);
+    expect(spec.toObject()).toStrictEqual({
+      EQY_FUND_CRNCY: 'USD',
+      USER_LOCAL_TRADE_DATE: '20230117',
+    });
+    expect(spec.toSecurityOverrides()).toStrictEqual([]);
+    expect(
+      spec
+        .forSecurity('IBM US Equity', { EQY_FUND_CRNCY: 'EUR' })
+        .merge({ 'MSFT US Equity': { USER_LOCAL_TRADE_DATE: new Date(Date.UTC(2024, 0, 2)) } })
+        .toSecurityOverrides(),
+    ).toStrictEqual([
+      {
+        overrides: [{ key: 'EQY_FUND_CRNCY', value: 'EUR' }],
+        security: 'IBM US Equity',
+      },
+      {
+        overrides: [{ key: 'USER_LOCAL_TRADE_DATE', value: '20240102' }],
+        security: 'MSFT US Equity',
+      },
+    ]);
+    expect(() => api.ovr('BAD' as never)).toThrow(
+      'ovr() expects objects, OverrideSpec, or arrays of override entries',
+    );
   });
 
   it('backend enum is frozen with correct values', () => {
@@ -220,6 +272,10 @@ describe('@xbbg/core surface', () => {
         clientCredentials: '/secure/client.p12',
         trustMaterial: '/secure/trust.p7',
       },
+      shardChunkSize: 3,
+      shardMaxConcurrent: 2,
+      shardRequests: true,
+      shardThreshold: 5,
       zfpRemote: '8194' as const,
     };
     expect(api.configure(advanced)).toStrictEqual(advanced);
@@ -585,6 +641,118 @@ describe('engine wrapper request plumbing', () => {
     expect(engine.calls[0]?.validateFields).toBeTruthy();
     expect(engine.calls[1]?.validateFields).toBeFalsy();
     expect(engine.calls[2]?.validateFields).toBeTruthy();
+  });
+
+  it('forwards JavaScript override specs through bdp and bdh', async () => {
+    const engine = captureRequests();
+
+    await engine.bdp(['IBM US Equity'], ['PX_LAST'], {
+      overrides: api.ovr({ EQY_FUND_CRNCY: 'EUR' }),
+    });
+    await engine.bdh(['IBM US Equity'], ['PX_LAST'], {
+      end: '2024-01-02',
+      overrides: api.ovr([['EQY_FUND_CRNCY', 'USD']]),
+      start: '2024-01-01',
+    });
+
+    const bdpOverrides = engine.calls[0]?.overrides;
+    const bdhOverrides = engine.calls[1]?.overrides;
+
+    expect(bdpOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((bdpOverrides as api.OverrideSpec).toPairs()).toStrictEqual([
+      { key: 'EQY_FUND_CRNCY', value: 'EUR' },
+    ]);
+    expect(bdhOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((bdhOverrides as api.OverrideSpec).toPairs()).toStrictEqual([
+      { key: 'EQY_FUND_CRNCY', value: 'USD' },
+    ]);
+  });
+
+  it('carries per-security overrides inside JavaScript override specs', async () => {
+    const engine = captureRequests();
+
+    await engine.bdp(['IBM US Equity', 'MSFT US Equity'], ['PX_LAST'], {
+      overrides: api.ovr({
+        EQY_FUND_CRNCY: 'USD',
+        'IBM US Equity': api.ovr({ EQY_FUND_CRNCY: 'EUR' }),
+        'MSFT US Equity': { USER_LOCAL_TRADE_DATE: new Date(Date.UTC(2024, 0, 2)) },
+      }),
+    });
+    await engine.bds(['IBM US Equity'], ['DVD_HIST_ALL'], {
+      overrides: api.ovr({
+        'IBM US Equity': { DVD_Start_Dt: new Date(Date.UTC(2024, 0, 1)) },
+      }),
+    });
+    await engine.bdh(['IBM US Equity'], ['PX_LAST'], {
+      end: '2024-01-02',
+      overrides: api.ovr().forSecurity('IBM US Equity', { CRNCY: 'EUR' }),
+      start: '2024-01-01',
+    });
+
+    const refOverrides = engine.calls[0]?.overrides;
+    const bulkOverrides = engine.calls[1]?.overrides;
+    const histOverrides = engine.calls[2]?.overrides;
+
+    expect(refOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((refOverrides as api.OverrideSpec).toPairs()).toStrictEqual([
+      { key: 'EQY_FUND_CRNCY', value: 'USD' },
+    ]);
+    expect((refOverrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
+      {
+        overrides: [{ key: 'EQY_FUND_CRNCY', value: 'EUR' }],
+        security: 'IBM US Equity',
+      },
+      {
+        overrides: [{ key: 'USER_LOCAL_TRADE_DATE', value: '20240102' }],
+        security: 'MSFT US Equity',
+      },
+    ]);
+    expect(bulkOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((bulkOverrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
+      {
+        overrides: [{ key: 'DVD_Start_Dt', value: '20240101' }],
+        security: 'IBM US Equity',
+      },
+    ]);
+    expect(histOverrides).toBeInstanceOf(api.OverrideSpec);
+    expect((histOverrides as api.OverrideSpec).toSecurityOverrides()).toStrictEqual([
+      {
+        overrides: [{ key: 'CRNCY', value: 'EUR' }],
+        security: 'IBM US Equity',
+      },
+    ]);
+  });
+
+  it('splits OverrideSpec security overrides at the native request boundary', async () => {
+    const captured: unknown[] = [];
+    const engine = Object.create(api.Engine.prototype) as api.Engine;
+    (engine as unknown as { inner: { request(params: unknown): Promise<Buffer> } }).inner = {
+      request: async (params: unknown) => {
+        captured.push(params);
+        return Buffer.from([]);
+      },
+    };
+
+    await engine.requestRaw({
+      fields: ['PX_LAST'],
+      operation: 'ReferenceDataRequest',
+      overrides: api.ovr({
+        EQY_FUND_CRNCY: 'USD',
+        'IBM US Equity': { EQY_FUND_CRNCY: 'EUR' },
+      }),
+      securities: ['IBM US Equity'],
+      service: '//blp/refdata',
+    });
+
+    expect(captured[0]).toMatchObject({
+      overrides: [{ key: 'EQY_FUND_CRNCY', value: 'USD' }],
+      securityOverrides: [
+        {
+          overrides: [{ key: 'EQY_FUND_CRNCY', value: 'EUR' }],
+          security: 'IBM US Equity',
+        },
+      ],
+    });
   });
 
   it('forwards intraday timezone controls and typed tick include options', async () => {

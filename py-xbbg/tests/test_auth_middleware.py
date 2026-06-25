@@ -18,6 +18,10 @@ class DummyConfig:
         self.port = 8194
         self.request_pool_size = 2
         self.subscription_pool_size = 1
+        self.shard_requests = False
+        self.shard_threshold = 20
+        self.shard_chunk_size = 16
+        self.shard_max_concurrent = 4
         self.validation_mode = "disabled"
         self.subscription_flush_threshold = 1
         self.max_event_queue_size = 10_000
@@ -273,6 +277,25 @@ def test_configure_applies_auth_kwargs():
     assert blp._config.num_start_attempts == 5
     assert blp._config.auto_restart_on_disconnection is False
     assert blp._engine is None
+
+
+def test_configure_accepts_sharding_kwargs():
+    config = DummyConfig()
+
+    blp.configure(
+        config,
+        shard_requests=True,
+        shard_threshold=3,
+        shard_chunk_size=2,
+        shard_max_concurrent=2,
+    )
+
+    assert blp._config is config
+    assert isinstance(blp._config, DummyConfig)
+    assert blp._config.shard_requests is True
+    assert blp._config.shard_threshold == 3
+    assert blp._config.shard_chunk_size == 2
+    assert blp._config.shard_max_concurrent == 2
 
 
 def test_configure_rejects_unknown_kwargs():
