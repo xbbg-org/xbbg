@@ -404,7 +404,7 @@ function overridesMap(tool: string, field: string): ZodOutput<OverrideMap | unde
         if (normalizedKey.length === 0) {
           return normalizationIssue(context, tool, field, new TypeError("contains an empty key"));
         }
-        if (typeof entry !== "object" || entry === null) {
+        if (typeof entry !== "object") {
           if (typeof entry === "string" && entry.length === 0) {
             return normalizationIssue(
               context,

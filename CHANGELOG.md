@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@xbbg/langgraph` npm release validation**: Removed a redundant nullable branch from override schema normalization so the package publish workflow's strict TypeScript ESLint gate passes while preserving validated input behavior.
+
 ## [1.4.0] - 2026-06-26
 
 ### Added
