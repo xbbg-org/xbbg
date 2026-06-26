@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-26
+
 ### Added
 
 - **Opt-in request sharding for wide `bdp`/`bdh` calls**: Rust/Python engine configuration now accepts `shard_requests`, `shard_threshold`, `shard_chunk_size`, and `shard_max_concurrent` (JavaScript: `shardRequests`, `shardThreshold`, `shardChunkSize`, `shardMaxConcurrent`) to fan out eligible multi-security reference and historical requests while preserving output order.
@@ -1441,7 +1443,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
-[Unreleased]: https://github.com/xbbg-org/xbbg/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/xbbg-org/xbbg/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/xbbg-org/xbbg/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/xbbg-org/xbbg/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/xbbg-org/xbbg/compare/v1.2.7...v1.3.0
 [1.2.7]: https://github.com/xbbg-org/xbbg/compare/v1.2.6...v1.2.7
