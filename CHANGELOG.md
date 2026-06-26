@@ -7,17 +7,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Added
+
+- **Opt-in request sharding for wide `bdp`/`bdh` calls**: Rust/Python engine configuration now accepts `shard_requests`, `shard_threshold`, `shard_chunk_size`, and `shard_max_concurrent` (JavaScript: `shardRequests`, `shardThreshold`, `shardChunkSize`, `shardMaxConcurrent`) to fan out eligible multi-security reference and historical requests while preserving output order.
+- **Composable Bloomberg override helpers**: Python now exports `xbbg.ovr()` / `xbbg.OverrideSpec`, and JavaScript exports `ovr()` / `OverrideSpec`, for reusable override specs that feed the existing `overrides=` / `options.overrides` request paths.
+- **Per-security Bloomberg overrides**: Python, JavaScript, and `@xbbg/langgraph` `bdp`/`bdh`/`bds` request paths now accept per-security override specs inside the existing `overrides` / `options.overrides` path via `ovr()` / `OverrideSpec`. The Rust engine shards by contiguous override sets, merges global overrides first, and preserves output order while still honoring enabled shard chunk limits.
+
 ## [1.3.1] - 2026-06-22
 
 
 ### Added
 
 - **`@xbbg/langgraph` chart-spec helper for generative UI**: Added `xbbg_ext_chart_spec` and `createExtChartSpecTool()` to convert bounded Bloomberg result rows into dependency-free Vega-Lite visualization payloads for CopilotKit, assistant-ui, Vercel AI SDK, LangGraph UI, or other frontend renderers.
-
-- **Opt-in request sharding for wide `bdp`/`bdh` calls**: Rust/Python engine configuration now accepts `shard_requests`, `shard_threshold`, `shard_chunk_size`, and `shard_max_concurrent` (JavaScript: `shardRequests`, `shardThreshold`, `shardChunkSize`, `shardMaxConcurrent`) to fan out eligible multi-security reference and historical requests while preserving output order.
-- **Composable Bloomberg override helpers**: Python now exports `xbbg.ovr()` / `xbbg.OverrideSpec`, and JavaScript exports `ovr()` / `OverrideSpec`, for reusable override specs that feed the existing `overrides=` / `options.overrides` request paths.
-
-- **Per-security Bloomberg overrides**: Python, JavaScript, and `@xbbg/langgraph` `bdp`/`bdh`/`bds` request paths now accept per-security override specs inside the existing `overrides` / `options.overrides` path via `ovr()` / `OverrideSpec`. The Rust engine shards by contiguous override sets, merges global overrides first, and preserves output order while still honoring enabled shard chunk limits.
 
 ### Fixed
 
